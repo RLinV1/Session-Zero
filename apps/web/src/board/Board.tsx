@@ -113,7 +113,7 @@ interface Placing {
 
 const HINTS: Record<BoardTool["kind"], string> = {
   select: "Drag to pan · scroll to zoom · double-click to ping · hold Alt to place freely",
-  measure: "Drag to plan from your selected token or a point · hold Alt for straight-line distance · only you see this ruler · Esc to stop",
+  measure: "Drag to measure · Alt: straight line · Esc: stop",
   draw: "Drag to draw · only you can see drawings · Esc to stop",
   area: "Drag to size and aim · click to place the chosen size · hold Alt to place freely · everyone at the table sees areas",
   erase: "Click or drag over your marks and areas to erase them · Esc to stop",

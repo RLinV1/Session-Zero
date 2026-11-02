@@ -11,7 +11,7 @@ export function MovementControls({ roomId, grid, onChange }: { roomId: string; g
   const invalid = draft.trim() === "" || !validAllowance(Number(draft));
   useEffect(() => onChange(settings), [settings, onChange]);
   return <div className="tool-options movement-options" role="group" aria-label="Personal movement planner">
-    <label>Movement allowance ({grid.unitLabel})
+    <label>Movement ({grid.unitLabel})
       <input type="number" min="0" max="100000" step="any" value={draft} aria-invalid={invalid} aria-describedby={invalid ? errorId : undefined}
         onChange={(e) => {
           const value = e.target.value;
@@ -19,17 +19,17 @@ export function MovementControls({ roomId, grid, onChange }: { roomId: string; g
           if (value.trim() && validAllowance(Number(value))) setSettings({ ...settings, allowance: Number(value) });
         }} />
     </label>
-    {invalid && <p id={errorId} role="alert">Enter a positive allowance up to 100,000. The last valid value is still in use.</p>}
-    <label>Distance rule
+    {invalid && <p id={errorId} role="alert">Enter a positive value up to 100,000.</p>}
+    <label>Diagonals
       <select value={settings.rule} onChange={(e) => {
         const next = { ...settings, rule: e.target.value };
         if (isMovementSettings(next)) setSettings(next);
       }}>
-        <option value="equal">Equal-cost diagonals</option>
-        <option value="alternating">Alternating diagonals (1, 2)</option>
-        <option value="euclidean">Euclidean distance</option>
+        <option value="equal">Equal cost</option>
+        <option value="alternating">Alternating (1, 2)</option>
+        <option value="euclidean">Euclidean</option>
       </select>
     </label>
-    <small>Only you see this ruler. One prospective move; movement is not tracked.</small>
+    <small>Private preview.</small>
   </div>;
 }

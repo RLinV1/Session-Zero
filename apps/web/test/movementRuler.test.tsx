@@ -61,14 +61,14 @@ describe("personal movement ruler (FR-TAC-03)", () => {
   it("keeps the last valid allowance while explaining invalid input", () => {
     const onChange = vi.fn();
     render(<MovementControls roomId="one" grid={grid} onChange={onChange} />);
-    const input = screen.getByRole("spinbutton", { name: "Movement allowance (ft)" });
+    const input = screen.getByRole("spinbutton", { name: "Movement (ft)" });
     fireEvent.change(input, { target: { value: "45" } });
     expect(onChange).toHaveBeenLastCalledWith({ allowance: 45, rule: "equal" });
     fireEvent.change(input, { target: { value: "0" } });
     expect(screen.getByRole("alert").textContent).toContain("positive");
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(onChange).toHaveBeenLastCalledWith({ allowance: 45, rule: "equal" });
-    fireEvent.change(screen.getByRole("combobox", { name: "Distance rule" }), { target: { value: "alternating" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Diagonals" }), { target: { value: "alternating" } });
     expect(onChange).toHaveBeenLastCalledWith({ allowance: 45, rule: "alternating" });
   });
   it("remembers valid settings only in their room", () => {
