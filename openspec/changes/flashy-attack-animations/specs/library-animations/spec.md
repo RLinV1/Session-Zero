@@ -3,7 +3,7 @@
 ### Requirement: Animations in the library
 A GM SHALL have an Animations tab in the asset library that lists the GM's own animations with name and shape, filtered by a case-insensitive name search. An animation has a name of 1 to 60 characters and a definition made only of:
 - a shape: `slash`, `claw`, `whirlwind`, `slam`, `shadow`, `projectile`, `volley`, `dagger`, `fireball`, `meteor`, `explosion`, `bolt`, `chain`, `beam`, `frost`, `poison`, `smite`, `sonic`, `tornado` or `nuke`;
-- a duration from 0.2 to 4 seconds;
+- a duration from 0.2 to 8 seconds (4 until ADR 0047);
 - a primary and a secondary six-digit hex colour, and an optional third (accent) colour;
 - a size from 0.5 to 3;
 - a particle count from 0 to 120 and a particle look (`spark`, `star`, `square`, `shard` or `ring`);

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formatActivity } from "./activityLog";
-import { DiceRoll } from "./dice";
+import { LoggedRoll } from "./dice";
+import { AreaEffect } from "./areaEffects";
 import { CommittedEvent, type DomainEvent } from "./events";
 import { reduceCommitted, reduceReceived } from "./reducer";
 import { emptyRoomState, TableState, tableOf, type Participant, type RoomState } from "./state";
@@ -48,7 +49,9 @@ export const ReplayFrame = z.discriminatedUnion("kind", [
     seq: z.number().int().positive(),
     at: z.string(),
     table: TableState,
-    rolls: z.array(DiceRoll),
+    rolls: z.array(LoggedRoll),
+    /** The viewer's copy of the open area effect (ADR 0046); absent on frames from before it. */
+    areaEffect: AreaEffect.nullable().optional(),
     sentence: z.string(),
   }),
 ]);
@@ -133,6 +136,7 @@ export function replayFrom(
           at: committed.at,
           table: tableOf(visibleAfter),
           rolls: visibleAfter.rolls,
+          areaEffect: visibleAfter.areaEffect ?? null,
           sentence: neutralSentence(committed.event, actorName),
         });
       }
@@ -152,7 +156,8 @@ function neutralSentence(event: DomainEvent, actorName: string): string {
     case "InitiativeAdvanced": return `${actorName} advanced the turn`;
     case "FogAdded":
     case "FogRemoved": return `${actorName} changed the fog`;
-    case "DiceRolled": return `${actorName} rolled dice`;
+    case "DiceRolled":
+    case "GroupRolled": return `${actorName} rolled dice`;
     case "CheckpointRestored": return `${actorName} restored the board to a checkpoint`;
     case "EncounterApplied": return `${actorName} set up an encounter`;
     case "TokenMoved":
@@ -167,7 +172,7 @@ function neutralSentence(event: DomainEvent, actorName: string): string {
 /** The client's fold of one frame onto the replayed state. */
 export function applyReplayFrame(state: RoomState, frame: ReplayFrame): RoomState {
   if (frame.kind === "event") return reduceReceived(state, frame.committed);
-  return { ...state, ...frame.table, rolls: frame.rolls };
+  return { ...state, ...frame.table, rolls: frame.rolls, ...(frame.areaEffect !== undefined && { areaEffect: frame.areaEffect }) };
 }
 
 /** Every replayed state, `[start, after frame 1, …]`, so stepping back is a lookup. */

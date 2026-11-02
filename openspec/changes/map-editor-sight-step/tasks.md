@@ -18,6 +18,8 @@ Implementation note: implement with Sonnet 5.5 subagents. Group 1 first; then gr
 
 - [x] 3.4 Replace the five Battle map step buttons with one Edit map button that opens the editor on its first step; update the guide text and web tests
 - [x] 3.5 Add an editor-only test token to the Sight preview (drag or arrow keys, sight updates on drop); verify with a web test and a Playwright screenshot
+- [x] 3.6 Replace the room's tokens and Preview as with test tokens only: a left panel to add and remove them, drag-only moves, and a bottom-right notice of how many others the clicked token sees; verify with web tests (the user checks it in the browser)
+- [x] 3.7 Choose which test tokens' sight to show (per-token checkboxes, Select all, press a token to focus it, empty-map click leaves it), a different colour for windows, a smaller Add token button and less text; verify with web tests
 
 ## 4. Done check
 

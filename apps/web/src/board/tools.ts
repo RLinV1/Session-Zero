@@ -1,5 +1,5 @@
 import type { DistanceRule } from "./movementRuler";
-import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type FogRegion, type GridSpec, type Point, type Wall } from "@vtt/shared";
+import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type FogRegion, type GridSpec, type Point, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
 
@@ -32,7 +32,9 @@ export type BoardTool =
   /** GM only (FR-GM-17, ADR 0016): conceal a rectangle or polygon, or reveal (remove) a fogged region. */
   | { kind: "fog"; mode: FogMode }
   /** Picking whom `attackerId` attacks (attack-targeting). Started from a token's Attack button, not the rail. */
-  | { kind: "attack"; attackerId: string };
+  | { kind: "attack"; attackerId: string }
+  /** GM only: picking a placed template whose tokens to select (ADR 0046). Started from From template, not the rail. */
+  | { kind: "pickTemplate" };
 
 /** What the Fog tool does: drag a rectangle, click out a polygon, or click a region to remove it. */
 export type FogMode = "rect" | "polygon" | "reveal";
@@ -213,6 +215,58 @@ export function areaShape(shape: AreaShape, origin: Point, toward: Point, size: 
   // A box is centred on its origin, turned to face the aim (ADR 0040).
   const h = length / 2;
   return { kind: "polygon", points: [at(-h, -h), at(h, -h), at(h, h), at(-h, h)] };
+}
+
+/** Where a placed template is on the board, as `areaShape` draws it. */
+export function templateArea(t: AreaTemplate, grid: GridSpec): AreaGeometry {
+  return areaShape(t.shape, t.origin, t.toward, t.size, grid, t.width);
+}
+
+/**
+ * The tokens whose footprint (their size in cells, a square centred on their position) overlaps
+ * `area`, in the order given (ADR 0046). Touching only at an edge or a corner does not count.
+ */
+export function tokensTouchingArea<T extends Pick<Token, "position" | "size">>(area: AreaGeometry, tokens: readonly T[], grid: GridSpec): T[] {
+  return tokens.filter((token) => {
+    const h = (token.size * grid.cellSize) / 2;
+    const { x, y } = token.position;
+    if (area.kind === "circle") {
+      // The nearest point of the square to the centre must be strictly inside the circle.
+      const nx = Math.max(x - h, Math.min(area.center.x, x + h));
+      const ny = Math.max(y - h, Math.min(area.center.y, y + h));
+      return Math.hypot(nx - area.center.x, ny - area.center.y) < area.radius;
+    }
+    const square = [{ x: x - h, y: y - h }, { x: x + h, y: y - h }, { x: x + h, y: y + h }, { x: x - h, y: y + h }];
+    return convexOverlap(area.points, square);
+  });
+}
+
+/** Separating-axis test for two convex polygons; true only when they share some area. */
+function convexOverlap(a: readonly Point[], b: readonly Point[]): boolean {
+  const EPSILON = 1e-9;
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]!;
+      const q = poly[(i + 1) % poly.length]!;
+      const axis = { x: q.y - p.y, y: p.x - q.x };
+      if (axis.x === 0 && axis.y === 0) continue;
+      const project = (points: readonly Point[]) => {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const v of points) {
+          const d = v.x * axis.x + v.y * axis.y;
+          min = Math.min(min, d);
+          max = Math.max(max, d);
+        }
+        return { min, max };
+      };
+      const pa = project(a);
+      const pb = project(b);
+      // Projections that only meet at a point are an edge or corner contact.
+      if (pa.max <= pb.min + EPSILON || pb.max <= pa.min + EPSILON) return false;
+    }
+  }
+  return true;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react";
 import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
@@ -22,6 +22,7 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const shareRef = useRef<HTMLButtonElement>(null);
+  const shareHintId = useId();
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -148,18 +149,20 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
         type="button"
         className="tool-button share-button"
         title="Copy the invite link"
-        aria-label="Copy invite link. Anyone with it can join as a player."
+        // The visible word is the name (WCAG 2.5.3); what it does is the description.
+        aria-describedby={shareHintId}
         disabled={busy}
         onClick={() => void copy()}
       >
         {label}
       </button>
+      <span id={shareHintId} className="sr-only">Copies the invite link. Anyone with it can join as a player.</span>
       <PopoverButton
         label="Invite link options"
         title="Invite link options"
         align="right"
         className="tool-button share-button share-menu-button"
-        buttonContent={<CaretDown size={12} weight="bold" aria-hidden="true" />}
+        buttonContent={<CaretDown size={12} aria-hidden="true" />}
       >
         {(close) => (
           <button

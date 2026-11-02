@@ -6,7 +6,7 @@ import { SparkRenderer } from "./fxParticles";
 import { BLAST_WAVE, MUSHROOM, NUKE_BOMB, RING_RADIUS, StampLayer, fxTexture, oval, stamp } from "./fxTextures";
 import { graphicsBudget } from "../ui/clientSettings";
 
-import { NUKE_DROP_SHARE, nukeLayout } from "./fxBudget";
+import { NUKE_DROP_SHARE, NUKE_FALL_SHARE, nukeLayout } from "./fxBudget";
 
 let fireTexture: Texture | null = null;
 let smokeTexture: Texture | null = null;
@@ -157,6 +157,8 @@ export function playNuke(host: FxHost, params: NukeFxParams): RunningFx {
   const sparks: Spark[] = [];
   const blastAt = def.duration * NUKE_DROP_SHARE;
   const blastLen = def.duration - blastAt;
+  // The bomb waits above the screen while the siren winds up, then falls in the last stretch.
+  const fallFrom = blastAt - def.duration * NUKE_FALL_SHARE;
   let last = -Infinity;
   let sparked = false;
   return {
@@ -174,7 +176,7 @@ export function playNuke(host: FxHost, params: NukeFxParams): RunningFx {
       flash.alpha = since < 0 ? 0 : def.flash * 0.95 * (1 - clamp01(since / 0.24)) ** 2;
       bomb.visible = since < 0;
       if (bomb.visible) {
-        const fall = clamp01(elapsed / blastAt);
+        const fall = clamp01((elapsed - fallFrom) / (blastAt - fallFrom));
         bomb.position.set(origin.x, lerp(-b * 3, origin.y, fall * fall));
         bomb.rotation = Math.sin(fall * Math.PI) * 0.08;
       }

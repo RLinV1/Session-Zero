@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { attackLabel, formatAttackParties, type RoomState } from "@vtt/shared";
+import { areaEffectStage, attackLabel, formatAttackParties, isActive, type AreaEffect, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { PanelSection } from "../ui/PanelSection";
-import { pendingRulings, type PendingRuling } from "./attackRoll";
+import { pendingRulingCount, pendingRulings, type PendingRuling } from "./attackRoll";
+import { ResolveButton, useGoToAreaEffect } from "./AreaEffectPanel";
 import { RulingButtons } from "./RulingButtons";
 import { useDisplayedHealth } from "../board/nukeHealth";
 
@@ -15,14 +16,22 @@ import { useDisplayedHealth } from "../board/nukeHealth";
 export function RulingsPanel({
   connection,
   state,
+  you,
   airborne,
+  onResolve,
 }: {
   connection: RoomConnection;
   state: RoomState;
+  you: Participant;
+  /** Open the area effect's resolve dialog (ADR 0046). */
+  onResolve: () => void;
   /** Rolls whose dice are still in the air on this screen: the total and the controls wait for them. */
   airborne: ReadonlySet<string>;
 }) {
-  const pending = pendingRulings(useDisplayedHealth(state));
+  const shown = useDisplayedHealth(state);
+  const pending = pendingRulings(shown);
+  const count = pendingRulingCount(shown);
+  const effect = state.areaEffect ?? null;
   // One request per roll at a time; the server refuses a second apply anyway.
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +48,22 @@ export function RulingsPanel({
   };
 
   return (
-    <PanelSection id="rulings" title={pending.length ? `Rulings (${pending.length})` : "Rulings"}>
-      {pending.length === 0 ? (
+    <PanelSection id="rulings" title={count ? `Rulings (${count})` : "Rulings"}>
+      {count === 0 ? (
         <p className="muted">Nothing to rule on.</p>
       ) : (
         <ul className="plain rulings">
+          {effect && (
+            <AreaEffectRow
+              effect={effect}
+              state={state}
+              you={you}
+              busy={busy.has(effect.id)}
+              onTakeOver={() => send(effect.id, { type: "areaEffect.call", effectId: effect.id, participantId: you.id })}
+              onResolve={onResolve}
+              onSkip={() => send(effect.id, { type: "areaEffect.close", effectId: effect.id })}
+            />
+          )}
           {pending.map((item) => (
             <RulingRow
               key={item.roll.id}
@@ -62,6 +82,59 @@ export function RulingsPanel({
         </p>
       )}
     </PanelSection>
+  );
+}
+
+/**
+ * The open area effect, at every stage (ADR 0046). Take over and Skip act here, and Resolve opens
+ * the resolve dialog; the controls that need a choice (who to call, the damage formula) open the
+ * Area Effect section.
+ */
+function AreaEffectRow({ effect, state, you, busy, onTakeOver, onResolve, onSkip }: {
+  effect: AreaEffect;
+  state: RoomState;
+  you: Participant;
+  busy: boolean;
+  onTakeOver: () => void;
+  onResolve: () => void;
+  onSkip: () => void;
+}) {
+  const goTo = useGoToAreaEffect();
+  const stage = areaEffectStage(effect);
+  const caller = effect.call ? state.participants[effect.call.participantId] : undefined;
+  const yours = effect.call?.participantId === you.id;
+  const count = `${effect.targets.length} ${effect.targets.length === 1 ? "target" : "targets"}`;
+  const status =
+    stage === "started" ? "Rolled"
+    : stage === "rolled" ? "Damage rolled"
+    : yours ? "Your damage roll"
+    : `Waiting on ${caller?.displayName ?? "someone"}${caller && !isActive(caller) ? " (left the table)" : ""}`;
+  return (
+    <li className="ruling">
+      <span className="ruling-line">
+        <span className="ruling-parties">{effect.label ?? "Area effect"} · {count}</span>
+        <span className="muted">{status}</span>
+      </span>
+      <span className="ruling-actions">
+        <span className="ruling-buttons">
+          {stage === "started" && (
+            <>
+              <button type="button" disabled={busy} onClick={goTo}>Call</button>
+              <ResolveButton stage={stage} disabled={busy} onClick={onResolve} />
+            </>
+          )}
+          {stage === "called" && yours && <button type="button" className="primary" disabled={busy} onClick={goTo}>Roll damage</button>}
+          {stage === "called" && !yours && (
+            <>
+              <button type="button" disabled={busy} onClick={goTo}>Reassign</button>
+              <button type="button" disabled={busy} onClick={onTakeOver}>Take over</button>
+            </>
+          )}
+          {stage === "rolled" && <ResolveButton stage={stage} disabled={busy} onClick={onResolve} />}
+          {!(stage === "called" && !yours) && <button type="button" className="secondary" disabled={busy} onClick={onSkip}>Skip</button>}
+        </span>
+      </span>
+    </li>
   );
 }
 

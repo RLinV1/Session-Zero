@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { FogRegion, Token } from "@vtt/shared";
+import { isDiceRoll, type FogRegion, type Token } from "@vtt/shared";
 import { startServer, type TestClient } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -106,7 +106,7 @@ describe("manual fog of war over the wire (FR-GM-17, FR-GM-23, ADR 0016)", () =>
     await gm.waitForSeq(seqOf(await gm.command({ type: "token.delete", tokenId: tokenNamed(gm, "Lurker")!.id })));
     const ended = await gm.command({ type: "fog.remove", regionId: fog(gm)[0]!.id });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(ended))));
-    expect(alice.state.rolls.at(-1)?.attack?.actor).toBeNull();
+    expect(alice.state.rolls.filter(isDiceRoll).at(-1)?.attack?.actor).toBeNull();
     expect(alice.rawLog.join(" ")).not.toContain("Lurker");
   });
 });

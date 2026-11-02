@@ -80,7 +80,7 @@ describe("nuke HP presentation (FR-TAC-07, ADR 0038)", () => {
   it("settles without WebGL using the chosen animation's drop duration", () => {
     const { nuke } = setup();
     nuke(10, 4);
-    act(() => vi.advanceTimersByTime(979));
+    act(() => vi.advanceTimersByTime(1939));
     expect(screen.getByTestId("hp").textContent).toBe("30");
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByTestId("hp").textContent).toBe("20");

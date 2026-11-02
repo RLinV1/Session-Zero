@@ -14,6 +14,7 @@ export function Modal({
   onAfterClose,
   initialFocus,
   headerContent,
+  closeLabel = "Close",
   children,
 }: {
   open: boolean;
@@ -26,6 +27,8 @@ export function Modal({
   initialFocus?: RefObject<HTMLElement | null>;
   /** Shown in the title bar between the title and Close, so a toolbar needs no row of its own. */
   headerContent?: ReactNode;
+  /** The action performed by X, Escape and backdrop dismissal. */
+  closeLabel?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -83,7 +86,7 @@ export function Modal({
               {title}
             </h2>
             {headerContent}
-            <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
+            <button type="button" className="modal-close" aria-label={closeLabel} onClick={onClose}>
               <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
                 <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
               </svg>

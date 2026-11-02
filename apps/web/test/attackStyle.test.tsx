@@ -68,7 +68,7 @@ describe("Automatic attack style (FR-TAC-09, ADR 0038)", () => {
 
   it("leaves named attack rolls to their saved animation or automatic style", async () => {
     const command = renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: /Roll Slash/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Roll to hit: Slash against/ }));
     await waitFor(() => expect(command).toHaveBeenCalled());
     const sent = command.mock.calls[0]![0] as { attack: object };
     expect(sent.attack).not.toHaveProperty("style");

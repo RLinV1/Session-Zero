@@ -53,7 +53,7 @@ export async function createUvttLibraryMap(store: RoomStore, assets: AssetStore,
     width: validated.width, height: validated.height, grid: validated.grid,
     board: { walls: validated.walls, fog: [] },
     // UVTT supplies the spacing; image-based detection must not replace it.
-    detectionStatus: "no_grid", detectionAttempt: 1, createdAt: new Date().toISOString(),
+    detectionStatus: null, detectionAttempt: 0, createdAt: new Date().toISOString(),
   };
   try {
     await store.createAsset(record);

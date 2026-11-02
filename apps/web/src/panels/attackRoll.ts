@@ -1,4 +1,4 @@
-import { attackLabel, formatAttackParties, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type DiceRoll, type Point, type RoomState, type Token } from "@vtt/shared";
+import { attackLabel, diceRollsOf, formatAttackParties, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type DiceRoll, type LoggedRoll, type Point, type RoomState, type Token } from "@vtt/shared";
 import { measure } from "../board/tools";
 
 /**
@@ -107,7 +107,7 @@ export type PendingRuling =
  */
 export function pendingRulings(state: RoomState): PendingRuling[] {
   const pending: PendingRuling[] = [];
-  for (const roll of [...state.rolls].reverse()) {
+  for (const roll of diceRollsOf(state.rolls).reverse()) {
     const attack = roll.attack;
     if (!attack) continue;
     const target = attack.target ? state.tokens[attack.target.tokenId] : undefined;
@@ -118,6 +118,26 @@ export function pendingRulings(state: RoomState): PendingRuling[] {
     }
   }
   return pending;
+}
+
+/**
+ * How many things wait on the GM (attack-rulings, ADR 0046): the rolls above, plus an open area
+ * effect, which counts as one at every stage, waiting on a player included.
+ */
+export function pendingRulingCount(state: RoomState): number {
+  return pendingRulings(state).length + (state.areaEffect ? 1 : 0);
+}
+
+/**
+ * Who a damage call goes to unless the GM picks someone else (ADR 0046): the first owner of the
+ * token whose turn it is, if they are still at the table; otherwise the GM.
+ */
+export function defaultCaller(state: RoomState, gmId: string): string {
+  const init = state.initiative;
+  const activeId = init ? init.order[init.activeIndex] : undefined;
+  const owner = activeId ? state.tokens[activeId]?.ownerIds[0] : undefined;
+  const participant = owner ? state.participants[owner] : undefined;
+  return participant && !participant.left && !participant.revoked ? participant.id : gmId;
 }
 
 // ---------- Named attacks (attack-ux-polish) ----------
@@ -205,8 +225,8 @@ export const LAST_USED_KEY = "vtt.attack.last";
  * encounter has ended on it: `clearedRollId` is the roll that was latest when the encounter
  * ended, so only a later roll brings the card back (attack-panel-encounter-reset).
  */
-export function latestAttackRoll(rolls: readonly DiceRoll[], participantId: string, clearedRollId: string | null): DiceRoll | undefined {
-  const latest = [...rolls].reverse().find((r) => r.attack && r.byParticipantId === participantId);
+export function latestAttackRoll(rolls: readonly LoggedRoll[], participantId: string, clearedRollId: string | null): DiceRoll | undefined {
+  const latest = diceRollsOf(rolls).reverse().find((r) => r.attack && r.byParticipantId === participantId);
   return latest && latest.id !== clearedRollId ? latest : undefined;
 }
 

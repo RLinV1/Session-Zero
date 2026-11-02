@@ -88,7 +88,7 @@ export function GroupHeading({ group, tokens, others, connection, onError, colla
           </ul>
           <div className="row modal-actions">
             <button type="button" className="secondary" onClick={() => setAdding(false)}>Cancel</button>
-            <button type="submit" disabled={picked.size === 0}>Add {picked.size || ""} {picked.size === 1 ? "token" : "tokens"}</button>
+            <button className="primary" type="submit" disabled={picked.size === 0}>Add {picked.size || ""} {picked.size === 1 ? "token" : "tokens"}</button>
           </div>
         </form>
       </Modal>
@@ -100,7 +100,7 @@ export function GroupHeading({ group, tokens, others, connection, onError, colla
           <label>Group name<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={MAX_GROUP_NAME} autoFocus /></label>
           <div className="row modal-actions">
             <button type="button" className="secondary" onClick={() => setRenaming(false)}>Cancel</button>
-            <button type="submit">Rename</button>
+            <button type="submit" className="primary">Rename</button>
           </div>
         </form>
       </Modal>
@@ -141,7 +141,7 @@ export function NewGroupButton({ connection, onError }: { connection: RoomConnec
           </label>
           <div className="row modal-actions">
             <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="submit">Create group</button>
+            <button type="submit" className="primary">Create group</button>
           </div>
         </form>
       </Modal>

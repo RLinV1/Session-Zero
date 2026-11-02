@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
+import { armSound, playDiceSound } from "../board/fxSound";
 import { seed, THROW_MS, throwKeyframes, throwStagger, throwTurns } from "./diceGeometry";
 import { canAnimateDice, Die3D, dieParts, layoutDice, type TrayRoll } from "./Die3D";
 
@@ -40,23 +41,34 @@ export function DiceTray({
   // rebuilt from the same data must not re-lay out twenty dice.
   const dice = useMemo(() => layoutDice(roll, size), [roll.id, roll.sides, faces, size]);
 
+  useEffect(armSound, []);
+
   useLayoutEffect(() => {
     if (!throwing) return;
     const el = root.current;
     if (!el || !canAnimateDice(el)) {
+      // Drawn at rest: one soft clack as they appear.
+      if (el) playDiceSound({ count: dice.length, staggerMs: 0, reduced: true });
       landed.current();
       return;
     }
 
     const animations = throwDice(el, dice.map((d) => d.rest), size, seed(`${roll.id}:throw`));
+    // Scheduled on the same clock as the keyframes, so each die clacks as it bounces.
+    const sound = playDiceSound({ count: dice.length, staggerMs: throwStagger(dice.length) });
     let live = true;
+    let rested = false;
     Promise.all(animations.map((a) => a.finished)).then(
-      () => live && landed.current(),
+      () => {
+        rested = true;
+        if (live) landed.current();
+      },
       // Cancelled: a newer roll replaced this one, or the panel went away.
       () => {},
     );
     return () => {
       live = false;
+      if (!rested) sound?.stop();
       for (const a of animations) a.cancel();
     };
     // The tray is keyed by roll, so a throw starts at most once per roll.

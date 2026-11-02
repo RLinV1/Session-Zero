@@ -58,7 +58,7 @@ export function AddTokenButton({
   return (
     <>
       <div className="row add-token-buttons" data-tour="gm-add-token">
-        <button type="button" onClick={() => { setGroupId(""); setOpen(true); }}>
+        <button type="button" className="primary" onClick={() => { setGroupId(""); setOpen(true); }}>
           New Token
         </button>
         {hasLibrary && (
@@ -282,7 +282,7 @@ function AddToken(props: {
           </div>
         </details>
         {error && <p role="alert" className="error">{error}</p>}
-        <button type="submit" disabled={uploading}>Choose a square</button>
+        <button className="primary" type="submit" disabled={uploading}>Choose a square</button>
         <p className="muted">Next, click the square on the map where it should go.</p>
       </form>
       {/* The attack editor is a form of its own, so it can't be nested in this one. */}

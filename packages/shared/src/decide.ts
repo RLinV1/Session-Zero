@@ -3,8 +3,9 @@ import { namedAttackFor } from "./attackPresets";
 import { findMentions } from "./chatMentions";
 import type { Command, DepartureAction } from "./commands";
 import { presetOf, tableForPreset } from "./gamePresets";
-import { MIN_HP } from "./conditions";
-import { formatExpression, parseDiceExpression, rollDice, type AttackContext } from "./dice";
+import { MIN_HP, type ConditionId } from "./conditions";
+import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
+import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
 import { encounterTable, type ResolvedEncounter } from "./encounters";
 import { footprintCrossesWall, isSnapped, pathCrossesWall, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
@@ -632,7 +633,7 @@ export function decide(
       if (!can.ruleRolls(actor)) return forbidden();
       const rulingOff = presetRefusal(state, { attacks: true });
       if (rulingOff) return rulingOff;
-      const roll = state.rolls.find((r) => r.id === command.rollId);
+      const roll = findDiceRoll(state.rolls, command.rollId);
       if (!roll) return reject("not_found", "That roll is too old to rule on");
       if (roll.attack?.kind !== "toHit") return reject("invalid", "Only to-hit attack rolls take a ruling");
       const previous = roll.verdict ?? null;
@@ -646,7 +647,7 @@ export function decide(
       if (!can.ruleRolls(actor)) return forbidden();
       const damageOff = presetRefusal(state, { attacks: true });
       if (damageOff) return damageOff;
-      const roll = state.rolls.find((r) => r.id === command.rollId);
+      const roll = findDiceRoll(state.rolls, command.rollId);
       if (!roll) return reject("not_found", "That roll is too old to apply");
       if (roll.attack?.kind !== "damage") return reject("invalid", "Only damage rolls can be applied");
       if (roll.damageApplied) return reject("invalid", "That damage has already been applied");
@@ -661,6 +662,128 @@ export function decide(
       // Nothing to change (no damage, or already at the floor): just mark the roll applied.
       if (hp === target.stats.hp) return accept(applied);
       return accept({ type: "TokenStatsSet", tokenId: target.id, stats: { ...target.stats, hp }, previous: target.stats }, applied);
+    }
+
+    case "dice.rollGroup": {
+      if (!can.administer(actor)) return forbidden();
+      const rolled = rollForTokens(state, command.tokenIds, command.expression, ctx);
+      if (!rolled.ok) return rolled.refusal;
+      return accept({
+        type: "GroupRolled",
+        roll: {
+          kind: "group",
+          id: ctx.newId(),
+          expression: rolled.expression,
+          label: command.label || null,
+          byParticipantId: actor.id,
+          visibility: command.visibility,
+          entries: rolled.entries,
+        },
+      });
+    }
+
+    case "areaEffect.start": {
+      if (!can.administer(actor)) return forbidden();
+      const off = presetRefusal(state, { attacks: true });
+      if (off) return off;
+      if (state.areaEffect) return reject("invalid", "Finish or skip the open area effect first");
+      const rolled = rollForTokens(state, command.tokenIds, command.expression, ctx);
+      if (!rolled.ok) return rolled.refusal;
+      const effect: AreaEffect = {
+        id: ctx.newId(),
+        label: command.label || null,
+        expression: rolled.expression,
+        byParticipantId: actor.id,
+        targets: rolled.entries.map(({ dice, total, ...side }) => ({ ...side, roll: { dice, total } })),
+        call: null,
+        damage: null,
+      };
+      return accept({ type: "AreaEffectStarted", effect });
+    }
+
+    case "areaEffect.call": {
+      if (!can.administer(actor)) return forbidden();
+      const effect = state.areaEffect;
+      if (!effect || effect.id !== command.effectId) return notFound("area effect");
+      if (effect.damage) return reject("invalid", "The damage has already been rolled");
+      const caller = state.participants[command.participantId];
+      if (!caller) return notFound("participant");
+      if (!isActive(caller)) return reject("invalid", `${caller.displayName} has left the table`);
+      const previous = effect.call?.participantId ?? null;
+      if (previous === caller.id) return reject("invalid", `${caller.displayName} already has the call`);
+      return accept({ type: "AreaEffectCalled", effectId: effect.id, participantId: caller.id, previous });
+    }
+
+    case "areaEffect.rollDamage": {
+      const effect = state.areaEffect;
+      // The caller alone writes the formula; the GM takes the call over first (ADR 0046).
+      if (effect?.call?.participantId !== actor.id) return forbidden();
+      if (!effect || effect.id !== command.effectId) return notFound("area effect");
+      if (areaEffectStage(effect) !== "called") return reject("invalid", "The damage has already been rolled");
+      const parsed = parseDiceExpression(command.expression);
+      if (!parsed.ok) return reject("invalid", parsed.message);
+      const random = ctx.random;
+      if (!random) return reject("invalid", "Dice are unavailable");
+      const expression = formatExpression(parsed.expression);
+      const damage: AreaEffectDamage = command.mode === "single"
+        ? { mode: "single", expression, byParticipantId: actor.id, ...rollDice(parsed.expression, random) }
+        : {
+          mode: "perTarget",
+          expression,
+          byParticipantId: actor.id,
+          // A target deleted since the effect started gets no roll.
+          results: effect.targets.filter((t) => state.tokens[t.tokenId]).map((t) => ({ tokenId: t.tokenId, ...rollDice(parsed.expression, random) })),
+        };
+      return accept({ type: "AreaEffectDamageRolled", effectId: effect.id, damage });
+    }
+
+    case "areaEffect.resolve": {
+      if (!can.administer(actor)) return forbidden();
+      const effect = state.areaEffect;
+      if (!effect || effect.id !== command.effectId) return notFound("area effect");
+      if (areaEffectStage(effect) === "called") return reject("invalid", "Wait for the damage roll, or take the call over");
+      const targetIds = new Set(effect.targets.map((t) => t.tokenId));
+      const seen = new Set<string>();
+      for (const row of command.rows) {
+        if (!targetIds.has(row.tokenId)) return reject("invalid", "Only the effect's targets can be resolved");
+        if (seen.has(row.tokenId)) return reject("invalid", "Each target can be resolved once");
+        seen.add(row.tokenId);
+      }
+      const addsConditions = command.rows.some((row) => row.addConditions.length > 0);
+      const conditionsOff = presetRefusal(state, { conditions: addsConditions });
+      if (conditionsOff) return conditionsOff;
+      const changes: DomainEvent[] = [];
+      const amounts: { tokenId: string; amount: number }[] = [];
+      // Targets deleted since the effect started are skipped.
+      for (const row of command.rows) {
+        const token = state.tokens[row.tokenId];
+        if (!token) continue;
+        let stats = token.stats;
+        if (row.amount !== null && row.amount !== 0 && stats.hp !== null) {
+          const hp = stats.hp;
+          // Worked out here from current HP, like `roll.applyDamage`. Healing never lowers HP.
+          const next = row.amount > 0
+            ? Math.max(MIN_HP, hp - row.amount)
+            : Math.max(hp, stats.maxHp === null ? hp - row.amount : Math.min(stats.maxHp, hp - row.amount));
+          if (next !== hp) stats = { ...stats, hp: next };
+        }
+        if (stats !== token.stats) changes.push({ type: "TokenStatsSet", tokenId: token.id, stats, previous: token.stats });
+        if (row.amount !== null && stats.hp !== null) amounts.push({ tokenId: token.id, amount: row.amount });
+        const added = row.addConditions.filter((c) => !token.conditions.includes(c));
+        if (added.length > 0) {
+          const conditions: ConditionId[] = [...token.conditions, ...new Set(added)];
+          if (conditions.length > 12) return reject("invalid", `${token.name} can't hold more than 12 conditions`);
+          changes.push({ type: "TokenConditionsSet", tokenId: token.id, conditions, previous: token.conditions });
+        }
+      }
+      return accept(...changes, { type: "AreaEffectResolved", effect, amounts });
+    }
+
+    case "areaEffect.close": {
+      if (!can.administer(actor)) return forbidden();
+      const effect = state.areaEffect;
+      if (!effect || effect.id !== command.effectId) return notFound("area effect");
+      return accept({ type: "AreaEffectClosed", effect });
     }
 
     case "room.setReducedEffects": {
@@ -1240,6 +1363,38 @@ function advance(current: Initiative): Initiative {
  * Refuses a command that uses a rules feature the room's game preset turns off (KAN-63, ADR 0027).
  * Called after authorization, so a player still gets "forbidden" for what they may never do.
  */
+/**
+ * Rolls `expression` once for each token (ADR 0046): 1 to MAX_GROUP_ROLL_TOKENS distinct tokens
+ * that exist. The GM sees every token, so hidden and fogged ones count; each entry records
+ * whether it is concealed from players, like an attack side.
+ */
+function rollForTokens(
+  state: RoomState,
+  tokenIds: readonly string[],
+  input: string,
+  ctx: DecideContext,
+): { ok: true; expression: string; entries: GroupRollEntry[] } | { ok: false; refusal: Decision } {
+  if (new Set(tokenIds).size !== tokenIds.length) return { ok: false, refusal: reject("invalid", "Choose each token once") };
+  const tokens: Token[] = [];
+  for (const id of tokenIds) {
+    const token = state.tokens[id];
+    if (!token) return { ok: false, refusal: notFound("token") };
+    tokens.push(token);
+  }
+  const parsed = parseDiceExpression(input);
+  if (!parsed.ok) return { ok: false, refusal: reject("invalid", parsed.message) };
+  const random = ctx.random;
+  if (!random) return { ok: false, refusal: reject("invalid", "Dice are unavailable") };
+  const expression: DiceExpression = parsed.expression;
+  const entries = tokens.map((t) => ({
+    tokenId: t.id,
+    name: t.name,
+    hidden: t.hidden || fogConcealsSide(state, t),
+    ...rollDice(expression, random),
+  }));
+  return { ok: true, expression: formatExpression(expression), entries };
+}
+
 function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?: boolean; ac?: number | null }): Decision | null {
   const preset = presetOf(state);
   if (uses.attacks && !preset.features.attacks) return reject("invalid", `Attack rolls are off in ${preset.name}.`);

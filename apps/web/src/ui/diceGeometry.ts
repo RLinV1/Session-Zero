@@ -451,6 +451,18 @@ const BOUNCES: [number, number, number][] = [
   [0.74, 0.84, 0.03],
 ];
 
+/**
+ * Each time a die strikes the surface, as a fraction of `THROW_MS`, and the height (a fraction of
+ * the drop) it fell from to get there: the drop itself, then each bounce coming down. The dice
+ * sound (`board/fxSound.ts`) clacks on these.
+ */
+export const THROW_CONTACTS: ReadonlyArray<{ at: number; fall: number }> = [
+  { at: BOUNCES[0]![0], fall: 1 },
+  ...BOUNCES.map(([, end, peak]) => ({ at: end, fall: peak })),
+];
+/** After the last contact the die slides to rest, until the end of the throw. */
+export const THROW_SLIDE_FROM = BOUNCES[BOUNCES.length - 1]![1];
+
 /** How one die travels to rest, in px of the surface it lands on. */
 export interface ThrowPath {
   /** Where the die leaves the hand, relative to where it comes to rest. */

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { hexToHsv, hsvToHex, hueSatToPoint, isHex, pointToHueSat, type Hsv } from "./color";
 
 const SIZE = 136;
@@ -24,6 +24,8 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
 }) {
   const [hsv, setHsv] = useState<Hsv>(() => hexToHsv(value));
   const [hexDraft, setHexDraft] = useState(value);
+  const hexErrorId = useId();
+  const hexInvalid = !isHex(hexDraft);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Follow an outside change (a swatch, a reset), but not our own echo.
@@ -142,7 +144,8 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
               maxLength={7}
               spellCheck={false}
               autoComplete="off"
-              aria-invalid={!isHex(hexDraft)}
+              aria-invalid={hexInvalid}
+              aria-describedby={hexInvalid ? hexErrorId : undefined}
               onChange={(e) => {
                 const next = e.target.value.startsWith("#") ? e.target.value : `#${e.target.value}`;
                 setHexDraft(next);
@@ -172,6 +175,8 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
             ))}
           </div>
         </div>
+        {/* Said in words, not only by the red border (WCAG 1.4.1, 3.3.1). */}
+        {hexInvalid && <p id={hexErrorId} className="error color-wheel-error">Enter a hex colour like #b3552d.</p>}
       </div>
     </div>
   );

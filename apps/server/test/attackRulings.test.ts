@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Token } from "@vtt/shared";
+import { isDiceRoll, type Token } from "@vtt/shared";
 import { startServer, type TestClient } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -31,7 +31,7 @@ async function setup() {
 }
 
 const seqOf = (reply: unknown) => (reply as { seq: number }).seq;
-const lastRoll = (c: TestClient) => c.state.rolls.at(-1)!;
+const lastRoll = (c: TestClient) => c.state.rolls.filter(isDiceRoll).at(-1)!;
 
 describe("GM rulings over the wire (FR-TAC-09, FR-GM-22, FR-GM-23, ADR 0011)", () => {
   it("shows the GM's Hit to everyone on a player's to-hit roll", async () => {

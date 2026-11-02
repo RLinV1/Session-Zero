@@ -12,6 +12,8 @@ playwright-report/
 test-results/
 # Check images from apps/web/scripts/home-maps.mjs
 apps/web/scripts/out/
+# Full-size downloads of the generated ambient pictures; only the converted WebP files are committed.
+apps/web/scripts/ambient-src/
 
 # Playwright MCP snapshots and screenshots
 .playwright-mcp/

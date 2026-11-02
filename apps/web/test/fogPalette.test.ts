@@ -18,9 +18,20 @@ describe("fog colours follow the map (fog-and-filter-polish, FR-GM-17)", () => {
     expect(luma(light)).toBeLessThan(luma([255, 255, 255]));
   });
 
-  it("keeps a hint of the map's hue instead of going grey", () => {
-    const { light } = fogPalette([150, 140, 100]);
-    expect(light[0]! - light[2]!).toBeGreaterThan(50 * 0.7);
+  it("is mostly grey, keeping only a hint of the map's hue (flowing-fog)", () => {
+    const { dark, light } = fogPalette([150, 140, 100]);
+    for (const shade of [dark, light]) {
+      expect(shade[0]! - shade[2]!).toBeGreaterThan(0);
+      expect(shade[0]! - shade[2]!).toBeLessThan(50 * 0.4);
+    }
+  });
+
+  it("sits at about the map's brightness, so the fog blends in (flowing-fog)", () => {
+    const luma = (c: readonly number[]) => 0.299 * c[0]! + 0.587 * c[1]! + 0.114 * c[2]!;
+    const map = [90, 100, 70] as const;
+    const { dark, light } = fogPalette(map);
+    expect(luma(dark)).toBeGreaterThan(luma(map) * 0.85);
+    expect(luma(light) - luma(map)).toBeLessThan((255 - luma(map)) * 0.45);
   });
 
   it("uses the default blue-grey when the map colour is unknown", () => {

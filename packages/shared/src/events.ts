@@ -2,7 +2,8 @@ import { z } from "zod";
 import { MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
 import { TokenAttacks } from "./attackPresets";
 import { ConditionId, TokenStats } from "./conditions";
-import { DiceRoll, Verdict } from "./dice";
+import { DiceRoll, GroupRoll, Verdict } from "./dice";
+import { AreaEffect, AreaEffectDamage } from "./areaEffects";
 import { GridSpec, Point } from "./geometry";
 import { AreaTemplate, ChatMessage, Checkpoint, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
 
@@ -190,6 +191,44 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("DiceRolled"),
     roll: DiceRoll,
+  }),
+  /** The GM rolled one expression for several tokens (ADR 0046). */
+  z.object({
+    type: z.literal("GroupRolled"),
+    roll: GroupRoll,
+  }),
+  /** The GM opened an area effect; each target's save is in it (ADR 0046). */
+  z.object({
+    type: z.literal("AreaEffectStarted"),
+    effect: AreaEffect,
+  }),
+  /** The damage call went to `participantId`; `previous` is who held it, null for the first call (ADR 0046). */
+  z.object({
+    type: z.literal("AreaEffectCalled"),
+    effectId: Id,
+    participantId: Id,
+    previous: Id.nullable(),
+  }),
+  /** The participant holding the call rolled the damage, ending the call (ADR 0046). */
+  z.object({
+    type: z.literal("AreaEffectDamageRolled"),
+    effectId: Id,
+    damage: AreaEffectDamage,
+  }),
+  /**
+   * The GM resolved the effect, closing it. Follows the `TokenStatsSet` and `TokenConditionsSet`
+   * events that changed the targets, which carry the values they replaced. Carries the whole
+   * effect it closed (invariant 6) and each target's amount (ADR 0046).
+   */
+  z.object({
+    type: z.literal("AreaEffectResolved"),
+    effect: AreaEffect,
+    amounts: z.array(z.object({ tokenId: Id, amount: z.number().int() })),
+  }),
+  /** The GM closed the effect without applying anything. Carries the whole effect (ADR 0046). */
+  z.object({
+    type: z.literal("AreaEffectClosed"),
+    effect: AreaEffect,
   }),
   /** The GM ruled on a to-hit roll; `null` clears it. Carries the verdict it replaced (ADR 0011). */
   z.object({

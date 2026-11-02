@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { PASSWORD_MAX, PASSWORD_MIN } from "@vtt/shared";
 import { Link } from "../Link";
+import { EntryPage } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
 import { loadGmToken } from "../net/identity";
 import { navigate } from "../router";
@@ -55,7 +56,7 @@ function AccountForm(props: {
   footer: ReactNode;
 }) {
   return (
-    <main className="centered">
+    <EntryPage>
       <form
         className="card account-form"
         onSubmit={(e: FormEvent) => {
@@ -70,13 +71,13 @@ function AccountForm(props: {
             {props.error}
           </p>
         )}
-        <button type="submit" disabled={props.busy}>
+        <button className="primary" type="submit" disabled={props.busy}>
           {props.busy ? props.busyLabel : props.submitLabel}
         </button>
         <p className="muted small-print">{props.footer}</p>
         <Link href="/">Back to home</Link>
       </form>
-    </main>
+    </EntryPage>
   );
 }
 
@@ -302,7 +303,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
         <>
           <p>Your password is changed. Your other devices are signed out.</p>
           <div className="row modal-actions">
-            <button type="button" onClick={close}>
+            <button type="button" className="primary" onClick={close}>
               Done
             </button>
           </div>
@@ -345,7 +346,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
             <button type="button" className="secondary" onClick={close} disabled={busy}>
               Cancel
             </button>
-            <button type="submit" disabled={busy}>
+            <button className="primary" type="submit" disabled={busy}>
               {busy ? "Changing…" : "Change password"}
             </button>
           </div>

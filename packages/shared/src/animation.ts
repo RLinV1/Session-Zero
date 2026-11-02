@@ -32,8 +32,8 @@ export const MAX_LIBRARY_ANIMATIONS = 100;
 
 export const AnimationDef = z.object({
   shape: AnimationShape,
-  /** Seconds the effect plays for. */
-  duration: z.number().min(0.2).max(4),
+  /** Seconds the effect plays for; up to 8 so the nuke's siren has time before its blast (ADR 0047). */
+  duration: z.number().min(0.2).max(8),
   primary: HexColor,
   secondary: HexColor,
   /** Scales the effect against the token it is drawn on, 1 = a token's size. */

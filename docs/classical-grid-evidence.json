@@ -1,0 +1,993 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "5a8a420",
+  "runtime": {
+    "python": "3.11.17",
+    "opencv_python_headless": "4.8.1.78",
+    "numpy": "1.26.4",
+    "pillow": "11.1.0",
+    "platform": "macOS ARM, Apple M1 Pro",
+    "opencv_reported_threads": 10
+  },
+  "method": {
+    "passes": 3,
+    "requests_per_variant": 81,
+    "fresh_child_per_map": true,
+    "shuffle_seed": 20261025,
+    "parity_tolerance_px": 1e-06,
+    "rendering_timed": false,
+    "hosting_or_accuracy_claim": false,
+    "container_acceptance": "passed 2026-10-26; see docker_acceptance"
+  },
+  "baseline": {
+    "requests": 81,
+    "all_parity": true,
+    "components_seconds": {
+      "array_seconds": {
+        "median": 0.003097624983638525,
+        "p95": 0.006561540998518467,
+        "max": 0.008244374999776483,
+        "mean": 0.0031183867838900582
+      },
+      "decode_seconds": {
+        "median": 0.09983662504237145,
+        "p95": 0.21636908303480595,
+        "max": 0.8219257079763338,
+        "mean": 0.11366198143352652
+      },
+      "detector_seconds": {
+        "median": 0.4617719170637429,
+        "p95": 1.0881534171057865,
+        "max": 1.2259275839896873,
+        "mean": 0.5398204331142529
+      },
+      "fit_seconds": {
+        "median": 1.8245679170358926,
+        "p95": 5.347573374980129,
+        "max": 5.718261666945182,
+        "mean": 2.184275554007287
+      },
+      "grayscale_seconds": {
+        "median": 0.0066328749526292086,
+        "p95": 0.01571925007738173,
+        "max": 0.03757241694256663,
+        "mean": 0.007289826187282157
+      },
+      "mapping_seconds": {
+        "median": 0.0014717919984832406,
+        "p95": 0.0029758750461041927,
+        "max": 0.0032497079810127616,
+        "mean": 0.0015959830589615453
+      },
+      "processing_seconds": {
+        "median": 2.642615666030906,
+        "p95": 6.029933959012851,
+        "max": 6.335983874974772,
+        "mean": 2.851144076603821
+      },
+      "read_seconds": {
+        "median": 0.0007919580675661564,
+        "p95": 0.0018551669782027602,
+        "max": 0.002527666976675391,
+        "mean": 0.0008145103484024236
+      }
+    },
+    "process_launch_to_exit_seconds": {
+      "median": 2.821212709066458,
+      "p95": 6.292467292048968,
+      "max": 17.545518458005972,
+      "mean": 3.2087322356895096
+    },
+    "process_peak_bytes": 825868288,
+    "throughput_maps_per_second": 0.311649563300228,
+    "queue_wait_seconds": {
+      "median": 44.89151070895605,
+      "p95": 80.19181429198943,
+      "max": 96.19075916602742,
+      "mean": 45.34094925987373
+    }
+  },
+  "optimized": {
+    "requests": 81,
+    "all_parity": true,
+    "components_seconds": {
+      "array_seconds": {
+        "median": 0.003012333996593952,
+        "p95": 0.006085250061005354,
+        "max": 0.011004958068951964,
+        "mean": 0.0031345622774995403
+      },
+      "decode_seconds": {
+        "median": 0.0889242080738768,
+        "p95": 0.2086621669586748,
+        "max": 0.25435729196760803,
+        "mean": 0.09825156843807134
+      },
+      "detector_seconds": {
+        "median": 0.47345645795576274,
+        "p95": 1.0772121250629425,
+        "max": 1.3332524169236422,
+        "mean": 0.5432228708947308
+      },
+      "fit_seconds": {
+        "median": 1.247713249991648,
+        "p95": 3.8699834160506725,
+        "max": 4.147056124988012,
+        "mean": 1.545201817873785
+      },
+      "grayscale_seconds": {
+        "median": 0.006414333009161055,
+        "p95": 0.01305241696536541,
+        "max": 0.02346312499139458,
+        "mean": 0.0069773719030903816
+      },
+      "mapping_seconds": {
+        "median": 0.0013571670278906822,
+        "p95": 0.0029744160128757358,
+        "max": 0.0031531660351902246,
+        "mean": 0.0015785442334657282
+      },
+      "processing_seconds": {
+        "median": 1.983829625067301,
+        "p95": 4.470258167013526,
+        "max": 4.68046470801346,
+        "mean": 2.1997901481694115
+      },
+      "read_seconds": {
+        "median": 0.0008137919940054417,
+        "p95": 0.0016772920498624444,
+        "max": 0.002122707897797227,
+        "mean": 0.0008004501484978347
+      }
+    },
+    "process_launch_to_exit_seconds": {
+      "median": 2.200293874950148,
+      "p95": 4.652841874980368,
+      "max": 4.915202874923125,
+      "mean": 2.394052511795401
+    },
+    "process_peak_bytes": 825884672,
+    "throughput_maps_per_second": 0.4177017818418936,
+    "queue_wait_seconds": {
+      "median": 32.33040204108693,
+      "p95": 59.42386804195121,
+      "max": 65.76472470804583,
+      "mean": 31.63437129205156
+    }
+  },
+  "replay": {
+    "requests": 27,
+    "all_parity": true,
+    "components_seconds": {},
+    "process_launch_to_exit_seconds": {
+      "median": 1.6617347080027685,
+      "p95": 3.689835457946174,
+      "max": 4.199667125009,
+      "mean": 1.8663823194413756
+    },
+    "process_peak_bytes": 98631680,
+    "throughput_maps_per_second": 0.5357959028990955,
+    "queue_wait_seconds": {
+      "median": 20.901810624985956,
+      "p95": 43.658027291996405,
+      "max": 50.269105458050035,
+      "mean": 23.30225865440702
+    }
+  },
+  "cases": [
+    {
+      "file": "6 Guild Hall.jpg",
+      "sha256": "244314028328cceb43242cfa92c177b60712785df4e0715ce4afc74accea9f27",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 33.62598911251122,
+        "offsetX": 33.143389715056685,
+        "offsetY": 32.09631302004542
+      },
+      "max_error_px": 7.673861546209082e-13
+    },
+    {
+      "file": "133 Minstrel's Rest-nolegend.png",
+      "sha256": "7e0c66b6120ccacaae1f7b73417c8c109a310c9e45cb91773a95b6c78bb7b35c",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 33.82378325750773,
+        "offsetX": 33.81488115440868,
+        "offsetY": 16.911891628753864
+      },
+      "max_error_px": 1.8474111129762605e-13
+    },
+    {
+      "file": "14 River Towers.jpg",
+      "sha256": "00e672a6f3946465f6af866d08d6c890bd7e401d483add29d2a3514c400cf10f",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 47.086677423459676,
+        "offsetX": 45.4041420902049,
+        "offsetY": 40.98945353194763
+      },
+      "max_error_px": 6.536993168992922e-13
+    },
+    {
+      "file": "147 Gembrite-full.jpg",
+      "sha256": "4fd558a6a5704e8921a99b72ba40fa95e13078318674892d2d475b4c32703f50",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 637.4532461230135,
+        "offsetX": 146.51147717761415,
+        "offsetY": 22.95893885397443
+      },
+      "max_error_px": 2.842170943040401e-14
+    },
+    {
+      "file": "134 Fishers' Cove-notitle.png",
+      "sha256": "89eee943e87689008e56c2e778c99b185b1d3e4707ae0cee73c3bf31092fb65d",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 29.929034583879428,
+        "offsetX": 25.252622930148267,
+        "offsetY": 21.442790785111953
+      },
+      "max_error_px": 0.0
+    },
+    {
+      "file": "150 Fire Temple-grid.jpg",
+      "sha256": "21bd92ff37e43708194325e816d8603379c788713eb0bee7626a5b0c4059c665",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 60.01133345901513,
+        "offsetX": 56.873580755601466,
+        "offsetY": 56.46439174096925
+      },
+      "max_error_px": 1.0089706847793423e-12
+    },
+    {
+      "file": "7 Bugbear lair.jpg",
+      "sha256": "0a08bd93bc116fd43f0e7d7ffdca47f3ea735921942a89ab78178ee4908014e6",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 359.76835063671217,
+        "offsetX": 13.3081636428833,
+        "offsetY": 13.307948112487793
+      },
+      "max_error_px": 0.0
+    },
+    {
+      "file": "135 Enchanted Forest-grid.jpg",
+      "sha256": "ad3e51d79b5084927355fc3ce80c6ac342a826d216127b464ec168c8e961bab7",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.16341587759382,
+        "offsetX": 138.89493907468704,
+        "offsetY": 137.56504047332567
+      },
+      "max_error_px": 2.2737367544323206e-13
+    },
+    {
+      "file": "65 Cursed crypt.jpg",
+      "sha256": "f78c89d698f4cf7f1f5349811f5a035058fafd70f38ab51de4a329b9b06b7163",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 34.04835249655654,
+        "offsetX": 6.384066093104352,
+        "offsetY": 25.817282727582935
+      },
+      "max_error_px": 1.2789769243681803e-13
+    },
+    {
+      "file": "98 Acorns Vale-nolabels.jpg",
+      "sha256": "0d192f31446be4fda4abe8052426ae4a5a2478dfcded3c6a9c6671fe524c02f6",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 237.14120182141545,
+        "offsetX": 26.590030044898185,
+        "offsetY": 72.7930011959034
+      },
+      "max_error_px": 0.0
+    },
+    {
+      "file": "132 Camp in the Jungle-day-grid.jpg",
+      "sha256": "3cb4fbc7881d49889f7441e6affb494ff25061e36e42f3d64b9d85b8126d5a89",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 99.38901995211761,
+        "offsetX": 9.161595926507449,
+        "offsetY": 99.25063193477166
+      },
+      "max_error_px": 2.824407374646398e-13
+    },
+    {
+      "file": "138 Elven Outpost-PC-grid.jpg",
+      "sha256": "1ddde573df1c81bc351f2536e089c56d7ce376b620ef82574f178b1c971afa3c",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 28.164441874393592,
+        "offsetX": 24.157454527831693,
+        "offsetY": 21.095389448792705
+      },
+      "max_error_px": 1.7408297026122455e-13
+    },
+    {
+      "file": "54 Moonspear-notags.jpg",
+      "sha256": "1524e5f2ea022ff641327748aaec825aed79312f052579009cf459c497701054",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 240.77696667453472,
+        "offsetX": 61.69340335460663,
+        "offsetY": 39.835860004894016
+      },
+      "max_error_px": 1.3926637620897964e-12
+    },
+    {
+      "file": "144 Nautili Prison-PC-grid.jpg",
+      "sha256": "16157fd4980ca9e750bb9e48e5d66a86704fdf44a3665361e66a13f782ae57b1",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 50.01996367059076,
+        "offsetX": 48.007575156179534,
+        "offsetY": 47.77440886047533
+      },
+      "max_error_px": 2.1316282072803006e-13
+    },
+    {
+      "file": "map-jungle.webp",
+      "sha256": "6b2f81f16427c2b2df64782887ad5a65e4f0c5ba6827b8c10bf3726e16a9f9fa",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 69.96222539916135,
+        "offsetX": 19.808149906055036,
+        "offsetY": 37.16743224330447
+      },
+      "max_error_px": 3.197442310920451e-14
+    },
+    {
+      "file": "61 Walled Town-nogrid.jpg",
+      "sha256": "e7ab4d60d9572c6fe6ef405efe96f9f04fac83bed0002d24e7eb345e4a7330ce",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 269.1472744917143,
+        "offsetX": 17.41354273477927,
+        "offsetY": 29.34949369147597
+      },
+      "max_error_px": 5.115907697472721e-13
+    },
+    {
+      "file": "136 Hidden Laboratory-DM-BW.jpg",
+      "sha256": "89e7c5f659d3228bd3c7609ad0a24b01b2594e1e3d9cc4d00cf22a64c63ded3f",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.0135802372774,
+        "offsetX": 135.26070275226965,
+        "offsetY": 135.34630436085456
+      },
+      "max_error_px": 4.263256414560601e-13
+    },
+    {
+      "file": "hero-map.webp",
+      "sha256": "44bcfc552b33f0421363920cd02677a333da4ee942659585418a6af4c62dacb4",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 35.49451460141724,
+        "offsetX": 35.09768200559549,
+        "offsetY": 3.7157747543956674
+      },
+      "max_error_px": 4.547473508864641e-13
+    },
+    {
+      "file": "99 Market Street-BW-grid.jpg",
+      "sha256": "94922c61d9ce2dbd7fccea29c1f93c7b93111ace30bf8c9578f42e9ff4060210",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.1467381938174,
+        "offsetX": 138.32945927739672,
+        "offsetY": 137.09621504429631
+      },
+      "max_error_px": 7.389644451905042e-13
+    },
+    {
+      "file": "92 Pirate Cove-BW-grid.jpg",
+      "sha256": "e4dc347ed101ce3a29150e3b34238d393b60d2eec6fcd7aa8774603f35a66231",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.06453091333952,
+        "offsetX": 138.7651364767325,
+        "offsetY": 138.15412731126264
+      },
+      "max_error_px": 9.663381206337363e-13
+    },
+    {
+      "file": "146 Lost Treasure of Saint Danbert-color.jpg",
+      "sha256": "46054664b3bef601674c4438d71e9ff048df3200d6db8830c1521c24f13a91e3",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.24591167817618,
+        "offsetX": 140.23457936297177,
+        "offsetY": 139.81716623294798
+      },
+      "max_error_px": 2.842170943040401e-14
+    },
+    {
+      "file": "5 Evil wizard tower-W.jpg",
+      "sha256": "2b1a7280f7a2f848e4c748c239c85eec1138b587927caafcfcc7a3e17ae258b0",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 382.94650117302194,
+        "offsetX": 245.42363061984065,
+        "offsetY": 9.66620650305299
+      },
+      "max_error_px": 2.2737367544323206e-13
+    },
+    {
+      "file": "128 Entrance to the Far Realm-grid.jpg",
+      "sha256": "0483e4b0e2ec40fa9b80b422988e4a92134434a258accbb102a383b49c9617ee",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 140.19077664479823,
+        "offsetX": 139.17054204677868,
+        "offsetY": 136.93666936110003
+      },
+      "max_error_px": 2.2737367544323206e-13
+    },
+    {
+      "file": "13 Hidden Tomb.jpg",
+      "sha256": "ff4d964dcad706bcd8a526040df793ffcb22d1c88e32f232ce118b47b58705df",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 93.81475556538362,
+        "offsetX": 30.829475123221982,
+        "offsetY": 22.09245121241497
+      },
+      "max_error_px": 3.552713678800501e-13
+    },
+    {
+      "file": "map-ice.webp",
+      "sha256": "3933e53a7d66302db11b679c2313d9ea34e6ff03f6b333f33bd6f38c3f1c745b",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 35.52077577727012,
+        "offsetX": 2.579487635663071,
+        "offsetY": 34.41075153423043
+      },
+      "max_error_px": 9.094947017729282e-13
+    },
+    {
+      "file": "148 Hill Giant Raid-nogrid.png",
+      "sha256": "1bf63f70dcf85bd1df7d5e791f5fea5d2d55c7e9394e2203657c047ab6661b39",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 34.54884139527244,
+        "offsetX": 20.497148548045672,
+        "offsetY": 13.273462660887532
+      },
+      "max_error_px": 3.552713678800501e-13
+    },
+    {
+      "file": "86 Kobold Cave-nogrid.jpg",
+      "sha256": "77799b0bdd498da62ea8499b06f354a8e55faa4210a0b52a07f4505d9c0f48df",
+      "candidate": {
+        "kind": "candidate",
+        "cellSize": 242.0701693713307,
+        "offsetX": 11.822396294244555,
+        "offsetY": 9.265055709015428
+      },
+      "max_error_px": 1.4210854715202004e-13
+    }
+  ],
+  "application_acceptance_with_one_active_wall_job": {
+    "local_only": true,
+    "node": "v26.9.0",
+    "cases": 27,
+    "component_timings": "See fresh-process Python benchmark; HTTP timing includes process startup.",
+    "container_memory": "unavailable without Docker",
+    "browser_editor_available_ms": 2122.3286660000003,
+    "requests": [
+      {
+        "image": "13 Hidden Tomb.jpg",
+        "upload_ms": 24.819208000000003,
+        "queue_wait_ms": 10.072541999999999,
+        "vision_http_ms": 2396.265417,
+        "available_ms": 3470.394042
+      },
+      {
+        "image": "14 River Towers.jpg",
+        "upload_ms": 18.510625000000005,
+        "queue_wait_ms": 2392.1829159999998,
+        "vision_http_ms": 2167.8985420000004,
+        "available_ms": 4701.419833
+      },
+      {
+        "image": "133 Minstrel's Rest-nolegend.png",
+        "upload_ms": 190.16670899999997,
+        "queue_wait_ms": 4374.953625,
+        "vision_http_ms": 2243.251583,
+        "available_ms": 6649.991292000001
+      },
+      {
+        "image": "134 Fishers' Cove-notitle.png",
+        "upload_ms": 73.17737499999998,
+        "queue_wait_ms": 6539.858375,
+        "vision_http_ms": 2197.016458000001,
+        "available_ms": 8892.784375
+      },
+      {
+        "image": "136 Hidden Laboratory-DM-BW.jpg",
+        "upload_ms": 20.063209000000143,
+        "queue_wait_ms": 8720.221875000001,
+        "vision_http_ms": 4207.991958999999,
+        "available_ms": 13002.590167
+      },
+      {
+        "image": "148 Hill Giant Raid-nogrid.png",
+        "upload_ms": 25.574292000000014,
+        "queue_wait_ms": 12911.32275,
+        "vision_http_ms": 3565.3890410000004,
+        "available_ms": 16622.223250000003
+      },
+      {
+        "image": "86 Kobold Cave-nogrid.jpg",
+        "upload_ms": 15.806332999999995,
+        "queue_wait_ms": 16456.897375,
+        "vision_http_ms": 1043.7858750000014,
+        "available_ms": 17688.169625000002
+      },
+      {
+        "image": "92 Pirate Cove-BW-grid.jpg",
+        "upload_ms": 6.867624999999862,
+        "queue_wait_ms": 17498.044374999998,
+        "vision_http_ms": 1339.220583000002,
+        "available_ms": 18939.653707999998
+      },
+      {
+        "image": "150 Fire Temple-grid.jpg",
+        "upload_ms": 33.35612500000002,
+        "queue_wait_ms": 18811.3905,
+        "vision_http_ms": 3381.4188749999994,
+        "available_ms": 22394.055
+      },
+      {
+        "image": "144 Nautili Prison-PC-grid.jpg",
+        "upload_ms": 16.44229100000007,
+        "queue_wait_ms": 22189.192375000002,
+        "vision_http_ms": 2723.4137499999997,
+        "available_ms": 25016.031375000002
+      },
+      {
+        "image": "147 Gembrite-full.jpg",
+        "upload_ms": 25.124000000000024,
+        "queue_wait_ms": 24899.692917,
+        "vision_http_ms": 2935.140292,
+        "available_ms": 27976.465459
+      },
+      {
+        "image": "146 Lost Treasure of Saint Danbert-color.jpg",
+        "upload_ms": 26.17895899999985,
+        "queue_wait_ms": 27816.895375,
+        "vision_http_ms": 4858.870999999999,
+        "available_ms": 32820.229374999995
+      },
+      {
+        "image": "7 Bugbear lair.jpg",
+        "upload_ms": 5.493832999999995,
+        "queue_wait_ms": 32678.223041999998,
+        "vision_http_ms": 606.2357919999995,
+        "available_ms": 33302.082709
+      },
+      {
+        "image": "54 Moonspear-notags.jpg",
+        "upload_ms": 20.57245799999987,
+        "queue_wait_ms": 33271.046291000006,
+        "vision_http_ms": 2313.136749999998,
+        "available_ms": 35614.524833
+      },
+      {
+        "image": "5 Evil wizard tower-W.jpg",
+        "upload_ms": 9.264499999999998,
+        "queue_wait_ms": 35580.886542,
+        "vision_http_ms": 1289.0440830000007,
+        "available_ms": 37034.403417
+      },
+      {
+        "image": "65 Cursed crypt.jpg",
+        "upload_ms": 4.595792000000074,
+        "queue_wait_ms": 36871.211,
+        "vision_http_ms": 757.4724169999972,
+        "available_ms": 37705.959875
+      },
+      {
+        "image": "98 Acorns Vale-nolabels.jpg",
+        "upload_ms": 23.348083000000088,
+        "queue_wait_ms": 37614.597459000004,
+        "vision_http_ms": 1853.5668749999968,
+        "available_ms": 39496.022000000004
+      },
+      {
+        "image": "map-ice.webp",
+        "upload_ms": 6.617457999999942,
+        "queue_wait_ms": 39469.715291,
+        "vision_http_ms": 5142.012625000003,
+        "available_ms": 44652.010708
+      },
+      {
+        "image": "map-jungle.webp",
+        "upload_ms": 9.505582999999888,
+        "queue_wait_ms": 44607.766334,
+        "vision_http_ms": 3603.1109579999975,
+        "available_ms": 48316.038917
+      },
+      {
+        "image": "hero-map.webp",
+        "upload_ms": 5.845874999999978,
+        "queue_wait_ms": 48211.910625,
+        "vision_http_ms": 5334.504625000001,
+        "available_ms": 53699.028542
+      },
+      {
+        "image": "138 Elven Outpost-PC-grid.jpg",
+        "upload_ms": 27.446792000000187,
+        "queue_wait_ms": 53531.705208,
+        "vision_http_ms": 5110.9333750000005,
+        "available_ms": 58746.771541
+      },
+      {
+        "image": "135 Enchanted Forest-grid.jpg",
+        "upload_ms": 13.975167000000056,
+        "queue_wait_ms": 58634.870749999995,
+        "vision_http_ms": 1412.0206250000047,
+        "available_ms": 60089.355417
+      },
+      {
+        "image": "99 Market Street-BW-grid.jpg",
+        "upload_ms": 6.890249999999924,
+        "queue_wait_ms": 60047.943958,
+        "vision_http_ms": 2649.6990000000005,
+        "available_ms": 62701.650458000004
+      },
+      {
+        "image": "6 Guild Hall.jpg",
+        "upload_ms": 19.770582999999988,
+        "queue_wait_ms": 62689.907417,
+        "vision_http_ms": 3437.4900409999973,
+        "available_ms": 66231.935917
+      },
+      {
+        "image": "61 Walled Town-nogrid.jpg",
+        "upload_ms": 10.168666999999914,
+        "queue_wait_ms": 66124.499959,
+        "vision_http_ms": 1186.7686660000036,
+        "available_ms": 67432.326375
+      },
+      {
+        "image": "132 Camp in the Jungle-day-grid.jpg",
+        "upload_ms": 25.392000000000053,
+        "queue_wait_ms": 67292.62487500001,
+        "vision_http_ms": 2925.0081659999996,
+        "available_ms": 70390.37312500001
+      },
+      {
+        "image": "128 Entrance to the Far Realm-grid.jpg",
+        "upload_ms": 22.08120800000006,
+        "queue_wait_ms": 70184.579,
+        "vision_http_ms": 3719.871833000012,
+        "available_ms": 73943.703458
+      }
+    ],
+    "throughput_maps_per_second": 0.3487043280980001,
+    "wall_jobs": [
+      {
+        "start": 825.728667,
+        "end": 22337.567167,
+        "state": "done"
+      },
+      {
+        "start": 22337.581458,
+        "end": 24183.436833,
+        "state": "done"
+      },
+      {
+        "start": 24183.44075,
+        "end": 25818.288208,
+        "state": "done"
+      },
+      {
+        "start": 25818.290792,
+        "end": 27646.844708,
+        "state": "done"
+      },
+      {
+        "start": 27646.847833,
+        "end": 29481.314,
+        "state": "done"
+      },
+      {
+        "start": 29481.316542,
+        "end": 31110.907208,
+        "state": "done"
+      },
+      {
+        "start": 31110.90875,
+        "end": 32842.904667,
+        "state": "done"
+      },
+      {
+        "start": 32842.9075,
+        "end": 34675.451292,
+        "state": "done"
+      },
+      {
+        "start": 34675.452333,
+        "end": 36297.910333,
+        "state": "done"
+      },
+      {
+        "start": 36297.911375,
+        "end": 38131.751958,
+        "state": "done"
+      },
+      {
+        "start": 38131.753458,
+        "end": 40171.083917,
+        "state": "done"
+      },
+      {
+        "start": 40171.086417,
+        "end": 42018.709375,
+        "state": "done"
+      },
+      {
+        "start": 42018.712333,
+        "end": 43650.528625,
+        "state": "done"
+      },
+      {
+        "start": 43650.529875,
+        "end": 45284.797792,
+        "state": "done"
+      },
+      {
+        "start": 45284.80025,
+        "end": 47209.017292,
+        "state": "done"
+      },
+      {
+        "start": 47209.019875,
+        "end": 48741.427583,
+        "state": "done"
+      },
+      {
+        "start": 48741.428417,
+        "end": 50572.758667,
+        "state": "done"
+      },
+      {
+        "start": 50572.762167,
+        "end": 52096.952667,
+        "state": "done"
+      },
+      {
+        "start": 52096.955583,
+        "end": 53728.139875,
+        "state": "done"
+      },
+      {
+        "start": 53728.14275,
+        "end": 55652.316042,
+        "state": "done"
+      },
+      {
+        "start": 55652.319417,
+        "end": 57186.317583,
+        "state": "done"
+      },
+      {
+        "start": 57186.3205,
+        "end": 58717.080875,
+        "state": "done"
+      },
+      {
+        "start": 58717.083917,
+        "end": 60243.526792,
+        "state": "done"
+      },
+      {
+        "start": 60243.529417,
+        "end": 62080.020833,
+        "state": "done"
+      },
+      {
+        "start": 62080.024125,
+        "end": 63807.115458,
+        "state": "done"
+      },
+      {
+        "start": 63807.117542,
+        "end": 65552.664083,
+        "state": "done"
+      },
+      {
+        "start": 65552.665333,
+        "end": 67182.068083,
+        "state": "done"
+      },
+      {
+        "start": 67182.069417,
+        "end": 69025.376292,
+        "state": "done"
+      },
+      {
+        "start": 69025.381417,
+        "end": 70658.49175,
+        "state": "done"
+      },
+      {
+        "start": 70658.492542,
+        "end": 72197.301333,
+        "state": "done"
+      },
+      {
+        "start": 72197.304708,
+        "end": 75472.970917,
+        "state": "done"
+      },
+      {
+        "start": 75472.973917,
+        "end": 78227.413375,
+        "state": "done"
+      }
+    ],
+    "invocations_after_polling_and_reopening": 27,
+    "invocations_after_selection_and_placement": 27,
+    "invocations_after_independent_duplicate_upload": 28,
+    "invocations_after_blank_upload": 29,
+    "invocations_after_app_and_store_restart": 29
+  },
+  "database_process_restart": {
+    "cached_maps": 27,
+    "cached_no_grid": 1,
+    "new_detector_invocations": 0,
+    "fresh_node_process": true
+  },
+  "local_process_memory": {
+    "samples": 7532,
+    "peaks": {
+      "grid_rss_bytes": 875986944,
+      "wall_rss_bytes": 1542373376,
+      "combined_rss_bytes": 2408103936,
+      "grid_processes": 2
+    },
+    "scope": "local process RSS, not container memory",
+    "excluded": "Node, Redis, Postgres, browser, container accounting"
+  },
+  "docker_acceptance": {
+    "date": "2026-10-26",
+    "implementation_commit": "820d953",
+    "compose_project": "vtt-grid-agent-qa",
+    "user_stack": "vtt-grid-qa left running and unchanged",
+    "runtime": {
+      "platform": "Docker Desktop Linux ARM64 on macOS",
+      "docker_engine": "29.9.2",
+      "python": "3.11.17",
+      "opencv_python_headless": "4.8.1.78",
+      "numpy": "1.26.4",
+      "pillow": "11.1.0",
+      "vm_cpus": 10,
+      "vm_memory_bytes": 8319504384
+    },
+    "verification": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "build": "passed with existing asset/chunk warnings",
+      "npm_tests_passed": 2134,
+      "npm_tests_existing_skipped": 1,
+      "python_grid_tests_passed": 19,
+      "python_wall_tests_passed": 30,
+      "docker_grid_browser_tests_passed": 12,
+      "docker_uvtt_browser_tests_passed": 6,
+      "fullstack_real_analysis_checks": [
+        "Library WebP upload: decoded dimensions, real candidate, original bytes preserved",
+        "Direct room PNG upload: real candidate before placement",
+        "Identical-byte library upload: separate record and completed analysis",
+        "Both upload paths: no_grid, oversized error, EXIF JPEG, and token exclusion",
+        "Analysis authorization: player and anonymous access denied",
+        "Real browser: untouched draft prefills, grid remains unsaved until explicit Save",
+        "Real browser: unconfigured library selection opens setup and cancels cleanly"
+      ]
+    },
+    "geometry": {
+      "cases": 27,
+      "all_parity": true,
+      "tolerance_px": 1e-06,
+      "max_geometry_delta_px": {
+        "cellSize": 1.3358203432289883e-12,
+        "offsetX": 1.6715517858756357e-11,
+        "offsetY": 1.2533973858808167e-11
+      },
+      "all_attempts_one": true
+    },
+    "application": {
+      "cases": 27,
+      "runner": "instrumented host Node/Vite/Chromium with Docker Postgres, Redis, grid and wall services",
+      "s3_verified_separately": true,
+      "browser_editor_available_ms": 3161.4413340000006,
+      "throughput_maps_per_second": 0.29826840457348724,
+      "timing_ms": {
+        "upload_ms": {
+          "median": 30.254208999999946,
+          "p95": 66.13491699999986,
+          "max": 103.35175000000004
+        },
+        "queue_wait_ms": {
+          "median": 42299.252709,
+          "p95": 81647.515833,
+          "max": 86202.659917
+        },
+        "vision_http_ms": {
+          "median": 3398.6370000000024,
+          "p95": 6131.504625000001,
+          "max": 6410.137832999993
+        },
+        "available_ms": {
+          "median": 45025.129084,
+          "p95": 83010.62075,
+          "max": 88868.44475
+        }
+      },
+      "wall_jobs": 11,
+      "wall_job_states": [
+        "done"
+      ],
+      "invocations": {
+        "invocations_after_polling_and_reopening": 27,
+        "invocations_after_selection_and_placement": 27,
+        "invocations_after_independent_duplicate_upload": 28,
+        "invocations_after_blank_upload": 29,
+        "invocations_after_app_and_store_restart": 29
+      }
+    },
+    "database_restart": {
+      "cached_maps": 27,
+      "cached_no_grid": 1,
+      "new_detector_invocations": 0,
+      "fresh_node_process": true
+    },
+    "container_memory": {
+      "source": "fresh-container cgroup v2 counters after combined workload; separate peaks, not simultaneous sum",
+      "grid": {
+        "limit_bytes": 2147483648,
+        "peak_bytes": 644042752,
+        "events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        }
+      },
+      "wall": {
+        "limit_bytes": null,
+        "peak_bytes": 1368784896,
+        "events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        }
+      },
+      "configuration_only_override_bytes": "1610612736"
+    },
+    "concurrency": {
+      "samples": 550,
+      "interval_ms": 250,
+      "max_grid_active": 1,
+      "max_wall_active": 1,
+      "global_grid_concurrency": 1,
+      "both_active_samples": 349
+    },
+    "raw_evidence_directory": "/private/tmp/vtt-grid-docker-agent-20261026",
+    "no_product_code_changes": true
+  }
+}

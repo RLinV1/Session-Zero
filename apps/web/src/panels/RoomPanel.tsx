@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { presetOf } from "@vtt/shared";
 import { DiceFive, MapTrifold, Sword, UserList } from "@phosphor-icons/react";
 import { can, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
@@ -8,6 +8,10 @@ import type { RoomConnection } from "../net/roomConnection";
 import { GmPanel } from "../pages/GmPanel";
 import type { GridDraft } from "../pages/gridDraft";
 import { DicePanel } from "./DicePanel";
+import { AreaEffectPanel, DamageCallPrompt } from "./AreaEffectPanel";
+import type { GroupSelection } from "./GroupSelection";
+import { ResolveDialog } from "./ResolveDialog";
+import { draftFor, type ResolveDraft } from "./resolveDraft";
 import { InitiativeTracker } from "./InitiativeTracker";
 import { AttackPanel, type AttackPick } from "./AttackPanel";
 import type { AttackReset } from "./attackSession";
@@ -169,6 +173,8 @@ interface Props {
   /** The token whose editor is open in the Tokens tab, and how to open or close it (token-card-actions). */
   editingTokenId: string | null;
   onEditToken: (tokenId: string | null) => void;
+  /** GM: the tokens chosen on the board for a group roll or an area effect (ADR 0046). */
+  groupSelection: GroupSelection;
   /** True on narrow screens, where the tab buttons sit above the panel instead of in the top bar. */
   compact: boolean;
   /** The GM is previewing as a player (gm-view-as-player): the panels' controls do nothing. */
@@ -188,7 +194,7 @@ interface Props {
  * (Play, Tokens, Dice) from the GM's setup (Manage), instead of one long column.
  */
 export function RoomPanel({
-  connection, state, you, token, onFocusToken, onPlaceToken, onDuplicateToken, editingTokenId, onEditToken,
+  connection, state, you, token, onFocusToken, onPlaceToken, onDuplicateToken, editingTokenId, onEditToken, groupSelection,
   attackPick, onAttackPick, attackReset, rollThrow, onPickOnBoard, onShowPing, diceBoard, attackVisibility, onAttackVisibility,
   gridDraft, hasGridDraft, onGridDraftChange, onGridDraftCancel, onGridApply, gridApplying, gridError,
   compact, tab, onTab, onReviewDeparture, tabBadges, readOnly, features: roomFeatures = FULL_ROOM,
@@ -204,10 +210,24 @@ export function RoomPanel({
 
   // What the room's game preset turns on (KAN-63). The server enforces it; this only hides controls.
   const features = presetOf(state).features;
+  // The area effect's resolve dialog (ADR 0046): here, so the Rulings row and the Area Effect
+  // section open the same one, and its draft outlives a close or a tab change.
+  const effect = state.areaEffect ?? null;
+  const [savedDraft, setDraft] = useState<ResolveDraft | null>(null);
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const draft = draftFor(savedDraft, effect);
+  const effectId = effect?.id ?? null;
+  useEffect(() => {
+    // Resolved or closed, from here or anywhere else: the dialog and its draft go.
+    setResolveOpen(false);
+    setDraft((d) => (d && d.effectId === effectId ? d : null));
+  }, [effectId]);
+  const openResolve = () => setResolveOpen(true);
   const sections: Record<TabId, ReactNode> = {
     play: (
       <>
-        {isGm && features.attacks && <RulingsPanel connection={connection} state={state} airborne={rollThrow.airborne} />}
+        {!isGm && <DamageCallPrompt connection={connection} state={state} you={you} />}
+        {isGm && features.attacks && <RulingsPanel connection={connection} state={state} you={you} airborne={rollThrow.airborne} onResolve={openResolve} />}
         <MyTokens connection={connection} state={state} you={you} onFocusToken={onFocusToken} />
         {/* The encounter first: whose turn it is decides who attacks. */}
         <InitiativeTracker connection={connection} state={state} you={you} onFocusToken={onFocusToken} />
@@ -224,12 +244,13 @@ export function RoomPanel({
           visibility={attackVisibility}
           onVisibility={onAttackVisibility}
         />}
+        {isGm && features.attacks && <AreaEffectPanel connection={connection} state={state} you={you} selection={groupSelection} onResolve={openResolve} airborne={rollThrow.airborne} />}
       </>
     ),
     tokens: (
       <TokenRoster connection={connection} state={state} you={you} token={token} onFocusToken={onFocusToken} onPlaceToken={onPlaceToken} onDuplicateToken={onDuplicateToken} editingTokenId={editingTokenId} onEditToken={onEditToken} />
     ),
-    dice: <DicePanel connection={connection} state={state} isGm={isGm} rollThrow={rollThrow} board={diceBoard} />,
+    dice: <DicePanel connection={connection} state={state} isGm={isGm} rollThrow={rollThrow} board={diceBoard} selection={isGm ? groupSelection : undefined} />,
     gm: isGm ? (
       <GmPanel
         connection={connection}
@@ -256,6 +277,9 @@ export function RoomPanel({
         <fieldset className="preview-fieldset" disabled={readOnly}>
           {sections[tab === "gm" && !isGm ? "play" : tab]}
         </fieldset>
+        {isGm && !readOnly && effect && draft && (
+          <ResolveDialog connection={connection} state={state} effect={effect} draft={draft} onDraft={setDraft} open={resolveOpen} onClose={() => setResolveOpen(false)} airborne={rollThrow.airborne} />
+        )}
       </div>
     </div>
   );

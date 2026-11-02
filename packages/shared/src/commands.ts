@@ -2,7 +2,8 @@ import { z } from "zod";
 import { AttackStyle, MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
 import { TokenAttacks } from "./attackPresets";
 import { ConditionId, EMPTY_STATS, TokenStats } from "./conditions";
-import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, Verdict } from "./dice";
+import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
+import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
 import { AreaColor, AreaShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_WALLS, Portal, PortalState, Wall } from "./state";
@@ -224,6 +225,52 @@ export const Command = z.discriminatedUnion("type", [
       })
       .optional(),
   }),
+  /** GM only: roll one expression once for each of several tokens, logged as one entry (ADR 0046). */
+  z.object({
+    type: z.literal("dice.rollGroup"),
+    tokenIds: z.array(Id).min(1).max(MAX_GROUP_ROLL_TOKENS),
+    expression: z.string().min(1).max(32),
+    label: z.string().trim().max(MAX_ATTACK_LABEL).optional(),
+    visibility: DiceVisibility.default("public"),
+  }).strict(),
+  /** GM only: open an area effect, rolling `expression` for each token it caught (ADR 0046). */
+  z.object({
+    type: z.literal("areaEffect.start"),
+    tokenIds: z.array(Id).min(1).max(MAX_GROUP_ROLL_TOKENS),
+    expression: z.string().min(1).max(32),
+    label: z.string().trim().max(MAX_ATTACK_LABEL).optional(),
+  }).strict(),
+  /** GM only: call a participant (themselves included) to roll the damage, or move a pending call (ADR 0046). */
+  z.object({
+    type: z.literal("areaEffect.call"),
+    effectId: Id,
+    participantId: Id,
+  }).strict(),
+  /** Whoever holds the call: roll the damage once for all targets or once per target (ADR 0046). */
+  z.object({
+    type: z.literal("areaEffect.rollDamage"),
+    effectId: Id,
+    expression: z.string().min(1).max(32),
+    mode: DamageMode,
+  }).strict(),
+  /**
+   * GM only: apply each target's amount (negative heals) and add conditions, closing the effect
+   * (ADR 0046). `amount` is null for a target that takes no HP change.
+   */
+  z.object({
+    type: z.literal("areaEffect.resolve"),
+    effectId: Id,
+    rows: z.array(z.object({
+      tokenId: Id,
+      amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT).nullable(),
+      addConditions: z.array(ConditionId).max(12).default([]),
+    }).strict()).max(MAX_GROUP_ROLL_TOKENS),
+  }).strict(),
+  /** GM only: close the effect without changing any token (ADR 0046). */
+  z.object({
+    type: z.literal("areaEffect.close"),
+    effectId: Id,
+  }).strict(),
   /** GM only: play every board animation in its reduced-motion form for the whole table (ADR 0038). */
   z.object({
     type: z.literal("room.setReducedEffects"),

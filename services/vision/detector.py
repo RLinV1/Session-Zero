@@ -1,116 +1,87 @@
-"""Bounded square-grid detection in original image pixel coordinates."""
+"""Full-resolution classical LSD estimates in EXIF-oriented original image pixels."""
+from __future__ import annotations
 
-import os
-os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", "40000000")
+import io
+import math
+import time
+import warnings
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-MAX_BYTES = 25 * 1024 * 1024
-MAX_PIXELS = 40_000_000
-MAX_EDGE = 16_384
-MIN_CELL = 8
-MAX_CELL = 2000
+from grid_config import MAX_BYTES, MAX_EDGE, MAX_PIXELS, VERSION
+from grid_geometry import GeometrySettings, estimate_grid, filter_segments, project
 
-
-def _axis_profile(gray: np.ndarray, vertical: bool) -> np.ndarray:
-    # Sample across the whole map: printed lines persist across rows/columns,
-    # while terrain and compression artifacts mostly average away.
-    if vertical:
-        sampled = gray[::max(1, gray.shape[0] // 768), :]
-        mean = sampled.astype(np.float32).mean(axis=0)
-    else:
-        sampled = gray[:, ::max(1, gray.shape[1] // 768)]
-        mean = sampled.astype(np.float32).mean(axis=1)
-    smooth = cv2.GaussianBlur(mean.reshape(1, -1), (0, 0), 3.0).ravel()
-    profile = np.abs(mean - smooth)
-    # A small blur joins the two edges of a broad printed line.
-    return cv2.GaussianBlur(profile.reshape(1, -1), (3, 1), 0.7).ravel()
+LSD_SETTINGS = (cv2.LSD_REFINE_STD, 0.8, 0.6, 2.0, 22.5, 0.0, 0.7, 1024)
+GEOMETRY = GeometrySettings(min_length_px=20.0, min_support_count=0.0, fit_tolerance_px=4.0)
 
 
-def _period_candidates(profile: np.ndarray) -> list:
-    n = len(profile)
-    largest = min(MAX_CELL, n // 3)
-    if largest < MIN_CELL or float(profile.max()) < 0.15:
-        return []
-    centered = profile - np.median(profile)
-    spectrum = np.fft.rfft(centered, n=2 * n)
-    corr = np.fft.irfft(spectrum * np.conj(spectrum), n=2 * n)[:n]
-    norm = float(corr[0]) + 1e-6
-    # Local maxima suppress nearby lags caused by thick lines.
-    scores = corr / norm
-    peaks = []
-    for cell in range(MIN_CELL, largest + 1):
-        if scores[cell] >= scores[cell - 1] and scores[cell] >= scores[cell + 1]:
-            peaks.append((float(scores[cell]), cell))
-    peaks.sort(reverse=True)
-    return peaks[:24]
-
-
-def _phase(profile: np.ndarray, cell: int) -> tuple:
-    indices = np.arange(len(profile)) % cell
-    sums = np.bincount(indices, weights=profile, minlength=cell)
-    counts = np.bincount(indices, minlength=cell)
-    folded = sums / np.maximum(counts, 1)
-    phase = int(np.argmax(folded))
-    baseline = float(np.median(folded)) + 0.05
-    contrast = float(folded[phase] / baseline)
-    # Check that evidence is distributed over the map, not one decorated patch.
-    positions = np.arange(phase, len(profile), cell)
-    evidence = profile[positions]
-    coverage = float(np.mean(evidence > baseline * 1.5)) if len(evidence) else 0.0
-    return phase, contrast, coverage
-
-
-def detect(gray: np.ndarray) -> dict:
-    if gray.ndim != 2:
-        raise ValueError("Expected a grayscale image")
-    height, width = gray.shape
-    if width > MAX_EDGE or height > MAX_EDGE or width * height > MAX_PIXELS:
-        raise ValueError("Image exceeds analysis dimensions")
-    x_profile = _axis_profile(gray, True)
-    y_profile = _axis_profile(gray, False)
-    xs = _period_candidates(x_profile)
-    ys = _period_candidates(y_profile)
-    if not xs or not ys:
+def fit_segments(lines: list, width: int, height: int) -> dict:
+    # Constant scores solely adapt the reviewed filter interface. Score filtering is
+    # disabled; LSD precision/widths are not confidence probabilities.
+    filtered = filter_segments(lines, [1.0] * len(lines), 1.0, GEOMETRY)
+    x = project(filtered["vertical"], "x", width, height, GEOMETRY)
+    y = project(filtered["horizontal"], "y", height, width, GEOMETRY)
+    best = estimate_grid(x["peaks"], y["peaks"], width, height, GEOMETRY)["best_candidate"]
+    if best is None:
         return {"kind": "no_grid"}
-
-    best = None
-    for x_score, x_cell in xs:
-        for y_score, y_cell in ys:
-            if abs(x_cell - y_cell) > 2:
-                continue
-            cell = int(round((x_cell + y_cell) / 2))
-            if cell < MIN_CELL or (width + height) / cell + 2 > 50_000:
-                continue
-            x_phase, x_contrast, x_cover = _phase(x_profile, cell)
-            y_phase, y_contrast, y_cover = _phase(y_profile, cell)
-            # A repeated art motif or stripe in just one direction is insufficient.
-            if min(x_score, y_score) < 0.13 or min(x_contrast, y_contrast) < 1.8:
-                continue
-            if min(x_cover, y_cover) < 0.45:
-                continue
-            # Favor the fundamental over its multiples when evidence is comparable.
-            quality = min(x_score, y_score) * min(x_contrast, y_contrast) * min(x_cover, y_cover)
-            quality /= 1 + 0.00015 * cell
-            if best is None or quality > best[0]:
-                confidence = min(0.99, max(0.35, 0.38 + 0.28 * min(x_score, y_score)
-                                            + 0.12 * min(x_contrast, y_contrast)
-                                            + 0.18 * min(x_cover, y_cover)))
-                best = (quality, {
-                    "kind": "candidate", "cellSize": cell,
-                    "offsetX": x_phase % cell, "offsetY": y_phase % cell,
-                    "confidence": round(confidence, 3),
-                })
-    return best[1] if best else {"kind": "no_grid"}
+    candidate = {key: best[key] for key in ("cellSize", "offsetX", "offsetY")}
+    cell = candidate["cellSize"]
+    if (not all(math.isfinite(v) for v in candidate.values()) or not 0 < cell <= 2000
+            or not 0 <= candidate["offsetX"] < cell or not 0 <= candidate["offsetY"] < cell):
+        return {"kind": "no_grid"}
+    # accepted/rejection_reasons are diagnostics only. Preserve reviewed ranking.
+    return {"kind": "candidate", **candidate}
 
 
-def detect_bytes(data: bytes, width: int, height: int) -> dict:
+def detect(gray: np.ndarray, timings: dict | None = None) -> dict:
+    if gray.ndim != 2 or gray.dtype != np.uint8:
+        raise ValueError("Expected 8-bit grayscale")
+    height, width = gray.shape
+    if min(width, height) <= 0 or max(width, height) > MAX_EDGE or width * height > MAX_PIXELS:
+        raise ValueError("Image exceeds analysis dimensions")
+    cv2.setNumThreads(1)
+    started = time.perf_counter()
+    output = cv2.createLineSegmentDetector(*LSD_SETTINGS).detect(gray)[0]
+    detected = time.perf_counter()
+    # No external resizing and no undoing LSD's internal scale. Keep fractional
+    # continuous border endpoints; the fitter clips observed interval coverage.
+    lines = [] if output is None else output.reshape(-1, 4).astype(float).tolist()
+    mapped = time.perf_counter()
+    result = fit_segments(lines, width, height)
+    if timings is not None:
+        timings.update(detector_seconds=detected-started, mapping_seconds=mapped-detected,
+                       fit_seconds=time.perf_counter()-mapped, segments=len(lines))
+    return result
+
+
+def detect_bytes(data: bytes, width: int, height: int, timings: dict | None = None) -> dict:
     if not data or len(data) > MAX_BYTES:
         raise ValueError("Image exceeds analysis byte limit")
-    if width <= 0 or height <= 0 or width > MAX_EDGE or height > MAX_EDGE or width * height > MAX_PIXELS:
-        raise ValueError("Image exceeds analysis dimensions")
-    gray = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-    if gray is None or gray.shape != (height, width):
-        raise ValueError("Invalid image or declared dimensions")
-    return detect(gray)
+    started = time.perf_counter()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as opened:
+                if opened.format not in {"PNG", "JPEG", "WEBP"}:
+                    raise ValueError("Unsupported image")
+                ow, oh = opened.size
+                if max(ow, oh) > MAX_EDGE or ow * oh > MAX_PIXELS:
+                    raise ValueError("Image exceeds analysis dimensions")
+                frame = ImageOps.exif_transpose(opened)
+                decoded = time.perf_counter()
+                if frame.size != (width, height):
+                    raise ValueError("Invalid declared dimensions")
+                gray_frame = frame.convert("L")
+                converted = time.perf_counter()
+                gray = np.array(gray_frame, dtype=np.uint8)
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("Invalid image") from exc
+    prepared = time.perf_counter()
+    result = detect(gray, timings)
+    if timings is not None:
+        timings.update(decode_seconds=decoded-started, grayscale_seconds=converted-decoded,
+                       array_seconds=prepared-converted, processing_seconds=time.perf_counter()-started,
+                       width=width, height=height, version=VERSION)
+    return result

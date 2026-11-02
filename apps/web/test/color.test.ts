@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hexToHsv, hsvToHex, hueSatToPoint, isHex, pointToHueSat } from "../src/ui/color";
+import { CONDITIONS } from "@vtt/shared";
+import { contrastRatio, hexToHsv, hsvToHex, hueSatToPoint, inkOn, isHex, pointToHueSat } from "../src/ui/color";
 
 describe("colour wheel maths (grid-line-style)", () => {
   it("converts primaries and greys both ways", () => {
@@ -33,5 +34,21 @@ describe("colour wheel maths (grid-line-style)", () => {
   it("validates six-digit hex only", () => {
     expect(isHex("#a1b2c3")).toBe(true);
     for (const bad of ["a1b2c3", "#abc", "#gggggg", "#a1b2c3d"]) expect(isHex(bad)).toBe(false);
+  });
+});
+
+describe("ink on a coloured fill (WCAG 1.4.3, FR-TAC-08)", () => {
+  it("measures contrast the WCAG way", () => {
+    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
+    expect(contrastRatio("#fff8f3", "#b3552d")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("puts dark ink on light fills and white on dark ones", () => {
+    expect(inkOn("#facc15")).toBe("#121417");
+    expect(inkOn("#2563eb")).toBe("#ffffff");
+  });
+
+  it("gives every condition marker's abbreviation at least 4.5:1", () => {
+    for (const c of CONDITIONS) expect(contrastRatio(inkOn(c.color), c.color), c.id).toBeGreaterThanOrEqual(4.5);
   });
 });

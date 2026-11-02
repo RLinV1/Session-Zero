@@ -42,7 +42,7 @@ export function KeepSeatNotice({ roomId, token, name }: { roomId: string; token:
         </p>
       )}
       <div className="row">
-        <button type="button" className="small" onClick={() => void keep()} disabled={busy}>
+        <button type="button" className="small primary" onClick={() => void keep()} disabled={busy}>
           {busy ? "Keeping…" : "Keep seat"}
         </button>
         <button type="button" className="secondary small" onClick={() => setDismissed(true)} disabled={busy}>

@@ -11,7 +11,7 @@ export type Route =
   | { page: "encounterEdit"; roomId: string }
   | { page: "notFound" };
 
-function parse(pathname: string): Route {
+export function parseRoute(pathname: string): Route {
   if (pathname === "/") return { page: "home" };
   if (/^\/gm-dashboard\/?$/.test(pathname)) return { page: "gmDashboard" };
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
@@ -43,5 +43,5 @@ export function useRoute(): Route {
     },
     () => location.pathname,
   );
-  return parse(pathname);
+  return parseRoute(pathname);
 }

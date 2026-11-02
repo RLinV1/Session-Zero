@@ -10,6 +10,7 @@ import { AnimationEditor } from "./animationEditor/AnimationEditor";
 import { SHAPE_LABELS } from "./animationEditor/animationLabels";
 import { AnimationThumbnail } from "../ui/AnimationThumbnail";
 import { retainThumbnailRenderer } from "../board/animationThumbnail";
+import { EmptyState } from "../ui/EmptyState";
 
 /** Library animations whose name contains `query`, in the order given (case-insensitive). */
 export function filterAnimations(animations: readonly LibraryAnimation[], query: string): LibraryAnimation[] {
@@ -61,7 +62,7 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
   return (
     <>
       <div className="row">
-        <button type="button" onClick={() => setEditing("new")}>New animation</button>
+        <button type="button" className="primary" onClick={() => setEditing("new")}>New animation</button>
         <div className="start-from-builtin">
           <Picker
             label="Start from built-in"
@@ -79,11 +80,14 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
 
       {!animations && <p className="muted" aria-busy="true">Loading…</p>}
       {animations && shown.length === 0 && (
-        <p className="muted">
-          {query
-            ? "None of your animations match that search."
-            : "You haven't made any animations yet. Start from a built-in, then give an attack its own look from the attack editor."}
-        </p>
+        query ? (
+          <p className="muted">None of your animations match that search.</p>
+        ) : (
+          // The toolbar's New animation is right above, so the empty state adds no second one.
+          <EmptyState picture="empty-library">
+            You haven't made any animations yet. Start from a built-in, then give an attack its own look from the attack editor.
+          </EmptyState>
+        )
       )}
       <ul className="plain asset-grid" role="tabpanel">
         {shown.map((animation) => (
@@ -166,7 +170,7 @@ function AnimationCard(props: {
           </label>
           <div className="row modal-actions">
             <button type="button" className="secondary" onClick={() => setRenaming(null)}>Cancel</button>
-            <button type="submit" disabled={busy || !(renaming ?? "").trim()}>Save</button>
+            <button type="submit" className="primary" disabled={busy || !(renaming ?? "").trim()}>Save</button>
           </div>
         </form>
       </Modal>

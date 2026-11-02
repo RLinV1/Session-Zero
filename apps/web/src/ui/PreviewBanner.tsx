@@ -14,7 +14,7 @@ export function PreviewBanner({ name, onExit }: { name: string; onExit: () => vo
       <span>
         Viewing as <strong>{name}</strong>. This is what they see; you can't make changes here.
       </span>
-      <button ref={exit} type="button" onClick={onExit}>
+      <button className="primary" ref={exit} type="button" onClick={onExit}>
         Back to GM view
       </button>
     </div>

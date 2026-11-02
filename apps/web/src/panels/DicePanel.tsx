@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { attackLabel, formatAttackParties, formatAttackRoll, formatExpression, parseDiceExpression, type DiceVisibility, type Point, type RoomState } from "@vtt/shared";
+import { attackLabel, formatAttackParties, formatAttackRoll, formatExpression, isGroupRoll, MAX_ATTACK_LABEL, parseDiceExpression, type DiceRoll, type DiceVisibility, type GroupRoll, type LoggedRoll, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
@@ -9,6 +9,7 @@ import type { DiceDrop } from "../board/diceDrops";
 import { throwBlocker } from "../board/diceThrow";
 import { DiceThrowHandle } from "./DiceThrowHandle";
 import { DiceLookPicker } from "./DiceLookPicker";
+import { GroupSelectionList, type GroupSelection } from "./GroupSelection";
 
 const QUICK = ["1d20", "1d20+5", "2d6", "1d8+3", "4d6"];
 
@@ -58,6 +59,7 @@ export function DicePanel({
   isGm,
   rollThrow,
   board,
+  selection,
 }: {
   connection: RoomConnection;
   state: RoomState;
@@ -65,6 +67,8 @@ export function DicePanel({
   rollThrow: RollThrow;
   /** The room's board, to throw dice onto; absent where there is none. */
   board?: DiceBoard;
+  /** GM: the tokens chosen on the board for a group roll (ADR 0046). */
+  selection?: GroupSelection;
 }) {
   const [expression, setExpression] = useState("1d20");
   const [visibility, setVisibility] = useState<DiceVisibility>("public");
@@ -88,7 +92,8 @@ export function DicePanel({
 
   const rolls = [...state.rolls].reverse();
   const latest = rolls[0];
-  const throwing = latest !== undefined && rollThrow.airborne.has(latest.id);
+  // Group rolls are never thrown: they have no dice in the air (ADR 0046).
+  const throwing = latest !== undefined && !isGroupRoll(latest) && rollThrow.airborne.has(latest.id);
 
   /** Roll for a die let go over the map; true once the roll is made, and its dice are on their way. */
   const throwOnBoard = async (aim: { from: Point; to: Point }): Promise<boolean> => {
@@ -127,7 +132,7 @@ export function DicePanel({
             aria-describedby={invalid ? "dice-error" : undefined}
             autoComplete="off"
           />
-          <button
+          <button className="primary"
             type="submit"
             disabled={busy || rollThrow.rolling || !parsed.ok}
             title={rollThrow.rolling ? "Your dice are still on the board" : undefined}
@@ -174,22 +179,24 @@ export function DicePanel({
         )}
       </form>
 
+      {isGm && selection && <GroupRollForm connection={connection} state={state} selection={selection} visibility={visibility} />}
+
       <h3 className="sr-only">Latest roll</h3>
       {!latest ? (
         <p className="muted">No rolls yet.</p>
       ) : (
         <>
-          {latest.visibility === "gm" && (
+          {latest.visibility === "gm" && !isGroupRoll(latest) && (
             <DiceTray key={latest.id} roll={trayRoll(latest)} throwing={throwing} onLanded={() => rollThrow.onLanded(latest.id)} />
           )}
           <ul className="plain roll-log" aria-live="polite">
             {/* A new key when the dice land, so the live region announces the result once,
                 as it appears, and not the placeholder before it. */}
             <RollRow
-              key={throwing ? `${latest.id}:rolling` : latest.id}
+              key={throwing || rollThrow.airborne.has(latest.id) ? `${latest.id}:rolling` : latest.id}
               roll={latest}
               state={state}
-              rolling={throwing}
+              rolling={throwing || (isGroupRoll(latest) && rollThrow.airborne.has(latest.id))}
               fresh={!throwing && rollThrow.justLandedId === latest.id}
             />
           </ul>
@@ -227,7 +234,46 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-export function trayRoll(r: RoomState["rolls"][number]): TrayRoll {
+/**
+ * GM only: one expression rolled once for each selected token, logged as one entry (ADR 0046).
+ * Uses the panel's GM-only choice, like any other roll.
+ */
+function GroupRollForm({ connection, state, selection, visibility }: { connection: RoomConnection; state: RoomState; selection: GroupSelection; visibility: DiceVisibility }) {
+  const [expression, setExpression] = useState("1d20");
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parsed = parseDiceExpression(expression);
+  const tokenIds = selection.tokenIds.filter((id) => state.tokens[id]);
+
+  const roll = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!parsed.ok) return setError(parsed.message);
+    setBusy(true);
+    const result = await connection.command({ type: "dice.rollGroup", tokenIds, expression, label: label.trim() || undefined, visibility });
+    setBusy(false);
+    setError(result.ok ? null : result.message);
+  };
+
+  return (
+    <form onSubmit={roll} className="stack group-roll-form" aria-labelledby="group-roll-heading">
+      <h3 id="group-roll-heading" className="group-roll-heading">Group roll</h3>
+      <GroupSelectionList selection={selection} state={state} idPrefix="group-roll" />
+      <div className="dice-row">
+        <label htmlFor="group-roll-expression" className="sr-only">Group roll expression</label>
+        <input id="group-roll-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} />
+        <label htmlFor="group-roll-label" className="sr-only">Label</label>
+        <input id="group-roll-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" autoComplete="off" />
+        <button type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? "Select tokens first" : undefined}>
+          Roll
+        </button>
+      </div>
+      {error && <p role="alert" className="error">{error}</p>}
+    </form>
+  );
+}
+
+export function trayRoll(r: DiceRoll): TrayRoll {
   const parsed = parseDiceExpression(r.expression);
   // The server parsed this expression before rolling it; the fallback only guards a log
   // entry written by some older build.
@@ -241,7 +287,7 @@ function RollRow({
   rolling = false,
   fresh = false,
 }: {
-  roll: RoomState["rolls"][number];
+  roll: LoggedRoll;
   state: RoomState;
   /** The dice are still in the air: say who is rolling what, not the result. */
   rolling?: boolean;
@@ -250,6 +296,7 @@ function RollRow({
 }) {
   const who = state.participants[r.byParticipantId]?.displayName ?? "Someone";
   const className = ["roll", r.visibility === "gm" && "private", fresh && "fresh"].filter(Boolean).join(" ");
+  if (isGroupRoll(r)) return <GroupRollRow roll={r} who={who} className={className} rolling={rolling} />;
   // A card like a dice tray receipt: the total big in a box with the dice under it, then
   // what was rolled and by whom.
   if (rolling) {
@@ -293,14 +340,41 @@ function RollRow({
  * The ruling is only ever the GM's, made in the Play tab; nothing here compares the roll to
  * anything (ADR 0011).
  */
-function rollTitle(r: RoomState["rolls"][number], landed: boolean) {
+/** A group roll: what was rolled, then each token's total (ADR 0046). A player's copy lists only the tokens they can see. */
+function GroupRollRow({ roll: r, who, className, rolling }: { roll: GroupRoll; who: string; className: string; rolling: boolean }) {
+  return (
+    <li className={`${className} group-roll`}>
+      <span className="roll-detail">
+        <span className="roll-title">
+          <span className="sr-only">{who} rolled </span>
+          {r.label ? `${r.label} · ${r.expression}` : r.expression}
+        </span>
+        <ul className="plain group-roll-entries">
+          {r.entries.map((entry) => (
+            <li key={entry.tokenId}>
+              <span>{entry.name}</span>{" "}
+              {/* The totals wait for the dice dropping onto the tokens (ADR 0046). */}
+              {rolling ? <span className="muted">…</span> : <><strong>{entry.total}</strong> <span className="muted">({entry.dice.join(" + ")})</span></>}
+            </li>
+          ))}
+        </ul>
+        <span className="roll-meta" aria-hidden="true">
+          {who}{r.visibility === "gm" && <em className="badge">GM only</em>}
+        </span>
+        {r.visibility === "gm" && <span className="sr-only">, GM only</span>}
+      </span>
+    </li>
+  );
+}
+
+function rollTitle(r: DiceRoll, landed: boolean) {
   if (!r.attack) return r.expression;
   if (landed) return formatAttackRoll(r);
   return [formatAttackParties(r.attack), attackLabel(r.attack), r.expression].filter(Boolean).join(" · ");
 }
 
 /** "12 + 5", "3 + 4 + 1 - 2": each die, then the modifier. */
-function breakdown(r: RoomState["rolls"][number]) {
+function breakdown(r: DiceRoll) {
   const dice = r.dice.join(" + ");
   if (r.modifier === 0) return dice;
   return `${dice} ${r.modifier > 0 ? "+" : "-"} ${Math.abs(r.modifier)}`;

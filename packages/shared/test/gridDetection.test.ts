@@ -4,17 +4,17 @@ import { DirectUploadFields } from "../src/protocol";
 
 describe("private grid detection HTTP contract (FR-GM-03)", () => {
   it("accepts finite canonical image-pixel candidates", () => {
-    const candidate = { cellSize: 64, offsetX: 0, offsetY: 63.5, confidence: 0.74 };
+    const candidate = { cellSize: 64, offsetX: 0, offsetY: 63.5 };
     expect(GridDetectionCandidate.parse(candidate)).toEqual(candidate);
     expect(GridDetectionStatus.parse({ status: "suggested", attempt: 2, candidate })).toEqual({ status: "suggested", attempt: 2, candidate });
   });
 
   it("rejects nonfinite, noncanonical and out-of-range detector results", () => {
     for (const candidate of [
-      { cellSize: Number.NaN, offsetX: 0, offsetY: 0, confidence: 0.8 },
-      { cellSize: 64, offsetX: 64, offsetY: 0, confidence: 0.8 },
-      { cellSize: 64, offsetX: -1, offsetY: 0, confidence: 0.8 },
-      { cellSize: 64, offsetX: 0, offsetY: 0, confidence: 1.2 },
+      { cellSize: Number.NaN, offsetX: 0, offsetY: 0 },
+      { cellSize: 64, offsetX: 64, offsetY: 0 },
+      { cellSize: 64, offsetX: -1, offsetY: 0 },
+      { cellSize: 2001, offsetX: 0, offsetY: 0 },
     ]) expect(GridDetectionCandidate.safeParse(candidate).success).toBe(false);
   });
 

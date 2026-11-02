@@ -8,7 +8,7 @@ Line of sight (change `dynamic-line-of-sight`) has no distance limit: a token se
 - The Sight step holds the room's Line of sight switch (the same setting as the board tool rail's Sight button) and a Sight range: Unlimited (default) or a distance in the grid's own units, e.g. 60 ft.
 - Changes in the Sight step follow the editor's draft model: they are private until Save changes, and Discard drops them.
 - With a range set, every player token sees only up to that distance, still blocked by walls, closed doors and fog. Anything beyond is hidden from players exactly as content behind a wall is (not sent at all).
-- The step previews the result: pick one player and see their sight on the map with the draft settings.
+- The step previews the result with test tokens the GM adds, removes and drags on the map; clicking one says how many of the others it sees.
 
 Non-goals: per-token ranges (darkvision, torches), dim light bands, a range on library maps.
 

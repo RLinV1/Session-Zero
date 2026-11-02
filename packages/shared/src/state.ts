@@ -4,7 +4,8 @@ import { TokenAttacks } from "./attackPresets";
 import { DICE_SHEET, DieName } from "./diceLooks";
 import type { UndoEntry } from "./undo";
 import { ConditionId, TokenStats } from "./conditions";
-import { DiceRoll } from "./dice";
+import type { LoggedRoll } from "./dice";
+import type { AreaEffect } from "./areaEffects";
 import { DEFAULT_GRID, GridSpec, Point } from "./geometry";
 
 export const Id = z.string().min(1).max(64);
@@ -335,8 +336,8 @@ export interface RoomState {
   participants: Record<Id, Participant>;
   /** Null until the GM starts an encounter (FR-GM-21). */
   initiative: Initiative | null;
-  /** Most recent rolls, newest last (FR-GM-22, FR-TAC-09). Capped at ROLL_LOG_LIMIT. */
-  rolls: DiceRoll[];
+  /** Most recent rolls, newest last (FR-GM-22, FR-TAC-09). Capped at ROLL_LOG_LIMIT. Group rolls take one slot each (ADR 0046). */
+  rolls: LoggedRoll[];
   /** Placed area templates everyone at the table can see, bar GM-only ones (FR-TAC-06, ADR 0007). */
   templates: Record<Id, AreaTemplate>;
   /** Most recent chat messages, oldest first, public to the whole room (KAN-75, ADR 0015). Capped at CHAT_LOG_LIMIT. */
@@ -365,6 +366,11 @@ export interface RoomState {
    */
   reducedEffects: boolean;
   /**
+   * The open area effect, if any (ADR 0046). At most one per room. Rooms from before it read as
+   * null. Players get a projection: no saves, no concealed targets.
+   */
+  areaEffect: AreaEffect | null;
+  /**
    * The viewer's line of sight as polygons in board coordinates (FR-GM-19, ADR 0044). Derived per
    * viewer by `filterStateForViewer`, never set by `reduce` and never persisted. Present only for
    * a player with line of sight on.
@@ -391,5 +397,6 @@ export function emptyRoomState(roomId: Id): RoomState {
     groups: {},
     tokenGroups: {},
     reducedEffects: false,
+    areaEffect: null,
   };
 }

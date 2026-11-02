@@ -11,7 +11,7 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate, RoomUploadPurpose } from "@vtt/shared";
-import { DETECTION_STALE_MS, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
+import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type UploadAnalysis, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
 import { ConditionId, DEFAULT_TOKEN_COLOR, EMPTY_LIBRARY_BOARD, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
@@ -220,13 +220,14 @@ export class PostgresRoomStore implements RoomStore {
     return !!(await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId, objectKey } }, select: { objectKey: true } }));
   }
 
-  async recordRoomUpload(roomId: string, objectKey: string, purpose: RoomUploadPurpose = "token", width?: number, height?: number) {
+  async recordRoomUpload(roomId: string, objectKey: string, purpose: RoomUploadPurpose = "token", width?: number, height?: number, analysis?: UploadAnalysis) {
     await this.prisma.roomUpload.upsert({
       where: { roomId_objectKey: { roomId, objectKey } },
       create: {
-        roomId, objectKey, purpose, width, height,
-        ...(purpose === "map" && {
-          detectionStatus: "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
+        roomId, objectKey, purpose, width, height, sourceHash: analysis?.sourceHash,
+        ...(purpose === "map" && analysis?.sourceHash && {
+          detectionSourceHash: analysis.sourceHash, detectionVersion: analysis.detectionVersion, detectionError: analysis.detectionError,
+          detectionStatus: analysis.detectionError ? "error" : "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
         }),
       },
       update: {},
@@ -351,11 +352,13 @@ export class PostgresRoomStore implements RoomStore {
     await this.prisma.$executeRaw`
       INSERT INTO library_assets
         (id, owner_gm_id, kind, object_key, url, name, width, height, grid, board,
+         source_hash, detection_source_hash, detection_version, detection_error,
          detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
       VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
         ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height},
         ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
         ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
+        ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
         ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
         ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
         ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
@@ -390,40 +393,45 @@ export class PostgresRoomStore implements RoomStore {
   }
 
   async findDetection(target: DetectionTarget): Promise<DetectionRecord | null> {
-    if (target.scope === "library") {
-      const row = await this.prisma.libraryAsset.findUnique({ where: { id: target.id } });
-      if (!row || row.kind !== "map" || !row.detectionStatus) return null;
-      return {
-        target, objectKey: row.objectKey, width: row.width, height: row.height,
-        status: row.detectionStatus as DetectionState, attempt: row.detectionAttempt,
-        candidate: (row.detectionResult as GridDetectionCandidate | null) ?? null,
-      };
-    }
-    const row = await this.prisma.roomUpload.findUnique({
-      where: { roomId_objectKey: { roomId: target.roomId, objectKey: target.objectKey } },
-    });
-    if (!row || row.purpose !== "map" || !row.detectionStatus || !row.width || !row.height) return null;
+    const row = target.scope === "library"
+      ? await this.prisma.libraryAsset.findUnique({ where: { id: target.id } })
+      : await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId: target.roomId, objectKey: target.objectKey } } });
+    if (!row || ("kind" in row ? row.kind !== "map" : row.purpose !== "map") || !row.detectionStatus
+      || !row.sourceHash || row.sourceHash !== row.detectionSourceHash || row.detectionVersion !== DETECTION_VERSION
+      || !row.width || !row.height) return null;
     return {
       target, objectKey: row.objectKey, width: row.width, height: row.height,
+      sourceHash: row.sourceHash, configVersion: row.detectionVersion,
       status: row.detectionStatus as DetectionState, attempt: row.detectionAttempt,
-      candidate: (row.detectionResult as GridDetectionCandidate | null) ?? null,
+      candidate: (row.detectionResult as GridDetectionCandidate | null) ?? null, error: row.detectionError as DetectionError | null,
     };
   }
 
-  async markDetectionRunning(target: DetectionTarget, attempt: number) {
-    const where = { detectionStatus: "queued", detectionAttempt: attempt };
+  private detectionWhere(job: DetectionJob) {
+    return { sourceHash: job.sourceHash, detectionSourceHash: job.sourceHash,
+      detectionVersion: job.configVersion,
+      detectionAttempt: job.attempt };
+  }
+
+  async markDetectionRunning(job: DetectionJob) {
+    if (job.configVersion !== DETECTION_VERSION || job.attempt > DETECTION_MAX_ATTEMPTS) return false;
+    const where = { ...this.detectionWhere(job), detectionStatus: "queued" };
     const data = { detectionStatus: "running", detectionUpdatedAt: new Date() };
+    const target = job.target;
     const result = target.scope === "library"
       ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, kind: "map", ...where }, data })
       : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, purpose: "map", ...where }, data });
     return result.count === 1;
   }
 
-  async finishDetection(target: DetectionTarget, attempt: number, outcome: DetectionOutcome) {
-    const where = { detectionStatus: "running", detectionAttempt: attempt };
+  async finishDetection(job: DetectionJob, outcome: DetectionOutcome) {
+    if (job.configVersion !== DETECTION_VERSION) return false;
+    const target = job.target;
+    const where = { ...this.detectionWhere(job), detectionStatus: "running" };
     const data = {
       detectionStatus: outcome.status,
       detectionResult: outcome.status === "suggested" ? outcome.candidate as Prisma.InputJsonValue : Prisma.DbNull,
+      detectionError: outcome.status === "error" ? outcome.error ?? "execution_failed" : null,
       detectionUpdatedAt: new Date(),
     };
     const result = target.scope === "library"
@@ -432,47 +440,66 @@ export class PostgresRoomStore implements RoomStore {
     return result.count === 1;
   }
 
-  async retryDetection(target: DetectionTarget) {
-    const data = { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionResult: Prisma.DbNull, detectionUpdatedAt: new Date() };
-    const result = target.scope === "library"
-      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, detectionStatus: "error" }, data })
-      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, detectionStatus: "error" }, data });
-    return result.count === 1 ? (await this.findDetection(target))!.attempt : null;
-  }
-
-  async recoverDetections() {
-    const stale = new Date(Date.now() - DETECTION_STALE_MS);
-    const pending: Array<{ target: DetectionTarget; attempt: number }> = [];
-    const library = await this.prisma.libraryAsset.findMany({
-      where: { kind: "map", OR: [{ detectionStatus: "queued" }, { detectionStatus: "running", detectionUpdatedAt: { lt: stale } }] },
-      select: { id: true, detectionStatus: true, detectionAttempt: true },
-    });
-    const rooms = await this.prisma.roomUpload.findMany({
-      where: { purpose: "map", OR: [{ detectionStatus: "queued" }, { detectionStatus: "running", detectionUpdatedAt: { lt: stale } }] },
-      select: { roomId: true, objectKey: true, detectionStatus: true, detectionAttempt: true },
-    });
-    for (const row of library) {
-      const target: DetectionTarget = { scope: "library", id: row.id };
-      const attempt = await this.recoverOne(target, row.detectionStatus, row.detectionAttempt, stale);
-      if (attempt) pending.push({ target, attempt });
-    }
-    for (const row of rooms) {
-      const target: DetectionTarget = { scope: "room", roomId: row.roomId, objectKey: row.objectKey };
-      const attempt = await this.recoverOne(target, row.detectionStatus, row.detectionAttempt, stale);
-      if (attempt) pending.push({ target, attempt });
-    }
-    return pending;
-  }
-
-  private async recoverOne(target: DetectionTarget, status: string | null, attempt: number, stale: Date) {
-    if (status === "queued") return attempt;
-    if (status !== "running") return null;
-    const where = { detectionStatus: "running", detectionAttempt: attempt, detectionUpdatedAt: { lt: stale } };
-    const data = { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionUpdatedAt: new Date() };
+  async deferDetection(job: DetectionJob, consumeAttempt: boolean) {
+    if (job.configVersion !== DETECTION_VERSION) return false;
+    if (consumeAttempt && job.attempt >= DETECTION_MAX_ATTEMPTS) return this.finishDetection(job, { status: "error", error: "execution_failed" });
+    const target = job.target;
+    const where = { ...this.detectionWhere(job), detectionStatus: "running" };
+    const data = { detectionStatus: "queued", detectionAttempt: job.attempt + Number(consumeAttempt),
+      detectionResult: Prisma.DbNull, detectionError: null, detectionUpdatedAt: new Date() };
     const result = target.scope === "library"
       ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
       : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
-    return result.count === 1 ? attempt + 1 : null;
+    return result.count === 1;
+  }
+
+  async retryDetection(target: DetectionTarget) {
+    const row = await this.findDetection(target);
+    if (!row || row.status !== "error" || row.error !== "execution_failed" || row.attempt >= DETECTION_MAX_ATTEMPTS) return null;
+    const where = { ...this.detectionWhere(row), detectionStatus: "error", detectionError: "execution_failed" };
+    const data = { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionResult: Prisma.DbNull, detectionError: null, detectionUpdatedAt: new Date() };
+    const result = target.scope === "library"
+      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
+      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
+    return result.count === 1 ? row.attempt + 1 : null;
+  }
+
+  async recoverDetections(limit = 100) {
+    const stale = new Date(Date.now() - DETECTION_STALE_MS);
+    const pending: DetectionJob[] = [];
+    const where = { detectionVersion: DETECTION_VERSION, sourceHash: { not: null },
+      OR: [{ detectionStatus: "queued" }, { detectionStatus: "running", detectionUpdatedAt: { lt: stale } }] };
+    const library = await this.prisma.libraryAsset.findMany({
+      where: { kind: "map", ...where, detectionSourceHash: { equals: this.prisma.libraryAsset.fields.sourceHash } }, take: limit, orderBy: { detectionUpdatedAt: "asc" },
+    });
+    const rooms = await this.prisma.roomUpload.findMany({
+      where: { purpose: "map", ...where, detectionSourceHash: { equals: this.prisma.roomUpload.fields.sourceHash } }, take: limit, orderBy: { detectionUpdatedAt: "asc" },
+    });
+    const rows = [
+      ...library.map((r) => ({ ...r, target: { scope: "library" as const, id: r.id } })),
+      ...rooms.map((r) => ({ ...r, target: { scope: "room" as const, roomId: r.roomId, objectKey: r.objectKey } })),
+    ].sort((a, b) => (a.detectionUpdatedAt?.getTime() ?? 0) - (b.detectionUpdatedAt?.getTime() ?? 0));
+    for (const raw of rows) {
+      if (pending.length >= limit) break;
+      if (raw.sourceHash !== raw.detectionSourceHash) continue;
+      const row = await this.findDetection(raw.target);
+      if (!row) continue;
+      if (row.status === "queued" && row.attempt <= DETECTION_MAX_ATTEMPTS) pending.push(detectionJob(row));
+      else if (row.status === "running") {
+        // CAS includes the stale timestamp as well as source/version/attempt: a
+        // concurrently refreshed claim cannot be recovered by an old scan.
+        const data = row.attempt >= DETECTION_MAX_ATTEMPTS
+          ? { detectionStatus: "error", detectionError: "execution_failed", detectionUpdatedAt: new Date() }
+          : { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionUpdatedAt: new Date() };
+        const check = { ...this.detectionWhere(row), detectionStatus: "running", detectionUpdatedAt: { lt: stale } };
+        const target = raw.target;
+        const changed = target.scope === "library"
+          ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...check }, data })
+          : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...check }, data });
+        if (changed.count === 1 && row.attempt < DETECTION_MAX_ATTEMPTS) pending.push({ ...detectionJob(row), attempt: row.attempt + 1 });
+      }
+    }
+    return pending;
   }
 
   async listAssets(ownerGmId: string) {
@@ -1025,6 +1052,8 @@ function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
     height: row.height,
     grid: (row.grid as unknown as GridSpec | null) ?? null,
     board: (row.board as unknown as LibraryMapBoard | null) ?? null,
+    sourceHash: row.sourceHash, detectionSourceHash: row.detectionSourceHash, detectionVersion: row.detectionVersion,
+    detectionError: row.detectionError as DetectionError | null,
     detectionStatus: row.detectionStatus as DetectionState | null,
     detectionAttempt: row.detectionAttempt,
     detectionResult: (row.detectionResult as GridDetectionCandidate | null) ?? null,

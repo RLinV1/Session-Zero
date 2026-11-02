@@ -3,13 +3,13 @@ import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GRID, type GridDetectionStatus } from "@vtt/shared";
-import { api } from "../src/net/api";
+import { api, ApiError } from "../src/net/api";
 import { GridActionsContext } from "../src/pages/GridActionsContext";
 import { GridForm } from "../src/pages/GridForm";
-import { toGridDraft, withGridSuggestion } from "../src/pages/gridDraft";
+import { newGridSuggestionSession, toGridDraft, withGridSuggestion } from "../src/pages/gridDraft";
 import { useGridDetection } from "../src/pages/useGridDetection";
 
-const candidate = { cellSize: 64, offsetX: 7, offsetY: 13, confidence: 0.74 };
+const candidate = { cellSize: 64, offsetX: 7, offsetY: 13 };
 const map = { url: "/uploads/map.png", width: 768, height: 648 };
 
 function deferred<T>() {
@@ -26,6 +26,79 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("GM grid suggestion editor (FR-GM-03)", () => {
+  it("prefills untouched geometry once, preserves style/units and never saves automatically", async () => {
+    const apply = vi.fn(async () => {});
+    const session = newGridSuggestionSession();
+    function Editor({ result = candidate }: { result?: typeof candidate }) {
+      const [draft, setDraft] = useState(() => toGridDraft({ ...DEFAULT_GRID, unitsPerCell: 10, lineColor: "#ffffff", lineWidth: 3 }));
+      return <GridForm grid={DEFAULT_GRID} map={map} draft={draft} hasDraft onChange={setDraft}
+        onApply={apply} onCancel={() => {}} applying={false} error={null} autoSuggest suggestionSession={session}
+        detection={{ status: "suggested", attempt: 1, candidate: result }} />;
+    }
+    const view = render(<Editor />);
+    expect((screen.getByLabelText("Cell size") as HTMLInputElement).value).toBe("64");
+    expect((screen.getByLabelText("Distance per square") as HTMLInputElement).value).toBe("10");
+    expect(apply).not.toHaveBeenCalled();
+    view.rerender(<Editor result={{ ...candidate, cellSize: 82 }} />);
+    expect((screen.getByLabelText("Cell size") as HTMLInputElement).value).toBe("64");
+    fireEvent.click(screen.getByRole("button", { name: "Apply grid" }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(expect.objectContaining({ unitsPerCell: 10, lineWidth: 3, lineColor: "#ffffff" })));
+  });
+
+  it.each(["typing", "discard", "start over", "save", "saved grid"])("blocks a delayed automatic estimate after %s", async (action) => {
+    const pending = deferred<GridDetectionStatus | null>();
+    vi.spyOn(api.detection, "library").mockReturnValue(pending.promise);
+    const session = newGridSuggestionSession();
+    function Editor() {
+      const [draft, setDraft] = useState(() => toGridDraft(DEFAULT_GRID));
+      const detection = useGridDetection("library", "", "map-id");
+      return <GridForm grid={DEFAULT_GRID} map={map} draft={draft} hasDraft onChange={setDraft}
+        onApply={async () => {}} onCancel={() => setDraft(toGridDraft(DEFAULT_GRID))} applying={false} error={null}
+        allowUnchanged autoSuggest={action !== "saved grid"} suggestionSession={session} detection={detection.status}
+        onUseSuggestion={(value) => setDraft((current) => withGridSuggestion(current, value))} />;
+    }
+    render(<Editor />);
+    if (action === "typing") {
+      // Returning to equal values still expresses manual intent.
+      fireEvent.change(screen.getByLabelText("Cell size"), { target: { value: "71" } });
+      fireEvent.change(screen.getByLabelText("Cell size"), { target: { value: String(DEFAULT_GRID.cellSize) } });
+    } else if (action === "discard") fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    else if (action === "start over") fireEvent.click(screen.getByRole("button", { name: "Start over" }));
+    else if (action === "save") fireEvent.click(screen.getByRole("button", { name: "Apply grid" }));
+    await act(async () => pending.resolve({ status: "suggested", attempt: 1, candidate }));
+    expect((screen.getByLabelText("Cell size") as HTMLInputElement).value).toBe(String(DEFAULT_GRID.cellSize));
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    expect((screen.getByLabelText("Cell size") as HTMLInputElement).value).toBe("64");
+  });
+
+  it("stops polling when analysis is absent", async () => {
+    const poll = vi.spyOn(api.detection, "library").mockResolvedValue(null);
+    function Probe() { useGridDetection("library", "", "absent"); return null; }
+    vi.useFakeTimers();
+    try {
+      render(<Probe />);
+      await act(async () => {});
+      await act(async () => vi.advanceTimersByTime(10_000));
+      expect(poll).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("stops denied polling and exposes access loss so the editor permanently blocks automatic replacement", async () => {
+    const poll = vi.spyOn(api.detection, "library").mockRejectedValue(new ApiError("GM only", 403));
+    function Probe() {
+      const result = useGridDetection("library", "", "denied");
+      return <div>{result.accessDenied ? "denied" : "checking"}</div>;
+    }
+    vi.useFakeTimers();
+    try {
+      render(<Probe />);
+      await act(async () => {});
+      expect(screen.getByText("denied")).toBeTruthy();
+      await act(async () => vi.advanceTimersByTime(10_000));
+      expect(poll).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("leaves a dirty draft untouched on arrival and copies only alignment after Use suggestion", async () => {
     const pending = deferred<GridDetectionStatus | null>();
     vi.spyOn(api.detection, "library").mockReturnValue(pending.promise);
@@ -49,7 +122,7 @@ describe("GM grid suggestion editor (FR-GM-03)", () => {
     fireEvent.change(screen.getByLabelText("Cell size"), { target: { value: "71" } });
     await act(async () => pending.resolve({ status: "suggested", attempt: 1, candidate }));
     expect((screen.getByLabelText("Cell size") as HTMLInputElement).value).toBe("71");
-    expect(screen.getByText(/Low confidence/)).toBeTruthy();
+    expect(screen.getByText(/Check alignment against the map/)).toBeTruthy();
     expect(apply).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));

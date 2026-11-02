@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_GRID } from "@vtt/shared";
+import { DETECTION_VERSION } from "../src/store/gridDetectionStore";
 import { buildApp } from "../src/app";
 import { createGridDetectionDispatcher, visionDetector } from "../src/domain/gridDetection";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
@@ -18,7 +19,7 @@ describe("grid detection vision boundary (FR-GM-03)", () => {
   it("accepts a small result and rejects an oversized streaming response before it finishes", async () => {
     let calls = 0;
     const server = createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(200, { "content-type": "application/json", "x-grid-version": DETECTION_VERSION });
       if (++calls === 1) res.end('{"kind":"no_grid"}');
       else res.write("x".repeat(5000)); // Deliberately keep the connection open.
     });
@@ -47,6 +48,7 @@ describe("grid detection vision boundary (FR-GM-03)", () => {
         id, ownerGmId, kind: "map", objectKey, url: `/uploads/${objectKey}`,
         name: "Local map", width: 1, height: 1, grid: DEFAULT_GRID,
         createdAt: new Date().toISOString(), detectionStatus: "queued", detectionAttempt: 1,
+        sourceHash: createHash("sha256").update(PNG).digest("hex"), detectionSourceHash: createHash("sha256").update(PNG).digest("hex"), detectionVersion: DETECTION_VERSION,
       });
       const detector = vi.fn(async () => ({ status: "no_grid" as const }));
       app = await buildApp({ store, uploadDir: dir, detector, redisUrl: "redis://127.0.0.1:1" });
@@ -79,6 +81,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.REDIS_URL)("grid detec
         id, ownerGmId, kind: "map", objectKey, url: `/uploads/${objectKey}`,
         name: "Redis map", width: 1, height: 1, grid: DEFAULT_GRID,
         createdAt: new Date().toISOString(), detectionStatus: "queued", detectionAttempt: 1,
+        sourceHash: createHash("sha256").update(PNG).digest("hex"), detectionSourceHash: createHash("sha256").update(PNG).digest("hex"), detectionVersion: DETECTION_VERSION,
       });
       const detector = vi.fn(async (bytes: Uint8Array, size: { width: number; height: number }) => {
         expect(Buffer.from(bytes)).toEqual(PNG);

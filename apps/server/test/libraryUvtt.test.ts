@@ -47,7 +47,7 @@ describe("UVTT maps in the asset library (KAN-43/44, FR-GM-06/07/12)", () => {
     expect(board.walls.some((w: { source?: string }) => w.source === "objects_line_of_sight")).toBe(true);
     const image = await readFile(`${server.uploadDir}/${asset.url.split("/").at(-1)}`);
     expect(image).toEqual(Buffer.from(input.image, "base64"));
-    expect(await store.findDetection({ scope: "library", id: asset.id })).toMatchObject({ status: "no_grid" });
+    expect(await store.findDetection({ scope: "library", id: asset.id })).toBeNull();
     expect((await fetch(`${server.base}/api/library/${asset.id}/board`, { headers: { cookie: other.cookie } })).status).toBe(404);
     expect((await fetch(`${server.base}/api/library/${asset.id}/board`)).status).toBe(401);
   });

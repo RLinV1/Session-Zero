@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { Point } from "@vtt/shared";
 import type { DiceBoard } from "../board/Board";
 import { holdEvent, releaseVelocity, type PointerSample } from "../board/diceThrow";
+import { startDiceShake, type DiceShake } from "../board/fxSound";
 import { Die3D, layoutDice } from "../ui/Die3D";
 import { useActiveDiceLook } from "../ui/diceSkinStore";
 
@@ -22,6 +23,9 @@ const ghostTransform = (p: Point) => `translate3d(${p.x}px, ${p.y}px, 0) transla
  *
  * Pointer events with capture, not HTML drag and drop, which has no touch support and no
  * velocity. Keyboard users roll with the Roll button; the die is decorative to them.
+ *
+ * While held, the dice rattle in the hand: harder as it is shaken, softly as it is dragged, now
+ * and then while it is held still (`startDiceShake`), until the hold ends.
  *
  * A hold ends on its own pointer's release, and also whenever that release can no longer
  * arrive: capture lost, the pointer moving with no button down, a context menu, the window
@@ -53,6 +57,8 @@ export function DiceThrowHandle({
   const samples = useRef<PointerSample[]>([]);
   const ghostRef = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
+  /** The rattle of the dice in the hand while the die is held. */
+  const shake = useRef<DiceShake | null>(null);
   // Your die, in your skin; a GM-only roll keeps the private look.
   const skin = useActiveDiceLook();
   const dieSkin = gmOnly ? null : skin;
@@ -61,6 +67,7 @@ export function DiceThrowHandle({
     () => () => {
       clearTimeout(fadeTimer.current);
       cancelAnimationFrame(frame.current);
+      shake.current?.stop();
     },
     [],
   );
@@ -74,6 +81,8 @@ export function DiceThrowHandle({
     hold.current = null;
     cancelAnimationFrame(frame.current);
     frame.current = 0;
+    shake.current?.stop();
+    shake.current = null;
     setHeld(null);
   };
 
@@ -108,6 +117,9 @@ export function DiceThrowHandle({
     hold.current = e.pointerId;
     pointer.current = { x: e.clientX, y: e.clientY };
     samples.current = [{ x: e.clientX, y: e.clientY, t: e.timeStamp }];
+    shake.current?.stop();
+    shake.current = startDiceShake();
+    shake.current?.move(samples.current[0]!);
     setHeld({ over: false });
   };
 
@@ -119,6 +131,8 @@ export function DiceThrowHandle({
     const now = e.timeStamp;
     samples.current = [...samples.current.filter((s) => now - s.t <= SAMPLE_MS), { x: e.clientX, y: e.clientY, t: now }];
     pointer.current = { x: e.clientX, y: e.clientY };
+    // Every sample, not once a frame: the rattle reads how fast the die turns.
+    shake.current?.move({ x: e.clientX, y: e.clientY, t: now });
     // At most once a frame, however fast the pointer reports: move the die, and ask the board
     // (which measures the canvas) whether it is over the map.
     if (frame.current) return;

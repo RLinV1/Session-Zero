@@ -112,7 +112,7 @@ function History({ roomId, token, seq, state, connection }: Props) {
         }} />
       <button type="button" className="activity-refresh" aria-label="Refresh" title="Refresh"
         onClick={() => setRefresh((n) => n + 1)} disabled={busy}>
-        <ArrowClockwise size={16} weight="bold" aria-hidden="true" />
+        <ArrowClockwise size={16} aria-hidden="true" />
       </button>
     </div>
     <p className="muted">Committed actions, newest first. Search uses names at the time of each action.</p>
@@ -142,7 +142,7 @@ function History({ roomId, token, seq, state, connection }: Props) {
           {undoError && undoError.commandId === commandId && newestOfAction && (
             <p role="alert" className="error">{undoError.message}</p>
           )}
-          <small className="muted"><time dateTime={committed.at}>{new Date(committed.at).toLocaleString()}</time> · #{committed.seq}</small>
+          <small className="muted activity-meta"><time dateTime={committed.at}>{new Date(committed.at).toLocaleString()}</time> · #{committed.seq}</small>
         </li>;
       })}
     </ol>

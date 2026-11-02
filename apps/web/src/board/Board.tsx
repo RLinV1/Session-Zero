@@ -1,15 +1,19 @@
 import { MovementControls } from "./MovementControls";
 import { defaultMovementSettings, type MovementSettings } from "./movementRuler";
-import { CornersOut } from "@phosphor-icons/react";
+import { CornersOut, Eye } from "@phosphor-icons/react";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
-import { can, DEFAULT_TOKEN_COLOR, EMPTY_STATS, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { DEFAULT_TOKEN_COLOR, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
 import { usePersistentState } from "../ui/usePersistentState";
 import { BoardFilters } from "./BoardFilters";
+import { gmSightPolygons, sightKey, viewedTokenIds } from "./gmSightView";
 import { canAnimateDice, type TrayRoll } from "../ui/Die3D";
 import { ThrownDice, type ActiveThrow } from "./ThrownDice";
+import { DroppedDice, type ActiveDrop } from "./DroppedDice";
+import { addDrop, type BoardDrop } from "./tokenDice";
+import type { DiceSkin } from "../ui/diceSkin";
 import { BoardView, type GmFogView } from "./boardView";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
@@ -19,6 +23,7 @@ import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type Boa
 import { cursorSquare, moveCursor, placementCommand, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
 import type { BoardTool } from "./tools";
 import { TokenCard } from "./TokenCard";
+import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../ui/MoveControl";
 
 /** Loaded when the first effect or condition needs it, so the board paints before the libraries arrive. */
 const EffectsOverlay = lazy(() => import("./EffectsOverlay"));
@@ -48,6 +53,12 @@ interface Props {
   selectOnly?: boolean;
   /** Open the sidebar's editor for a token, from its card (token-card-actions). */
   onEditToken?: (tokenId: string) => void;
+  /** GM: the tokens chosen for a group roll or an area effect, marked on the board (ADR 0046). */
+  groupSelection?: readonly string[];
+  /** GM: Shift-click on a token adds it to `groupSelection` or takes it out. */
+  onToggleGroupToken?: (tokenId: string) => void;
+  /** GM: the template picked in From template; its tokens replace the selection. */
+  onPickTemplate?: (templateId: string) => void;
 }
 
 /** What the roster and initiative list can ask the canvas to do (FR-GM-24). */
@@ -59,6 +70,8 @@ export interface BoardHandle {
   duplicateToken(tokenId: string): void;
   /** Pick a target on the board for `tokenId` to attack; the pick goes to `onPickTarget` (attack-targeting). */
   startAttack(tokenId: string): void;
+  /** GM: pick a placed template on the board; the pick goes to `onPickTemplate` (ADR 0046). */
+  startTemplatePick(): void;
   /** Show a ping on this viewer's board only, e.g. the one an attack roll just sent. */
   showPing(at: Point): void;
   /**
@@ -74,6 +87,11 @@ export interface BoardHandle {
    * comes once the dice have faded off the board, or were cleared early.
    */
   throwDice(t: BoardThrow, roll: TrayRoll, onLanded: () => void, onGone?: () => void): boolean;
+  /**
+   * Drop a group or area-effect roll's dice onto its tokens (ADR 0046). False when they can't be
+   * animated here; then neither callback is called.
+   */
+  dropDice(drop: BoardDrop, skin: DiceSkin | null, onLanded: () => void, onGone?: () => void): boolean;
 }
 
 /** What the Dice panel needs from the board to throw dice onto it (throw-dice-on-board). */
@@ -118,6 +136,7 @@ const HINTS: Record<BoardTool["kind"], string> = {
   area: "Drag to size and aim · click to place the chosen size · hold Alt to place freely · everyone at the table sees areas",
   erase: "Click or drag over your marks and areas to erase them · Esc to stop",
   attack: "Click the token to attack · Esc or right-click to cancel",
+  pickTemplate: "Click an area to select every token it touches · Esc or right-click to cancel",
   fog: "",
 };
 
@@ -141,7 +160,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 /** The PixiJS board plus its React toolbar and notices; Pixi objects stay inside `BoardView`. */
-export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, onNukeImpact, selectOnly = false, onEditToken }, ref) {
+export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, onNukeImpact, selectOnly = false, onEditToken, groupSelection, onToggleGroupToken, onPickTemplate }, ref) {
   const renderedState = useDisplayedHealth(state);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
@@ -151,13 +170,25 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const [showWalls, setShowWalls] = usePersistentState<boolean>("vtt.ui.gmShowWalls", true, (v): v is boolean => typeof v === "boolean");
   /** GM only: whether this browser draws doors and windows. Players always see the ones they can reach. */
   const [showPortals, setShowPortals] = usePersistentState<boolean>("vtt.ui.gmShowPortals", true, (v): v is boolean => typeof v === "boolean");
+  /** GM only: darken this browser's board to what the selected token sees (gm-token-sight-view). View-only, nothing is sent. */
+  const [tokenView, setTokenView] = useState(false);
+  /** The tokens Token view shows the sight of: the clicked token, plus any Shift-clicked ones. */
+  const [viewedIds, setViewedIds] = useState<string[]>([]);
+  const gmCanSee = you.role === "gm" && !readOnly;
+  const losOn = state.scene.lineOfSight === true;
+  useEffect(() => {
+    if (tokenView && !(gmCanSee && losOn)) setTokenView(false);
+  }, [tokenView, gmCanSee, losOn]);
+  useEffect(() => {
+    if (!tokenView && viewedIds.length > 0) setViewedIds([]);
+  }, [tokenView, viewedIds]);
   const hasFog = Object.keys(state.fog).length > 0;
   const hasPortals = Object.values(state.walls).some((wall) => wall.portal);
   const hasWalls = Object.values(state.walls).some((wall) => !wall.portal);
   /** Strikes waiting for their thrown dice to land, by roll id, oldest first (KAN-76). */
   const waitingStrikes = useRef(new Map<string, { effect: AttackEffect; timer: number }>());
-  const latest = useRef({ state, renderedState, you, gridPreview, onPickTarget, onNukeImpact, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, readOnly: false, suppressLiveEffects: false });
-  latest.current = { state, renderedState, you, gridPreview, onPickTarget, onNukeImpact, gmFog, showWalls, showPortals, readOnly, suppressLiveEffects };
+  const latest = useRef({ tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
+  latest.current = { tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, readOnly, suppressLiveEffects, viewing: [] };
   // Sends nothing while previewing as a player, whatever the board is asked to do. Stable for as
   // long as the connection is, so entering and leaving a preview never rebuilds the board view.
   const guarded = useMemo(() => guardedConnection(connection, () => latest.current.readOnly), [connection]);
@@ -170,12 +201,22 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     const timer = setTimeout(() => setRefusal(null), 4000);
     return () => clearTimeout(timer);
   }, [refusal]);
+  /** Closing the token panel deselects the token, and Token view goes with it. */
+  const deselect = () => { setSelectedId(null); setViewedIds([]); };
   const selected = selectedId ? renderedState.tokens[selectedId] ?? null : null;
   const [movementSettings, setMovementSettings] = useState<MovementSettings>(() => defaultMovementSettings(state.scene.grid));
   const [movementFeedback, setMovementFeedback] = useState("");
   const rulerOrigin = selected && can.moveToken(you, selected) ? selected.position : null;
   const rulerRef = useRef({ settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
   rulerRef.current = { settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
+  const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds) : [];
+  const sightId = sightKey(state, viewing);
+  // Keyed on what shapes the sight, so an unrelated event keeps the same array and the mask is not rebuilt.
+  const sight = useMemo(() => gmSightPolygons(state, viewing), [state.scene, state.walls, state.fog, sightId]);
+  const boardState = useMemo(() => (sight ? { ...renderedState, sight } : renderedState), [renderedState, sight]);
+  latest.current.boardState = boardState;
+  latest.current.viewing = viewing;
+  useEffect(() => viewRef.current?.setViewedTokens(viewing), [viewing.join(",")]);
   const [tool, setTool] = useState<BoardTool>({ kind: "select" });
   const [toolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
   const toolRef = useRef(tool);
@@ -188,6 +229,39 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const placingRef = useRef(placing);
   placingRef.current = placing;
   const source = placing?.source ?? null;
+
+  /** Arrow keys move the selected token one square while the token card's switch is on (WCAG 2.1.1, 2.5.7). */
+  const [arrowKeys, setArrowKeys] = usePersistentState<boolean>("vtt.ui.arrowKeyMove", false, (v): v is boolean => typeof v === "boolean");
+  // One move at a time for the buttons and the keys together: a second step must start from the landed square.
+  const movePending = useRef(false);
+  const moveToken = useCallback(async (tokenId: string, to: Point) => {
+    if (movePending.current) return;
+    movePending.current = true;
+    try {
+      const result = await guarded.command({ type: "token.move", tokenId, to });
+      // Unlike a drag there is no snap-back to show, so say why even when offline.
+      if (!result.ok) setRefusal({ message: result.message, at: Date.now() });
+    } finally {
+      movePending.current = false;
+    }
+  }, [guarded]);
+  const keyMovable = arrowKeys && !readOnly && selected && can.moveToken(you, selected) ? selected : null;
+  const scene = renderedState.scene;
+  useEffect(() => {
+    if (!keyMovable) return;
+    const onKey = (e: KeyboardEvent) => {
+      const step = ARROW_STEPS[e.key];
+      if (!step || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      // Placing a token, a field, a tab list or an open dialog keeps its own arrows.
+      if (placingRef.current || ownsArrowKeys(e.target) || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      const bounds = scene.map ? { width: scene.map.width, height: scene.map.height } : undefined;
+      const to = stepTo(keyMovable.position, scene.grid.cellSize, step[0], step[1], bounds);
+      if (to) void moveToken(keyMovable.id, to);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [keyMovable, scene, moveToken]);
   const ghost = useMemo<PlacementGhost | null>(
     () => source && (source.kind === "create" ? ghostOf(source.draft) : source.ghost),
     [source],
@@ -201,6 +275,18 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     throwsRef.current = next;
     setThrows(next);
   };
+  /** Group and area-effect rolls dropping onto tokens (ADR 0046); their own slots, apart from throws. */
+  const [drops, setDrops] = useState<ActiveDrop[]>([]);
+  const dropsRef = useRef(drops);
+  const setBoardDrops = (next: ActiveDrop[]) => {
+    dropsRef.current = next;
+    setDrops(next);
+  };
+  const dropDone = useCallback((rollId: string) => {
+    const done = dropsRef.current.filter((d) => d.drop.rollId === rollId);
+    setBoardDrops(dropsRef.current.filter((d) => d.drop.rollId !== rollId));
+    done.forEach((d) => d.onGone());
+  }, []);
   /** Attack effects the React overlay is playing, oldest first (board-effects-overlay). */
   const [overlayEffects, setOverlayEffects] = useState<OverlayEffect[]>([]);
   const nextEffectId = useRef(0);
@@ -228,7 +314,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   // Don't leave the Dice panel waiting on dice that are no longer drawn.
   useEffect(
     () => () =>
-      throwsRef.current.forEach((t) => {
+      [...throwsRef.current, ...dropsRef.current].forEach((t) => {
         t.onLanded();
         t.onGone();
       }),
@@ -293,7 +379,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         return result.ok;
       },
       placeToken: (at) => void placeRef.current(at),
-      selectToken: (tokenId) => setSelectedId(tokenId),
+      selectToken: (tokenId, extend) => {
+        // Shift-click adds or removes a token from Token view; the normal selection stays put.
+        if (extend && tokenId && latest.current.tokenView) return setViewedIds((now) => (now.includes(tokenId) ? now.filter((i) => i !== tokenId) : [...now, tokenId]));
+        setSelectedId(tokenId);
+        setViewedIds(tokenId ? [tokenId] : []);
+      },
       cancelPlacement: () => setPlacing(null),
       togglePortal: (wallId, lock) => {
         const portal = latest.current.state.walls[wallId]?.portal;
@@ -311,6 +402,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         latest.current.onPickTarget?.(attackerId, targetId);
       },
       cancelAttack: () => endAttack(),
+      toggleGroupToken: (tokenId) => latest.current.onToggleGroupToken?.(tokenId),
+      pickTemplate: (templateId) => {
+        setTool({ kind: "select" });
+        latest.current.onPickTemplate?.(templateId);
+      },
+      cancelPickTemplate: () => setTool({ kind: "select" }),
     });
 
     let disposed = false;
@@ -321,11 +418,13 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setShowWalls(latest.current.showWalls);
       view.setShowPortals(latest.current.showPortals);
       view.setReadOnly(latest.current.readOnly);
+      view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);
-      view.update(latest.current.renderedState, latest.current.you);
+      view.update(latest.current.boardState, latest.current.you);
       view.setMovementRuler(rulerRef.current.settings, rulerRef.current.origin, rulerRef.current.tokenSize);
       view.setTool(toolRef.current);
       view.setPlacement(ghostRef.current);
+      view.setGroupSelection(latest.current.groupSelection ?? []);
     });
     const stopEphemeral = connection.onEphemeral((_from, payload) => {
       if (latest.current.suppressLiveEffects) return;
@@ -378,8 +477,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [connection]);
 
   useEffect(() => {
-    viewRef.current?.update(renderedState, you);
-  }, [renderedState, you]);
+    viewRef.current?.update(boardState, you);
+  }, [boardState, you]);
 
   useEffect(() => {
     if (replayFrame?.kind !== "event") return;
@@ -427,6 +526,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   useEffect(() => {
     viewRef.current?.setTool(tool);
   }, [tool]);
+
+  useEffect(() => {
+    viewRef.current?.setGroupSelection(groupSelection ?? []);
+  }, [groupSelection]);
 
   useEffect(() => {
     viewRef.current?.setPlacement(ghost);
@@ -527,6 +630,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       if (toolRef.current.kind !== "attack") beforeAttack.current = toolRef.current;
       setTool({ kind: "attack", attackerId: tokenId });
     },
+    startTemplatePick: () => {
+      setPlacing(null);
+      setTool({ kind: "pickTemplate" });
+    },
     showPing: (at: Point) => viewRef.current?.showPing(at),
     aimThrow: (client: Point, velocity: Point) => {
       const view = viewRef.current;
@@ -566,6 +673,27 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       });
       return true;
     },
+    dropDice: (drop: BoardDrop, skin: DiceSkin | null, onLanded: () => void, onGone?: () => void) => {
+      const view = viewRef.current;
+      if (!view || !canAnimateDice(hostRef.current)) return false;
+      let landed = false;
+      const once = () => {
+        if (landed) return;
+        landed = true;
+        onLanded();
+      };
+      const { grid, map } = latest.current.state.scene;
+      // The same die size as a Roll-button throw, so these read as ordinary rolls.
+      const size = boardDieSize(grid, view.transform);
+      // One slot per roll, however many tokens: a big roll never pushes its own dice off.
+      const { kept, evicted } = addDrop(dropsRef.current, { drop, size, skin, map, onLanded: once, onGone: onGone ?? (() => {}) });
+      setBoardDrops(kept);
+      evicted.forEach((e) => {
+        e.onLanded();
+        e.onGone();
+      });
+      return true;
+    },
   }), []);
 
   return (
@@ -583,6 +711,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         </Suspense>
       )}
       {throws.length > 0 && <ThrownDice throws={throws} subscribe={followView} onDone={throwDone} />}
+      {drops.length > 0 && <DroppedDice drops={drops} subscribe={followView} onDone={dropDone} />}
       <div className="board-toolbar">
         {toolbar}
         <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title="Fit the map to the screen">
@@ -593,6 +722,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           <BoardFilters
             value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals }}
             available={{ fog: hasFog, walls: hasWalls, portals: hasPortals }}
+            sight={gmCanSee && losOn ? {
+              checked: tokenView,
+              onChange: (on) => { setTokenView(on); setViewedIds(on && selectedId ? [selectedId] : []); },
+            } : undefined}
             onChange={(next) => {
               setGmFog(next.fog ? "tint" : "off");
               setShowWalls(next.walls);
@@ -601,6 +734,13 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           />
         )}
       </div>
+      {tokenView && gmCanSee && viewing.length === 0 && (
+        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />Select a token to see its view</p>
+      )}
+      {/* Line of sight with no token to see through: the map shows dimmed, and this says why. */}
+      {you.role === "player" && losOn && state.scene.map && state.sight?.length === 0 && (
+        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />You'll see through your token once the GM gives you one</p>
+      )}
       {gridPreview && <p className="grid-preview-label" role="status">Preview · Not applied</p>}
       {!readOnly && !selectOnly && (
       <ToolRail
@@ -633,10 +773,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           state={state}
           you={you}
           readOnly={readOnly}
-          onClose={() => setSelectedId(null)}
+          onClose={deselect}
           // Out of the way of the editor and the placement ghost.
-          onEdit={onEditToken && (() => { setSelectedId(null); onEditToken(selected.id); })}
-          onDuplicate={() => { setSelectedId(null); duplicateToken(selected.id); }}
+          onEdit={onEditToken && (() => { deselect(); onEditToken(selected.id); })}
+          onDuplicate={() => { deselect(); duplicateToken(selected.id); }}
+          onMove={(to) => moveToken(selected.id, to)}
+          arrowKeys={{ on: arrowKeys, onToggle: setArrowKeys }}
         />
       )}
       {placing && (

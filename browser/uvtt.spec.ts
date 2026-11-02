@@ -42,7 +42,8 @@ test("UVTT preview, alignment, portal edits, cancellation, errors, Apply, Undo a
   await expect(editor.getByLabel("Door position Y")).toHaveValue("-25");
   const canvas = editor.getByRole("application");
   await expect(canvas).toBeVisible();
-  await expect(canvas.locator('g[stroke="#ffffff"] line').first()).toHaveAttribute("x1", "12.5");
+  // The first point equals map_origin: it maps to pixel zero before the portal split.
+  await expect(canvas.locator('line[x1="0"][y1="100"][x2="112.5"][y2="100"]')).toHaveCount(2);
   await expect(canvas.locator('line[x1="112.5"][y1="100"][x2="162.5"][y2="100"]')).toHaveCount(2);
   await canvas.screenshot({ path: testInfo.outputPath(`${browserName}-uvtt-preview.png`) });
   const box = await canvas.boundingBox(); expect(box && box.width > 100 && box.height > 100).toBeTruthy();
@@ -52,10 +53,10 @@ test("UVTT preview, alignment, portal edits, cancellation, errors, Apply, Undo a
   await activate(editor.getByRole("button", { name: "Save geometry" }));
   await expect(canvas.locator('line[x1="190"][y1="100"][x2="800"][y2="100"]')).toHaveCount(2);
   await editor.screenshot({ path: testInfo.outputPath(`${browserName}-uvtt-portal-editor.png`) });
-  await activate(editor.getByRole("button", { name: "Close", exact: true }));
+  await activate(editor.getByLabel("Close", { exact: true }));
   await activate(page.getByRole("button", { name: "Keep editing", exact: true }));
   await expect(editor).toBeVisible();
-  await activate(editor.getByRole("button", { name: "Close", exact: true }));
+  await activate(editor.getByLabel("Close", { exact: true }));
   await activate(page.getByRole("button", { name: "Discard", exact: true }));
   await expect(opener).toBeFocused();
   await opener.setInputFiles({ name: "bad.uvtt", mimeType: "application/json", buffer: Buffer.from('{"format":2}') });
@@ -85,7 +86,7 @@ test("UVTT preview, alignment, portal edits, cancellation, errors, Apply, Undo a
   expect(output.resolution.map_origin).toEqual({ x: 0.75, y: 0.5 });
   await input.setInputFiles({ name: "roundtrip.uvtt", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(output)) });
   await expect(editor.getByText(/Draft map: only you see it|Unsaved changes: only you see them/)).toBeVisible();
-  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  await editor.getByLabel("Close", { exact: true }).click();
   await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "Activity log", exact: true }).click();
   const history = page.getByRole("dialog", { name: "Activity log", exact: true });

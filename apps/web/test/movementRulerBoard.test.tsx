@@ -9,7 +9,7 @@ const mock = vi.hoisted(() => ({ ruler: vi.fn(), callbacks: null as BoardCallbac
 vi.mock("../src/board/boardView", () => ({ BoardView: class {
   constructor(_host: unknown, callbacks: BoardCallbacks) { mock.callbacks = callbacks; }
   init = async () => {};
-  destroy() {} update() {} setGmFogView() {} setShowWalls() {} setShowPortals() {} setReadOnly() {} setGridPreview() {} setTool() {} setPlacement() {}
+  destroy() {} update() {} setGmFogView() {} setShowWalls() {} setShowPortals() {} setReadOnly() {} setGridPreview() {} setTool() {} setPlacement() {} setViewedTokens() {} setGroupSelection() {}
   setMovementRuler = mock.ruler;
 } }));
 vi.mock("../src/board/TokenCard", () => ({ TokenCard: () => null }));
@@ -31,7 +31,7 @@ describe("personal movement planner board integration (FR-TAC-03)", () => {
     act(() => mock.callbacks!.selectToken("owned"));
     fireEvent.click(screen.getByRole("button", { name: "Measure" }));
     expect(mock.ruler).toHaveBeenLastCalledWith({ allowance: 30, rule: "equal" }, owned.position, 2);
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Movement allowance (ft)" }), { target: { value: "40" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Movement (ft)" }), { target: { value: "40" } });
     expect(mock.ruler).toHaveBeenLastCalledWith({ allowance: 40, rule: "equal" }, owned.position, 2);
     act(() => mock.callbacks!.movementFeedback!("20 / 40 ft · 20 ft remaining"));
     expect(screen.getByRole("status").textContent).toBe("20 / 40 ft · 20 ft remaining");

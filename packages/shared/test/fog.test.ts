@@ -20,6 +20,7 @@ import {
   type FogRegion,
   type Participant,
   type RoomState,
+  isDiceRoll
 } from "../src";
 import { alice, attempt, baseRoom, bob, ctx, gm, run, withToken } from "./fixtures";
 
@@ -202,7 +203,7 @@ describe("content under fog is not sent to players (FR-GM-17, FR-GM-23)", () => 
     const { state } = addFog(rolled);
     const view = filterStateForViewer(state, alice);
     expect(view.initiative?.order).toEqual([hero.id]);
-    expect(view.rolls.at(-1)?.attack?.target).toBeNull();
+    expect(view.rolls.filter(isDiceRoll).at(-1)?.attack?.target).toBeNull();
     expect(JSON.stringify(view)).not.toContain("Goblin");
   });
 });
@@ -241,11 +242,11 @@ describe("fog review fixes (FR-GM-17, FR-GM-23)", () => {
     const { state: s2, token: lurker } = withToken(moved, { name: "Lurker" });
     const { state: fogged, region } = addFog(s2);
     const rolled = run(fogged, gm, { type: "dice.roll", expression: "1d20", attack: { actorTokenId: lurker.id, targetTokenId: hero.id } }).state;
-    expect(filterStateForViewer(rolled, alice).rolls.at(-1)?.attack?.actor).toBeNull();
+    expect(filterStateForViewer(rolled, alice).rolls.filter(isDiceRoll).at(-1)?.attack?.actor).toBeNull();
     const deleted = run(rolled, gm, { type: "token.delete", tokenId: lurker.id }).state;
     expect(JSON.stringify(filterStateForViewer(deleted, alice))).not.toContain("Lurker");
     const revealed = run(rolled, gm, { type: "fog.remove", regionId: region.id }).state;
-    expect(filterStateForViewer(revealed, alice).rolls.at(-1)?.attack?.actor).toBeNull();
+    expect(filterStateForViewer(revealed, alice).rolls.filter(isDiceRoll).at(-1)?.attack?.actor).toBeNull();
   });
 
   it("marks sides hidden when an unowned token moves into fog after the roll", () => {
@@ -256,7 +257,7 @@ describe("fog review fixes (FR-GM-17, FR-GM-23)", () => {
     const rolled = run(out, alice, { type: "dice.roll", expression: "1d20", attack: { actorTokenId: hero.id, targetTokenId: goblin.id } }).state;
     const back = run(rolled, gm, { type: "token.move", tokenId: goblin.id, to: { x: 35, y: 35 } }).state;
     const deleted = run(back, gm, { type: "token.delete", tokenId: goblin.id }).state;
-    expect(filterStateForViewer(deleted, alice).rolls.at(-1)?.attack?.target).toBeNull();
+    expect(filterStateForViewer(deleted, alice).rolls.filter(isDiceRoll).at(-1)?.attack?.target).toBeNull();
   });
 
   it("filters the turn order carried by InitiativeEnded", () => {

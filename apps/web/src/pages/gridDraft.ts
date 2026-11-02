@@ -13,6 +13,17 @@ export interface GridDraft {
   lineOpacity?: number;
 }
 
+/** Session intent is independent of value equality and survives grid-tab remounts. */
+export interface GridSuggestionSession { blocked: boolean; applied: boolean }
+export const newGridSuggestionSession = (): GridSuggestionSession => ({ blocked: false, applied: false });
+
+/** Lives beside the draft so geometry and the first editable frame commit together. */
+export interface GridPreparation {
+  phase: "checking" | "waiting" | "editable";
+  notice: string | null;
+}
+export const newGridPreparation = (wait: boolean): GridPreparation => ({ phase: wait ? "checking" : "editable", notice: null });
+
 export function toGridDraft(grid: GridSpec): GridDraft {
   return {
     cellSize: String(grid.cellSize),

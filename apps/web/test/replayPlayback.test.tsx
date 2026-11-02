@@ -15,9 +15,9 @@ it("delivers the historical event when advancing, and clears it when stepping ba
   vi.spyOn(api, "replay").mockResolvedValue(replay);
   const show = vi.fn();
   render(<ReplayBar roomId="r1" token="token" onShow={show} onExit={() => {}} />);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Next step" }).hasAttribute("disabled")).toBe(false));
-  fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Forward one step" }).hasAttribute("disabled")).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "Forward one step" }));
   await waitFor(() => expect(show).toHaveBeenLastCalledWith(expect.objectContaining({ scene: expect.objectContaining({ grid: expect.objectContaining({ cellSize: 100 }) }) }), replay.frames[0]));
-  fireEvent.click(screen.getByRole("button", { name: "Previous step" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back one step" }));
   await waitFor(() => expect(show).toHaveBeenLastCalledWith(replay.start, null));
 });

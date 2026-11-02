@@ -21,7 +21,6 @@ beforeEach(() => {
   stubMapEditorEnvironment();
   vi.spyOn(api.walls, "availability").mockResolvedValue({ available: true });
   vi.spyOn(api.walls, "status").mockResolvedValue(null);
-  vi.spyOn(api.walls, "preview").mockResolvedValue(new Blob(["png"]));
   vi.spyOn(api.walls, "detected").mockResolvedValue({ resultId: "result-a", walls: detectedRows(7) });
 });
 afterEach(() => {
@@ -182,41 +181,73 @@ describe("map editor walls (FR-GM-09, FR-GM-11)", () => {
     await waitFor(() => expect(detect).toHaveBeenCalledWith("r1", TOKEN, expect.objectContaining({ sample: { x: 321, y: 123 }, tolerance: 18 })));
   });
 
-  it("shows how many walls a finished detection found and applies them", async () => {
+  it("opens a modal preview when detection finishes, and Apply adds the walls to the draft (FR-GM-09, FR-GM-11)", async () => {
     const fake = mount();
-    await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
+    const button = await screen.findByRole("button", { name: "Detect walls" });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
 
-    expect(await screen.findByText(/7 walls found\./)).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: "Apply 7 walls" }));
+    const dialog = await screen.findByRole("dialog", { name: "Detected walls" });
+    expect(within(dialog).getByText("7 walls found.")).toBeTruthy();
+    expect(within(dialog).getAllByRole("button", { name: /^Detected wall/ })).toHaveLength(7);
+    // The old overlay on the canvas and the side-panel figure are gone.
+    expect(screen.queryByTestId("wall-candidates")).toBeNull();
+    expect(fake.commands).toEqual([]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 7 walls" }));
     await waitFor(() => expect(fake.commands).toEqual([{ type: "wall.applyDetected", mapUrl: MAP_URL }]));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull());
   });
 
-  it("erases a detected wall on the canvas before applying, and brings it back on a second click", async () => {
+  it("tells walls, doors and windows and their states apart in the preview and legend (FR-GM-11)", async () => {
+    const rows = detectedRows(4);
+    vi.spyOn(api.walls, "detected").mockResolvedValue({
+      resultId: "result-a",
+      walls: [
+        rows[0]!,
+        { ...rows[1]!, portal: { kind: "door", state: "locked" } },
+        { ...rows[2]!, portal: { kind: "window", state: "open" } },
+        { ...rows[3]!, portal: { kind: "door", state: "closed" }, confidence: 0.3 },
+      ],
+    });
+    const fake = mount();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
+    fake.notify({ status: "done", wallCount: 4, width: 800, height: 600 });
+    const dialog = await screen.findByRole("dialog", { name: "Detected walls" });
+    expect(within(dialog).getByText("4 walls found: 1 wall, 2 doors, 1 window.")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Detected wall 2, door, locked" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Detected wall 3, window, open" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Detected wall 4, door, closed, doubtful" })).toBeTruthy();
+    const legend = within(within(dialog).getByRole("list", { name: "Detected wall colours" }));
+    for (const entry of ["Wall", "Door", "Window", "Closed", "Open", "Locked", "Doubtful"]) expect(legend.getByText(entry)).toBeTruthy();
+    expect(legend.queryByText("Erased")).toBeNull();
+  });
+
+  it("Discard adds nothing and leaves Detect walls ready (FR-GM-09)", async () => {
+    const fake = mount();
+    const button = await screen.findByRole("button", { name: "Detect walls" });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
+    const dialog = await screen.findByRole("dialog", { name: "Detected walls" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull());
+    expect(fake.commands).toEqual([]);
+    // Focus return is the shared Modal's `close` event, which the jsdom stub doesn't fire; the Detect walls button is back and enabled.
+    expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("Escape discards the preview (FR-GM-09)", async () => {
     const fake = mount();
     await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
     fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
-    await screen.findByRole("button", { name: "Apply 7 walls" });
-    await waitFor(() => expect(screen.getByTestId("wall-candidates").children).toHaveLength(7));
-
-    fireEvent.click(tool("Erase"));
-    // The third detected wall runs along y = 250.
-    click(canvas(), { x: 135, y: 252 });
-    expect(await screen.findByRole("button", { name: "Apply 6 walls" })).toBeTruthy();
-    click(canvas(), { x: 135, y: 252 });
-    expect(await screen.findByRole("button", { name: "Apply 7 walls" })).toBeTruthy();
-    click(canvas(), { x: 135, y: 252 });
-    click(canvas(), { x: 135, y: 52 });
-    fireEvent.click(await screen.findByRole("button", { name: "Apply 5 walls" }));
-    await waitFor(() => expect(fake.commands).toEqual([
-      { type: "wall.applyDetected", mapUrl: MAP_URL, exclude: { resultId: "result-a", indices: [0, 2] } },
-    ]));
-    // Nothing the GM erased reaches the room's own walls.
-    expect(fake.commands.some((c) => c.type === "wall.remove")).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: "Detected walls" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull());
+    expect(fake.commands).toEqual([]);
   });
 
   describe("doubtful walls (wall-review)", () => {
-    /** Seven rows; rows 1, 3 and 4 (y = 150, 350, 450) score below the threshold. */
+    /** Seven rows; rows 1, 3 and 4 score below the threshold. */
     const SCORES = [0.95, 0.4, 0.9, 0.55, 0.3, 0.8, 0.99];
     const scored = () => detectedRows(7).map((w, i) => ({ ...w, confidence: SCORES[i] }));
     const detectWithScores = async () => {
@@ -224,19 +255,16 @@ describe("map editor walls (FR-GM-09, FR-GM-11)", () => {
       const fake = mount();
       await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
       fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
-      await screen.findByRole("button", { name: "Apply 7 walls" });
-      await waitFor(() => expect(screen.getByTestId("wall-candidates").children).toHaveLength(7));
-      return fake;
+      return { fake, dialog: await screen.findByRole("dialog", { name: "Detected walls" }) };
     };
 
-    it("draws doubtful walls amber and dashed, with a legend and a count", async () => {
-      await detectWithScores();
-      const marked = screen.getByTestId("wall-candidates").querySelectorAll("[data-doubtful='true']");
+    it("draws doubtful walls with a pink dashed halo in the preview, with a legend", async () => {
+      const { dialog } = await detectWithScores();
+      const marked = dialog.querySelectorAll("g[data-doubtful='true'] > line[stroke-dasharray]");
       expect(marked).toHaveLength(3);
-      const line = marked[0]!.querySelector("line[stroke-dasharray]")!;
-      expect(line.getAttribute("stroke")).toBe("#ffb020");
-      expect(screen.getByRole("list", { name: "Detected wall colours" })).toBeTruthy();
-      expect(screen.getByText("3 doubtful walls")).toBeTruthy();
+      expect(marked[0]!.getAttribute("stroke")).toBe("#ff5fa2");
+      expect(marked[0]!.getAttribute("stroke-dasharray")).toBeTruthy();
+      expect(within(dialog).getByRole("list", { name: "Detected wall colours" })).toBeTruthy();
     });
 
     it("shows no doubtful walls when the result has no confidences", async () => {
@@ -244,39 +272,48 @@ describe("map editor walls (FR-GM-09, FR-GM-11)", () => {
       await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
       fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
       await screen.findByRole("button", { name: "Apply 7 walls" });
-      expect(screen.queryByText(/doubtful/)).toBeNull();
+      expect(screen.queryByText(/Doubtful/)).toBeNull();
       expect(screen.queryByRole("button", { name: /confident walls only/ })).toBeNull();
     });
 
-    it("steps through the doubtful walls, erasing one and keeping another", async () => {
-      const fake = await detectWithScores();
-      fireEvent.click(screen.getByRole("button", { name: "Review doubtful walls" }));
-      expect(screen.getByText("Wall 1 of 3")).toBeTruthy();
-      expect(screen.getByTestId("wall-candidates").querySelector("[data-focus='true']")).toBe(screen.getByTestId("wall-candidates").children[1]);
-      fireEvent.click(screen.getByRole("button", { name: "Erase" }));
-      expect(screen.getByText("Wall 2 of 3")).toBeTruthy();
-      expect(screen.getByText("2 doubtful walls")).toBeTruthy();
-      fireEvent.click(screen.getByRole("button", { name: "Keep" }));
-      fireEvent.click(screen.getByRole("button", { name: "Back" }));
-      expect(screen.getByText("Wall 2 of 3")).toBeTruthy();
-      fireEvent.click(screen.getByRole("button", { name: "Keep" }));
-      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
-      expect(screen.getByRole("button", { name: "Review doubtful walls" })).toBeTruthy();
-      fireEvent.click(await screen.findByRole("button", { name: "Apply 6 walls" }));
+    const wall = (dialog: HTMLElement, n: number) => within(dialog).getByRole("button", { name: new RegExp(`^Detected wall ${n}\\b`) });
+
+    it("counts doubtful walls not erased, and erasing in the modal sends the index on Apply", async () => {
+      const { fake, dialog } = await detectWithScores();
+      expect(within(dialog).getByText("3 doubtful walls")).toBeTruthy();
+      fireEvent.click(wall(dialog, 2));
+      expect(wall(dialog, 2).getAttribute("aria-pressed")).toBe("true");
+      expect(within(dialog).getByText("2 doubtful walls")).toBeTruthy();
+      fireEvent.click(wall(dialog, 1));
+      fireEvent.click(wall(dialog, 1));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply 6 walls" }));
       await waitFor(() => expect(fake.commands).toEqual([
         { type: "wall.applyDetected", mapUrl: MAP_URL, exclude: { resultId: "result-a", indices: [1] } },
       ]));
     });
 
-    it("applies confident walls only by excluding the doubtful and the erased", async () => {
-      const fake = await detectWithScores();
-      fireEvent.click(tool("Erase"));
-      // Erase a confident wall too (row 0), and a doubtful one (row 1).
-      click(canvas(), { x: 135, y: 52 });
-      click(canvas(), { x: 135, y: 152 });
-      fireEvent.click(await screen.findByRole("button", { name: "Apply confident walls only (3)" }));
+    it("steps through doubtful walls, erasing and keeping", async () => {
+      const { fake, dialog } = await detectWithScores();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Review doubtful walls" }));
+      expect(within(dialog).getByText("Wall 1 of 3")).toBeTruthy();
+      expect(dialog.querySelector("g[data-focus='true']")).toBe(wall(dialog, 2));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Erase" }));
+      expect(within(dialog).getByText("Wall 2 of 3")).toBeTruthy();
+      expect(within(dialog).getByText("2 doubtful walls")).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Keep" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Finish" }));
+      expect(within(dialog).getByRole("button", { name: "Review doubtful walls" })).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply 6 walls" }));
       await waitFor(() => expect(fake.commands).toEqual([
-        { type: "wall.applyDetected", mapUrl: MAP_URL, exclude: { resultId: "result-a", indices: [0, 1, 3, 4] } },
+        { type: "wall.applyDetected", mapUrl: MAP_URL, exclude: { resultId: "result-a", indices: [1] } },
+      ]));
+    });
+
+    it("applies confident walls only by excluding the doubtful ones", async () => {
+      const { fake, dialog } = await detectWithScores();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply confident walls only (4)" }));
+      await waitFor(() => expect(fake.commands).toEqual([
+        { type: "wall.applyDetected", mapUrl: MAP_URL, exclude: { resultId: "result-a", indices: [1, 3, 4] } },
       ]));
     });
   });
@@ -284,8 +321,8 @@ describe("map editor walls (FR-GM-09, FR-GM-11)", () => {
   it("offers Replace when walls already exist", async () => {
     const fake = mount(room({ walls: [{ id: "w1", a: { x: 0, y: 0 }, b: { x: 50, y: 0 } }] }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Detect walls" }) as HTMLButtonElement).disabled).toBe(false));
-    fake.notify({ status: "done", wallCount: 3, width: 800, height: 600 });
-    expect(await screen.findByRole("button", { name: "Replace with 3 walls" })).toBeTruthy();
+    fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
+    expect(await screen.findByRole("button", { name: "Replace with 7 walls" })).toBeTruthy();
   });
 });
 
@@ -327,12 +364,12 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     const fake = mount(room());
     fireEvent.click(screen.getByRole("button", { name: "Edit map" })); fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
     fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
-    await waitFor(() => expect(screen.getByTestId("wall-candidates").children).toHaveLength(7));
+    await screen.findByRole("dialog", { name: "Detected walls" });
     let complete!: (result: DetectedWallsResponse) => void;
     vi.mocked(api.walls.detected).mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
     fireEvent.click(screen.getByRole("button", { name: "Apply 7 walls" }));
     const editor = screen.getByRole("dialog", { name: "Edit map" });
-    fireEvent.click(within(editor).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(editor.querySelector<HTMLElement>(".modal-head")!).getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit map" })); fireEvent.click(screen.getByRole("tab", { name: "2 · Grid" }));
     await act(async () => { complete({ resultId: "result-a", walls: detectedRows(7) }); });
     expect(screen.queryByText(/Unsaved changes/)).toBeNull();
@@ -345,7 +382,7 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     vi.mocked(api.walls.detected).mockResolvedValue({ resultId: "large-result", walls });
     fireEvent.click(screen.getByRole("button", { name: "Edit map" })); fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
     fake.notify({ status: "done", wallCount: walls.length, width: 800, height: 600 });
-    await waitFor(() => expect(screen.getByTestId("wall-candidates").children).toHaveLength(walls.length));
+    await screen.findByRole("dialog", { name: "Detected walls" });
     fireEvent.click(screen.getByRole("button", { name: `Apply ${walls.length} walls` }));
     await screen.findByText(/Unsaved changes/);
     let complete!: () => void;

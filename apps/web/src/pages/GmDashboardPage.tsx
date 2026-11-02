@@ -3,7 +3,6 @@ import { presetOf } from "@vtt/shared";
 import type { EncounterSummary, GmRoomSummary, LegacySummary, MyRoomsResponse } from "@vtt/shared";
 import { AccountMenu } from "../account/AccountPages";
 import { RequireAccount } from "../account/RequireAccount";
-import { Link } from "../Link";
 import { api, ApiError } from "../net/api";
 import { forgetGmToken } from "../net/identity";
 import { legacyOffer } from "../net/legacy";
@@ -11,6 +10,8 @@ import { ensureSeat } from "../net/seats";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
 import { formatRelative } from "../ui/formatRelative";
+import { EmptyState } from "../ui/EmptyState";
+import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
 
 /**
@@ -44,25 +45,23 @@ function Dashboard() {
   }, [refresh]);
 
   return (
-    <main className="home gm-page">
-      <header className="home-header">
-        <Link href="/" className="brand">
-          Virtual Tabletop
-        </Link>
-        <nav className="home-nav">
-          <Link href="/library">Asset library</Link>
-          <AccountMenu />
-        </nav>
-      </header>
+    <>
+    <div className="page-shell page-bar">
+      <SiteHeader nav={<HubNav current="rooms" />} account={<AccountMenu />} />
+    </div>
+    <main className="page-shell home gm-page">
       <h1>Your rooms</h1>
       <LegacyMoveBanner onMoved={() => setRefresh((n) => n + 1)} />
-      <div className="home-grid">
+      <div className="dashboard-grid">
         <CreateRoomCard />
-        <HostingCard state={rooms} onDeleted={(id) => setRooms((s) => withoutRoom(s, id))} />
-        <PlayingCard state={rooms} />
+        <div className="room-sections">
+          <HostingCard state={rooms} onDeleted={(id) => setRooms((s) => withoutRoom(s, id))} />
+          <PlayingCard state={rooms} />
+        </div>
       </div>
       <p className="muted small-print">Your rooms and library are saved to your account, on any device you sign in on.</p>
     </main>
+    </>
   );
 }
 
@@ -102,7 +101,7 @@ function CreateRoomCard() {
   }
 
   return (
-    <form className="card" aria-labelledby="create-room-heading" onSubmit={onSubmit}>
+    <form className="card create-room" aria-labelledby="create-room-heading" onSubmit={onSubmit}>
       <h2 id="create-room-heading">Create a room</h2>
       <RoomDetailsFields value={details} onChange={setDetails} />
       {templates.length > 0 && (
@@ -121,7 +120,7 @@ function CreateRoomCard() {
           {error}
         </p>
       )}
-      <button type="submit" disabled={busy}>
+      <button className="primary" type="submit" disabled={busy}>
         {busy ? "Creating…" : "Create room"}
       </button>
     </form>
@@ -149,15 +148,19 @@ function useOpenRoom() {
   return { open, opening, error };
 }
 
-function RoomRow(props: { room: GmRoomSummary; opening: boolean; onOpen: () => void; onDelete?: () => void }) {
+/**
+ * One room, as a card: its name in full, its game and when it was last active, and the way in.
+ * Open stays neutral because a list of rooms has no single main action (design-language).
+ */
+function RoomCard(props: { room: GmRoomSummary; opening: boolean; onOpen: () => void; onDelete?: () => void }) {
   const name = props.room.name || "Untitled room";
   return (
-    <li>
-      <div>
-        <strong>{name}</strong>
-        <span className="muted"> · {presetOf(props.room).name} · active {formatRelative(props.room.lastActiveAt)}</span>
-      </div>
-      <div className="row">
+    <li className="room-card">
+      <strong className="room-card-name">{name}</strong>
+      <span className="muted room-card-meta">
+        {presetOf(props.room).name} · active {formatRelative(props.room.lastActiveAt)}
+      </span>
+      <div className="row room-card-actions">
         <button type="button" className="secondary small" onClick={props.onOpen} disabled={props.opening}>
           {props.opening ? "Opening…" : "Open"}
         </button>
@@ -169,6 +172,11 @@ function RoomRow(props: { room: GmRoomSummary; opening: boolean; onOpen: () => v
       </div>
     </li>
   );
+}
+
+/** The empty state's one action: the create form is beside it, so take the GM there. */
+function focusCreateRoom() {
+  document.querySelector<HTMLInputElement>(".create-room input")?.focus();
 }
 
 /** Rooms the account owns. */
@@ -197,12 +205,15 @@ function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: 
 
   const hosting = state.status === "loaded" ? state.rooms.hosting : [];
   return (
-    <section className="card" aria-labelledby="hosting-heading">
+    <section className="room-section" aria-labelledby="hosting-heading" aria-busy={state.status === "loading"}>
       <h2 id="hosting-heading">Hosting</h2>
       {state.status === "loading" && (
-        <p className="muted" aria-busy="true">
-          Loading…
-        </p>
+        // Cards shaped like the rooms that will replace them, not a spinner.
+        <ul className="plain room-grid" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="room-card skeleton" />
+          ))}
+        </ul>
       )}
       {state.status === "failed" && (
         <p role="alert" className="error">
@@ -215,12 +226,21 @@ function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: 
         </p>
       )}
       {state.status === "loaded" && hosting.length === 0 && (
-        <p className="muted">No rooms yet. Create your first one and send your players the link.</p>
+        <EmptyState
+          picture="empty-rooms"
+          action={
+            <button type="button" onClick={focusCreateRoom}>
+              Create a room
+            </button>
+          }
+        >
+          No rooms yet. Create your first one and send your players the link.
+        </EmptyState>
       )}
       {hosting.length > 0 && (
-        <ul className="plain room-list">
+        <ul className="plain room-grid">
           {hosting.map((room) => (
-            <RoomRow
+            <RoomCard
               key={room.id}
               room={room}
               opening={opening === room.id}
@@ -266,16 +286,16 @@ function PlayingCard({ state }: { state: RoomsState }) {
   const { open, opening, error } = useOpenRoom();
   if (state.status !== "loaded" || state.rooms.playing.length === 0) return null;
   return (
-    <section className="card" aria-labelledby="playing-heading">
+    <section className="room-section" aria-labelledby="playing-heading">
       <h2 id="playing-heading">Playing</h2>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
-      <ul className="plain room-list">
+      <ul className="plain room-grid">
         {state.rooms.playing.map((room) => (
-          <RoomRow key={room.id} room={room} opening={opening === room.id} onOpen={() => void open(room)} />
+          <RoomCard key={room.id} room={room} opening={opening === room.id} onOpen={() => void open(room)} />
         ))}
       </ul>
     </section>
@@ -350,7 +370,7 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
         </p>
       )}
       <div className="row">
-        <button type="button" onClick={() => void move(state.summary)} disabled={state.status === "moving"}>
+        <button type="button" className="primary" onClick={() => void move(state.summary)} disabled={state.status === "moving"}>
           {state.status === "moving" ? "Moving…" : "Move into my account"}
         </button>
         <button type="button" className="secondary" onClick={() => setDismissed(true)} disabled={state.status === "moving"}>

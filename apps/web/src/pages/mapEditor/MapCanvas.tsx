@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type WheelEvent } from "react";
-import { gridLineStyle, type GridSpec, type MapImage, type Point } from "@vtt/shared";
+import { MapGuide } from "./EditorGuide";
+import { GridLines, MapFilter } from "./GridLines";
+import { type GridSpec, type MapImage, type Point } from "@vtt/shared";
 
 /** A press that moves further than this is a drag, not a click. */
 const CLICK_SLOP_PX = 4;
@@ -34,7 +36,7 @@ export interface CanvasView {
  * draw their own layers as `children` and choose what a click or drag does.
  */
 export function MapCanvas({
-  map, grid, mode, pan, label, focus, onMove, onPress, onRelease, onCancel, onSecondary, onKeyDown, children,
+  map, grid, mode, pan, label, className, focus, onMove, onPress, onRelease, onCancel, onSecondary, onKeyDown, children,
 }: {
   map: MapImage;
   grid: GridSpec;
@@ -43,6 +45,8 @@ export function MapCanvas({
   /** The step's Pan tool is chosen: every drag moves the view. */
   pan: boolean;
   label: string;
+  /** Extra class on the SVG, for a step's own styling and tests. */
+  className?: string;
   /** A map point to bring into view (zoomed in at least to FOCUS_ZOOM) whenever it changes. */
   focus?: Point | null;
   /** The pointer moved over the map, or left it (null). */
@@ -174,21 +178,11 @@ export function MapCanvas({
   };
 
   const px = 1 / scale;
-  /** The grid as the board draws it, so Walls and Fog show the colour set in the Grid step. */
-  const lineStyle = gridLineStyle(grid);
-  const gridLines = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    if (grid.cellSize * scale < 6) return lines;
-    for (let x = grid.offsetX % grid.cellSize; x <= map.width; x += grid.cellSize) lines.push({ x1: x, y1: 0, x2: x, y2: map.height });
-    for (let y = grid.offsetY % grid.cellSize; y <= map.height; y += grid.cellSize) lines.push({ x1: 0, y1: y, x2: map.width, y2: y });
-    return lines;
-  }, [grid, map, scale]);
-
   return (
     <div className="wall-canvas">
       <svg
         ref={svgRef}
-        className={`wall-canvas-svg mode-${space ? "pan" : mode}`}
+        className={`wall-canvas-svg mode-${space ? "pan" : mode}${className ? ` ${className}` : ""}`}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
         tabIndex={0}
         role="application"
@@ -198,6 +192,7 @@ export function MapCanvas({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={(e) => {
+          if (press.current) onCancel?.();
           press.current = null;
           endPointer(e);
         }}
@@ -207,11 +202,11 @@ export function MapCanvas({
         onContextMenu={(e) => e.preventDefault()}
       >
         <image href={map.url} x={0} y={0} width={map.width} height={map.height} preserveAspectRatio="none" />
-        <g stroke={lineStyle.color} strokeOpacity={lineStyle.opacity} strokeWidth={lineStyle.width}>
-          {gridLines.map((l, i) => <line key={i} {...l} />)}
-        </g>
+        <GridLines grid={grid} map={map} scale={scale} />
         {children({ scale, px })}
       </svg>
+      <MapGuide />
+      <MapFilter />
       <div className="wall-canvas-zoom" role="group" aria-label="Zoom">
         <button type="button" className="secondary small" onClick={() => setCamera((c) => ({ ...c, zoom: Math.min(MAX_ZOOM, c.zoom * 1.5) }))}>+</button>
         <button type="button" className="secondary small" onClick={() => setCamera((c) => ({ ...c, zoom: Math.max(1, c.zoom / 1.5) }))}>−</button>

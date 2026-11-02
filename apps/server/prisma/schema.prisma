@@ -172,6 +172,10 @@ model LibraryAsset {
   grid      Json?
   /// Walls and fog prepared on the map (ADR 0037): a LibraryMapBoard, or null for none.
   board     Json?
+  sourceHash String? @map("source_hash")
+  detectionSourceHash String? @map("detection_source_hash")
+  detectionVersion String? @map("detection_version")
+  detectionError String? @map("detection_error")
   detectionStatus String? @map("detection_status")
   detectionAttempt Int @default(0) @map("detection_attempt")
   detectionResult Json? @map("detection_result")
@@ -260,6 +264,10 @@ model RoomUpload {
   purpose String @default("token")
   width Int?
   height Int?
+  sourceHash String? @map("source_hash")
+  detectionSourceHash String? @map("detection_source_hash")
+  detectionVersion String? @map("detection_version")
+  detectionError String? @map("detection_error")
   detectionStatus String? @map("detection_status")
   detectionAttempt Int @default(0) @map("detection_attempt")
   detectionResult Json? @map("detection_result")

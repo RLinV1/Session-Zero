@@ -1,4 +1,4 @@
-import { formatAttackParties } from "./dice";
+import { findDiceRoll, formatAttackParties } from "./dice";
 import type { CommittedEvent, DomainEvent } from "./events";
 import { describePortalChange } from "./portals";
 import { normalizeName } from "./decide";
@@ -44,6 +44,8 @@ export const REVERSIBLE_EVENT_TYPES = [
   "GroupRenamed",
   "GroupDeleted",
   "TokensGrouped",
+  // ADR 0046: the closing mark of a resolve; the HP and condition changes before it carry the values.
+  "AreaEffectResolved",
   "LineOfSightSet", // ADR 0044
   "SightRangeSet",
 ] as const;
@@ -168,7 +170,7 @@ function withLabels(
     const token = state.tokens[event.tokenId];
     return token ? { tokenNames: { ...tokenNames, [token.id]: token.name }, rollLabels } : { tokenNames, rollLabels };
   }
-  const roll = state.rolls.find((r) => r.id === event.rollId);
+  const roll = findDiceRoll(state.rolls, event.rollId);
   return roll?.attack
     ? { tokenNames, rollLabels: { ...rollLabels, [roll.id]: formatAttackParties(roll.attack) } }
     : { tokenNames, rollLabels };
@@ -187,8 +189,10 @@ export function undoableAction(history: readonly UndoEntry[], commandId: string)
  */
 function canUndo(entry: UndoEntry): boolean {
   if (!entry.undoable || entry.events.length === 0) return false;
+  // A resolve that changed no token has nothing to put back (ADR 0046).
+  if (entry.events.every((e) => e.type === "AreaEffectResolved")) return false;
   const statsEdit = entry.events.some((e) => e.type === "TokenStatsSet");
-  return !statsEdit || entry.events.some((e) => e.type === "RollDamageApplied" || e.type === "MapNuked");
+  return !statsEdit || entry.events.some((e) => e.type === "RollDamageApplied" || e.type === "MapNuked" || e.type === "AreaEffectResolved");
 }
 
 /** The compensating events that restore what `event` replaced (invariant 6), in order. */
@@ -224,12 +228,16 @@ export function inverseOf(event: ReversibleEvent): DomainEvent[] {
         changes: tokenIds.map((tokenId) => ({ tokenId, previous: event.groupId })),
       }));
     }
+    case "AreaEffectResolved":
+      // Undo puts back HP and conditions but never reopens the effect (ADR 0046): another may be
+      // open by now, and a player should not get a damage prompt back.
+      return [];
     default:
       return [inverseOfOne(event)];
   }
 }
 
-type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "InitiativeStarted" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" }>;
+type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "InitiativeStarted" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" | "AreaEffectResolved" }>;
 
 /** The single compensating event for the reversible types that need only one. */
 function inverseOfOne(event: SingleInverse): DomainEvent {
@@ -384,10 +392,11 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
       continue;
     }
     // The blast has no value of its own to compare: the stats changes in the same action are checked.
-    if (event.type === "MapNuked") continue;
+    // Nor does a resolve's closing mark (ADR 0046).
+    if (event.type === "MapNuked" || event.type === "AreaEffectResolved") continue;
     if (!("tokenId" in event)) {
       // Rulings and applications only exist on rolls still in the state window (ADR 0011).
-      const roll = state.rolls.find((r) => r.id === event.rollId);
+      const roll = findDiceRoll(state.rolls, event.rollId);
       const label = entry.rollLabels[event.rollId] ?? "that roll";
       if (!roll) return `Can't undo: ${label} is no longer in the roll log.`;
       const current = event.type === "RollRuled" ? (roll.verdict ?? null) === event.verdict : roll.damageApplied === true;
@@ -534,6 +543,12 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"]): { v
   }
   const nuked = entry.events.find((e) => e.type === "MapNuked");
   if (nuked) return { verb: `nuke (${nuked.amount})`, noun: `the nuke for ${nuked.amount} damage` };
+  const resolved = entry.events.find((e) => e.type === "AreaEffectResolved");
+  if (resolved) {
+    const count = resolved.effect.targets.length;
+    const what = `${resolved.effect.label ? `"${resolved.effect.label}"` : "area effect"} (${count} ${count === 1 ? "target" : "targets"})`;
+    return { verb: what, noun: `resolving ${what}` };
+  }
   const first = entry.events[0];
   if (!first) return { verb: "last action", noun: "an action" };
   if (first.type === "MapSet") {
@@ -542,8 +557,9 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"]): { v
     const action = first.map ? first.previous ? "map replacement" : "map placement" : "map removal";
     return { verb: `${action}${positions}`, noun: `the ${action}${positions}` };
   }
-  // Unreachable once `nuked` is handled; narrows `first` for the token cases below.
+  // Unreachable once `nuked` and `resolved` are handled; narrows `first` for the token cases below.
   if (first.type === "MapNuked") return { verb: "nuke", noun: "the nuke" };
+  if (first.type === "AreaEffectResolved") return { verb: "area effect", noun: "resolving an area effect" };
   if (first.type === "CheckpointRestored") {
     return { verb: `restore of "${first.name}"`, noun: `restoring checkpoint "${first.name}"` };
   }

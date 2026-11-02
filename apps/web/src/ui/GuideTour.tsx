@@ -4,7 +4,7 @@ import { guideSteps, placeCard, type GuideStep, type Rect, type Role } from "./g
 const PAD = 6;
 
 function findTarget(step: GuideStep): HTMLElement | null {
-  const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+  const el = document.querySelector<HTMLElement>(step.selector ?? `[data-tour="${step.target}"]`);
   if (!el) return null;
   const r = el.getBoundingClientRect();
   // Hidden (display:none, a closed phone tab, a collapsed sidebar) has no box.
@@ -17,11 +17,11 @@ function findTarget(step: GuideStep): HTMLElement | null {
  * Dims the page, spotlights one `data-tour` target at a time and explains it in a card.
  * Steps whose target is not on screen are skipped. UI only: nothing is stored or sent.
  */
-export function GuideTour({ role, onClose }: { role: Role; onClose: () => void }) {
+export function GuideTour({ role = "gm", steps: given, onClose }: { role?: Role; /** An explicit step list (a stable reference), instead of the app guide for `role`. */ steps?: GuideStep[]; onClose: () => void }) {
   // Resolved once, after the first commit, so targets are read from the laid-out page
   // rather than whatever was on screen when the Guide button was pressed.
   const [steps, setSteps] = useState<GuideStep[] | null>(null);
-  useLayoutEffect(() => setSteps(guideSteps(role).filter((s) => findTarget(s))), [role]);
+  useLayoutEffect(() => setSteps((given ?? guideSteps(role)).filter((s) => findTarget(s))), [role, given]);
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
@@ -53,10 +53,12 @@ export function GuideTour({ role, onClose }: { role: Role; onClose: () => void }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
+      // Captured and stopped, so a dialog around the tour (the map editor) does not also close.
+      e.stopPropagation();
       onClose();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
   // Follow the target through window resizes and any scrolling, including the panel's own,
@@ -141,7 +143,7 @@ export function GuideTour({ role, onClose }: { role: Role; onClose: () => void }
           <button type="button" className="secondary" onClick={() => go(index - 1)} disabled={index === 0}>
             Back
           </button>
-          <button ref={nextRef} type="button" onClick={() => go(index + 1)}>
+          <button className="primary" ref={nextRef} type="button" onClick={() => go(index + 1)}>
             {last ? "Done" : "Next"}
           </button>
         </div>

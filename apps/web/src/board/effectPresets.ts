@@ -233,13 +233,13 @@ export const SHAPE_DEFAULTS: Record<AnimationShape, FullAnimationDef> = {
     { count: 7, spread: 0.55, arc: 0.3, trail: 0.6, spin: 0.4, gravity: 0.1, rings: 2, particleShape: "shard" }),
   poison: preset("poison", { duration: 1.6, primary: "#22c55e", secondary: "#bef264", accent: "#a3e635", size: 1.3, particles: 40, glow: 0.7, shake: 0.15, flash: 0.2 },
     { count: 8, spread: 0.5, arc: 0.5, trail: 0.6, spin: 0.4, gravity: -0.5, rings: 1, particleShape: "ring" }),
-  smite: preset("smite", { duration: 2, primary: "#fbbf24", secondary: "#fffbeb", accent: "#fde68a", size: 1.4, particles: 50, glow: 1, shake: 0.5, flash: 0.8 },
+  smite: preset("smite", { duration: 2.5, primary: "#fbbf24", secondary: "#fffbeb", accent: "#fde68a", size: 1.4, particles: 50, glow: 1, shake: 0.5, flash: 0.8 },
     { count: 1, spread: 0.4, arc: 0.2, trail: 0.6, spin: 0.5, gravity: -0.7, rings: 3, particleShape: "star" }),
   sonic: preset("sonic", { duration: 1.2, primary: "#2dd4bf", secondary: "#ccfbf1", accent: "#ffffff", size: 1.2, particles: 24, glow: 0.7, shake: 0.7, flash: 0.3 },
     { count: 4, spread: 0.6, arc: 0.3, trail: 0.5, spin: 0.5, gravity: 0, rings: 2, particleShape: "ring" }),
   tornado: preset("tornado", { duration: 1.7, primary: "#94a3b8", secondary: "#e2e8f0", accent: "#4ade80", size: 1.4, particles: 40, glow: 0.5, shake: 0.6, flash: 0.2 },
     { count: 3, spread: 0.5, arc: 0.5, trail: 0.6, spin: 0.8, gravity: -0.2, rings: 1, particleShape: "square" }),
-  nuke: preset("nuke", { duration: 4, primary: "#ff6a00", secondary: "#fff4d6", accent: "#ffd24a", size: 3, particles: 120, glow: 0.9, shake: 0.9, flash: 0.9 },
+  nuke: preset("nuke", { duration: 6.5, primary: "#ff6a00", secondary: "#fff4d6", accent: "#ffd24a", size: 3, particles: 120, glow: 0.9, shake: 0.9, flash: 0.9 },
     { count: 1, spread: 0.5, arc: 0.5, trail: 0.5, spin: 0.5, gravity: 0.3, rings: 3, particleShape: "spark" }),
 };
 

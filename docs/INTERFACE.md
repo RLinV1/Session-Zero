@@ -93,75 +93,99 @@ three. Any page proposal that lengthens either is rejected on that basis alone.
 
 ## 11.5 The home page
 
-**This is where everything starts.** Not a form and not a marketing page bolted onto the
-side of an app — the one surface that explains the product, and the entry point for all
-three journeys in §11.3. A first-time GM, a returning user, and a curious stranger all
-land here.
+**This is where everything starts.** One page for everyone: a GM deciding whether to run a
+game here, a player holding an invite link, someone coming back. It shows what the product
+does with the product's own code, never a picture of an interface. Each section is a file in
+`apps/web/src/pages/home/`, and `HomePage.tsx` composes them. The shared header (§11.9) sits
+on top: the mark and name on the left; Sign in and Create account (or Your rooms, signed in)
+and the theme toggle on the right.
 
-**Two actions, and they are not equals.**
+**Above the fold: two ways in, and they are not equals** (`Hero.tsx`).
 
-- **Play** — primary, high contrast, impossible to miss. For a signed-in user it creates a
-  room and opens its table. For a signed-out one it opens login or signup carrying a
-  return intent, and authenticating continues into room creation rather than dumping the
-  user on a dashboard (`FRONTEND-CONTRACT.md` §13.1). Either way the journey ends at a table
-- **Log in / Sign up** — secondary, in a minimal top-right nav. For people who have been
-  here before and want their rooms back. Quiet, never competing with Play
+- **Start a room** is the primary action, the page's one rust fill above the fold. It goes to
+  the GM dashboard; a browser that isn't signed in reaches the sign-in page first and carries
+  on from there. Room creation stays behind a free account (`FRONTEND-CONTRACT.md` §13.1
+  records why, and why an unclaimed room was rejected).
+- **Join a game** is the second action. It opens the page's only join form in place and moves
+  focus to its field, which takes a full invite link or a bare code. A browser that has joined
+  rooms before opens with the form showing and those rooms listed above the field, marked as
+  saved in this browser only.
+- The headline is "Your battle map, ready to play tonight." with one line under it. Both
+  actions are on the first screen at 1366x768, and at 390x844, where they come before the scene.
+- The scene is a table in play, made of the board's own pieces: the canal market's crop as the
+  page's largest image (`fetchpriority="high"`), its faint grid, three tokens drawn as the board
+  draws them, and a thin drifting fog around what the party can see (line of sight over the
+  map's walls). There is no template in it; the play section shows those. Under reduced motion
+  it is shown settled.
 
-Beside the primary action, one line of copy carries the rule so nobody discovers it at the
-password field: **"Free account required to host; players join without one"** (`FRONTEND-CONTRACT.md` §13.1). That
-sentence is doing real work — it tells a GM what Play will cost them, and tells a player
-reading over their shoulder that the invite they were sent asks nothing of them.
+**Facts row** (`FactsRow.tsx`): no account for players; up to `MAX_PLAYERS_PER_ROOM` players
+in a room; pings under 150 ms (the latency benchmark's p95 target); undo for moves, fog,
+walls and hit points. Every figure comes from a constant or a target the tests measure, and
+`homeFacts.test.tsx` fails if either moves. Undo names what it covers because the table
+can't undo every action.
 
-A single top bar carries the product name on the left and the auth pair on the right, and
-nothing else. There is no room for a navigation menu on a product with three pages.
+**Running a game.** One heading makes every "you" below it the GM; players are "your
+players".
 
-**Why creation is gated — decided in `FRONTEND-CONTRACT.md` §13.1.**
+1. **Prepare** (`PrepareSection.tsx`). The file types the library's map upload takes, from
+   the one list both use (`net/mapFileTypes.ts`). The grid demo: a slider sizes the table's
+   grid over a real map's own squares until the two line up. A built-in map's stored walls,
+   doors and windows, drawn in the board's colours over its crop.
+2. **Play** (`PlaySection.tsx`). The line-of-sight stage: move the torch bearer by dragging or
+   with the arrow keys, and `sightPolygon` recomputes the lit area over the map's walls. Outside
+   it the player view dims the map in the board's own darkness colour at `DIMMED_ALPHA`; the
+   hero instead keeps a thin drifting fog as atmosphere. A Player view / GM view switch shows a
+   hidden monster to the GM only. Then exactly five tiles: area templates (`areaShape` and
+   `tokensTouchingArea`, placed with a click or a drag or moved with the arrow keys, and left
+   where they are placed), dice (the shared parser and roller, opening on a settled roll), attacks (the
+   animation editor's preview stage; a captured still under reduced motion), the turn order
+   (`decide` and `reduce`, with the table's `TurnNotice`) and conditions (`ConditionMarker`).
+3. **Recover** (`RecoverSection.tsx`). A local room built by `reduce`. The visitor's moves go
+   through `decide` as `token.move`, Undo is `history.undo`, and the log's lines are
+   `formatActivity`'s. The undo is its own entry and the original is marked Undone, as at the
+   table.
+4. **The library** (`LibraryStrip.tsx`). The page's own maps, whole, each with its pixel size
+   and squares, drifting past as a strip, with a caption saying they are this page's maps;
+   under reduced motion, a still row that scrolls a map at a time. It says the library is kept on the GM's account, there on any device they
+   sign in on, and doesn't link to `/library`: the rooms page is the way in.
 
-FR-GM-01 gives the GM "a persistent, trusted identity from which to create and administer
-a room", and `routes.ts` currently permits creation without one under a `TODO` marking
-that as temporary. Two resolutions were considered: gate Play behind sign-in, or let Play
-create an *unclaimed* room claimed afterwards.
+**Joining a game.** The second heading; under it, "you" is the player. A capture of the
+player's board on a phone (`PlayersSection.tsx`) and a Join a game action that takes the
+visitor back to the hero's form, open and focused. The page never has a second join form.
 
-**`FRONTEND-CONTRACT.md` §13.1 selects the gate, and keeps `rooms.owner_user_id` non-null.** Unclaimed-room
-authority, expiry and ownership transfer are explicitly out of the Core Loop. The return
-intent is what preserves the fast start — a signed-out Play is one extra screen, not a
-dead end — and it costs no amendment to FR-GM-01 and no new ownership state to reason
-about. The unclaimed-room alternative is recorded in `FRONTEND-CONTRACT.md` §13.1 as rejected, not deferred.
+**Closing band** (`ClosingBand.tsx`): "Ready to run a game?" and the hero's own Start a room,
+over the closing photograph, then the footer.
 
-Creation is idempotent: a retry with the same request key returns the existing room rather
-than making a second one, and a failed creation preserves the session (`FRONTEND-CONTRACT.md` §13.1).
+**Rules for the whole page.**
 
-**Above the fold.** An editorial split rather than centred text on a dark rectangle: the
-claim and the Play button on one side, a real battle map bleeding off the opposite edge,
-masked into the ground so it reads as depth rather than a pasted screenshot. The map is the
-product; a stock photograph of dice on a table is not.
+- One label per intent: every way into running a game says Start a room, and every way into
+  joining says Join a game.
+- Demos run the table's code (`@vtt/shared`, `board/tools.ts`). Nothing that needs the board's
+  renderer loads before the visitor scrolls near it, and the demos that run `decide` (the turn
+  order, the recovery board) load as their own chunks near the viewport too.
+- One map per section, each drawn for this page in its own theme and style, never the asset
+  library's art (the attack tile's preview stage is the one exception):
 
-- The headline runs **two lines, never more**. It says what the product does in concrete
-  verbs — upload a map, start playing — not "elevate your tabletop". Hold it under about
-  14 words at a fluid size that stays two lines from 380px to 1920px rather than reflowing
-  into a paragraph
-- Play sits directly beneath it. One quiet tertiary link — "see a live demo room" — may sit
-  beside it for people who want to look before creating anything
-- Nothing else. No floating badges over the text, no metric pills, no logo strip
+  | Section | Map | Style |
+  | --- | --- | --- |
+  | Hero | A canal market | Ink and watercolour |
+  | Sight | A desert tomb | Gouache |
+  | Grid demo | A dwarven forge | Coloured pencil |
+  | Walls | A coaching inn | Technical-pen plan |
+  | Templates tile | A goblin ruin | Linocut |
+  | Recovery | A ship's deck | Risograph |
 
-**Below it,** three movements, each a full viewport-height chapter with generous separation
-so they read as distinct rather than as a stack of cards:
-
-1. **The setup claim, demonstrated.** The map-to-grid-to-tokens sequence shown as actual
-   interface, advancing on scroll. This is the differentiator and it earns the largest
-   surface on the page
-2. **What the table looks like in play,** from both sides — the GM's hidden tokens and the
-   player's filtered view, side by side. The visibility model is the hardest thing to
-   explain in words and the easiest to show
-3. **Recovery.** The activity log with an undo, because "nothing is unrecoverable" is the
-   promise that separates this from a shared image
-
-The page closes by repeating Play. A visitor who has read to the bottom should not have to
-scroll back up to act.
+  Each scene's tokens are drawn in its map's style. Every crop is 20 squares wide from a grid
+  line, cut by `scripts/home-maps.mjs` from the table in `homeCrops.json` that the page reads
+  too. The walls the demos run on are traced in `pages/home/homeWalls.ts`.
+- The copy names what the table does, never how it is built: no server, client, filter,
+  snapshot, update stream, parser, overlay or code identifier; no partial feature (movement
+  budget, shared drawing, door or window detection); no em dashes. `homeCopy.test.tsx` checks
+  the rendered page in both views and after a valid and an invalid roll.
 
 **Banned on this page:** a row of three equal feature cards; section eyebrows reading
 "FEATURES" or "HOW IT WORKS"; a centred hero; testimonials the project does not have;
-invented usage statistics; a second call to action of equal weight to Play.
+invented usage statistics; a second call to action of equal weight to Start a room.
 
 ## 11.6 Entry pages
 
@@ -252,49 +276,164 @@ uses. `apps/web/src/styles.css` `:root` is the source of truth; this table mirro
 | `--border-strong` | `#6a7280` | Control boundaries; at least 3:1 on every surface (WCAG 1.4.11) |
 | `--text` | `#e3e6ea` | Body |
 | `--muted` | `#8e96a2` | Secondary, labels |
-| `--accent` | `#b9582f` | The single accent (rust): primary action, active turn |
+| `--accent` | `#b3552d` | The single accent (rust): primary action, active turn |
 | `--accent-ink` | `#fff8f3` | Text on accent fills |
+| `--accent-text` | `#e08a62` | Rust as text on dark surfaces (badges); `--accent` itself is only 3.5:1 on the panel |
 | `--focus` | `#e08a62` | Focus ring, a lighter rust that shows on rust fills too |
-| `--ok` `--warn` `--danger` | `#6fbf73` `#d9a441` `#e0685c` | Status only, never decoration |
+| `--ok` `--warn` `--danger` | `#6fbf73` `#d9a441` `#e0685c` | Status only, never decoration. The board reads these too (`ui/palette.ts`), so an HP bar has one colour everywhere |
+| `--danger-strong` | `#b5463d` | Fill of destructive buttons, under `--accent-ink` |
+| `--control-border` | `#646a78` | Boundary of the neutral control family (icon buttons, header links); 3.46:1 on `--ground` |
+| `--hover` | `rgba(227, 230, 234, 0.06)` | Hover fill of neutral controls and rows |
+| `--rule` | `rgba(227, 230, 234, 0.14)` | Hairlines on the ambient ground |
+| `--ground` | `#0f1216` | The ambient ground behind the home, entry and hub pages; the lighting tokens (`--key-warm`, `--fill-cool`, `--shaft`, `--vignette`, `--grain-opacity` and the rest) sit on it |
 
-One accent, under 80% saturation (rust is 59%). Status colours are never the only signal —
+One accent, under 80% saturation (rust is 60%). Status colours are never the only signal —
 the active turn carries a glyph and position as well as rust, conditions carry a shape and
 an abbreviation as well as a fill (FR-TAC-08).
 
+**Rust marks one action.** Buttons are neutral by default: a transparent fill, a
+`--border-strong` boundary and `--text`. Rust is `button.primary`, given to the one main
+action of a page section, a dialog or a collapsible section of the table's side panel, so no
+such region shows two rust fills at once. Everything else that is rust is the active turn, a
+count badge or a slider's fill. A selected tab, tool or segment is not a rust fill: it is a
+raised surface (`--raised`), a 2px rust underline and a semibold label, with the selection
+also in `aria-selected` or `aria-pressed`.
+
 Measured contrast on `--panel`: text 13.8:1, muted 5.8:1, danger 5.2:1, focus 6.6:1,
-border-strong 3.6:1, border 1.2:1 (decorative only). Accent ink on accent is 4.4:1, just under the WCAG AA 4.5:1 for normal
-text; darkening `--accent` slightly would clear it (follow-up).
+border-strong 3.6:1, border 1.2:1 (decorative only, so inputs use `--border-strong`). Accent ink on accent is 4.7:1
+and on `--danger-strong` 5.1:1; `--accent` was darkened from `#b9582f` (4.4:1) to clear WCAG AA 4.5:1, and hover
+darkens rather than brightens so it stays above it.
+
+**Light theme and layers.** Every route belongs to one of four layers, set on `<html>` as
+`data-layer` by `App.tsx` (`theme.ts`): **home** (`/`), **entry** (sign-in, sign-up, join,
+not found), **hub** (GM dashboard, library) and **table** (a room, and the encounter editor
+that reuses it). The home, entry and hub layers follow one stored choice, light, dark or the
+system's, kept under `vtt.theme` and applied before the first render so a light page never
+flashes dark. The table is always dark: the board is the lit surface and Pixi renders
+against it. Light overrides these tokens under `:root[data-theme="light"]`; everything else
+keeps its dark value.
+
+| Token | Light value |
+| --- | --- |
+| `--bg`, `--ground` | `#eceef1` |
+| `--panel` | `#fbfcfd` |
+| `--raised` | `#f4f6f8` |
+| `--field` | `#fbfcfe` |
+| `--border` | `#d5dae2` |
+| `--text` | `#15171b` |
+| `--muted` | `#5b6270` (5.27:1) |
+| `--accent-hover` | `#a04a28` |
+| `--control-border` | `#7a8394` (3.28:1) |
+| `--hover` | `rgba(21, 23, 27, 0.05)` |
+| `--rule` | `rgba(21, 23, 27, 0.16)` |
+
+The lighting tokens have light values too (`--key-warm`, `--shaft`, `--vignette` and the rest);
+`styles.css` lists them. Light also deepens `--focus` to `#a04a28` and `--accent-text` to
+`#9c4726`, since the dark theme's light rust is only 2.26:1 on the light ground. This closes
+the UI audit's conflict C12: the light theme is no longer the home page's alone.
+
+**Background by layer.** `ui/Ambient.tsx` draws the lit table behind a page, fixed to the
+viewport and inert to the pointer, in the amount its layer gets:
+
+| Layer | What is drawn |
+| --- | --- |
+| home | The full rig: warm key light upper right, cool fill, a light shaft, vignette, grain; the battle-grid pattern behind the hero; fog between sections |
+| entry | The table photograph (`public/img/ambient/table-*-blur.webp`), dimmed; the same rig at half strength; grain |
+| hub | A faint warm and cool glow along the top; grain |
+| table | Nothing: the board's own fog and line of sight light the table |
+
+**Shared components.** One of each, used everywhere it applies:
+
+- **`ui/SiteHeader.tsx`**: the mark and the product name (`PRODUCT_NAME`, one constant), the
+  page's navigation, the account control and the theme toggle, in the same place on the home
+  and hub pages at every width. Entry pages show the mark and name only (`EntryPage`). The
+  hub's navigation marks the current page with the selected treatment.
+- **`ui/TokenDisc.tsx`**: a token outside the board, drawn as the board draws it: disc, art
+  clipped to the circle, ring, hit-point bar in the status colours, initial when there is no art.
+  Home page maps, library creature cards, roster and My Tokens rows.
+- **`ui/MapThumbnail.tsx`** with **`ui/MapGrid.tsx`**: a map cropped to its frame with its grid
+  at a lighter weight. A shipped map loads its prepared thumbnail, never the full map, and a
+  placeholder the frame's shape holds its place while it loads.
+- **`ui/EmptyState.tsx`**: a picture from the lighting brief, a short line, and the action
+  that fills it unless that action already sits beside it. The dashboard's no-rooms state,
+  library tabs with nothing in them, and the board with no map (`ui/BoardEmptyState.tsx`:
+  "Choose a map" for the GM, the sentence alone for players).
 
 **Typography.** A geometric grotesk for the interface and a true monospace for anything
 numeric — initiative scores, hit points, dice results, seq numbers all need tabular figures
 so they stop jittering as they change.
 
 ```
---font-ui:   "Geist", "Satoshi", system-ui, sans-serif
---font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace
+--font-ui:   "Geist Sans", system-ui, -apple-system, "Segoe UI", sans-serif
+--font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace
 ```
+
+Geist is the only typeface, on every surface: the home and entry pages, the hub, the table,
+dialogs, and the labels the board draws on tokens. The table used Alegreya Sans, loaded from
+Google Fonts, until the design-language change; that request is gone and the UI audit's
+conflict C5 is resolved. Every number (hit points, initiative, dice and roll totals, grid
+sizes, distances, counts, log times, number fields) is Geist Mono with tabular figures. The
+faces of the 3D dice are dice art and keep the dice look's own figures. The board waits for
+both faces before its first label (`board/boardFont.ts`), because Pixi never redraws a label
+when a better font arrives.
 
 Serifs are out: this is software, not editorial. Headings control hierarchy through weight
 and colour rather than size — a room name is `text-lg font-semibold tracking-tight`, not a
-display heading. Body copy caps at 65 characters.
+display heading. A panel heading is sentence case, 14px, semibold and muted. Body copy caps
+at 65 characters. Names wrap rather than ellipsize, so a long token name is never cut short.
 
 **Space and materiality.** Group by hairline and negative space, not by boxing everything in
 a card. A card is justified only when elevation means something — an overlay above the
 table, a menu above the panel. Panels sit flat on the ground with a single hairline.
-Shadows, when used, are tinted to the ground rather than black.
+Shadows, when used, are tinted to the ground rather than black. One corner scale:
+`--radius-control` (6px) for controls, `--radius-surface` (12px) for anything that groups or
+floats content; tokens, avatars and swatches are circles. Spacing steps are `--space-1` to
+`--space-8`: 4, 8, 12, 16, 24, 32, 48 and 64px.
 
-**Motion.** Fluid but not cinematic. `transition: 0.24s cubic-bezier(0.16, 1, 0.3, 1)` for
-state changes; spring physics for anything the user drags or drops. Animate `transform` and
-`opacity` only — never `width`, `height`, `top` or `left`, which would fight the Pixi
-canvas for the compositor. Two things earn continuous motion and nothing else does: the
-active-turn indicator and the connection status. `prefers-reduced-motion` removes both.
+**Motion.** Fluid but not cinematic. One curve, `--ease: cubic-bezier(0.16, 1, 0.3, 1)`, and
+three durations: `--dur-fast` (120ms) for hover feedback, `--dur` (240ms) for state changes
+and `--dur-slow` (480ms) for entrances. Spring physics for anything the user drags or
+drops. Animate `transform` and `opacity` only — never `width`, `height`, `top` or `left`,
+which would fight the Pixi canvas for the compositor. At the table, two things earn continuous
+motion and nothing else does: the active-turn indicator and the connection status. On the home
+page the fog drifts (between sections only at 720px and wider) and the library strip moves,
+both only when motion is welcome.
+
+Reduced motion has one switch. The system's `prefers-reduced-motion` or the in-app Reduced
+animations setting puts `data-motion="reduced"` on `<html>` (`ui/motion.ts`); then no CSS
+animation or transition runs, and every element renders in its settled state. Animations
+started from script (the 3D dice, screen shake, board effects) check the same two inputs
+themselves.
 
 **Density** varies by layer: airy at entry (generous spacing, one decision per view),
 moderate in the hub, and tight at the table, where a GM tracking eight tokens needs
 information per square inch. The table panel is the only surface that may compress padding.
 
-**Icons.** One set, one stroke weight (1.5), from Phosphor or Radix. No emoji anywhere in
-the interface, ever — they render differently on every platform and read as placeholder.
+**Icons.** One family, Phosphor, at its regular weight; the fill weight marks a selected tool
+and nothing else. No emoji anywhere in the interface, ever — they render differently on every
+platform and read as placeholder.
+
+**Imagery.** A picture of the product is always the product: a running component, the
+table's own code running on the page, or a capture of the real app
+(`public/img/home/CREDITS.md` records how each capture was taken). Generated pictures are of
+two kinds.
+
+The first is atmosphere: the table photographs behind the entry pages and the hero, the closing
+band, the empty-state pictures and the wood texture. Every one follows one lighting brief, so
+they read as the same room:
+
+> Photographic. One warm tungsten lamp from the upper right, deep slate-blue shadows, low
+> saturation, walnut wood and dark slate stone, shallow depth of field. No text, screens,
+> paper, interface or logos.
+
+Each image's prompt, size and byte budget are in `public/img/ambient/CREDITS.md`, and
+`npm run images:ambient -w @vtt/web` turns the sources into WebP and the blurred entry plates.
+A light-theme variant shares its image's name with a `-light` suffix.
+
+The second is the home page's demo art: each scene's map and tokens, drawn for the page rather
+than taken from the library. Each scene has its own theme and drawing style, with its tokens in
+its map's style. Each map is top-down on a square grid, with room to move.
+`public/img/home/CREDITS.md` has every prompt.
 
 ## 11.10 Interface states
 

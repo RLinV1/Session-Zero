@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ServerMessage, Token } from "@vtt/shared";
+import { isDiceRoll, type ServerMessage, type Token } from "@vtt/shared";
 import { startServer, type TestClient, viewFor } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -220,8 +220,8 @@ describe("tactical panels (FR-GM-21, FR-GM-22, FR-TAC-07)", () => {
     expect(alice.state.rolls).toHaveLength(0);
 
     // The strongest form of the assertion: the result never appeared in any byte Alice got.
-    const secret = String(gm.state.rolls[0]!.total);
-    const dice = String(gm.state.rolls[0]!.dice[0]);
+    const secret = String(gm.state.rolls.filter(isDiceRoll)[0]!.total);
+    const dice = String(gm.state.rolls.filter(isDiceRoll)[0]!.dice[0]);
     const seen = alice.rawLog.join("");
     expect(seen).not.toContain(`"total":${secret}`);
     expect(seen).not.toContain(`"dice":[${dice}]`);

@@ -15,9 +15,9 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   graphicsQuality: "balanced", reducedAnimations: false, autoFocusAttacks: true, musicVolume: 70, soundVolume: 80,
 };
 export const QUALITY = {
-  high: { resolution: 2, frameMs: 1000 / 30, particles: 80, emitters: 12, conditions: 32, glow: true, blurQuality: 2, arcSegments: 30 },
-  balanced: { resolution: 2, frameMs: 1000 / 30, particles: 56, emitters: 6, conditions: 24, glow: true, blurQuality: 1, arcSegments: 22 },
-  low: { resolution: 1, frameMs: 1000 / 24, particles: 28, emitters: 0, conditions: 12, glow: false, blurQuality: 1, arcSegments: 14 },
+  high: { resolution: 2, frameMs: 1000 / 30, particles: 80, emitters: 12, conditions: 32, glow: true, blurQuality: 2, arcSegments: 30, fogPuffs: 1200 },
+  balanced: { resolution: 2, frameMs: 1000 / 30, particles: 56, emitters: 6, conditions: 24, glow: true, blurQuality: 1, arcSegments: 22, fogPuffs: 700 },
+  low: { resolution: 1, frameMs: 1000 / 24, particles: 28, emitters: 0, conditions: 12, glow: false, blurQuality: 1, arcSegments: 14, fogPuffs: 300 },
 } as const;
 
 export function isClientSettings(value: unknown): value is ClientSettings {

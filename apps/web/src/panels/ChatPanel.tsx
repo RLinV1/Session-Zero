@@ -310,7 +310,7 @@ export function ChatPanel({
             aria-invalid={error !== null}
             aria-describedby={error ? "chat-error" : undefined}
           />
-          <button type="submit" disabled={!canSend}>Send</button>
+          <button type="submit" className="primary" disabled={!canSend}>Send</button>
         </div>
         {error && <p id="chat-error" role="alert" className="error">{error}</p>}
       </form>
@@ -336,7 +336,7 @@ export function ChatPanel({
           setOpen((o) => !o);
         }}
       >
-        <ChatCircleText size={24} weight="fill" aria-hidden />
+        <ChatCircleText size={24} aria-hidden />
         {unread > 0 && (
           <span className={mentioned > 0 ? "chat-badge mention" : "chat-badge"} aria-hidden>
             {mentioned > 0 && "@"}{unread > 9 ? "9+" : unread}

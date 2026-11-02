@@ -78,7 +78,7 @@ export function EncounterCard(props: {
             <span className="sr-only">Template name</span>
             <input value={name} maxLength={MAX_ENCOUNTER_NAME} autoFocus onChange={(e) => setName(e.target.value)} disabled={busy} />
           </label>
-          <button type="submit" className="small" disabled={busy}>Save</button>
+          <button type="submit" className="small primary" disabled={busy}>Save</button>
           <button type="button" className="secondary small" disabled={busy} onClick={() => { setEditing(false); setName(encounter.name); }}>
             Cancel
           </button>

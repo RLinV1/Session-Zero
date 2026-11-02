@@ -1,4 +1,5 @@
-import type { AttackSide, DiceRoll } from "./dice";
+import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type LoggedRoll } from "./dice";
+import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
 import { inFogRegion, type Point } from "./geometry";
 import { wallMidpoint } from "./portals";
@@ -84,7 +85,11 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
       .map(([id, token]) => [id, tokenForViewer(token, viewer)]),
   );
   // GM-only rolls never reach a player, not even as a redacted placeholder (FR-GM-22).
-  const rolls = state.rolls.filter((r) => r.visibility === "public").map((r) => hideAttackSides(r, state, tokens));
+  const rolls = state.rolls.filter((r) => r.visibility === "public").flatMap((r): LoggedRoll[] => {
+    if (!isGroupRoll(r)) return [hideAttackSides(r, state, tokens)];
+    const visible = groupRollForViewer(r, state, c, viewer);
+    return visible ? [visible] : [];
+  });
   // A hidden token must not be inferable from a gap in the turn order (FR-GM-23).
   const initiative = state.initiative ? initiativeForPlayer(state.initiative, tokens) : null;
   // GM-only area templates are withheld entirely, like hidden tokens (ADR 0007), and so are
@@ -101,8 +106,10 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // Portals outside fog stay, so players can see and use them (ADR 0030).
   const walls = Object.fromEntries(Object.entries(state.walls).filter(([, w]) => !portalConcealedFrom(c, w, viewer)).map(([id, w]) => [id, { id: w.id, a: w.a, b: w.b, portal: w.portal }]));
   // Groups are the GM's organisation and would say which group a hidden token is in (KAN-82, ADR 0026).
+  // An area effect's saves and concealed targets are the GM's (ADR 0046).
+  const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
-  return { ...state, tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, ...(c.sight ? { sight: c.sight } : {}) };
+  return { ...state, tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =
@@ -232,11 +239,48 @@ export function filterEventForViewer(
     case "ReducedEffectsSet":
       // Names no token and has no GM-only content: the blast is for the whole table (ADR 0038).
       return pass;
+    case "GroupRolled": {
+      // FR-GM-22: a GM-only group roll is as secret as a GM-only roll. A public one loses the
+      // entries for tokens the viewer can't see; with none left, nothing happened for them (ADR 0046).
+      if (e.roll.visibility === "gm") return redacted;
+      const roll = groupRollForViewer(e.roll, before, conc(), viewer);
+      return roll ? { kind: "event", committed: { ...withoutCommandId, event: { ...e, roll } } } : redacted;
+    }
+    // One projection for live events and snapshots, so the two can't disagree (ADR 0046). An
+    // effect with no target the viewer can see, and no call for them, is withheld entirely: its
+    // empty target list would say a concealed token is being targeted.
+    case "AreaEffectStarted":
+      if (effectWithheldFrom(e.effect, before, conc(), viewer)) return redacted;
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...e, effect: areaEffectForViewer(e.effect, before, conc(), viewer) } } };
+    case "AreaEffectClosed":
+    case "AreaEffectResolved": {
+      if (effectWithheldFrom(e.effect, before, conc(), viewer)) return redacted;
+      const effect = areaEffectForViewer(e.effect, before, conc(), viewer);
+      if (e.type === "AreaEffectClosed") return { kind: "event", committed: { ...withoutCommandId, event: { ...e, effect } } };
+      // Only the amounts for targets the viewer can see, for their damage numbers: those targets'
+      // HP changes already reached them. A concealed target's amount never does.
+      const seen = new Set(effect.targets.map((t) => t.tokenId));
+      const amounts = e.amounts.filter((a) => seen.has(a.tokenId));
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...e, effect, amounts } } };
+    }
+    case "AreaEffectDamageRolled": {
+      const effect = before.areaEffect;
+      if (!effect || effect.id !== e.effectId || effectWithheldFrom(effect, before, conc(), viewer)) return redacted;
+      const damage = areaEffectForViewer({ ...effect, damage: e.damage }, before, conc(), viewer).damage ?? e.damage;
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...e, damage } } };
+    }
+    case "AreaEffectCalled": {
+      // Names only participants, who are public. A call can show a withheld effect to its caller,
+      // or hide it again from the one it moved away from: then a snapshot does both.
+      const effect = before.areaEffect;
+      if (!effect || effect.id !== e.effectId) return redacted;
+      return byVisibility(effectWithheldFrom(effect, before, conc(), viewer), effectWithheldFrom({ ...effect, call: { participantId: e.participantId } }, before, conc(), viewer));
+    }
     case "RollRuled":
     case "RollDamageApplied":
     case "RollDamageUnapplied": {
       // Neither names a token; they are as secret as the roll they concern (ADR 0011).
-      const roll = before.rolls.find((r) => r.id === e.rollId);
+      const roll = before.rolls.find((r): r is DiceRoll => r.id === e.rollId && !isGroupRoll(r));
       if (!roll || roll.visibility === "gm") return redacted;
       // "Applied" on a roll whose target the player sees as Unknown would say that token still
       // exists and has HP, and line it up with the HP change just before it. Withhold it.
@@ -339,6 +383,57 @@ function hideAttackSides(roll: DiceRoll, state: RoomState, visible: RoomState["t
   // The attacker's saved animation could identify a concealed side, so it goes with the name.
   const { animation: _animation, ...attack } = roll.attack;
   return { ...base, attack: { ...attack, actor, target } };
+}
+
+/**
+ * Whether a token named by a roll or an effect is concealed from the viewer: marked hidden when
+ * rolled or since, or still on the board but not among the tokens they can see. A token only ever
+ * visible keeps its name after deletion, which the player already saw (ADR 0010, ADR 0046).
+ */
+function namedTokenConcealed(
+  named: { tokenId: string; hidden: boolean },
+  state: Pick<RoomState, "tokens">,
+  c: Concealment,
+  viewer: Participant,
+): boolean {
+  if (viewer.role === "gm") return false;
+  if (named.hidden) return true;
+  const token = state.tokens[named.tokenId];
+  return token !== undefined && concealedFrom(c, token, viewer);
+}
+
+/**
+ * A player's copy of a public group roll: only the entries for tokens they can see, or null when
+ * there are none (ADR 0046). Dropped rather than blanked, so the count gives nothing away.
+ */
+export function groupRollForViewer(roll: GroupRoll, state: Pick<RoomState, "tokens">, c: Concealment, viewer: Participant): GroupRoll | null {
+  if (viewer.role === "gm") return roll;
+  const entries = roll.entries.filter((entry) => !namedTokenConcealed(entry, state, c, viewer));
+  if (entries.length === 0) return null;
+  return entries.length === roll.entries.length ? roll : { ...roll, entries };
+}
+
+/**
+ * Whether a player gets no copy of an area effect at all (ADR 0046): none of its targets is one
+ * they can see, and they don't hold its call. The one who holds it learns that it exists.
+ */
+export function effectWithheldFrom(effect: AreaEffect, state: Pick<RoomState, "tokens">, c: Concealment, viewer: Participant): boolean {
+  if (viewer.role === "gm" || effect.call?.participantId === viewer.id) return false;
+  return effect.targets.every((t) => namedTokenConcealed(t, state, c, viewer));
+}
+
+/**
+ * A player's copy of an area effect (ADR 0046): no target's save, no concealed target, and no
+ * per-target damage for one. The call, label and a single damage total are public.
+ */
+export function areaEffectForViewer(effect: AreaEffect, state: Pick<RoomState, "tokens">, c: Concealment, viewer: Participant): AreaEffect {
+  if (viewer.role === "gm") return effect;
+  const targets = effect.targets.filter((t) => !namedTokenConcealed(t, state, c, viewer)).map((t) => ({ ...t, roll: null }));
+  const visible = new Set(targets.map((t) => t.tokenId));
+  const damage = effect.damage?.mode === "perTarget"
+    ? { ...effect.damage, results: effect.damage.results.filter((r) => visible.has(r.tokenId)) }
+    : effect.damage;
+  return { ...effect, targets, damage };
 }
 
 /**

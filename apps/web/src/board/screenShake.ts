@@ -1,8 +1,8 @@
 import type { AnimationDef } from "@vtt/shared";
 import { NUKE_DROP_SHARE } from "./fxBudget";
 
-/** How long the whole page shakes, as a share of the blast. */
-const SHAKE_SHARE = 0.6;
+/** How long the whole page shakes, as a share of the blast (the nuke after its drop). */
+const SHAKE_SHARE = 0.77;
 /** Pixels of offset at full `shake`, at the start of the blast. */
 const MAX_OFFSET_PX = 22;
 const activeShakes = new WeakMap<HTMLElement, () => void>();
@@ -30,7 +30,7 @@ export function shakeScreen(def: AnimationDef, target: HTMLElement = pageRoot())
     frames.push({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${tilt.toFixed(2)}deg)` });
   }
   const delay = def.duration * NUKE_DROP_SHARE * 1000;
-  const duration = def.duration * SHAKE_SHARE * 1000;
+  const duration = def.duration * (1 - NUKE_DROP_SHARE) * SHAKE_SHARE * 1000;
   return play(target, frames, { duration, delay, easing: "linear" });
 }
 

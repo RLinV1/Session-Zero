@@ -6,6 +6,10 @@ import { alice, baseRoom, gm, withToken } from "./fixtures";
 const { state, token } = withToken(baseRoom(), { name: "Goblin" });
 const initiative = { order: [token.id], activeIndex: 0, round: 1 };
 const roll = { id: "roll", expression: "1d20", byParticipantId: alice.id, dice: [15], modifier: 0, total: 15, visibility: "public" as const };
+const effect = {
+  id: "e1", label: "Fireball", expression: "1d20+2", byParticipantId: gm.id,
+  targets: [{ tokenId: token.id, name: "Goblin", hidden: false, roll: { dice: [12], total: 14 } }], call: null, damage: null,
+};
 const areaTemplate = { id: "t1", shape: "cone" as const, origin: { x: 70, y: 70 }, toward: { x: 210, y: 70 }, size: 20, ownerId: alice.id, gmOnly: false };
 const fogRect = { id: "f1", shape: "rect" as const, points: [{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 70 }, { x: 0, y: 70 }] };
 const wall = { id: "w1", a: { x: 0, y: 0 }, b: { x: 70, y: 0 } };
@@ -45,6 +49,18 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     GroupDeleted: [{ type: "GroupDeleted", group: { id: "g1", name: "Gate guards" }, members: [] }, 'Mara deleted group "Gate guards"'],
     TokensGrouped: [{ type: "TokensGrouped", groupId: null, changes: [{ tokenId: token.id, previous: "g1" }] }, "Mara took Goblin out of their group"],
     DiceRolled: [{ type: "DiceRolled", roll }, "Mara rolled 1d20: 15"],
+    GroupRolled: [
+      { type: "GroupRolled", roll: { kind: "group", id: "g1", expression: "1d20+2", label: "Dex save", byParticipantId: gm.id, visibility: "public", entries: [{ tokenId: token.id, name: "Goblin", hidden: false, dice: [12], total: 14 }] } },
+      "Mara rolled 1d20+2 (Dex save) for 1 token: Goblin 14",
+    ],
+    AreaEffectStarted: [{ type: "AreaEffectStarted", effect }, 'Mara started area effect "Fireball" on Goblin (1d20+2)'],
+    AreaEffectCalled: [{ type: "AreaEffectCalled", effectId: "e1", participantId: alice.id, previous: null }, "Mara called Alice to roll damage for an area effect"],
+    AreaEffectDamageRolled: [
+      { type: "AreaEffectDamageRolled", effectId: "e1", damage: { mode: "single", expression: "8d6", byParticipantId: alice.id, dice: [3, 4, 5, 6, 1, 2, 3, 4], total: 28 } },
+      "Mara rolled 8d6 damage for an area effect: 28",
+    ],
+    AreaEffectResolved: [{ type: "AreaEffectResolved", effect, amounts: [] }, 'Mara resolved area effect "Fireball" on 1 token'],
+    AreaEffectClosed: [{ type: "AreaEffectClosed", effect }, 'Mara closed area effect "Fireball" without applying it'],
     // A roll no longer in state; attackRulings.test.ts covers the named forms (ADR 0011).
     RollRuled: [{ type: "RollRuled", rollId: "gone", verdict: "hit", previous: null }, "Mara ruled an earlier roll a hit"],
     RollDamageApplied: [{ type: "RollDamageApplied", rollId: "gone", amount: 7 }, "Mara applied 7 damage from an earlier roll"],

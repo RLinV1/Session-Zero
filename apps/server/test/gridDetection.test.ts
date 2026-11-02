@@ -1,12 +1,13 @@
-import { randomUUID } from "node:crypto";
+import sharp from "sharp";
+import { DETECTION_VERSION } from "../src/store/gridDetectionStore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GRID, type GridDetectionStatus, type LibraryAsset } from "@vtt/shared";
 import type { Detector } from "../src/domain/gridDetection";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { startServer, type TestClient } from "./helpers";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const candidate = { cellSize: 64, offsetX: 7, offsetY: 13, confidence: 0.74 };
+const PNG = await sharp({ create: { width: 768, height: 648, channels: 3, background: "#785634" } }).png().toBuffer();
+const candidate = { cellSize: 64, offsetX: 7, offsetY: 13 };
 const dimensions = { width: 768, height: 648 };
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -17,7 +18,7 @@ afterEach(async () => {
 });
 
 async function until<T>(read: () => Promise<T>, matches: (value: T) => boolean): Promise<T> {
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 10_000;
   for (;;) {
     const value = await read();
     if (matches(value)) return value;
@@ -26,10 +27,10 @@ async function until<T>(read: () => Promise<T>, matches: (value: T) => boolean):
   }
 }
 
-function imageForm(fields: Record<string, string>) {
+function imageForm(fields: Record<string, string>, bytes = PNG, mimeType = "image/png") {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
-  form.append("file", new Blob([PNG], { type: "image/png" }), "sample.png");
+  form.append("file", new Blob([bytes], { type: mimeType }), "sample.png");
   return form;
 }
 
@@ -77,6 +78,57 @@ describe("automatic map grid detection (FR-GM-03)", () => {
   const detector: Detector = async () => ({ status: "suggested", candidate });
 
   beforeEach(() => { server = undefined as unknown as typeof server; });
+
+  it("uses decoded EXIF dimensions, keeps duplicate uploads independent and reuses no_grid while polling", async () => {
+    const run = vi.fn<Detector>(async () => ({ status: "no_grid" }));
+    server = await startServer(new MemoryRoomStore(), { detector: run });
+    const cookie = await newGm();
+    const image = await sharp({ create: { width: 432, height: 240, channels: 3, background: "#123456" } }).withMetadata({ orientation: 6 }).jpeg().toBuffer();
+    const maps: LibraryAsset[] = [];
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(`${server.base}/api/library`, { method: "POST", headers: { cookie },
+        body: imageForm({ kind: "map", name: "EXIF", width: "700", height: "800" }, image, "image/jpeg") });
+      expect(response.status).toBe(201);
+      const map = await response.json() as LibraryAsset; maps.push(map);
+      expect(map).toMatchObject({ width: 240, height: 432 });
+      await until(() => gmStatus(cookie, map.id), (r) => r.body.status === "no_grid");
+    }
+    expect(maps[0]!.id).not.toBe(maps[1]!.id);
+    for (let i = 0; i < 10; i++) for (const map of maps) expect((await gmStatus(cookie, map.id)).body.status).toBe("no_grid");
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls.map((call) => call[1])).toEqual([{ width: 240, height: 432 }, { width: 240, height: 432 }]);
+    const room = await server.createRoom();
+    const response = await fetch(`${server.base}/api/uploads`, { method: "POST", headers: { authorization: `Bearer ${room.guestToken}` },
+      body: imageForm({ purpose: "map", width: "700", height: "800" }, image, "image/jpeg") });
+    expect(response.status).toBe(200);
+    const direct = await response.json() as { url: string };
+    await until(() => roomStatus(room.roomId, room.guestToken, direct.url), (r) => r.body.status === "no_grid");
+    expect(run.mock.calls.at(-1)?.[1]).toEqual({ width: 240, height: 432 });
+  });
+
+  it("records oversized images as terminal errors on both paths and leaves invalid images for manual fallback", async () => {
+    const run = vi.fn(detector);
+    server = await startServer(new MemoryRoomStore(), { detector: run });
+    const cookie = await newGm();
+    const room = await server.createRoom("GM", { cookie });
+    const oversized = await sharp({ create: { width: 5000, height: 4000, channels: 3, background: "#123456" } }).png().toBuffer();
+    for (const scope of ["library", "room"] as const) {
+      const response = await fetch(`${server.base}${scope === "library" ? "/api/library" : "/api/uploads"}`, {
+        method: "POST", headers: scope === "library" ? { cookie } : { authorization: `Bearer ${room.guestToken}` },
+        body: imageForm({ ...(scope === "library" ? { kind: "map", name: "Oversized" } : { purpose: "map" }), width: "5000", height: "4000" }, oversized),
+      });
+      expect(response.status).toBe(scope === "library" ? 201 : 200);
+      const map = await response.json() as LibraryAsset;
+      const target = scope === "library" ? { scope, id: map.id } : { scope, roomId: room.roomId, objectKey: map.url.slice("/uploads/".length) };
+      expect(await server.store.findDetection(target)).toMatchObject({ status: "error", error: "oversized", attempt: 1 });
+      expect(await server.store.retryDetection(target)).toBeNull();
+    }
+    const invalid = await fetch(`${server.base}/api/library`, { method: "POST", headers: { cookie },
+      body: imageForm({ kind: "map", name: "Invalid", width: "700", height: "800" }, Buffer.from("invalid")) });
+    expect(invalid.status).toBe(201);
+    expect((await gmStatus(cookie, (await invalid.json() as LibraryAsset).id)).body.status).toBe("error");
+    expect(run).not.toHaveBeenCalled();
+  });
 
   it("analyzes a new library map once, keeps its saved grid, and never reruns on placement or token upload", async () => {
     const run = vi.fn(detector);
@@ -151,48 +203,35 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     expect((await roomStatus(room.roomId, room.guestToken, token.url)).status).toBe(404);
   });
 
-  it("reports service failure, allows one retry, and rejects a stale completion", async () => {
+  it("automatically retries transient failures and rejects stale completions", async () => {
     const run = vi.fn<Detector>().mockRejectedValueOnce(new Error("service down"))
       .mockResolvedValue({ status: "suggested", candidate });
     server = await startServer(new MemoryRoomStore(), { detector: run });
-    const gmToken = await newGm();
-    await server.createRoom("GM", { cookie: gmToken });
-    const map = await libraryUpload(gmToken, "map");
-    await until(() => gmStatus(gmToken, map.id), (r) => r.body.status === "error");
-    const retry = () => fetch(`${server.base}/api/library/${map.id}/grid-detection/retry`, {
-      method: "POST", headers: { cookie: gmToken },
-    });
-    const responses = await Promise.all([retry(), retry()]);
-    expect(responses.map((r) => r.status).sort()).toEqual([202, 409]);
-    const result = await until(() => gmStatus(gmToken, map.id), (r) => r.body.status === "suggested");
+    const cookie = await newGm();
+    const map = await libraryUpload(cookie, "map");
+    const result = await until(() => gmStatus(cookie, map.id), (r) => r.body.status === "suggested");
     expect(result.body.attempt).toBe(2);
     expect(run).toHaveBeenCalledTimes(2);
-    expect(await server.store.finishDetection({ scope: "library", id: map.id }, 1, { status: "no_grid" })).toBe(false);
-    expect((await gmStatus(gmToken, map.id)).body.status).toBe("suggested");
+    expect(await server.store.finishDetection({ target: { scope: "library", id: map.id }, attempt: 1,
+      sourceHash: "old", configVersion: DETECTION_VERSION }, { status: "no_grid" })).toBe(false);
   });
 
-  it("retries the current direct room map only for its active GM", async () => {
-    const run = vi.fn<Detector>().mockRejectedValueOnce(new Error("service down"))
-      .mockResolvedValue({ status: "suggested", candidate });
+  it("exhausts three transient attempts and denies player retries", async () => {
+    const run = vi.fn<Detector>().mockRejectedValue(new Error("service down"));
     server = await startServer(new MemoryRoomStore(), { detector: run });
     const room = await server.createRoom();
-    const gm = await server.connect(room);
-    clients.push(gm);
     const map = await roomUpload(room.guestToken, "map");
-    await gm.command({ type: "scene.setMap", map: { url: map.url, ...dimensions } });
-    await until(() => roomStatus(room.roomId, room.guestToken, map.url), (r) => r.body.status === "error");
+    const result = await until(() => roomStatus(room.roomId, room.guestToken, map.url), (r) => r.body.status === "error");
+    expect(result.body.attempt).toBe(3);
+    expect(run).toHaveBeenCalledTimes(3);
     const retryUrl = `${server.base}/api/rooms/${room.roomId}/grid-detection/retry`;
-    const headers = { authorization: `Bearer ${room.guestToken}`, "x-expected-map-url": map.url };
-    const first = await fetch(retryUrl, { method: "POST", headers });
-    expect(first.status).toBe(202);
-    expect((await first.json() as GridDetectionStatus).attempt).toBe(2);
-    const resolved = await until(() => roomStatus(room.roomId, room.guestToken, map.url), (r) => r.body.status === "suggested");
-    expect(resolved.body.attempt).toBe(2);
-    const playerCreds = await server.join(room.inviteCode, "Player");
+    const player = await server.join(room.inviteCode, "Player");
     expect((await fetch(retryUrl, { method: "POST", headers: {
-      authorization: `Bearer ${playerCreds.guestToken}`, "x-expected-map-url": map.url,
+      authorization: `Bearer ${player.guestToken}`, "x-expected-map-url": map.url,
     } })).status).toBe(403);
-    expect((await fetch(retryUrl, { method: "POST", headers })).status).toBe(409);
+    expect((await fetch(retryUrl, { method: "POST", headers: {
+      authorization: `Bearer ${room.guestToken}`, "x-expected-map-url": map.url,
+    } })).status).toBe(409);
   });
 
   it("keeps uploads successful if dispatch fails and removes analysis with its asset or room", async () => {
@@ -204,7 +243,7 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     const gm = await server.connect(room);
     clients.push(gm);
     const library = await libraryUpload(gmToken, "map");
-    expect((await gmStatus(gmToken, library.id)).body.status).toBe("error");
+    expect((await gmStatus(gmToken, library.id)).body.status).toBe("queued");
     const otherGm = await newGm();
     await server.createRoom("Other", { cookie: otherGm });
     expect((await gmStatus(otherGm, library.id)).status).toBe(404);
@@ -214,7 +253,7 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     const map = await roomUpload(room.guestToken, "map");
     const key = map.url.slice("/uploads/".length);
     await gm.command({ type: "scene.setMap", map: { url: map.url, ...dimensions } });
-    expect((await roomStatus(room.roomId, room.guestToken, map.url)).body.status).toBe("error");
+    expect((await roomStatus(room.roomId, room.guestToken, map.url)).body.status).toBe("queued");
     const removed = await fetch(`${server.base}/api/library/${library.id}`, { method: "DELETE", headers: { cookie: gmToken } });
     expect(removed.status).toBe(204);
     expect(await server.store.findDetection({ scope: "library", id: library.id })).toBeNull();
@@ -231,50 +270,7 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     await server.createRoom("GM", { cookie: gmToken });
     const map = await libraryUpload(gmToken, "map");
     const result = await until(() => gmStatus(gmToken, map.id), (r) => r.body.status === "error");
-    expect(result.body).toEqual({ status: "error", attempt: 1 });
+    expect(result.body).toEqual({ status: "error", attempt: 3 });
   });
 
-  it("only retries error rows and makes old attempts unable to finish the new one", async () => {
-    const store = new MemoryRoomStore();
-    const id = randomUUID();
-    const gmId = await store.registerGm("owner");
-    await store.createAsset({
-      id, ownerGmId: gmId, kind: "map", objectKey: "stored.png", url: "/uploads/stored.png",
-      name: "Map", width: 768, height: 648, grid: DEFAULT_GRID, createdAt: new Date().toISOString(),
-      detectionStatus: "queued", detectionAttempt: 1,
-    });
-    const target = { scope: "library" as const, id };
-    expect(await store.retryDetection(target)).toBeNull();
-    expect(await store.markDetectionRunning(target, 1)).toBe(true);
-    expect(await store.finishDetection(target, 1, { status: "error" })).toBe(true);
-    expect((await Promise.all([store.retryDetection(target), store.retryDetection(target)])).sort()).toEqual([2, null].sort());
-    expect(await store.finishDetection(target, 1, { status: "suggested", candidate })).toBe(false);
-    expect(await store.markDetectionRunning(target, 2)).toBe(true);
-    expect(await store.finishDetection(target, 2, { status: "no_grid" })).toBe(true);
-    expect((await store.findDetection(target))?.status).toBe("no_grid");
-  });
-
-  it("recovers queued work and supersedes an interrupted running attempt", async () => {
-    const store = new MemoryRoomStore();
-    const id = randomUUID();
-    const gmId = await store.registerGm("owner");
-    await store.createAsset({
-      id, ownerGmId: gmId, kind: "map", objectKey: "stored.png", url: "/uploads/stored.png",
-      name: "Map", width: 768, height: 648, grid: DEFAULT_GRID, createdAt: new Date().toISOString(),
-      detectionStatus: "queued", detectionAttempt: 1,
-    });
-    const target = { scope: "library" as const, id };
-    expect(await store.recoverDetections()).toEqual([{ target, attempt: 1 }]);
-    expect(await store.markDetectionRunning(target, 1)).toBe(true);
-    expect(await store.recoverDetections()).toEqual([]);
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(Date.now() + 61_000);
-      expect(await store.recoverDetections()).toEqual([{ target, attempt: 2 }]);
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(await store.finishDetection(target, 1, { status: "suggested", candidate })).toBe(false);
-    expect(await store.markDetectionRunning(target, 2)).toBe(true);
-  });
 });

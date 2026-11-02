@@ -38,7 +38,7 @@ describe("multi-target attacks (FR-TAC-09)", () => {
     // Aria picks b, then c; the count is 2 in total, so d is now off limits.
     fireEvent.click(screen.getByRole("checkbox", { name: /^c/ }));
     expect((screen.getByRole("checkbox", { name: /^d/ }) as HTMLInputElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: /Roll Fireball/ }));
+    fireEvent.click(screen.getByRole("button", { name: /: Fireball against/ }));
     await waitFor(() => expect(command).toHaveBeenCalledTimes(2));
     const targets = command.mock.calls.map((c) => (c[0] as { attack: { targetTokenId: string } }).attack.targetTokenId);
     expect(targets).toHaveLength(2);

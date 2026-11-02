@@ -42,8 +42,8 @@ describe("the replay bar (FR-PL-07)", () => {
 
   it("offers a point picker, step controls, a slider and a way back", () => {
     expect(html).toContain("Replay from");
-    expect(html).toContain('aria-label="Previous step"');
-    expect(html).toContain('aria-label="Next step"');
+    expect(html).toContain('aria-label="Back one step"');
+    expect(html).toContain('aria-label="Forward one step"');
     expect(html).toContain('aria-label="Replay position"');
     expect(html).toContain("Back to the live table");
   });

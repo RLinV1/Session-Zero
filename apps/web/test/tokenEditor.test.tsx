@@ -81,3 +81,27 @@ describe("condensed token editor (condense-token-editor)", () => {
     for (const label of ["Name<input", "Board X", "Controlled by", "Remove image", "Upload image"]) expect(html).not.toContain(label);
   });
 });
+
+describe("the owner's token editor (FR-PL-04, WCAG 2.5.7)", () => {
+  it("offers one-square Move steps when given a move, for the keyboard path from the roster", () => {
+    const html = renderToStaticMarkup(
+      <TokenEditor
+        token={token}
+        roomToken="room"
+        isGm={false}
+        players={[]}
+        departedOwner={null}
+        error={null}
+        move={{ step: 70, onMove: async () => {} }}
+        onSave={async () => {}}
+        onDelete={() => {}}
+      />,
+    );
+    expect(html).toContain('aria-label="Move Goblin King"');
+    expect(html).toContain('aria-label="Move Goblin King down one square"');
+  });
+
+  it("offers none without one", () => {
+    expect(render(false)).not.toContain('aria-label="Move Goblin King"');
+  });
+});

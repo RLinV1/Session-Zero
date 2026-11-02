@@ -3,6 +3,7 @@ import type { MapImage } from "@vtt/shared";
 import { THROW_MS, throwKeyframes, throwStagger } from "../ui/diceGeometry";
 import { Die3D, dieParts, layoutDice, type TrayRoll } from "../ui/Die3D";
 import { boardDiePaths, type BoardThrow, type BoardTransform } from "./diceThrow";
+import { armSound, playDiceSound } from "./fxSound";
 
 /** How long landed dice stay on the board, then how long they take to fade. */
 const LINGER_MS = 3000;
@@ -42,6 +43,8 @@ export function ThrownDice({
   onDone: (rollId: string) => void;
 }) {
   const world = useRef<HTMLDivElement>(null);
+
+  useEffect(armSound, []);
 
   useLayoutEffect(
     () =>
@@ -91,6 +94,8 @@ function ThrownRoll({ active, onDone }: { active: ActiveThrow; onDone: (rollId: 
       const timing: KeyframeAnimationOptions = { duration: THROW_MS, delay: i * stagger, fill: "backwards" };
       animations.push(spin.animate(frames.spin, timing), flight.animate(frames.flight, timing), shadow.animate(frames.shadow, timing));
     });
+    // Scheduled on the same clock as the keyframes, so each die clacks as it bounces.
+    const sound = animations.length ? playDiceSound({ count: dice.length, staggerMs: stagger }) : null;
 
     let fade: Animation | null = null;
     let linger: ReturnType<typeof setTimeout> | undefined;
@@ -111,6 +116,8 @@ function ThrownRoll({ active, onDone }: { active: ActiveThrow; onDone: (rollId: 
     return () => {
       clearTimeout(linger);
       fade?.cancel();
+      // Dropped before the dice came to rest: their clacks stop with them.
+      if (!landed) sound?.stop();
       for (const a of animations) a.cancel();
     };
   }, []);

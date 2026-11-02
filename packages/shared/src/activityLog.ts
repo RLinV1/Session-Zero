@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatAttackParties, type DiceRoll } from "./dice";
+import { findDiceRoll, formatAttackParties, type DiceRoll } from "./dice";
 import { CommittedEvent, type DomainEvent } from "./events";
 import { reduceCommitted } from "./reducer";
 import { describePortalChange } from "./portals";
@@ -47,10 +47,13 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
   /** A participant's name as it was just before this event. */
   const participantName = (id: string) => before.participants[id]?.displayName ?? "an unknown participant";
   /** A roll still in the log just before this event (ADR 0011). */
-  const rolledEarlier = (id: string) => before.rolls.find((r) => r.id === id);
+  const rolledEarlier = (id: string) => findDiceRoll(before.rolls, id);
   /** "Aria → Goblin (1d20+5: 17)", with the names the roll recorded. */
   const rollLabel = (roll: DiceRoll | undefined) =>
     roll?.attack ? `${formatAttackParties(roll.attack)} (${roll.expression}: ${roll.total})` : "an earlier roll";
+  /** `"Fireball"`, or a generic name for an unlabelled area effect (ADR 0046). */
+  const effectName = (label: string | null) => (label ? `area effect "${label}"` : "an area effect");
+  const tokenCount = (n: number) => `${n} ${n === 1 ? "token" : "tokens"}`;
   /** "red 20 ft cone", in the room grid's units; no colour word for a template without one. */
   const unit = before.scene.grid.unitLabel;
   const templateLabel = (t: { shape: string; size: number; width?: number; color?: string }) => {
@@ -122,6 +125,32 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
         : expression;
       return `${actorName} rolled ${what}: ${total}${visibility === "gm" ? " (GM only)" : ""}`;
     }
+    case "GroupRolled": {
+      const { expression, label, entries, visibility } = event.roll;
+      const results = entries.map((e) => `${e.name} ${e.total}`).join(", ");
+      return `${actorName} rolled ${expression}${label ? ` (${label})` : ""} for ${tokenCount(entries.length)}${results ? `: ${results}` : ""}${visibility === "gm" ? " (GM only)" : ""}`;
+    }
+    case "AreaEffectStarted": {
+      const names = event.effect.targets.map((t) => t.name).join(", ");
+      return `${actorName} started ${effectName(event.effect.label)} on ${names || "no visible tokens"} (${event.effect.expression})`;
+    }
+    case "AreaEffectCalled": {
+      const effect = before.areaEffect;
+      const what = effectName(effect?.id === event.effectId ? effect.label : null);
+      return event.previous === null
+        ? `${actorName} called ${participantName(event.participantId)} to roll damage for ${what}`
+        : `${actorName} moved the damage call for ${what} from ${participantName(event.previous)} to ${participantName(event.participantId)}`;
+    }
+    case "AreaEffectDamageRolled": {
+      const effect = before.areaEffect;
+      const what = effectName(effect?.id === event.effectId ? effect.label : null);
+      const { damage } = event;
+      return damage.mode === "single"
+        ? `${actorName} rolled ${damage.expression} damage for ${what}: ${damage.total}`
+        : `${actorName} rolled ${damage.expression} damage for each target of ${what}`;
+    }
+    case "AreaEffectResolved": return `${actorName} resolved ${effectName(event.effect.label)} on ${tokenCount(event.effect.targets.length)}`;
+    case "AreaEffectClosed": return `${actorName} closed ${effectName(event.effect.label)} without applying it`;
     case "RollRuled": {
       const roll = rolledEarlier(event.rollId);
       const gmOnly = roll?.visibility === "gm" ? " (GM only)" : "";

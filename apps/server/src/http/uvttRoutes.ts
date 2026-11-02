@@ -113,10 +113,7 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
           const image = await writeUvttImage(deps.assets, deps.uploadDir, validated);
           key = image.key; imagePath = image.imagePath; url = image.url;
           await deps.store.recordRoomUpload(auth.roomId, key, "map", validated.width, validated.height);
-          // Skip grid detection for a UVTT map, whose grid is already supplied.
-          const target = { scope: "room" as const, roomId: auth.roomId, objectKey: key };
-          await deps.store.markDetectionRunning(target, 1);
-          await deps.store.finishDetection(target, 1, { status: "no_grid" });
+          // No analysis identity is recorded: the supplied UVTT grid is authoritative.
         }
         const preparation = deps.preparations.create(auth.roomId, auth.actorId, {
           map: { url, width: validated.width, height: validated.height, ...(libraryAsset && { assetId: libraryAsset.id }) }, grid: validated.grid,

@@ -11,6 +11,8 @@ export type Role = "gm" | "player";
 export interface GuideStep {
   /** Matches a `data-tour` attribute on the element to spotlight. */
   target: string;
+  /** A CSS selector for the element to spotlight, instead of `[data-tour=target]` (the map editor's tours). */
+  selector?: string;
   title: string;
   body: string;
   /** The step asks the viewer to use the spotlit control, so clicks inside it get through. */

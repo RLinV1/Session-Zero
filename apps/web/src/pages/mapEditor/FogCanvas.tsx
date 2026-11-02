@@ -2,6 +2,7 @@ import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { MAX_FOG_POINTS, type Command, type FogRegion, type GridSpec, type MapImage, type Point } from "@vtt/shared";
 import { FOG_TEXTURE_SIZE, averageColor, fogPalette, makeFogCanvas, type Rgb } from "../../board/fogTexture";
 import { fogRegionAt } from "../../board/tools";
+import { motionReduced } from "../../ui/motion";
 import { MapCanvas } from "./MapCanvas";
 
 /** A polygon closes when a click lands this close to its first corner, in screen pixels. */
@@ -67,7 +68,7 @@ function fogTextureUrl(base: Rgb | null): string {
 
 function PlayerFog({ id, base }: { id: string; base: Rgb | null }) {
   const href = useMemo(() => fogTextureUrl(base), [base]);
-  const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = motionReduced();
   const size = FOG_TEXTURE_SIZE;
   const layer = (key: string, transform: string, to: string, dur: string) => (
     <pattern id={`${id}-${key}`} patternUnits="userSpaceOnUse" width={size} height={size} patternTransform={transform}>

@@ -3,6 +3,8 @@ import {
   concealmentFor,
   filterEventForViewer,
   filterStateForViewer,
+  isDiceRoll,
+  isGroupRoll,
   viewerSight,
   type AreaTemplate,
   type CommittedEvent,
@@ -131,8 +133,21 @@ describe("line of sight in player snapshots (FR-GM-19)", () => {
       },
     };
     const view = filterStateForViewer({ ...s, rolls: [roll as unknown as RoomState["rolls"][number]] }, alice);
-    expect(view.rolls[0]?.attack?.actor?.name).toBe("hero");
-    expect(view.rolls[0]?.attack?.target).toBeNull();
+    expect(view.rolls.filter(isDiceRoll)[0]?.attack?.actor?.name).toBe("hero");
+    expect(view.rolls.filter(isDiceRoll)[0]?.attack?.target).toBeNull();
+  });
+
+  it("drops group roll entries and area effect targets outside sight (ADR 0046)", () => {
+    const s = room(true);
+    const entry = (tokenId: string) => ({ tokenId, name: tokenId, hidden: false, dice: [10], total: 10 });
+    const roll = { kind: "group", id: "g1", expression: "1d20", visibility: "public", entries: [entry("orc"), entry("goblin")] };
+    const effect = (ids: string[]) => ({ id: "e1", label: null, call: null, damage: null, targets: ids.map((tokenId) => ({ tokenId, name: tokenId, hidden: false, roll: null })) });
+    const withEffect = (ids: string[]) =>
+      ({ ...s, rolls: [roll], areaEffect: effect(ids) }) as unknown as RoomState;
+    const view = filterStateForViewer(withEffect(["orc", "goblin"]), alice);
+    expect(view.rolls.filter(isGroupRoll)[0]?.entries.map((e) => e.tokenId)).toEqual(["orc"]);
+    expect(view.areaEffect?.targets.map((t) => t.tokenId)).toEqual(["orc"]);
+    expect(filterStateForViewer(withEffect(["goblin"]), alice).areaEffect).toBeNull();
   });
 
   it("sets sight only for a player with line of sight on", () => {

@@ -1,4 +1,5 @@
-import type { DiceRoll } from "./dice";
+import { isGroupRoll, type DiceRoll } from "./dice";
+import type { AreaEffect } from "./areaEffects";
 import { DEFAULT_PRESET_ID } from "./gamePresets";
 import type { CommittedEvent, DomainEvent } from "./events";
 import { CHAT_LOG_LIMIT, MAX_CHECKPOINTS, ROLL_LOG_LIMIT, emptyRoomState, type RoomState } from "./state";
@@ -151,7 +152,8 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "TokenHiddenSet": {
       const t = required(state.tokens[event.tokenId], event);
       const tokens = { ...state.tokens, [t.id]: { ...t, hidden: event.hidden } };
-      return { ...state, tokens, rolls: event.hidden ? concealInRolls(state.rolls, t.id) : state.rolls };
+      if (!event.hidden) return { ...state, tokens };
+      return { ...state, tokens, rolls: concealInRolls(state.rolls, t.id), areaEffect: concealInEffect(state.areaEffect ?? null, [t.id]) };
     }
 
     case "TokenStatsSet": {
@@ -235,6 +237,28 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       // state keeps only what the roll panel shows.
       return { ...state, rolls: [...state.rolls, roll].slice(-ROLL_LOG_LIMIT) };
     }
+
+    case "GroupRolled":
+      // One slot in the log however many tokens it names (ADR 0046).
+      return { ...state, rolls: [...state.rolls, event.roll].slice(-ROLL_LOG_LIMIT) };
+
+    case "AreaEffectStarted":
+      return { ...state, areaEffect: event.effect };
+
+    case "AreaEffectCalled": {
+      const effect = openEffect(state, event.effectId, event);
+      return { ...state, areaEffect: { ...effect, call: { participantId: event.participantId } } };
+    }
+
+    case "AreaEffectDamageRolled": {
+      const effect = openEffect(state, event.effectId, event);
+      return { ...state, areaEffect: { ...effect, damage: event.damage } };
+    }
+
+    case "AreaEffectResolved":
+    case "AreaEffectClosed":
+      openEffect(state, event.effect.id, event);
+      return { ...state, areaEffect: null };
 
     // A roll that has left the window (or a player's copy never had) is simply not there to
     // update; `decide` only rules on rolls it can see, so this stays safe on replay (ADR 0011).
@@ -348,8 +372,15 @@ function required<T>(value: T | undefined, event: DomainEvent): T {
 }
 
 function updateRoll(state: RoomState, rollId: string, update: (roll: DiceRoll) => DiceRoll): RoomState {
-  if (!state.rolls.some((r) => r.id === rollId)) return state;
-  return { ...state, rolls: state.rolls.map((r) => (r.id === rollId ? update(r) : r)) };
+  if (!state.rolls.some((r) => r.id === rollId && !isGroupRoll(r))) return state;
+  return { ...state, rolls: state.rolls.map((r) => (r.id === rollId && !isGroupRoll(r) ? update(r) : r)) };
+}
+
+/** The open area effect an event names; anything else means the stream is corrupt (ADR 0046). */
+function openEffect(state: RoomState, effectId: string, event: DomainEvent): AreaEffect {
+  const effect = state.areaEffect ?? null;
+  if (!effect || effect.id !== effectId) throw new Error(`Event ${event.type} references a missing entity`);
+  return effect;
 }
 
 function assertNever(x: never): never {
@@ -372,7 +403,18 @@ function concealFoggedSides(state: RoomState, event: DomainEvent): RoomState {
     const token = state.tokens[id];
     if (token && fogConcealsSide(state, token)) rolls = concealInRolls(rolls, id);
   }
-  return rolls === state.rolls ? state : { ...state, rolls };
+  const areaEffect = concealInEffect(state.areaEffect ?? null, tokenIds.filter((id) => {
+    const token = state.tokens[id];
+    return token && fogConcealsSide(state, token);
+  }));
+  if (rolls === state.rolls && areaEffect === (state.areaEffect ?? null)) return state;
+  return { ...state, rolls, areaEffect };
+}
+
+/** Marks tokens hidden on the open area effect's targets, for good, as `concealInRolls` does (ADR 0046). */
+function concealInEffect(effect: AreaEffect | null, tokenIds: readonly string[]): AreaEffect | null {
+  if (!effect || !effect.targets.some((t) => !t.hidden && tokenIds.includes(t.tokenId))) return effect;
+  return { ...effect, targets: effect.targets.map((t) => (tokenIds.includes(t.tokenId) ? { ...t, hidden: true } : t)) };
 }
 
 /**
@@ -385,6 +427,12 @@ function concealInRolls(rolls: RoomState["rolls"], tokenId: string): RoomState["
     side && side.tokenId === tokenId && !side.hidden ? { ...side, hidden: true } : side;
   let changed = false;
   const next = rolls.map((roll) => {
+    if (isGroupRoll(roll)) {
+      // A group roll's entries are concealed the same way, for good (ADR 0046).
+      if (!roll.entries.some((e) => e.tokenId === tokenId && !e.hidden)) return roll;
+      changed = true;
+      return { ...roll, entries: roll.entries.map((e) => conceal(e)) };
+    }
     if (!roll.attack) return roll;
     const actor = conceal(roll.attack.actor);
     const target = conceal(roll.attack.target);

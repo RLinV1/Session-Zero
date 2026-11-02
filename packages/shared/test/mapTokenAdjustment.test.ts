@@ -3,6 +3,7 @@ import {
   adjustMapTokens, Command, DEFAULT_GRID, DomainEvent, filterEventForViewer, filterStateForViewer,
   isReversible, isSnapped, placementCandidates, reduce, reduceCommitted, undoableAction,
   type GridSpec, type MapTokenPolicy, type Point, type RoomState,
+  isDiceRoll
 } from "../src";
 import { alice, attempt, baseRoom, bob, gm, run } from "./fixtures";
 
@@ -238,9 +239,9 @@ describe("map command, reduction and visibility (KAN-66, FR-GM-15, FR-GM-23)", (
     const applied = run(state, gm, { type: "scene.setMap", map: { ...newMap, url: oldMap.url } });
     expect(applied.state.fog).toEqual(before.fog);
     expect(applied.state.templates).toEqual(before.templates);
-    expect(applied.state.rolls.at(-1)?.attack?.target?.hidden).toBe(true);
-    expect(filterStateForViewer(applied.state, alice).rolls.at(-1)?.attack?.target).toBeNull();
+    expect(applied.state.rolls.filter(isDiceRoll).at(-1)?.attack?.target?.hidden).toBe(true);
+    expect(filterStateForViewer(applied.state, alice).rolls.filter(isDiceRoll).at(-1)?.attack?.target).toBeNull();
     const deleted = run(applied.state, gm, { type: "token.delete", tokenId: foe.id }).state;
-    expect(filterStateForViewer(deleted, alice).rolls.at(-1)?.attack?.target).toBeNull();
+    expect(filterStateForViewer(deleted, alice).rolls.filter(isDiceRoll).at(-1)?.attack?.target).toBeNull();
   });
 });

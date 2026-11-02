@@ -1,5 +1,6 @@
 import { CornersOut, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { MapGuide } from "./mapEditor/EditorGuide";
 import { gridLineStyle, type GridSpec, type Point } from "@vtt/shared";
 import { gridLines } from "../board/gridLines";
 import { canRenderGrid, minimumGridCellSizeForDisplay, type BoardSize } from "../board/gridRenderLimit";
@@ -23,10 +24,12 @@ const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y +
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** Shared map editor. Anchors, provisional geometry and navigation stay local. */
-export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEnabled = true, disabled = false, geometryRevision = 0 }: {
+export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewChange, previewEnabled = true, disabled = false, geometryRevision = 0, autoFocus = false }: {
   map: BoardSize & { url: string | null };
   grid: GridSpec;
   onChange: (grid: GridSpec) => void;
+  /** Includes first-anchor placement, before a complete grid can change. */
+  onInteraction?: () => void;
   /** Temporary geometry for editor readouts; never changes the confirmed draft. */
   onPreviewChange?: (grid: GridSpec | null) => void;
   /** Numeric editing takes precedence until focus returns to the map. */
@@ -34,8 +37,16 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
   disabled?: boolean;
   /** Explicit numeric edits also invalidate anchors when the field is temporarily invalid. */
   geometryRevision?: number;
+  autoFocus?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    let live = true;
+    // A newly opened dialog enters the top layer in its parent's effect first.
+    queueMicrotask(() => { if (live) svgRef.current?.focus(); });
+    return () => { live = false; };
+  }, [autoFocus]);
   const helpId = useId();
   const keysId = useId();
   const statusId = useId();
@@ -185,6 +196,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
     setMessage(`Keep the sample inside the map, with each square between ${minimumGridCellSizeForDisplay(map)} and 2000 px. Your last valid grid is retained. Try another location.`);
   };
   const commit = (point: Point, freeformPlacement = false) => {
+    onInteraction?.();
     const cellSizeStep = freeformPlacement ? 0 : GRID_CELL_SNAP;
     const result = transitionPlacement(placement, { type: "place", point, cellSizeStep, offsetStep: cellSizeStep }, count, grid, map);
     if (result.invalid) { invalid(); return; }
@@ -205,6 +217,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
     }
   };
   const select = (anchor: Anchor) => {
+    onInteraction?.();
     clearTransient();
     setPlacement(transitionPlacement(placement, { type: "select", anchor }, count, grid, map).placement);
     setMessage(null);
@@ -338,6 +351,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
     const arrow = arrows[e.key];
     const anchor = action === "A" || action === "B" ? action : selected;
     if (arrow) {
+      if (placement.stage === "awaiting-b" || sample && anchor) onInteraction?.();
       e.preventDefault();
       clearTransient();
       const step = e.shiftKey ? 10 : 1;
@@ -370,6 +384,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
         });
       }
     } else if (e.key === "Enter") {
+      onInteraction?.();
       e.preventDefault();
       clearTransient();
       if (sample) {
@@ -428,6 +443,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
           {([1, 3, 5] as const).map((n) => (
             <button key={n} type="button" className="secondary" aria-pressed={count === n} disabled={disabled}
               onClick={() => {
+                onInteraction?.();
                 const result = transitionPlacement(placement, { type: "count", count: n }, count, grid, map);
                 const pending = placement.stage === "awaiting-b" && (preview ?? provisionalSample);
                 if (result.invalid || (pending && !gridFromSample({ ...pending, count: n }, grid, map))) { invalid(); return; }
@@ -444,6 +460,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
           ))}
         </div>
         <button type="button" className="secondary" disabled={disabled} onClick={() => {
+          onInteraction?.();
           clearTransient(); setPlacement(EMPTY_PLACEMENT); setProvisionalSample(null); setMessage(null); svgRef.current?.focus();
         }}>Start over</button>
         <div role="group" aria-label="Select anchor" className="grid-anchor-controls">
@@ -465,6 +482,8 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
         </div>
       </div>
       <p id={statusId} className="map-grid-status small-print" role="status">{status}</p>
+      <div className="map-grid-canvas-wrap">
+      <MapGuide />
       <svg ref={svgRef} className={`map-grid-canvas${space ? " is-panning" : ""}`}
         viewBox={ready ? `${vx} ${vy} ${vw} ${vh}` : `0 0 ${map.width} ${map.height}`}
         role="group" aria-label="Place grid anchors on the map" aria-describedby={`${statusId} ${helpId} ${keysId}`} tabIndex={0}
@@ -498,6 +517,7 @@ export function MapGridPreview({ map, grid, onChange, onPreviewChange, previewEn
           </g>
         )}
       </svg>
+      </div>
       <p id={helpId} className="muted small-print map-grid-help">
         Hold Shift to place freely. Scroll to zoom; middle-drag or Space-drag moves the view.
       </p>

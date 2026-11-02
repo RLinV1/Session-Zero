@@ -46,6 +46,7 @@ import { registerLibraryRoutes } from "./library";
 import { detectionWire } from "./library";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import type { DetectionTarget } from "../store/gridDetectionStore";
+import { inspectMapUpload } from "../domain/uploadAnalysis";
 import type { WallDetections } from "../domain/wallDetection";
 
 /** Registers the REST API: rooms, invite joins, uploads, the library and GM history. */
@@ -163,11 +164,13 @@ export function registerRoutes(
         return res.status(400).json({ error: fields.error.issues });
       }
       const key = path.basename(upload.file.path);
+      const analysis = fields.data.purpose === "map"
+        ? await inspectMapUpload(upload.file.path, { width: fields.data.width!, height: fields.data.height! }) : null;
       const url = await assets.put(upload.file.path, key, upload.file.mimetype);
       // So deleting the room removes the image too (ADR 0009). If the room was deleted
       // since the check above, recording fails: remove the object rather than orphan it.
       try {
-        await store.recordRoomUpload(actor.roomId, key, fields.data.purpose, fields.data.width, fields.data.height);
+        await store.recordRoomUpload(actor.roomId, key, fields.data.purpose, analysis?.width ?? fields.data.width, analysis?.height ?? fields.data.height, analysis ?? undefined);
       } catch (err) {
         await assets.delete(key).catch((cleanupErr: unknown) => {
           console.error(`[vtt] could not delete upload ${key} after its room upload record failed`, cleanupErr);
@@ -175,7 +178,7 @@ export function registerRoutes(
         throw err;
       }
       if (fields.data.purpose === "map") {
-        await enqueueDetection(store, detection, { scope: "room", roomId: actor.roomId, objectKey: key }, 1);
+        if (analysis?.detectionStatus === "queued") await enqueueDetection(store, detection, { scope: "room", roomId: actor.roomId, objectKey: key }, 1);
         // Walls too, while the GM lines up the grid; best-effort, like grid analysis (ADR 0029).
         if (walls.available && fields.data.width && fields.data.height) {
           await walls.start(actor.roomId, { url, width: fields.data.width, height: fields.data.height }, 0).catch((err: unknown) => {

@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   tableOf, type EncounterSummary, type GmRoomSummary, type LibraryAsset, type LibraryUsageResponse, type Token,
@@ -15,10 +16,7 @@ afterEach(async () => {
   await server.close();
 });
 
-const PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-  "base64",
-);
+const PNG = await sharp({ create: { width: 256, height: 256, channels: 3, background: "#334455" } }).png().toBuffer();
 
 const gmFetch = (cookie: string | null, url: string, init: { method?: string; body?: unknown } = {}) =>
   fetch(server.base + url, {

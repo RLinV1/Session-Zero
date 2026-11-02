@@ -25,7 +25,7 @@ export function GroupMoveMenu({ token, groups, groupId, onMove, onDragStart, onD
       title={`Move ${token.name} to`}
       className="move-handle"
       placement="fixed"
-      buttonContent={<DotsSixVertical size={14} weight="bold" aria-hidden="true" />}
+      buttonContent={<DotsSixVertical size={14} aria-hidden="true" />}
       buttonProps={{
         draggable: true,
         "data-move-handle": token.id,
@@ -56,7 +56,7 @@ export function GroupMoveMenu({ token, groups, groupId, onMove, onDragStart, onD
                       onMove(entry.id);
                     }}
                   >
-                    <span className="move-menu-check" aria-hidden="true">{current && <Check size={14} weight="bold" />}</span>
+                    <span className="move-menu-check" aria-hidden="true">{current && <Check size={14} />}</span>
                     {entry.name}
                   </button>
                 </li>

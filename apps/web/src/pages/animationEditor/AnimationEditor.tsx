@@ -122,7 +122,7 @@ export function AnimationEditor({ animation, onSaved, onCancel }: { animation: L
             <div className="animation-editor-actions">
               {dirty && <span className="map-editor-draft">Unsaved changes</span>}
               <button type="button" className="secondary" disabled={saving} onClick={close}>Cancel</button>
-              <button type="submit" form={formId} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+              <button className="primary" type="submit" form={formId} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
             </div>
           </>
         )}
@@ -193,7 +193,7 @@ export function AnimationEditor({ animation, onSaved, onCancel }: { animation: L
               {step === "timing" && <div className="animation-sliders">
                 <fieldset>
                   <legend>Timing and size</legend>
-                  <Slider label="Duration" value={def.duration} min={0.2} max={4} step={0.1} format={seconds} onChange={(v) => set("duration", Math.round(v * 10) / 10)} />
+                  <Slider label="Duration" value={def.duration} min={0.2} max={8} step={0.1} format={seconds} onChange={(v) => set("duration", Math.round(v * 10) / 10)} />
                   <Slider label="Size" value={def.size} min={0.5} max={3} step={0.1} format={times} onChange={(v) => set("size", Math.round(v * 10) / 10)} />
                   <Slider label="Particles" value={def.particles} min={0} max={120} step={1} format={count} onChange={(v) => set("particles", v)} />
                 </fieldset>

@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LibraryAsset } from "@vtt/shared";
 import { startServer } from "./helpers";
@@ -11,24 +12,19 @@ afterEach(async () => {
   await server.close();
 });
 
-/** 1x1 transparent PNG. The server checks the declared type; bytes just need to exist. */
-const PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-  "base64",
-);
-
 const newGm = async () => (await server.signUp()).cookie;
 
 const gmFetch = (cookie: string, url: string, init: RequestInit = {}) =>
   fetch(server.base + url, { ...init, headers: { ...(init.headers as Record<string, string>), cookie } });
 
 async function uploadOk(cookie: string, kind: "map" | "token", name: string, width: number, height: number) {
+  const image = await sharp({ create: { width, height, channels: 3, background: "#334455" } }).png().toBuffer();
   const form = new FormData();
   form.append("kind", kind);
   form.append("name", name);
   form.append("width", String(width));
   form.append("height", String(height));
-  form.append("file", new Blob([PNG], { type: "image/png" }), "a.png");
+  form.append("file", new Blob([image], { type: "image/png" }), "a.png");
   const res = await gmFetch(cookie, "/api/library", { method: "POST", body: form });
   expect(res.status).toBe(201);
   return (await res.json()) as LibraryAsset;

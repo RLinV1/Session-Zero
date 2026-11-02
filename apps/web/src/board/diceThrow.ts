@@ -109,8 +109,12 @@ export function centreThrow(
   map: Pick<MapImage, "width" | "height"> | null,
 ): { from: Point; to: Point } {
   const to = map ? clampToMap(centre, map) : centre;
-  const reach = 2 * boardDieSize(grid, view);
-  return { from: { x: to.x - DROP_DIRECTION.x * reach, y: to.y - DROP_DIRECTION.y * reach }, to };
+  return { from: throwStart(to, 2 * boardDieSize(grid, view)), to };
+}
+
+/** Where a Roll-button throw onto `to` leaves the hand, `reach` board px back along the usual direction. */
+export function throwStart(to: Point, reach: number): Point {
+  return { x: to.x - DROP_DIRECTION.x * reach, y: to.y - DROP_DIRECTION.y * reach };
 }
 
 /**

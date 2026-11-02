@@ -117,7 +117,7 @@ export function Picker({
         {icon}
         {chosen ? <span className="picker-label">{chosen.label}</span> : <span className="picker-placeholder">{placeholder}</span>}
         {chosen?.detail && <span className="picker-detail">{chosen.detail}</span>}
-        <CaretDown size={12} weight="bold" className="picker-caret" aria-hidden="true" />
+        <CaretDown size={12} className="picker-caret" aria-hidden="true" />
       </button>
       <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="picker-list" hidden={!open}>
         {options.map((option, i) => (
@@ -132,7 +132,7 @@ export function Picker({
             onMouseEnter={() => setActive(i)}
             onClick={() => choose(i)}
           >
-            <Check size={14} weight="bold" className="picker-check" aria-hidden="true" />
+            <Check size={14} className="picker-check" aria-hidden="true" />
             <span className="picker-label">{option.label}</span>
             {option.detail && <span className="picker-detail">{option.detail}</span>}
           </li>

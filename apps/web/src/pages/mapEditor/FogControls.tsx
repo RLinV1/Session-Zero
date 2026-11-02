@@ -71,6 +71,7 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
             <button
               type="button"
               className="secondary"
+              data-guide="fog-whole"
               disabled={busy}
               onClick={() => void add({ type: "fog.add", region: wholeMapRegion(map) }, "Fogged the whole map.")}
             >

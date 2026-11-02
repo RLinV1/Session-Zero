@@ -55,9 +55,12 @@ services:
       - s3data:/data
   vision:
     build: ./services/vision
+    mem_limit: ${GRID_MEMORY_LIMIT:-2g}
     environment:
       PORT: 8000
       OPENCV_IO_MAX_IMAGE_PIXELS: 40000000
+      GRID_MAX_PIXELS: ${GRID_MAX_PIXELS:-16000000}
+      GRID_PROCESSING_TIMEOUT_SECONDS: ${GRID_PROCESSING_TIMEOUT_SECONDS:-30}
     ports: ["127.0.0.1:8000:8000"]
     # No GET route to probe, so ready means the port accepts connections.
     healthcheck:
@@ -74,6 +77,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       OPENCV_IO_MAX_IMAGE_PIXELS: 40000000
+      WALL_WORKER_CONCURRENCY: ${WALL_WORKER_CONCURRENCY:-1}
     depends_on: [redis]
   # The app server: applies the Prisma migrations, then serves the API and the sockets. No
   # `tsx watch`: the code is baked into the image, and watch mode would hang instead of exiting
@@ -90,6 +94,8 @@ services:
       S3_ENDPOINT: http://s3:8333
       # The vision service is its own container; the default 127.0.0.1:8000 is this container.
       VISION_URL: http://vision:8000
+      GRID_MAX_PIXELS: ${GRID_MAX_PIXELS:-16000000}
+      GRID_HTTP_TIMEOUT_MS: ${GRID_HTTP_TIMEOUT_MS:-40000}
       # Dev only: signs in as t@gmail.com / password with no sign-up (never set in production).
       SEED_DEV_ACCOUNT: "1"
     ports: ["3001:3001"]

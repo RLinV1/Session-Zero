@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_GRID, DomainEvent, filterStateForViewer, replayTo, undoableAction,
+  DEFAULT_GRID, DomainEvent, filterStateForViewer, isDiceRoll, replayTo, undoableAction,
   type CommandInput, type ServerMessage,
 } from "@vtt/shared";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
@@ -95,7 +95,7 @@ describe("atomic map adjustment across the wire (KAN-66, FR-GM-02, FR-GM-23, FR-
     expect(bob.state.tokens[hero]).toBeUndefined();
     expect(bob.state.tokens[ally]).toBeUndefined();
     expect(alice.state.tokens[foe]).toBeUndefined();
-    expect(alice.state.rolls[0]?.attack?.target).toBeNull();
+    expect(alice.state.rolls.filter(isDiceRoll)[0]?.attack?.target).toBeNull();
     expect(gm.state.fog).toEqual(before.fog);
     expect(gm.state.templates).toEqual(before.templates);
 
@@ -113,7 +113,7 @@ describe("atomic map adjustment across the wire (KAN-66, FR-GM-02, FR-GM-23, FR-
       expect(messages(client, inverseOffsets[i]!)[0]).toMatchObject({ type: "welcome", seq: gm.seq - 1 });
       expect(client.state).toEqual(viewFor(gm.state, client));
       privateResult(client, inverseOffsets[i]!, secret);
-      expect(client.state.rolls[0]?.attack?.target).toBeNull();
+      expect(client.state.rolls.filter(isDiceRoll)[0]?.attack?.target).toBeNull();
     }
   });
 
@@ -220,7 +220,7 @@ describe("atomic map adjustment across the wire (KAN-66, FR-GM-02, FR-GM-23, FR-
     for (const client of [loadedAlice, loadedBob]) {
       await client.waitForSeq(loadedGm.seq);
       expect(client.state).toEqual(viewFor(loadedGm.state, client));
-      expect(client.state.rolls[0]?.attack?.target).toBeNull();
+      expect(client.state.rolls.filter(isDiceRoll)[0]?.attack?.target).toBeNull();
     }
     const after = await store.loadEvents(loadedGm.state.roomId);
     expect(after.slice(0, persisted.length)).toEqual(persisted);

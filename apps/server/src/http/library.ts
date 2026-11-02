@@ -24,6 +24,7 @@ import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDe
 import type { DetectionRecord } from "../store/gridDetectionStore";
 import { requireAccountOwner, resolveOwner, type Owner } from "../ownership/resolveOwner";
 import { imageUploader } from "./imageUpload";
+import { inspectMapUpload } from "../domain/uploadAnalysis";
 import { refused } from "../identity/routes";
 import type { RateLimiter } from "../identity/rateLimit";
 
@@ -77,6 +78,7 @@ export function registerLibraryRoutes(
         return void res.status(400).json({ error: fields.error.issues });
       }
       const key = path.basename(upload.file.path);
+      const analysis = fields.data.kind === "map" ? await inspectMapUpload(upload.file.path, fields.data) : null;
       const url = await assets.put(upload.file.path, key, upload.file.mimetype);
       const record: LibraryAssetRecord = {
         id: randomUUID(),
@@ -94,10 +96,11 @@ export function registerLibraryRoutes(
         detectionStatus: fields.data.kind === "map" ? "queued" : null,
         detectionAttempt: fields.data.kind === "map" ? 1 : 0,
         detectionResult: null,
+        ...analysis,
         createdAt: new Date().toISOString(),
       };
       await store.createAsset(record);
-      if (record.kind === "map") await enqueueDetection(store, detection, { scope: "library", id: record.id }, 1);
+      if (record.detectionStatus === "queued") await enqueueDetection(store, detection, { scope: "library", id: record.id }, 1);
       res.status(201).json(toWire(record));
     });
   });

@@ -29,7 +29,7 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRe
       align="right"
       tourId="guide"
       buttonRef={menuButtonRef}
-      buttonContent={<><DotsThree size={16} weight="bold" aria-hidden="true" /> More</>}
+      buttonContent={<><DotsThree size={16} aria-hidden="true" /> More</>}
     >
       {(close) => {
         const item = (action: () => void) => () => { close(); action(); };

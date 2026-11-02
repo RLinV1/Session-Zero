@@ -1,8 +1,8 @@
 import type { AnimationDef, LibraryMapBoard, AssetKind, EncounterTemplateData, AttackPreset, ConditionId, DieName, GmRoomSummary, GridSpec, LegacySummary } from "@vtt/shared";
-import type { DetectionState } from "./gridDetectionStore";
+import type { DetectionState, UploadAnalysis } from "./gridDetectionStore";
 
 /** A stored library asset (ADR 0004). `objectKey` is the AssetStore key; it never leaves the server. */
-export interface LibraryAssetRecord {
+export interface LibraryAssetRecord extends UploadAnalysis {
   id: string;
   ownerGmId: string;
   kind: AssetKind;
