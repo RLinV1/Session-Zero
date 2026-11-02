@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ALREADY_MEMBER, GM_TOKEN_HEADER, type MyRoomsResponse } from "@vtt/shared";
+import { ALREADY_MEMBER, GM_TOKEN_HEADER, type MyRoomsResponse, type RoomPreview } from "@vtt/shared";
 import { hashToken } from "../src/domain/credentials";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { SESSION_IDLE_MS } from "../src/identity/sessions";
@@ -335,6 +335,35 @@ describe("your rooms (room-membership, ADR 0017 M5)", () => {
 
   it("needs a session", async () => {
     expect((await server.anonymous().request("GET", "/api/me/rooms")).status).toBe(401);
+  });
+});
+
+describe("a hosted room's board preview (gm-dashboard, FR-GM-01)", () => {
+  const previewPath = (roomId: string) => `/api/me/rooms/${roomId}/preview`;
+
+  it("shows the owner the board as the GM sees it, hidden tokens and fog included", async () => {
+    const { sam, room } = await samsRoom();
+    const gm = await connect(room);
+    await gm.command({ type: "scene.setMap", map: { url: "/uploads/cave.png", width: 700, height: 420 } });
+    await gm.command({ type: "token.create", name: "Aria", position: { x: 35, y: 35 } });
+    await gm.command({ type: "token.create", name: "Shadow Lurker", position: { x: 315, y: 35 }, hidden: true });
+    await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 140, y: 140 } } });
+
+    const preview = await sam.json<RoomPreview>("GET", previewPath(room.roomId));
+    expect(preview.map).toEqual({ url: "/uploads/cave.png", width: 700, height: 420 });
+    expect(preview.tokens.map((t) => [t.position.x, t.hidden])).toEqual([[35, false], [315, true]]);
+    expect(preview.fog).toHaveLength(1);
+    // Only what the picture draws: no token names reach the dashboard.
+    expect(JSON.stringify(preview)).not.toContain("Shadow Lurker");
+  });
+
+  it("answers 404 to anyone but the owner, players in the room included", async () => {
+    const { room } = await samsRoom();
+    const kim = await server.signUp({ email: "kim@example.com" });
+    await server.joinAs(kim, room.inviteCode, "Kim");
+    expect((await kim.request("GET", previewPath(room.roomId))).status).toBe(404);
+    expect((await kim.request("GET", previewPath(randomUUID()))).status).toBe(404);
+    expect((await server.anonymous().request("GET", previewPath(room.roomId))).status).toBe(401);
   });
 });
 

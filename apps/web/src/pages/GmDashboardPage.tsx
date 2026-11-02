@@ -11,6 +11,7 @@ import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
 import { formatRelative } from "../ui/formatRelative";
 import { EmptyState } from "../ui/EmptyState";
+import { RoomBoardPreview } from "../ui/RoomBoardPreview";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
 
@@ -150,25 +151,34 @@ function useOpenRoom() {
 
 /**
  * One room, as a card: its name in full, its game and when it was last active, and the way in.
- * Open stays neutral because a list of rooms has no single main action (design-language).
+ * Open stays neutral because a list of rooms has no single main action (design-language). A
+ * hosted room's card leads with a picture of its board, which also opens it; keyboard and screen
+ * reader users have the Open button, so the picture is left out of the tab order.
  */
-function RoomCard(props: { room: GmRoomSummary; opening: boolean; onOpen: () => void; onDelete?: () => void }) {
+function RoomCard(props: { room: GmRoomSummary; opening: boolean; preview?: boolean; onOpen: () => void; onDelete?: () => void }) {
   const name = props.room.name || "Untitled room";
   return (
-    <li className="room-card">
-      <strong className="room-card-name">{name}</strong>
-      <span className="muted room-card-meta">
-        {presetOf(props.room).name} · active {formatRelative(props.room.lastActiveAt)}
-      </span>
-      <div className="row room-card-actions">
-        <button type="button" className="secondary small" onClick={props.onOpen} disabled={props.opening}>
-          {props.opening ? "Opening…" : "Open"}
+    <li className={props.preview ? "room-card has-preview" : "room-card"}>
+      {props.preview && (
+        <button type="button" className="room-card-preview" onClick={props.onOpen} disabled={props.opening} tabIndex={-1} aria-hidden="true">
+          <RoomBoardPreview roomId={props.room.id} />
         </button>
-        {props.onDelete && (
-          <button type="button" className="secondary small danger" onClick={props.onDelete} aria-label={`Delete ${name}`}>
-            Delete
+      )}
+      <div className="room-card-body">
+        <strong className="room-card-name">{name}</strong>
+        <span className="muted room-card-meta">
+          {presetOf(props.room).name} · active {formatRelative(props.room.lastActiveAt)}
+        </span>
+        <div className="row room-card-actions">
+          <button type="button" className="secondary small" onClick={props.onOpen} disabled={props.opening}>
+            {props.opening ? "Opening…" : "Open"}
           </button>
-        )}
+          {props.onDelete && (
+            <button type="button" className="secondary small danger" onClick={props.onDelete} aria-label={`Delete ${name}`}>
+              Delete
+            </button>
+          )}
+        </div>
       </div>
     </li>
   );
@@ -211,7 +221,7 @@ function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: 
         // Cards shaped like the rooms that will replace them, not a spinner.
         <ul className="plain room-grid" aria-hidden="true">
           {[0, 1, 2].map((i) => (
-            <li key={i} className="room-card skeleton" />
+            <li key={i} className="room-card has-preview skeleton" />
           ))}
         </ul>
       )}
@@ -244,6 +254,7 @@ function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: 
               key={room.id}
               room={room}
               opening={opening === room.id}
+              preview
               onOpen={() => void open(room)}
               onDelete={() => setConfirming(room)}
             />
