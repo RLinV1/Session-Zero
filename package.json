@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:db": "node scripts/dev-db.mjs",
     "dev:server": "npm run dev --workspace=@vtt/server",
     "dev:web": "npm run dev --workspace=@vtt/web",
     "build": "npm run build --workspaces --if-present",

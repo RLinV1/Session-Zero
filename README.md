@@ -17,7 +17,7 @@ run the app. Both open at <http://localhost:5173>.
 | | Without Docker | With Docker Compose |
 | --- | --- | --- |
 | Needs | Node 22 | Docker Desktop (or Docker Engine + Compose v2) |
-| Rooms survive a restart | No (in-memory) | Yes (Postgres) |
+| Rooms and accounts survive a restart | No (in-memory) | Yes (Postgres) |
 | Map uploads | Local disk | SeaweedFS (S3) |
 | Grid and wall detection | Off (no vision service) | On |
 | Sign-in | Sign up as usual | Dev account `t@gmail.com` / `password` is pre-seeded |
@@ -88,20 +88,28 @@ Use this to get persistence while you edit code with hot reload:
 
 ```bash
 docker compose up -d postgres redis s3 vision vision-walls
-export DATABASE_URL=postgres://vtt:vtt@localhost:5432/vtt
-npm run prisma:migrate --workspace=@vtt/server
-REDIS_URL=redis://localhost:6379 \
-S3_ENDPOINT=http://localhost:8333 \
-npm run dev
+npm run dev:db
 ```
 
-`export` first, and in that order: `prisma:migrate` reads `DATABASE_URL` from the
-environment and fails with `P1012` without it. **Re-run it after every pull that touches
-`apps/server/prisma/`** — here `docker compose up` does not migrate, so a database left behind
-the code fails at runtime rather than at startup. Add `VISION_URL=http://127.0.0.1:8000` to
-use grid detection. Uploads use SeaweedFS whenever it answers on `127.0.0.1:8333`, even
-without `S3_ENDPOINT` (`S3_AUTODETECT=0` skips the check; production refuses to start without
-`S3_ENDPOINT`).
+`npm run dev:db` applies any pending migrations, then runs `npm run dev` with
+`DATABASE_URL=postgres://vtt:vtt@127.0.0.1:5432/vtt` and `REDIS_URL=redis://127.0.0.1:6379`
+(set either one to use another). Because it migrates on every start, a pull that touches
+`apps/server/prisma/` needs no extra step. Plain `npm run dev` ignores these containers and
+keeps rooms and accounts in memory, so an account made there is gone after the next restart
+and signing in to it says the password is wrong.
+
+By hand, `export` first and in this order: `prisma:migrate` reads `DATABASE_URL` from the
+environment and fails with `P1012` without it.
+
+```bash
+export DATABASE_URL=postgres://vtt:vtt@127.0.0.1:5432/vtt
+npm run prisma:migrate --workspace=@vtt/server
+REDIS_URL=redis://127.0.0.1:6379 npm run dev
+```
+
+Add `VISION_URL=http://127.0.0.1:8000` to use grid detection. Uploads use SeaweedFS whenever it
+answers on `127.0.0.1:8333`, even without `S3_ENDPOINT` (`S3_AUTODETECT=0` skips the check;
+production refuses to start without `S3_ENDPOINT`).
 
 Two lines on startup tell you which mode you are in:
 
