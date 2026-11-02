@@ -1,3 +1,5 @@
+import { MovementControls } from "./MovementControls";
+import { defaultMovementSettings, type MovementSettings } from "./movementRuler";
 import { CornersOut, Eye } from "@phosphor-icons/react";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_TOKEN_COLOR, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
@@ -129,7 +131,7 @@ interface Placing {
 
 const HINTS: Record<BoardTool["kind"], string> = {
   select: "Drag to pan · scroll to zoom · double-click to ping · hold Alt to place freely",
-  measure: "Drag to measure · hold Alt to measure freely · Esc to stop",
+  measure: "Drag to measure · Alt: straight line · Esc: stop",
   draw: "Drag to draw · only you can see drawings · Esc to stop",
   area: "Drag to size and aim · click to place the chosen size · hold Alt to place freely · everyone at the table sees areas",
   erase: "Click or drag over your marks and areas to erase them · Esc to stop",
@@ -202,6 +204,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   /** Closing the token panel deselects the token, and Token view goes with it. */
   const deselect = () => { setSelectedId(null); setViewedIds([]); };
   const selected = selectedId ? renderedState.tokens[selectedId] ?? null : null;
+  const [movementSettings, setMovementSettings] = useState<MovementSettings>(() => defaultMovementSettings(state.scene.grid));
+  const [movementFeedback, setMovementFeedback] = useState("");
+  const rulerOrigin = selected && can.moveToken(you, selected) ? selected.position : null;
+  const rulerRef = useRef({ settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
+  rulerRef.current = { settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
   const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds) : [];
   const sightId = sightKey(state, viewing);
   // Keyed on what shapes the sight, so an unrelated event keeps the same array and the mask is not rebuilt.
@@ -337,6 +344,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
 
   useEffect(() => {
     const view = new BoardView(hostRef.current!, {
+      movementFeedback: setMovementFeedback,
       nukeImpact: () => latest.current.onNukeImpact?.(),
       moveToken: async (tokenId, to) => {
         const result = await guarded.command({ type: "token.move", tokenId, to });
@@ -413,6 +421,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);
       view.update(latest.current.boardState, latest.current.you);
+      view.setMovementRuler(rulerRef.current.settings, rulerRef.current.origin, rulerRef.current.tokenSize);
       view.setTool(toolRef.current);
       view.setPlacement(ghostRef.current);
       view.setGroupSelection(latest.current.groupSelection ?? []);
@@ -509,6 +518,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   useEffect(() => {
     viewRef.current?.setGridPreview(gridPreview);
   }, [gridPreview]);
+
+  useEffect(() => {
+    viewRef.current?.setMovementRuler(movementSettings, rulerOrigin, selected?.size ?? 1);
+  }, [movementSettings, rulerOrigin?.x, rulerOrigin?.y, selected?.size]);
 
   useEffect(() => {
     viewRef.current?.setTool(tool);
@@ -731,6 +744,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {gridPreview && <p className="grid-preview-label" role="status">Preview · Not applied</p>}
       {!readOnly && !selectOnly && (
       <ToolRail
+        movementControls={<MovementControls key={state.roomId} roomId={state.roomId} grid={state.scene.grid} onChange={setMovementSettings} />}
         active={tool.kind}
         options={toolOptions}
         unitLabel={state.scene.grid.unitLabel}
@@ -749,6 +763,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         onToggleLineOfSight={() => void guarded.command({ type: "scene.setLineOfSight", enabled: !state.scene.lineOfSight })}
       />
       )}
+      {tool.kind === "measure" && movementFeedback && <p className="movement-feedback" role="status">{movementFeedback}</p>}
       {overlay}
       {notices}
       {refusal && <p key={refusal.at} className="board-refusal" role="alert">{refusal.message}</p>}

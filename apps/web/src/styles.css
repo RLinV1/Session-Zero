@@ -3308,3 +3308,11 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .closing-copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); max-width: 34rem; }
 .closing-copy h2 { margin: 0; font-size: clamp(1.7rem, 3.6vw, 2.5rem); font-weight: 700; line-height: 1.1; color: var(--text); }
 .closing-copy p { margin: 0 0 var(--space-2); color: var(--muted); font-size: 1.05rem; }
+
+/* Personal prospective-move controls and a DOM equivalent of the canvas label. */
+.movement-options { width: min(16rem, calc(100vw - 5rem)); }
+.movement-options label { display: flex; flex-direction: column; gap: var(--space-1); }
+.movement-options input, .movement-options select { min-height: 2.75rem; width: 100%; }
+.movement-options p { margin: 0; color: #ffb493; font-size: var(--fs-sm); }
+.movement-options small { color: var(--text-muted); }
+.movement-feedback { position: absolute; bottom: 3rem; left: 50%; transform: translateX(-50%); max-width: calc(100% - 2rem); padding: var(--space-2); background: #121417; color: #fff; border: 1px solid var(--border); border-radius: var(--radius); pointer-events: none; }

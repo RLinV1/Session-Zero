@@ -207,7 +207,7 @@ If map preparation, guest onboarding, tactical browser interaction, real-time sy
 - Can a first-time GM upload a map and prepare an encounter without documentation in under 5 minutes?
 - Does automatic grid detection materially reduce setup time across diverse map styles?
 - Can a player join from a shareable link and control an assigned token in under 30 seconds, and retain control across a page reload?
-- Do pointer pings, drag previews, movement rulers, and AoE previews propagate between remote browsers with low enough latency to feel immediate?
+- Do pointer pings, drag previews, and AoE previews propagate between remote browsers with low enough latency to feel immediate?
 - Can a GM recover from an accidental reveal or token move without reloading or manually reconstructing state?
 - Do all connected clients converge on identical state after simultaneous edits, a forced disconnect, and a checkpoint restore?
 
@@ -319,7 +319,7 @@ Participants need to inspect the map, manipulate permitted pieces, communicate s
 | --- | --- | --- | --- |
 | FR-TAC-01 | Both | **Independent pan and zoom** | Lets each participant inspect the board at their preferred scale without changing another participant's viewport. |
 | FR-TAC-02 | Both | **Continuous coordinates with optional grid snapping** | Supports free positioning when needed while allowing tactical movement to align cleanly to the encounter grid. |
-| FR-TAC-03 | Player | **Movement Budget Ruler** | Measures an owned token's drag path in grid units, with configurable diagonal calculations and visual budget thresholds to help the player evaluate movement before committing it. |
+| FR-TAC-03 | Player | **Movement Budget Ruler** | Personal Measure tool previews one prospective move from a selected controllable token's exact center, or between points. Editable per-room local allowance defaults to six grid cells; equal-cost, alternating (1 then 2), and Euclidean diagonals show distance, remaining allowance or excess. No per-turn tracking or movement enforcement; rulers and settings stay in the browser. |
 | FR-TAC-04 | Both | **Drawing overlays** | Supports line, rectangle, and circle overlays for communicating tactical plans or marking locations; freehand drawing is excluded from the current scope. |
 | FR-TAC-05 | Both | **Target Pings** | Broadcasts a short-lived animated pointer ping at a board location so participants can draw attention to a target or area without creating persistent clutter. |
 | FR-TAC-06 | Both | **AoE templates, preview, and placement** | Provides circular bursts, cones, lines, and boxes that snap to grid units; participants can orient and scale an ephemeral preview before committing the final template. |
@@ -335,7 +335,7 @@ Remote participants need confidence that actions performed in one browser are re
 | --- | --- | --- | --- |
 | FR-SYNC-01 | Both | **Server-authoritative room state** | Establishes one trusted source of truth instead of allowing clients to resolve encounter state independently. |
 | FR-SYNC-02 | Both | **Real-time persistent synchronization** | Synchronizes token, condition, initiative, portal, fog, template, and visibility changes across connected browsers. |
-| FR-SYNC-03 | Both | **Ephemeral interaction channel** | Broadcasts pointer coordinates, drag previews, ping pulses, movement rulers, and AoE aiming without persisting temporary interaction data to encounter history. |
+| FR-SYNC-03 | Both | **Ephemeral interaction channel** | Broadcasts pointer coordinates, drag previews, ping pulses, and AoE aiming without persisting temporary interaction data to encounter history. |
 | FR-SYNC-04 | Both | **Ordered conflict handling** | Uses server ordering and monotonically increasing per-room sequence numbers so concurrent committed actions resolve deterministically. |
 
 ### 5.6 GM Need — Recover from Mistakes Without Rebuilding the Encounter
@@ -357,7 +357,7 @@ A GM needs to reverse accidental changes while preserving an understandable hist
 | Room Capacity | 1 GM and at least 8 concurrent remote players |
 | Join Time | Median under 30 seconds from opening a player link to board access |
 | Reload Recovery | Player retains identity and token ownership across reload in under 3 seconds |
-| Ephemeral Interaction Latency | Pings, drag previews, rulers, and AoE previews appear on other connected clients within 150 ms under the benchmark network profile |
+| Ephemeral Interaction Latency | Pings, drag previews, and AoE previews appear on other connected clients within 150 ms under the benchmark network profile |
 | State Convergence | Committed actions visible to all connected clients within 500 ms |
 | Reconnect Convergence | A reconnecting client reaches authoritative current state within 3 seconds after transport recovery |
 | Board Performance | 60 FPS canvas pan/zoom with representative map and 100 active tokens on the benchmark desktop hardware |
@@ -388,7 +388,7 @@ Excluded from the project scope:
 - **Unit Testing:** Grid detection accuracy against a collection of battle maps; dice expression parsing; coordinate transform mathematics; and UVTT schema parsing.
 - **Authorization Integration Tests:** Automated tests verify that unauthorized clients cannot invoke GM-only actions or modify unowned tokens via direct WebSocket payloads.
 - **Visibility Filtering Tests:** Player clients receive neither hidden-token data nor unrevealed GM-only state through API responses, WebSocket events, or reconnect payloads.
-- **Interaction Latency Benchmarks:** Pointer pings, drag previews, movement rulers, and AoE previews are benchmarked under simulated residential internet latency to verify responsive cross-client interaction.
+- **Interaction Latency Benchmarks:** Pointer pings, drag previews, and AoE previews are benchmarked under simulated residential internet latency to verify responsive cross-client interaction.
 - **Cross-Browser Tests:** Core encounter flows are exercised in current desktop Chrome, Firefox, Edge, and Safari.
 - **Usability Testing:** Structured usability tests with at least 5 independent GMs and players.
 
