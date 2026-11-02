@@ -771,3 +771,12 @@ Not done. The team generates them in ChatGPT from 3.1's prompts and saves them t
   - `homePrepare.test.tsx` asserts that the slider starts at 70 and that the lined-up message shows. Its tests and the copy check pass, 7 in total.
   - A 1440px screenshot shows the app's grid on the forge's flagstones.
   - `npm run lint` is clean and `npm run typecheck` reports 0 errors.
+
+## Phone capture without a blank edge (review)
+
+- **Found.** The players section's phone capture showed a blank strip down the right of the board. To centre the lit area, the capture had panned the map left, which brought its right edge, and the board's background beyond it, into view.
+- **Change.** The capture was retaken on the isolated server: the same room setup, zoomed in around the lit area with no pan, so the map fills the board to both edges. It is 600 × 1298, 37 KB. CREDITS.md now describes the new framing.
+- **Checks.**
+  - The board's right-edge pixels down its height are all (18, 15, 13), the tomb in shadow, not the page behind the board.
+  - A 1440px screenshot of the section shows the new capture.
+  - `homePage.test.tsx` passes.

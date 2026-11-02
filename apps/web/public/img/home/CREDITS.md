@@ -43,7 +43,7 @@ the face for the board's round token.
 
 | File | What it is | How it was made |
 | --- | --- | --- |
-| `player-phone.webp` | A player's board on a phone, 600 × 1298 | The Sun Tomb uploaded to a dev account's library on the isolated dev server and set in a room, with the walls from `homeWalls.ts`, line of sight on and a 30 ft sight range. A guest joined at 390 × 844 (2× pixels) as Nalani, and the board was panned and zoomed toward Nalani's token. The hidden guardian in the side chamber is not in the player's view, as at the table. |
+| `player-phone.webp` | A player's board on a phone, 600 × 1298 | The Sun Tomb uploaded to a dev account's library on the isolated dev server and set in a room, with the walls from `homeWalls.ts`, line of sight on and a 30 ft sight range. A guest joined at 390 × 844 (2× pixels) as Nalani, and the board was zoomed in around the lit area, without panning, so the map fills the board to both edges. The hidden guardian in the side chamber is not in the player's view, as at the table. |
 | `attack-still.webp` | The attack tile's still, 960 × 602 | The home page's own attack tile (the animation editor's preview stage) playing Fireball, captured 550 ms in at 2× pixels. Shown instead of the live stage under reduced motion. |
 
 The `*-thumb.webp` files for `broken-span`, `hollowfrost-keep`, `temple-green-sun` and
