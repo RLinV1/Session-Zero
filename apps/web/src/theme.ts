@@ -43,8 +43,11 @@ export function layerFor(route: Route): Layer {
     case "join":
     case "notFound":
       return "entry";
+    // The policy pages are long reading, so they take the hub's calm glow, not the entry photograph.
     case "gmDashboard":
     case "library":
+    case "privacy":
+    case "terms":
       return "hub";
     case "room":
     case "encounterEdit":
