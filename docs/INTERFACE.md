@@ -42,6 +42,7 @@ What exists today, and what a usable product still needs:
 | `/r/:roomId/prepare` | Scene preparation | **Missing** — currently crammed into the table's side panel | FR-GM-02 … FR-GM-07, FR-GM-11 |
 | `/r/:roomId/log` | Activity log and undo | **Missing** | FR-REC-01, FR-REC-02 |
 | — (no route) | Access, invites, revocation | Built as in-room controls: Remove in the Participants popover, Reset link beside Share | FR-GM-20 |
+| `/privacy`, `/terms` | Privacy notice and terms of use: reading pages with the shared header and footer, on the hub's ground | Built | `openspec/changes/site-policies` |
 | `/library` | Saved maps, token art, encounter templates | **Deferred — do not build** | [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) §13.1 defers saved assets and omits their navigation from the initial release; needs ownership, quota and reuse requirements first |
 
 The gap is not decoration. Some of those rows are requirements with no surface at all: a GM
@@ -306,7 +307,7 @@ darkens rather than brightens so it stays above it.
 
 **Light theme and layers.** Every route belongs to one of four layers, set on `<html>` as
 `data-layer` by `App.tsx` (`theme.ts`): **home** (`/`), **entry** (sign-in, sign-up, join,
-not found), **hub** (GM dashboard, library) and **table** (a room, and the encounter editor
+not found), **hub** (GM dashboard, library, and the privacy and terms pages) and **table** (a room, and the encounter editor
 that reuses it). The home, entry and hub layers follow one stored choice, light, dark or the
 system's, kept under `vtt.theme` and applied before the first render so a light page never
 flashes dark. The table is always dark: the board is the lit surface and Pixi renders
@@ -348,6 +349,9 @@ viewport and inert to the pointer, in the amount its layer gets:
   page's navigation, the account control and the theme toggle, in the same place on the home
   and hub pages at every width. Entry pages show the mark and name only (`EntryPage`). The
   hub's navigation marks the current page with the selected treatment.
+- **`ui/SiteFooter.tsx`**: on the home and policy pages, on the header's width under a fading
+  hairline. Who built it at the left and the Privacy and Terms links at the right, quiet like
+  the header's Sign in: muted until hovered, the current page in the text colour.
 - **`ui/TokenDisc.tsx`**: a token outside the board, drawn as the board draws it: disc, art
   clipped to the circle, ring, hit-point bar in the status colours, initial when there is no art.
   Home page maps, library creature cards, roster and My Tokens rows.

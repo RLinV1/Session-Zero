@@ -1222,6 +1222,31 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .entry .card { box-shadow: 0 16px 48px var(--shadow-tint); }
 .entry .card h1 { font-size: 1.35rem; letter-spacing: -0.015em; }
 
+/* Privacy and terms (site-policies): a reading page on the hub's ground. One left-aligned column
+   at 65 characters, headings by weight and colour as on the hub (dashboard-typography), sections
+   grouped by a fading hairline and space rather than boxed. */
+.policy-page { min-height: 100dvh; display: flex; flex-direction: column; font-family: var(--font-ui); }
+.policy-page main { flex: 1; padding: var(--space-6) 0 var(--space-8); }
+.policy { max-width: 65ch; display: flex; flex-direction: column; gap: var(--space-6); line-height: 1.6; }
+.policy h1, .policy h2 { letter-spacing: -0.02em; text-transform: none; color: var(--text); }
+.policy h1 { margin: 0 0 var(--space-3); font-size: 1.5rem; font-weight: 700; }
+.policy h2 { margin: 0 0 var(--space-3); font-size: 1.05rem; font-weight: 650; }
+.policy p, .policy ul, .policy dl { margin: 0; }
+.policy-lead { color: var(--muted); font-size: 1.05rem; }
+.policy .policy-meta { margin-top: var(--space-3); color: var(--muted); font-size: var(--fs-sm); }
+.policy-part { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.policy-part h2 { margin: 0; }
+.policy ul { padding-left: 1.25rem; display: grid; gap: var(--space-2); }
+.policy li::marker { color: var(--muted); }
+/* What we keep: the thing on the left, what is kept on the right; stacked on a phone. */
+.policy-terms { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: var(--space-4) var(--space-5); }
+.policy-terms dt { font-weight: 600; }
+.policy-terms dd { margin: 0; }
+@media (max-width: 720px) {
+  .policy-terms { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .policy-terms dd + dt { margin-top: var(--space-3); }
+}
+
 /* The lit table behind the entry and hub pages (ui/Ambient.tsx, design-language: "Background
    by layer"). Fixed and inert: it never scrolls, never shifts layout, never takes a click. */
 .ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--ground); }
@@ -1882,20 +1907,35 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .map-grid-light { stroke: rgba(255, 255, 255, 0.2); }
 .map-grid-app line { stroke: rgba(224, 138, 98, 0.9); stroke-width: 1.5px; }
 
-/* ---- Closing and footer ---- */
+/* ---- Footer (ui/SiteFooter.tsx): home and policy pages ---- */
 
-
-.home-footer {
+/* Who built it at the left, the policies at the right, like the header's mark and actions. */
+.site-footer {
+  position: relative;
+  z-index: 1;
   padding: 1.5rem 0 2.5rem;
   border-top: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
   align-items: baseline;
+  font-family: var(--font-ui);
   font-size: 0.9rem;
   color: var(--muted);
 }
-.home-footer p { margin: 0; }
+.site-footer p { margin: 0; }
+.footer-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin-left: auto; }
+/* Quiet, like the header's Sign in: weight and colour, no box and no underline. */
+.site-footer .footer-links a {
+  color: var(--muted);
+  font-weight: 550;
+  text-decoration: none;
+  border-radius: var(--radius-control);
+  transition: color var(--dur-fast) var(--ease);
+}
+.site-footer .footer-links a:hover,
+.site-footer .footer-links a[aria-current="page"] { color: var(--text); }
+@media (max-width: 640px) { .footer-links { margin-left: 0; flex-basis: 100%; } }
 
 /* ---- Mobile: every multi-column block above collapses here ---- */
 
@@ -1976,7 +2016,8 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 /* Hairlines that fade at both ends, rather than a flat rule edge to edge. */
 .part-head,
-.home-footer {
+.policy-part,
+.site-footer {
   border-image: linear-gradient(90deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent) 1;
 }
 
