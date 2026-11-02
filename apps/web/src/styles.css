@@ -1276,21 +1276,44 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .gm-page h1 { font-size: 1.5rem; }
 .gm-page h2 { font-size: 1.05rem; font-weight: 650; color: var(--text); }
 
+/* On a wide screen the create form stays in view beside a long list of rooms. */
+@media (min-width: 761px) { .dashboard-grid > .create-room { position: sticky; top: var(--space-4); } }
+
 .room-sections { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .room-section { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .room-section > h2 { margin: 0; }
 /* Each room a card: its name in full (it wraps, never ellipsizes), its game and last activity,
-   then the way in. */
+   then the way in. A hosted room's card leads with a picture of its board. */
 .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--space-3); }
 .room-card {
-  display: flex; flex-direction: column; gap: var(--space-1); min-width: 0;
-  padding: var(--space-4); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface);
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface);
+  transition: border-color var(--dur-fast);
 }
+.room-card.has-preview:hover { border-color: var(--border-strong); }
+.room-card-body { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); }
 .room-card-name { font-size: 1.02rem; overflow-wrap: anywhere; }
 .room-card-meta { font-size: var(--fs-sm); }
 .room-card-actions { margin-top: auto; padding-top: var(--space-2); }
+/* The board picture: the card's full width, a fixed shape so every card in a row lines up. */
+.room-card-preview {
+  display: block; width: 100%; padding: 0; min-height: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  aspect-ratio: 16 / 10; background: var(--raised); overflow: hidden;
+}
+.room-card-preview:where(:hover:not(:disabled)) { background-color: var(--raised); filter: brightness(1.08); }
+.room-card-preview:active:not(:disabled) { transform: none; }
+.room-preview { position: relative; display: block; width: 100%; height: 100%; }
+.room-preview-marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.room-preview-fog { fill: #000; fill-opacity: 0.55; }
+.room-preview-empty {
+  position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-sm); color: var(--muted);
+  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 1.5rem 1.5rem; background-position: center;
+}
+.room-preview-empty.is-loading { background: var(--hover); background-image: none; }
 /* While the list loads: cards of the same size, still, and hidden from assistive technology. */
 .room-card.skeleton { min-height: 7.5rem; background: var(--hover); border-style: dashed; }
+.room-card.skeleton.has-preview { min-height: 0; aspect-ratio: 16 / 17; }
 
 /* Nothing here yet: a picture, one sentence, and the action that fills it. */
 .empty-state {
