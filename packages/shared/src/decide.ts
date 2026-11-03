@@ -245,6 +245,11 @@ export function decide(
       if (command.enabled === (state.scene.lineOfSight ?? false)) return reject("invalid", `Line of sight is already ${command.enabled ? "on" : "off"}.`);
       return accept({ type: "LineOfSightSet", from: state.scene.lineOfSight ?? false, to: command.enabled });
 
+    case "scene.setIsometric":
+      if (!can.administer(actor)) return forbidden();
+      if (command.enabled === (state.scene.isometric ?? false)) return reject("invalid", `The map is already ${command.enabled ? "2.5D isometric" : "flat"}.`);
+      return accept({ type: "IsometricSet", from: state.scene.isometric ?? false, to: command.enabled });
+
     case "scene.setSightRange": {
       if (!can.administer(actor)) return forbidden();
       const current = state.scene.sightRange ?? null;

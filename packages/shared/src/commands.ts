@@ -80,6 +80,7 @@ export type TokenUpdate = z.infer<typeof TokenUpdate>;
 /** A preparation can contain only these board edits: no nesting, identity, map or token commands. */
 export const PreparationEdit = z.discriminatedUnion("type", [
   z.object({ type: z.literal("scene.setLineOfSight"), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("scene.setIsometric"), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("scene.setSightRange"), range: z.number().positive().finite().nullable() }).strict(),
   z.object({ type: z.literal("terrain.paint"), layerId: z.string().min(1).max(64), paint: z.array(PaintRun).min(1).max(MAX_TERRAIN_CELLS), context: TerrainContext }).strict(),
   z.object({

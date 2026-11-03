@@ -49,6 +49,7 @@ export function layerFor(route: Route): Layer {
     case "privacy":
     case "terms":
       return "hub";
+    case "isometricLighting":
     case "room":
     case "encounterEdit":
       return "table";

@@ -34,7 +34,7 @@ describe("map thumbnails (design-language: Map thumbnails)", () => {
   });
 
   it("loads the prepared thumbnail, not the full map, for every shipped map in the library", async () => {
-    vi.spyOn(api.library, "list").mockResolvedValue([seeded(0), seeded(1), seeded(2), seeded(3), uploaded]);
+    vi.spyOn(api.library, "list").mockResolvedValue([...SHIPPED_MAPS.map((_, i) => seeded(i)), uploaded]);
     vi.spyOn(api.library.creatures, "list").mockResolvedValue([]);
     vi.spyOn(api.library.encounters, "list").mockResolvedValue([]);
     render(<LibraryPage />);

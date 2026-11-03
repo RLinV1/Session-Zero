@@ -363,6 +363,8 @@ export function filterEventForViewer(
       // Chat is public to the whole room; it names no hidden token or roll (ADR 0015). Mentions
       // carry only the ids and public display names of participants every viewer already has (ADR 0035).
       return pass;
+    case "IsometricSet":
+      return pass; // a public scene flag, no hidden data (ADR 0048)
     case "LineOfSightSet":
     case "SightRangeSet":
       // Sight changes for every player (ADR 0044).

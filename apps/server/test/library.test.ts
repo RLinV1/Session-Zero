@@ -69,7 +69,7 @@ describe("shipped maps in every library (builtin-library-assets, ADR 0036)", () 
       SHIPPED_MAPS.map((m) => m.name).sort(),
     );
     expect(first.find((a) => a.name === "Hollowfrost Keep")).toMatchObject({
-      url: "/img/map-ice.webp", width: 3269, height: 1882, grid: { cellSize: 70, offsetX: 47, offsetY: 46 },
+      url: "/img/map-ice.webp", width: 3269, height: 1882, grid: { cellSize: 70.3, offsetX: 54, offsetY: 43 },
     });
     expect(JSON.stringify(first)).not.toContain("objectKey");
 

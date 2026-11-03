@@ -1,5 +1,6 @@
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
+import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import type { RoomUploadPurpose } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type UploadAnalysis } from "./gridDetectionStore";
@@ -260,6 +261,18 @@ export class MemoryRoomStore implements RoomStore {
   async seedShippedMaps(ownerGmId: string, rows: LibraryAssetRecord[]) {
     const seeded = this.seededSlugs.get(ownerGmId) ?? new Set<string>();
     this.seededSlugs.set(ownerGmId, seeded);
+    let corrected = false;
+    for (const { map, previous } of SHIPPED_GRID_CORRECTIONS) {
+      for (const asset of this.assets.values()) {
+        if (asset.ownerGmId !== ownerGmId || asset.kind !== "map" || asset.objectKey !== `shipped:${map.slug}`
+          || asset.url !== map.url || asset.width !== map.width || asset.height !== map.height || !asset.grid) continue;
+        if (Object.keys(asset.grid).length === Object.keys(previous).length
+          && Object.entries(previous).every(([key, value]) => asset.grid![key as keyof GridSpec] === value)) {
+          asset.grid = structuredClone(map.grid);
+          corrected = true;
+        }
+      }
+    }
     const fresh = rows.filter((r) => !seeded.has(shippedSlug(r)));
     for (const row of fresh) {
       seeded.add(shippedSlug(row));
@@ -267,7 +280,7 @@ export class MemoryRoomStore implements RoomStore {
       const target = { scope: "library" as const, id: row.id };
       this.trackDetection(target, this.readDetection(target)?.status);
     }
-    return fresh.length > 0;
+    return corrected || fresh.length > 0;
   }
 
   async findDetection(target: DetectionTarget): Promise<DetectionRecord | null> {

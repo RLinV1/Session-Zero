@@ -54,6 +54,7 @@ export const REVERSIBLE_EVENT_TYPES = [
   "AreaEffectResolved",
   "LineOfSightSet", // ADR 0044
   "SightRangeSet",
+  "IsometricSet", // ADR 0048
 ] as const;
 
 type MapSetEvent = Extract<DomainEvent, { type: "MapSet" }>;
@@ -290,6 +291,8 @@ function inverseOfOne(event: SingleInverse): DomainEvent {
       return { type: "WallsAdded", walls: event.walls };
     case "LineOfSightSet":
       return { type: "LineOfSightSet", from: event.to, to: event.from };
+    case "IsometricSet":
+      return { type: "IsometricSet", from: event.to, to: event.from };
     case "SightRangeSet":
       return { type: "SightRangeSet", from: event.to, to: event.from };
     case "WallUpdated":
@@ -415,6 +418,10 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
     }
     if (event.type === "LineOfSightSet") {
       if ((state.scene.lineOfSight ?? false) !== event.to) return "Can't undo: line of sight has changed since.";
+      continue;
+    }
+    if (event.type === "IsometricSet") {
+      if ((state.scene.isometric ?? false) !== event.to) return "Can't undo: the map style has changed since.";
       continue;
     }
     if (event.type === "SightRangeSet") {
@@ -620,6 +627,7 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"]): { v
   if (first.type === "LineOfSightSet") {
     return first.to ? { verb: "turning line of sight on", noun: "turning line of sight on" } : { verb: "turning line of sight off", noun: "turning line of sight off" };
   }
+  if (first.type === "IsometricSet") return { verb: "map style change", noun: "changing the map style" };
   if (first.type === "SightRangeSet") return { verb: "sight range change", noun: "changing the sight range" };
   if (first.type === "WallUpdated") return { verb: "wall or portal edit", noun: "editing a wall or portal" };
   if (first.type === "PortalChanged") {

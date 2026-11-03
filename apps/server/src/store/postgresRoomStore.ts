@@ -1,5 +1,6 @@
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
+import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import {
   Prisma,
   PrismaClient,
@@ -373,9 +374,19 @@ export class PostgresRoomStore implements RoomStore {
       const locked = await tx.$queryRaw<{ seeded: string[] }[]>`
         SELECT shipped_maps_seeded AS seeded FROM gm_identities WHERE id = ${ownerGmId}::uuid FOR UPDATE`;
       if (locked.length !== 1) return false;
+      // JSONB equality compares the complete grid; an edited line style must also survive.
+      let corrected = false;
+      for (const { map, previous } of SHIPPED_GRID_CORRECTIONS) {
+        const result = await tx.libraryAsset.updateMany({
+          where: { ownerGmId, kind: "map", objectKey: `shipped:${map.slug}`, url: map.url,
+            width: map.width, height: map.height, grid: { equals: previous } },
+          data: { grid: map.grid },
+        });
+        corrected ||= result.count > 0;
+      }
       const seeded = new Set(locked[0]!.seeded);
       const fresh = rows.filter((r) => !seeded.has(shippedSlug(r)));
-      if (fresh.length === 0) return false;
+      if (fresh.length === 0) return corrected;
       await tx.libraryAsset.createMany({
         data: fresh.map((a) => ({
           id: a.id, ownerGmId: a.ownerGmId, kind: a.kind, objectKey: a.objectKey, url: a.url, name: a.name,

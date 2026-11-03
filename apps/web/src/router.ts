@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 export type Route =
   | { page: "home" }
+  | { page: "isometricLighting" }
   | { page: "gmDashboard" }
   | { page: "library" }
   | { page: "signin" }
@@ -15,6 +16,7 @@ export type Route =
 
 export function parseRoute(pathname: string): Route {
   if (pathname === "/") return { page: "home" };
+  if (/^\/demos\/apartments\/?$/.test(pathname)) return { page: "isometricLighting" };
   if (/^\/gm-dashboard\/?$/.test(pathname)) return { page: "gmDashboard" };
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };

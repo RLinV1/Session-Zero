@@ -8,7 +8,7 @@ const mapUrl = "/uploads/map.png";
 const found = [{ a: { x: 0, y: 0 }, b: { x: 70, y: 0 } }, { a: { x: 70, y: 0 }, b: { x: 70, y: 70 } }];
 
 function setup() {
-  let draft: MapDraft = { mapUrl, walls: {}, fog: {}, lineOfSight: false, sightRange: null };
+  let draft: MapDraft = { mapUrl, walls: {}, fog: {}, lineOfSight: false, isometric: false, sightRange: null };
   let current = true;
   const liveCommand = vi.fn();
   const fetch = vi.fn(async (): Promise<DetectedWallsResponse> => ({ resultId: "result-b", walls: found }));
@@ -32,7 +32,7 @@ describe("draft connection ownership (FR-GM-11)", () => {
     test.fetch.mockReturnValue(new Promise((resolve) => { complete = resolve; }));
     const pending = test.connection.command({ type: "wall.applyDetected", mapUrl });
     test.invalidate();
-    const replacement: MapDraft = { mapUrl: transition === "switch" ? "/uploads/other.png" : mapUrl, walls: { retained: { id: "retained", ...found[0]! } }, fog: {}, lineOfSight: false, sightRange: null };
+    const replacement: MapDraft = { mapUrl: transition === "switch" ? "/uploads/other.png" : mapUrl, walls: { retained: { id: "retained", ...found[0]! } }, fog: {}, lineOfSight: false, isometric: false, sightRange: null };
     test.replace(replacement);
     complete({ resultId: "result-b", walls: found });
     expect(await pending).toMatchObject({ ok: false, code: "invalid" });
@@ -62,7 +62,7 @@ describe("draft connection ownership (FR-GM-11)", () => {
     const flat = { type: "fog.add" as const, region: { shape: "rect" as const, from: { x: 10, y: 10 }, to: { x: 200, y: 10 } } };
     const collinear = { type: "fog.add" as const, region: { shape: "polygon" as const, points: [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 20 }] } };
     for (const command of [outside, flat, collinear]) expect(await test.connection.command(command)).toMatchObject({ ok: false, code: "invalid" });
-    expect(test.draft()).toEqual({ mapUrl, walls: {}, fog: {}, lineOfSight: false, sightRange: null });
+    expect(test.draft()).toEqual({ mapUrl, walls: {}, fog: {}, lineOfSight: false, isometric: false, sightRange: null });
     expect(await test.connection.command({ type: "wall.add", walls: [{ a: { x: 0, y: 0 }, b: { x: 680, y: 0 } }] })).toMatchObject({ ok: true });
   });
 });

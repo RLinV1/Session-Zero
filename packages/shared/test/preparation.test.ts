@@ -20,12 +20,13 @@ describe("atomic preparation decisions (FR-GM-15, FR-REC-02)", () => {
   });
   it("validates all edits against the staged state and rejects a late non-terrain failure", () => {
     const state = setup();
-    const decision = attempt(state, gm, save([fog, { type: "wall.update", wall: { id: "gone", a: { x: 0, y: 0 }, b: { x: 0, y: 70 } } }]));
+    const decision = attempt(state, gm, save([fog, { type: "scene.setIsometric", enabled: true }, { type: "wall.update", wall: { id: "gone", a: { x: 0, y: 0 }, b: { x: 0, y: 70 } } }]));
     expect(decision).toMatchObject({ ok: false });
     expect(decision).not.toHaveProperty("events");
     expect(state.fog).toEqual({});
-    const sight = run(state, gm, save([{ type: "scene.setLineOfSight", enabled: true }, { type: "scene.setSightRange", range: 60 }]));
-    expect(sight.state.scene).toMatchObject({ lineOfSight: true, sightRange: 60 });
+    expect(state.scene.isometric).toBeUndefined();
+    const sight = run(state, gm, save([{ type: "scene.setLineOfSight", enabled: true }, { type: "scene.setIsometric", enabled: true }, { type: "scene.setSightRange", range: 60 }]));
+    expect(sight.state.scene).toMatchObject({ lineOfSight: true, isometric: true, sightRange: 60 });
   });
   it("refuses unauthorized, nested, unrelated and oversized preparations", () => {
     const state = setup();

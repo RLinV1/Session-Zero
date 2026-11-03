@@ -3,7 +3,12 @@ import { DEFAULT_GRID, MAX_WALLS_PER_ADD, type FogRegion, type Wall } from "@vtt
 import { applyToDraft, draftDirty, planDraftSave, withDetectedWalls, type MapDraft } from "../src/pages/mapEditor/mapDraft";
 
 /** Inspect the edits inside the single atomic save; envelope/context tests live in preparationSave. */
-const plannedEdits = (...args: Parameters<typeof planDraftSave>) => planDraftSave(...args).flatMap((command) => command.type === "scene.savePreparation" ? command.edits : []);
+const plannedEdits = (...args: Parameters<typeof planDraftSave>) => {
+  const plan = planDraftSave(...args);
+  expect(plan.length).toBeLessThanOrEqual(1);
+  expect(plan.every((command) => command.type === "scene.savePreparation")).toBe(true);
+  return plan.flatMap((command) => command.type === "scene.savePreparation" ? command.edits : []);
+};
 
 const wall = (id: string, x0: number, y0: number, x1: number, y1: number): Wall => ({ id, a: { x: x0, y: y0 }, b: { x: x1, y: y1 } });
 const rect = (id: string, x0: number, y0: number, x1: number, y1: number): FogRegion => ({
@@ -13,7 +18,7 @@ const rect = (id: string, x0: number, y0: number, x1: number, y1: number): FogRe
 const expectedMapUrl = "/uploads/map.png";
 const scene = { map: { url: expectedMapUrl, width: 700, height: 700 }, grid: DEFAULT_GRID };
 const room = { scene, walls: { w1: wall("w1", 0, 0, 100, 0), w2: wall("w2", 0, 0, 0, 100) }, fog: { f1: rect("f1", 0, 0, 70, 70) } };
-const fresh = (): MapDraft => ({ mapUrl: "/uploads/map.png", ...room, lineOfSight: false, sightRange: null });
+const fresh = (): MapDraft => ({ mapUrl: "/uploads/map.png", ...room, lineOfSight: false, isometric: false, sightRange: null });
 let n = 0;
 const newId = () => `draft:${++n}`;
 
@@ -25,7 +30,7 @@ describe("map editor drafts (map-editor-drafts)", () => {
     expect(plannedEdits(room, draft).map((c) => c.type)).toEqual(["wall.add", "fog.replace"]);
     const saved = { ...room, walls: { ...room.walls, w3: { ...reversed, id: "w3" } }, fog: { ...room.fog, f2: { ...room.fog.f1, id: "f2" } } };
     expect(plannedEdits(saved, draft)).toEqual([]);
-    const savedDraft = { mapUrl: expectedMapUrl, walls: saved.walls, fog: saved.fog, lineOfSight: false, sightRange: null };
+    const savedDraft = { mapUrl: expectedMapUrl, walls: saved.walls, fog: saved.fog, lineOfSight: false, isometric: false, sightRange: null };
     let erased = applyToDraft(savedDraft, { type: "wall.remove", wallIds: ["w1"] }, newId)!;
     erased = applyToDraft(erased, { type: "fog.remove", regionId: "f1" }, newId)!;
     expect(draftDirty(saved, erased)).toBe(true);
@@ -39,7 +44,7 @@ describe("map editor drafts (map-editor-drafts)", () => {
     const closed = { kind: "door", state: "closed" } as const;
     const open = { kind: "window", state: "open" } as const;
     const saved = { ...room, walls: { w1: { ...room.walls.w1, portal: closed }, w2: { ...room.walls.w1, id: "w2", portal: open } } };
-    const draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
+    const draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, isometric: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
     expect(plannedEdits(saved, draft)).toEqual([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
     const detected = withDetectedWalls(draft, [room.walls.w1, room.walls.w1], newId);
     expect(Object.keys(detected.walls)).toEqual(["w1"]);
@@ -139,7 +144,7 @@ describe("doors and windows in the draft (FR-GM-09, ADR 0030)", () => {
   it("keeps a door when detection finds the same wall again", () => {
     const marked = { scene, walls: { ...room.walls, w1: { ...room.walls.w1, portal: door } }, fog: room.fog };
     const detected = [{ a: { x: 100, y: 0 }, b: { x: 0, y: 0 } }, { a: { x: 0, y: 0 }, b: { x: 0, y: 100 } }];
-    const draft = withDetectedWalls({ mapUrl: "/uploads/map.png", ...marked, lineOfSight: false, sightRange: null }, detected, newId);
+    const draft = withDetectedWalls({ mapUrl: "/uploads/map.png", ...marked, lineOfSight: false, isometric: false, sightRange: null }, detected, newId);
     expect(plannedEdits(marked, draft)).toEqual([]);
   });
 });
@@ -149,7 +154,7 @@ describe("UVTT metadata in the existing private editor (FR-GM-06/09)", () => {
   const imported: Wall = { ...room.walls.w1, uvttPortal: { position: { x: 5, y: 7 }, rotation: 1.2, closed: false, freestanding: true }, source: "objects_line_of_sight" };
   it("preserves metadata through designation, detection and full endpoint save", () => {
     const saved = { ...room, walls: { w1: imported } };
-    let draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
+    let draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, isometric: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
     expect(draft.walls.w1!.uvttPortal).toEqual(imported.uvttPortal);
     expect(plannedEdits(saved, draft)).toEqual([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
     expect(withDetectedWalls(draft, [imported], newId).walls.w1).toEqual(draft.walls.w1);
@@ -158,7 +163,7 @@ describe("UVTT metadata in the existing private editor (FR-GM-06/09)", () => {
   });
   it("adds a new imported portal with metadata and normalizes overlap in the draft", () => {
     const empty = { ...room, walls: {} };
-    let draft = applyToDraft({ mapUrl: expectedMapUrl, ...empty, lineOfSight: false, sightRange: null }, { type: "wall.add", walls: [imported] }, newId)!;
+    let draft = applyToDraft({ mapUrl: expectedMapUrl, ...empty, lineOfSight: false, isometric: false, sightRange: null }, { type: "wall.add", walls: [imported] }, newId)!;
     expect(plannedEdits(empty, draft)[0]).toMatchObject({ type: "wall.add", walls: [expect.objectContaining({ uvttPortal: imported.uvttPortal, source: imported.source })] });
     draft = applyToDraft(draft, { type: "wall.add", walls: [{ a: { x: 0, y: 0 }, b: { x: 200, y: 0 } }] }, newId)!;
     expect(Object.values(draft.walls).filter((w) => !w.uvttPortal)).toEqual([expect.objectContaining({ a: { x: 100, y: 0 }, b: { x: 200, y: 0 } })]);
