@@ -166,6 +166,3 @@ try {
   await browser?.close();
   for (const child of children.reverse()) child.kill();
 }
-
-
-

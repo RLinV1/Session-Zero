@@ -31,5 +31,3 @@ export async function captureMcp(cli, out) {
     console.log('Playwright MCP captured both live perspectives');
   } finally { for (const p of pending.values()) clearTimeout(p.timer); child.kill(); }
 }
-
-

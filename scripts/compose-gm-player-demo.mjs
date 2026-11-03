@@ -54,4 +54,3 @@ export async function composeDemo(browser, out, chapters) {
     await writeFile(path.join(out, 'sunken-crypt-demo.webm'), Buffer.from(encoded, 'base64'));
   } finally { await context.close(); await new Promise(resolve => server.close(resolve)); }
 }
-
