@@ -19,3 +19,10 @@
 - [ ] 4.1 Extend `docs/DEPLOYMENT.md` with the one-VM steps for AWS EC2 and GCP Compute Engine (instance size, ports 80/443, Docker install, DNS, `docker compose` commands); verify by following them on a fresh VM
 - [x] 4.2 Add the managed-services section for ECS Fargate/RDS/ElastiCache/S3 and Cloud Run/Cloud SQL/Memorystore/Cloud Storage including env var mapping and the worker no-scale-to-zero note; verify every variable in the table appears in `.env.production.example`
 - [ ] 4.3 Run `npm run lint && npm run typecheck && npm test` and confirm nothing regressed
+
+## 5. Terraform (one EC2 VM)
+
+- [x] 5.1 Add `deploy/terraform/` (providers, variables, main, outputs, `user_data.sh.tftpl`, README) creating instance, security group and Elastic IP; verify `terraform fmt -check` and `terraform validate` pass
+- [ ] 5.2 Generate secrets with `random_password`, default the site name to an `sslip.io` host from the Elastic IP, support a `domain` variable and an HTTP-only mode; verify `terraform plan` with dummy variables shows the expected resources
+- [x] 5.3 Add `deploy/terraform/.gitignore` (state, tfvars) and a `terraform.tfvars.example`; verify `git status` shows no state or secret files after `terraform init`
+- [x] 5.4 Document apply/destroy and credential setup in `docs/DEPLOYMENT.md`; verify every variable in `variables.tf` appears in the docs

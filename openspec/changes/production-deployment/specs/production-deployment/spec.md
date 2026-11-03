@@ -49,3 +49,14 @@ CI SHALL build the production server and web images on every pull request and fa
 #### Scenario: Broken production Dockerfile
 - **WHEN** a pull request breaks the production web build
 - **THEN** the image-build job fails
+
+### Requirement: One-VM AWS deployment can be created and removed with Terraform
+The repository SHALL include a Terraform configuration that creates a single AWS VM with a fixed public IP and starts the production stack on it, using generated secrets, and that removes everything it created on `terraform destroy`. Secrets SHALL NOT be committed.
+
+#### Scenario: Apply on a fresh account
+- **WHEN** an operator with AWS credentials runs `terraform apply` with the required variables
+- **THEN** the VM starts, the production stack comes up, and the output prints the site URL
+
+#### Scenario: Teardown
+- **WHEN** the operator runs `terraform destroy`
+- **THEN** the instance, security group and Elastic IP are removed

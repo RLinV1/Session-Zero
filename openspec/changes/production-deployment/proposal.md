@@ -10,6 +10,7 @@ The only supported way to run the app is `npm run dev` or the dev `docker-compos
 - Add `.env.production.example` listing every required variable.
 - Extend `docs/DEPLOYMENT.md` with exact steps for one VM (EC2 or Compute Engine) and a managed-services outline for AWS and GCP.
 - Add a CI job that builds the production images.
+- Add a Terraform configuration in `deploy/terraform/` that creates one EC2 VM, security group and Elastic IP, and starts the production stack on it from a startup script.
 - No change to app behavior, shared schemas, events or the dev workflow.
 
 ## Capabilities
