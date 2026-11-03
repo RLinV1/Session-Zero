@@ -24,3 +24,5 @@ openspec/changes/archive/.openspec-archive.lock
 # Python bytecode from the vision service and its tests.
 __pycache__/
 *.pyc
+/output/gm-player-demo/
+/output/demo-deps/
