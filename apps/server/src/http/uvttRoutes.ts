@@ -92,8 +92,9 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
       if (refused(res, deps.uploads.hit(`upload:${owner ?? auth.roomId}`), "Too many uploads. Try again later.")) return;
       const ownerId = owner ?? `participant:${auth.actorId}`;
       deps.preparations.assertCanCreate(auth.roomId, auth.actorId, ownerId);
-      const baseline = await auth.room.captureScene(auth.actorId);
-      if (!baseline) { res.status(403).json({ error: "Your GM seat ended." }); return; }
+      const sceneId = typeof req.query.sceneId === "string" ? req.query.sceneId : undefined;
+      const baseline = await auth.room.captureScene(auth.actorId, sceneId);
+      if (!baseline) { res.status(403).json({ error: "Your GM seat ended or that scene no longer exists." }); return; }
       let imagePath: string | undefined;
       let key: string | undefined;
       let libraryAsset: LibraryAssetRecord | undefined;

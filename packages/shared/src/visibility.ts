@@ -109,7 +109,7 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
-  return { ...state, tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...(c.sight ? { sight: c.sight } : {}) };
+  return { ...state, tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...(state.sceneNames && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =
@@ -317,6 +317,14 @@ export function filterEventForViewer(
     case "TokensGrouped":
       // GM-only: a player learns only that a seq passed (KAN-82, ADR 0026).
       return redacted;
+    case "SceneDraftCreated":
+    case "ScenePrepared":
+    case "SceneRenamed":
+    case "SceneDeleted":
+      return redacted;
+    case "SceneCreated":
+    case "SceneSwitched":
+      return { kind: "resync" };
     case "CheckpointCreated":
     case "CheckpointDeleted":
       // Checkpoints are the GM's; a player learns only that a seq passed (ADR 0019).

@@ -179,3 +179,19 @@ describe("RoomConnection.endPreview (KAN-39)", () => {
     }
   });
 });
+
+describe("scene changes", () => {
+  it("cancels queued previews before they can appear in the next scene", () => {
+    vi.useFakeTimers();
+    try {
+      const { connection, state } = open();
+      const messages: unknown[] = [];
+      (connection as unknown as { send(m: unknown): void }).send = (message) => messages.push(message);
+      connection.preview("ping", { type: "ping", at: { x: 1, y: 1 } });
+      connection.preview("ping", { type: "ping", at: { x: 1, y: 1 } });
+      handle(connection, { type: "welcome", you, seq: 5, state: { ...state, activeSceneId: "cellar" } });
+      vi.runAllTimers();
+      expect(messages).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
+  });
+});

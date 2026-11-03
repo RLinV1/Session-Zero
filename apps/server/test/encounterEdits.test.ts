@@ -69,6 +69,7 @@ describe("edit encounter templates in temporary rooms (encounter-templates, FR-G
     const { cookie } = await server.signUp();
     const map = await upload(cookie, "Crypt");
     const { roomId, gm } = await editing(cookie, { mapAssetId: map.id });
+    expect(await gm.command({ type: "scene.create", name: "Not in a template" })).toMatchObject({ type: "rejected", code: "forbidden" });
     expect(gm.state.scene.map).toMatchObject({ assetId: map.id, url: map.url });
     expect(gm.state.scene.grid.cellSize).toBe(DEFAULT_GRID.cellSize);
     expect(Object.keys(gm.state.tokens)).toHaveLength(0);

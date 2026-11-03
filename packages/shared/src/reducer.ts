@@ -29,7 +29,7 @@ export function reduce(state: RoomState, event: DomainEvent, meta?: EventMeta): 
   // A restore replaces the whole board, so board edits from before it can no longer be undone:
   // their "still current" check could pass by coincidence and undo across the restore. Only
   // rulings, which live on rolls rather than the board, stay (ADR 0019).
-  const history = event.type === "CheckpointRestored" || event.type === "EncounterApplied"
+  const history = event.type === "CheckpointRestored" || event.type === "EncounterApplied" || event.type === "SceneCreated" || event.type === "SceneSwitched"
     ? { ...state, undo: state.undo.filter((e) => e.events.length > 0 && e.events.every((ev) => ev.type === "RollRuled")) }
     : event.type === "MapSet" && event.map?.url !== event.previous?.url
       ? { ...state, undo: state.undo.filter((e) => !e.events.some((ev) => ev.type === "WallsAdded" || ev.type === "WallsRemoved" || ev.type === "PortalChanged" || ev.type === "WallUpdated")) }
@@ -67,6 +67,28 @@ export function reduceReceived(state: RoomState, committed: CommittedEvent): Roo
 /** The state change for one event, without the undo history (`reduce` adds that). */
 function apply(state: RoomState, event: DomainEvent, at: string | null): RoomState {
   switch (event.type) {
+    case "SceneDraftCreated":
+      return { ...state, sceneNames: { ...state.sceneNames, [event.initialId]: event.initialName, [event.sceneId]: event.name }, savedScenes: { ...state.savedScenes, [event.sceneId]: event.saved } };
+    case "ScenePrepared":
+      return { ...state, savedScenes: { ...state.savedScenes, [event.sceneId]: event.prepared } };
+    case "SceneCreated":
+    case "SceneSwitched": {
+      const savedScenes = { ...state.savedScenes, [event.fromId]: event.previous };
+      delete savedScenes[event.sceneId];
+      const sceneNames = event.type === "SceneCreated"
+        ? { ...state.sceneNames, [event.fromId]: event.fromName, [event.sceneId]: event.name }
+        : state.sceneNames;
+      return { ...state, ...event.restored.table, walls: event.restored.table.walls ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
+    }
+    case "SceneRenamed":
+      return { ...state, activeSceneId: state.activeSceneId ?? "initial", sceneNames: { ...state.sceneNames, [event.sceneId]: event.name } };
+    case "SceneDeleted": {
+      const savedScenes = { ...state.savedScenes };
+      const sceneNames = { ...state.sceneNames };
+      delete savedScenes[event.sceneId];
+      delete sceneNames[event.sceneId];
+      return { ...state, sceneNames, savedScenes };
+    }
     case "RoomCreated":
       return { ...state, name: event.name, preset: event.preset ?? DEFAULT_PRESET_ID };
 

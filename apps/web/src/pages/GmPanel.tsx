@@ -1,5 +1,5 @@
 import { GridActionsContext } from "./GridActionsContext";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { libraryAssetId } from "../net/builtinAssets";
@@ -7,9 +7,9 @@ import { useAccount } from "../account/accountStore";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import type { CommandResult, RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
-import { CheckpointsPanel } from "../panels/CheckpointsPanel";
+import { ScenesPanel } from "../panels/ScenesPanel";
 import { EncounterPanel } from "../panels/EncounterPanel";
-import { EffectsPanel } from "../panels/EffectsPanel";
+import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { PanelSection } from "../ui/PanelSection";
 import { gridsEqual, parseGridDraft, withGridSuggestion, type GridDraft } from "./gridDraft";
 import { GridForm } from "./GridForm";
@@ -43,7 +43,7 @@ interface Props {
   features?: RoomFeatures;
 }
 
-/** The GM's administration section: departed players to resolve, map and grid setup, fog, then checkpoints. */
+/** The GM's administration section: departed players, map setup, encounter templates and scenes. */
 export function GmPanel({
   connection, state, token, onReviewDeparture,
   gridDraft, hasGridDraft, onGridDraftChange, onGridDraftCancel, onGridApply, gridApplying, gridError,
@@ -67,10 +67,11 @@ export function GmPanel({
         roomId={state.roomId}
         token={token}
         currentGrid={state.scene.grid}
+        sceneId={state.activeSceneId ?? "initial"}
         hasLibrary={hasLibrary}
         onError={setError}
-        onSetMap={(command, report) => runWith(report)(connection.command(command))}
-        onImport={(importId, revision, tokenPolicy, report) => runWith(report)(connection.command({ type: "scene.importUVTT", importId, revision, ...(tokenPolicy ? { tokenPolicy } : {}) }))}
+        onSetMap={(command, report) => runWith(report)(connection.command({ ...command, expectedSceneId: state.activeSceneId ?? "initial" }))}
+        onImport={(importId, revision, tokenPolicy, report) => runWith(report)(connection.command({ type: "scene.importUVTT", importId, revision, expectedSceneId: state.activeSceneId ?? "initial", ...(tokenPolicy ? { tokenPolicy } : {}) }))}
         onGridClose={onGridDraftCancel}
         gridDraft={gridDraft}
         hasGridDraft={hasGridDraft}
@@ -110,9 +111,8 @@ export function GmPanel({
       />
       {features.tableAdmin && (
         <>
-          <CheckpointsPanel connection={connection} state={state} token={token} />
           <EncounterPanel connection={connection} state={state} />
-          <EffectsPanel connection={connection} state={state} />
+          <ScenesPanel connection={connection} state={state} />
         </>
       )}
     </>
@@ -184,6 +184,7 @@ function MapSection(props: {
   token: string;
   /** The room's grid, where a map with no saved grid starts its draft. */
   currentGrid: GridSpec;
+  sceneId: string;
   hasLibrary: boolean;
   onSetMap: (command: Extract<Command, { type: "scene.setMap" }>, report: (message: string | null) => void) => Promise<boolean>;
   onImport: (id: string, revision: number, policy: MapTokenPolicy | undefined, report: (message: string | null) => void) => Promise<boolean>;
@@ -215,6 +216,7 @@ function MapSection(props: {
   /** The Sight step, the same for line of sight and sight range. */
   sight: (connection: RoomConnection, state: RoomState) => ReactNode;
 }) {
+  const preparing = useContext(ScenePreparationContext)?.preparing ?? false;
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
@@ -499,9 +501,7 @@ function MapSection(props: {
     const generation = ++prepGeneration.current;
     try {
       if (/\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file.name)) {
-        const result = props.hasLibrary && saveToLibrary
-          ? await api.uvtt.prepare(props.roomId, props.token, file, { saveToLibrary: true })
-          : await api.uvtt.prepare(props.roomId, props.token, file);
+        const result = await api.uvtt.prepare(props.roomId, props.token, file, { saveToLibrary: props.hasLibrary && saveToLibrary, sceneId: props.sceneId });
         if (generation !== prepGeneration.current) { await api.uvtt.discard(props.roomId, props.token, result.id); return; }
         if (prep?.uvtt) void api.uvtt.discard(props.roomId, props.token, prep.uvtt.id).catch(() => {});
         setPrep(startUvttPrep(result)); setPrepError(null); setStep("grid"); setEditorOpen(true); return;
@@ -673,7 +673,7 @@ function MapSection(props: {
                       }}
                     />
                   </label>
-                  <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting} onClick={() => void exportMap()}>{exporting ? "Exporting…" : "Export applied map (UVTT)"}</button>
+                  <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting || preparing} onClick={() => void exportMap()}>{exporting ? "Exporting…" : "Export applied map (UVTT)"}</button>
                   <p className="muted small-print">UVTT files: up to 40 MiB. Preview and edit geometry in Walls before Apply.</p>
                   {Object.values(props.room.walls).some((w) => w.portal) && <p className="muted small-print">Export preserves open/closed state. UVTT does not carry door/window identity or locks.</p>}
                   {props.hasLibrary && (

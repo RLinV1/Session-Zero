@@ -223,10 +223,15 @@ export class RoomConnection {
     this.previews.delete(key);
   }
 
+  private clearScenePreviews() {
+    for (const key of [...this.previews.keys()]) this.cancelPreview(key);
+  }
+
   /** Applies one server message: snapshots, ordered events, acks, and terminal session ends. */
   private handle(msg: ServerMessage) {
     switch (msg.type) {
       case "welcome":
+        if (this.snapshot.state?.activeSceneId !== msg.state.activeSceneId) this.clearScenePreviews();
         this.update({ status: "open", state: msg.state, you: msg.you, seq: msg.seq, snapshots: this.snapshot.snapshots + 1 });
         return;
 
@@ -237,6 +242,7 @@ export class RoomConnection {
         try {
           // The GM keeps undo history in step with the server's; players keep none (ADR 0013).
           next = reduceReceived(state, msg.committed);
+          if (state.activeSceneId !== next.activeSceneId) this.clearScenePreviews();
           const you = this.snapshot.you ? (next.participants[this.snapshot.you.id] ?? null) : null;
           this.update({ state: next, seq: msg.committed.seq, you });
         } catch {

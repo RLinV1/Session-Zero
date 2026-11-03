@@ -84,6 +84,8 @@ export const DiceRoll = z.object({
   attack: AttackContext.optional(),
   /** The GM's ruling on a to-hit roll; absent until ruled (ADR 0011). */
   verdict: Verdict.optional(),
+  /** Scene the roll was made in; absent on older rolls. Damage applies only in that scene (FR-GM-25). */
+  sceneId: z.string().max(64).optional(),
   /** Set once the GM has applied a damage roll to its target (ADR 0011). */
   damageApplied: z.boolean().optional(),
 });

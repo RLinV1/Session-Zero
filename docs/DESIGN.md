@@ -335,6 +335,7 @@ every M1 and M2 requirement in the README and most of M3.
 - *Recovery.* A human-readable activity log, undo for reversible actions, named checkpoints
   that can be previewed, restored and deleted, and an encounter replay that any participant
   can step through from a checkpoint or the start of an encounter, filtered as themselves.
+- *Scenes.* The GM switches between named live scenes from the room header. Leaving automatically saves the board, including token identities, HP, ownership, fog, walls, portals, initiative and groups. Inactive scenes and their names remain GM-only. Checkpoints recover the active board; encounter templates seed reusable setups (ADR 0045).
 - *Reuse.* Encounter templates save the map, walls, portals, fog and monster roster, are
   edited in a temporary room, and are applied to a live room in one command. Game presets
   (ADR 0027) set up stats and conditions for a system.
