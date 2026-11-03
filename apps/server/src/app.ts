@@ -113,7 +113,7 @@ export async function buildApp({
   const pool = new UvttValidationPool();
   const registry = new RoomRegistry(store, {
     detectedWalls: (roomId, mapUrl) => walls.detectedWalls(roomId, mapUrl),
-    uvttLease: (roomId, actorId, id, revision) => preparations.lease(roomId, actorId, id, revision),
+    uvttLease: (roomId, actorId, id, revision, sceneId) => preparations.lease(roomId, actorId, id, revision, sceneId),
   });
   const sessions = new Sessions(store, { secure: cookieSecure }, now);
   const limits = accountLimits(now);

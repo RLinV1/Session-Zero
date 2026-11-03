@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_GRID, MAX_WALLS_PER_ADD, type FogRegion, type Wall } from "@vtt/shared";
-import { applyToDraft, draftDirty, planDraftSave, withDetectedWalls, type MapDraft } from "../src/pages/mapEditor/mapDraft";
+import { applyToDraft, draftDirty, draftFrom, planDraftSave, withDetectedWalls, type MapDraft } from "../src/pages/mapEditor/mapDraft";
 
 /** Inspect the edits inside the single atomic save; envelope/context tests live in preparationSave. */
 const plannedEdits = (...args: Parameters<typeof planDraftSave>) => {
@@ -23,6 +23,15 @@ let n = 0;
 const newId = () => `draft:${++n}`;
 
 describe("map editor drafts (map-editor-drafts)", () => {
+  it("captures scene identity and refuses a same-map draft from another scene", () => {
+    const source = { ...room, activeSceneId: "tavern" };
+    const draft = { ...draftFrom(source), fog: {} };
+    expect(planDraftSave(source, draft)).toEqual([{
+      type: "scene.savePreparation", expectedMapUrl, expectedSceneId: "tavern", context: { boardEpoch: 0, revision: 0 },
+      edits: [{ type: "fog.replace", expectedMapUrl, expectedSceneId: "tavern", removeIds: ["f1"], add: [] }],
+    }]);
+    expect(() => planDraftSave({ ...source, activeSceneId: "cellar" }, draft)).toThrow("The scene changed");
+  });
   it("preserves overlapping wall and fog multiplicity through add, save, and erase", () => {
     const reversed = { ...room.walls.w1, a: room.walls.w1.b, b: room.walls.w1.a };
     let draft = applyToDraft(fresh(), { type: "wall.add", walls: [reversed] }, newId)!;

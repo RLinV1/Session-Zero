@@ -185,6 +185,19 @@ describe("RoomConnection.endPreview (KAN-39)", () => {
 describe("preparation HTTP acknowledgments (FR-GM-15, FR-SYNC-04)", () => {
   afterEach(() => vi.restoreAllMocks());
   const command = { type: "scene.savePreparation" as const, expectedMapUrl: "/map", context: { boardEpoch: 0, revision: 0 }, edits: [{ type: "scene.setLineOfSight" as const, enabled: true }] };
+  it("uses the preparation HTTP transport for a private scene and waits for its sequence", async () => {
+    const { connection } = open();
+    const nested = { type: "scene.prepare" as const, sceneId: "private", command };
+    const request = vi.spyOn(api.preparation, "save").mockResolvedValue({ seq: 5 });
+    const done = vi.fn();
+    const pending = connection.command(nested).then(done);
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledWith("room", "guest", nested);
+    expect(done).not.toHaveBeenCalled();
+    handle(connection, event(5, move("t1", 5, 6)));
+    await pending;
+    expect(done).toHaveBeenCalledWith({ ok: true, seq: 5 });
+  });
   it("waits for the committed sequence without applying HTTP response data as state", async () => {
     const { connection, state } = open();
     const request = vi.spyOn(api.preparation, "save").mockResolvedValue({ seq: 6 });
@@ -211,5 +224,21 @@ describe("preparation HTTP acknowledgments (FR-GM-15, FR-SYNC-04)", () => {
     const pending = connection.command(command); connection.stop();
     expect(await pending).toMatchObject({ ok: false, code: "offline" });
     complete({ seq: 100 }); await Promise.resolve(); expect(connection.snapshot.state).toBe(state); expect(connection.snapshot.seq).toBe(4);
+  });
+});
+
+describe("scene changes", () => {
+  it("cancels queued previews before they can appear in the next scene", () => {
+    vi.useFakeTimers();
+    try {
+      const { connection, state } = open();
+      const messages: unknown[] = [];
+      (connection as unknown as { send(m: unknown): void }).send = (message) => messages.push(message);
+      connection.preview("ping", { type: "ping", at: { x: 1, y: 1 } });
+      connection.preview("ping", { type: "ping", at: { x: 1, y: 1 } });
+      handle(connection, { type: "welcome", you, seq: 5, state: { ...state, activeSceneId: "cellar" } });
+      vi.runAllTimers();
+      expect(messages).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
   });
 });

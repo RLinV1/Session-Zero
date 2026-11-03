@@ -140,6 +140,15 @@ describe("bounded private UVTT preparation lifecycle (FR-GM-07)", () => {
     now = UVTT_PREPARATION_TTL + 1;
     expect(store.lease("room", "gm", one.id, 2)).toMatchObject({ ok: false, code: "not_found" });
   });
+  it("returns an applied receipt only for the scene it was applied to (FR-GM-25)", () => {
+    const store = new UvttPreparations();
+    const prep = store.create("room", "gm", { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 });
+    const lease = store.lease("room", "gm", prep.id, 1, "a");
+    if (!lease.ok || !lease.finish) throw new Error("no lease");
+    lease.finish(7);
+    expect(store.lease("room", "gm", prep.id, 1, "a")).toMatchObject({ ok: true, appliedSeq: 7 });
+    expect(store.lease("room", "gm", prep.id, 1, "b")).toMatchObject({ ok: false, code: "invalid" });
+  });
   it("enforces the process draft cap across owners", () => {
     const store = new UvttPreparations();
     for (let i = 0; i < UVTT_MAX_DRAFTS; i++) store.create(`r${i}`, `gm${i}`, { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 });

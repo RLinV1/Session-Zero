@@ -1,10 +1,11 @@
 import { destinationBlocked, movementBlocked } from "./movement";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
+import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
 import { namedAttackFor } from "./attackPresets";
 import { findMentions } from "./chatMentions";
 import { PreparationSave, type Command, type DepartureAction } from "./commands";
-import { reduce } from "./reducer";
+import { reduce, reduceAll } from "./reducer";
 import { presetOf, tableForPreset } from "./gamePresets";
 import { MIN_HP, type ConditionId } from "./conditions";
 import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
@@ -145,6 +146,14 @@ export function decide(
   command: Command,
   ctx: DecideContext,
 ): Decision {
+  // token.move / portal.setState are player commands: they only guard the scene, never require the GM.
+  const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState";
+  const sceneChanged = "expectedSceneId" in command && command.expectedSceneId !== undefined && command.expectedSceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID);
+  if (playerSceneCommand && sceneChanged) return reject("invalid", "The scene changed. Refresh the board before moving.");
+  if (!playerSceneCommand && "expectedSceneId" in command && command.expectedSceneId !== undefined) {
+    if (!can.administer(actor)) return forbidden();
+    if ((state.activeSceneId ?? INITIAL_SCENE_ID) !== command.expectedSceneId) return reject("invalid", "The scene changed. Reopen the editor before saving.");
+  }
   if ("expectedMapUrl" in command && command.expectedMapUrl !== undefined) {
     if (!can.administer(actor)) return forbidden();
     if (state.scene.map?.url !== command.expectedMapUrl) return reject("invalid", "The map changed. Reopen the editor before saving.");
@@ -169,6 +178,61 @@ export function decide(
       }
       // LiveRoom appends this whole decision once. No staged event can escape a refusal.
       return { ok: true, events };
+    }
+    case "scene.copyCurrent": {
+      if (!can.administer(actor)) return forbidden();
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "Choose a private scene for the copy.");
+      const previous = savedSceneOf(state, command.sceneId);
+      if (!previous) return notFound("scene");
+      return accept({ type: "ScenePrepared", sceneId: command.sceneId, previous, prepared: {
+        ...saveScene(state), boardEpoch: (previous.boardEpoch ?? 0) + 1, terrainRevision: (previous.terrainRevision ?? 0) + 1,
+      } });
+    }
+    case "scene.prepare": {
+      if (!can.administer(actor)) return forbidden();
+      if (!isScenePreparationCommand(command.command)) return reject("invalid", "That action is not available in a private scene.");
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "This scene is live. Return to the active scene before editing it.");
+      const preparedState = sceneState(state, command.sceneId);
+      const previous = savedSceneOf(state, command.sceneId);
+      if (!preparedState || !previous) return notFound("scene");
+      const decision = decide(preparedState, actor, command.command, ctx);
+      if (!decision.ok) return decision;
+      return accept({ type: "ScenePrepared", sceneId: command.sceneId, previous, prepared: saveScene(reduceAll(preparedState, decision.events)) });
+    }
+    case "scene.create": {
+      if (!can.administer(actor)) return forbidden();
+      if (command.activate !== false && state.areaEffect) return reject("invalid", "Finish or skip the open area effect before switching scenes.");
+      const names = sceneNamesOf(state);
+      if (Object.keys(names).length >= MAX_SCENES) return reject("invalid", `A room can hold at most ${MAX_SCENES} scenes.`);
+      if (Object.values(names).some((name) => normalizeName(name) === normalizeName(command.name))) return reject("invalid", "A scene already has that name.");
+      const fromId = state.activeSceneId ?? INITIAL_SCENE_ID;
+      if (command.activate === false) return accept({ type: "SceneDraftCreated", sceneId: ctx.newId(), name: command.name, initialId: fromId, initialName: names[fromId]!, saved: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
+      return accept({ type: "SceneCreated", sceneId: ctx.newId(), name: command.name, fromId, fromName: names[fromId]!, previous: saveScene(state), restored: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
+    }
+    case "scene.rename": {
+      if (!can.administer(actor)) return forbidden();
+      const names = sceneNamesOf(state);
+      const previous = sceneNameOf(state, command.sceneId);
+      if (!previous) return notFound("scene");
+      if (Object.entries(names).some(([id, name]) => id !== command.sceneId && normalizeName(name) === normalizeName(command.name))) return reject("invalid", "A scene already has that name.");
+      if (previous === command.name) return reject("invalid", "That scene already has that name.");
+      return accept({ type: "SceneRenamed", sceneId: command.sceneId, name: command.name, previous });
+    }
+    case "scene.switch": {
+      if (!can.administer(actor)) return forbidden();
+      if (state.areaEffect) return reject("invalid", "Finish or skip the open area effect before switching scenes.");
+      const restored = savedSceneOf(state, command.sceneId);
+      const name = sceneNameOf(state, command.sceneId);
+      if (!restored || !name) return notFound("scene");
+      return accept({ type: "SceneSwitched", fromId: state.activeSceneId ?? INITIAL_SCENE_ID, sceneId: command.sceneId, name, previous: saveScene(state), restored });
+    }
+    case "scene.delete": {
+      if (!can.administer(actor)) return forbidden();
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "Switch to another scene before deleting this one.");
+      const previous = savedSceneOf(state, command.sceneId);
+      const name = sceneNameOf(state, command.sceneId);
+      if (!previous || !name) return notFound("scene");
+      return accept({ type: "SceneDeleted", sceneId: command.sceneId, name, previous });
     }
     case "scene.setMap": {
       if (!can.administer(actor)) return forbidden();
@@ -682,6 +746,7 @@ export function decide(
           modifier: parsed.expression.modifier,
           total,
           visibility: command.visibility,
+          sceneId: state.activeSceneId ?? INITIAL_SCENE_ID,
           ...(attack && { attack }),
         },
       };
@@ -711,6 +776,8 @@ export function decide(
       if (!roll) return reject("not_found", "That roll is too old to apply");
       if (roll.attack?.kind !== "damage") return reject("invalid", "Only damage rolls can be applied");
       if (roll.damageApplied) return reject("invalid", "That damage has already been applied");
+      // Copied scenes share token ids, so a roll made on another board must not hit this one.
+      if (roll.sceneId !== undefined && roll.sceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "That roll was made in another scene");
       // The GM's copy always has both sides; a missing target was deleted.
       const target = roll.attack.target ? state.tokens[roll.attack.target.tokenId] : undefined;
       if (!target) return notFound("token");

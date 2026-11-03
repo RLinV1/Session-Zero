@@ -66,6 +66,12 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
   // "an orange 20 ft circle"; sizes keep "a", as they always have.
   const withArticle = (label: string) => `${/^[aeiou]/i.test(label) ? "an" : "a"} ${label}`;
   switch (event.type) {
+    case "SceneDraftCreated": return `${actorName} prepared scene "${event.name}"`;
+    case "ScenePrepared": return `${actorName} edited a private scene`;
+    case "SceneCreated": return `${actorName} created scene "${event.name}"`;
+    case "SceneSwitched": return `${actorName} switched to scene "${event.name}"`;
+    case "SceneRenamed": return `${actorName} renamed scene "${event.previous}" to "${event.name}"`;
+    case "SceneDeleted": return `${actorName} deleted scene "${event.name}"`;
     case "RoomCreated": return `${actorName} created room ${event.name}`;
     case "ParticipantJoined": return `${actorName} joined the room as ${event.participant.role === "gm" ? "GM" : "a player"}`;
     case "ParticipantRevoked": return `${actorName} removed ${event.participant.displayName} from the room`;

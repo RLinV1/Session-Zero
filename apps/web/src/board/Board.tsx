@@ -4,7 +4,7 @@ import { MovementControls } from "./MovementControls";
 import { defaultMovementSettings, movementReadout, type MovementSettings } from "./movementRuler";
 import { CornersOut, Eye } from "@phosphor-icons/react";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TOKEN_COLOR, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
@@ -249,7 +249,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       const reposition = latest.current.you.role === "gm" && repositionRef.current === tokenId;
       setRepositionId(null); repositionRef.current = null;
       if (origin) setMovementNotice(movementReadout(current, latest.current.you, current.tokens[tokenId]!, origin, to, false, reposition));
-      const result = await guarded.command({ type: "token.move", tokenId, to, expectedOrigin: origin, boardEpoch: current.boardEpoch ?? 0, ...(reposition ? { reposition: true } : {}) });
+      const result = await guarded.command({ type: "token.move", tokenId, to, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch: current.boardEpoch ?? 0, ...(reposition ? { reposition: true } : {}) });
       // Unlike a drag there is no snap-back to show, so say why even when offline.
       if (!result.ok) setRefusal({ message: result.message, at: Date.now() });
       else setRefusal(null);
@@ -374,7 +374,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       moveToken: async (tokenId, to, origin, boardEpoch) => {
         const reposition = latest.current.you.role === "gm" && repositionRef.current === tokenId;
         setRepositionId(null); repositionRef.current = null;
-        const result = await guarded.command({ type: "token.move", tokenId, to, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
+        const result = await guarded.command({ type: "token.move", tokenId, to, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
         // The token snaps back; say why, so a wall the player can't see isn't a mystery (ADR 0029).
         if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
         else if (result.ok) setRefusal(null);
@@ -422,7 +422,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         const state = lock && latest.current.you.role === "gm"
           ? (portal.state === "locked" ? "closed" : "locked")
           : (portal.state === "open" ? "closed" : "open");
-        void guarded.command({ type: "portal.setState", wallId, state }).then((result) => {
+        void guarded.command({ type: "portal.setState", wallId, state, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID }).then((result) => {
           if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
         });
       },

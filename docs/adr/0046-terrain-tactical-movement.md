@@ -33,6 +33,8 @@ Movement knowledge traversal rejects non-safe integer ranges and ranges wider th
 
 ## Consequences and review
 
+Scene switching integration (ADR 0045): terrain is saved and restored with its own scene, including temporary effects. A terrain-free scene explicitly replaces the previous terrain with Normal ground. Activations advance live epoch/revision counters; private preparations use optional counters on `SavedScene` and remain isolated from live state. Scene-wrapped atomic preparations use the same authenticated HTTP path and total preparation byte cap. Stale scene identity, epoch and revision checks remain enforced before append, and private content is filtered from player snapshots, events and replay.
+
 Exact whole-cell terrain is deliberately separate from geometric walls and fog. No remapping, pathfinding, enforced movement budgets, automatic expiry, terrain detection or UVTT terrain transport. Conservative cell visibility can hide partly visible terrain. Review the 32-layer, 10,000-cell and 32-KiB bounds with runtime/latency evidence.
 
 The 2026-11-03 merge of main through `6298da8` reconciles the shared contracts, visibility, reducer, replay and board integration with the merged area-effects and group-roll feature. Player snapshots retain both features' privacy filters; replay snapshots carry effective terrain, sight, board epoch, group rolls and the filtered area effect together. Main's personal movement planner remains available alongside terrain-aware token movement and private collision feedback. The merge also retains main's design styles and the library preparation revision guard. Existing proposed ADR reviews remain outstanding. Implementation and tests do not constitute owner approval.

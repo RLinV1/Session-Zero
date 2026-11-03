@@ -1,7 +1,7 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { House } from "@phosphor-icons/react";
-import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, presetOf, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
 import { templateArea, tokensTouchingArea } from "../board/tools";
 import { dropFor } from "../board/tokenDice";
@@ -20,6 +20,10 @@ import { readySkin, tableSkin, usePreloadTableLooks, useShowOthersDice } from ".
 import { ensureSeat } from "../net/seats";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
+import { createScenePreparation } from "../net/scenePreparation";
+import { ScenePreparationContext } from "../panels/ScenePreparationContext";
+import { SceneSetupModal } from "../panels/SceneSetupModal";
+import { SceneActivationNotice, SceneSwitcher } from "../panels/ScenesPanel";
 import { ChatPanel } from "../panels/ChatPanel";
 import { PanelTabs, RoomPanel, isTabId, type TabBadges, type TabId } from "../panels/RoomPanel";
 import { trayRoll, type RollThrow } from "../panels/DicePanel";
@@ -142,7 +146,7 @@ export function RoomPage({ roomId, editing = false }: {
       </main>
     );
   }
-  return <Room roomId={roomId} connection={connection} token={creds.guestToken} features={editing ? ENCOUNTER_EDITING : FULL_ROOM} />;
+  return <SceneRoom roomId={roomId} connection={connection} token={creds.guestToken} features={editing ? ENCOUNTER_EDITING : FULL_ROOM} />;
 }
 
 const ENDED_COPY: Record<SessionEndReason, { title: (room: string | null) => string; body: string }> = {
@@ -183,9 +187,24 @@ function SessionEnded({ roomId, roomName, reason }: { roomId: string; roomName: 
   );
 }
 
+/** The private view uses the same room controls, backed by GM-only saved-scene commands. */
+function SceneRoom(props: { roomId: string; connection: RoomConnection; token: string; features: RoomFeatures }) {
+  const [setupSceneId, setSetupSceneId] = useState<string | null>(null);
+  const preparation = useMemo(() => createScenePreparation(props.connection, setSetupSceneId), [props.connection]);
+  useEffect(() => preparation.start(), [preparation]);
+  const live = useRoomSnapshot(props.connection);
+  const viewed = useRoomSnapshot(preparation.connection);
+  const activeId = live.state?.activeSceneId ?? "initial";
+  const preparing = viewed.you?.role === "gm" && preparation.preparing;
+  const features = preparing ? { ...props.features, tabs: ["tokens", "gm"] as const, notices: false } : props.features;
+  return <ScenePreparationContext.Provider value={{ activeId, preparing, preview: preparation.preview }}>
+    <Room {...props} connection={preparation.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
+  </ScenePreparationContext.Provider>;
+}
+
 /** The room once a credential exists: board, side panel, and the connection's terminal screens. */
-function Room({ roomId, connection, token, features }: {
-  roomId: string; connection: RoomConnection; token: string; features: RoomFeatures;
+function Room({ roomId, connection, token, features, setupSceneId, onSetupClose }: {
+  roomId: string; connection: RoomConnection; token: string; features: RoomFeatures; setupSceneId?: string | null; onSetupClose?: () => void;
 }) {
   const { status, state, you, seq, endReason, refusal } = useRoomSnapshot(connection);
   const editing = !features.tableChrome;
@@ -282,7 +301,7 @@ function Room({ roomId, connection, token, features }: {
   const gridApplyInFlight = useRef(false);
   const committedGrid = state?.scene.grid;
   const sceneKey = state && JSON.stringify([
-    state.scene.map?.url, state.scene.map?.assetId, state.scene.map?.width, state.scene.map?.height,
+    state.activeSceneId, state.scene.map?.url, state.scene.map?.assetId, state.scene.map?.width, state.scene.map?.height,
     state.scene.grid.cellSize, state.scene.grid.offsetX, state.scene.grid.offsetY,
     state.scene.grid.unitsPerCell, state.scene.grid.unitLabel,
     state.scene.grid.lineColor, state.scene.grid.lineWidth, state.scene.grid.lineOpacity,
@@ -315,11 +334,13 @@ function Room({ roomId, connection, token, features }: {
     if (gridApplyInFlight.current) return false;
     gridApplyInFlight.current = true;
     const generation = gridApplyGeneration.current;
+    const sceneId = connection.snapshot.state?.activeSceneId ?? "initial";
     const mapKey = JSON.stringify(connection.snapshot.state?.scene.map);
     const accepted = connection.snapshot.state?.scene.grid;
     const stillCurrent = (ok: boolean) => {
       const snapshot = connection.snapshot;
       return generation === gridApplyGeneration.current && snapshot.you?.role === "gm"
+        && sceneId === (snapshot.state?.activeSceneId ?? "initial")
         && mapKey === JSON.stringify(snapshot.state?.scene.map)
         && !!snapshot.state && !!accepted
         && gridsEqual(snapshot.state.scene.grid, ok ? grid : accepted);
@@ -330,7 +351,7 @@ function Room({ roomId, connection, token, features }: {
       const current = connection.snapshot.state;
       const resetTerrain = !!current && gridGeometryChanged(current.scene.grid, grid) && hasTerrain(current.terrain);
       if (resetTerrain && !window.confirm("Reset base terrain and temporary effects and apply this grid change? Cancel keeps the current grid and terrain.")) return false;
-      const result = await connection.command({ type: "scene.setGrid", grid, terrainContext: { boardEpoch: current?.boardEpoch ?? 0, revision: current?.terrainRevision ?? 0 }, ...(resetTerrain ? { resetTerrain: true } : {}) });
+      const result = await connection.command({ type: "scene.setGrid", grid, expectedSceneId: sceneId, terrainContext: { boardEpoch: current?.boardEpoch ?? 0, revision: current?.terrainRevision ?? 0 }, ...(resetTerrain ? { resetTerrain: true } : {}) });
       if (!stillCurrent(result.ok)) return false;
       if (!result.ok) setGridError(result.message);
       return result.ok;
@@ -558,7 +579,7 @@ function Room({ roomId, connection, token, features }: {
    * The empty board's one action: the Battle map section of the Manage tab, opened if it was
    * folded, brought into view, and its first control focused.
    */
-  const chooseMap = () => {
+  const chooseMap = (openPicker = false) => {
     setTab("gm");
     openSidebar(() =>
       requestAnimationFrame(() => {
@@ -567,7 +588,11 @@ function Room({ roomId, connection, token, features }: {
         toggle?.click();
         requestAnimationFrame(() => {
           section?.scrollIntoView({ block: "start" });
-          section?.querySelector<HTMLElement>(".panel-section-body button, .panel-section-body input, .panel-section-body label")?.focus();
+          if (openPicker) {
+            const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => button.textContent?.trim() === "From library");
+            if (library) library.click();
+            else section?.querySelector<HTMLInputElement>('input[type="file"]')?.click();
+          } else section?.querySelector<HTMLElement>(".panel-section-body button, .panel-section-body input, .panel-section-body label")?.focus();
         });
       }),
     );
@@ -605,16 +630,14 @@ function Room({ roomId, connection, token, features }: {
           {/* The GM has rooms, a library and "Create room" to get back to, all on the GM
               dashboard; a player came from an invite and just closes the tab (room-navigation). */}
           {!editing && you.role === "gm" && !readOnly && (
-            <Link href="/gm-dashboard" className="tool-button" title="Back to your GM dashboard">
+            <Link href="/gm-dashboard" className="tool-button" aria-label="Home" title="Back to your GM dashboard">
               <House size={16} aria-hidden="true" />
-              Home
             </Link>
           )}
           {!editing && (
             <>
               <h1 className="room-title">{state.name}</h1>
-              {/* Which game the room is set up for (KAN-63), as text. */}
-              <span className="preset-badge" title="Game preset">{presetOf(state).name}</span>
+              {you.role === "gm" && !readOnly && <SceneSwitcher state={state} connection={connection} />}
             </>
           )}
         </div>
@@ -660,6 +683,7 @@ function Room({ roomId, connection, token, features }: {
       {/* Same element, same position in both states: collapsing must never remount the
           canvas or reset the viewer's zoom and pan. */}
       <Board
+        key={shownState?.activeSceneId ?? "initial"}
         ref={boardRef}
         onNukeImpact={nukeHealth.impact}
         connection={connection}
@@ -686,8 +710,9 @@ function Room({ roomId, connection, token, features }: {
         )}
         overlay={
           <>
+            {!readOnly && you.role === "gm" && <SceneActivationNotice state={state} connection={connection} />}
             {!shownState!.scene.map && !replaying && (
-              <BoardEmptyState isGm={you.role === "gm" && !readOnly} onChooseMap={chooseMap} />
+              <BoardEmptyState isGm={you.role === "gm" && !readOnly} onChooseMap={() => chooseMap()} />
             )}
             {features.notices && <RollCard roll={cardRoll} rollerName={(roll) => shownState!.participants[roll.byParticipantId]?.displayName ?? "Someone"} />}
           </>
@@ -740,6 +765,7 @@ function Room({ roomId, connection, token, features }: {
           */}
           <SectionCollapseProvider>
             <RoomPanel
+              key={shownState?.activeSceneId ?? "initial"}
               connection={shownConnection}
               state={shownState!}
               you={shownYou!}
@@ -780,6 +806,7 @@ function Room({ roomId, connection, token, features }: {
       {/* Read-only while previewing: the same refusing connection and the viewed player's state. */}
       {features.chat && <ChatPanel connection={shownConnection} state={shownState!} you={shownYou!} readOnly={readOnly} />}
       {preview && <PreviewBanner name={preview.you.displayName} onExit={() => setViewAs(null)} />}
+      {you.role === "gm" && <SceneSetupModal key={`setup-${state.activeSceneId ?? "initial"}`} open={!!setupSceneId && setupSceneId === state.activeSceneId} state={state} connection={connection} onClose={() => onSetupClose?.()} onChooseMap={() => chooseMap(true)} />}
       {replaying && <ReplayBar roomId={roomId} token={token} onShow={showReplay} onExit={exitReplay} />}
       {guideOpen && <GuideTour role={you.role} onClose={closeGuide} />}
       {you.role === "gm" && (

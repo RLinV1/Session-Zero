@@ -331,6 +331,12 @@ export const TokenGroup = z.object({
 export type TokenGroup = z.infer<typeof TokenGroup>;
 
 export interface RoomState {
+  /** Named live locations (ADR 0045). Absent on legacy rooms until their first scene command. */
+  activeSceneId?: Id;
+  /** GM-only scene names, including the active scene. */
+  sceneNames?: Record<Id, string>;
+  /** GM-only inactive boards; the active board stays in the ordinary room fields. */
+  savedScenes?: Record<Id, import("./scenes").SavedScene>;
   roomId: Id;
   name: string;
   /** The game preset chosen when the room was created (KAN-63, ADR 0027). Never changes. Public. */

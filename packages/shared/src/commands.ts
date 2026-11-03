@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SceneName } from "./scenes";
 import { PaintRun, TerrainContext, MAX_TERRAIN_CELLS } from "./terrain";
 import { AttackStyle, MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
 import { TokenAttacks } from "./attackPresets";
@@ -79,12 +80,12 @@ export type TokenUpdate = z.infer<typeof TokenUpdate>;
 
 /** A preparation can contain only these board edits: no nesting, identity, map or token commands. */
 export const PreparationEdit = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("scene.setLineOfSight"), enabled: z.boolean() }).strict(),
-  z.object({ type: z.literal("scene.setIsometric"), enabled: z.boolean() }).strict(),
-  z.object({ type: z.literal("scene.setSightRange"), range: z.number().positive().finite().nullable() }).strict(),
-  z.object({ type: z.literal("terrain.paint"), layerId: z.string().min(1).max(64), paint: z.array(PaintRun).min(1).max(MAX_TERRAIN_CELLS), context: TerrainContext }).strict(),
+  z.object({ type: z.literal("scene.setLineOfSight"), expectedSceneId: Id.optional(), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("scene.setIsometric"), expectedSceneId: Id.optional(), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("scene.setSightRange"), expectedSceneId: Id.optional(), range: z.number().positive().finite().nullable() }).strict(),
+  z.object({ type: z.literal("terrain.paint"), expectedSceneId: Id.optional(), layerId: z.string().min(1).max(64), paint: z.array(PaintRun).min(1).max(MAX_TERRAIN_CELLS), context: TerrainContext }).strict(),
   z.object({
-    type: z.literal("fog.replace"),
+    type: z.literal("fog.replace"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     removeIds: z.array(Id).max(MAX_FOG_REGIONS),
     add: z.array(z.discriminatedUnion("shape", [
@@ -93,23 +94,23 @@ export const PreparationEdit = z.discriminatedUnion("type", [
     ])).max(MAX_FOG_REGIONS),
   }).strict(),
   z.object({
-    type: z.literal("wall.add"),
+    type: z.literal("wall.add"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     /** `portal` lets the map editor's Save keep a door drawn in its draft (ADR 0030). */
     walls: z.array(z.object({ a: Point, b: Point, portal: Portal.optional(), uvttPortal: Wall.shape.uvttPortal, source: Wall.shape.source }).strict()).min(1).max(MAX_WALLS_PER_ADD),
   }).strict(),
-  z.object({ type: z.literal("wall.update"), expectedMapUrl: z.string().min(1).max(2048).optional(), wall: Wall }).strict(),
+  z.object({ type: z.literal("wall.update"), expectedSceneId: Id.optional(), expectedMapUrl: z.string().min(1).max(2048).optional(), wall: Wall }).strict(),
   z.object({
-    type: z.literal("wall.remove"),
+    type: z.literal("wall.remove"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     wallIds: z.array(Id).min(1).max(MAX_WALLS_PER_REMOVE),
   }).strict(),
   z.object({
-    type: z.literal("wall.clear"),
+    type: z.literal("wall.clear"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
   }).strict(),
   z.object({
-    type: z.literal("portal.set"),
+    type: z.literal("portal.set"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     wallId: Id,
     portal: Portal.nullable(),
@@ -122,17 +123,28 @@ export const MAX_PREPARATION_EDITS = 1600;
 export const MAX_PREPARATION_BYTES = 768 * 1024;
 export const PreparationSaved = z.object({ seq: z.number().int().nonnegative().nullable() }).strict();
 export const PreparationSave = z.object({
-  type: z.literal("scene.savePreparation"),
+  type: z.literal("scene.savePreparation"), expectedSceneId: Id.optional(),
   expectedMapUrl: z.string().min(1).max(2048),
   context: TerrainContext,
   edits: z.array(PreparationEdit).min(1).max(MAX_PREPARATION_EDITS),
 }).strict().refine((command) => new TextEncoder().encode(JSON.stringify(command)).length < MAX_PREPARATION_BYTES, "Preparation is too large.");
 
-export const Command = z.discriminatedUnion("type", [
+/** Atomic preparation for either the live board or one GM-only inactive scene. */
+export const PreparationRequest = z.union([PreparationSave, z.object({
+  type: z.literal("scene.prepare"), sceneId: Id, command: PreparationSave,
+}).strict()]).refine((command) => new TextEncoder().encode(JSON.stringify(command)).length < MAX_PREPARATION_BYTES, "Preparation is too large.");
+export type PreparationRequest = z.infer<typeof PreparationRequest>;
+
+const BoardCommand = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("scene.create"), name: SceneName, activate: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("scene.copyCurrent"), sceneId: Id }).strict(),
+  z.object({ type: z.literal("scene.rename"), sceneId: Id, name: SceneName }).strict(),
+  z.object({ type: z.literal("scene.switch"), sceneId: Id }).strict(),
+  z.object({ type: z.literal("scene.delete"), sceneId: Id }).strict(),
   ...PreparationEdit.options,
   PreparationSave,
   z.object({
-    type: z.literal("scene.setMap"),
+    type: z.literal("scene.setMap"), expectedSceneId: Id.optional(),
     resetTerrain: z.boolean().optional(),
     terrainContext: TerrainContext.optional(),
     tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional(),
@@ -142,9 +154,9 @@ export const Command = z.discriminatedUnion("type", [
     /** Resolve the owned map's saved geometry on the server and apply it in the same MapSet. */
     includeLibraryBoard: z.boolean().optional(),
   }),
-  z.object({ type: z.literal("scene.importUVTT"), importId: Id, revision: z.number().int().positive(), tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional() }).strict(),
+  z.object({ type: z.literal("scene.importUVTT"), expectedSceneId: Id.optional(), importId: Id, revision: z.number().int().positive(), tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional() }).strict(),
   z.object({
-    type: z.literal("scene.setGrid"),
+    type: z.literal("scene.setGrid"), expectedSceneId: Id.optional(),
     resetTerrain: z.boolean().optional(),
     terrainContext: TerrainContext.optional(),
     grid: GridSpec,
@@ -199,11 +211,11 @@ export const Command = z.discriminatedUnion("type", [
     groupId: Id.nullable(),
     tokenIds: z.array(Id).min(1).max(100),
   }).strict(),
-  z.object({ type: z.literal("terrain.effect.create"), name: z.string().trim().min(1).max(60), context: TerrainContext }),
-  z.object({ type: z.literal("terrain.effect.rename"), effectId: Id, name: z.string().trim().min(1).max(60), context: TerrainContext }),
-  z.object({ type: z.literal("terrain.effect.remove"), effectId: Id, context: TerrainContext }),
+  z.object({ type: z.literal("terrain.effect.create"), expectedSceneId: Id.optional(), name: z.string().trim().min(1).max(60), context: TerrainContext }),
+  z.object({ type: z.literal("terrain.effect.rename"), expectedSceneId: Id.optional(), effectId: Id, name: z.string().trim().min(1).max(60), context: TerrainContext }),
+  z.object({ type: z.literal("terrain.effect.remove"), expectedSceneId: Id.optional(), effectId: Id, context: TerrainContext }),
   z.object({
-    type: z.literal("token.move"),
+    type: z.literal("token.move"), expectedSceneId: Id.optional(),
     tokenId: Id,
     to: Point,
     expectedOrigin: Point.optional(),
@@ -417,7 +429,7 @@ export const Command = z.discriminatedUnion("type", [
    * polygon. `decide` stores a rectangle as its four corners.
    */
   z.object({
-    type: z.literal("fog.add"),
+    type: z.literal("fog.add"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     region: z.discriminatedUnion("shape", [
       z.object({ shape: z.literal("rect"), from: Point, to: Point }).strict(),
@@ -426,7 +438,7 @@ export const Command = z.discriminatedUnion("type", [
   }).strict(),
   /** GM removes one fog region, revealing what it covered (FR-GM-17). */
   z.object({
-    type: z.literal("fog.remove"),
+    type: z.literal("fog.remove"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
     regionId: Id,
   }).strict(),
@@ -444,7 +456,7 @@ export const Command = z.discriminatedUnion("type", [
   }).strict(),
   /** Opens, closes or locks a portal (FR-GM-18, ADR 0030). Players may only open or close one they can see. */
   z.object({
-    type: z.literal("portal.setState"),
+    type: z.literal("portal.setState"), expectedSceneId: Id.optional(),
     wallId: Id,
     state: PortalState,
   }).strict(),
@@ -474,6 +486,10 @@ export const Command = z.discriminatedUnion("type", [
     commandId: Id,
   }).strict(),
 ]);
+/** No recursive scene preparation envelopes. */
+export const Command = z.union([BoardCommand, z.object({
+  type: z.literal("scene.prepare"), sceneId: Id, command: BoardCommand,
+}).strict()]);
 export type Command = z.infer<typeof Command>;
 /** Command as a client writes it (defaults not yet applied). */
 export type CommandInput = z.input<typeof Command>;

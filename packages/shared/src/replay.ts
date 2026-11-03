@@ -166,6 +166,8 @@ function neutralSentence(event: DomainEvent, actorName: string): string {
     case "FogRemoved": return `${actorName} changed the fog`;
     case "DiceRolled":
     case "GroupRolled": return `${actorName} rolled dice`;
+    case "SceneCreated":
+    case "SceneSwitched": return `${actorName} changed the scene`;
     case "CheckpointRestored": return `${actorName} restored the board to a checkpoint`;
     case "EncounterApplied": return `${actorName} set up an encounter`;
     case "TokenMoved":

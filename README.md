@@ -243,7 +243,7 @@ If map preparation, guest onboarding, tactical browser interaction, real-time sy
 4. The GM accepts the estimate or corrects it with a compact grid-alignment tool.
 5. If wall or portal data is present, the application overlays editable wall and portal segments.
 6. The GM accepts, deletes, adjusts, or adds segments, and marks door states (`Open`, `Closed`, or `Locked`).
-7. The GM places tokens, assigns player ownership, and creates a named checkpoint.
+7. The GM places tokens and assigns player ownership.
 8. The application generates a shareable player link for remote participants.
 
 ### Live online flow
@@ -304,6 +304,7 @@ A GM needs authority over what players can see and change while retaining contro
 | FR-GM-22 | Both | **Public and GM-only dice rolls** | Supports openly shared rolls as well as hidden adjudication when the GM needs private outcomes. |
 | FR-GM-23 | Player | **Player-safe state filtering** | Filters hidden tokens, unrevealed fog regions, GM-only rolls, and private metadata on the server before state is sent to player clients. |
 | FR-GM-24 | Both | **Focusable token roster** | Provides an alternative to direct canvas selection for finding and selecting tokens. |
+| FR-GM-25 | GM | **Scene switching** | Switches between named live scenes from the room header, automatically preserving each scene's map, tokens, HP, fog, walls, and initiative. Checkpoints and encounter templates remain available. |
 
 ### 5.3 Player Need — Join Easily and Retain Control of Their Character
 

@@ -83,8 +83,8 @@ describe("map editor step switching (FR-GM-09, FR-GM-17)", () => {
     fireEvent.click(within(screen.getByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(selected("3 · Walls")).toBe(true));
     expect(fake.commands).toEqual([
-      { type: "scene.savePreparation", expectedMapUrl: MAP_URL, context: { boardEpoch: 0, revision: 0 }, edits: [
-        { type: "fog.replace", expectedMapUrl: MAP_URL, removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
+      { type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 }, edits: [
+        { type: "fog.replace", expectedMapUrl: MAP_URL, expectedSceneId: "initial", removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
       ] },
     ]);
   });

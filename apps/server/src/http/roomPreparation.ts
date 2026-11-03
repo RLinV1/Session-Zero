@@ -1,5 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction, type ErrorRequestHandler } from "express";
-import { MAX_PREPARATION_BYTES, PreparationSave, PreparationSaved } from "@vtt/shared";
+import { MAX_PREPARATION_BYTES, PreparationRequest, PreparationSaved } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
 import type { LiveRoom } from "../domain/liveRoom";
 import type { RoomRegistry } from "../domain/roomRegistry";
@@ -33,7 +33,7 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
   };
   app.post("/api/rooms/:roomId/preparation", guard, express.json({ limit: MAX_PREPARATION_BYTES - 1 }), (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
-      const command = PreparationSave.safeParse(req.body);
+      const command = PreparationRequest.safeParse(req.body);
       if (!command.success) { res.status(400).json({ error: "Invalid or oversized map preparation." }); return; }
       const auth = auths.get(req)!;
       if (auth.sessionHash && !await deps.sessions.isLive(auth.sessionHash)) { res.status(403).json({ error: "Your sign-in ended before saving." }); return; }

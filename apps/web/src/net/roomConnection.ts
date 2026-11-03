@@ -7,6 +7,7 @@ import {
   reduceReceived,
   type ClientMessageInput,
   type CommandInput,
+  type PreparationRequest,
   type CommittedEvent,
   type DiceRoll,
   type EphemeralPayload,
@@ -43,6 +44,9 @@ export interface RoomSnapshot {
 export type CommandResult =
   | { ok: true; seq: number | null }
   | { ok: false; code: string; message: string };
+
+const isPreparation = (command: CommandInput): command is PreparationRequest =>
+  command.type === "scene.savePreparation" || (command.type === "scene.prepare" && command.command.type === "scene.savePreparation");
 
 type EphemeralListener = (from: string, payload: ServerEphemeralPayload) => void;
 /** Called with a live event and the viewer's state before and after it (KAN-76). */
@@ -168,7 +172,7 @@ export class RoomConnection {
     return new Promise((resolve) => {
       let unsubscribe = () => {};
       this.pending.set(clientCommandId, (result) => { unsubscribe(); resolve(result); });
-      if (command.type === "scene.savePreparation") {
+      if (isPreparation(command)) {
         // The preparation-only HTTP body limit leaves the socket's 64-KiB cap unchanged.
         // State still arrives exclusively through the ordered, filtered event stream.
         void api.preparation.save(this.roomId, this.guestToken, command).then(({ seq }) => {
@@ -238,10 +242,15 @@ export class RoomConnection {
     this.previews.delete(key);
   }
 
+  private clearScenePreviews() {
+    for (const key of [...this.previews.keys()]) this.cancelPreview(key);
+  }
+
   /** Applies one server message: snapshots, ordered events, acks, and terminal session ends. */
   private handle(msg: ServerMessage) {
     switch (msg.type) {
       case "welcome":
+        if (this.snapshot.state?.activeSceneId !== msg.state.activeSceneId) this.clearScenePreviews();
         this.update({ status: "open", state: msg.state, you: msg.you, seq: msg.seq, snapshots: this.snapshot.snapshots + 1 });
         return;
 
@@ -252,6 +261,7 @@ export class RoomConnection {
         try {
           // The GM keeps undo history in step with the server's; players keep none (ADR 0013).
           next = reduceReceived(state, msg.committed);
+          if (state.activeSceneId !== next.activeSceneId) this.clearScenePreviews();
           const you = this.snapshot.you ? (next.participants[this.snapshot.you.id] ?? null) : null;
           this.update({ state: next, seq: msg.committed.seq, you });
         } catch {

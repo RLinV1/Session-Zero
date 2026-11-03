@@ -356,8 +356,8 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     expect(fake.commands).toEqual([]);
     fireEvent.click(within(editor).getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toEqual([
-      { type: "scene.savePreparation", expectedMapUrl: MAP_URL, context: { boardEpoch: 0, revision: 0 }, edits: [
-        { type: "fog.replace", expectedMapUrl: MAP_URL, removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
+      { type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 }, edits: [
+        { type: "fog.replace", expectedMapUrl: MAP_URL, expectedSceneId: "initial", removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
       ] },
     ]));
   });
@@ -395,7 +395,7 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toHaveLength(1));
-    expect(fake.commands[0]).toMatchObject({ type: "scene.savePreparation", expectedMapUrl: MAP_URL, edits: [{ type: "wall.add" }, { type: "wall.add" }] });
+    expect(fake.commands[0]).toMatchObject({ type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", edits: [{ type: "wall.add" }, { type: "wall.add" }] });
     const next = room();
     next.scene.map = { ...next.scene.map!, url: "/uploads/other.png" };
     fake.rerender(next);
@@ -422,7 +422,7 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Door" }));
     click(canvas(), { x: 150, y: 100 });
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands[1]).toMatchObject({ type: "scene.savePreparation", expectedMapUrl: MAP_URL, edits: [{ type: "portal.set", wallId: "saved-wall", portal: { kind: "door", state: "closed" } }] }));
+    await waitFor(() => expect(fake.commands[1]).toMatchObject({ type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", edits: [{ type: "portal.set", wallId: "saved-wall", portal: { kind: "door", state: "closed" } }] }));
   });
 
   it("asks before closing with unsaved changes, and Discard sends nothing (map-editor-drafts)", async () => {

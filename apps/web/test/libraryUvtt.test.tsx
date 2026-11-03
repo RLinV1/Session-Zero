@@ -95,7 +95,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
     if (!save) fireEvent.click(screen.getByLabelText("Also save uploads to my library"));
     const selected = file(); fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [selected] } });
     await screen.findByText(/Unsaved changes: only you see them/);
-    expect(prepare.mock.calls[0]).toEqual(save ? ["r1", TOKEN, selected, { saveToLibrary: true }] : ["r1", TOKEN, selected]);
+    expect(prepare.mock.calls[0]).toEqual(save ? ["r1", TOKEN, selected, { saveToLibrary: true, sceneId: "initial" }] : ["r1", TOKEN, selected, { saveToLibrary: false, sceneId: "initial" }]);
     expect(fake.commands).toEqual([]);
   });
 
@@ -106,7 +106,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
     fireEvent.click(await screen.findByTitle(asset.name));
     expect(fake.commands).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true, terrainContext: { boardEpoch: 0, revision: 0 } }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", expectedSceneId: "initial", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true, terrainContext: { boardEpoch: 0, revision: 0 } }]));
     expect(api.library.board).not.toHaveBeenCalled();
   });
 });
