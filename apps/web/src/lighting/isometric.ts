@@ -40,6 +40,12 @@ export function blocksLight(from: Point3, to: Point3, building: Building): boole
   }
   return far > 0.0001 && near < 0.9999;
 }
+/** The orthographic camera looks along a world-space diagonal at every quarter turn. */
+export function cameraOccludes(point: Point3, turn: number, buildings: readonly Building[]): boolean {
+  const [dx, dy] = ([[1, 1], [1, -1], [-1, -1], [-1, 1]] as const)[((turn % 4) + 4) % 4]!;
+  const eye = { x: point.x + dx * 100, y: point.y + dy * 100, z: point.z + 100 };
+  return buildings.some((building) => blocksLight(point, eye, building));
+}
 export function isWalkable(point: Point2, buildings: readonly Building[]): boolean {
   return point.x >= 0.5 && point.y >= 0.5 && point.x < WORLD_SIZE && point.y < WORLD_SIZE
     && !buildings.some((b) => point.x > b.x - 0.15 && point.x < b.x + b.width + 0.15 && point.y > b.y - 0.15 && point.y < b.y + b.depth + 0.15);

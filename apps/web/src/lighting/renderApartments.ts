@@ -1,5 +1,5 @@
 import { APARTMENTS, LAMPS, WINDOW_LIGHTS, type Light } from "./apartments";
-import { blocksLight, insidePolygon, project, type Point2, type Point3 } from "./isometric";
+import { blocksLight, cameraOccludes, insidePolygon, project, type Point2, type Point3 } from "./isometric";
 export interface LightingView { at: Point2; turn: number; torchHeight: number; time: "day" | "dusk" | "night"; cutaway: boolean; grid: boolean; path: readonly Point2[] }
 type RGB = readonly [number, number, number];
 const color = (rgb: RGB) => "rgb(" + rgb.map((v) => Math.round(Math.max(0, Math.min(255, v)))).join(",") + ")";
@@ -58,6 +58,8 @@ export function renderApartments(canvas: HTMLCanvasElement, width: number, heigh
   const pawn = project({ ...view.at, z: 0.25 }, view.turn);
   const sorted = [...APARTMENTS].sort((a, b) => project({ x: a.x + a.width / 2, y: a.y + a.depth / 2, z: 0 }, view.turn).y - project({ x: b.x + b.width / 2, y: b.y + b.depth / 2, z: 0 }, view.turn).y);
   let hidden = false;
+  const revealedBuildings = new Set<string>();
+  const buildingMasks = new Map<string, Point2[][]>();
   const faces = [["east", "south"], ["east", "north"], ["west", "north"], ["west", "south"]][view.turn % 4]!;
   for (const b of sorted) {
     const corners = [{ x: b.x, y: b.y }, { x: b.x + b.width, y: b.y }, { x: b.x + b.width, y: b.y + b.depth }, { x: b.x, y: b.y + b.depth }];
@@ -70,8 +72,9 @@ export function renderApartments(canvas: HTMLCanvasElement, width: number, heigh
         return [{ ...p, z: 0 }, { ...q, z: 0 }, { ...q, z: b.height }, { ...p, z: b.height }].map((point) => project(point, view.turn));
       }),
     ];
+    buildingMasks.set(b.id, silhouettes);
     const obscures = silhouettes.some((shape) => insidePolygon(pawn, shape));
-    if (obscures) { hidden = true; if (view.cutaway) cutaways++; }
+    if (obscures) { hidden = true; if (view.cutaway) { cutaways++; revealedBuildings.add(b.id); } }
     ctx.save(); if (obscures && view.cutaway) ctx.globalAlpha = 0.23;
     for (const side of faces) {
       const vertical = side === "east" || side === "west";
@@ -119,17 +122,40 @@ export function renderApartments(canvas: HTMLCanvasElement, width: number, heigh
     poly([{ x: cx, y: cy, z: b.height + 0.8 }, { x: cx + 0.5, y: cy, z: b.height + 0.8 }, { x: cx + 0.5, y: cy + 0.5, z: b.height + 0.8 }, { x: cx, y: cy + 0.5, z: b.height + 0.8 }], "#a08360");
     ctx.restore();
   }
-  // Market canopies and lantern posts echo the supplied street reference.
+  // These street props have disjoint ground footprints from the buildings. A forward
+  // ground ray establishes which buildings can be in front; clip against their actual
+  // projected roof/wall silhouettes, retaining visible portions above or beside a roof.
+  const props = (points: readonly Point3[], paint: () => void) => {
+    ctx.save();
+    for (const building of APARTMENTS) {
+      if (revealedBuildings.has(building.id)) continue;
+      const column = { ...building, height: 1000 };
+      if (!points.some((point) => cameraOccludes({ ...point, z: 0.01 }, view.turn, [column]))) continue;
+      ctx.beginPath(); ctx.rect(0, 0, width, height);
+      for (const shape of buildingMasks.get(building.id)!) {
+        shape.forEach((point, index) => {
+          const x = camera.x + point.x * camera.scale, y = camera.y + point.y * camera.scale;
+          if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        });
+        ctx.closePath();
+      }
+      ctx.clip("evenodd");
+    }
+    paint(); ctx.restore();
+  };
   for (const [sx, sy, blue] of [[8, 2.5, 0], [7.5, 16.5, 1]] as const) {
-    for (const dx of [0, 2]) for (const dy of [0, 1.2]) line({ x: sx + dx, y: sy + dy, z: 0 }, { x: sx + dx, y: sy + dy, z: 1.5 }, "#71593a", 4);
-    for (let stripe = 0; stripe < 8; stripe++) poly([{ x: sx + stripe * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy + 1.25, z: 1.25 }, { x: sx + stripe * 0.25, y: sy + 1.25, z: 1.25 }], stripe % 2 ? (blue ? "#5c7b89" : "#a38b62") : "#d6c8a5", "#8e826733");
+    const footprint = [{ x: sx, y: sy, z: 0 }, { x: sx + 2, y: sy, z: 0 }, { x: sx + 2, y: sy + 1.25, z: 0 }, { x: sx, y: sy + 1.25, z: 0 }];
+    props(footprint, () => {
+      for (const dx of [0, 2]) for (const dy of [0, 1.2]) line({ x: sx + dx, y: sy + dy, z: 0 }, { x: sx + dx, y: sy + dy, z: 1.5 }, "#71593a", 4);
+      for (let stripe = 0; stripe < 8; stripe++) poly([{ x: sx + stripe * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy + 1.25, z: 1.25 }, { x: sx + stripe * 0.25, y: sy + 1.25, z: 1.25 }], stripe % 2 ? (blue ? "#5c7b89" : "#a38b62") : "#d6c8a5", "#8e826733");
+    });
   }
-  for (const lamp of LAMPS) {
+  for (const lamp of LAMPS) props([{ ...lamp, z: 0 }], () => {
     line({ ...lamp, z: 0 }, { ...lamp, z: 2.25 }, "#202927", 3);
     const q = screen({ ...lamp, z: 2.25 });
     ctx.fillStyle = "#d6ab62"; ctx.fillRect(q.x - 3 * camera.scale, q.y - 5 * camera.scale, 6 * camera.scale, 9 * camera.scale);
     ctx.strokeStyle = "#55462c"; ctx.strokeRect(q.x - 4 * camera.scale, q.y - 6 * camera.scale, 8 * camera.scale, 11 * camera.scale);
-  }
+  });
   if (!hidden || view.cutaway) {
     const p = screen({ ...view.at, z: 0.08 });
     ctx.beginPath(); ctx.ellipse(p.x, p.y + 5 * camera.scale, 17 * camera.scale, 8 * camera.scale, 0, 0, Math.PI * 2); ctx.fillStyle = "#08141599"; ctx.fill();

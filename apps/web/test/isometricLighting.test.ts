@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocksLight, findPath, isWalkable, project, unproject, type Building } from "../src/lighting/isometric";
+import { blocksLight, cameraOccludes, findPath, isWalkable, project, unproject, type Building } from "../src/lighting/isometric";
 const building: Building = { id: "apartment", x: 4, y: 4, width: 3, depth: 4, height: 3, color: [100, 80, 60] };
 describe("isometric lighting geometry", () => {
   it("round-trips ground coordinates at every camera turn", () => {
@@ -22,6 +22,12 @@ describe("isometric lighting geometry", () => {
     const floor = { x: 10, y: 6, z: 0.02 };
     expect(blocksLight(floor, { x: 2, y: 6, z: 1.5 }, building)).toBe(true);
     expect(blocksLight(floor, { x: 2, y: 6, z: 10 }, building)).toBe(false);
+  });
+  it("hides a pole behind a foreground roof while allowing its visible top", () => {
+    const copper: Building = { ...building, x: 2, y: 2, width: 5, depth: 4, height: 3.4 };
+    expect(cameraOccludes({ x: 8, y: 7.5, z: 1 }, 2, [copper])).toBe(true);
+    expect(cameraOccludes({ x: 8, y: 7.5, z: 2.25 }, 2, [copper])).toBe(false);
+    expect(cameraOccludes({ x: 8, y: 7.5, z: 1 }, 0, [copper])).toBe(false);
   });
   it("routes around apartments instead of through their walls", () => {
     const path = findPath({ x: 2.5, y: 5.5 }, { x: 8.5, y: 5.5 }, [building]);
