@@ -5,14 +5,10 @@
 # To run only the infrastructure and start the app from source instead:
 #
 #   docker compose up -d postgres redis s3 vision vision-walls
-#   export DATABASE_URL=postgres://vtt:vtt@localhost:5432/vtt
-#   npm run prisma:migrate --workspace=@vtt/server   # apply prisma/migrations
-#   DATABASE_URL=$DATABASE_URL \
-#   REDIS_URL=redis://localhost:6379 \
-#   S3_ENDPOINT=http://localhost:8333 npm run dev
+#   npm run dev:db      # applies prisma/migrations, then `npm run dev` on this Postgres + Redis
 #
-# With none of those set the server falls back to the in-memory store, so `npm run dev`
-# and CI still work with no containers running. Uploads go to this S3 store (SeaweedFS)
+# Plain `npm run dev` sets no DATABASE_URL, so the server falls back to the in-memory store
+# and CI still works with no containers running. Uploads go to this S3 store (SeaweedFS)
 # whenever it is up, even without S3_ENDPOINT; local disk is the dev fallback when it is not.
 name: cse416
 services:

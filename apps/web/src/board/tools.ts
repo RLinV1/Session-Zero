@@ -1,3 +1,4 @@
+import type { DistanceRule } from "./movementRuler";
 import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type FogRegion, type GridSpec, type Point, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
@@ -125,7 +126,7 @@ export const AREA_SIZES = [5, 10, 15, 20, 30, 40, 60] as const;
 
 /** A mark as the viewer made it: raw points, so a grid change re-derives snapping and sizes. */
 export type Mark =
-  | { kind: "measure"; from: Point; to: Point; free: boolean }
+  | { kind: "measure"; from: Point; to: Point; free: boolean; tokenSize?: number }
   | { kind: "draw"; shape: Exclude<DrawShape, "brush">; color: number; from: Point; to: Point }
   | { kind: "stroke"; color: number; points: Point[] }
   | { kind: "area"; shape: AreaShape; size: number; origin: Point; toward: Point; free: boolean; gmOnly?: boolean; width?: number; color?: AreaColor };
@@ -166,18 +167,17 @@ export function formatDistance(units: number, grid: GridSpec): string {
   return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)} ${grid.unitLabel}`;
 }
 
-/**
- * Distance between two points. Snapped: ends at cell centres, every diagonal step counts as one
- * cell (5e's default; configurable diagonals are KAN-32). Free: straight-line length.
- */
-export function measure(from: Point, to: Point, grid: GridSpec, free: boolean) {
-  if (free) {
-    const units = (Math.hypot(to.x - from.x, to.y - from.y) / grid.cellSize) * grid.unitsPerCell;
-    return { from, to, units, label: formatDistance(units, grid) };
-  }
-  const a = snapToCellCenter(from, grid);
-  const b = snapToCellCenter(to, grid);
-  const cells = Math.round(Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / grid.cellSize);
+/** Existing callers retain equal-cost cell-centre measurement; a ruler may preserve a token's exact centre. */
+export function measure(from: Point, to: Point, grid: GridSpec, free: boolean, rule: DistanceRule = "equal", tokenSize?: number) {
+  const a = free || tokenSize !== undefined ? from : snapToCellCenter(from, grid);
+  // Match token.move's destination snapping without shifting an off-grid origin.
+  const b = free ? to : snapTokenCenter(to, tokenSize ?? 1, grid);
+  const rawDx = Math.abs(b.x - a.x) / grid.cellSize;
+  const rawDy = Math.abs(b.y - a.y) / grid.cellSize;
+  const dx = free || tokenSize !== undefined ? rawDx : Math.round(rawDx);
+  const dy = free || tokenSize !== undefined ? rawDy : Math.round(rawDy);
+  const cells = free || rule === "euclidean" ? Math.hypot(dx, dy)
+    : Math.max(dx, dy) + (rule === "alternating" ? Math.floor(Math.min(dx, dy) / 2 + 1e-9) : 0);
   const units = cells * grid.unitsPerCell;
   return { from: a, to: b, units, label: formatDistance(units, grid) };
 }
@@ -322,7 +322,7 @@ function nearPolygon(p: Point, points: Point[], tolerance: number): boolean {
 export function hitMark(mark: Mark, p: Point, tolerance: number, grid: GridSpec): boolean {
   switch (mark.kind) {
     case "measure": {
-      const m = measure(mark.from, mark.to, grid, mark.free);
+      const m = measure(mark.from, mark.to, grid, mark.free, "equal", mark.tokenSize);
       return distanceToSegment(p, m.from, m.to) <= tolerance;
     }
     case "draw": {

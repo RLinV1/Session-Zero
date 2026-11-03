@@ -1222,6 +1222,31 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .entry .card { box-shadow: 0 16px 48px var(--shadow-tint); }
 .entry .card h1 { font-size: 1.35rem; letter-spacing: -0.015em; }
 
+/* Privacy and terms (site-policies): a reading page on the hub's ground. One left-aligned column
+   at 65 characters, headings by weight and colour as on the hub (dashboard-typography), sections
+   grouped by a fading hairline and space rather than boxed. */
+.policy-page { min-height: 100dvh; display: flex; flex-direction: column; font-family: var(--font-ui); }
+.policy-page main { flex: 1; padding: var(--space-6) 0 var(--space-8); }
+.policy { max-width: 65ch; display: flex; flex-direction: column; gap: var(--space-6); line-height: 1.6; }
+.policy h1, .policy h2 { letter-spacing: -0.02em; text-transform: none; color: var(--text); }
+.policy h1 { margin: 0 0 var(--space-3); font-size: 1.5rem; font-weight: 700; }
+.policy h2 { margin: 0 0 var(--space-3); font-size: 1.05rem; font-weight: 650; }
+.policy p, .policy ul, .policy dl { margin: 0; }
+.policy-lead { color: var(--muted); font-size: 1.05rem; }
+.policy .policy-meta { margin-top: var(--space-3); color: var(--muted); font-size: var(--fs-sm); }
+.policy-part { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.policy-part h2 { margin: 0; }
+.policy ul { padding-left: 1.25rem; display: grid; gap: var(--space-2); }
+.policy li::marker { color: var(--muted); }
+/* What we keep: the thing on the left, what is kept on the right; stacked on a phone. */
+.policy-terms { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: var(--space-4) var(--space-5); }
+.policy-terms dt { font-weight: 600; }
+.policy-terms dd { margin: 0; }
+@media (max-width: 720px) {
+  .policy-terms { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .policy-terms dd + dt { margin-top: var(--space-3); }
+}
+
 /* The lit table behind the entry and hub pages (ui/Ambient.tsx, design-language: "Background
    by layer"). Fixed and inert: it never scrolls, never shifts layout, never takes a click. */
 .ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--ground); }
@@ -1276,21 +1301,44 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .gm-page h1 { font-size: 1.5rem; }
 .gm-page h2 { font-size: 1.05rem; font-weight: 650; color: var(--text); }
 
+/* On a wide screen the create form stays in view beside a long list of rooms. */
+@media (min-width: 761px) { .dashboard-grid > .create-room { position: sticky; top: var(--space-4); } }
+
 .room-sections { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .room-section { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .room-section > h2 { margin: 0; }
 /* Each room a card: its name in full (it wraps, never ellipsizes), its game and last activity,
-   then the way in. */
+   then the way in. A hosted room's card leads with a picture of its board. */
 .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--space-3); }
 .room-card {
-  display: flex; flex-direction: column; gap: var(--space-1); min-width: 0;
-  padding: var(--space-4); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface);
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface);
+  transition: border-color var(--dur-fast);
 }
+.room-card.has-preview:hover { border-color: var(--border-strong); }
+.room-card-body { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); }
 .room-card-name { font-size: 1.02rem; overflow-wrap: anywhere; }
 .room-card-meta { font-size: var(--fs-sm); }
 .room-card-actions { margin-top: auto; padding-top: var(--space-2); }
+/* The board picture: the card's full width, a fixed shape so every card in a row lines up. */
+.room-card-preview {
+  display: block; width: 100%; padding: 0; min-height: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  aspect-ratio: 16 / 10; background: var(--raised); overflow: hidden;
+}
+.room-card-preview:where(:hover:not(:disabled)) { background-color: var(--raised); filter: brightness(1.08); }
+.room-card-preview:active:not(:disabled) { transform: none; }
+.room-preview { position: relative; display: block; width: 100%; height: 100%; }
+.room-preview-marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.room-preview-fog { fill: #000; fill-opacity: 0.55; }
+.room-preview-empty {
+  position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-sm); color: var(--muted);
+  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 1.5rem 1.5rem; background-position: center;
+}
+.room-preview-empty.is-loading { background: var(--hover); background-image: none; }
 /* While the list loads: cards of the same size, still, and hidden from assistive technology. */
 .room-card.skeleton { min-height: 7.5rem; background: var(--hover); border-style: dashed; }
+.room-card.skeleton.has-preview { min-height: 0; aspect-ratio: 16 / 17; }
 
 /* Nothing here yet: a picture, one sentence, and the action that fills it. */
 .empty-state {
@@ -1859,20 +1907,35 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .map-grid-light { stroke: rgba(255, 255, 255, 0.2); }
 .map-grid-app line { stroke: rgba(224, 138, 98, 0.9); stroke-width: 1.5px; }
 
-/* ---- Closing and footer ---- */
+/* ---- Footer (ui/SiteFooter.tsx): home and policy pages ---- */
 
-
-.home-footer {
+/* Who built it at the left, the policies at the right, like the header's mark and actions. */
+.site-footer {
+  position: relative;
+  z-index: 1;
   padding: 1.5rem 0 2.5rem;
   border-top: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
   align-items: baseline;
+  font-family: var(--font-ui);
   font-size: 0.9rem;
   color: var(--muted);
 }
-.home-footer p { margin: 0; }
+.site-footer p { margin: 0; }
+.footer-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin-left: auto; }
+/* Quiet, like the header's Sign in: weight and colour, no box and no underline. */
+.site-footer .footer-links a {
+  color: var(--muted);
+  font-weight: 550;
+  text-decoration: none;
+  border-radius: var(--radius-control);
+  transition: color var(--dur-fast) var(--ease);
+}
+.site-footer .footer-links a:hover,
+.site-footer .footer-links a[aria-current="page"] { color: var(--text); }
+@media (max-width: 640px) { .footer-links { margin-left: 0; flex-basis: 100%; } }
 
 /* ---- Mobile: every multi-column block above collapses here ---- */
 
@@ -1953,7 +2016,8 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 /* Hairlines that fade at both ends, rather than a flat rule edge to edge. */
 .part-head,
-.home-footer {
+.policy-part,
+.site-footer {
   border-image: linear-gradient(90deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent) 1;
 }
 
@@ -3308,3 +3372,11 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .closing-copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); max-width: 34rem; }
 .closing-copy h2 { margin: 0; font-size: clamp(1.7rem, 3.6vw, 2.5rem); font-weight: 700; line-height: 1.1; color: var(--text); }
 .closing-copy p { margin: 0 0 var(--space-2); color: var(--muted); font-size: 1.05rem; }
+
+/* Personal prospective-move controls and a DOM equivalent of the canvas label. */
+.movement-options { width: min(16rem, calc(100vw - 5rem)); }
+.movement-options label { display: flex; flex-direction: column; gap: var(--space-1); }
+.movement-options input, .movement-options select { min-height: 2.75rem; width: 100%; }
+.movement-options p { margin: 0; color: #ffb493; font-size: var(--fs-sm); }
+.movement-options small { color: var(--text-muted); }
+.movement-feedback { position: absolute; bottom: 3rem; left: 50%; transform: translateX(-50%); max-width: calc(100% - 2rem); padding: var(--space-2); background: #121417; color: #fff; border: 1px solid var(--border); border-radius: var(--radius); pointer-events: none; }

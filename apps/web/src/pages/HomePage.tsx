@@ -1,4 +1,5 @@
 import { revealOnEnter } from "../ui/reveal";
+import { SiteFooter } from "../ui/SiteFooter";
 import { SiteHeader } from "../ui/SiteHeader";
 import { AccountLinks } from "./home/AccountLinks";
 import { ClosingBand } from "./home/ClosingBand";
@@ -57,9 +58,8 @@ export function HomePage() {
         <ClosingBand />
       </main>
 
-      <footer className="landing-shell home-footer">
-        <p>Built for CSE 416 at Stony Brook. <a href="/demos/apartments">Explore isometric lighting</a></p>
-      </footer>
+      <p className="landing-shell home-footer"><a href="/demos/apartments">Explore isometric lighting</a></p>
+      <SiteFooter />
     </div>
   );
 }

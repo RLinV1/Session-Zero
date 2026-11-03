@@ -16,6 +16,7 @@ The team plans changes with OpenSpec (`/opsx:propose`, `openspec/`).
 ```bash
 npm install
 npm run dev         # server :3001 + web :5173 (proxies /api, /socket.io, /uploads)
+npm run dev:db      # same, on docker compose Postgres + Redis (migrates first; survives restarts)
 npm test            # vitest: shared unit tests + server multi-client integration tests
 npm run typecheck
 npm run lint

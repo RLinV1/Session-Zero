@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { HomePage } from "./pages/HomePage";
 import { SignInPage, SignUpPage } from "./account/AccountPages";
 import { JoinPage } from "./pages/JoinPage";
+import { PrivacyPage, TermsPage } from "./pages/PolicyPages";
 import { useRoute, type Route } from "./router";
 import { layerFor, useRouteLayer } from "./theme";
 import { Ambient } from "./ui/Ambient";
@@ -39,6 +40,10 @@ function RoutePage({ route }: { route: Route }) {
       return <SignInPage />;
     case "signup":
       return <SignUpPage />;
+    case "privacy":
+      return <PrivacyPage />;
+    case "terms":
+      return <TermsPage />;
     case "join":
       return <JoinPage key={route.inviteCode} inviteCode={route.inviteCode} />;
     case "room":
