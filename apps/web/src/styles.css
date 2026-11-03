@@ -1252,6 +1252,8 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--ground); }
 .ambient > * { position: absolute; inset: 0; }
 .ambient ~ * { position: relative; z-index: 1; }
+/* The header's account panel drops over the page below it, a later sibling at the same level. */
+.ambient ~ .page-bar { z-index: 2; }
 /* The table photograph, blurred ahead of time (scripts/ambient-images.mjs) and dimmed. */
 .ambient-plate { background: center / cover no-repeat url("/img/ambient/table-dark-blur.webp"); opacity: 0.5; }
 :root[data-theme="light"] .ambient-plate { background-image: url("/img/ambient/table-light-blur.webp"); opacity: 0.35; }
