@@ -58,7 +58,7 @@ export function HomePage() {
       </main>
 
       <footer className="landing-shell home-footer">
-        <p>Built for CSE 416 at Stony Brook.</p>
+        <p>Built for CSE 416 at Stony Brook. <a href="/demos/apartments">Explore isometric lighting</a></p>
       </footer>
     </div>
   );

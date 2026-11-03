@@ -36,6 +36,7 @@ afterEach(() => {
 describe("theme and layer follow the route (design-language: Light and dark outside the table)", () => {
   it("puts each route in its layer", () => {
     expect(layerFor({ page: "home" })).toBe("home");
+    expect(layerFor({ page: "isometricLighting" })).toBe("table");
     expect(layerFor({ page: "signin" })).toBe("entry");
     expect(layerFor({ page: "join", inviteCode: "abc123" })).toBe("entry");
     expect(layerFor({ page: "notFound" })).toBe("entry");

@@ -46,6 +46,7 @@ export function layerFor(route: Route): Layer {
     case "gmDashboard":
     case "library":
       return "hub";
+    case "isometricLighting":
     case "room":
     case "encounterEdit":
       return "table";

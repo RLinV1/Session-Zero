@@ -10,6 +10,7 @@ import { EntryPage } from "./ui/SiteHeader";
 // The landing and account pages do not need Pixi, map editors or the animation library.
 const GmDashboardPage = lazy(() => import("./pages/GmDashboardPage").then((m) => ({ default: m.GmDashboardPage })));
 const LibraryPage = lazy(() => import("./pages/LibraryPage").then((m) => ({ default: m.LibraryPage })));
+const IsometricLightingPage = lazy(() => import("./pages/IsometricLightingPage").then((m) => ({ default: m.IsometricLightingPage })));
 const RoomPage = lazy(() => import("./pages/RoomPage").then((m) => ({ default: m.RoomPage })));
 
 export function App() {
@@ -26,6 +27,8 @@ export function App() {
 
 function RoutePage({ route }: { route: Route }) {
   switch (route.page) {
+    case "isometricLighting":
+      return <IsometricLightingPage />;
     case "home":
       return <HomePage />;
     case "gmDashboard":
