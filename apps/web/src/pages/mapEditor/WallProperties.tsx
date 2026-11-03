@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Wall, type MapImage, type Point, type UvttPortal } from "@vtt/shared";
+import { importedDoor } from "./importedOpenings";
 
 /** Coordinates may be incomplete while editing; saved walls still require complete points. */
 type WallDraft = Omit<Wall, "uvttPortal"> & { uvttPortal?: Omit<UvttPortal, "position"> & { position?: Partial<Point> } };
@@ -41,7 +42,7 @@ export function WallProperties({ wall, map, onSave, disabled = false }: { wall: 
     {value.uvttPortal && <label className="stack">Use as
       <select value={value.portal?.kind ?? "generic"} onChange={(e) => setValue((v) => {
         const { portal: _portal, ...generic } = v;
-        return e.target.value === "generic" ? generic : { ...v, portal: { kind: e.target.value as "door" | "window", state: v.portal?.state ?? (v.uvttPortal?.closed === false ? "open" : "closed") } };
+        return e.target.value === "generic" ? generic : { ...v, portal: { kind: e.target.value as "door" | "window", state: v.portal?.state ?? importedDoor(v).state } };
       })}><option value="generic">Imported opening (GM only)</option><option value="door">Door</option><option value="window">Window</option></select>
     </label>}
     {value.portal && <label className="stack">{value.portal.kind === "window" ? "Window state" : "Door state"}

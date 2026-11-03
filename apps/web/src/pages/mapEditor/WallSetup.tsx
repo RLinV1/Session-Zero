@@ -9,6 +9,7 @@ import { api } from "../../net/api";
 import { useRoomSnapshot, type EditorConnection } from "../../net/roomConnection";
 import { rangeFill } from "../../ui/rangeFill";
 import { WallProperties } from "./WallProperties";
+import { openingsToDoors } from "./importedOpenings";
 import { Modal } from "../../ui/Modal";
 import { WallCanvas, type CanvasMode } from "./WallCanvas";
 import { HudLayout } from "./HudLayout";
@@ -173,6 +174,14 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     void run({ type: "portal.set", wallId, portal });
   };
 
+  // What the Door tool would send for each imported UVTT opening that is still GM-only (ADR 0041).
+  const openings = openingsToDoors(state.walls);
+  /** Makes every imported opening a door at once, open or closed as its file marks it; stops at the first refusal. */
+  const makeOpeningsDoors = async () => {
+    for (const command of openings) if (!(await run(command))) return;
+    setMessage({ text: `Made ${plural(openings.length, "door", "doors")} from imported openings.`, error: false });
+  };
+
   const pendingWalls = candidates?.mapUrl === mapUrl ? candidates : null;
   // Walls the model was unsure about (wall-review): every one, and how many the preview holds.
   const doubtfulKeys = new Set<number>();
@@ -298,6 +307,18 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
             {wallCount} {wallCount === 1 ? "wall" : "walls"}. Middle-drag or Space-drag pans.
           </p>
         </section>
+
+        {openings.length > 0 && (
+          <section className="stack" aria-label="Imported openings">
+            <h3 className="map-editor-heading">Imported openings</h3>
+            <p className="muted small-print">
+              Players don't see the {plural(openings.length, "opening", "openings")} from the map file until each is a door or window. Each door starts open or closed as the file marks it.
+            </p>
+            <button type="button" className="secondary" disabled={busy} onClick={() => void makeOpeningsDoors()}>
+              Make all imported openings doors
+            </button>
+          </section>
+        )}
 
         {canDetect && <section className="stack" data-guide="walls-detection">
           <h3 className="map-editor-heading">Automatic detection</h3>
