@@ -40,7 +40,7 @@ describe("imported openings to doors (FR-GM-09, FR-GM-18, ADR 0041)", () => {
   it("keeps the UVTT metadata in the draft, and Save sends only portal designations", () => {
     const draft = openingsToDoors(walls).reduce<MapDraft>(
       (current, command) => applyToDraft(current, command, newId)!,
-      { mapUrl: expectedMapUrl, walls, fog: {}, lineOfSight: false, sightRange: null },
+      { mapUrl: expectedMapUrl, walls, fog: {}, lineOfSight: false, isometric: false, sightRange: null },
     );
     expect(draft.walls.shut).toEqual({ ...walls.shut, portal: { kind: "door", state: "closed" } });
     expect(draft.walls.ajar!.uvttPortal).toEqual({ closed: false });
