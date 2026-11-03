@@ -84,6 +84,24 @@ describe("preparation through the authoritative FIFO (FR-GM-15/23, FR-REC-02)", 
 
 
 describe("preparation-only HTTP transport (FR-GM-15/23)", () => {
+  it("rejects malformed JSON with 400 before submitting any preparation", async () => {
+    const server = await startServer();
+    try {
+      const credentials = await server.createRoom();
+      const before = await server.store.loadEvents(credentials.roomId);
+      const append = vi.spyOn(server.store, "append");
+      const response = await fetch(server.base + `/api/rooms/${credentials.roomId}/preparation`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${credentials.guestToken}`, "content-type": "application/json" },
+        body: '{"type":"scene.savePreparation",',
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid JSON for map preparation." });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(append).not.toHaveBeenCalled();
+      expect(await server.store.loadEvents(credentials.roomId)).toEqual(before);
+    } finally { await server.close(); }
+  });
   it("saves 10,000 fragmented cells above 64 KiB and retains all ordinary, paint and auth limits", async () => {
     const server = await startServer();
     const credentials = await server.createRoom(), gm = await server.connect(credentials);

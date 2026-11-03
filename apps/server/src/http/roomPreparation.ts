@@ -26,7 +26,9 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
     })().catch(next);
   };
   const failure: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
-    const tooLarge = typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large";
+    const type = typeof error === "object" && error !== null && "type" in error ? error.type : null;
+    if (type === "entity.parse.failed") { res.status(400).json({ error: "Invalid JSON for map preparation." }); return; }
+    const tooLarge = type === "entity.too.large";
     res.status(tooLarge ? 413 : 500).json({ error: tooLarge ? "Map preparation is too large." : "Couldn't save the map draft. Try again." });
   };
   app.post("/api/rooms/:roomId/preparation", guard, express.json({ limit: MAX_PREPARATION_BYTES - 1 }), (req: Request, res: Response, next: NextFunction) => {
