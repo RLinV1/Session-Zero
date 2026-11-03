@@ -26,7 +26,7 @@ describe("portal scene application and undo (FR-GM-06/09, FR-REC-02, FR-GM-23)",
   });
   it("imports one full event and reverses first placement exactly; later wall edits guard undo", () => {
     const state = baseRoom();
-    const preparation: PreparedUvttScene = { map, grid: state.scene.grid, walls: [wall], baseline: { map: null, grid: state.scene.grid, walls: state.walls, fog: state.fog } };
+    const preparation: PreparedUvttScene = { map, grid: state.scene.grid, walls: [wall], baseline: { map: null, grid: state.scene.grid, walls: state.walls, fog: state.fog, terrainRevision: state.terrainRevision ?? 0 } };
     const applied = act(state, { type: "scene.importUVTT", importId: "prep", revision: 1 }, gm, preparation);
     expect(applied.events).toHaveLength(1);
     expect(applied.events[0]).toMatchObject({ type: "MapSet", wallChange: { previous: [], walls: [expect.objectContaining({ uvttPortal: wall.uvttPortal })] } });
@@ -38,7 +38,7 @@ describe("portal scene application and undo (FR-GM-06/09, FR-REC-02, FR-GM-23)",
   });
   it("rejects changed baselines and accepts token-only movement; legacy replay does not clear", () => {
     const state = initial();
-    const prep = { map, grid: state.scene.grid, walls: [], baseline: { map, grid: state.scene.grid, walls: state.walls, fog: state.fog } };
+    const prep = { map, grid: state.scene.grid, walls: [], baseline: { map, grid: state.scene.grid, walls: state.walls, fog: state.fog, terrainRevision: state.terrainRevision ?? 0 } };
     expect(decide({ ...state, walls: {} }, gm, Command.parse({ type: "scene.importUVTT", importId: "p", revision: 1 }), { ...ctx, preparedUvtt: prep })).toMatchObject({ ok: false, code: "invalid" });
     const legacy: DomainEvent = { type: "MapSet", map: { ...map, url: "/other.png" }, previous: map };
     expect(reduce(state, legacy).walls).toEqual(state.walls);

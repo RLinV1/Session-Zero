@@ -1,4 +1,5 @@
-import { budgetLabel, defaultMovementSettings, type MovementSettings } from "./movementRuler";
+import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun } from "@vtt/shared";
+import { budgetLabel, defaultMovementSettings, movementPreview, type MovementPreview, type MovementSettings } from "./movementRuler";
 import {
   Application,
   Assets,
@@ -29,6 +30,8 @@ import {
   type RoomState,
   type Token,
   type AreaTemplate,
+  type MovementPreviewRequest,
+  type MovementPreviewFeedback,
 } from "@vtt/shared";
 import { footprint, placementPoint, type PlacementGhost } from "./placement";
 import { clientToBoard, type BoardTransform } from "./diceThrow";
@@ -82,9 +85,11 @@ const MAX_FX_RUNS = 4;
 export interface BoardCallbacks {
   nukeImpact?: () => void;
   /** Commit a move. Resolves false if the server rejected it. */
-  moveToken(tokenId: string, to: Point): Promise<boolean>;
+  moveToken(tokenId: string, to: Point, origin?: Point, boardEpoch?: number): Promise<boolean>;
   /** Every pointer move of a token drag; the connection coalesces them (KAN-39). */
   dragPreview(tokenId: string, at: Point): void;
+  /** Private advisory query; geometry and feedback are never relayed to other viewers. */
+  requestMovementPreview?(request: MovementPreviewRequest): void;
   /**
    * The drag ended. `at` is where the token now rests (the drop point, or back where it started),
    * so other viewers' ghosts end there too; null when there is nothing to show.
@@ -358,6 +363,12 @@ export class BoardView {
   private lastFogDraw = 0;
   private fogTime = 0;
   /** Walls and portals. Plain walls reach the GM only; players get the portals they can see (ADR 0030). */
+  private terrainGraphics = new Graphics();
+  private showTerrain = true;
+  private drawnTerrain: unknown = null;
+  private drawnTerrainGrid: unknown = null;
+  private drawnTerrainShown = true;
+  private repositionToken: string | null = null;
   private wallGraphics = new Graphics();
   private drawnWalls: RoomState["walls"] | null = null;
   /** Doors and windows, over the walls; redrawn on zoom so they stay thick enough to find (ADR 0030). */
@@ -387,7 +398,11 @@ export class BoardView {
   private mapMissing = false;
   private gridKey = "";
 
-  private drag: { tokenId: string; offset: Point; movable: boolean } | null = null;
+  private drag: { tokenId: string; offset: Point; movable: boolean; origin: Point; epoch: number; target?: { at: Point; free: boolean } } | null = null;
+  private movementRequest: MovementPreviewRequest | null = null;
+  private movementPreviewId = 0;
+  private localMovementPreview: MovementPreview | null = null;
+  private movementFeedbackStatus: MovementPreview["obstruction"] | null = null;
   /** Screen position where the token press began, to tell a click from a drag. */
   private dragDownAt: Point | null = null;
   private pan: { start: Point; origin: Point; button?: number } | null = null;
@@ -534,7 +549,7 @@ export class BoardView {
     this.fogLayer.addChild(this.fogMist, this.fogEdgeGraphics);
     this.wallGraphics.eventMode = "none";
     this.portalGraphics.eventMode = "none";
-    this.world.addChild(this.mapSprite, this.grid, this.fogLayer, this.wallGraphics, this.portalGraphics, this.tokenLayer, this.sightLayer, this.markLayer, this.fxLayer);
+    this.world.addChild(this.mapSprite, this.grid, this.terrainGraphics, this.fogLayer, this.wallGraphics, this.portalGraphics, this.tokenLayer, this.sightLayer, this.markLayer, this.fxLayer);
     this.fxLayer.addChild(this.ghostFootprint);
     this.screenLayer.addChild(this.world);
     this.app.stage.addChild(this.screenLayer, this.screenFxLayer);
@@ -753,6 +768,7 @@ export class BoardView {
   }
 
   update(state: RoomState, you: Participant) {
+    const before = this.state;
     this.state = state;
     this.you = you;
     const table = state.reducedEffects ?? false;
@@ -764,6 +780,7 @@ export class BoardView {
     this.syncMap();
     this.syncGrid();
     this.syncWalls();
+    this.drawTerrain();
     this.syncSight();
     this.syncTokens();
     if (state.templates !== this.drawnTemplates || state.fog !== this.drawnFog) {
@@ -781,7 +798,90 @@ export class BoardView {
     // A grid change moves the squares under a still pointer.
     if (this.placement) this.redrawGhost();
     this.syncConditionLoop();
+    const token = this.drag ? state.tokens[this.drag.tokenId] : undefined;
+    const previousToken = this.drag ? before?.tokens[this.drag.tokenId] : undefined;
+    if (before?.scene !== state.scene || before?.walls !== state.walls || before?.fog !== state.fog || before?.terrain !== state.terrain || before?.terrainView !== state.terrainView || before?.sight !== state.sight || previousToken?.position !== token?.position || previousToken?.size !== token?.size) this.refreshMovementPreview();
     this.invalidate();
+  }
+
+  /** Re-query even redacted edits: the player does not hold plain walls locally. */
+  refreshMovementPreview(force = true) {
+    const drag = this.drag, state = this.state, you = this.you;
+    if (!drag?.target || !drag.movable || !state || !you || this.readOnly) return;
+    const token = state.tokens[drag.tokenId];
+    if (!token) return;
+    const to = drag.target.free ? drag.target.at : snapTokenCenter(drag.target.at, token.size, state.scene.grid);
+    const local = movementPreview(state, you, token, drag.origin, to, drag.target.free, this.repositionToken === token.id);
+    this.localMovementPreview = local;
+    const previous = this.movementRequest;
+    if (!force && you.role === "player" && local.obstruction === "clear" && previous && previous.tokenId === token.id && previous.to.x === to.x && previous.to.y === to.y && previous.boardEpoch === drag.epoch) {
+      this.drawMovementLine(drag.origin, to, this.movementFeedbackStatus ?? "unknown");
+      this.showLabel(local.label, to);
+      this.invalidate();
+      return;
+    }
+    this.movementRequest = null;
+    this.movementFeedbackStatus = null;
+    // Until the server has checked walls, an otherwise clear player route stays tentative.
+    this.drawMovementLine(drag.origin, to, you.role === "player" && local.obstruction === "clear" ? "unknown" : local.obstruction);
+    this.showLabel(local.label, to);
+    if (you.role === "player" && local.obstruction === "clear") {
+      const request: MovementPreviewRequest = { type: "tokenMovePreview", requestId: `move${++this.movementPreviewId}`, tokenId: token.id, from: drag.origin, to, boardEpoch: drag.epoch };
+      this.movementRequest = request;
+      this.callbacks.requestMovementPreview?.(request);
+    }
+    this.invalidate();
+  }
+
+  showMovementFeedback(feedback: MovementPreviewFeedback) {
+    const request = this.movementRequest;
+    if (!this.drag || !request || feedback.requestId !== request.requestId || !this.localMovementPreview || this.readOnly) return;
+    this.movementFeedbackStatus = feedback.status;
+    this.drawMovementLine(request.from, request.to, feedback.status);
+    this.invalidate();
+  }
+
+  cancelMovement() {
+    if (!this.drag) return false;
+    const token = this.state?.tokens[this.drag.tokenId];
+    if (token) { const view = this.tokens.get(token.id); view?.container.position.set(token.position.x, token.position.y); if (view) view.container.cursor = "grab"; }
+    this.callbacks.dragEnd(this.drag.tokenId, token?.position ?? null);
+    this.drag = null; this.dragDownAt = null;
+    this.overlayGraphics.clear(); this.measureLabel.visible = false; this.invalidate();
+    return true;
+  }
+  setShowTerrain(show: boolean) { this.showTerrain = show; this.drawTerrain(); this.invalidate(); }
+  setRepositionToken(id: string | null) { if (this.repositionToken !== id) { this.repositionToken = id; this.refreshMovementPreview(); } }
+  private drawTerrain() {
+    const state = this.state;
+    if (!state) return;
+    const content = this.you?.role === "gm" ? state.terrain : state.terrainView;
+    if (this.drawnTerrain === content && this.drawnTerrainGrid === state.scene.grid && this.drawnTerrainShown === this.showTerrain) return;
+    this.drawnTerrain = content; this.drawnTerrainGrid = state.scene.grid; this.drawnTerrainShown = this.showTerrain;
+    const g = this.terrainGraphics.clear();
+    const terrain = state.terrain ?? emptyTerrain();
+    const runs = this.you?.role === "gm" ? effectiveTerrain(terrain) : state.terrainView?.runs ?? [];
+    const temporary = this.you?.role === "gm" ? effectiveTerrain({ base: [], effects: terrain.effects }) : state.terrainView?.temporary ?? [];
+    const draw = (list: TerrainRun[], marker: boolean) => {
+      for (const run of list) for (let col = run.start; col <= run.end; col++) {
+        const r = cellRect(col, run.row, state.scene.grid), s = state.scene.grid.cellSize;
+        const color = run.kind === "blocked" ? 0xc36d74 : 0xd5aa56;
+        if (marker) g.rect(r.minX + .73 * s, r.minY + .05 * s, .2 * s, .2 * s).fill({ color, alpha: .95 }).stroke({ color: 0xffffff, alpha: .8, width: s / 50 });
+        else {
+          g.rect(r.minX, r.minY, s, s).fill({ color, alpha: .17 });
+          if (run.kind === "blocked") {
+            for (let i = 0; i < 4; i++) { const step = i * s / 4; g.moveTo(r.minX + step, r.minY).lineTo(r.maxX, r.maxY - step); g.moveTo(r.minX, r.minY + step).lineTo(r.maxX - step, r.maxY); }
+            g.stroke({ color, alpha: .45, width: s / 70 });
+            g.circle(r.minX + s / 2, r.minY + s / 2, s * .13).moveTo(r.minX + s * .41, r.minY + s * .59).lineTo(r.minX + s * .59, r.minY + s * .41).stroke({ color, alpha: .9, width: s / 40 });
+          } else {
+            g.moveTo(r.minX + s * .38, r.minY + s * .4).lineTo(r.minX + s * .48, r.minY + s * .6).moveTo(r.minX + s * .48, r.minY + s * .4).lineTo(r.minX + s * .38, r.minY + s * .6).stroke({ color, width: s / 30 });
+            g.moveTo(r.minX + s * .54, r.minY + s * .4).lineTo(r.minX + s * .64, r.minY + s * .4).lineTo(r.minX + s * .64, r.minY + s * .5).lineTo(r.minX + s * .54, r.minY + s * .5).lineTo(r.minX + s * .54, r.minY + s * .6).lineTo(r.minX + s * .64, r.minY + s * .6).stroke({ color, width: s / 30 });
+          }
+        }
+      }
+    };
+    if (this.showTerrain) draw(runs, false);
+    draw(temporary, true);
   }
 
   /** Darkens everything outside the viewer's sight polygons; draws nothing when `sight` is absent. */
@@ -2432,10 +2532,12 @@ export class BoardView {
     if (!view || !token || !this.you) return;
     const movable = !this.readOnly && can.moveToken(this.you, token);
     const p = this.toBoard(e.global);
+    this.movementRequest = null; this.movementFeedbackStatus = null;
     this.drag = {
       tokenId,
       offset: { x: p.x - view.container.x, y: p.y - view.container.y },
       movable,
+      origin: { ...token.position }, epoch: this.state?.boardEpoch ?? 0,
     };
     this.dragDownAt = { x: e.global.x, y: e.global.y };
     if (!movable) return;
@@ -2530,6 +2632,8 @@ export class BoardView {
       const at = { x: p.x - this.drag.offset.x, y: p.y - this.drag.offset.y };
       view.container.position.set(at.x, at.y);
       this.callbacks.dragPreview(this.drag.tokenId, at);
+      this.drag.target = { at, free: e.altKey };
+      this.refreshMovementPreview(false);
       this.invalidate();
     } else if (!this.pan && this.tool.kind === "select" && !this.placement && this.you) {
       // A hand over a door or window the viewer may open or close (ADR 0030).
@@ -2546,6 +2650,21 @@ export class BoardView {
       this.invalidate();
     }
   };
+
+  private drawMovementLine(from: Point, to: Point, obstruction: MovementPreview["obstruction"]) {
+    const g = this.overlayGraphics.clear(), px = 1 / this.world.scale.x;
+    if (obstruction === "clear") g.moveTo(from.x, from.y).lineTo(to.x, to.y);
+    else {
+      const dx = to.x - from.x, dy = to.y - from.y, length = Math.hypot(dx, dy);
+      // Keep dashes legible at every zoom and bound work for very long off-map gestures.
+      const period = Math.max(12 * px, length / 512);
+      for (let start = 0; start < length; start += period) {
+        const end = Math.min(start + period / 2, length);
+        g.moveTo(from.x + dx * start / length, from.y + dy * start / length).lineTo(from.x + dx * end / length, from.y + dy * end / length);
+      }
+    }
+    g.stroke({ color: obstruction === "blocked" ? 0xf08b8b : 0xffffff, alpha: obstruction === "unknown" ? .35 : obstruction === "blocked" ? .75 : .8, width: (obstruction === "blocked" ? 2.5 : 2) * px, cap: "round" });
+  }
 
   private onPointerUp = (e: FederatedPointerEvent) => {
     const pan = this.pan;
@@ -2569,6 +2688,7 @@ export class BoardView {
     this.drag = null;
     this.dragDownAt = null;
     if (!drag) return;
+    this.overlayGraphics.clear(); this.measureLabel.visible = false;
     // A press that stays put is a click: select the token. Anything further is a drag and moves it.
     const clicked = downAt !== null && Math.hypot(e.global.x - downAt.x, e.global.y - downAt.y) < MIN_MARK_DRAG_PX;
     if (clicked) this.callbacks.selectToken(drag.tokenId, e.shiftKey);
@@ -2592,7 +2712,7 @@ export class BoardView {
     this.callbacks.dragEnd(token.id, to);
     if (to.x === token.position.x && to.y === token.position.y) return;
     this.pendingMoves.set(token.id, to);
-    this.callbacks.moveToken(token.id, to).then((ok) => {
+    this.callbacks.moveToken(token.id, to, drag.origin, drag.epoch).then((ok) => {
       if (ok) return;
       this.pendingMoves.delete(token.id);
       const current = this.state?.tokens[token.id];
@@ -2647,6 +2767,7 @@ export class BoardView {
       if (view && token) view.container.position.set(token.position.x, token.position.y);
       this.callbacks.dragEnd(this.drag.tokenId, token?.position ?? null);
       this.drag = null;
+      this.overlayGraphics.clear(); this.measureLabel.visible = false;
       this.invalidate();
     }
     const { distance, midpoint } = this.touchInfo(e.touches);

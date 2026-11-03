@@ -47,6 +47,7 @@ beforeEach(() => {
   stubMapEditorEnvironment();
   accountStore.setState({ status: "signedOut" });
   vi.spyOn(api.library, "board").mockResolvedValue({ walls: [], fog: [] });
+  vi.spyOn(api.library, "preparation").mockResolvedValue({ grid: null, board: { walls: [], fog: [] }, revision: "r1" });
   vi.spyOn(api.library, "update").mockImplementation(async (_id, change) => ({ ...asset, ...change }));
   vi.spyOn(api.library, "list").mockResolvedValue([asset]);
   vi.spyOn(api.library.creatures, "list").mockResolvedValue([]);

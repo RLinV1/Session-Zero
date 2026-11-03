@@ -566,6 +566,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0041](adr/0041-uvtt-scenes-and-portals.md) | UVTT scenes, portal metadata and atomic geometry | Proposed |
 | [0042](adr/0042-map-token-adjustment.md) | Atomic token adjustment when applying a map | Proposed |
 | [0043](adr/0043-library-uvtt-import-and-atomic-placement.md) | Library UVTT import and atomic map placement | Proposed |
+| [0046](adr/0046-terrain-tactical-movement.md) | Terrain and tactical movement | Proposed; Raymond review required |
 
 Numbers 0033, 0036 and 0038 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

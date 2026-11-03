@@ -168,6 +168,8 @@ export interface LibraryStore {
   findAssetBoard(id: string, ownerGmId: string): Promise<LibraryMapBoard | null>;
   /** Replaces the map's prepared walls and fog; false when the owner has no such map. */
   setAssetBoard(id: string, ownerGmId: string, board: LibraryMapBoard): Promise<boolean>;
+  findAssetPreparation(id: string, ownerGmId: string): Promise<import("@vtt/shared").LibraryPreparation | null>;
+  saveAssetPreparation(id: string, ownerGmId: string, change: import("@vtt/shared").SaveLibraryPreparation): Promise<import("@vtt/shared").LibraryPreparation | null>;
   /** Removes the row and its reference index entries. Returns the removed row. */
   deleteAsset(id: string, ownerGmId: string): Promise<LibraryAssetRecord | null>;
 

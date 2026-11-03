@@ -54,3 +54,7 @@ A template that is another account's, does not exist, has an unknown `version`, 
 - **Let the client upload the board.** Simpler on the server, but anything could be saved as a template.
 - **Copy the map file into each template.** Storage cost, plus cleanup rules for another kind of file.
 - **Merge into the existing board.** Needs rules for overlapping tokens, scene conflicts and fog union for little gain over replace plus undo.
+
+## Amendment: terrain and tactical movement
+
+Reusable encounter templates include prepared base terrain only, omitting active temporary terrain effects alongside active AoE templates. Legacy templates still mean Normal ground. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

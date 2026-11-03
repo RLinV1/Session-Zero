@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { polygonArea, Point, type GridSpec } from "./geometry";
+import { TerrainRuns } from "./terrain";
+import { polygonArea, Point, GridSpec } from "./geometry";
 import { FogShape, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_WALLS, Wall, type MapImage } from "./state";
 import { wallsFitMap } from "./wallDetection";
 
@@ -10,6 +11,7 @@ import { wallsFitMap } from "./wallDetection";
  */
 export const LibraryMapBoard = z
   .object({
+    terrain: TerrainRuns.optional(),
     walls: z.array(Wall.omit({ id: true }).strict()).max(MAX_WALLS),
     fog: z
       .array(z.object({ shape: FogShape, points: z.array(Point).min(3).max(MAX_FOG_POINTS) }).strict())
@@ -32,3 +34,8 @@ export function libraryBoardProblem(board: LibraryMapBoard, map: { width: number
   if (board.fog.some((f) => Math.abs(polygonArea(f.points)) < 1)) return "A fog region needs some area.";
   return null;
 }
+
+export const LibraryPreparation = z.object({ grid: GridSpec.nullable(), board: LibraryMapBoard, revision: z.string().min(1).max(128) }).strict();
+export type LibraryPreparation = z.infer<typeof LibraryPreparation>;
+export const SaveLibraryPreparation = z.object({ grid: GridSpec, board: LibraryMapBoard, revision: z.string().min(1).max(128), resetTerrain: z.boolean().optional() }).strict();
+export type SaveLibraryPreparation = z.infer<typeof SaveLibraryPreparation>;

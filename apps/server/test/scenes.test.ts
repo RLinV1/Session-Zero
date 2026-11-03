@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { filterStateForViewer, tableOf } from "@vtt/shared";
+import { filterStateForViewer, sceneState, tableOf, type PreparationEdit } from "@vtt/shared";
 import { startServer, type TestClient } from "./helpers";
 let server: Awaited<ReturnType<typeof startServer>>;
 const clients: TestClient[] = [];
@@ -9,6 +9,43 @@ async function connect(creds: Parameters<typeof server.connect>[0]) { const clie
 const ok = async (promise: Promise<unknown>) => expect(await promise).toMatchObject({ type: "ack" });
 
 describe("scene switching over real sockets", () => {
+  it("saves large private terrain preparations without changing or disclosing the live board (FR-TAC-03)", async () => {
+    const creds = await server.createRoom();
+    const gm = await connect(creds);
+    const player = await connect(await server.join(creds.inviteCode, "Alice"));
+    await ok(gm.command({ type: "scene.setMap", map: { url: "/live", width: 1000, height: 1000 } }));
+    const live = structuredClone(tableOf(gm.state));
+    await ok(gm.command({ type: "scene.create", name: "Private terrain", activate: false }));
+    const sceneId = Object.keys(gm.state.savedScenes!)[0]!;
+    await ok(gm.command({ type: "scene.prepare", sceneId, command: { type: "scene.setMap", map: { url: "/private", width: 1000, height: 1000 }, grid: { cellSize: 10, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } } }));
+    const state = sceneState(gm.state, sceneId)!;
+    const context = { boardEpoch: state.boardEpoch!, revision: state.terrainRevision! };
+    const base = Array.from({ length: 2000 }, (_, i) => ({ row: Math.floor(i / 100), start: i % 100, end: i % 100, kind: i % 2 ? "blocked" as const : "difficult" as const }));
+    const edits: PreparationEdit[] = [];
+    for (let start = 0; start < base.length; start += 250) edits.push({ type: "terrain.paint", layerId: "base", context: { ...context, revision: context.revision + start / 250 }, paint: base.slice(start, start + 250) });
+    edits.push({ type: "scene.setIsometric", enabled: true });
+    const command = { type: "scene.prepare", sceneId, command: { type: "scene.savePreparation", expectedSceneId: sceneId, expectedMapUrl: "/private", context, edits } };
+    expect(JSON.stringify(command).length).toBeGreaterThan(64 * 1024);
+    const save = () => fetch(`${server.base}/api/rooms/${creds.roomId}/preparation`, {
+      method: "POST", headers: { authorization: `Bearer ${creds.guestToken}`, "content-type": "application/json" }, body: JSON.stringify(command),
+    });
+    const response = await save();
+    expect(response.status).toBe(200);
+    const { seq } = await response.json() as { seq: number };
+    await gm.waitForSeq(seq); await player.waitForSeq(seq);
+    expect(tableOf(gm.state)).toEqual(live);
+    expect(gm.state.savedScenes![sceneId]!.table.terrain?.base).toEqual(base);
+    expect(gm.state.savedScenes![sceneId]!.table.scene.isometric).toBe(true);
+    expect(player.state.savedScenes ?? {}).toEqual({});
+    expect(JSON.stringify(player.state)).not.toContain("Private terrain");
+    const events = await server.store.loadEvents(creds.roomId);
+    expect(events.at(-1)!.event.type).toBe("ScenePrepared");
+    expect((await save()).status).toBe(409);
+    expect(await server.store.loadEvents(creds.roomId)).toEqual(events);
+    const reconnect = await connect(creds);
+    expect(reconnect.state.savedScenes![sceneId]!.table.terrain?.base).toEqual(base);
+  });
+
   it("copies live progress privately and keeps later changes independent", async () => {
     const creds = await server.createRoom();
     const gm = await connect(creds);

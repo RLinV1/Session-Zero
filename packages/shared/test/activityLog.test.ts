@@ -18,6 +18,10 @@ const committed = (event: DomainEvent, seq = 1, actorId: string | null = gm.id):
 
 describe("Human-readable activity formatter (FR-REC-01)", () => {
   const cases: Record<DomainEventType, [DomainEvent, string]> = {
+    TerrainPainted: [{ type: "TerrainPainted", layerId: "base", paint: [], previous: [] }, "Mara painted terrain"],
+    TerrainEffectCreated: [{ type: "TerrainEffectCreated", effect: { id: "ice", name: "Ice", runs: [] } }, 'Mara created terrain effect "Ice"'],
+    TerrainEffectRemoved: [{ type: "TerrainEffectRemoved", effect: { id: "ice", name: "Ice", runs: [] } }, 'Mara removed terrain effect "Ice"'],
+    TerrainEffectRenamed: [{ type: "TerrainEffectRenamed", effectId: "ice", name: "Sleet", previous: "Ice" }, "Mara renamed a terrain effect"],
     SceneDraftCreated: [{ type: "SceneDraftCreated", sceneId: "b", name: "Cellar", initialId: "initial", initialName: "Scene 1", saved: { table: tableOf(state), groups: {}, tokenGroups: {} } }, 'Mara prepared scene "Cellar"'],
     ScenePrepared: [{ type: "ScenePrepared", sceneId: "b", previous: { table: tableOf(state), groups: {}, tokenGroups: {} }, prepared: { table: tableOf(state), groups: {}, tokenGroups: {} } }, "Mara edited a private scene"],
     SceneCreated: [{ type: "SceneCreated", sceneId: "b", name: "Cellar", fromId: "a", fromName: "Tavern", previous: { table: tableOf(state), groups: {}, tokenGroups: {} }, restored: { table: tableOf(state), groups: {}, tokenGroups: {} } }, 'Mara created scene "Cellar"'],

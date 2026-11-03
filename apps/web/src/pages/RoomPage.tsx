@@ -1,3 +1,4 @@
+import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { House } from "@phosphor-icons/react";
 import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
@@ -347,7 +348,10 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     setGridApplying(true);
     setGridError(null);
     try {
-      const result = await connection.command({ type: "scene.setGrid", grid, expectedSceneId: sceneId });
+      const current = connection.snapshot.state;
+      const resetTerrain = !!current && gridGeometryChanged(current.scene.grid, grid) && hasTerrain(current.terrain);
+      if (resetTerrain && !window.confirm("Reset base terrain and temporary effects and apply this grid change? Cancel keeps the current grid and terrain.")) return false;
+      const result = await connection.command({ type: "scene.setGrid", grid, expectedSceneId: sceneId, terrainContext: { boardEpoch: current?.boardEpoch ?? 0, revision: current?.terrainRevision ?? 0 }, ...(resetTerrain ? { resetTerrain: true } : {}) });
       if (!stillCurrent(result.ok)) return false;
       if (!result.ok) setGridError(result.message);
       return result.ok;

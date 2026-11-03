@@ -46,3 +46,7 @@ The replayed state replaces the shown state the way "View as player" does: board
 - **Send a filtered snapshot per step.** Simple, but initiative advances resync every turn; a long replay would be megabytes.
 - **Reuse `state.checkpoints` for points.** Would expose checkpoint ids and lose checkpoints past the 50-entry cap.
 - **Socket messages instead of REST.** A replay is a one-off read with no ordering relationship to the live stream.
+
+## Amendment: terrain and tactical movement
+
+Filtered table frames now carry effective terrain projection, sight polygons (including explicit clearing) and the board epoch. Canonical layers, private effect names, previous values and GM edit revisions never reach player frames. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

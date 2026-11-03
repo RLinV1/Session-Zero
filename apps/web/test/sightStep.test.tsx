@@ -7,7 +7,7 @@ import { api } from "../src/net/api";
 import { GmPanel } from "../src/pages/GmPanel";
 import { toGridDraft } from "../src/pages/gridDraft";
 import { LibraryMapEditor } from "../src/pages/mapEditor/LibraryMapEditor";
-import { GRID, fakeConnection, room, stubMapEditorEnvironment, TOKEN } from "./mapEditorHarness";
+import { MAP_URL, GRID, fakeConnection, room, stubMapEditorEnvironment, TOKEN } from "./mapEditorHarness";
 
 vi.mock("../src/panels/CheckpointsPanel", () => ({ CheckpointsPanel: () => null }));
 vi.mock("../src/panels/EncounterPanel", () => ({ EncounterPanel: () => null }));
@@ -46,7 +46,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["json"], "map.dd2vtt")] } });
     await screen.findByText(/Unsaved changes: only you see them/);
     const tabs = within(editor()).getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["1 · Map", "2 · Grid", "3 · Walls", "4 · Fog", "5 · Sight"]);
+    expect(tabs).toEqual(["1 · Map", "2 · Grid", "3 · Walls", "4 · Fog", "5 · Sight", "6 · Terrain"]);
     fireEvent.click(within(editor()).getByRole("tab", { name: "5 · Sight" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Apply this map?" })).getByRole("button", { name: "Discard" }));
     expect(await screen.findByText("Apply a map before setting up sight.")).toBeTruthy();
@@ -119,8 +119,10 @@ describe("map editor Sight step (FR-GM-19)", () => {
     expect(fake.commands).toEqual([]);
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toEqual([
-      { type: "scene.setLineOfSight", expectedSceneId: "initial", enabled: true },
-      { type: "scene.setSightRange", expectedSceneId: "initial", range: 60 },
+      { type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 }, edits: [
+        { type: "scene.setLineOfSight", expectedSceneId: "initial", enabled: true },
+        { type: "scene.setSightRange", expectedSceneId: "initial", range: 60 },
+      ] },
     ]));
   });
 
@@ -133,7 +135,10 @@ describe("map editor Sight step (FR-GM-19)", () => {
     expect(iso.getAttribute("aria-checked")).toBe("true");
     expect(fake.commands).toEqual([]);
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setIsometric", enabled: true, expectedSceneId: "initial" }]));
+    await waitFor(() => expect(fake.commands).toEqual([{
+      type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 },
+      edits: [{ type: "scene.setIsometric", expectedSceneId: "initial", enabled: true }],
+    }]));
   });
 
   it("previews sight with test tokens only, added, moved and removed without sending anything", () => {
@@ -242,7 +247,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     fireEvent.change(within(editor()).getByLabelText("Sight range in squares"), { target: { value: "6" } });
     expect((within(editor()).getByLabelText("Sight range in ft") as HTMLInputElement).value).toBe("30");
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", expectedSceneId: "initial", range: 30 }]));
+    await waitFor(() => expect(fake.commands).toMatchObject([{ type: "scene.savePreparation", edits: [{ type: "scene.setSightRange", expectedSceneId: "initial", range: 30 }] }]));
   });
 
   it("Discard sends nothing", async () => {
@@ -258,7 +263,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     const fake = mount(state); openSight();
     fireEvent.click(unlimited());
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", expectedSceneId: "initial", range: null }]));
+    await waitFor(() => expect(fake.commands).toMatchObject([{ type: "scene.savePreparation", edits: [{ type: "scene.setSightRange", expectedSceneId: "initial", range: null }] }]));
   });
 
   it("asks before leaving Sight with unsaved changes", () => {

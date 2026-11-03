@@ -33,3 +33,7 @@ export * from "./sight";
 
 export * from "./uvtt";
 export * from "./chatMentions";
+
+export * from "./terrain";
+export * from "./movement";
+export * from "./terrainVisibility";

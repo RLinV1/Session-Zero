@@ -196,9 +196,9 @@ describe("automatic wall detection through the queue (FR-GM-11, ADR 0029)", () =
     await player.waitForSeq((created as { seq: number }).seq);
     const tokenId = Object.keys(player.state.tokens)[0]!;
     expect(await player.command({ type: "token.move", tokenId, to: { x: 175, y: 105 } }))
-      .toMatchObject({ type: "rejected", code: "invalid", message: "A wall is in the way." });
+      .toMatchObject({ type: "rejected", code: "invalid", message: "That move is unavailable." });
     expect(await player.command({ type: "token.move", tokenId, to: { x: 140, y: 105 } }))
-      .toMatchObject({ type: "rejected", message: "That spot is blocked by a wall." });
+      .toMatchObject({ type: "rejected", message: "That move is unavailable." });
     expect(await player.command({ type: "token.move", tokenId, to: { x: 105, y: 175 } })).toMatchObject({ type: "ack" });
     // Not for players, and not for another room.
     expect(await player.command({ type: "wall.clear" })).toMatchObject({ type: "rejected", code: "forbidden" });

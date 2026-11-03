@@ -53,10 +53,12 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
     await makeDoors(editor);
     expect(fake.commands).toEqual([]);
     fireEvent.click(await within(editor).findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([
-      { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w0", portal: closedDoor },
-      { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w1", portal: openDoor },
-    ]));
+    await waitFor(() => expect(fake.commands).toEqual([{
+      type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 }, edits: [
+        { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w0", portal: closedDoor },
+        { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w1", portal: openDoor },
+      ],
+    }]));
   });
 
   it("leaves the button out when no imported opening is left", () => {
@@ -91,15 +93,17 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
   it("saves a library map's openings as doors on its board", async () => {
     const asset: LibraryAsset = { id: "map1", kind: "map", name: "Chandlery", url: "/chandlery.png", width: 800, height: 600, grid: DEFAULT_GRID, createdAt: "2026-11-02T00:00:00Z" };
     vi.spyOn(api.detection, "library").mockResolvedValue(null);
-    vi.spyOn(api.library, "board").mockResolvedValue({ walls: structuredClone(walls), fog: [] });
-    const setBoard = vi.spyOn(api.library, "setBoard").mockImplementation(async (_id, board) => board);
+    vi.spyOn(api.library, "preparation").mockResolvedValue({ grid: DEFAULT_GRID, board: { walls: structuredClone(walls), fog: [] }, revision: "r1" });
+    const savePreparation = vi.spyOn(api.library, "savePreparation").mockImplementation(async (_id, change) => ({ grid: change.grid, board: change.board, revision: "r2" }));
     render(<LibraryMapEditor asset={asset} onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: /Walls/ }));
     await makeDoors(screen.getByRole("dialog", { name: "Edit map" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(setBoard).toHaveBeenCalledWith("map1", {
-      walls: [{ ...walls[0], portal: closedDoor }, { ...walls[1], portal: openDoor }, walls[2], walls[3]],
-      fog: [],
-    }));
+    await waitFor(() => expect(savePreparation).toHaveBeenCalledWith("map1", expect.objectContaining({
+      revision: "r1", board: {
+        walls: [{ ...walls[0], portal: closedDoor }, { ...walls[1], portal: openDoor }, walls[2], walls[3]],
+        fog: [],
+      },
+    })));
   });
 });

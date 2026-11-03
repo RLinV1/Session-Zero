@@ -23,8 +23,10 @@ beforeEach(() => {
   vi.spyOn(api.library, "list").mockResolvedValue([]);
   vi.spyOn(api.library.creatures, "list").mockResolvedValue([]);
   vi.spyOn(api.library.encounters, "list").mockResolvedValue([]);
-  vi.spyOn(api.library, "board").mockResolvedValue(structuredClone(board));
-  vi.spyOn(api.library, "setBoard").mockImplementation(async (_id, next) => next);
+  vi.spyOn(api.library, "board");
+  vi.spyOn(api.library, "preparation").mockResolvedValue({ grid: asset.grid, board: structuredClone(board), revision: "r1" });
+  vi.spyOn(api.library, "setBoard");
+  vi.spyOn(api.library, "savePreparation").mockImplementation(async (_id, change) => ({ grid: change.grid, board: change.board, revision: "r2" }));
   vi.spyOn(api.detection, "library").mockResolvedValue({ status: "no_grid", attempt: 1 });
   vi.spyOn(api.walls, "availability").mockResolvedValue({ available: false });
   vi.spyOn(api.uvtt, "discard").mockResolvedValue();
@@ -60,9 +62,10 @@ describe("UVTT upload and review in the asset library (KAN-43/44, FR-GM-06/07/12
     fireEvent.click(within(editor).getByLabelText("Closed (blocks movement)"));
     fireEvent.click(within(editor).getByRole("button", { name: "Save geometry" }));
     fireEvent.click(within(editor).getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(api.library.setBoard).toHaveBeenCalledWith(asset.id, { walls: [{ ...board.walls[0], uvttPortal: { ...board.walls[0]!.uvttPortal, closed: true } }], fog: [] }));
-    await waitFor(() => expect(saveGrid).toHaveBeenCalledWith(asset.id, { grid: { ...asset.grid, unitsPerCell: 10 } }));
+    await waitFor(() => expect(api.library.savePreparation).toHaveBeenCalledWith(asset.id, expect.objectContaining({ board: { walls: [{ ...board.walls[0], uvttPortal: { ...board.walls[0]!.uvttPortal, closed: true } }], fog: [] } })));
+    await waitFor(() => expect(api.library.savePreparation).toHaveBeenCalledWith(asset.id, expect.objectContaining({ grid: { ...asset.grid, unitsPerCell: 10 } })));
     expect(within(editor).getByText("1 import warnings")).toBeTruthy();
+    expect(saveGrid).not.toHaveBeenCalled();
     expect(editor.hasAttribute("open")).toBe(true);
     expect(input.disabled).toBe(false);
   });
@@ -103,7 +106,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
     fireEvent.click(await screen.findByTitle(asset.name));
     expect(fake.commands).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", expectedSceneId: "initial", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", expectedSceneId: "initial", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true, terrainContext: { boardEpoch: 0, revision: 0 } }]));
     expect(api.library.board).not.toHaveBeenCalled();
   });
 });

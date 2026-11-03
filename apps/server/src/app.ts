@@ -1,3 +1,4 @@
+import { registerRoomPreparation } from "./http/roomPreparation";
 import { registerUvttRoutes } from "./http/uvttRoutes";
 import { UvttPreparations } from "./uvtt/preparations";
 import { UvttValidationPool } from "./uvtt/validationPool";
@@ -137,10 +138,11 @@ export async function buildApp({
 
   app.use(attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
+  registerRoomPreparation(app, { store, registry, sessions });
   registerUvttRoutes(app, { store, registry, sessions, assets: assetStore, preparations, pool, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner, now });
-  // UVTT draft edits authorize and parse above; library geometry has its own authorized 1 MiB parser.
+  // Room/UVTT preparation authorizes and parses above; library geometry has its own 1 MiB parser.
   const json = express.json({ limit: "64kb" });
-  app.use((req, res, next) => (/^\/api\/library\/[^/]+\/board$/.test(req.path) ? next() : json(req, res, next)));
+  app.use((req, res, next) => (/^\/api\/library\/[^/]+\/(board|preparation)$/.test(req.path) ? next() : json(req, res, next)));
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a
   // browser second-guess their type into something that runs.
   app.use("/uploads", (_req, res, next) => {

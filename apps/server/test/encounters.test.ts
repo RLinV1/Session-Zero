@@ -74,6 +74,24 @@ const library = async (cookie: string) => (await (await gmFetch(cookie, "/api/li
 const list = async (cookie: string) => (await (await gmFetch(cookie, "/api/library/encounters")).json()) as EncounterSummary[];
 
 describe("save a room's board as a template (FR-GM-13)", () => {
+  it("saves and reapplies base terrain without active temporary effects (ADR 0046)", async () => {
+    const { cookie, creds, gm, map } = await prepared();
+    const context = () => ({ boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 });
+    const base = [{ row: 2, start: 2, end: 2, kind: "difficult" as const }];
+    await ok(gm.command({ type: "terrain.paint", layerId: "base", paint: base, context: context() }));
+    await ok(gm.command({ type: "terrain.effect.create", name: "Private ash", context: context() }));
+    await ok(gm.command({ type: "terrain.paint", layerId: gm.state.terrain!.effects[0]!.id, paint: [{ row: 0, start: 0, end: 0, kind: "blocked" }], context: context() }));
+    const response = await save(cookie, creds.roomId, "Terrain base"); expect(response.status).toBe(201);
+    const summary = await response.json() as EncounterSummary;
+    const record = (await server.store.findEncounter(summary.id, await ownerOf(cookie)))!;
+    expect(record.data.terrain).toEqual(base); expect(JSON.stringify(record.data)).not.toContain("Private ash");
+    expect((await server.store.findAssetBoard(map.id, await ownerOf(cookie)))?.terrain).toBeUndefined();
+    const preview = await gmFetch(cookie, `/api/library/encounters/${summary.id}/preview`);
+    expect(await preview.json()).toMatchObject({ terrain: base });
+    await ok(gm.command({ type: "encounter.apply", templateId: summary.id }));
+    expect(gm.state.terrain).toEqual({ base, effects: [] });
+  });
+
   it("applies an owned encounter to an inactive scene without replacing the live board", async () => {
     const { cookie, creds, gm, alice } = await prepared();
     const template = await (await save(cookie, creds.roomId, "Private ambush")).json() as EncounterSummary;

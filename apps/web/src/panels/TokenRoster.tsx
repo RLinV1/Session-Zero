@@ -244,7 +244,7 @@ export function TokenRoster({
             move={!isGm && can.moveToken(you, editing) ? {
               step: state.scene.grid.cellSize,
               bounds: state.scene.map ? { width: state.scene.map.width, height: state.scene.map.height } : undefined,
-              onMove: (to) => send({ type: "token.move", tokenId: editing.id, to }),
+              onMove: (to) => send({ type: "token.move", tokenId: editing.id, to, expectedOrigin: editing.position, boardEpoch: state.boardEpoch ?? 0 }),
             } : undefined}
             onSave={async (changes, groupId) => {
               if (Object.keys(changes).length > 0 && !(await send({ type: "token.configure", tokenId: editing.id, changes }))) return;

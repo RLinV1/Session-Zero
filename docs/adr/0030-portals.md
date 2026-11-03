@@ -83,3 +83,7 @@ One wording helper (`describePortalChange`) serves both the activity log ("Alex 
 - `Wall`, `Command` and `DomainEvent` grow. Old data parses unchanged; older servers cannot read rooms that used portals.
 - A player's state now holds some walls. Client code that treated any wall as GM-only drawing must check `portal`.
 - Designating portals on a fogged board resyncs players. That happens during map setup, rarely during play.
+
+## Amendment: terrain and tactical movement
+
+Closed/locked portals participate in swept-footprint movement collision; open portals permit passage. Window sight behavior is preserved. The terrain ruler is local advisory feedback and does not certify movement. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

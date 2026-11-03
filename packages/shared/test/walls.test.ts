@@ -286,12 +286,12 @@ describe("walls block tokens (FR-GM-11, ADR 0029)", () => {
     const { state, token } = roomWithWalls();
     for (const actor of [gm, alice]) {
       expect(act(state, actor, { type: "token.move", tokenId: token.id, to: { x: 140, y: 105 } }))
-        .toMatchObject({ ok: false, code: "invalid", message: "That spot is blocked by a wall." });
+        .toMatchObject({ ok: false, code: "invalid", message: "That move is unavailable." });
     }
     expect(act(state, gm, { type: "token.create", name: "Goblin", position: { x: 140, y: 245 } }))
       .toMatchObject({ ok: false, message: "That spot is blocked by a wall." });
     expect(act(state, gm, { type: "token.configure", tokenId: token.id, changes: { position: { x: 140, y: 105 } } }))
-      .toMatchObject({ ok: false, message: "That spot is blocked by a wall." });
+      .toMatchObject({ ok: false, message: "That move is unavailable." });
   });
 
   it("accepts a token in the cell beside a wall", () => {
@@ -302,8 +302,9 @@ describe("walls block tokens (FR-GM-11, ADR 0029)", () => {
   it("refuses a player's move through a wall but lets the GM reposition across it", () => {
     const { state, token } = roomWithWalls();
     const through = { type: "token.move" as const, tokenId: token.id, to: { x: 175, y: 105 } };
-    expect(act(state, alice, through)).toMatchObject({ ok: false, code: "invalid", message: "A wall is in the way." });
-    expect(act(state, gm, through).ok).toBe(true);
+    expect(act(state, alice, through)).toMatchObject({ ok: false, code: "invalid", message: "That move is unavailable." });
+    expect(act(state, gm, through).ok).toBe(false);
+    expect(act(state, gm, { ...through, reposition: true }).ok).toBe(true);
   });
 
   it("lets a token caught by new walls step out", () => {

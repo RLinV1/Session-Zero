@@ -1,3 +1,4 @@
+import { PreparationConflictError } from "../store/libraryPreparation";
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
@@ -5,6 +6,7 @@ import express, { type Express, type Request, type Response } from "express";
 import { z } from "zod";
 import {
   canRenderGrid,
+  SaveLibraryPreparation,
   LibraryMapBoard,
   libraryBoardProblem,
   LibraryPatchRequest,
@@ -126,6 +128,26 @@ export function registerLibraryRoutes(
     });
   });
 
+  app.get("/api/library/:id/preparation", (req, res) => {
+    void withGm(req, res, async (gmId) => {
+      const id = AssetIdParam.safeParse(req.params.id);
+      const preparation = id.success ? await store.findAssetPreparation(id.data, gmId) : null;
+      if (!preparation) return void notFound(res);
+      res.json(preparation);
+    });
+  });
+  app.put("/api/library/:id/preparation", signedInOnly, express.json({ limit: "1mb" }), (req, res) => {
+    void withGm(req, res, async (gmId, owner) => {
+      if (!requireAccountOwner(owner, res)) return;
+      const id = AssetIdParam.safeParse(req.params.id), change = SaveLibraryPreparation.safeParse(req.body);
+      if (!id.success) return void notFound(res);
+      if (!change.success) return void res.status(400).json({ error: "Invalid map preparation" });
+      const preparation = await store.saveAssetPreparation(id.data, gmId, change.data);
+      if (!preparation) return void notFound(res);
+      res.json(preparation);
+    });
+  });
+
   app.get("/api/library/:id/board", (req, res) => {
     void withGm(req, res, async (gmId) => {
       const id = AssetIdParam.safeParse(req.params.id);
@@ -218,7 +240,8 @@ export function registerLibraryRoutes(
       const owner = await resolveOwner(req, res, store);
       if (!owner) return void res.status(401).json({ error: "Sign in to do that" });
       await handler(owner.ownerId, owner);
-    } catch {
+    } catch (err) {
+      if (err instanceof PreparationConflictError) return void res.status(409).json({ error: err.message });
       if (!res.headersSent) res.status(500).json({ error: "Internal error" });
     }
   }

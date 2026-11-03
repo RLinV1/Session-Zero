@@ -1,6 +1,6 @@
 import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
+import { gridGeometryChanged, sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { libraryAssetId } from "../net/builtinAssets";
 import { useAccount } from "../account/accountStore";
@@ -19,6 +19,7 @@ import { useGridPreparation, type GridDetection } from "./useGridPreparation";
 import { GridPreparation } from "./mapEditor/GridPreparation";
 import { FogSetup } from "./mapEditor/FogSetup";
 import { SightSetup } from "./mapEditor/SightSetup";
+import { TerrainSetup } from "./mapEditor/TerrainSetup";
 import { WallSetup } from "./mapEditor/WallSetup";
 import { draftConnection } from "./mapEditor/draftConnection";
 import { draftDirty, draftFrom, planDraftSave, type MapDraft } from "./mapEditor/mapDraft";
@@ -87,7 +88,7 @@ export function GmPanel({
         walls={(draftConnection, draftState) => <WallSetup connection={draftConnection} state={draftState} token={token} />}
         fog={(draftConnection, draftState) => <FogSetup connection={draftConnection} state={draftState} />}
         sight={(draftConnection, draftState) => <SightSetup connection={draftConnection} state={draftState} />}
-        grid={(close, detection) => (
+        grid={(close, detection, applyGrid) => (
           <GridForm
             key={state.scene.map?.url ?? "no-map"}
             detection={detection.status} detectionError={detection.error} detectionDenied={detection.accessDenied}
@@ -99,7 +100,7 @@ export function GmPanel({
             hasDraft={hasGridDraft}
             onChange={onGridDraftChange}
             onCancel={close}
-            onApply={async (grid) => { await onGridApply(grid); }}
+            onApply={async (grid) => { await applyGrid(grid); }}
             applying={gridApplying}
             error={gridError}
           >
@@ -151,14 +152,14 @@ function draftScene(scene: RoomState["scene"], draft: MapDraft): RoomState["scen
   return { ...rest, lineOfSight: draft.lineOfSight, isometric: draft.isometric, ...(draft.sightRange !== null && { sightRange: draft.sightRange }) };
 }
 
-type EditorStep = "map" | "grid" | "walls" | "fog" | "sight";
+type EditorStep = "map" | "grid" | "walls" | "fog" | "sight" | "terrain";
 /** Unsaved work the editor asks about, and where it goes once the GM answers (map-section-step-buttons). */
 type PendingKind = "map" | "grid" | "draft";
 type Pending = { kind: PendingKind; then: EditorStep | "close" };
 const PENDING_TEXT: Record<PendingKind, { title: string; body: string; save: string }> = {
   map: { title: "Apply this map?", body: "This map is still a draft only you can see. Apply it with its grid, or discard it? The table keeps its current map until you apply.", save: "Apply map" },
   grid: { title: "Apply grid changes?", body: "You changed this map's grid. Apply it for the table, or discard your changes?", save: "Apply grid" },
-  draft: { title: "Save changes?", body: "You changed this map's walls, fog or sight. Save them for the table, or discard them?", save: "Save" },
+  draft: { title: "Save changes?", body: "You changed this map's walls, fog, sight or terrain. Save them for the table, or discard them?", save: "Save" },
 };
 const STEPS: { key: EditorStep; label: string }[] = [
   { key: "map", label: "1 · Map" },
@@ -166,6 +167,7 @@ const STEPS: { key: EditorStep; label: string }[] = [
   { key: "walls", label: "3 · Walls" },
   { key: "fog", label: "4 · Fog" },
   { key: "sight", label: "5 · Sight" },
+  { key: "terrain", label: "6 · Terrain" },
 ];
 /** Encounter templates inherit walls from their map; only grid and fog are editable here. */
 const FIXED_MAP_STEPS: { key: EditorStep; label: string }[] = [
@@ -205,7 +207,7 @@ function MapSection(props: {
   fixedMap?: boolean;
   gridApplying: boolean;
   /** The live map's grid form; `close` is called after a successful apply or a cancel. */
-  grid: (close: () => void, detection: GridDetection) => ReactNode;
+  grid: (close: () => void, detection: GridDetection, applyGrid: (grid: GridSpec) => Promise<boolean>) => ReactNode;
   /** The live room and its connection: the walls and fog draft starts from them and saves through them. */
   room: RoomState;
   connection: RoomConnection;
@@ -289,9 +291,23 @@ function MapSection(props: {
     ),
     [props.connection, props.roomId, props.token, editorSession],
   );
-  const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, scene: draftScene(props.room.scene, draft) } : props.room;
+  const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: { ...(props.room.terrain ?? { effects: [] }), base: draft.terrain ?? [] }, scene: draftScene(props.room.scene, draft) } : props.room;
+  const applyGrid = async (grid: GridSpec): Promise<boolean> => {
+    const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
+    if (geometryChanged && draft && !sameValue(draft.terrain ?? [], props.room.terrain?.base ?? [])) {
+      setSaveError("Save or discard private terrain before changing grid spacing or origin.");
+      return false;
+    }
+    const applied = await props.onGridApply(grid);
+    // Cosmetic edits do not reset or rebase private terrain, including stale drafts.
+    if (applied && geometryChanged) {
+      const current = props.connection.snapshot?.state;
+      if (current?.scene.map?.url === liveMapUrl) setDraft((previous) => previous ? { ...previous, terrain: current.terrain?.base, terrainContext: { boardEpoch: current.boardEpoch ?? 0, revision: current.terrainRevision ?? 0 } } : previous);
+    }
+    return applied;
+  };
   const unsaved = draft !== null && draftDirty(props.room, draft);
-  /** Sends the draft's difference, one command at a time; stops at the first refusal. */
+  /** Submits one bounded preparation: the server validates and appends every edit atomically. */
   const saveDraft = async (): Promise<boolean> => {
     if (!draft || saving) return false;
     setSaving(true);
@@ -368,9 +384,9 @@ function MapSection(props: {
       return unsaved ? "draft" : null;
     }
     if (prep?.uvtt) return to === "fog" || to === "sight" ? "map" : null;
-    if (prep && (from === "map" || from === "grid") && (to === "walls" || to === "fog" || to === "sight")) return "map";
+    if (prep && (from === "map" || from === "grid") && (to === "walls" || to === "fog" || to === "sight" || to === "terrain")) return "map";
     if (from === "grid" && to !== "grid" && gridDirty) return "grid";
-    if ((from === "walls" || from === "fog" || from === "sight") && to !== from && unsaved) return "draft";
+    if ((from === "walls" || from === "fog" || from === "sight" || from === "terrain") && to !== from && unsaved) return "draft";
     return null;
   };
   const busyNow = applyingMap || props.gridApplying || saving || pendingSaving;
@@ -418,7 +434,7 @@ function MapSection(props: {
     setPendingError(null);
     try {
       const ok = pending.kind === "map" ? await applyPrep()
-        : pending.kind === "grid" ? editedGrid !== null && await props.onGridApply(editedGrid)
+        : pending.kind === "grid" ? editedGrid !== null && await applyGrid(editedGrid)
         : await saveDraft();
       if (ok) finishPending(pending.then);
       else if (pending.kind === "grid") setPendingError(props.gridError ?? "Couldn't apply the grid.");
@@ -465,6 +481,8 @@ function MapSection(props: {
         if (command) applied = await props.onSetMap(command, setPrepError);
       }
       if (applied) {
+        const current = props.connection.snapshot?.state;
+        if (current) setDraft(draftFrom(current));
         setChangedMapUrl(askPolicy ? prep.map.url : null); setUndoError(null); discardPrep();
         setStep("walls");
       }
@@ -496,6 +514,8 @@ function MapSection(props: {
 
   async function onChange(file: File | undefined) {
     if (!file) return;
+    // Capture before image decoding/upload: room updates must not rebase this preparation.
+    const terrainContext = { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 };
     if (/\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file.name)) { setEditorOpen(true); if (!prep) setStep("map"); }
     setBusy(true);
     const generation = ++prepGeneration.current;
@@ -519,7 +539,7 @@ function MapSection(props: {
       // Nothing is sent yet: the upload becomes a private draft (KAN-59).
       props.onError(null);
       if (prep?.uvtt) void api.uvtt.discard(props.roomId, props.token, prep.uvtt.id).catch(() => {});
-      setPrep(startPrep({ url, width, height, ...(asset && { assetId: asset.id }) }, undefined, props.currentGrid));
+      setPrep(startPrep({ url, width, height, ...(asset && { assetId: asset.id }) }, undefined, props.currentGrid, terrainContext));
       setStep("grid");
       // An upload from the Manage tab opens the editor to line up its grid.
       setEditorOpen(true);
@@ -535,7 +555,7 @@ function MapSection(props: {
   const place = async (asset: LibraryAsset) => {
     const map = { url: asset.url, width: asset.width, height: asset.height, assetId: libraryAssetId(asset) };
     prepGeneration.current++;
-    const next = startPrep(map, asset.grid, props.currentGrid);
+    const next = startPrep(map, asset.grid, props.currentGrid, { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 });
     if (editorOpen || !asset.grid) {
       setPicking(false);
       setPickError(null);
@@ -707,11 +727,16 @@ function MapSection(props: {
                   cancelLabel="Close"
                   busyLabel="Applying map…"
                   allowUnchanged
-                />
+                >
+                  {prep.map.assetId && <label className="checkbox">
+                    <input type="checkbox" checked={prep.resetTerrain ?? false} onChange={(e) => setPrep((now) => now ? { ...now, resetTerrain: e.target.checked } : now)} />
+                    <span>Reset prepared terrain when applying</span>
+                  </label>}
+                </GridForm>
               </HudLayout>
             ) : props.map ? (
               <HudLayout className="map-editor-grid">
-{props.grid(() => props.onGridClose(), detection)}</HudLayout>
+{props.grid(() => props.onGridClose(), detection, applyGrid)}</HudLayout>
             ) : (
               <p className="map-editor-empty">Choose a map in the Map step first.</p>
             ))}
@@ -722,7 +747,8 @@ function MapSection(props: {
             {step === "fog" && (prep
               ? <p className="map-editor-empty">Apply the draft map in the Grid step first, then set up its fog here.</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.fog(draftEdits, draftState)}</Fragment>)}
-            {step === "sight" && (prep
+            {step === "terrain" && (prep ? <p className="map-editor-empty">Apply the draft map before preparing terrain.</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} />)}
+        {step === "sight" && (prep
               ? <p className="map-editor-empty">Apply a map before setting up sight.</p>
               : !props.map ? <p className="map-editor-empty">Apply a map before setting up sight.</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.sight(draftEdits, draftState)}</Fragment>)}
@@ -809,6 +835,7 @@ function MapSection(props: {
                   {pendingSaving ? "Saving…" : text.save}
                 </button>
                 <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>Discard</button>
+                {pending?.kind === "draft" && pending.then === "grid" && <button type="button" className="secondary" disabled={pendingSaving} onClick={() => finishPending("grid")}>Keep draft and edit grid</button>}
                 <button type="button" className="secondary" disabled={pendingSaving} onClick={() => setPending(null)}>Keep editing</button>
               </div>
             </div>

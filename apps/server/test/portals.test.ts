@@ -47,7 +47,7 @@ describe("portals over the wire (FR-GM-18, FR-GM-09, ADR 0030)", () => {
     expect(alice.rawLog.join(" ")).not.toContain('"x":630');
 
     const through = { type: "token.move", tokenId: aria.id, to: { x: 175, y: 105 } } as const;
-    expect(await alice.command(through)).toMatchObject({ type: "rejected", message: "A wall is in the way." });
+    expect(await alice.command(through)).toMatchObject({ type: "rejected", message: "That move is unavailable." });
 
     const opened = await alice.command({ type: "portal.setState", wallId: doorway.id, state: "open" });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(opened))));

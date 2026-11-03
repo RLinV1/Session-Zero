@@ -46,10 +46,12 @@ describe("imported openings to doors (FR-GM-09, FR-GM-18, ADR 0041)", () => {
     expect(draft.walls.ajar!.uvttPortal).toEqual({ closed: false });
     expect(draft.walls.designated).toBe(walls.designated);
     expect(openingsToDoors(draft.walls)).toEqual([]);
-    expect(planDraftSave(room, draft)).toEqual([
+    expect(planDraftSave(room, draft)).toEqual([{
+      type: "scene.savePreparation", expectedMapUrl, context: { boardEpoch: 0, revision: 0 }, edits: [
       { type: "portal.set", expectedMapUrl, wallId: "shut", portal: { kind: "door", state: "closed" } },
       { type: "portal.set", expectedMapUrl, wallId: "ajar", portal: { kind: "door", state: "open" } },
       { type: "portal.set", expectedMapUrl, wallId: "unmarked", portal: { kind: "door", state: "closed" } },
-    ]);
+      ],
+    }]);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_GRID, emptyRoomState, normalizeLegacyGridForBoard, type LibraryAsset, type LibraryMapBoard, type UvttIssue } from "@vtt/shared";
+import { DEFAULT_GRID, emptyRoomState, gridGeometryChanged, normalizeLegacyGridForBoard, type LibraryAsset, type LibraryMapBoard, type UvttIssue } from "@vtt/shared";
 import { api } from "../../net/api";
 import { Modal } from "../../ui/Modal";
 import { GridForm } from "../GridForm";
@@ -10,15 +10,17 @@ import { createDraftConnection } from "./draftConnection";
 import { FogSetup } from "./FogSetup";
 import { GuideStepContext } from "./EditorGuide";
 import { HudLayout } from "./HudLayout";
+import { TerrainSetup } from "./TerrainSetup";
 import { WallSetup } from "./WallSetup";
 import type { MapDraft } from "./mapDraft";
 import { boardChanged, boardFromDraft, draftFromBoard } from "./libraryBoardDraft";
 
-type Step = "grid" | "walls" | "fog";
+type Step = "grid" | "walls" | "fog" | "terrain";
 const STEPS: { key: Step; label: string }[] = [
   { key: "grid", label: "1 · Grid" },
   { key: "walls", label: "2 · Walls" },
   { key: "fog", label: "3 · Fog" },
+  { key: "terrain", label: "4 · Terrain" },
 ];
 interface Props {
   asset: LibraryAsset | null;
@@ -41,6 +43,8 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   }));
   const gridDraft = setup.draft;
   const setGridDraft = (draft: typeof gridDraft) => setSetup((current) => ({ ...current, draft }));
+  const [revision, setRevision] = useState<string | null>(null);
+  const [resetTerrain, setResetTerrain] = useState(false);
   const [stored, setStored] = useState<LibraryMapBoard | null>(null);
   const [draft, setDraft] = useState<MapDraft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -57,8 +61,8 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   useEffect(() => {
     active.current = true;
     let live = true;
-    api.library.board(asset.id).then(
-      (board) => { if (live) { setStored(board); setDraft(draftFromBoard(asset.url, board)); } },
+    api.library.preparation(asset.id).then(
+      (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(normalizeLegacyGridForBoard(preparation.grid, asset))); } } },
       (err: unknown) => { if (live) setLoadError(err instanceof Error ? err.message : "Could not load this map's walls and fog"); },
     );
     return () => { live = false; active.current = false; };
@@ -75,14 +79,22 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const state = useMemo(() => draft ? {
     ...emptyRoomState("library"),
     scene: { map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID },
-    walls: draft.walls, fog: draft.fog,
+    walls: draft.walls, fog: draft.fog, terrain: { base: draft.terrain ?? [], effects: [] },
   } : null, [asset, draft, parsedGrid, savedAsset.grid]);
 
+  const applyGridDraft = (next: typeof gridDraft) => {
+    const parsed = parseGridDraft(next, asset);
+    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.length || (stored?.terrain?.length && !resetTerrain))) {
+      if (!window.confirm("Reset base terrain and apply this grid change? Cancel keeps the current grid and terrain.")) return;
+      setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: [] } : current);
+    }
+    setGridDraft(next); setSaveError(null);
+  };
   const discard = () => {
     suggestionSession.blocked = true;
     setGridDraft(toGridDraft(normalizeLegacyGridForBoard(savedAsset.grid ?? DEFAULT_GRID, asset)));
     if (stored) setDraft(draftFromBoard(asset.url, stored));
-    setSaveError(null);
+    setSaveError(null); setResetTerrain(false);
   };
   const save = async (): Promise<LibraryAsset | null> => {
     suggestionSession.blocked = true;
@@ -93,17 +105,11 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
     setSaveError(null);
     let updated = savedAsset;
     try {
-      if (gridDirty) {
-        updated = await api.library.update(asset.id, { grid: parsedGrid });
-        if (!active.current) return null;
-        setSavedAsset(updated);
-        onSaved(updated);
-      }
-      if (boardDirty && draft) {
-        const board = await api.library.setBoard(asset.id, boardFromDraft(draft));
-        if (!active.current) return null;
-        setStored(board);
-      }
+      if (!draft || !revision) { setSaveError("Wait for map preparation to load before saving."); return null; }
+      const preparation = await api.library.savePreparation(asset.id, { grid: parsedGrid, board: boardFromDraft(draft), revision, resetTerrain });
+      if (!active.current) return null;
+      updated = { ...savedAsset, grid: preparation.grid };
+      setRevision(preparation.revision); setStored(preparation.board); setSavedAsset(updated); setResetTerrain(false); onSaved(updated);
       return updated;
     } catch (err) {
       if (active.current) setSaveError(err instanceof Error ? err.message : "Could not save map changes");
@@ -130,30 +136,31 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {dirty && <span className="map-editor-unsaved">
           <span className="map-editor-draft">Unsaved changes: not saved to this map yet</span>
           <button type="button" className="secondary small" disabled={saving} onClick={discard}>Discard</button>
-          <button type="button" className="small primary" disabled={saving || !parsedGrid} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
+          <button type="button" className="small primary" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
         </span>}
         {saveError && !prompt && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
       </nav>}>
+      {loadError && <p role="alert" className="error">{loadError}</p>}
       {waiting ? <GridPreparation label={preparation.label} onSkip={preparation.skip} /> :
-      <div className="map-editor-shell"><div className="map-editor-body" role="tabpanel" inert={saving}>
+      <div className="map-editor-shell"><div className="map-editor-body" role="tabpanel" inert={saving || !revision}>
         <GuideStepContext.Provider value={step}>
         {importDiagnostics && <p className="muted">Imported map saved to your library. Review its grid and geometry below.</p>}
         {importDiagnostics && importDiagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{importDiagnostics.length} import warnings</summary><ul>{importDiagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
         {step === "grid" && <HudLayout className="map-editor-grid"><GridForm
           grid={savedAsset.grid ?? DEFAULT_GRID} map={asset} draft={gridDraft} hasDraft={gridDirty}
-          onChange={(next) => { setGridDraft(next); setSaveError(null); }} onCancel={discard}
+          onChange={applyGridDraft} onCancel={discard}
           onApply={async () => { await save(); }} applying={saving} error={null} hideActions advancedOpen
           detection={detection.status} detectionError={detection.error}
           detectionDenied={detection.accessDenied}
           detectionNotice={setup.preparation.notice} focusCanvas={!savedAsset.grid}
           suggestionSession={suggestionSession}
-          onUseSuggestion={(candidate) => setGridDraft(withGridSuggestion(gridDraft, candidate))}
+          onUseSuggestion={(candidate) => applyGridDraft(withGridSuggestion(gridDraft, candidate))}
           allowUnchanged={!savedAsset.grid}
         /></HudLayout>}
-        {step !== "grid" && loadError && <p role="alert" className="error">{loadError}</p>}
         {step !== "grid" && !loadError && !state && <p className="muted">Loading…</p>}
         {step === "walls" && state && <WallSetup connection={connection} state={state} token="" detection={false} />}
         {step === "fog" && state && <FogSetup connection={connection} state={state} />}
+        {step === "terrain" && state && <TerrainSetup connection={connection} state={state} />}
         </GuideStepContext.Provider>
       </div></div>}
     </Modal>
@@ -163,7 +170,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {saveError && <p role="alert" className="error">{saveError}</p>}
         {!parsedGrid && <p className="error">Fix the grid before saving your changes.</p>}
         <div className="row button-row">
-          <button type="button" className="primary" disabled={saving || !parsedGrid} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? "Saving…" : "Save"}</button>
+          <button type="button" className="primary" disabled={saving || !parsedGrid || !revision} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? "Saving…" : "Save"}</button>
           <button type="button" className="secondary" disabled={saving} onClick={() => onClose(savedAsset)}>Discard</button>
           <button type="button" className="secondary" disabled={saving} onClick={() => setPrompt(false)}>Keep editing</button>
         </div>

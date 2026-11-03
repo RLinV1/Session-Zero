@@ -21,6 +21,72 @@ function room() {
   return { get state() { return state; }, log, run, attempt };
 }
 
+describe("terrain across scenes (FR-TAC-03, FR-GM-25)", () => {
+  it("keeps private terrain and revisions isolated, rejects stale saves, and restores each scene", () => {
+    const r = room();
+    const map = { url: "/same.png", width: 700, height: 700 };
+    const context = () => ({ boardEpoch: r.state.boardEpoch ?? 0, revision: r.state.terrainRevision ?? 0 });
+    r.run({ type: "scene.setMap", map });
+    r.run({ type: "terrain.paint", layerId: "base", context: context(), paint: [{ row: 0, start: 0, end: 0, kind: "blocked" }] });
+    r.run({ type: "terrain.effect.create", name: "Live secret", context: context() });
+    const original = structuredClone(r.state.terrain);
+    const liveContext = context();
+    r.run({ type: "scene.create", name: "Private", activate: false });
+    const sceneId = Object.keys(r.state.savedScenes!)[0]!;
+    expect(sceneState(r.state, sceneId)!.terrain).toBeUndefined();
+    r.run({ type: "scene.prepare", sceneId, command: { type: "scene.setMap", map, expectedSceneId: sceneId } });
+    const projected = sceneState(r.state, sceneId)!;
+    const privateContext = { boardEpoch: projected.boardEpoch!, revision: projected.terrainRevision! };
+    const command = {
+      type: "scene.savePreparation", expectedSceneId: sceneId, expectedMapUrl: map.url, context: privateContext,
+      edits: [
+        { type: "terrain.paint", layerId: "base", context: privateContext, paint: [{ row: 1, start: 1, end: 1, kind: "difficult" }] },
+        { type: "scene.setIsometric", enabled: true },
+      ],
+    };
+    r.run({ type: "scene.prepare", sceneId, command });
+    expect(r.state.terrain).toEqual(original);
+    expect(context()).toEqual(liveContext);
+    expect(sceneState(r.state, sceneId)!.terrain?.base).toEqual([{ row: 1, start: 1, end: 1, kind: "difficult" }]);
+    expect(r.attempt({ type: "scene.prepare", sceneId, command })).toMatchObject({ ok: false });
+    const player = filterStateForViewer(r.state, alice);
+    expect(player.savedScenes).toEqual({});
+    expect(JSON.stringify(player)).not.toContain("Live secret");
+    r.run({ type: "scene.switch", sceneId });
+    expect(r.state.scene.isometric).toBe(true);
+    expect(r.state.terrain?.base).toEqual([{ row: 1, start: 1, end: 1, kind: "difficult" }]);
+    expect(context().boardEpoch).toBeGreaterThan(liveContext.boardEpoch);
+    expect(r.attempt({ ...command, expectedSceneId: "initial", context: context() })).toMatchObject({ ok: false });
+    r.run({ type: "scene.switch", sceneId: "initial" });
+    expect(r.state.terrain).toEqual(original);
+    expect(context().boardEpoch).toBeGreaterThan(liveContext.boardEpoch);
+    const replayed = replayTo(r.state.roomId, r.log, r.log.length);
+    expect(tableOf(replayed)).toEqual(tableOf(r.state));
+    expect(replayed.savedScenes).toEqual(r.state.savedScenes);
+    expect(replayed.boardEpoch).toBe(r.state.boardEpoch);
+    expect(replayed.terrainRevision).toBe(r.state.terrainRevision);
+  });
+
+  it("clears absent terrain when activating a blank scene and invalidates drafts when copying the live board", () => {
+    const r = room();
+    r.run({ type: "scene.setMap", map: { url: "/live.png", width: 700, height: 700 } });
+    r.run({ type: "terrain.paint", layerId: "base", context: { boardEpoch: 1, revision: 1 }, paint: [{ row: 0, start: 0, end: 0, kind: "blocked" }] });
+    r.run({ type: "scene.create", name: "Blank", activate: false });
+    const sceneId = Object.keys(r.state.savedScenes!)[0]!;
+    const before = sceneState(r.state, sceneId)!;
+    r.run({ type: "scene.copyCurrent", sceneId });
+    const copy = sceneState(r.state, sceneId)!;
+    expect(copy.terrain).toEqual(r.state.terrain);
+    expect(copy.boardEpoch).toBeGreaterThan(before.boardEpoch!);
+    expect(copy.terrainRevision).toBeGreaterThan(before.terrainRevision!);
+    expect(r.attempt({ type: "scene.prepare", sceneId, command: { type: "terrain.paint", layerId: "base", context: { boardEpoch: before.boardEpoch!, revision: before.terrainRevision! }, paint: [{ row: 0, start: 0, end: 0, kind: null }] } })).toMatchObject({ ok: false });
+    r.run({ type: "scene.create", name: "Normal" });
+    expect(r.state.terrain).toBeUndefined();
+    r.run({ type: "scene.switch", sceneId: "initial" });
+    expect(r.state.terrain?.base).toEqual([{ row: 0, start: 0, end: 0, kind: "blocked" }]);
+  });
+});
+
 describe("persistent scene switching", () => {
   it("copies the live map and progress into an independent private scene", () => {
     const r = room();

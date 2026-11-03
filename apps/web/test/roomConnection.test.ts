@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, type CommittedEvent, type DomainEvent, type Participant, type RoomState, type ServerMessage, type Token } from "@vtt/shared";
+import { api, ApiError } from "../src/net/api";
 import { RoomConnection } from "../src/net/roomConnection";
 
 const you: Participant = { id: "gm", role: "gm", displayName: "GM" };
@@ -177,6 +178,52 @@ describe("RoomConnection.endPreview (KAN-39)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+
+describe("preparation HTTP acknowledgments (FR-GM-15, FR-SYNC-04)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const command = { type: "scene.savePreparation" as const, expectedMapUrl: "/map", context: { boardEpoch: 0, revision: 0 }, edits: [{ type: "scene.setLineOfSight" as const, enabled: true }] };
+  it("uses the preparation HTTP transport for a private scene and waits for its sequence", async () => {
+    const { connection } = open();
+    const nested = { type: "scene.prepare" as const, sceneId: "private", command };
+    const request = vi.spyOn(api.preparation, "save").mockResolvedValue({ seq: 5 });
+    const done = vi.fn();
+    const pending = connection.command(nested).then(done);
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledWith("room", "guest", nested);
+    expect(done).not.toHaveBeenCalled();
+    handle(connection, event(5, move("t1", 5, 6)));
+    await pending;
+    expect(done).toHaveBeenCalledWith({ ok: true, seq: 5 });
+  });
+  it("waits for the committed sequence without applying HTTP response data as state", async () => {
+    const { connection, state } = open();
+    const request = vi.spyOn(api.preparation, "save").mockResolvedValue({ seq: 6 });
+    const done = vi.fn();
+    const pending = connection.command(command).then(done);
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledWith("room", "guest", command); expect(done).not.toHaveBeenCalled();
+    expect(connection.snapshot.state).toBe(state);
+    handle(connection, event(5, move("t1", 5, 6))); expect(done).not.toHaveBeenCalled();
+    handle(connection, event(6, move("t1", 7, 8))); await pending;
+    expect(done).toHaveBeenCalledWith({ ok: true, seq: 6 }); expect(connection.snapshot.state?.tokens.t1?.position).toEqual({ x: 7, y: 8 });
+  });
+  it("settles after an already-received sequence and preserves server refusals", async () => {
+    const { connection } = open();
+    const request = vi.spyOn(api.preparation, "save").mockResolvedValueOnce({ seq: 4 }).mockRejectedValueOnce(new ApiError("Terrain changed", 409, { code: "invalid" }));
+    expect(await connection.command(command)).toEqual({ ok: true, seq: 4 });
+    expect(await connection.command(command)).toEqual({ ok: false, code: "invalid", message: "Terrain changed" });
+    expect(request).toHaveBeenCalledTimes(2); expect(connection.snapshot.seq).toBe(4);
+  });
+  it("fails a disconnected save and ignores its delayed HTTP acknowledgment", async () => {
+    const { connection, state } = open();
+    let complete!: (value: { seq: number }) => void;
+    vi.spyOn(api.preparation, "save").mockReturnValue(new Promise((resolve) => { complete = resolve; }));
+    const pending = connection.command(command); connection.stop();
+    expect(await pending).toMatchObject({ ok: false, code: "offline" });
+    complete({ seq: 100 }); await Promise.resolve(); expect(connection.snapshot.state).toBe(state); expect(connection.snapshot.seq).toBe(4);
   });
 });
 

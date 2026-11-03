@@ -1,8 +1,10 @@
+import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
+import type { SaveLibraryPreparation } from "@vtt/shared";
 import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import type { RoomUploadPurpose } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type UploadAnalysis } from "./gridDetectionStore";
-import { DEFAULT_TOKEN_COLOR, EMPTY_LIBRARY_BOARD, presetFromLog, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
   type EndedSessions,
@@ -396,7 +398,8 @@ export class MemoryRoomStore implements RoomStore {
   async updateAsset(id: string, ownerGmId: string, patch: { name?: string; grid?: GridSpec }) {
     const asset = this.assets.get(id);
     if (!asset || asset.ownerGmId !== ownerGmId) return null;
-    const next = { ...asset, ...(patch.name !== undefined && { name: patch.name }), ...(patch.grid && { grid: patch.grid }) };
+    if (patch.grid) { const problem = preparationProblem(asset, patch.grid, publicBoard(asset.board)); if (problem) throw new PreparationConflictError(problem); }
+    const next = { ...asset, ...(patch.grid ? { board: versionedBoard(publicBoard(asset.board)) } : {}), ...(patch.name !== undefined && { name: patch.name }), ...(patch.grid && { grid: patch.grid }) };
     this.assets.set(id, next);
     return structuredClone(next);
   }
@@ -404,14 +407,33 @@ export class MemoryRoomStore implements RoomStore {
   async findAssetBoard(id: string, ownerGmId: string) {
     const asset = this.assets.get(id);
     if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return null;
-    return structuredClone(asset.board ?? EMPTY_LIBRARY_BOARD);
+    return structuredClone(publicBoard(asset.board));
   }
 
   async setAssetBoard(id: string, ownerGmId: string, board: LibraryMapBoard) {
     const asset = this.assets.get(id);
     if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return false;
-    asset.board = structuredClone(board);
+    const previous = publicBoard(asset.board);
+    const problem = preparationProblem(asset, asset.grid ?? DEFAULT_GRID, { ...board, ...(board.terrain === undefined && previous.terrain ? { terrain: previous.terrain } : {}) });
+    if (problem) throw new PreparationConflictError(problem);
+    asset.board = versionedBoard(structuredClone({ ...board, ...(board.terrain === undefined && previous.terrain ? { terrain: previous.terrain } : {}) }));
     return true;
+  }
+
+  async findAssetPreparation(id: string, ownerGmId: string) {
+    const asset = this.assets.get(id);
+    return asset && asset.ownerGmId === ownerGmId && asset.kind === "map" ? structuredClone({ grid: asset.grid, board: publicBoard(asset.board), revision: preparationRevision(asset) }) : null;
+  }
+
+  async saveAssetPreparation(id: string, ownerGmId: string, change: SaveLibraryPreparation) {
+    const asset = this.assets.get(id);
+    if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return null;
+    if (change.revision !== preparationRevision(asset)) throw new PreparationConflictError("This map changed. Reopen it before saving; your draft has been kept.");
+    const problem = preparationProblem(asset, change.grid, change.board, change.resetTerrain);
+    if (problem) throw new PreparationConflictError(problem);
+    const next = { ...asset, grid: structuredClone(change.grid), board: versionedBoard(structuredClone(change.board)) };
+    this.assets.set(id, next);
+    return structuredClone({ grid: next.grid, board: publicBoard(next.board), revision: preparationRevision(next) });
   }
 
   async deleteAsset(id: string, ownerGmId: string) {

@@ -56,7 +56,11 @@ export const UvttPreparation = z.object({
   walls: z.array(UvttGeometry).max(MAX_WALLS), diagnostics: z.array(UvttIssue).max(MAX_UVTT_ISSUES),
 });
 export type UvttPreparation = z.infer<typeof UvttPreparation>;
-export interface UvttBaseline { map: RoomState["scene"]["map"]; grid: GridSpec; walls: RoomState["walls"]; fog: RoomState["fog"] }
+export interface UvttBaseline {
+  map: RoomState["scene"]["map"]; grid: GridSpec; walls: RoomState["walls"]; fog: RoomState["fog"];
+  /** Monotonic edit fence, including undo/restores; absent room revisions are captured as zero. */
+  terrainRevision: number;
+}
 export interface PreparedUvttScene { map: z.infer<typeof MapImage>; grid: GridSpec; walls: UvttGeometry[]; baseline: UvttBaseline }
 
 export const positiveModulo = (n: number, divisor: number) => ((n % divisor) + divisor) % divisor;

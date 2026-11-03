@@ -1,6 +1,8 @@
+import { Command, DEFAULT_GRID, DomainEvent, replayTo, tableOf } from "@vtt/shared";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
+import { LiveRoom } from "../src/domain/liveRoom";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
 import { SeqConflictError } from "../src/store/roomStore";
 
@@ -48,6 +50,53 @@ describe.skipIf(!store)("PostgresRoomStore (docs/adr/0001-event-model.md)", () =
     expect(committed.map((c) => c.commandId)).toEqual([commandId, commandId]);
     const loaded = await store!.loadEvents(roomId);
     expect(loaded.map((e) => e.commandId)).toEqual([undefined, commandId, commandId]);
+  });
+
+  it("persists preparation chunks as one undoable batch and rejects stale saves without a prefix (ADR 0046)", async () => {
+    const roomId = await newRoom(), actor = { id: randomUUID(), role: "gm" as const, displayName: "GM" };
+    const room = await LiveRoom.load(roomId, store!);
+    await room.appendSystem(null, [{ type: "RoomCreated", name: "Preparation persistence" }, { type: "ParticipantJoined", participant: actor }]);
+    await room.submit(actor.id, Command.parse({ type: "scene.setMap", map: { url: "/map", width: 7000, height: 7000 } }));
+    const context = { boardEpoch: 1, revision: 1 };
+    const preparation = Command.parse({ type: "scene.savePreparation", expectedMapUrl: "/map", context, edits: [
+      { type: "fog.replace", removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 7000, y: 7000 } }] },
+      ...Array.from({ length: 4 }, (_, part) => ({ type: "terrain.paint", layerId: "base", context: { ...context, revision: 1 + part }, paint: Array.from({ length: 250 }, (_, cell) => { const i = part * 250 + cell; return { row: Math.floor(i / 100), start: i % 100, end: i % 100, kind: i % 2 ? "blocked" : "difficult" }; }) })),
+    ] });
+    const before = await store!.loadEvents(roomId), original = room.boardForOwner();
+    expect(await room.submit(actor.id, preparation)).toMatchObject({ ok: true });
+    const events = await store!.loadEvents(roomId), batch = events.slice(before.length);
+    expect(batch).toHaveLength(5); expect(new Set(batch.map((event) => event.commandId)).size).toBe(1);
+    const fresh = await PostgresRoomStore.connect(url!);
+    try { expect((await LiveRoom.load(roomId, fresh)).boardForOwner()).toEqual(room.boardForOwner()); }
+    finally { await fresh.close(); }
+    const saved = room.boardForOwner();
+    expect(await room.submit(actor.id, preparation)).toMatchObject({ ok: false });
+    expect(await store!.loadEvents(roomId)).toEqual(events); expect(room.boardForOwner()).toEqual(saved);
+    expect(await room.submit(actor.id, Command.parse({ type: "history.undo", commandId: batch[0]!.commandId }))).toMatchObject({ ok: true });
+    expect(room.boardForOwner()).toEqual({ ...original, terrain: { base: [], effects: [] } });
+  });
+
+  it("round-trips terrain layers and checkpoint content through a fresh Postgres store (ADR 0046)", async () => {
+    const roomId = await newRoom();
+    const events = [
+      { type: "RoomCreated", name: "Terrain persistence" },
+      { type: "MapSet", map: { url: "/terrain.png", width: 700, height: 700 }, previous: null, gridChange: { grid: DEFAULT_GRID, previous: DEFAULT_GRID }, tokenChanges: [] },
+      { type: "TerrainPainted", layerId: "base", paint: [{ row: 1, start: 1, end: 3, kind: "difficult" }], previous: [{ row: 1, start: 1, end: 3, kind: null }] },
+      { type: "TerrainEffectCreated", effect: { id: "ice", name: "Private ice", runs: [] } },
+      { type: "TerrainPainted", layerId: "ice", paint: [{ row: 1, start: 2, end: 2, kind: "blocked" }], previous: [{ row: 1, start: 2, end: 2, kind: null }] },
+    ].map((e) => DomainEvent.parse(e));
+    const committed = await store!.append(roomId, 0, events.map((event) => ({ actorId: null, commandId: randomUUID(), event })));
+    const expected = replayTo(roomId, committed, committed.at(-1)!.seq);
+    const fresh = await PostgresRoomStore.connect(url!);
+    try {
+      const loaded = replayTo(roomId, await fresh.loadEvents(roomId), committed.at(-1)!.seq);
+      expect(loaded.terrain).toEqual(expected.terrain);
+      expect(loaded.terrainRevision).toBe(expected.terrainRevision);
+      const table = tableOf(expected);
+      await fresh.append(roomId, committed.at(-1)!.seq, [{ actorId: null, event: { type: "CheckpointRestored", checkpointId: "c", name: "Terrain", restored: table, previous: table } }]);
+      const restored = replayTo(roomId, await fresh.loadEvents(roomId), committed.at(-1)!.seq + 1);
+      expect(restored.terrain).toEqual(expected.terrain); expect(restored.boardEpoch).toBeGreaterThan(expected.boardEpoch!);
+    } finally { await fresh.close(); }
   });
 
   it("rejects an append whose expected last seq is stale, writing nothing", async () => {

@@ -22,3 +22,7 @@ The library can store grid, walls, portal metadata and fog, but its image-only u
 The file parser, storage abstraction and editor components remain shared; account ownership and room authorization retain distinct checks. No image/base64 data or draft geometry enters Socket.IO commands, and its 64 KiB inbound limit remains unchanged. The global REST JSON limit stays 64 KiB; existing authorized geometry edits retain their 1 MiB parser.
 
 This deliberately supersedes ADR 0037's sequential, append-only library board copy for new clients: selecting a complete library map now installs a complete scene atomically with one undo entry. Web and server must deploy together. Raymond's review remains outstanding; implementation/tests are not evidence of architecture approval.
+
+## Amendment: terrain and tactical movement
+
+Atomic library placement also installs the saved base terrain with no temporary effects. A private preparationVersion in stored board JSON fences owner-authorized preparation saves; it is removed before strict board validation or public board responses. UVTT terrain import/export remains out of scope. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

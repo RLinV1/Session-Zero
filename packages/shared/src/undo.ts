@@ -1,3 +1,4 @@
+import { emptyTerrain, gridGeometryChanged, terrainLayer, paintMatches, Terrain, paintTerrain, replaceTerrainLayer } from "./terrain";
 import { findDiceRoll, formatAttackParties } from "./dice";
 import type { CommittedEvent, DomainEvent } from "./events";
 import { describePortalChange } from "./portals";
@@ -21,6 +22,11 @@ export const UNDO_HISTORY_LIMIT = 20;
 
 export const REVERSIBLE_EVENT_TYPES = [
   "MapSet",
+  "GridSet",
+  "TerrainPainted",
+  "TerrainEffectCreated",
+  "TerrainEffectRemoved",
+  "TerrainEffectRenamed",
   "TokenMoved",
   "TokenHiddenSet",
   "TokenConditionsSet",
@@ -243,6 +249,11 @@ type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "Initiati
 /** The single compensating event for the reversible types that need only one. */
 function inverseOfOne(event: SingleInverse): DomainEvent {
   switch (event.type) {
+    case "TerrainPainted": return { ...event, paint: event.previous, previous: event.paint };
+    case "TerrainEffectCreated": return { type: "TerrainEffectRemoved", effect: event.effect, ...(event.index !== undefined ? { index: event.index } : {}) };
+    case "TerrainEffectRemoved": return { type: "TerrainEffectCreated", effect: event.effect, ...(event.index !== undefined ? { index: event.index } : {}) };
+    case "TerrainEffectRenamed": return { ...event, name: event.previous, previous: event.name };
+    case "GridSet": return { ...event, grid: event.previous, previous: event.grid, ...(event.terrainChange ? { terrainChange: { terrain: event.terrainChange.previous, previous: event.terrainChange.terrain } } : {}) };
     case "MapSet":
       return {
         type: "MapSet",
@@ -250,6 +261,7 @@ function inverseOfOne(event: SingleInverse): DomainEvent {
         previous: event.map,
         gridChange: { grid: event.gridChange.previous, previous: event.gridChange.grid },
         tokenChanges: event.tokenChanges.map((change) => ({ tokenId: change.tokenId, from: change.to, to: change.from })),
+        ...(event.terrainChange ? { terrainChange: { terrain: event.terrainChange.previous, previous: event.terrainChange.terrain } } : {}),
         ...(event.wallChange ? { wallChange: { walls: event.wallChange.previous, previous: event.wallChange.walls } } : {}),
         ...(event.fogChange ? { fogChange: { fog: event.fogChange.previous, previous: event.fogChange.fog } } : {}),
       };
@@ -311,8 +323,35 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
     e.type === "FogAdded" ? n - (state.fog[e.region.id] ? 1 : 0)
     : e.type === "FogRemoved" ? n + 1 : n, 0);
   if (fogAfter > MAX_FOG_REGIONS) return `Can't undo: the room would hold more than ${MAX_FOG_REGIONS} fog regions.`;
+  let terrain = state.terrain ?? emptyTerrain();
+  for (const event of [...entry.events].reverse()) {
+    if (event.type === "TerrainPainted") {
+      const layer = terrainLayer(terrain, event.layerId);
+      if (!layer || !paintMatches(layer, event.paint)) return "Can't undo: those terrain cells have changed since.";
+      terrain = replaceTerrainLayer(terrain, event.layerId, paintTerrain(layer, event.previous));
+    } else if (event.type === "TerrainEffectCreated") {
+      if (!sameValue(terrain.effects.find((e) => e.id === event.effect.id), event.effect)) return "Can't undo: that terrain effect has changed since.";
+      terrain = { ...terrain, effects: terrain.effects.filter((e) => e.id !== event.effect.id) };
+    } else if (event.type === "TerrainEffectRemoved") {
+      if (terrain.effects.some((e) => e.id === event.effect.id)) return "Can't undo: that terrain effect already exists.";
+      terrain = { ...terrain, effects: [...terrain.effects, event.effect] };
+    } else if (event.type === "TerrainEffectRenamed") {
+      if (terrain.effects.find((e) => e.id === event.effectId)?.name !== event.name) return "Can't undo: that terrain effect has changed since.";
+      terrain = { ...terrain, effects: terrain.effects.map((e) => e.id === event.effectId ? { ...e, name: event.previous } : e) };
+    }
+  }
+  if (!Terrain.safeParse(terrain).success) return "Can't undo: terrain would exceed the room limit.";
   for (const event of entry.events) {
+    if (event.type === "TerrainPainted" || event.type === "TerrainEffectCreated" || event.type === "TerrainEffectRemoved" || event.type === "TerrainEffectRenamed") continue;
+    if (event.type === "GridSet") {
+      if (!event.terrainChange && gridGeometryChanged(event.grid, event.previous) && !sameValue(state.terrain ?? emptyTerrain(), emptyTerrain())) return "Can't undo: terrain has changed since.";
+      if (!sameValue(state.scene.grid, event.grid) || (event.terrainChange && !sameValue(state.terrain ?? emptyTerrain(), event.terrainChange.terrain))) return "Can't undo: the grid or terrain has changed since.";
+      continue;
+    }
     if (event.type === "MapSet") {
+      const replacesGeometry = event.map?.url !== event.previous?.url || event.map?.width !== event.previous?.width || event.map?.height !== event.previous?.height || gridGeometryChanged(event.gridChange.grid, event.gridChange.previous);
+      if (!event.terrainChange && replacesGeometry && !sameValue(state.terrain ?? emptyTerrain(), emptyTerrain())) return "Can't undo: terrain has changed since.";
+      if (event.terrainChange && !sameValue(state.terrain ?? emptyTerrain(), event.terrainChange.terrain)) return "Can't undo: terrain has changed since.";
       if (!sameValue(state.scene.map, event.map)) return "Can't undo: the map has changed since.";
       if (!sameValue(state.scene.grid, event.gridChange.grid)) return "Can't undo: the grid has changed since.";
       if (event.wallChange && !sameValue(state.walls, Object.fromEntries(event.wallChange.walls.map((w) => [w.id, w])))) return "Can't undo: the walls or portals have changed since.";
@@ -558,6 +597,8 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"]): { v
   }
   const first = entry.events[0];
   if (!first) return { verb: "last action", noun: "an action" };
+  if (first.type === "GridSet") return { verb: "grid change", noun: "the grid change" };
+  if (first.type === "TerrainPainted" || first.type === "TerrainEffectCreated" || first.type === "TerrainEffectRemoved" || first.type === "TerrainEffectRenamed") return { verb: "terrain edit", noun: "the terrain edit" };
   if (first.type === "MapSet") {
     const count = first.tokenChanges.length;
     const positions = count ? ` and ${count} token position${count === 1 ? "" : "s"}` : "";

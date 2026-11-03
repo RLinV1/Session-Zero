@@ -45,3 +45,7 @@ For any non-GM viewer, `filterEventForViewer` answers `resync` for `CheckpointRe
 - **Store a snapshot in `CheckpointCreated`.** Restores without replay, but every room load would carry full board copies, and the copy could drift from the log.
 - **Emit per-entity compensating events (delete, create, move …) instead of one swap.** Each would need its own visibility handling and undo grouping; a single table swap is one event with one rule.
 - **Let `reduce` compute the restored table.** Impossible: `reduce` sees only the current state, not history.
+
+## Amendment: terrain and tactical movement
+
+Checkpoint tables retain all base terrain and active temporary effects. Restore and undo advance the current edit revision and board epoch; neither fence is rolled back with checkpoint content. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

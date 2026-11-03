@@ -66,3 +66,7 @@ name hidden tokens — the same reasoning as a token reveal in ADR 0002.
 - Adding a condition means adding to `CONDITIONS` with a shape distinct from its
   neighbours. The test asserting abbreviations are unique will catch a duplicate.
 - `RoomState` grew two fields, so every snapshot is slightly larger; the roll cap bounds it.
+
+## Amendment: terrain and tactical movement
+
+Optional layered terrain is now table content; edit revisions and the board epoch remain outside checkpoint tables. Players receive a derived effective projection rather than canonical layers. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

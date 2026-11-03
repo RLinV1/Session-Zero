@@ -39,6 +39,27 @@ for (const [label, store] of stores) {
       ...overrides,
     });
 
+    it("saves terrain/grid atomically, fences concurrent editors and preserves omitted legacy terrain (ADR 0046)", async () => {
+      const owner = await s().registerGm(randomUUID());
+      const map = asset(owner); await s().createAsset(map);
+      const initial = (await s().findAssetPreparation(map.id, owner))!;
+      const board = { walls: [], fog: [], terrain: [{ row: 1, start: 1, end: 3, kind: "difficult" as const }] };
+      const change = { revision: initial.revision, grid: DEFAULT_GRID, board };
+      const writers = await Promise.allSettled([s().saveAssetPreparation(map.id, owner, change), s().saveAssetPreparation(map.id, owner, change)]);
+      expect(writers.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const saved = (await s().findAssetPreparation(map.id, owner))!;
+      expect(saved.board).toEqual(board);
+      await expect(s().saveAssetPreparation(map.id, owner, { ...change, grid: { ...DEFAULT_GRID, cellSize: 80 } })).rejects.toThrow();
+      expect(await s().findAssetPreparation(map.id, owner)).toEqual(saved);
+      await expect(s().updateAsset(map.id, owner, { grid: { ...DEFAULT_GRID, cellSize: 80 } })).rejects.toThrow(/terrain reset/);
+      expect(await s().setAssetBoard(map.id, owner, { walls: [], fog: [] })).toBe(true);
+      const legacy = (await s().findAssetPreparation(map.id, owner))!;
+      expect(legacy.board.terrain).toEqual(board.terrain); expect(legacy.revision).not.toBe(saved.revision);
+      const reset = await s().saveAssetPreparation(map.id, owner, { revision: legacy.revision, grid: { ...DEFAULT_GRID, cellSize: 80 }, board: { walls: [], fog: [], terrain: [] }, resetTerrain: true });
+      expect(reset?.grid?.cellSize).toBe(80); expect(reset?.board.terrain).toEqual([]);
+      expect(await s().findAssetPreparation(map.id, randomUUID())).toBeNull();
+    });
+
     it("registers a GM identity idempotently", async () => {
       const hash = randomUUID();
       const a = await s().registerGm(hash);

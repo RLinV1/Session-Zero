@@ -1,5 +1,5 @@
 import {
-  UvttPreparation, UvttIssue, type UvttDraftEdit,
+  PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
   GM_TOKEN_HEADER,
   CheckpointPreviewResponse,
   HistoryResponse,
@@ -14,6 +14,8 @@ import {
   type EncounterEditSession,
   type EncounterPreview,
   type LibraryMapBoard,
+  type LibraryPreparation,
+  type SaveLibraryPreparation,
   type LibraryUvttImportResponse,
   type EncounterSummary,
   type GridSpec,
@@ -144,6 +146,15 @@ async function roomRequest<T>(roomId: string, token: string, method: "GET" | "PO
 }
 
 export const api = {
+  preparation: {
+    async save(roomId: string, token: string, command: import("@vtt/shared").PreparationRequest) {
+      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/preparation`, {
+        method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(command),
+      });
+      if (!res.ok) throw await errorFrom(res);
+      return PreparationSaved.parse(await res.json());
+    },
+  },
   uvtt: {
     async prepare(roomId: string, token: string, file: File, options?: { saveToLibrary?: boolean; sceneId?: string }) {
       const body = new FormData(); body.append("file", file);
@@ -396,6 +407,8 @@ export const api = {
       accountRequest<LibraryAsset>(`/api/library/${encodeURIComponent(id)}`, { method: "PATCH", ...jsonBody(patch) }),
 
     /** The walls and fog prepared on a library map (ADR 0037). */
+    preparation: (id: string) => accountRequest<LibraryPreparation>(`/api/library/${encodeURIComponent(id)}/preparation`),
+    savePreparation: (id: string, change: SaveLibraryPreparation) => accountRequest<LibraryPreparation>(`/api/library/${encodeURIComponent(id)}/preparation`, { method: "PUT", ...jsonBody(change) }),
     board: (id: string) => accountRequest<LibraryMapBoard>(`/api/library/${encodeURIComponent(id)}/board`),
     setBoard: (id: string, board: LibraryMapBoard) =>
       accountRequest<LibraryMapBoard>(`/api/library/${encodeURIComponent(id)}/board`, { method: "PUT", ...jsonBody(board) }),

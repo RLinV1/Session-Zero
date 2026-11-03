@@ -102,6 +102,10 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} set sight range to ${n === null ? "unlimited" : `${n} ${before.scene.grid.unitLabel}`}`;
     }
     case "TokenCreated": return `${actorName} created ${event.token.name}${event.token.hidden ? " (hidden)" : ""}`;
+    case "TerrainPainted": return `${actorName} painted terrain`;
+    case "TerrainEffectCreated": return `${actorName} created terrain effect "${event.effect.name}"`;
+    case "TerrainEffectRemoved": return `${actorName} removed terrain effect "${event.effect.name}"`;
+    case "TerrainEffectRenamed": return `${actorName} renamed a terrain effect`;
     case "TokenMoved": return `${actorName} moved ${tokenName(event.tokenId)} from ${formatPoint(event.from)} to ${formatPoint(event.to)}`;
     case "TokenAppearanceSet": return `${actorName} updated ${event.previous.name} to ${event.name} (size ${event.size}, rotation ${event.rotation}°)`;
     case "TokenDeleted": return `${actorName} deleted ${event.token.name}`;

@@ -1,3 +1,4 @@
+import { TerrainCells } from "./mapEditor/TerrainSetup";
 import { useEffect, useState } from "react";
 import type { EncounterPreview } from "@vtt/shared";
 import { api } from "../net/api";
@@ -33,6 +34,7 @@ export function EncounterPreviewBoard({ preview, name }: { preview: EncounterPre
     <MapCanvas map={preview.map} grid={preview.grid} mode="view" pan label={`Preview of ${name}`}>
       {() => (
         <>
+          {preview.terrain && <TerrainCells runs={preview.terrain} grid={preview.grid} />}
           {preview.fog.map((region, i) => (
             <polygon key={`f${i}`} points={region.points.map((p) => `${p.x},${p.y}`).join(" ")} fill="#000" fillOpacity={0.6} stroke="#fff" strokeOpacity={0.4} />
           ))}

@@ -1,3 +1,4 @@
+import { emptyTerrain, gridGeometryChanged, paintTerrain, replaceTerrainLayer, terrainLayer } from "./terrain";
 import { isGroupRoll, type DiceRoll } from "./dice";
 import type { AreaEffect } from "./areaEffects";
 import { DEFAULT_PRESET_ID } from "./gamePresets";
@@ -17,7 +18,12 @@ import { fogConcealsSide } from "./visibility";
  * Without it, state changes the same way and the history is left alone.
  */
 export function reduce(state: RoomState, event: DomainEvent, meta?: EventMeta): RoomState {
-  const next = concealFoggedSides(apply(state, event, meta?.at ?? null), event);
+  let next = concealFoggedSides(apply(state, event, meta?.at ?? null), event);
+  const reset = event.type === "SceneCreated" || event.type === "SceneSwitched" || event.type === "CheckpointRestored" || event.type === "EncounterApplied" || (event.type === "MapSet" && (event.map?.url !== event.previous?.url || event.map?.width !== event.previous?.width || event.map?.height !== event.previous?.height || (event.gridChange && gridGeometryChanged(event.gridChange.grid, event.gridChange.previous)))) || (event.type === "GridSet" && gridGeometryChanged(event.grid, event.previous));
+  const terrainChanged = event.type.startsWith("Terrain") || reset || ((event.type === "MapSet" || event.type === "GridSet") && event.terrainChange !== undefined);
+  if (reset && (event.type === "MapSet" || event.type === "GridSet") && !event.terrainChange) next = { ...next, terrain: undefined };
+  if (reset || event.type === "MapSet") next = { ...next, boardEpoch: (state.boardEpoch ?? 0) + 1 };
+  if (terrainChanged) next = { ...next, terrainRevision: (state.terrainRevision ?? 0) + 1 };
   if (event.type === "ActionUndone") {
     // Drops the undone action, and the entry this undo's own inverse events just opened,
     // so an undo is never itself undoable (no redo).
@@ -31,8 +37,8 @@ export function reduce(state: RoomState, event: DomainEvent, meta?: EventMeta): 
   // rulings, which live on rolls rather than the board, stay (ADR 0019).
   const history = event.type === "CheckpointRestored" || event.type === "EncounterApplied" || event.type === "SceneCreated" || event.type === "SceneSwitched"
     ? { ...state, undo: state.undo.filter((e) => e.events.length > 0 && e.events.every((ev) => ev.type === "RollRuled")) }
-    : event.type === "MapSet" && event.map?.url !== event.previous?.url
-      ? { ...state, undo: state.undo.filter((e) => !e.events.some((ev) => ev.type === "WallsAdded" || ev.type === "WallsRemoved" || ev.type === "PortalChanged" || ev.type === "WallUpdated")) }
+    : reset || ((event.type === "MapSet" || event.type === "GridSet") && event.terrainChange)
+      ? { ...state, undo: state.undo.filter((e) => !e.events.some((ev) => ev.type.startsWith("Terrain") || ev.type === "WallsAdded" || ev.type === "WallsRemoved" || ev.type === "PortalChanged" || ev.type === "WallUpdated")) }
       : state;
   return { ...next, undo: recordUndo(history, event, { ...meta, commandId: meta.commandId }) };
 }
@@ -78,7 +84,7 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       const sceneNames = event.type === "SceneCreated"
         ? { ...state.sceneNames, [event.fromId]: event.fromName, [event.sceneId]: event.name }
         : state.sceneNames;
-      return { ...state, ...event.restored.table, walls: event.restored.table.walls ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
+      return { ...state, ...event.restored.table, terrain: event.restored.table.terrain, walls: event.restored.table.walls ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
     }
     case "SceneRenamed":
       return { ...state, activeSceneId: state.activeSceneId ?? "initial", sceneNames: { ...state.sceneNames, [event.sceneId]: event.name } };
@@ -132,12 +138,13 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
         tokens[token.id] = { ...token, position: change.to };
       }
       return { ...state, scene: { ...state.scene, map: event.map, grid: event.gridChange?.grid ?? state.scene.grid },
+        ...(event.terrainChange ? { terrain: event.terrainChange.terrain.base.length || event.terrainChange.terrain.effects.length ? event.terrainChange.terrain : undefined } : {}),
         ...(event.wallChange ? { walls: Object.fromEntries(event.wallChange.walls.map((w) => [w.id, w])) } : {}),
         ...(event.fogChange ? { fog: Object.fromEntries(event.fogChange.fog.map((f) => [f.id, f])) } : {}), tokens };
     }
 
     case "GridSet":
-      return { ...state, scene: { ...state.scene, grid: event.grid } };
+      return { ...state, scene: { ...state.scene, grid: event.grid }, ...(event.terrainChange ? { terrain: event.terrainChange.terrain.base.length || event.terrainChange.terrain.effects.length ? event.terrainChange.terrain : undefined } : {}) };
 
     case "IsometricSet":
       return { ...state, scene: { ...state.scene, isometric: event.to } };
@@ -149,6 +156,25 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       return { ...state, scene: event.to === null ? scene : { ...scene, sightRange: event.to } };
     }
 
+    case "TerrainPainted": {
+      const terrain = state.terrain ?? emptyTerrain();
+      const layer = terrainLayer(terrain, event.layerId);
+      if (!layer) throw new Error("Missing terrain layer");
+      return { ...state, terrain: replaceTerrainLayer(terrain, event.layerId, paintTerrain(layer, event.paint)) };
+    }
+    case "TerrainEffectCreated": {
+      const terrain = state.terrain ?? emptyTerrain();
+      const effects = [...terrain.effects]; effects.splice(Math.min(event.index ?? effects.length, effects.length), 0, event.effect);
+      return { ...state, terrain: { ...terrain, effects } };
+    }
+    case "TerrainEffectRemoved": {
+      const terrain = state.terrain ?? emptyTerrain();
+      return { ...state, terrain: { ...terrain, effects: terrain.effects.filter((e) => e.id !== event.effect.id) } };
+    }
+    case "TerrainEffectRenamed": {
+      const terrain = state.terrain ?? emptyTerrain();
+      return { ...state, terrain: { ...terrain, effects: terrain.effects.map((e) => e.id === event.effectId ? { ...e, name: event.name } : e) } };
+    }
     case "TokenCreated":
       return { ...state, tokens: { ...state.tokens, [event.token.id]: event.token } };
 
@@ -325,11 +351,11 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "CheckpointRestored":
       // Only the board changes: participants, rolls, chat and history stay (ADR 0019). A table
       // from before walls existed had none (ADR 0029).
-      return { ...state, ...event.restored, walls: event.restored.walls ?? {} };
+      return { ...state, ...event.restored, terrain: event.restored.terrain, walls: event.restored.walls ?? {} };
 
     case "EncounterApplied":
       // Only the board changes, exactly as a checkpoint restore (ADR 0024).
-      return { ...state, ...event.applied, walls: event.applied.walls ?? {} };
+      return { ...state, ...event.applied, terrain: event.applied.terrain, walls: event.applied.walls ?? {} };
 
     case "FogAdded":
       return { ...state, fog: { ...state.fog, [event.region.id]: event.region } };

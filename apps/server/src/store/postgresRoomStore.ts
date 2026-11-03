@@ -1,3 +1,5 @@
+import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
+import type { SaveLibraryPreparation } from "@vtt/shared";
 import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import {
   Prisma,
@@ -13,7 +15,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate, RoomUploadPurpose } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type UploadAnalysis, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_TOKEN_COLOR, EMPTY_LIBRARY_BOARD, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
   type EndedSessions,
@@ -525,23 +527,58 @@ export class PostgresRoomStore implements RoomStore {
 
   async findAssetBoard(id: string, ownerGmId: string) {
     const row = await this.prisma.libraryAsset.findFirst({ where: { id, ownerGmId, kind: "map" }, select: { board: true } });
-    return row ? ((row.board as unknown as LibraryMapBoard | null) ?? EMPTY_LIBRARY_BOARD) : null;
+    return row ? publicBoard(row.board as unknown as LibraryMapBoard | null) : null;
   }
 
   async setAssetBoard(id: string, ownerGmId: string, board: LibraryMapBoard) {
-    const count = await this.prisma.$executeRaw`
-      UPDATE library_assets SET board = ${JSON.stringify(board)}::jsonb
-      WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid AND kind = 'map'
-    `;
-    return count === 1;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM library_assets WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
+      const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId, kind: "map" } });
+      if (!row) return false;
+      const old = publicBoard(toAssetRecord(row).board);
+      const next = versionedBoard({ ...board, ...(board.terrain === undefined && old.terrain ? { terrain: old.terrain } : {}) });
+      const problem = preparationProblem(toAssetRecord(row), toAssetRecord(row).grid ?? DEFAULT_GRID, publicBoard(next));
+      if (problem) throw new PreparationConflictError(problem);
+      await tx.$executeRaw`UPDATE library_assets SET board = ${JSON.stringify(next)}::jsonb WHERE id = ${id}::uuid`;
+      return true;
+    });
   }
 
   async updateAsset(id: string, ownerGmId: string, patch: { name?: string; grid?: GridSpec }) {
-    const count = patch.grid ? await this.prisma.$executeRaw`
-      UPDATE library_assets SET grid = ${JSON.stringify(patch.grid)}::jsonb, name = COALESCE(${patch.name ?? null}, name)
-      WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid
-    ` : (await this.prisma.libraryAsset.updateMany({ where: { id, ownerGmId }, data: { ...(patch.name !== undefined && { name: patch.name }) } })).count;
-    return count === 1 ? this.findAsset(id, ownerGmId) : null;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM library_assets WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
+      const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId } });
+      if (!row) return null;
+      const asset = toAssetRecord(row);
+      if (patch.grid) {
+        const problem = preparationProblem(asset, patch.grid, publicBoard(asset.board));
+        if (problem) throw new PreparationConflictError(problem);
+        const board = versionedBoard(publicBoard(asset.board));
+        await tx.$executeRaw`UPDATE library_assets SET grid = ${JSON.stringify(patch.grid)}::jsonb, board = ${JSON.stringify(board)}::jsonb, name = COALESCE(${patch.name ?? null}, name) WHERE id = ${id}::uuid`;
+      } else if (patch.name !== undefined) await tx.libraryAsset.update({ where: { id }, data: { name: patch.name } });
+      const updated = await tx.libraryAsset.findUnique({ where: { id } });
+      return updated ? toAssetRecord(updated) : null;
+    });
+  }
+
+  async findAssetPreparation(id: string, ownerGmId: string) {
+    const asset = await this.findAsset(id, ownerGmId);
+    return asset?.kind === "map" ? { grid: asset.grid, board: publicBoard(asset.board), revision: preparationRevision(asset) } : null;
+  }
+
+  async saveAssetPreparation(id: string, ownerGmId: string, change: SaveLibraryPreparation) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM library_assets WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
+      const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId, kind: "map" } });
+      if (!row) return null;
+      const asset = toAssetRecord(row);
+      if (preparationRevision(asset) !== change.revision) throw new PreparationConflictError("This map changed. Reopen it before saving; your draft has been kept.");
+      const problem = preparationProblem(asset, change.grid, change.board, change.resetTerrain);
+      if (problem) throw new PreparationConflictError(problem);
+      const board = versionedBoard(change.board);
+      await tx.$executeRaw`UPDATE library_assets SET grid = ${JSON.stringify(change.grid)}::jsonb, board = ${JSON.stringify(board)}::jsonb WHERE id = ${id}::uuid`;
+      return { grid: change.grid, board: publicBoard(board), revision: preparationRevision({ ...asset, grid: change.grid, board }) };
+    });
   }
 
   async deleteAsset(id: string, ownerGmId: string) {

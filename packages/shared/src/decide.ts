@@ -1,16 +1,18 @@
+import { destinationBlocked, movementBlocked } from "./movement";
+import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
 import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
-import { reduceAll } from "./reducer";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
 import { namedAttackFor } from "./attackPresets";
 import { findMentions } from "./chatMentions";
-import type { Command, DepartureAction } from "./commands";
+import { PreparationSave, type Command, type DepartureAction } from "./commands";
+import { reduce, reduceAll } from "./reducer";
 import { presetOf, tableForPreset } from "./gamePresets";
 import { MIN_HP, type ConditionId } from "./conditions";
 import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
 import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
 import { encounterTable, type ResolvedEncounter } from "./encounters";
-import { footprintCrossesWall, isSnapped, pathCrossesWall, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
+import { footprintCrossesWall, isSnapped, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
 import { canRenderGrid } from "./gridRenderLimit";
 import { adjustMapTokens } from "./mapTokenAdjustment";
 import { libraryBoardProblem, type ResolvedLibraryMap } from "./libraryBoard";
@@ -124,21 +126,6 @@ const samePortal = (a: Portal | null, b: Portal | null) => a?.kind === b?.kind &
 const wallBlocked = (): Decision => reject("invalid", "That spot is blocked by a wall.");
 
 /**
- * Why walls refuse this move, or null (ADR 0029). Nobody may put a token across a wall; a player
- * also may not move straight through one. Walls the token already stands across are ignored for
- * the path, so a token caught by newly applied walls can still step out.
- */
-function moveBlockedByWalls(state: RoomState, token: Token, to: Point, actor: Participant): Decision | null {
-  const walls = blockingWalls(state);
-  if (walls.length === 0) return null;
-  const { grid } = state.scene;
-  if (footprintCrossesWall(to, token.size, grid, walls)) return wallBlocked();
-  if (actor.role === "gm") return null;
-  const ahead = walls.filter((w) => !footprintCrossesWall(token.position, token.size, grid, [w]));
-  return pathCrossesWall(token.position, to, ahead) ? reject("invalid", "A wall is in the way.") : null;
-}
-
-/**
  * Where a token goes when its size changes (KAN-74): a grid-aligned token keeps its top-left
  * cell and stays aligned for its new size. Off-grid tokens, unchanged sizes, and fractional
  * sizes (a footprint that isn't whole cells has no top-left cell to keep) stay put.
@@ -172,12 +159,34 @@ export function decide(
     if (state.scene.map?.url !== command.expectedMapUrl) return reject("invalid", "The map changed. Reopen the editor before saving.");
   }
   switch (command.type) {
+    case "scene.savePreparation": {
+      if (!can.administer(actor)) return forbidden();
+      // Validate even direct callers; the whitelist cannot recurse or bypass authorization.
+      const parsed = PreparationSave.safeParse(command);
+      if (!parsed.success) return reject("invalid", "This preparation exceeds the save limits or contains unsupported edits.");
+      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", "Terrain or the board changed. Your draft has been kept; refresh before applying it.");
+      const paints = parsed.data.edits.flatMap((edit) => edit.type === "terrain.paint" ? edit.paint : []);
+      const problem = paintProblem(paints);
+      if (problem) return reject("invalid", problem);
+      let staged = state;
+      const events: DomainEvent[] = [];
+      for (const edit of parsed.data.edits) {
+        const decision = decide(staged, actor, edit, ctx);
+        if (!decision.ok) return decision;
+        for (const event of decision.events) staged = reduce(staged, event);
+        events.push(...decision.events);
+      }
+      // LiveRoom appends this whole decision once. No staged event can escape a refusal.
+      return { ok: true, events };
+    }
     case "scene.copyCurrent": {
       if (!can.administer(actor)) return forbidden();
       if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "Choose a private scene for the copy.");
       const previous = savedSceneOf(state, command.sceneId);
       if (!previous) return notFound("scene");
-      return accept({ type: "ScenePrepared", sceneId: command.sceneId, previous, prepared: saveScene(state) });
+      return accept({ type: "ScenePrepared", sceneId: command.sceneId, previous, prepared: {
+        ...saveScene(state), boardEpoch: (previous.boardEpoch ?? 0) + 1, terrainRevision: (previous.terrainRevision ?? 0) + 1,
+      } });
     }
     case "scene.prepare": {
       if (!can.administer(actor)) return forbidden();
@@ -227,9 +236,11 @@ export function decide(
     }
     case "scene.setMap": {
       if (!can.administer(actor)) return forbidden();
+      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", "Terrain or the board changed. Review the current map before applying.");
       const library = command.includeLibraryBoard ? ctx.libraryMap : null;
       if (command.includeLibraryBoard && (!library || !sameValue(library.map, command.map))) return reject("not_found", "This library map is unavailable or changed. Choose it again from your library.");
       const grid = command.grid ?? library?.grid ?? state.scene.grid;
+      if (library?.board.terrain?.length && (!library.grid || gridGeometryChanged(library.grid, grid)) && !command.resetTerrain) return reject("invalid", "Changing the prepared library grid spacing or origin requires resetting terrain. Cancel or explicitly reset terrain and apply.");
       if (library && libraryBoardProblem(library.board, command.map)) return reject("invalid", "This library map's geometry is invalid. Fix it in your library before applying it.");
       if (!canRenderGrid(grid.cellSize, command.map)) {
         return reject("invalid", "Grid cell size creates too many lines for this map.");
@@ -241,9 +252,13 @@ export function decide(
         const token = state.tokens[adjustment.tokenId]!;
         return reject("invalid", `${token.name}'s ${adjustment.footprint} px footprint cannot fit this ${command.map.width} × ${command.map.height} px map. Use a larger map, reduce the grid cell size, or reduce the token's size.`);
       }
+      const geometryChanged = command.map.url !== state.scene.map?.url || command.map.width !== state.scene.map?.width || command.map.height !== state.scene.map?.height;
+      const gridChanged = gridGeometryChanged(state.scene.grid, grid);
+      if (!geometryChanged && gridChanged && hasTerrain(state.terrain) && !command.resetTerrain && !library) return reject("invalid", "Changing grid spacing or origin requires resetting terrain.");
       // Map, effective grid and adjusted positions are one reversible fact (ADR 0042).
       return accept({
         type: "MapSet",
+        ...(((geometryChanged || gridChanged || library) && (state.terrain || library?.board.terrain)) ? { terrainChange: { terrain: library && !command.resetTerrain ? { base: library.board.terrain ?? [], effects: [] } : emptyTerrain(), previous: state.terrain ?? emptyTerrain() } } : {}),
         map: command.map,
         previous: state.scene.map,
         gridChange: { grid, previous: state.scene.grid },
@@ -261,28 +276,33 @@ export function decide(
       const prep = ctx.preparedUvtt;
       if (!prep) return reject("not_found", "This preparation has expired or the server restarted. Re-import the file.");
       const { baseline, map, grid } = prep;
-      if (!sameValue(state.scene.map, baseline.map) || !sameValue(state.scene.grid, baseline.grid) || !sameValue(state.walls, baseline.walls) || !sameValue(state.fog, baseline.fog)) {
-        return reject("invalid", "The applied map, grid, walls or fog changed while editing. Re-import against the current scene; your draft has been kept.");
+      if (!sameValue(state.scene.map, baseline.map) || !sameValue(state.scene.grid, baseline.grid) || !sameValue(state.walls, baseline.walls) || !sameValue(state.fog, baseline.fog) || (state.terrainRevision ?? 0) !== baseline.terrainRevision) {
+        return reject("invalid", "The applied map, grid, walls, fog or terrain changed while editing. Re-import against the current scene; your draft has been kept.");
       }
       try { validateUvttDraft(grid, prep.walls, map); } catch { return reject("invalid", "The prepared grid or geometry is invalid."); }
       const adjustment = adjustMapTokens(Object.values(state.tokens), state.scene.map, map, state.scene.grid, grid, command.tokenPolicy);
       if (!adjustment.ok) return reject("invalid", "A token cannot fit the imported map. Use a larger image, smaller grid or smaller token.");
       return accept({ type: "MapSet", map, previous: state.scene.map,
+        ...(state.terrain ? { terrainChange: { terrain: emptyTerrain(), previous: state.terrain } } : {}),
         gridChange: { grid, previous: state.scene.grid }, tokenChanges: adjustment.changes,
         fogChange: { fog: [], previous: Object.values(state.fog) },
         wallChange: { walls: prep.walls.map((w) => ({ ...w, id: ctx.newId() })), previous: wallsOf(state) },
       });
     }
 
-    case "scene.setGrid":
+    case "scene.setGrid": {
       if (!can.administer(actor)) return forbidden();
+      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", "Terrain or the board changed. Review the current map before applying.");
       if (!canRenderGrid(command.grid.cellSize, state.scene.map)) {
         return reject("invalid", "Grid cell size creates too many lines for this map.");
       }
+      const geometryChanged = gridGeometryChanged(command.grid, state.scene.grid);
+      if (geometryChanged && hasTerrain(state.terrain) && !command.resetTerrain) return reject("invalid", "Changing grid spacing or origin requires resetting terrain.");
       return accept(
-        { type: "GridSet", grid: command.grid, previous: state.scene.grid },
+        { type: "GridSet", grid: command.grid, previous: state.scene.grid, ...(geometryChanged && state.terrain ? { terrainChange: { terrain: emptyTerrain(), previous: state.terrain ?? emptyTerrain() } } : {}) },
         ...resnapToGrid(state, command.grid),
       );
+    }
 
     case "scene.setLineOfSight":
       if (!can.administer(actor)) return forbidden();
@@ -397,14 +417,46 @@ export function decide(
       return accept({ type: "TokensGrouped", groupId: command.groupId, changes });
     }
 
+    case "terrain.paint":
+    case "terrain.effect.create":
+    case "terrain.effect.rename":
+    case "terrain.effect.remove": {
+      if (!can.administer(actor)) return forbidden();
+      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", "Terrain or the board changed. Your draft has been kept; refresh before applying it.");
+      if (!state.scene.map) return reject("invalid", "Apply a map before painting terrain.");
+      const terrain = state.terrain ?? emptyTerrain();
+      if (command.type === "terrain.paint") {
+        if (new TextEncoder().encode(JSON.stringify(command)).length >= MAX_TERRAIN_PAINT_BYTES) return reject("invalid", "This gesture is too large. Paint a smaller area.");
+        const problem = paintProblem(command.paint);
+        if (problem) return reject("invalid", problem);
+        const layer = terrainLayer(terrain, command.layerId);
+        if (!layer) return notFound("terrain layer");
+        const map = state.scene.map;
+        if (command.paint.some((r) => { const first = cellRect(r.start, r.row, state.scene.grid), last = cellRect(r.end, r.row, state.scene.grid); return last.maxX <= 0 || first.minX >= map.width || first.maxY <= 0 || first.minY >= map.height || first.minX < -state.scene.grid.cellSize || last.maxX > map.width + state.scene.grid.cellSize; })) return reject("invalid", "Terrain must lie on the map.");
+        const next = replaceTerrainLayer(terrain, command.layerId, paintTerrain(layer, command.paint));
+        if (!Terrain.safeParse(next).success) return reject("invalid", "The room would exceed the terrain cell limit.");
+        return accept({ type: "TerrainPainted", layerId: command.layerId, paint: command.paint, previous: previousPaint(layer, command.paint) });
+      }
+      if (command.type === "terrain.effect.create") {
+        if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return reject("invalid", "Remove a temporary effect before creating another.");
+        return accept({ type: "TerrainEffectCreated", effect: { id: ctx.newId(), name: command.name, runs: [] } });
+      }
+      const effect = terrain.effects.find((e) => e.id === command.effectId);
+      if (!effect) return notFound("terrain effect");
+      return command.type === "terrain.effect.rename"
+        ? accept({ type: "TerrainEffectRenamed", effectId: effect.id, name: command.name, previous: effect.name })
+        : accept({ type: "TerrainEffectRemoved", effect, index: terrain.effects.indexOf(effect) });
+    }
+
     case "token.move": {
       const token = state.tokens[command.tokenId];
       // A player asking about a token they can't see (hidden, or under fog) gets the same answer
       // as a missing one, so rejections don't leak that it exists (FR-GM-23, ADR 0016).
       if (!token || concealedFrom(concealmentFor(state, actor), token, actor)) return notFound("token");
       if (!can.moveToken(actor, token)) return forbidden();
-      const blocked = moveBlockedByWalls(state, token, command.to, actor);
-      if (blocked) return blocked;
+      if (command.reposition && !can.administer(actor)) return forbidden();
+      if ((command.expectedOrigin && !sameValue(token.position, command.expectedOrigin)) || (command.boardEpoch !== undefined && command.boardEpoch !== (state.boardEpoch ?? 0))) return reject("invalid", "The board or token changed. Try the move again.");
+      if (movementBlocked(state, token, command.to, command.reposition)) return reject("invalid", "That move is unavailable.");
       return accept({
         type: "TokenMoved",
         tokenId: token.id,
@@ -432,8 +484,13 @@ export function decide(
         const ownerError = checkOwners(state, changes.ownerIds);
         if (ownerError) return ownerError;
       }
-      if (changes.position && footprintCrossesWall(changes.position, changes.size ?? token.size, state.scene.grid, blockingWalls(state))) {
-        return wallBlocked();
+      const size = changes.size ?? token.size;
+      const position = changes.position ?? resizedPosition(state, token, size);
+      // Explicit displacement keeps swept movement checks; automatic anchoring only checks the result.
+      if (changes.position && !sameValue(changes.position, token.position)) {
+        if (movementBlocked(state, { ...token, size }, position)) return reject("invalid", "That move is unavailable.");
+      } else if (size !== token.size && destinationBlocked(state, size, position)) {
+        return reject("invalid", "That move is unavailable.");
       }
       const imageUrl = changes.imageUrl;
       const assetId = changes.assetId;
@@ -446,9 +503,7 @@ export function decide(
       }
 
       const name = changes.name === undefined ? token.name : uniqueTokenName(state, changes.name, token.id);
-      const size = changes.size ?? token.size;
       const rotation = changes.rotation === undefined ? token.rotation : normalizeRotation(changes.rotation);
-      const position = changes.position ?? resizedPosition(state, token, size);
       const moved: DomainEvent | null = position.x !== token.position.x || position.y !== token.position.y
         ? { type: "TokenMoved", tokenId: token.id, from: token.position, to: position }
         : null;
@@ -507,6 +562,7 @@ export function decide(
       const rotation = normalizeRotation(command.rotation);
       if (name === token.name && command.size === token.size && rotation === token.rotation) return { ok: true, events: [] };
       const position = resizedPosition(state, token, command.size);
+      if (command.size !== token.size && destinationBlocked(state, command.size, position)) return reject("invalid", "That move is unavailable.");
       const appearance: DomainEvent = {
         type: "TokenAppearanceSet",
         tokenId: token.id,

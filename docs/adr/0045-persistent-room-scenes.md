@@ -28,4 +28,12 @@ The Current map setup option uses GM-only scene.copyCurrent to copy the authorit
 
 ## PR 141 review follow-ups (2026-11-03)
 
+### Terrain integration with PR 134
+
+Each saved scene retains the base and temporary terrain already carried by `TableState`. Selecting or activating a scene explicitly clears terrain when the saved board has none. Scene activation advances the live board epoch and terrain revision so earlier gestures cannot apply across a switch, including scenes sharing the same image.
+
+`SavedScene` has optional `boardEpoch` and `terrainRevision` counters for private preparation; legacy scenes read both as zero. Private edits validate against and advance that scene's counters without changing live counters. Copying the current board advances the destination counters to invalidate older private drafts. These counters and inactive terrain remain GM-only.
+
+The private preparation whitelist includes atomic `scene.savePreparation`, map style, terrain paint and temporary effect commands. Both direct and scene-wrapped atomic saves use the authenticated preparation HTTP endpoint, with the same total body limit and ordered, filtered event delivery. Large private terrain preparations do not increase the ordinary JSON or Socket.IO limits.
+
 `DiceRoll` gains an optional `sceneId`, set by `decide` to the active scene when a roll is made (a schema addition; older rolls have none and are unrestricted). `roll.applyDamage` is rejected when the roll's scene is not the active one, because copied scenes share token IDs. Roll history stays room-wide. Scene IDs are read from `savedScenes` and `sceneNames` with own-property checks, so IDs such as `__proto__` or `constructor` are not found. The UVTT preparation endpoint takes an optional `sceneId` query parameter and captures that scene's board as the baseline, so an import into a private scene compares against the scene it will be applied to.

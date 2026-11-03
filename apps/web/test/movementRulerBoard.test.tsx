@@ -10,6 +10,7 @@ vi.mock("../src/board/boardView", () => ({ BoardView: class {
   constructor(_host: unknown, callbacks: BoardCallbacks) { mock.callbacks = callbacks; }
   init = async () => {};
   destroy() {} update() {} setGmFogView() {} setShowWalls() {} setShowPortals() {} setReadOnly() {} setGridPreview() {} setTool() {} setPlacement() {} setViewedTokens() {} setGroupSelection() {}
+  setShowTerrain() {} setRepositionToken() {} refreshMovementPreview() {} cancelMovement() { return false; }
   setMovementRuler = mock.ruler;
 } }));
 vi.mock("../src/board/TokenCard", () => ({ TokenCard: () => null }));
@@ -24,7 +25,7 @@ describe("personal movement planner board integration (FR-TAC-03)", () => {
     const state = emptyRoomState("r");
     state.tokens = { owned, other: { ...owned, id: "other", ownerIds: [] } };
     const command = vi.fn(); const preview = vi.fn(); const ephemeral = vi.fn();
-    const connection = { command, preview, ephemeral, onCommitted: () => () => {}, onEphemeral: () => () => {} } as unknown as RoomConnection;
+    const connection = { command, preview, ephemeral, onCommitted: () => () => {}, onEphemeral: () => () => {}, store: { subscribe: () => () => {} } } as unknown as RoomConnection;
     render(<Board connection={connection} state={state} you={you} gridPreview={null} />);
     await act(async () => {});
     expect(screen.queryByRole("group", { name: "Personal movement planner" })).toBeNull();

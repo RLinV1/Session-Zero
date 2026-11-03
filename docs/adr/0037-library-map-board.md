@@ -30,3 +30,7 @@ Closing with unsaved changes opens the same in-app Save changes? modal used for 
 with Save, Discard and Keep editing. Only Save from this close prompt saves and then exits.
 The editor no longer uses a browser confirm dialog. A new encounter waiting for its map's grid
 starts after the editor is explicitly closed, rather than on a normal save.
+
+## Amendment: terrain and tactical movement
+
+Library board JSON may include compressed prepared base terrain. New preparation saves compare a revision and replace grid and board atomically; legacy omitted terrain is preserved and geometry changes cannot silently reset terrain. Room edits never update the saved library map. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.

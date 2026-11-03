@@ -1,3 +1,7 @@
+import { movementRouteKnown, terrainForViewer } from "./terrainVisibility";
+import { movementBlocked } from "./movement";
+import type { MovementPreviewFeedback, MovementPreviewRequest } from "./protocol";
+import { reduce } from "./reducer";
 import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type LoggedRoll } from "./dice";
 import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
@@ -67,6 +71,17 @@ export function portalConcealedFrom(c: Concealment, wall: Pick<Wall, "a" | "b" |
   return isInFog(c.fog, mid) || outOfSight(c, mid);
 }
 
+/** Private, geometry-free advisory feedback. Concealed routes never become an obstacle oracle. */
+export function movementFeedbackForViewer(state: RoomState, viewer: Participant, request: MovementPreviewRequest, c = concealmentFor(state, viewer)): MovementPreviewFeedback["status"] | null {
+  const token = state.tokens[request.tokenId];
+  if (!token || (viewer.role !== "gm" && !token.ownerIds.includes(viewer.id)) || concealedFrom(c, token, viewer)) return null;
+  if (token.position.x !== request.from.x || token.position.y !== request.from.y || (state.boardEpoch ?? 0) !== request.boardEpoch || (request.reposition && viewer.role !== "gm")) return "unknown";
+  const map = state.scene.map, to = request.to;
+  if (!map || to.x < 0 || to.y < 0 || to.x > map.width || to.y > map.height) return "unknown";
+  if (viewer.role !== "gm" && !movementRouteKnown(state, request.from, to, token.size, c)) return "unknown";
+  return movementBlocked(state, token, to, request.reposition) ? "blocked" : "clear";
+}
+
 /**
  * Player-safe state filtering (FR-GM-23).
  *
@@ -109,7 +124,8 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
-  return { ...state, tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...(state.sceneNames && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
+  const { terrain: _terrain, terrainRevision: _terrainRevision, terrainView: _terrainView, sight: _sight, ...publicState } = state;
+  return { ...publicState, terrainView: terrainForViewer(state, c), tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =
@@ -178,6 +194,14 @@ export function filterEventForViewer(
   }
 
   switch (e.type) {
+    case "TerrainPainted":
+    case "TerrainEffectCreated":
+    case "TerrainEffectRemoved":
+    case "TerrainEffectRenamed": {
+      const after = reduce(before, e);
+      return JSON.stringify(terrainForViewer(before, conc())) === JSON.stringify(terrainForViewer(after, conc())) ? redacted : { kind: "resync" };
+    }
+    case "GridSet": return e.terrainChange || before.terrain ? { kind: "resync" } : pass;
     // Plain walls are GM-only geometry (ADR 0029): players learn only that a seq happened. A
     // portal they can see appears or vanishes, which a snapshot does without the plain walls (ADR 0030).
     case "WallUpdated":
@@ -335,7 +359,7 @@ export function filterEventForViewer(
     case "MapSet":
       // Nested changes contain hidden IDs and prior positions. Only the filtered result
       // reaches players, including inverse first-map removal and empty adjustments (ADR 0042).
-      return e.tokenChanges !== undefined || e.wallChange !== undefined || e.fogChange !== undefined ? { kind: "resync" } : pass;
+      return e.terrainChange !== undefined || e.tokenChanges !== undefined || e.wallChange !== undefined || e.fogChange !== undefined ? { kind: "resync" } : pass;
     case "EncounterApplied":
       // Both boards hold hidden tokens, fog and owners; a filtered snapshot carries the rest (ADR 0024).
       return { kind: "resync" };
@@ -359,7 +383,6 @@ export function filterEventForViewer(
     case "ParticipantDiceLookSet":
     case "ParticipantLeft":
     case "ParticipantRevoked":
-    case "GridSet":
       // The participant list is public; leaving or removal reveals nothing hidden (ADR 0006). A
       // dice look is pictures the whole table sees on that person's rolls, and names no account (ADR 0018).
       return pass;

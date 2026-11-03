@@ -1,3 +1,4 @@
+import { api, ApiError } from "./api";
 import { io, type Socket } from "socket.io-client";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
@@ -6,12 +7,14 @@ import {
   reduceReceived,
   type ClientMessageInput,
   type CommandInput,
+  type PreparationRequest,
   type CommittedEvent,
   type DiceRoll,
   type EphemeralPayload,
   type Participant,
   type RoomState,
   type ServerMessage,
+  type ServerEphemeralPayload,
   type WallDetectionStatus,
   type SessionEndReason,
 } from "@vtt/shared";
@@ -42,7 +45,10 @@ export type CommandResult =
   | { ok: true; seq: number | null }
   | { ok: false; code: string; message: string };
 
-type EphemeralListener = (from: string, payload: EphemeralPayload) => void;
+const isPreparation = (command: CommandInput): command is PreparationRequest =>
+  command.type === "scene.savePreparation" || (command.type === "scene.prepare" && command.command.type === "scene.savePreparation");
+
+type EphemeralListener = (from: string, payload: ServerEphemeralPayload) => void;
 /** Called with a live event and the viewer's state before and after it (KAN-76). */
 type CommittedListener = (committed: CommittedEvent, before: RoomState, after: RoomState) => void;
 type RollListener = (roll: DiceRoll) => void;
@@ -164,8 +170,21 @@ export class RoomConnection {
     }
     const clientCommandId = `c${++this.nextCommandId}`;
     return new Promise((resolve) => {
-      this.pending.set(clientCommandId, resolve);
-      this.send({ type: "command", clientCommandId, command });
+      let unsubscribe = () => {};
+      this.pending.set(clientCommandId, (result) => { unsubscribe(); resolve(result); });
+      if (isPreparation(command)) {
+        // The preparation-only HTTP body limit leaves the socket's 64-KiB cap unchanged.
+        // State still arrives exclusively through the ordered, filtered event stream.
+        void api.preparation.save(this.roomId, this.guestToken, command).then(({ seq }) => {
+          if (!this.pending.has(clientCommandId)) return;
+          const complete = () => this.settle(clientCommandId, { ok: true, seq });
+          if (seq === null || this.snapshot.seq >= seq) complete();
+          else unsubscribe = this.store.subscribe((snapshot) => { if (snapshot.seq >= seq) complete(); });
+        }).catch((error: unknown) => this.settle(clientCommandId, { ok: false,
+          code: error instanceof ApiError ? error.detail.code ?? "invalid" : "offline",
+          message: error instanceof Error ? error.message : "Couldn't save the map draft.",
+        }));
+      } else this.send({ type: "command", clientCommandId, command });
     });
   }
 
@@ -188,10 +207,10 @@ export class RoomConnection {
    * FR-SYNC-03): at most one message per PREVIEW_INTERVAL_MS, and the latest value is always
    * sent once input stops, so the other clients end where the pointer did.
    */
-  preview(key: string, payload: EphemeralPayload) {
+  preview(key: string, payload: EphemeralPayload, intervalMs = PREVIEW_INTERVAL_MS) {
     const stream = this.previews.get(key) ?? { lastSent: -Infinity, pending: null, timer: null };
     this.previews.set(key, stream);
-    const wait = stream.lastSent + PREVIEW_INTERVAL_MS - Date.now();
+    const wait = stream.lastSent + intervalMs - Date.now();
     if (wait <= 0 && !stream.timer) {
       stream.lastSent = Date.now();
       this.ephemeral(payload);

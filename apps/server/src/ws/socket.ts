@@ -128,6 +128,7 @@ export function registerSocket(
 
     let windowStart = Date.now();
     let ephemeralCount = 0;
+    let movementPreviewCount = 0;
 
     // Commands are handled one at a time so a socket's commands commit in the order sent.
     // Ephemeral messages skip that queue: a ping must not wait behind a command still
@@ -147,8 +148,10 @@ export function registerSocket(
       if (now - windowStart >= 1000) {
         windowStart = now;
         ephemeralCount = 0;
+        movementPreviewCount = 0;
       }
       if (++ephemeralCount > EPHEMERAL_PER_SECOND) return;
+      if (payload.type === "tokenMovePreview" && ++movementPreviewCount > 10) return;
       room.relayEphemeral(client, payload);
     };
 

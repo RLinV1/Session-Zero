@@ -1,3 +1,4 @@
+import { TerrainRuns, type TerrainRun } from "./terrain";
 import { z } from "zod";
 import { GridSpec } from "./geometry";
 import { FogRegion, Id, MapImage, Scene, Token, Wall, MAX_WALLS, type TableState } from "./state";
@@ -28,6 +29,7 @@ export const EncounterTemplateData = z.object({
     height: z.number().int().positive(),
   }),
   grid: GridSpec,
+  terrain: TerrainRuns.optional(),
   tokens: z.array(TemplateToken).max(500),
   fog: z.array(FogRegion.omit({ id: true })).max(100),
   walls: z.array(Wall.omit({ id: true })).max(MAX_WALLS).optional(),
@@ -42,11 +44,13 @@ export interface ResolvedEncounter {
   tokens: TemplateToken[];
   fog: Omit<FogRegion, "id">[];
   walls?: Omit<Wall, "id">[];
+  terrain?: TerrainRun[];
 }
 
 /** A template's saved board for a read-only preview in the library: what an apply would place, before it is placed. */
 export interface EncounterPreview {
   name: string;
+  terrain?: TerrainRun[];
   map: MapImage;
   grid: GridSpec;
   tokens: TemplateToken[];
@@ -70,7 +74,7 @@ export function encounterTable(encounter: ResolvedEncounter, newId: () => string
     const id = newId();
     walls[id] = { ...wall, id };
   }
-  return { scene: encounter.scene, tokens, templates: {}, fog, initiative: null, walls };
+  return { scene: encounter.scene, tokens, templates: {}, fog, initiative: null, walls, ...(encounter.terrain ? { terrain: { base: encounter.terrain, effects: [] } } : {}) };
 }
 
 /** Rebuilds a map image from a template's saved reference and the address the server resolved. */

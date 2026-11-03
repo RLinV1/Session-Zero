@@ -90,8 +90,8 @@ export function roomLifecycle(deps: {
       });
     } else if (room.scene) {
       const sceneGrid = { ...room.scene.grid, ...preset.grid };
-      events.push({ type: "MapSet", map: room.scene.map, previous: null, gridChange: { grid: sceneGrid, previous: grid } });
       const board = room.scene.board;
+      events.push({ type: "MapSet", map: room.scene.map, previous: null, gridChange: { grid: sceneGrid, previous: grid }, ...(board?.terrain ? { terrainChange: { terrain: { base: board.terrain, effects: [] }, previous: { base: [], effects: [] } } } : {}) });
       if (board?.walls.length) events.push({ type: "WallsAdded", walls: board.walls.map((wall) => ({ ...wall, id: randomUUID() })) });
       for (const region of board?.fog ?? []) events.push({ type: "FogAdded", region: { ...region, id: randomUUID() } });
     }

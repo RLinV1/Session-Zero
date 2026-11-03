@@ -56,7 +56,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     expect(draft.walls.wall!.uvttPortal).toEqual(preparation.walls[0]!.uvttPortal);
     expect(draft.fog.fog).toBeUndefined();
     expect(Object.values(draft.fog)).toEqual([expect.objectContaining({ shape: "polygon", points })]);
-    expect(planDraftSave(state, draft).map((command) => command.type)).toEqual(["wall.update", "fog.replace"]);
+    expect(planDraftSave(state, draft)).toMatchObject([{ type: "scene.savePreparation", edits: [{ type: "wall.update", wall }, { type: "fog.replace", removeIds: ["fog"] }] }]);
   });
   it("preserves validated fractional offsets without legacy normalization and tracks geometry edits", () => {
     const prep = startUvttPrep(preparation); expect(prep.initial).toEqual(preparation.grid); expect(prepDirty(prep)).toBe(false);

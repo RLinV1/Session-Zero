@@ -102,9 +102,9 @@ describe("portal state controls movement (FR-GM-18)", () => {
 
   it("blocks a player at a closed or locked door and lets them through an open one", () => {
     const closed = room(door("closed"));
-    expect(through(closed.state, closed.token.id)).toMatchObject({ ok: false, message: "A wall is in the way." });
+    expect(through(closed.state, closed.token.id)).toMatchObject({ ok: false, message: "That move is unavailable." });
     const locked = room({ kind: "window", state: "locked" });
-    expect(through(locked.state, locked.token.id)).toMatchObject({ ok: false, message: "A wall is in the way." });
+    expect(through(locked.state, locked.token.id)).toMatchObject({ ok: false, message: "That move is unavailable." });
     const open = room(door("open"));
     expect(through(open.state, open.token.id).ok).toBe(true);
   });
@@ -112,7 +112,7 @@ describe("portal state controls movement (FR-GM-18)", () => {
   it("lets nobody stand across a closed door, but anyone stand in an open doorway", () => {
     const onDoor = { x: 140, y: 105 };
     const closed = room(door("closed"));
-    expect(act(closed.state, gm, { type: "token.move", tokenId: closed.token.id, to: onDoor })).toMatchObject({ ok: false, message: "That spot is blocked by a wall." });
+    expect(act(closed.state, gm, { type: "token.move", tokenId: closed.token.id, to: onDoor })).toMatchObject({ ok: false, message: "That move is unavailable." });
     const open = room(door("open"));
     expect(act(open.state, alice, { type: "token.move", tokenId: open.token.id, to: onDoor }).ok).toBe(true);
   });

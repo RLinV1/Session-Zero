@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Terrain, type TerrainView } from "./terrain";
 import { DEFAULT_PRESET_ID } from "./gamePresets";
 import { TokenAttacks } from "./attackPresets";
 import { DICE_SHEET, DieName } from "./diceLooks";
@@ -255,12 +256,13 @@ export const TableState = z.object({
   initiative: Initiative.nullable(),
   /** Optional: tables in events from before walls existed have none (ADR 0029). */
   walls: z.record(Id, Wall).optional(),
+  terrain: Terrain.optional(),
 });
 export type TableState = z.infer<typeof TableState>;
 
 /** The table part of a room state. */
 export function tableOf(state: Pick<RoomState, keyof TableState>): TableState {
-  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls };
+  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls, ...(state.terrain ? { terrain: state.terrain } : {}) };
 }
 
 /** Most checkpoints a room keeps; the oldest drops off past this (ADR 0019). */
@@ -384,6 +386,13 @@ export interface RoomState {
    * a player with line of sight on.
    */
   sight?: Point[][];
+  terrain?: Terrain;
+  /** GM-only monotonically increasing edit fence, outside checkpoints. */
+  terrainRevision?: number;
+  /** Public gesture fence, outside checkpoints. */
+  boardEpoch?: number;
+  /** Effective permitted cells only; never canonical. */
+  terrainView?: TerrainView;
 }
 
 export function emptyRoomState(roomId: Id): RoomState {

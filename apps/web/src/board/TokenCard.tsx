@@ -16,6 +16,8 @@ export function TokenCard({
   onDuplicate,
   onMove,
   arrowKeys,
+  reposition,
+  movementReadout,
 }: {
   token: Token;
   state: RoomState;
@@ -31,6 +33,8 @@ export function TokenCard({
   onMove?: (to: Point) => Promise<unknown>;
   /** The switch that lets the arrow keys move this token; the board listens while it's on. */
   arrowKeys?: { on: boolean; onToggle: (on: boolean) => void };
+  reposition?: { on: boolean; toggle: () => void };
+  movementReadout?: string | null;
 }) {
   // Same rules the server enforces; these only decide whether to draw the buttons.
   const showEdit = !readOnly && !!onEdit && can.editToken(you, token);
@@ -45,6 +49,8 @@ export function TokenCard({
         <strong>{token.name}</strong>
         <button type="button" className="secondary" onClick={onClose} aria-label="Close token details">×</button>
       </div>
+      {showMove && movementReadout && <p className="token-card-readout" role="status">{movementReadout}</p>}
+      <div className="token-card-body">
       <dl>
         <dt>HP</dt>
         <dd className={token.stats.hp === null ? undefined : "num"}>
@@ -81,6 +87,7 @@ export function TokenCard({
           </>
         )}
       </dl>
+      {showMove && reposition && <button type="button" className="secondary" aria-pressed={reposition.on} onClick={reposition.toggle}>Reposition next move</button>}
       {showMove && (
         <MoveControl
           name={token.name}
@@ -114,6 +121,7 @@ export function TokenCard({
           )}
         </div>
       )}
+      </div>
     </aside>
   );
 }

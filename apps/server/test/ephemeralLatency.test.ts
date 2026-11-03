@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { EphemeralPayload, ServerMessage, Token } from "@vtt/shared";
+import type { EphemeralPayload, ServerEphemeralPayload, ServerMessage, Token } from "@vtt/shared";
 import { startServer, TestClient } from "./helpers";
 import { BENCHMARK_PROFILE, startLatencyProxy } from "./latencyProxy";
 
@@ -66,8 +66,8 @@ describe.skipIf(process.env.VTT_SKIP_BENCH === "1")("ephemeral latency benchmark
 
     // Message i carries i in `at.x`, so a receiver can match it to its send time.
     const sentAt = new Map<string, number>();
-    const key = (p: EphemeralPayload) =>
-      `${p.type}:${p.type === "diceDrop" ? p.to.x : p.type === "templatePreview" ? (p.preview?.origin.x ?? -1) : p.at.x}`;
+    const key = (p: ServerEphemeralPayload) =>
+      `${p.type}:${p.type === "tokenMovePreview" || p.type === "tokenMoveFeedback" ? p.requestId : p.type === "diceDrop" ? p.to.x : p.type === "templatePreview" ? (p.preview?.origin.x ?? -1) : p.at.x}`;
     const latencies = new Map<TestClient, number[]>([[gm, []], [bob, []]]);
     for (const [receiver, values] of latencies) {
       receiver.onMessage((msg: ServerMessage) => {

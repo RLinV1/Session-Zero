@@ -37,6 +37,7 @@ export async function resolveEncounter(
       tokens: data.data.tokens,
       fog: data.data.fog,
       walls: data.data.walls,
+      terrain: data.data.terrain,
     },
   };
 }
@@ -72,6 +73,7 @@ export async function boardFromRoom(
   const data = EncounterTemplateData.safeParse({
     map: { assetId: mapAsset.id, width: mapAsset.width, height: mapAsset.height },
     grid: board.scene.grid,
+    terrain: board.terrain?.base,
     tokens: Object.values(board.tokens).map(({ id: _id, ownerIds: _owners, initiative: _initiative, ...token }) => token),
     fog: Object.values(board.fog).map(({ id: _id, ...region }) => region),
     walls: Object.values(board.walls ?? {}).map(({ id: _id, ...wall }) => wall),

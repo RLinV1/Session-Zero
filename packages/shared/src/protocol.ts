@@ -22,6 +22,8 @@ import type { UvttIssue } from "./uvtt";
 export const EphemeralPayload = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), at: Point }),
   z.object({ type: z.literal("tokenDragPreview"), tokenId: Id, at: Point }),
+  /** Private advisory request; never relayed. The server retains all wall geometry. */
+  z.object({ type: z.literal("tokenMovePreview"), requestId: Id, tokenId: Id, from: Point, to: Point, boardEpoch: z.number().int().nonnegative(), reposition: z.boolean().optional() }),
   /**
    * A die let go over the map (ADR 0014): where it leaves the hand and where it lands, in board
    * coordinates. Sent just before the sender's `dice.roll`, so every other viewer can replay
@@ -54,6 +56,11 @@ export const EphemeralPayload = z.discriminatedUnion("type", [
   }).refine((p) => p.preview !== null || p.gmOnly !== undefined, { message: "A cleared aim must say whether it was GM-only", path: ["gmOnly"] }),
 ]);
 export type EphemeralPayload = z.infer<typeof EphemeralPayload>;
+
+export type MovementPreviewRequest = Extract<EphemeralPayload, { type: "tokenMovePreview" }>;
+/** Server-only response: status only, no geometry, reason, terrain cost or new sequence number. */
+export type MovementPreviewFeedback = { type: "tokenMoveFeedback"; requestId: string; atSeq: number; status: "blocked" | "unknown" | "clear" };
+export type ServerEphemeralPayload = EphemeralPayload | MovementPreviewFeedback;
 
 // ---------- Client -> Server ----------
 /**
@@ -104,7 +111,7 @@ export type ServerMessage =
   | { type: "redacted"; seq: number }
   | { type: "ack"; clientCommandId: string; seq: number | null }
   | { type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request"; message: string }
-  | { type: "ephemeral"; from: Id; payload: EphemeralPayload }
+  | { type: "ephemeral"; from: Id; payload: ServerEphemeralPayload }
   /** Terminal: this seat has ended (ADR 0006). The server disconnects right after; do not reconnect. */
   | { type: "sessionEnded"; reason: SessionEndReason }
   /**

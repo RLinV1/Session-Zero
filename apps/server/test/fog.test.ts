@@ -45,12 +45,15 @@ describe("manual fog of war over the wire (FR-GM-17, FR-GM-23, ADR 0016)", () =>
     const created = await gm.command({ type: "token.create", name: "Lurker", position: { x: 70, y: 70 } });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(created))));
     const lurker = tokenNamed(gm, "Lurker")!;
+    gm.send({ type: "ephemeral", payload: { type: "tokenDragPreview", tokenId: lurker.id, at: { x: 88, y: 99 } } });
     const moved = await gm.command({ type: "token.move", tokenId: lurker.id, to: { x: 105, y: 35 } });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(moved))));
 
     expect(tokenNamed(alice, "Lurker")).toBeUndefined();
     expect(alice.rawLog.join(" ")).not.toContain("Lurker");
     expect(alice.rawLog.join(" ")).not.toContain(lurker.id);
+    expect(alice.rawLog.join(" ")).not.toContain('"x":88,"y":99');
+    expect(alice.rawLog.join(" ")).not.toContain("tokenDragPreview");
 
     const removed = await gm.command({ type: "fog.remove", regionId: fog(gm)[0]!.id });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(removed))));
@@ -72,6 +75,31 @@ describe("manual fog of war over the wire (FR-GM-17, FR-GM-23, ADR 0016)", () =>
     expect(tokenNamed(alice, "Scout")).toBeUndefined();
     expect(alice.rawLog.join(" ")).not.toContain('"x":35,"y":35');
     expect(alice.rawLog.join(" ")).not.toContain('"x":77,"y":66');
+  });
+
+  it("hides before renaming into fog and reveals after renaming out, without private positions or ghosts", async () => {
+    const { gm, alice } = await setup();
+    await gm.command({ type: "token.create", name: "Guard", position: { x: 385, y: 385 } });
+    await gm.command(FOG_RECT); await alice.waitForSeq(gm.seq);
+    const token = tokenNamed(gm, "Guard")!;
+    let start = gm.rawLog.length;
+    const playerStart = alice.rawLog.length;
+    const into = await gm.command({ type: "token.configure", tokenId: token.id, changes: { position: { x: 35, y: 35 }, name: "Secret Lich", stats: { hp: 23, maxHp: 29, ac: 17 } } });
+    expect(into).toMatchObject({ type: "ack" }); await alice.waitForSeq(seqOf(into));
+    const eventTypes = (logs: string[]) => logs.map((raw) => JSON.parse(raw)).filter((m) => m.type === "event").map((m) => m.committed.event.type);
+    expect(eventTypes(gm.rawLog.slice(start))).toEqual(["TokenMoved", "TokenAppearanceSet", "TokenStatsSet"]);
+    expect(alice.state.tokens[token.id]).toBeUndefined();
+    expect(alice.rawLog.slice(playerStart).join(" ")).not.toContain(token.id);
+    gm.send({ type: "ephemeral", payload: { type: "tokenDragPreview", tokenId: token.id, at: { x: 71, y: 61 } } });
+    const within = await gm.command({ type: "token.move", tokenId: token.id, to: { x: 105, y: 35 } });
+    expect(within).toMatchObject({ type: "ack" }); await alice.waitForSeq(seqOf(within));
+    start = gm.rawLog.length;
+    const out = await gm.command({ type: "token.configure", tokenId: token.id, changes: { position: { x: 385, y: 385 }, name: "Guard", stats: token.stats } });
+    expect(out).toMatchObject({ type: "ack" }); await alice.waitForSeq(seqOf(out));
+    expect(eventTypes(gm.rawLog.slice(start))).toEqual(["TokenAppearanceSet", "TokenStatsSet", "TokenMoved"]);
+    expect(alice.state.tokens[token.id]).toMatchObject({ name: "Guard", position: { x: 385, y: 385 }, stats: token.stats });
+    const privateLog = alice.rawLog.slice(playerStart).join(" ");
+    for (const secret of ["Secret Lich", '"x":35,"y":35', '"x":105,"y":35', '"x":71,"y":61', "tokenDragPreview", '"hp":23']) expect(privateLog).not.toContain(secret);
   });
 
   it("undoes an accidental reveal (FR-REC-02)", async () => {

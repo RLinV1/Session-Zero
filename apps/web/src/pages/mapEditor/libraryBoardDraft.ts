@@ -7,12 +7,13 @@ export function draftFromBoard(mapUrl: string, board: LibraryMapBoard): MapDraft
   board.walls.forEach((w, i) => { walls[`draft:w${i}`] = { id: `draft:w${i}`, ...w }; });
   const fog: Record<string, FogRegion> = {};
   board.fog.forEach((f, i) => { fog[`draft:f${i}`] = { id: `draft:f${i}`, ...f }; });
-  return { mapUrl, walls, fog, lineOfSight: false, isometric: false, sightRange: null };
+  return { terrain: board.terrain, mapUrl, walls, fog, lineOfSight: false, isometric: false, sightRange: null };
 }
 
 /** The board to store: the draft without its ids. */
 export function boardFromDraft(draft: MapDraft): LibraryMapBoard {
   return {
+    ...(draft.terrain ? { terrain: draft.terrain } : {}),
     walls: Object.values(draft.walls).map(({ id: _id, ...wall }) => wall),
     fog: Object.values(draft.fog).map(({ id: _id, ...region }) => region),
   };
@@ -24,6 +25,7 @@ export function boardChanged(draft: MapDraft, stored: LibraryMapBoard): boolean 
     node !== null && typeof node === "object" && !Array.isArray(node)
       ? Object.fromEntries(Object.entries(node).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : node);
   const key = (board: LibraryMapBoard) => JSON.stringify({
+    terrain: board.terrain ?? [],
     walls: board.walls.map(serialize).sort(),
     fog: board.fog.map(serialize).sort(),
   });

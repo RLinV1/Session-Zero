@@ -12,7 +12,6 @@ import {
   MAX_FOG_REGIONS,
   pointInPolygon,
   reduce,
-  reduceAll,
   undoableAction,
   type CommandInput,
   type CommittedEvent,
@@ -120,11 +119,14 @@ describe("content under fog is not sent to players (FR-GM-17, FR-GM-23)", () => 
     expect(JSON.stringify(filterStateForViewer(state, alice))).not.toContain("Goblin");
   });
 
-  it("lets an owner keep their own token under fog", () => {
+  it("lets an owner see and move their own token after fog is painted over it", () => {
     const { state: withHero, token } = withToken(baseRoom(), { name: "Hero", ownerIds: [alice.id] });
     const { state } = addFog(withHero);
     expect(filterStateForViewer(state, alice).tokens[token.id]).toBeDefined();
     expect(filterStateForViewer(state, bob).tokens[token.id]).toBeUndefined();
+    const moved = run(state, alice, { type: "token.move", tokenId: token.id, to: { x: 105, y: 35 } });
+    expect(moved.state.fog).toEqual(state.fog);
+    expect(filterStateForViewer(moved.state, alice).tokens[token.id]?.position).toEqual({ x: 105, y: 35 });
   });
 
   it("still withholds a hidden token outside fog", () => {
@@ -276,7 +278,7 @@ describe("fog review fixes (FR-GM-17, FR-GM-23)", () => {
     const { state: s2, token: hero } = withToken(s1, { name: "Hero", ownerIds: [alice.id] });
     const away = run(s2, gm, { type: "token.move", tokenId: hero.id, to: { x: 385, y: 385 } }).state;
     const { state } = addFog(away);
-    expect(attempt(state, alice, { type: "token.move", tokenId: goblin.id, to: { x: 0, y: 0 } })).toMatchObject({ code: "not_found" });
+    expect(attempt(state, alice, { type: "token.move", reposition: true, tokenId: goblin.id, to: { x: 0, y: 0 } })).toMatchObject({ code: "not_found" });
     expect(attempt(state, alice, { type: "dice.roll", expression: "1d20", attack: { actorTokenId: hero.id, targetTokenId: goblin.id } }))
       .toMatchObject({ code: "not_found" });
     const placed = run(state, bob, { type: "template.place", shape: "circle", origin: { x: 35, y: 35 }, toward: { x: 35, y: 35 }, size: 10 }).events[0]!;
@@ -285,14 +287,27 @@ describe("fog review fixes (FR-GM-17, FR-GM-23)", () => {
     expect(attempt(withTemplate, alice, { type: "template.remove", templateId: id })).toMatchObject({ code: "not_found" });
   });
 
-  it("moves a token into fog before renaming it in the same save", () => {
+  it("hides first and reveals last for ordinary positional configuration with private edits", () => {
     const { state: s1, token } = withToken(baseRoom(), { name: "Guard" });
     const away = run(s1, gm, { type: "token.move", tokenId: token.id, to: { x: 385, y: 385 } }).state;
     const { state } = addFog(away);
-    const events = run(state, gm, { type: "token.configure", tokenId: token.id, changes: { name: "Secret Lich", position: { x: 35, y: 35 } } }).events;
-    expect(events.map((e) => e.type)).toEqual(["TokenMoved", "TokenAppearanceSet"]);
-    const out = run(reduceAll(state, events), gm, { type: "token.configure", tokenId: token.id, changes: { name: "Guard", position: { x: 385, y: 385 } } }).events;
-    expect(out.map((e) => e.type)).toEqual(["TokenAppearanceSet", "TokenMoved"]);
+    const stats = { hp: 20, maxHp: 30, ac: 15 };
+    const into = run(state, gm, { type: "token.configure", tokenId: token.id, changes: { name: "Secret Lich", position: { x: 35, y: 35 }, stats } });
+    expect(into.events.map((e) => e.type)).toEqual(["TokenMoved", "TokenAppearanceSet", "TokenStatsSet"]);
+    let current = state;
+    for (const [i, event] of into.events.entries()) {
+      expect(filterEventForViewer(committed(event), current, alice).kind).toBe(i === 0 ? "resync" : "redacted");
+      current = reduce(current, event);
+      expect(filterStateForViewer(current, alice).tokens[token.id]).toBeUndefined();
+    }
+    const out = run(into.state, gm, { type: "token.configure", tokenId: token.id, changes: { name: "Guard", position: { x: 385, y: 385 }, stats: token.stats } });
+    expect(out.events.map((e) => e.type)).toEqual(["TokenAppearanceSet", "TokenStatsSet", "TokenMoved"]);
+    for (const [i, event] of out.events.entries()) {
+      expect(filterEventForViewer(committed(event), current, alice).kind).toBe(i === out.events.length - 1 ? "resync" : "redacted");
+      current = reduce(current, event);
+      expect(JSON.stringify(filterStateForViewer(current, alice))).not.toContain("Secret Lich");
+    }
+    expect(filterStateForViewer(current, alice).tokens[token.id]).toMatchObject({ name: "Guard", position: { x: 385, y: 385 }, stats: token.stats });
   });
 
   it("refuses an undo that would push the room past the fog cap", () => {

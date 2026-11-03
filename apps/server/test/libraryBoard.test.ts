@@ -74,6 +74,45 @@ describe("walls and fog prepared on a library map (asset-library, ADR 0037)", ()
     expect((await put(gm, map.id, { walls, fog: [] })).status).toBe(200);
   });
 
+  it("saves grid and terrain in one owner-scoped revision and rejects stale writes atomically (ADR 0046)", async () => {
+    const cookie = await newGm(), other = await newGm();
+    const map = await uploadOk(cookie, "map", "Terrain", 1000, 800);
+    const endpoint = `/api/library/${map.id}/preparation`;
+    const original = await (await gmFetch(cookie, endpoint)).json() as { revision: string };
+    const change = { revision: original.revision, grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" }, board: { walls: [], fog: [], terrain: [{ row: 1, start: 1, end: 4, kind: "difficult" }] } };
+    const save = (auth: string, data: unknown) => gmFetch(auth, endpoint, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+    expect((await save(cookie, change)).status).toBe(200);
+    const current = await (await gmFetch(cookie, endpoint)).json();
+    expect((await save(cookie, { ...change, grid: { ...change.grid, cellSize: 60 }, board: { walls: [], fog: [], terrain: [] }, resetTerrain: true })).status).toBe(409);
+    expect(await (await gmFetch(cookie, endpoint)).json()).toEqual(current);
+    expect((await save(other, change)).status).toBe(404);
+    expect((await gmFetch(other, endpoint)).status).toBe(404);
+    expect((await put(cookie, map.id, { walls: [], fog: [] })).status).toBe(200);
+    expect(await (await gmFetch(cookie, `/api/library/${map.id}/board`)).json()).toEqual(change.board);
+    const credentials = await server.createRoom("Terrain owner", { cookie });
+    const gm = await server.connect(credentials);
+    try {
+      expect((await gm.command({ type: "scene.setMap", map: { url: map.url, width: map.width, height: map.height, assetId: map.id }, includeLibraryBoard: true })).type).toBe("ack");
+      expect(gm.state.terrain?.base).toEqual(change.board.terrain);
+      const placedMap = { url: map.url, width: map.width, height: map.height, assetId: map.id };
+      for (const override of [{ cellSize: 60 }, { offsetX: 10 }, { offsetY: 10 }]) {
+        const beforeSeq = gm.seq, before = structuredClone(gm.state);
+        const placement = { type: "scene.setMap" as const, map: placedMap, grid: { ...change.grid, ...override }, includeLibraryBoard: true };
+        expect(await gm.command(placement)).toMatchObject({ type: "rejected", code: "invalid" });
+        expect(gm.seq).toBe(beforeSeq); expect(gm.state).toEqual(before);
+        expect(await gm.command({ ...placement, resetTerrain: true })).toMatchObject({ type: "ack" });
+        expect(gm.state.terrain?.base ?? []).toEqual([]);
+        const commandId = gm.state.undo.at(-1)!.commandId;
+        expect(await gm.command({ type: "history.undo", commandId })).toMatchObject({ type: "ack" });
+        expect(gm.state.terrain?.base).toEqual(change.board.terrain);
+        expect(gm.state.scene.grid).toEqual(change.grid);
+      }
+      expect((await gm.command({ type: "terrain.paint", layerId: "base", paint: [{ row: 1, start: 1, end: 1, kind: "blocked" }], context: { boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 } })).type).toBe("ack");
+      expect(await (await gmFetch(cookie, `/api/library/${map.id}/board`)).json()).toEqual(change.board);
+    } finally { gm.close(); }
+
+  });
+
   it("answers 404 for another account, a token, or an unknown id", async () => {
     const [a, b] = [await newGm(), await newGm()];
     const map = await uploadOk(a, "map", "Cave", 1000, 800);
