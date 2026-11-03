@@ -1,5 +1,6 @@
 /* global window, localStorage, location */
 import assert from 'node:assert/strict';
+import { demoEnvironment, createDemoCleanup, installDemoSignals } from './gm-player-runtime.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,11 +22,13 @@ const origin = `http://127.0.0.1:${webPort}`;
 const children = [];
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser;
+const cleanup = createDemoCleanup(() => browser, children);
+installDemoSignals(cleanup);
 const chapters = [];
 async function chapter(title) { chapters.push({ title, seconds: (Date.now() - started) / 1000 }); console.log(title); await pause(1800); }
 let started;
 function launch(args, env) {
-  const child = spawn(process.execPath, args, { cwd: root, windowsHide: true, env: { ...process.env, DATABASE_URL: '', REDIS_URL: '', S3_BUCKET: '', S3_AUTODETECT: '0', DEV_ACCOUNT_EMAIL: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, args, { cwd: root, windowsHide: true, env: demoEnvironment({ ...process.env, ...env }), stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child);
   child.stdout.on('data', text => process.stdout.write(text));
   child.stderr.on('data', text => process.stderr.write(text));
@@ -188,6 +191,5 @@ try {
   }
   throw error;
 } finally {
-  await browser?.close();
-  for (const child of children.reverse()) child.kill();
+  await cleanup();
 }

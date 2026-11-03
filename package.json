@@ -20,7 +20,7 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.browser.json",
-    "test": "npm run test --workspaces --if-present && npm run test:bench --workspace=@vtt/server",
+    "test": "node --test scripts/gm-player-runtime.test.mjs && npm run test --workspaces --if-present && npm run test:bench --workspace=@vtt/server",
     "start": "npm run start --workspace=@vtt/server",
     "test:browser": "playwright test",
     "demo:gm-player": "node scripts/record-gm-player-demo.mjs",
