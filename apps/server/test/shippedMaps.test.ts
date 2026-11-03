@@ -64,6 +64,40 @@ describe("seeding per map (builtin-library-assets, ADR 0036 amendment)", () => {
         expect(keys).not.toContain(first!.objectKey);
       });
 
+      it("corrects only exact old factory grids, preserving row identity and custom line styling", async () => {
+        const o = await owner();
+        const map = SHIPPED_MAPS.find((m) => m.slug === "broken-span")!;
+        const oldGrid = { ...DEFAULT_GRID, cellSize: 69.4, offsetX: 10, offsetY: 31 };
+        const factory = { ...row(o, map.slug), name: "Renamed by GM", url: map.url, width: map.width, height: map.height, grid: oldGrid };
+        await store!.seedShippedMaps(o, [factory]);
+        await ensureShippedMaps(store!, o);
+        const corrected = (await store!.listAssets(o)).find((r) => r.id === factory.id)!;
+        expect(corrected).toMatchObject({ ...factory, grid: map.grid });
+        const styled = { ...oldGrid, lineColor: "#123456", lineWidth: 2 };
+        await store!.updateAsset(factory.id, o, { grid: styled });
+        await ensureShippedMaps(store!, o);
+        expect((await store!.listAssets(o)).find((r) => r.id === factory.id)!.grid).toEqual(styled);
+      });
+
+      it("upgrades a four-map library without resetting edited grids or restoring deleted maps", async () => {
+        const o = await owner();
+        const originals = SHIPPED_MAPS.filter((m) => !["emberwatch-archive", "moonwater-baths"].includes(m.slug));
+        await store!.seedShippedMaps(o, originals.map((m) => ({ ...row(o, m.slug), url: m.url, width: m.width, height: m.height, grid: m.grid })));
+        const existing = await store!.listAssets(o);
+        const edited = existing[0]!;
+        const customGrid = { ...DEFAULT_GRID, cellSize: 83, offsetX: 7, offsetY: 11 };
+        await store!.updateAsset(edited.id, o, { name: "My prepared map", grid: customGrid });
+        await store!.deleteAsset(existing[1]!.id, o);
+        await Promise.all([ensureShippedMaps(store!, o), ensureShippedMaps(store!, o)]);
+        const upgraded = await store!.listAssets(o);
+        expect(upgraded).toHaveLength(SHIPPED_MAPS.length - 1);
+        expect(upgraded.find((r) => r.id === edited.id)).toMatchObject({ name: "My prepared map", grid: customGrid });
+        expect(upgraded.some((r) => r.objectKey === existing[1]!.objectKey)).toBe(false);
+        for (const slug of ["emberwatch-archive", "moonwater-baths"]) {
+          expect(upgraded.filter((r) => r.objectKey === `shipped:${slug}`)).toHaveLength(1);
+        }
+      });
+
       it("gives a new account every row exactly once, even under concurrent calls", async () => {
         const o = await owner();
         const catalog = [...ORIGINAL, "new-map"];
