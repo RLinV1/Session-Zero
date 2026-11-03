@@ -18,6 +18,98 @@ async function setup() {
   const token = Object.values(gm.state.tokens)[0] as Token;
   return { gm, player, token, gmCreds, playerCreds };
 }
+
+describe.each(["token.configure", "token.setAppearance"] as const)("%s resize over the wire (FR-TAC-03, FR-GM-23, FR-REC-02)", (type) => {
+  const resize = (token: Token, size: number): CommandInput => type === "token.configure"
+    ? { type, tokenId: token.id, changes: { size, name: "Changed name", rotation: 90, hidden: true, ownerIds: [], imageUrl: "/uploads/changed.png", assetId: null, stats: { hp: 2, maxHp: 3, ac: 10 }, conditions: ["prone"] } }
+    : { type, tokenId: token.id, name: "Changed name", size, rotation: 90 };
+  const sizeOnly = (token: Token, size: number): CommandInput => type === "token.configure"
+    ? { type, tokenId: token.id, changes: { size } }
+    : { type, tokenId: token.id, name: token.name, size, rotation: token.rotation };
+
+  it.each(["base", "temporary"])("refuses %s Blocked enlargement without appending or changing any submitted field", async (layer) => {
+    const { gm, player, token } = await setup();
+    let layerId = "base";
+    if (layer === "temporary") {
+      await gm.command(paint(gm, "difficult"));
+      await gm.command({ type: "terrain.effect.create", name: "Private trap", context: context(gm) });
+      layerId = gm.state.terrain!.effects[0]!.id;
+    }
+    await gm.command(paint(gm, "blocked", 1, layerId)); await player.waitForSeq(gm.seq);
+    const before = structuredClone(gm.state), playerBefore = structuredClone(player.state), last = gm.seq;
+    const events = await server!.store.loadEvents(gm.state.roomId);
+    expect(await gm.command(resize(token, 2))).toMatchObject({ type: "rejected", code: "invalid", message: "That move is unavailable." });
+    expect(gm.seq).toBe(last); expect(player.seq).toBe(last);
+    expect(gm.state).toEqual(before); expect(player.state).toEqual(playerBefore);
+    expect(await server!.store.loadEvents(gm.state.roomId)).toEqual(events);
+    await gm.command(paint(gm, null, 1, layerId));
+    expect(await gm.command(sizeOnly(token, 2))).toMatchObject({ type: "ack" });
+    await gm.command(paint(gm, "blocked", 1, layerId));
+    // Painting may cover the enlarged token; shrinking into its clear top-left cell succeeds.
+    expect(await gm.command(sizeOnly(gm.state.tokens[token.id]!, 1))).toMatchObject({ type: "ack" });
+    await player.waitForSeq(gm.seq);
+    expect(gm.state.tokens[token.id]).toEqual(token);
+    expect(player.state.tokens[token.id]).toMatchObject({ size: 1, position: token.position });
+  });
+
+  it.each(["terrain", "portal"])("validates against a preceding queued %s edit", async (obstacle) => {
+    const { gm, player, token } = await setup();
+    if (obstacle === "portal") await gm.command({ type: "wall.add", walls: [{ a: { x: 105, y: 0 }, b: { x: 105, y: 140 }, portal: { kind: "window", state: "open" } }] });
+    const last = gm.seq;
+    const edit = gm.command(obstacle === "terrain" ? paint(gm, "blocked") : { type: "portal.setState", wallId: Object.keys(gm.state.walls)[0]!, state: "closed" });
+    const resized = gm.command(sizeOnly(token, 2));
+    expect(await edit).toMatchObject({ type: "ack" });
+    expect(await resized).toMatchObject({ type: "rejected", message: "That move is unavailable." });
+    await player.waitForSeq(gm.seq);
+    expect(gm.seq).toBe(last + 1); expect(gm.state.tokens[token.id]).toEqual(token);
+    expect(player.state.tokens[token.id]).toMatchObject({ size: 1, position: token.position });
+  });
+
+  it("preserves hide-first/reveal-last, compensation, non-undoable resize batches, replay and reload", async () => {
+    const { gm, player, token, gmCreds, playerCreds } = await setup();
+    await gm.command({ type: "token.setOwners", tokenId: token.id, ownerIds: [] });
+    await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 60, y: 60 }, to: { x: 100, y: 100 } } });
+    await player.waitForSeq(gm.seq);
+    const fog = structuredClone(gm.state.fog), before = gm.seq, undo = structuredClone(gm.state.undo.filter((entry) => entry.undoable));
+    const named = (size: number, name: string): CommandInput => type === "token.configure"
+      ? { type, tokenId: token.id, changes: { size, name, rotation: 90 } }
+      : { type, tokenId: token.id, size, name, rotation: 90 };
+    expect(await gm.command(named(2, "Private resize"))).toMatchObject({ type: "ack" });
+    await player.waitForSeq(gm.seq);
+    const grown = (await server!.store.loadEvents(gm.state.roomId)).filter((e) => e.seq > before);
+    expect(grown.map((e) => e.event.type)).toEqual(["TokenMoved", "TokenAppearanceSet"]);
+    expect(grown[0]!.event).toMatchObject({ from: token.position, to: { x: 70, y: 70 } });
+    expect(grown[1]!.event).toMatchObject({ previous: { name: token.name, size: 1, rotation: 0 } });
+    expect(player.state.tokens[token.id]).toBeUndefined();
+    expect(gm.state.undo.filter((entry) => entry.undoable)).toEqual(undo);
+    expect(gm.state.undo.at(-1)).toMatchObject({ commandId: grown[0]!.commandId, undoable: false });
+    expect(await gm.command({ type: "history.undo", commandId: grown[0]!.commandId! })).toMatchObject({ type: "rejected" });
+    const concealedSeq = gm.seq;
+    expect(await gm.command(named(1, "Public return"))).toMatchObject({ type: "ack" });
+    await player.waitForSeq(gm.seq);
+    const shrunk = (await server!.store.loadEvents(gm.state.roomId)).filter((e) => e.seq > concealedSeq);
+    expect(shrunk.map((e) => e.event.type)).toEqual(["TokenAppearanceSet", "TokenMoved"]);
+    expect(shrunk[0]!.event).toMatchObject({ previous: { name: "Private resize", size: 2, rotation: 90 } });
+    expect(player.state.tokens[token.id]).toMatchObject({ name: "Public return", size: 1, position: token.position });
+    expect(player.rawLog.join("\n")).not.toContain("Private resize");
+    expect(gm.state.fog).toEqual(fog); expect(gm.state.undo.filter((entry) => entry.undoable)).toEqual(undo);
+    expect(gm.state.undo.at(-1)).toMatchObject({ commandId: shrunk[0]!.commandId, undoable: false });
+    const canonical = structuredClone(gm.state.tokens[token.id]), store = server!.store;
+    clients.splice(0).forEach((c) => c.close()); await server!.close(); server = await startServer(store);
+    const reGm = await server.connect(gmCreds), rePlayer = await server.connect(playerCreds); clients.push(reGm, rePlayer);
+    expect(reGm.state.tokens[token.id]).toEqual(canonical);
+    expect(rePlayer.state.tokens[token.id]).toMatchObject({ name: "Public return", size: 1, position: token.position });
+    expect(reGm.state.fog).toEqual(fog);
+    for (const credentials of [gmCreds, playerCreds]) {
+      const response = await fetch(`${server.base}/api/rooms/${gmCreds.roomId}/replay/start`, { headers: { authorization: `Bearer ${credentials.guestToken}` } });
+      expect(response.status).toBe(200);
+      const replay = ReplayResponse.parse(await response.json());
+      expect(replayStates(replay).at(-1)?.tokens[token.id]).toMatchObject({ name: "Public return", size: 1, position: token.position });
+      if (credentials === playerCreds) expect(JSON.stringify(replay)).not.toContain("Private resize");
+    }
+  });
+});
+
 describe("terrain over the ordered wire (FR-PL-04, FR-GM-23, FR-REC-02)", () => {
   it.each([
     { name: "into", from: 35, to: 105, left: 70, right: 210 },

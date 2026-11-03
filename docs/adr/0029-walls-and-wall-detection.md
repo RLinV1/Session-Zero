@@ -174,3 +174,7 @@ Schema changes, all backward compatible: `DetectedWall` gains an optional `porta
 ## Amendment: terrain and tactical movement
 
 Ordinary GM and player movement now checks the swept square footprint, retaining the footprint inset and starting-wall escape exception. The GM uses explicit one-move Reposition to bypass routes; its destination still must be wall- and Blocked-free. Player refusals are generic. See [ADR 0046](0046-terrain-tactical-movement.md), proposed and awaiting Real-Time Architecture review.
+
+## Amendment: existing-token resize destinations
+
+The resize exemption above is superseded for `token.configure` and `token.setAppearance`: actual size changes require a clear resulting footprint against effective Blocked terrain and blocking walls/portals, retaining the 10% wall inset. Automatic anchoring checks the destination only; an explicitly displaced centre also checks the swept route using the resulting size. Unchanged size and position allow unrelated edits while obstructed. Grid re-snaps retain their exemption. Positioning, fog concealment, atomic refusals, event ordering and existing non-undoable resize batches follow [ADR 0046](0046-terrain-tactical-movement.md); its Real-Time Architecture review remains required before release.

@@ -1,4 +1,4 @@
-import { movementBlocked } from "./movement";
+import { destinationBlocked, movementBlocked } from "./movement";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
 import { namedAttackFor } from "./attackPresets";
@@ -415,9 +415,13 @@ export function decide(
         const ownerError = checkOwners(state, changes.ownerIds);
         if (ownerError) return ownerError;
       }
-      if (changes.position && !sameValue(changes.position, token.position) && movementBlocked(state, { ...token, size: changes.size ?? token.size }, changes.position)) return reject("invalid", "That move is unavailable.");
-      if (changes.position && footprintCrossesWall(changes.position, changes.size ?? token.size, state.scene.grid, blockingWalls(state))) {
-        return wallBlocked();
+      const size = changes.size ?? token.size;
+      const position = changes.position ?? resizedPosition(state, token, size);
+      // Explicit displacement keeps swept movement checks; automatic anchoring only checks the result.
+      if (changes.position && !sameValue(changes.position, token.position)) {
+        if (movementBlocked(state, { ...token, size }, position)) return reject("invalid", "That move is unavailable.");
+      } else if (size !== token.size && destinationBlocked(state, size, position)) {
+        return reject("invalid", "That move is unavailable.");
       }
       const imageUrl = changes.imageUrl;
       const assetId = changes.assetId;
@@ -430,9 +434,7 @@ export function decide(
       }
 
       const name = changes.name === undefined ? token.name : uniqueTokenName(state, changes.name, token.id);
-      const size = changes.size ?? token.size;
       const rotation = changes.rotation === undefined ? token.rotation : normalizeRotation(changes.rotation);
-      const position = changes.position ?? resizedPosition(state, token, size);
       const moved: DomainEvent | null = position.x !== token.position.x || position.y !== token.position.y
         ? { type: "TokenMoved", tokenId: token.id, from: token.position, to: position }
         : null;
@@ -491,6 +493,7 @@ export function decide(
       const rotation = normalizeRotation(command.rotation);
       if (name === token.name && command.size === token.size && rotation === token.rotation) return { ok: true, events: [] };
       const position = resizedPosition(state, token, command.size);
+      if (command.size !== token.size && destinationBlocked(state, command.size, position)) return reject("invalid", "That move is unavailable.");
       const appearance: DomainEvent = {
         type: "TokenAppearanceSet",
         tokenId: token.id,

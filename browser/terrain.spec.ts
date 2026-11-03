@@ -50,6 +50,79 @@ async function enter(page: Page, credentials: Credentials) {
   await expect(page.getByRole("button", { name: "Show terrain", exact: true })).toBeVisible();
 }
 
+test("GM editor resizes reject obstructions atomically and preserve fog concealment (FR-TAC-03, FR-GM-23)", async ({ page, browser }, testInfo) => {
+  const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+  const guestToken = randomBytes(32).toString("base64url");
+  const created = await page.request.post("/api/rooms", { data: { roomName: "Resize regression", displayName: "Terrain GM", guestToken } });
+  expect(created.status()).toBe(200);
+  const credentials = { ...await created.json(), guestToken } as Credentials;
+  const playerContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const playerPage = await playerContext.newPage(); playerPage.on("pageerror", (error) => errors.push(error.message));
+  const playerFrames: string[] = [];
+  playerPage.on("websocket", (socket) => socket.on("framereceived", ({ payload }) => { if (typeof payload === "string") playerFrames.push(payload); }));
+  const playerToken = randomBytes(32).toString("base64url");
+  const joined = await playerPage.request.post(`/api/invites/${credentials.inviteCode}/join`, { data: { displayName: "Resize observer", guestToken: playerToken } });
+  expect(joined.status()).toBe(200);
+  const playerCredentials = { ...await joined.json(), guestToken: playerToken } as Credentials;
+  const gm = await wire(credentials), player = await wire(playerCredentials);
+  try {
+    const image = await sharp({ create: { width: 700, height: 500, channels: 3, background: "#3c4a45" } }).png().toBuffer();
+    const upload = await page.request.post("/api/library", { multipart: { kind: "map", name: "Resize map", width: "700", height: "500", file: { name: "resize.png", mimeType: "image/png", buffer: image } } });
+    expect(upload.status()).toBe(201);
+    const asset = await upload.json() as { id: string; url: string; width: number; height: number };
+    const grid = { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" };
+    expect((await gm.command({ type: "scene.setMap", map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid })).type).toBe("ack");
+    expect((await gm.command({ type: "token.create", name: "Scout", position: { x: 25, y: 25 } })).type).toBe("ack");
+    const token = Object.values(gm.state.tokens)[0]!;
+    const paint = (kind: "blocked" | null): CommandInput => ({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 1, end: 1, kind }], context: { boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 } });
+    expect((await gm.command(paint("blocked"))).type).toBe("ack");
+    await enter(page, credentials); await enter(playerPage, playerCredentials);
+    await page.getByRole("tab", { name: "Tokens", exact: true }).click();
+    await playerPage.getByRole("tab", { name: "Tokens", exact: true }).click();
+    const edit = async (size: number, name?: string) => {
+      await page.getByRole("button", { name: "Edit Scout", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Edit Scout", exact: true });
+      await dialog.locator("summary").filter({ hasText: "Advanced" }).click();
+      await dialog.getByLabel("Size (cells)", { exact: true }).fill(String(size));
+      if (name) await dialog.getByLabel("Name", { exact: true }).fill(name);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+      return dialog;
+    };
+    const last = gm.seq;
+    const refused = await edit(2, "Refused name");
+    await expect(refused.getByRole("alert")).toContainText("That move is unavailable.");
+    await expect.poll(() => player.seq).toBe(last);
+    expect(gm.seq).toBe(last); expect(gm.state.tokens[token.id]).toEqual(token);
+    expect(player.state.tokens[token.id]).toMatchObject({ name: "Scout", size: 1, position: token.position });
+    await page.screenshot({ path: testInfo.outputPath("resize-refused.png") });
+    await refused.getByRole("button", { name: "Close", exact: true }).click();
+    expect((await gm.command(paint(null))).type).toBe("ack");
+    expect((await gm.command({ type: "token.setAppearance", tokenId: token.id, name: "Scout", size: 2, rotation: 0 })).type).toBe("ack");
+    expect((await gm.command(paint("blocked"))).type).toBe("ack");
+    await edit(1);
+    await expect(page.getByRole("dialog", { name: "Edit Scout", exact: true })).toHaveCount(0);
+    await expect.poll(() => player.state.tokens[token.id]?.size).toBe(1);
+    expect(gm.state.tokens[token.id]?.position).toEqual(token.position);
+    expect((await gm.command(paint(null))).type).toBe("ack");
+    expect((await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 40, y: 40 }, to: { x: 80, y: 80 } } })).type).toBe("ack");
+    await edit(2, "Private resize");
+    await expect.poll(() => player.state.tokens[token.id]).toBeUndefined();
+    await expect(playerPage.getByRole("button", { name: "Scout", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit Private resize", exact: true }).click();
+    const reveal = page.getByRole("dialog", { name: "Edit Private resize", exact: true });
+    await reveal.locator("summary").filter({ hasText: "Advanced" }).click();
+    await reveal.getByLabel("Size (cells)", { exact: true }).fill("1");
+    await reveal.getByLabel("Name", { exact: true }).fill("Public return");
+    await reveal.getByRole("button", { name: "Save", exact: true }).click();
+    await reveal.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect.poll(() => player.state.tokens[token.id]?.name).toBe("Public return");
+    await expect(playerPage.getByRole("button", { name: "Public return", exact: true })).toBeVisible();
+    expect(player.raw.join("\n")).not.toContain("Private resize"); expect(playerFrames.join("\n")).not.toContain("Private resize");
+    expect(errors).toEqual([]);
+  } finally { gm.close(); player.close(); await playerContext.close(); }
+});
+
 test("terrain preparation, synchronized layers, movement restrictions and private feedback (FR-GM-15/23, FR-PL-04)", async ({ page, browser }, testInfo) => {
   test.setTimeout(150_000); page.setDefaultTimeout(15_000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));

@@ -16,7 +16,7 @@ Only the GM SHALL edit base terrain or named temporary effects using a cell brus
 - **THEN** the token stays put; Blocked ground prevents ordinary movement until resolved, while fog permits authorized owner and GM movement and continues concealing unowned content
 
 ### Requirement: Authoritative swept movement
-Every token movement input, including permitted positional token configuration, SHALL validate the straight route from the actual committed origin against full swept-square Blocked overlap and swept walls with existing clearance and starting-wall escape. Blocked terrain SHALL NOT gain a starting escape exception. Closed/locked portals SHALL block and open portals SHALL permit movement. Manual fog SHALL NOT obstruct authorized owner or GM movement, including an owned token starting under fog; physical route and destination restrictions and proportional Difficult cost SHALL still apply under fog. Ownership, hidden-token restrictions and revocation SHALL remain enforced. Clients SHALL NOT automatically set Reposition or supply a new permission flag. GM-only Reposition SHALL bypass route restrictions while requiring a destination clear of walls and Blocked terrain and SHALL be consumed by one move attempt even when refused. Cancellation SHALL clear Reposition without committing movement. GM view-as-player SHALL remain read-only. New clients SHALL fence stale origins and board contexts; all commits SHALL use current ordered state. Moving SHALL NOT change manual fog.
+Every token movement input, including explicitly displaced permitted positional token configuration, SHALL validate the straight route from the actual committed origin against full swept-square Blocked overlap and swept walls with existing clearance and starting-wall escape. Blocked terrain SHALL NOT gain a starting escape exception. Closed/locked portals SHALL block and open portals SHALL permit movement. Manual fog SHALL NOT obstruct authorized owner or GM movement, including an owned token starting under fog; physical route and destination restrictions and proportional Difficult cost SHALL still apply under fog. Ownership, hidden-token restrictions and revocation SHALL remain enforced. Clients SHALL NOT automatically set Reposition or supply a new permission flag. GM-only Reposition SHALL bypass route restrictions while requiring a destination clear of walls and Blocked terrain and SHALL be consumed by one move attempt even when refused. Cancellation SHALL clear Reposition without committing movement. GM view-as-player SHALL remain read-only. New clients SHALL fence stale origins and board contexts; all commits SHALL use current ordered state. Moving SHALL NOT change manual fog.
 
 #### Scenario: Clear destination beyond obstruction
 - **WHEN** a token crosses a Blocked strip, wall or closed/locked portal to clear ground, including an ordinary GM move through fog
@@ -37,6 +37,29 @@ Every token movement input, including permitted positional token configuration, 
 #### Scenario: Unauthorized fog movement
 - **WHEN** a player attempts to move an unowned, GM-hidden or ownership-revoked token under fog, or a revoked participant submits movement
 - **THEN** authorization still refuses the command without disclosing concealed token details
+
+### Requirement: Existing-token resize destinations
+Actual size changes through `token.configure` and `token.setAppearance` SHALL require a resulting footprint with no positive-area overlap with effective Blocked terrain across base and temporary layers and no blocking wall or closed/locked door/window intersection using the existing 10% wall inset. Open portals, Difficult terrain and manual fog SHALL permit resizing. Automatic centre shifts SHALL check only the destination. Shrinking from obstruction SHALL succeed only when the resulting footprint is clear. Snapped integer resizes SHALL retain their top-left anchor; off-grid tokens and changes to or from fractional sizes SHALL retain their centre. An explicit position SHALL take precedence; explicit displacement SHALL retain swept-route and destination checks using the resulting size, while an explicit unchanged centre SHALL create no movement route. Commands with unchanged size and position SHALL skip physical validation and permit unrelated edits while obstructed. Refusals SHALL use `invalid`, "That move is unavailable.", append no events and change no submitted fields. Successful resizes SHALL retain existing compensation values and hide-first/reveal-last ordering and SHALL remain non-undoable. Creation/duplication, map/grid adjustments and table restoration SHALL retain their existing behavior.
+
+#### Scenario: Automatic anchored growth
+- **WHEN** an integer snapped token grows without an explicit position
+- **THEN** only its final anchored footprint is checked, even if sweeping the resulting size from its old centre would intersect Blocked terrain
+
+#### Scenario: Fractional or off-grid growth
+- **WHEN** a fractional or off-grid token changes size without shifting its centre, or an explicit position equals the committed centre
+- **THEN** its resulting footprint is still checked and an obstructed result is refused atomically
+
+#### Scenario: Shrink from obstruction
+- **WHEN** terrain or a blocking wall/portal covers a token and the GM shrinks it
+- **THEN** a clear resulting footprint succeeds and a still-obstructed footprint fails; unchanged geometry still permits metadata edits
+
+#### Scenario: Resize with displacement
+- **WHEN** the GM submits size and an explicit position different from the committed centre
+- **THEN** the straight route and destination are validated using the resulting size against current ordered terrain and portals
+
+#### Scenario: Resize crosses fog
+- **WHEN** an accepted resize shifts a token centre into or out of fog
+- **THEN** existing hide-first/reveal-last event ordering protects concealed edits in live clients, reconnect and replay
 
 ### Requirement: Proportional private ruler
 A mover SHALL see distance and separate cost when different, using Chebyshev for snapped and Euclidean for free movement. Cost SHALL equal distance times one plus the union fraction with any positive-area Difficult footprint overlap, including under fog. Boundary contact SHALL not count. Unknown coverage SHALL withhold full cost even when movement is permitted. Route feedback SHALL be visual: red dashed for known collisions, faint dashed while uncertain, and solid for a checked clear route, without obstruction-status text. Fog itself SHALL NOT appear as a local collision; fog-only player routes SHALL be uncertain. Plain walls SHALL remain hidden from players. Rate-limited, unpersisted server feedback SHALL return only a private status to the requesting socket for an authorized token; player routes SHALL be wholly inside current known coverage before private collision checks and concealed player routes SHALL return unknown regardless of concealed obstacles. No hidden cost, geometry, obstacle identity or canonical terrain SHALL be disclosed. GM local and server advisory feedback SHALL report fog-only routes clear and physical collisions blocked. Replies for older requests or committed sequences SHALL be ignored; committed and redacted changes SHALL refresh stationary drags. Every committed move SHALL still be revalidated. Rulers SHALL be mover-only and never create sight origins.

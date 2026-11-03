@@ -1,5 +1,24 @@
 # Terrain and tactical movement — verification
 
+## Finding 8: resize obstruction validation — 2026-11-03
+
+Implemented on `fix/pr134-token-resize-obstructions` in `/private/tmp/vtt-pr134-token-resize-obstructions`, based on PR #134 baseline `f096bbb44a98a5bc916d0392e64b3659c21c826c`. Both existing-token resize commands now validate the resulting footprint; explicit displacement retains swept validation with the resulting size. ADR 0046, ADR 0029's resize exemption amendment and the existing terrain specification record the policy. No schemas, reducers or persistence formats changed.
+
+The new shared cases produced 32 failures against the unchanged baseline before the fix. Final validation explicitly pinned Node **22.23.2**:
+
+| Check | Result |
+| --- | --- |
+| Planned focused shared tests | PASS: **220 tests** |
+| Planned focused server tests | PASS: **71 tests** |
+| `npm run lint`, `npm run typecheck`, `npm run build` | PASS |
+| `npm test` with disposable PostgreSQL and Redis | PASS: **934 shared + 635 server + 1194 web + 2 latency = 2765 passed**, **1 skipped** (optional UVTT/S3 persistence) |
+| `npm run test:browser -- browser/terrain.spec.ts --grep 'GM editor resizes'` | PASS: **6/6** Chromium, Firefox and WebKit desktop/touch/narrow projects with separate GM/player sessions |
+| `openspec validate terrain-tactical-movement --strict`, `git diff --check` | PASS |
+
+Coverage includes base/temporary Blocked terrain, wall inset and doors/windows, fractional/off-grid/offset-grid positioning, clear and obstructed shrinking, automatic anchoring without a sweep, explicit-position swept checks, unchanged geometry, atomic refusals, queued terrain/portal edits, compensation values, existing non-undoable resize batches, fog filtering, replay and server reload. The browser flow submits size changes through the GM editor, confirms both clients remain unchanged on refusal, shrinks out of occupied Blocked terrain and verifies concealment through resize-driven fog transitions. Desktop and touch refusal screenshots were visually inspected. The local relay benchmark delivered 300/300 messages per recipient, with p95 114.6/116.2 ms. These are local results, not hosted acceptance.
+
+Logs are under `/private/tmp/vtt-resize-*-node22.log`; the baseline reproduction is `/private/tmp/vtt-resize-shared-before.log`. Disposable database/Redis processes were stopped. The original checkout's existing changes were preserved. ADR 0046 remains Proposed and its required Real-Time Architecture review remains a separate release gate; other PR findings are outside this fix.
+
 ## Main synchronization — 2026-11-03
 
 PR #134 merges `origin/main` through `6298da81a7c61097c3ba05356d6b7617c24e5b75` into `feat/terrain-tactical-movement`, preserving both branch histories. Nine conflicted files were reconciled across the board, movement ruler, library editor, styles, reducer, replay, undo and visibility. Main's personal movement planner, area effects, group rolls and design styles remain integrated with terrain editing, private movement feedback and preparation revision checks.

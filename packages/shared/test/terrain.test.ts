@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Command, Terrain, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, sweptCrossesWalls, tableOf, terrainCellKnown, undoConflict, type MovementPreviewRequest, type RoomState, type TerrainRun } from "../src";
+import { Command, Terrain, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, sweptCrossesWalls, tableOf, terrainCellKnown, undoConflict, type CommandInput, type MovementPreviewRequest, type RoomState, type TerrainRun, type Token } from "../src";
 import { alice, attempt, baseRoom, gm, run, withToken } from "./fixtures";
 const grid = { cellSize: 10, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" };
 const one = (kind: "blocked" | "difficult", col = 1, row = 0): TerrainRun[] => [{ row, start: col, end: col, kind }];
@@ -10,6 +10,105 @@ function setup() {
 }
 const context = (s: RoomState) => ({ boardEpoch: s.boardEpoch ?? 0, revision: s.terrainRevision ?? 0 });
 const paint = (s: RoomState, kind: "blocked" | "difficult" | null = "difficult", col = 1) => run(s, gm, { type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: col, end: col, kind }], context: context(s) });
+
+type ResizeCommand = Extract<CommandInput, { type: "token.configure" | "token.setAppearance" }>;
+const resize = (type: ResizeCommand["type"], token: Token, size: number): ResizeCommand => type === "token.configure"
+  ? { type, tokenId: token.id, changes: { size } }
+  : { type, tokenId: token.id, name: token.name, size, rotation: token.rotation };
+const unavailable = { ok: false, code: "invalid", message: "That move is unavailable." };
+
+describe.each(["token.configure", "token.setAppearance"] as const)("%s resize destinations (FR-TAC-03, FR-GM-15)", (type) => {
+  it.each(["base", "temporary"])("refuses anchored growth into %s Blocked terrain", (layer) => {
+    const { state, token } = setup();
+    const terrain = layer === "base"
+      ? { base: one("blocked"), effects: [] }
+      : { base: one("difficult"), effects: [{ id: "trap", name: "Trap", runs: one("blocked") }] };
+    expect(attempt({ ...state, terrain }, gm, resize(type, token, 2))).toEqual(unavailable);
+  });
+  it.each([
+    { name: "wall", portal: undefined, allowed: false },
+    ...(["door", "window"] as const).flatMap((kind) => (["closed", "locked", "open"] as const).map((state) => ({ name: `${state} ${kind}`, portal: { kind, state }, allowed: state === "open" }))),
+  ])("checks the final footprint against a $name", ({ portal, allowed }) => {
+    const { state, token } = setup();
+    const walls = { w: { id: "w", a: { x: 15, y: 0 }, b: { x: 15, y: 20 }, ...(portal ? { portal } : {}) } };
+    const result = attempt({ ...state, walls }, gm, resize(type, token, 2));
+    if (allowed) expect(result.ok).toBe(true);
+    else expect(result).toEqual(unavailable);
+  });
+  it.each([
+    { name: "integer", from: 1, to: 2, position: { x: 5, y: 5 }, expected: { x: 10, y: 10 } },
+    { name: "integer to fractional", from: 1, to: 1.5, position: { x: 5, y: 5 }, expected: { x: 5, y: 5 } },
+    { name: "fractional enlargement", from: .5, to: .75, position: { x: 7.5, y: 5 }, expected: { x: 7.5, y: 5 } },
+    { name: "fractional to integer", from: 1.5, to: 2, position: { x: 7.5, y: 5 }, expected: { x: 7.5, y: 5 } },
+    { name: "off-grid", from: 1, to: 2, position: { x: 7, y: 6 }, expected: { x: 7, y: 6 } },
+    { name: "offset grid", from: 1, to: 2, position: { x: 8, y: 3 }, expected: { x: 13, y: 8 }, offset: true },
+  ])("validates $name growth and preserves its positioning rule", ({ from, to, position, expected, offset }) => {
+    const { state, token } = setup();
+    const current = { ...token, size: from, position };
+    const ready = { ...state, scene: { ...state.scene, grid: offset ? { ...grid, offsetX: 3, offsetY: -2 } : grid }, tokens: { [token.id]: current } };
+    const command = resize(type, current, to);
+    expect(run(ready, gm, command).state.tokens[token.id]).toMatchObject({ size: to, position: expected });
+    expect(attempt({ ...ready, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toEqual(unavailable);
+  });
+  it("allows Difficult, boundary contact, wall clearance and fog without sweeping automatic anchoring", () => {
+    const { state, token } = setup();
+    const ready: RoomState = {
+      ...state,
+      terrain: { base: [...one("blocked", -1), ...one("difficult", 0), ...one("blocked", 2)], effects: [{ id: "ice", name: "Ice", runs: one("difficult") }] },
+      walls: { edge: { id: "edge", a: { x: 19, y: 0 }, b: { x: 19, y: 20 } } },
+      fog: { f: { id: "f", shape: "rect", points: [{ x: 8, y: 8 }, { x: 20, y: 8 }, { x: 20, y: 20 }, { x: 8, y: 20 }] } },
+    };
+    // A sweep of size 2 from the old centre would overlap the Blocked cell on the left.
+    expect(movementTerrain(token.position, { x: 10, y: 10 }, 2, grid, effectiveTerrain(ready.terrain!)).blocked).toBe(true);
+    const result = run(ready, gm, resize(type, token, 2));
+    expect(result.state.tokens[token.id]).toMatchObject({ size: 2, position: { x: 10, y: 10 } });
+    expect(result.state.fog).toEqual(ready.fog);
+  });
+  it.each(["terrain", "wall"])("allows shrinking out of %s only when the result is clear", (obstacle) => {
+    const { state, token } = setup();
+    const current = { ...token, size: 2, position: { x: 10, y: 10 } };
+    const ready = { ...state, tokens: { [token.id]: current } };
+    const obstructed = (clear: boolean): RoomState => obstacle === "terrain"
+      ? { ...ready, terrain: { base: one("blocked", clear ? 1 : 0), effects: [] } }
+      : { ...ready, walls: { w: { id: "w", a: { x: clear ? 15 : 5, y: 0 }, b: { x: clear ? 15 : 5, y: 20 } } } };
+    const result = run(obstructed(true), gm, resize(type, current, 1));
+    expect(result.state.tokens[token.id]).toMatchObject({ size: 1, position: { x: 5, y: 5 } });
+    expect(attempt(obstructed(false), gm, resize(type, current, 1))).toEqual(unavailable);
+  });
+  it("permits unchanged geometry and metadata edits while terrain and walls cover the token", () => {
+    const { state, token } = setup();
+    const ready = { ...state, terrain: { base: one("blocked", 0), effects: [] }, walls: { w: { id: "w", a: { x: 5, y: 0 }, b: { x: 5, y: 10 } } } };
+    const command = resize(type, token, token.size);
+    expect(attempt(ready, gm, command)).toEqual({ ok: true, events: [] });
+    const edited: CommandInput = command.type === "token.configure"
+      ? { ...command, changes: { size: token.size, position: token.position, name: "Renamed", rotation: 90 } }
+      : { ...command, name: "Renamed", rotation: 90 };
+    expect(run(ready, gm, edited).state.tokens[token.id]).toMatchObject({ name: "Renamed", rotation: 90, size: token.size, position: token.position });
+    expect(attempt(ready, gm, { type: "token.configure", tokenId: token.id, changes: { stats: { hp: 2, maxHp: 3, ac: 10 } } }).ok).toBe(true);
+  });
+});
+
+describe("combined resize and position (FR-TAC-03)", () => {
+  it.each(["terrain", "wall"])("sweeps the resulting size through %s on explicit displacement", (obstacle) => {
+    const { state, token } = setup();
+    const ready: RoomState = obstacle === "terrain"
+      ? { ...state, terrain: { base: one("blocked", 2, 1), effects: [] } }
+      : { ...state, walls: { w: { id: "w", a: { x: 20, y: 10 }, b: { x: 20, y: 20 } } } };
+    const move = { type: "token.configure" as const, tokenId: token.id, changes: { position: { x: 45, y: 5 } } };
+    expect(attempt(ready, gm, move).ok).toBe(true);
+    expect(attempt(ready, gm, { ...move, changes: { ...move.changes, size: 2 } })).toEqual(unavailable);
+    expect(run(state, gm, { ...move, changes: { ...move.changes, size: 2 } }).state.tokens[token.id]).toMatchObject({ size: 2, position: move.changes.position });
+  });
+  it("honors an explicit unchanged centre without a route, but still checks the resized destination", () => {
+    const { state, token } = setup();
+    const command = { type: "token.configure" as const, tokenId: token.id, changes: { size: 2, position: token.position } };
+    expect(run(state, gm, command).state.tokens[token.id]).toMatchObject({ size: 2, position: token.position });
+    expect(attempt({ ...state, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toEqual(unavailable);
+    const large = { ...token, size: 2, position: { x: 15, y: 5 } };
+    const ready = { ...state, tokens: { [token.id]: large }, terrain: { base: one("blocked", 0), effects: [] } };
+    expect(run(ready, gm, { ...command, changes: { size: .5, position: large.position } }).state.tokens[token.id]).toMatchObject({ size: .5, position: large.position });
+  });
+});
 
 describe("terrain geometry (FR-TAC-03, FR-PL-04)", () => {
   it("costs Normal distance and the agreed 10 ft crossing 20 ft", () => {
