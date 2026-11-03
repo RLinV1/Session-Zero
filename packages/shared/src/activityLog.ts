@@ -90,6 +90,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     }
     case "GridSet": return `${actorName} updated the grid`;
     case "LineOfSightSet": return `${actorName} turned line of sight ${event.to ? "on" : "off"}`;
+    case "IsometricSet": return `${actorName} set the map style to ${event.to ? "2.5D isometric" : "flat"}`;
     case "SightRangeSet": {
       const n = event.to === null ? null : Math.round(event.to * 10) / 10;
       return `${actorName} set sight range to ${n === null ? "unlimited" : `${n} ${before.scene.grid.unitLabel}`}`;

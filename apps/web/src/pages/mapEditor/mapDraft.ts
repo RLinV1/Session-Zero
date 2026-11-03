@@ -15,6 +15,8 @@ export interface MapDraft {
   fog: Record<string, FogRegion>;
   /** Line of sight on or off (Sight step). */
   lineOfSight: boolean;
+  /** 2.5D isometric map style; false is flat (Sight step, ADR 0048). */
+  isometric: boolean;
   /** Sight range in grid units; null is unlimited. */
   sightRange: number | null;
 }
@@ -23,7 +25,7 @@ export interface MapDraft {
 export const DRAFT_ID = "draft:";
 
 export function draftFrom(state: Pick<RoomState, "scene" | "walls" | "fog">): MapDraft {
-  return { mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, sightRange: state.scene.sightRange ?? null };
+  return { mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
 }
 
 const pointKey = (p: Point) => `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`;
@@ -109,6 +111,7 @@ export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog">, 
   if (removeIds.length > 0 || add.length > 0) commands.push({ type: "fog.replace", removeIds, add });
   const sight: CommandInput[] = [];
   if ((room.scene.lineOfSight ?? false) !== draft.lineOfSight) sight.push({ type: "scene.setLineOfSight", enabled: draft.lineOfSight });
+  if ((room.scene.isometric ?? false) !== draft.isometric) sight.push({ type: "scene.setIsometric", enabled: draft.isometric });
   if ((room.scene.sightRange ?? null) !== draft.sightRange) sight.push({ type: "scene.setSightRange", range: draft.sightRange });
   return [...commands.map((command) => ({ ...command, expectedMapUrl: draft.mapUrl })), ...sight];
 }
@@ -195,6 +198,8 @@ export function applyToDraft(draft: MapDraft, command: CommandInput, newId: () =
     }
     case "scene.setLineOfSight":
       return { ...draft, lineOfSight: command.enabled };
+    case "scene.setIsometric":
+      return { ...draft, isometric: command.enabled };
     case "scene.setSightRange":
       return { ...draft, sightRange: command.range };
     default:

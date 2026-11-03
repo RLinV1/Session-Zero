@@ -7,7 +7,7 @@ export function draftFromBoard(mapUrl: string, board: LibraryMapBoard): MapDraft
   board.walls.forEach((w, i) => { walls[`draft:w${i}`] = { id: `draft:w${i}`, ...w }; });
   const fog: Record<string, FogRegion> = {};
   board.fog.forEach((f, i) => { fog[`draft:f${i}`] = { id: `draft:f${i}`, ...f }; });
-  return { mapUrl, walls, fog, lineOfSight: false, sightRange: null };
+  return { mapUrl, walls, fog, lineOfSight: false, isometric: false, sightRange: null };
 }
 
 /** The board to store: the draft without its ids. */

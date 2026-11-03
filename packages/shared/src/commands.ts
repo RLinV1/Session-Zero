@@ -92,6 +92,7 @@ export const Command = z.discriminatedUnion("type", [
     grid: GridSpec,
   }),
   z.object({ type: z.literal("scene.setLineOfSight"), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("scene.setIsometric"), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("scene.setSightRange"), range: z.number().positive().finite().nullable() }).strict(),
   z.object({
     type: z.literal("token.create"),

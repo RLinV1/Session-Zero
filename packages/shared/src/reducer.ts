@@ -117,6 +117,8 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "GridSet":
       return { ...state, scene: { ...state.scene, grid: event.grid } };
 
+    case "IsometricSet":
+      return { ...state, scene: { ...state.scene, isometric: event.to } };
     case "LineOfSightSet":
       return { ...state, scene: { ...state.scene, lineOfSight: event.to } };
 
