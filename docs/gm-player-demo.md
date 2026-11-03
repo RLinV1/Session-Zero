@@ -13,3 +13,11 @@ Optional environment variables:
 - `DEMO_MCP_CLI`: Playwright MCP CLI path. When supplied, the actual MCP server attaches to the recording browser and captures both perspectives as `gm-mcp.png` and `player-mcp.png`.
 
 The command never connects to the configured production database, Redis or object storage. It blanks those connection settings and writes uploads inside its own output directory. Browser and server processes are closed in `finally`.
+
+## A full game
+
+`npm run demo:gm-player:long` records about 30 minutes of live gameplay, then composes the two perspectives at normal speed. Allow roughly another recording-length period for browser-based composition. Use `npm run demo:gm-player -- --minutes=10` for a shorter session.
+
+The long game follows Mara's expedition to restore the Lantern Seal. GM narration and player choices are sent through room chat. Player movement uses owned-token controls; attack, damage, healing and investigation use actual public dice results; the GM resolves HP and advances initiative through the UI. Guardians can yield, Mara can be wounded or rescued, and exploration continues between encounters. Each turn asserts that both seats received the shared state. The actors are scripted role players, with outcomes branching on real dice and current HP.
+
+Long outputs are preserved separately under `output/gm-player-long/`. `session-progress.json` updates during play; `long-session.json` includes duration, rounds, dice IDs, transcript and final token state. The raw viewpoint recordings are retained alongside the combined WebM. `DEMO_COMPOSE=0` saves the raw clips without waiting for composition. `DEMO_SESSION_MINUTES` is an alternative to the CLI option. `DEMO_PACE_MS` is only for accelerated local scenario preflight; the full capture uses normal reading/turn pacing.

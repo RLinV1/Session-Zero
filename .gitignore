@@ -26,3 +26,4 @@ __pycache__/
 *.pyc
 /output/gm-player-demo/
 /output/demo-deps/
+/output/gm-player-long/

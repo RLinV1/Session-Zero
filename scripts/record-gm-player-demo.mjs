@@ -11,7 +11,10 @@ const { chromium, expect } = require(process.env.DEMO_PLAYWRIGHT ?? '@playwright
 
 // Two deterministic browser actors, with UI actions gated by real socket acknowledgements.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'output/gm-player-demo');
+const minutesArg = process.argv.find(arg=>arg.startsWith('--minutes='))?.split('=')[1];
+const minutes = Number(minutesArg ?? process.env.DEMO_SESSION_MINUTES ?? 0);
+if (!Number.isFinite(minutes) || minutes < 0 || minutes > 120) throw new Error('DEMO_SESSION_MINUTES must be between 0 and 120');
+const out = path.join(root, minutes > 0 ? 'output/gm-player-long' : 'output/gm-player-demo');
 
 const apiPort = 3142, webPort = 5242;
 const origin = `http://127.0.0.1:${webPort}`;
@@ -51,10 +54,12 @@ async function synced(gm, player, label) {
   }, { message: label, timeout: 15000 }).toBe(true);
 }
 async function chat(page, text) {
+  const previous = (await state(page)).chat.at(-1)?.id;
   if (!await page.getByLabel('Message', { exact: true }).isVisible()) await page.getByRole('button', { name: /^Chat/ }).click();
   await page.getByLabel('Message', { exact: true }).fill(text);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect.poll(async () => (await state(page)).chat.at(-1)?.id).not.toBe(previous);
+  await expect(page.getByText(text, { exact: true }).last()).toBeVisible();
 }
 async function addToken(gm, name, owner, hp, arrows) {
   await gm.getByRole('button', { name: 'New Token', exact: true }).click();
@@ -119,6 +124,11 @@ try {
   await addToken(gm, 'Crypt Guardian', null, 18, ['ArrowRight', 'ArrowRight']);
   await Promise.all([gm, player].map(p => p.getByRole('button', { name: 'Fit', exact: true }).click()));
   await synced(gm, player, 'Both seats received the encounter');
+  if (minutes > 0) {
+    const { playLongSession } = await import('./play-gm-player-session.mjs');
+    const report = await playLongSession({gm, player, state, synced, chat, chapter, minutes, out, expect, ...(process.env.DEMO_PACE_MS ? {paceMs: Number(process.env.DEMO_PACE_MS)} : {})});
+    await writeFile(path.join(out, 'verification.json'), JSON.stringify({...report, chapters}, null, 2));
+  } else {
   await chat(gm, 'Water stirs around the ancient guardian. Mara, the passage is yours.');
   await chapter('03 / The player takes control of her own token');
   await player.getByRole('tab', { name: 'Tokens', exact: true }).click();
@@ -149,19 +159,34 @@ try {
   assert.equal(Object.keys(final.tokens).length, 2);
   assert.equal(final.chat.length, 3);
   await writeFile(path.join(out, 'verification.json'), JSON.stringify({ roomId: final.roomId, actors: ['GM account', 'Guest player'], checks: ['2 independent browser contexts', 'UI signup / create / invite join', 'owned token movement reached GM', 'public dice reached GM', 'guardian HP reached player', 'tokens, chat, rolls and initiative converge'], tokens: Object.values(final.tokens).map(({ name, position, stats }) => ({ name, position, stats })), chapters }, null, 2));
+  }
   // Optional actual Playwright MCP visual QA against the running recording browser.
   if (process.env.DEMO_MCP_CLI) {
     const { captureMcp } = await import('./gm-player-mcp.mjs');
     await captureMcp(process.env.DEMO_MCP_CLI, out);
   }
-  await chapter('06 / One shared encounter. Two live perspectives.');
+  await chapter(minutes > 0 ? '10 / One expedition. Two live perspectives.' : '06 / One shared encounter. Two live perspectives.');
   await pause(5000);
   await gmContext.close(); await playerContext.close();
   await rename(await gm.video().path(), path.join(out, 'gm.webm'));
   await rename(await player.video().path(), path.join(out, 'player.webm'));
-  const { composeDemo } = await import('./compose-gm-player-demo.mjs');
-  await composeDemo(browser, out, chapters);
+  if (process.env.DEMO_COMPOSE !== '0') {
+    if (minutes > 0) {
+      const { composeLongDemo } = await import('./compose-gm-player-long.mjs');
+      await composeLongDemo(browser, out, chapters);
+    } else {
+      const { composeDemo } = await import('./compose-gm-player-demo.mjs');
+      await composeDemo(browser, out, chapters);
+    }
+  }
   console.log(`Recorded actual gameplay: ${out}`);
+} catch (error) {
+  const pages = browser?.contexts().flatMap(c=>c.pages()) ?? [];
+  for(let i=0;i<pages.length;i++) {
+    await pages[i].screenshot({path:path.join(out, `failure-${i}.png`)}).catch(()=>{});
+    await writeFile(path.join(out, `failure-${i}.html`), await pages[i].content()).catch(()=>{});
+  }
+  throw error;
 } finally {
   await browser?.close();
   for (const child of children.reverse()) child.kill();

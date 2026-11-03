@@ -23,7 +23,8 @@
     "test": "npm run test --workspaces --if-present && npm run test:bench --workspace=@vtt/server",
     "start": "npm run start --workspace=@vtt/server",
     "test:browser": "playwright test",
-    "demo:gm-player": "node scripts/record-gm-player-demo.mjs"
+    "demo:gm-player": "node scripts/record-gm-player-demo.mjs",
+    "demo:gm-player:long": "node scripts/record-gm-player-demo.mjs --minutes=30"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
