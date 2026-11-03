@@ -72,6 +72,8 @@ export const Scene = z.object({
   grid: GridSpec,
   /** Player line of sight; absent = off (ADR 0044). */
   lineOfSight: z.boolean().optional(),
+  /** 2.5D isometric lighting/render projection; absent = flat (ADR 0048). */
+  isometric: z.boolean().optional(),
   /** How far a token sees, in grid units; absent = unlimited (ADR 0044). */
   sightRange: z.number().positive().optional(),
 });

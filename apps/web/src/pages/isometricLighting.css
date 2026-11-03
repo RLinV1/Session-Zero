@@ -1,0 +1,43 @@
+.lighting-lab { min-height: 100dvh; background: var(--bg); color: var(--text); }
+.lighting-lab-header { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); background: var(--panel); }
+.lighting-lab-heading { flex: 1; min-width: 0; }
+.lighting-lab-heading h1 { margin: 0; font-size: var(--fs-lg); letter-spacing: -0.02em; }
+.lighting-lab-heading span { color: var(--muted); font-size: var(--fs-xs); }
+.lighting-lab-actions { display: flex; gap: var(--space-2); }
+.lighting-lab-actions > button { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.lighting-lab-layout { display: grid; grid-template-columns: minmax(0, 1fr) 18rem; }
+.lighting-stage { min-width: 0; position: relative; height: calc(100dvh - 4.6rem); min-height: 36rem; background: #10171b; }
+.lighting-stage canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; cursor: crosshair; outline-offset: -4px; }
+.lighting-stage-caption { position: absolute; bottom: var(--space-4); left: var(--space-5); pointer-events: none; display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-xs); color: #b7b4a8; }
+.lighting-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-text); }
+.lighting-lab-panel { padding: var(--space-5) var(--space-4); background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-5); }
+.lighting-lab-panel section { display: flex; flex-direction: column; gap: var(--space-3); }
+.lighting-lab-panel h2 { font-size: var(--fs-sm); margin: 0; }
+.lighting-lab-panel p { font-size: var(--fs-sm); color: var(--muted); margin: 0; line-height: 1.55; }
+.lighting-lab-panel label { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); }
+.lighting-lab-panel label > span { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--accent-text); }
+.lighting-lab-panel select, .lighting-lab-panel input[type="range"] { width: 100%; min-height: 2.25rem; }
+.lighting-lab-panel .lighting-checkbox { display: flex; flex-wrap: nowrap; }
+.lighting-position { font-size: var(--fs-xs); color: var(--accent-text); font-family: var(--font-mono); }
+.lighting-move { display: grid; grid-template-columns: repeat(3, 2.5rem); gap: var(--space-1); justify-content: start; }
+.lighting-move button { padding: 0; min-height: 2.5rem; }
+.lighting-move button:first-child { grid-column: 2; }
+.lighting-move button:nth-child(2) { grid-row: 2; grid-column: 1; }
+.lighting-move button:nth-child(3) { grid-row: 2; grid-column: 2; }
+.lighting-move button:nth-child(4) { grid-row: 2; grid-column: 3; }
+.lighting-stops { display: flex; flex-direction: column; gap: var(--space-2); }
+.lighting-lab-panel .lighting-hint, .lighting-lab-panel .lighting-demo-note { font-size: var(--fs-xs); }
+.lighting-demo-note { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+@media (max-width: 900px) {
+  .lighting-lab-layout { grid-template-columns: 1fr; }
+  .lighting-stage { height: 64dvh; min-height: 27rem; }
+  .lighting-lab-panel { border-left: 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .lighting-lab-header { flex-wrap: wrap; gap: var(--space-2); }
+  .lighting-lab-heading h1 { font-size: var(--fs-md); }
+  .lighting-lab-actions { width: 100%; justify-content: flex-end; }
+  .lighting-stage { height: 55dvh; min-height: 23rem; }
+  .lighting-lab-panel { grid-template-columns: 1fr; }
+  .lighting-stage-caption { left: var(--space-3); font-size: 0.65rem; }
+}

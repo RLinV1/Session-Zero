@@ -148,7 +148,7 @@ function DepartedPlayers({ state, onReview }: { state: RoomState; onReview: (par
 /** The room's scene with the draft's sight settings, for steps that show the draft. */
 function draftScene(scene: RoomState["scene"], draft: MapDraft): RoomState["scene"] {
   const { sightRange: _drop, ...rest } = scene;
-  return { ...rest, lineOfSight: draft.lineOfSight, ...(draft.sightRange !== null && { sightRange: draft.sightRange }) };
+  return { ...rest, lineOfSight: draft.lineOfSight, isometric: draft.isometric, ...(draft.sightRange !== null && { sightRange: draft.sightRange }) };
 }
 
 type EditorStep = "map" | "grid" | "walls" | "fog" | "sight";
@@ -328,7 +328,7 @@ function MapSection(props: {
     props.connection,
     (change) => setPrep((current) => {
       if (!current?.uvtt || activeImportSession.current !== importSession) return current;
-      const next = change({ mapUrl: current.map.url, walls: current.walls ?? {}, fog: {}, lineOfSight: false, sightRange: null });
+      const next = change({ mapUrl: current.map.url, walls: current.walls ?? {}, fog: {}, lineOfSight: false, isometric: false, sightRange: null });
       return { ...current, walls: next.walls };
     }),
     async () => { throw new Error("UVTT geometry is already supplied."); },

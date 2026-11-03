@@ -58,6 +58,7 @@ export function HomePage() {
         <ClosingBand />
       </main>
 
+      <p className="landing-shell home-footer"><a href="/demos/apartments">Explore isometric lighting</a></p>
       <SiteFooter />
     </div>
   );
