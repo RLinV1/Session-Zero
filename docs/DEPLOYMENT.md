@@ -51,14 +51,11 @@ Fine for local work, demos on one laptop, and CI. Not fit for a real deployment.
 `docker compose up -d --build` starts Postgres, Redis, SeaweedFS (S3), vision, vision-walls,
 server and web. Good for a class demo on one EC2 or Compute Engine VM. Limitations:
 
-1. The current `Dockerfile` runs `npm run dev` (Vite dev server) and bakes in the repo. Fine for
-   a demo, not for production: build the web app with `npm run build --workspace=@vtt/web`
-   and serve it from nginx/Caddy.
-2. `docker-compose.yml` sets `SEED_DEV_ACCOUNT=1` and uses `vtt/vtt` database credentials.
-   Change both before exposing the VM to the internet.
-3. Everything lives on one machine. The VM is a single point of failure; data is on Docker volumes
+1. The dev `Dockerfile` and `docker-compose.yml` run Vite and set `SEED_DEV_ACCOUNT=1` with `vtt/vtt` credentials.
+   Do not expose them. Use `docker-compose.prod.yml` instead (section 4).
+2. Everything lives on one machine. The VM is a single point of failure; data is on Docker volumes
    (`pgdata`, `redisdata`, `s3data`), so back them up.
-4. No managed backups, patching or failover.
+3. No managed backups, patching or failover.
 
 ### Option C: managed services (recommended for anything lasting)
 
@@ -94,11 +91,83 @@ always-on container (Fargate service, or Cloud Run with min instances 1 and CPU 
 Deploy step order: provision Postgres, Redis, bucket, then run `npm run prisma:migrate --workspace=@vtt/server`
 (`prisma migrate deploy`) once per release, then roll out the server.
 
-## 4. Suggested path for this project
+## 4. Production stack on one VM
 
-1. Today: keep `npm run dev` for development.
-2. Demo/grading: Option B on one VM. Add a production web build and Caddy for HTTPS. Remove `SEED_DEV_ACCOUNT`.
-3. Anything longer-lived: Option C. Needs a production `Dockerfile` for the server (no `tsx watch`, no Vite dev server).
+Files: `Dockerfile.server`, `Dockerfile.web`, `deploy/Caddyfile`, `docker-compose.prod.yml`,
+`deploy/env.production.example`. Only ports 80 and 443 are published; Postgres, Redis, S3 and vision
+stay on the compose network. No dev account, no Vite dev server, no `vtt/vtt` credentials.
 
-The production Dockerfile, a static web build step, and infra scripts do not exist yet. Propose them with OpenSpec
-(`/opsx:propose`) before implementing.
+### Settings
+
+```bash
+cp deploy/env.production.example .env.production
+openssl rand -hex 24      # run three times: POSTGRES_PASSWORD, S3_ACCESS_KEY, S3_SECRET_KEY
+```
+
+Set `CLIENT_ORIGIN` to the URL users will type. Two cases:
+
+- With a domain: `CLIENT_ORIGIN=https://vtt.example.com`, `SITE_ADDRESS=vtt.example.com`. Caddy gets a certificate by itself.
+- Without a domain (IP only): `CLIENT_ORIGIN=http://<public-ip>`, `SITE_ADDRESS=:80`, `COOKIE_SECURE=0`. Plain HTTP, demo only.
+
+Starting without `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` or `CLIENT_ORIGIN` fails at once and names the variable.
+
+### Start
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps        # migrate shows "exited (0)"; the rest are healthy
+curl -s http://localhost/health
+```
+
+The first build is slow (the vision image holds OpenCV and an ONNX model). Update with `git pull` and the same
+`up -d --build`; `migrate` runs again first, then the server restarts. Back up the volumes `pgdata`, `s3data`, `redisdata`.
+
+### AWS EC2
+
+1. Launch Ubuntu 24.04, `t3.large` (2 vCPU, 8 GB; vision needs memory), 30 GB gp3 disk.
+2. Security group: inbound 22 (your IP only), 80 and 443 (anywhere).
+3. Allocate an Elastic IP and attach it. With a domain, add an `A` record to that IP.
+4. SSH in and install Docker:
+   ```bash
+   curl -fsSL https://get.docker.com | sudo sh
+   sudo usermod -aG docker $USER && newgrp docker
+   ```
+5. `git clone <repo> && cd <repo>`, then follow Settings and Start above.
+
+### Google Compute Engine
+
+1. Create a VM: Ubuntu 24.04, `e2-standard-2` (2 vCPU, 8 GB), 30 GB disk, tags `http-server` and `https-server`.
+2. Reserve a static external IP for it. With a domain, add an `A` record to that IP.
+3. Firewall: `gcloud compute firewall-rules create vtt-web --allow tcp:80,tcp:443 --target-tags http-server,https-server`.
+4. `gcloud compute ssh <vm>`, install Docker with the same two commands as the EC2 step 4.
+5. `git clone <repo> && cd <repo>`, then follow Settings and Start above.
+
+## 5. Managed services: environment mapping
+
+The same two images run on ECS Fargate or Cloud Run. Drop the `postgres`, `redis` and `s3` containers and point the server at managed ones.
+
+| Variable | AWS | Google Cloud |
+|---|---|---|
+| `DATABASE_URL` | RDS PostgreSQL 17 | Cloud SQL for PostgreSQL |
+| `REDIS_URL` | ElastiCache | Memorystore |
+| `S3_ENDPOINT` | `https://s3.<region>.amazonaws.com` | `https://storage.googleapis.com` |
+| `S3_BUCKET` | S3 bucket name | Cloud Storage bucket name |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | IAM user key for that bucket | HMAC key for a service account |
+| `VISION_URL` | Internal address of the vision service | Internal address of the vision service |
+| `CLIENT_ORIGIN` | `https://` + the ALB domain | `https://` + the load balancer domain |
+| `COOKIE_SECURE`, `TRUST_PROXY` | `1`, `1` (ALB is one hop) | `1`, `1` (HTTPS load balancer is one hop) |
+| `NODE_ENV`, `PORT` | `production`, `3001` | `production`, `3001` |
+
+Run the `Dockerfile.server` image as a one-off task with command `npm run prisma:migrate --workspace=@vtt/server` and
+working directory `/app` before each release. Put the web image (or an ALB/CDN with path rules for `/api`, `/socket.io`, `/uploads`) in front.
+Set `SITE_ADDRESS=:80` on the web image when the load balancer terminates TLS.
+
+The wall worker (`python wall_worker.py` from `services/vision`) polls Redis, so it needs an always-on container:
+a Fargate service, or Cloud Run with min instances 1 and CPU always allocated. Never scale it to zero.
+Cloud Run closes WebSockets after the request timeout (up to 60 minutes); the client reconnects, but this is not tested.
+
+## 6. Suggested path for this project
+
+1. Development: `npm run dev`.
+2. Demo/grading: Option B using section 4 on one VM.
+3. Anything longer-lived: section 5.

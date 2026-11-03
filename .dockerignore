@@ -7,3 +7,15 @@ node_modules
 apps/server/uploads
 services/vision/.venv
 services/vision/training/
+# Production images (Dockerfile.server, Dockerfile.web): keep the build context small and secret-free.
+graphify-out
+openspec
+docs
+.github
+.agents
+.env
+.env.*
+**/uploads
+**/*.log
+playwright-report
+test-results
