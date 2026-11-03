@@ -11,6 +11,7 @@ import {
 export interface MapDraft {
   /** The applied map this draft belongs to. */
   mapUrl: string;
+  sceneId?: string;
   walls: Record<string, Wall>;
   fog: Record<string, FogRegion>;
   /** Line of sight on or off (Sight step). */
@@ -24,8 +25,8 @@ export interface MapDraft {
 /** Walls and fog drawn in the editor carry ids with this prefix; the room gives them real ones on Save. */
 export const DRAFT_ID = "draft:";
 
-export function draftFrom(state: Pick<RoomState, "scene" | "walls" | "fog">): MapDraft {
-  return { mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
+export function draftFrom(state: Pick<RoomState, "scene" | "walls" | "fog" | "activeSceneId">): MapDraft {
+  return { sceneId: state.activeSceneId ?? "initial", mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
 }
 
 const pointKey = (p: Point) => `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`;
@@ -78,7 +79,8 @@ function matchEntities<T extends { id: string }>(room: Record<string, T>, draft:
   return matches;
 }
 
-export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog">, draft: MapDraft): CommandInput[] {
+export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog" | "activeSceneId">, draft: MapDraft): CommandInput[] {
+  if (draft.sceneId !== undefined && draft.sceneId !== (room.activeSceneId ?? "initial")) throw new Error("The scene changed. Reopen the editor before saving.");
   if (room.scene.map?.url !== draft.mapUrl) throw new Error("The map changed. Reopen the editor before saving.");
   const commands: CommandInput[] = [];
   const fogMatches = matchEntities(room.fog, draft.fog, fogKey);
@@ -113,14 +115,14 @@ export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog">, 
   if ((room.scene.lineOfSight ?? false) !== draft.lineOfSight) sight.push({ type: "scene.setLineOfSight", enabled: draft.lineOfSight });
   if ((room.scene.isometric ?? false) !== draft.isometric) sight.push({ type: "scene.setIsometric", enabled: draft.isometric });
   if ((room.scene.sightRange ?? null) !== draft.sightRange) sight.push({ type: "scene.setSightRange", range: draft.sightRange });
-  return [...commands.map((command) => ({ ...command, expectedMapUrl: draft.mapUrl })), ...sight];
+  return [...commands.map((command) => ({ ...command, expectedMapUrl: draft.mapUrl })), ...sight].map((command) => ({ ...command, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }) }));
 }
 
 /** Whether two walls are the same kind of portal, or both plain. */
 const samePortal = (a: Portal | undefined, b: Portal | undefined) => a?.kind === b?.kind && a?.state === b?.state;
 
 /** Whether Save would send anything. */
-export const draftDirty = (room: Pick<RoomState, "scene" | "walls" | "fog">, draft: MapDraft) => room.scene.map?.url === draft.mapUrl && planDraftSave(room, draft).length > 0;
+export const draftDirty = (room: Pick<RoomState, "scene" | "walls" | "fog" | "activeSceneId">, draft: MapDraft) => room.scene.map?.url === draft.mapUrl && planDraftSave(room, draft).length > 0;
 
 type FogAdd = Extract<CommandInput, { type: "fog.add" }>["region"];
 

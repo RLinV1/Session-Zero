@@ -119,8 +119,8 @@ describe("map editor Sight step (FR-GM-19)", () => {
     expect(fake.commands).toEqual([]);
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toEqual([
-      { type: "scene.setLineOfSight", enabled: true },
-      { type: "scene.setSightRange", range: 60 },
+      { type: "scene.setLineOfSight", expectedSceneId: "initial", enabled: true },
+      { type: "scene.setSightRange", expectedSceneId: "initial", range: 60 },
     ]));
   });
 
@@ -133,7 +133,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     expect(iso.getAttribute("aria-checked")).toBe("true");
     expect(fake.commands).toEqual([]);
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setIsometric", enabled: true }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setIsometric", enabled: true, expectedSceneId: "initial" }]));
   });
 
   it("previews sight with test tokens only, added, moved and removed without sending anything", () => {
@@ -242,7 +242,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     fireEvent.change(within(editor()).getByLabelText("Sight range in squares"), { target: { value: "6" } });
     expect((within(editor()).getByLabelText("Sight range in ft") as HTMLInputElement).value).toBe("30");
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", range: 30 }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", expectedSceneId: "initial", range: 30 }]));
   });
 
   it("Discard sends nothing", async () => {
@@ -258,7 +258,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
     const fake = mount(state); openSight();
     fireEvent.click(unlimited());
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", range: null }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setSightRange", expectedSceneId: "initial", range: null }]));
   });
 
   it("asks before leaving Sight with unsaved changes", () => {

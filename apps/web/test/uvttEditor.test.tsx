@@ -77,7 +77,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     expect(screen.getByRole("application").querySelector('line[x1="250"][x2="700"][y1="100"]')).toBeTruthy();
     const revise = vi.spyOn(api.uvtt, "revise").mockImplementation(async (_room, _token, _id, edit) => ({ ...preparation, ...edit, revision: 2 }));
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 2 }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 2 }]));
     expect(revise.mock.calls[0]?.[3].walls[0]).toMatchObject({ b: { x: 250, y: 100 }, uvttPortal: { closed: false, freestanding: true, rotation: 1.3, position: { x: 40, y: 60 } } });
   });
   it("keeps a rejected unchanged draft for idempotent retry without revising it", async () => {
@@ -132,8 +132,8 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: /· Fog$/ }).getAttribute("aria-selected")).toBe("true"));
     expect(screen.queryByRole("dialog", { name: "Apply this map?" })).toBeNull();
     expect(send.mock.calls).toEqual([
-      [{ type: "scene.importUVTT", importId: "opaque", revision: 1 }],
-      [{ type: "scene.importUVTT", importId: "opaque", revision: 1 }],
+      [{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1 }],
+      [{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1 }],
     ]);
     expect(revise).not.toHaveBeenCalled();
   });
@@ -153,7 +153,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     const dialog = await screen.findByRole("dialog", { name: "Tokens already on the table" });
     fireEvent.click(within(dialog).getByRole("radio", { name: /^Keep positions/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 2, tokenPolicy: "keep" }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 2, tokenPolicy: "keep" }]));
     expect(revise.mock.calls[0]?.[3].walls[0]).toMatchObject({ portal: { kind: "window", state: "locked" }, uvttPortal: preparation.walls[0]!.uvttPortal });
   });
   describe("token choice dialog (FR-GM-04)", () => {
@@ -177,12 +177,12 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
       expect(within(dialog).getByRole("radio", { name: /^Scale to fit/ })).toHaveProperty("checked", true);
       fireEvent.click(within(dialog).getByRole("radio", { name: /^Recenter/ }));
       fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
-      await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 1, tokenPolicy: "recenter" }]));
+      await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1, tokenPolicy: "recenter" }]));
     });
     it("applies at once with no dialog and no policy when the room has no tokens", async () => {
       const fake = mount(); await importFile();
       fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-      await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 1 }]));
+      await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1 }]));
       expect(screen.queryByRole("dialog", { name: "Tokens already on the table" })).toBeNull();
     });
   });

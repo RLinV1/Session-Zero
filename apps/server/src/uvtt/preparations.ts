@@ -4,7 +4,7 @@ import { UvttError, removePortalOverlaps, validateUvttDraft, type PreparedUvttSc
 export const UVTT_PREPARATION_TTL = 30 * 60_000;
 export const UVTT_MAX_OWNER_DRAFTS = 20;
 export const UVTT_MAX_DRAFTS = 100;
-interface Entry { roomId: string; actorId: string; ownerId: string; expiresAt: number; view: UvttPreparation; baseline: UvttBaseline; leased: boolean; appliedSeq?: number | null }
+interface Entry { roomId: string; actorId: string; ownerId: string; expiresAt: number; view: UvttPreparation; baseline: UvttBaseline; leased: boolean; appliedSeq?: number | null; appliedSceneId?: string }
 export type UvttLease =
   | { ok: false; code: "not_found" | "invalid"; message: string }
   | { ok: true; scene: PreparedUvttScene; finish: (seq?: number | null) => void; appliedSeq?: undefined }
@@ -49,14 +49,17 @@ export class UvttPreparations {
     if (e.appliedSeq === undefined) this.entries.delete(id);
     return true;
   }
-  lease(roomId: string, actorId: string, id: string, revision: number): UvttLease {
+  lease(roomId: string, actorId: string, id: string, revision: number, sceneId?: string): UvttLease {
     const e = this.find(roomId, actorId, id);
     if (!e) return { ok: false, code: "not_found", message: "This preparation expired or the server restarted. Re-import the file." };
     if (revision !== e.view.revision || e.leased) return { ok: false, code: "invalid", message: "This preparation changed. Use its current revision or re-import." };
-    if (e.appliedSeq !== undefined) return { ok: true, appliedSeq: e.appliedSeq };
+    if (e.appliedSeq !== undefined) {
+      if (sceneId !== undefined && e.appliedSceneId !== sceneId) return { ok: false, code: "invalid", message: "This preparation was already applied to another scene. Re-import the file." };
+      return { ok: true, appliedSeq: e.appliedSeq };
+    }
     e.leased = true;
     return { ok: true, scene: structuredClone({ map: e.view.map, grid: e.view.grid, walls: e.view.walls, baseline: e.baseline }),
-      finish: (seq) => { e.leased = false; if (seq !== undefined) { e.appliedSeq = seq; e.expiresAt = this.now() + UVTT_PREPARATION_TTL; } },
+      finish: (seq) => { e.leased = false; if (seq !== undefined) { e.appliedSeq = seq; e.appliedSceneId = sceneId; e.expiresAt = this.now() + UVTT_PREPARATION_TTL; } },
     };
   }
 }

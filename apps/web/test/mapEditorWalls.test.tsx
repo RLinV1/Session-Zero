@@ -356,7 +356,7 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     expect(fake.commands).toEqual([]);
     fireEvent.click(within(editor).getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toEqual([
-      { type: "fog.replace", expectedMapUrl: MAP_URL, removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
+      { type: "fog.replace", expectedMapUrl: MAP_URL, expectedSceneId: "initial", removeIds: [], add: [{ shape: "rect", from: { x: 0, y: 0 }, to: { x: 800, y: 600 } }] },
     ]));
   });
 
@@ -420,7 +420,7 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Door" }));
     click(canvas(), { x: 150, y: 100 });
     fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands[1]).toEqual({ type: "portal.set", expectedMapUrl: MAP_URL, wallId: "saved-wall", portal: { kind: "door", state: "closed" } }));
+    await waitFor(() => expect(fake.commands[1]).toEqual({ type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "saved-wall", portal: { kind: "door", state: "closed" } }));
   });
 
   it("asks before closing with unsaved changes, and Discard sends nothing (map-editor-drafts)", async () => {

@@ -145,9 +145,10 @@ async function roomRequest<T>(roomId: string, token: string, method: "GET" | "PO
 
 export const api = {
   uvtt: {
-    async prepare(roomId: string, token: string, file: File, options?: { saveToLibrary: boolean }) {
+    async prepare(roomId: string, token: string, file: File, options?: { saveToLibrary?: boolean; sceneId?: string }) {
       const body = new FormData(); body.append("file", file);
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports${options?.saveToLibrary ? "?saveToLibrary=1" : ""}`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
+      const query = new URLSearchParams({ ...(options?.saveToLibrary && { saveToLibrary: "1" }), ...(options?.sceneId && { sceneId: options.sceneId }) }).toString();
+      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports${query ? `?${query}` : ""}`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
       if (!res.ok) throw await errorFrom(res);
       return UvttPreparation.parse(await res.json());
     },

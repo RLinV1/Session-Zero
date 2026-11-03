@@ -12,5 +12,12 @@ export function referencedAssetIds(state: RoomState): Set<Id> {
   for (const token of Object.values(state.tokens)) {
     if (token.assetId) ids.add(token.assetId);
   }
+  for (const saved of Object.values(state.savedScenes ?? {})) {
+    const map = saved.table.scene.map?.assetId;
+    if (map) ids.add(map);
+    for (const token of Object.values(saved.table.tokens)) {
+      if (token.assetId) ids.add(token.assetId);
+    }
+  }
   return ids;
 }

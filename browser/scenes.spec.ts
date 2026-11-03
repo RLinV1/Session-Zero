@@ -1,0 +1,64 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { io } from "socket.io-client";
+import { SOCKET_EVENTS, type CommandInput, type ServerMessage } from "@vtt/shared";
+
+test("GM switches scenes from the header and returns to preserved tokens", async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  const signup = await page.request.post("/api/auth/signup", { data: { email: `scenes-${randomUUID()}@example.com`, password: "correct horse battery", displayName: "Scenes GM" } });
+  expect(signup.status()).toBe(201);
+  const guestToken = randomBytes(32).toString("base64url");
+  const created = await page.request.post("/api/rooms", { data: { roomName: "Scenes browser check", displayName: "Scenes GM", guestToken } });
+  expect(created.ok()).toBe(true);
+  const credentials = { ...(await created.json()), guestToken, viaAccount: true } as { roomId: string; participantId: string; guestToken: string };
+  await page.addInitScript((creds) => localStorage.setItem(`vtt.credentials.${creds.roomId}`, JSON.stringify(creds)), credentials);
+  const socket = io("http://127.0.0.1:3109", { transports: ["websocket"], auth: { roomId: credentials.roomId, guestToken }, reconnection: false });
+  let counter = 0;
+  try {
+    await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("connect_error", reject); });
+    const command = (input: CommandInput) => new Promise<void>((resolve, reject) => {
+      const clientCommandId = `browser-${++counter}`;
+      const listener = (message: ServerMessage) => {
+        if ((message.type === "ack" || message.type === "rejected") && message.clientCommandId === clientCommandId) {
+          socket.off(SOCKET_EVENTS.event, listener);
+          if (message.type === "ack") resolve(); else reject(new Error(message.message));
+        }
+      };
+      socket.on(SOCKET_EVENTS.event, listener);
+      socket.emit(SOCKET_EVENTS.message, { type: "command", clientCommandId, command: input });
+    });
+    await command({ type: "token.create", name: "Tavern guard", position: { x: 35, y: 35 }, stats: { hp: 3, maxHp: 10, ac: null } });
+    await page.goto(`/r/${credentials.roomId}`);
+    await page.getByRole("tab", { name: "Manage", exact: true }).click();
+    await page.getByLabel("New scene name").fill("Cellar");
+    await page.getByRole("button", { name: "Create scene", exact: true }).click();
+    const setup = page.getByRole("dialog", { name: "Prepare scene" });
+    await expect(setup.getByRole("button", { name: "Encounter template", exact: true })).toBeVisible();
+    await expect(setup.getByRole("button", { name: "Map", exact: true })).toBeVisible();
+    await setup.getByRole("button", { name: "Checkpoint", exact: true }).click();
+    await expect(setup.getByText("No checkpoints in this room.")).toBeVisible();
+    await setup.getByRole("button", { name: "Current map", exact: true }).click();
+    await expect(setup).toBeHidden();
+    await expect(page.locator(".board-canvas")).toHaveCount(1);
+    const selector = page.getByRole("combobox", { name: "Viewing scene" });
+    await expect(selector.locator("option:checked")).toHaveText("Cellar");
+    await expect(page.getByText("This is not the active scene.", { exact: true })).toBeVisible();
+    const cellarId = await selector.inputValue();
+    await command({ type: "scene.prepare", sceneId: cellarId, command: { type: "token.create", name: "Cellar rat", position: { x: 35, y: 35 } } });
+    await page.getByRole("tab", { name: "Tokens", exact: true }).click();
+    await expect(page.getByText("Cellar rat", { exact: true }).first()).toBeVisible();
+    await selector.selectOption("initial");
+    await expect(page.getByText("Tavern guard", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Cellar rat", { exact: true })).toHaveCount(0);
+    await selector.selectOption(cellarId);
+    await expect(page.getByText("Cellar rat", { exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Activate", exact: true }).click();
+    await expect(page.getByText("This is not the active scene.", { exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "Viewing scene" })).toHaveValue(cellarId);
+    await page.screenshot({ path: testInfo.outputPath("scenes.png") });
+    expect(errors).toEqual([]);
+  } finally { socket.disconnect(); }
+});

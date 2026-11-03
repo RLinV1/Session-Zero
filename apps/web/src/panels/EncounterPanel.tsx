@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { MAX_ENCOUNTER_NAME, type EncounterSummary, type RoomState } from "@vtt/shared";
+import { ScenePreparationContext } from "./ScenePreparationContext";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { encounterSummary } from "../pages/LibraryEncounters";
@@ -16,6 +17,7 @@ import { PanelSection } from "../ui/PanelSection";
  * The list is the account's, so a GM without an account just doesn't see the panel's actions.
  */
 export function EncounterPanel({ connection, state }: { connection: RoomConnection; state: RoomState }) {
+  const preparing = useContext(ScenePreparationContext)?.preparing ?? false;
   const [templates, setTemplates] = useState<EncounterSummary[] | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,7 +44,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   useEffect(refresh, [refresh]);
 
   const save = async () => {
-    if (busy) return;
+    if (busy || preparing) return;
     if (replacing) return setConfirmingReplace(replacing);
     const trimmed = name.trim();
     if (!trimmed) return setError("Give the template a name.");
@@ -61,7 +63,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   };
 
   const replace = async (template: EncounterSummary) => {
-    if (busy) return;
+    if (busy || preparing) return;
     setBusy(true);
     try {
       const saved = await api.library.encounters.replaceFromRoom(template.id, state.roomId);
@@ -83,7 +85,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
     try {
       const result = await connection.command({ type: "encounter.apply", templateId: template.id });
       setError(result.ok ? null : result.message);
-      if (result.ok) setStatus(`Applied "${template.name}". Undo it from the activity log if that was wrong.`);
+      if (result.ok) setStatus(`Applied "${template.name}"${preparing ? " to the private scene." : ". Undo it from the activity log if that was wrong."}`);
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -92,8 +94,8 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
 
   return (
     <PanelSection id="gm-encounters" title="Encounter templates">
-      <p className="muted">Save this room's map, grid, tokens and fog, then reuse it in any of your rooms.</p>
-      <form
+      <p className="muted">{preparing ? "Apply a template to this private scene." : "Save this room’s map, grid, tokens and fog, then reuse it in any of your rooms."}</p>
+      {!preparing && <form
         className="row checkpoint-form"
         onSubmit={(e) => {
           e.preventDefault();
@@ -128,7 +130,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
         <button type="submit" className="secondary" disabled={busy}>
           {replacing ? "Replace" : "Save"}
         </button>
-      </form>
+      </form>}
       {error && <p role="alert" className="error">{error}</p>}
       <p role="status" className="sr-only">{status}</p>
       {templates === null ? (
@@ -178,8 +180,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
           <div className="stack checkpoint-preview">
             <ApplyPreview templateId={confirming.id} name={confirming.name} />
             <p>
-              Replace this room's board with <strong>{confirming.name}</strong>? The map, grid, tokens and fog are swapped,
-              and a running encounter ends. Chat, dice rolls and players stay. You can undo this from the activity log.
+              {preparing ? <>Replace this private scene with <strong>{confirming.name}</strong>? Players stay on the live scene.</> : <>Replace this room’s board with <strong>{confirming.name}</strong>? The map, grid, tokens and fog are swapped, and a running encounter ends. Chat, dice rolls and players stay. You can undo this from the activity log.</>}
             </p>
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void apply(confirming)}>

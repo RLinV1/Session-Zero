@@ -252,4 +252,18 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(limited.status).toBe(429); expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(await readdir(server.uploadDir).catch(() => [])).toEqual([]);
   });
+  it("captures a private scene's own baseline so its import applies (FR-GM-25)", async () => {
+    const { creds, gm } = await setup();
+    await ok(gm, { type: "scene.create", name: "Cellar", activate: false });
+    const sceneId = Object.keys(gm.state.savedScenes!)[0]!;
+    const body = new FormData(); body.append("file", new Blob([JSON.stringify(await document())]), "map.dd2vtt");
+    const res = await fetch(`${url(creds.roomId)}?sceneId=${sceneId}`, { method: "POST", headers: { authorization: `Bearer ${creds.guestToken}` }, body });
+    expect(res.status).toBe(201);
+    const prep = UvttPreparation.parse(await res.json());
+    await ok(gm, { type: "scene.prepare", sceneId, command: { type: "scene.importUVTT", importId: prep.id, revision: prep.revision, expectedSceneId: sceneId } });
+    expect(gm.state.scene.map?.url).toBe("/old.png");
+    expect(gm.state.savedScenes![sceneId]!.table.scene.map?.url).toBe(prep.map.url);
+    const missing = new FormData(); missing.append("file", new Blob([JSON.stringify(await document())]), "map.dd2vtt");
+    expect((await fetch(`${url(creds.roomId)}?sceneId=nope`, { method: "POST", headers: { authorization: `Bearer ${creds.guestToken}` }, body: missing })).status).toBe(403);
+  });
 });

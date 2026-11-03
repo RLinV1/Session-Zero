@@ -17,6 +17,8 @@ import {
   tableOf,
   referencedAssetIds,
   LibraryMapBoard,
+  INITIAL_SCENE_ID,
+  sceneState,
   EMPTY_LIBRARY_BOARD,
   type ResolvedLibraryMap,
   type Command,
@@ -51,7 +53,7 @@ const RESTORE_SLOW_MS = 500;
 
 /** Server services a room consults while deciding, passed in so `decide` stays pure. */
 export interface RoomHooks {
-  uvttLease?: (roomId: string, actorId: string, id: string, revision: number) => UvttLease;
+  uvttLease?: (roomId: string, actorId: string, id: string, revision: number, sceneId?: string) => UvttLease;
   /** The validated detected walls for this room's map (ADR 0029), or null. */
   detectedWalls?: (roomId: string, mapUrl: string) => DetectedWallsResponse | null;
 }
@@ -161,11 +163,14 @@ export class LiveRoom {
   }
 
   /** Immutable, viewer-filtered scene capture inside the same FIFO as all mutations. */
-  captureScene(actorId: string) {
+  captureScene(actorId: string, sceneId?: string) {
     return this.runExclusive(async () => {
       const actor = this.activeParticipant(actorId);
       if (this.isClosed || !actor || !can.administer(actor)) return null;
-      const view = filterStateForViewer(this.state, actor);
+      // A private scene's baseline is that scene's board, not the live one (FR-GM-25).
+      const board = sceneId === undefined ? this.state : sceneState(this.state, sceneId);
+      if (!board) return null;
+      const view = filterStateForViewer(board, actor);
       return structuredClone({ map: view.scene.map, grid: view.scene.grid, walls: view.walls, fog: view.fog, seq: this.seq });
     });
   }
@@ -231,9 +236,13 @@ export class LiveRoom {
   }
 
   /** Validate, authorize, persist, apply, broadcast. */
-  submit(actorId: string, command: Command): Promise<SubmitResult> {
+  submit(actorId: string, submitted: Command): Promise<SubmitResult> {
+    const command = submitted.type === "scene.prepare" ? submitted.command : submitted;
     return this.runExclusive(async () => {
       if (this.isClosed) return { ok: false, code: "not_found", message: "This room has been deleted" };
+      if (["scene.create", "scene.rename", "scene.switch", "scene.delete", "scene.prepare", "scene.copyCurrent"].includes(submitted.type) && await this.store.isTemporaryRoom(this.roomId)) {
+        return { ok: false, code: "forbidden", message: "Scene management is not available while editing an encounter template." };
+      }
       const actor = this.state.participants[actorId];
       if (!actor) return { ok: false, code: "forbidden", message: "Unknown participant" };
       // Checked inside the queue, so a command sent from another tab just before the leave
@@ -286,13 +295,13 @@ export class LiveRoom {
       }
       if (command.type === "scene.importUVTT") {
         if (!can.administer(actor)) return { ok: false, code: "forbidden", message: "Only the GM can import a map." };
-        lease = this.hooks.uvttLease?.(this.roomId, actorId, command.importId, command.revision);
+        lease = this.hooks.uvttLease?.(this.roomId, actorId, command.importId, command.revision, command.expectedSceneId ?? this.state.activeSceneId ?? INITIAL_SCENE_ID);
         if (!lease) return { ok: false, code: "not_found", message: "This preparation expired or the server restarted. Re-import the file." };
         if (!lease.ok) return lease;
         if (lease.appliedSeq !== undefined) return { ok: true, seq: lease.appliedSeq };
       }
       try {
-        const decision = decide(this.state, actor, command, {
+        const decision = decide(this.state, actor, submitted, {
           newId: randomUUID,
           preparedUvtt: lease?.ok ? lease.scene : undefined,
           libraryMap,

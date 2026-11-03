@@ -54,8 +54,8 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
     expect(fake.commands).toEqual([]);
     fireEvent.click(await within(editor).findByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.commands).toEqual([
-      { type: "portal.set", expectedMapUrl: MAP_URL, wallId: "w0", portal: closedDoor },
-      { type: "portal.set", expectedMapUrl: MAP_URL, wallId: "w1", portal: openDoor },
+      { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w0", portal: closedDoor },
+      { type: "portal.set", expectedMapUrl: MAP_URL, expectedSceneId: "initial", wallId: "w1", portal: openDoor },
     ]));
   });
 
@@ -79,7 +79,7 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
     fireEvent.click(screen.getByRole("tab", { name: /· Walls$/ }));
     await makeDoors(screen.getByRole("dialog", { name: "Edit map" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 2 }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 2, expectedSceneId: "initial" }]));
     expect(revise.mock.calls[0]?.[3].walls).toEqual([
       { ...walls[0], portal: closedDoor },
       { ...walls[1], portal: openDoor },

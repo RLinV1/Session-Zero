@@ -74,6 +74,18 @@ const library = async (cookie: string) => (await (await gmFetch(cookie, "/api/li
 const list = async (cookie: string) => (await (await gmFetch(cookie, "/api/library/encounters")).json()) as EncounterSummary[];
 
 describe("save a room's board as a template (FR-GM-13)", () => {
+  it("applies an owned encounter to an inactive scene without replacing the live board", async () => {
+    const { cookie, creds, gm, alice } = await prepared();
+    const template = await (await save(cookie, creds.roomId, "Private ambush")).json() as EncounterSummary;
+    const live = tableOf(gm.state);
+    await ok(gm.command({ type: "scene.create", name: "Private cellar", activate: false }));
+    const sceneId = Object.keys(gm.state.savedScenes!)[0]!;
+    await ok(gm.command({ type: "scene.prepare", sceneId, command: { type: "encounter.apply", templateId: template.id } }));
+    await alice.waitForSeq(gm.seq);
+    expect(tableOf(gm.state)).toEqual(live);
+    expect(Object.values(gm.state.savedScenes![sceneId]!.table.tokens).map((t) => t.name)).toEqual(expect.arrayContaining(["Goblin", "Orc", "Rogue"]));
+    expect(alice.state.savedScenes ?? {}).toEqual({});
+  });
   it("saves, lists, renames and deletes a template, keeping board data on the server", async () => {
     const { cookie, map, creds } = await prepared();
     const res = await save(cookie, creds.roomId, "  Goblin ambush ");
