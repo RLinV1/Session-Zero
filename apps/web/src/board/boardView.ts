@@ -1,3 +1,4 @@
+import { budgetLabel, defaultMovementSettings, type MovementSettings } from "./movementRuler";
 import {
   Application,
   Assets,
@@ -116,6 +117,7 @@ export interface BoardCallbacks {
   placeToken(at: Point): void;
   /** A press on a token that stayed put (a click, not a drag) selects it (`extend`: Shift was held); a click on bare map clears (null). */
   selectToken(tokenId: string | null, extend?: boolean): void;
+  movementFeedback?(text: string): void;
   /** The GM right-clicked while placing: put the token back. */
   cancelPlacement(): void;
   /**
@@ -415,8 +417,11 @@ export class BoardView {
   private lastPickAt = 0;
   /** The last measurement; stays until the next one starts, the tool changes, or Clear. */
   private measurement: Mark | null = null;
+  private movementSettings: MovementSettings | null = null;
+  private movementOrigin: Point | null = null;
+  private movementTokenSize = 1;
   /** A Measure/Draw/Area/Eraser drag in progress, in board coordinates. */
-  private gesture: { from: Point; to: Point; screenFrom: Point; free: boolean; dragged: boolean; path: Point[] } | null = null;
+  private gesture: { from: Point; to: Point; screenFrom: Point; free: boolean; dragged: boolean; path: Point[]; tokenSize?: number } | null = null;
   /** Zoom the marks were last drawn at; stroke widths are divided by it. NaN forces a redraw. */
   private marksScale = Number.NaN;
   /** Moves sent but not yet reflected in state, so tokens don't snap back while waiting. */
@@ -1132,6 +1137,13 @@ export class BoardView {
     this.redrawOverlay();
   }
 
+  setMovementRuler(settings: MovementSettings, origin: Point | null, tokenSize = 1) {
+    this.movementSettings = settings;
+    this.movementOrigin = origin;
+    this.movementTokenSize = tokenSize;
+    this.redrawOverlay();
+  }
+
   private toolCursor() {
     if (this.placement) return "crosshair";
     if (this.tool.kind === "select") return "default";
@@ -1267,7 +1279,7 @@ export class BoardView {
     const tool = this.tool;
     const { from, to, free, dragged } = gesture;
     if (tool.kind === "measure" && dragged) {
-      this.measurement = { kind: "measure", from, to, free };
+      this.measurement = { kind: "measure", from, to, free, tokenSize: gesture.tokenSize };
     } else if (tool.kind === "draw" && tool.shape === "brush" && dragged) {
       this.addMark({ kind: "stroke", color: tool.color, points: gesture.path });
     } else if (tool.kind === "draw" && tool.shape !== "brush" && dragged) {
@@ -1623,8 +1635,9 @@ export class BoardView {
     this.measureLabel.visible = false;
     const gesture = this.gesture;
     const tool = this.tool;
+    if (!this.measurement && !(gesture && tool.kind === "measure")) this.callbacks.movementFeedback?.("");
     if (gesture && tool.kind === "measure") {
-      this.drawMark(g, { kind: "measure", from: gesture.from, to: gesture.to, free: gesture.free });
+      this.drawMark(g, { kind: "measure", from: gesture.from, to: gesture.to, free: gesture.free, tokenSize: gesture.tokenSize });
     } else if (this.measurement) {
       this.drawMark(g, this.measurement);
     }
@@ -1762,10 +1775,14 @@ export class BoardView {
     const px = 1 / this.world.scale.x;
     switch (mark.kind) {
       case "measure": {
-        const m = measure(mark.from, mark.to, grid, mark.free);
-        g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color: MEASURE_COLOR });
-        g.circle(m.from.x, m.from.y, 4 * px).circle(m.to.x, m.to.y, 4 * px).fill({ color: MEASURE_COLOR });
-        this.showLabel(m.label, m.to);
+        const settings = this.movementSettings ?? defaultMovementSettings(grid);
+        const m = measure(mark.from, mark.to, grid, mark.free, settings.rule, mark.tokenSize);
+        const color = m.units > settings.allowance + 1e-9 ? 0xffa570 : MEASURE_COLOR;
+        g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color });
+        g.circle(m.from.x, m.from.y, 4 * px).circle(m.to.x, m.to.y, 4 * px).fill({ color });
+        const label = budgetLabel(m.units, settings.allowance, grid);
+        this.showLabel(label, m.to);
+        this.callbacks.movementFeedback?.(label);
         return;
       }
       case "draw": {
@@ -2459,7 +2476,8 @@ export class BoardView {
     }
     if (this.tool.kind !== "select" && e.button === 0) {
       const at = this.toBoard(e.global);
-      this.gesture = { from: at, to: at, screenFrom: { x: e.global.x, y: e.global.y }, free: e.altKey, dragged: false, path: [at] };
+      const origin = this.tool.kind === "measure" ? this.movementOrigin : null;
+      this.gesture = { from: origin ?? at, to: at, tokenSize: origin ? this.movementTokenSize : undefined, screenFrom: { x: e.global.x, y: e.global.y }, free: e.altKey, dragged: false, path: [at] };
       if (this.tool.kind === "measure") this.measurement = null;
       if (this.tool.kind === "erase") return this.eraseAt(at);
       this.redrawOverlay();

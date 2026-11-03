@@ -217,6 +217,10 @@ export function SignUpPage() {
         />
         {fieldError("password")}
       </label>
+      <p className="muted small-print">
+        By creating an account you agree to the <Link href="/terms">terms</Link> and the{" "}
+        <Link href="/privacy">privacy notice</Link>.
+      </p>
     </AccountForm>
   );
 }

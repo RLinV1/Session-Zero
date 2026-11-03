@@ -12,6 +12,19 @@
       "port": 3001
     },
     {
+      "name": "server-dev-account",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=@vtt/server"
+      ],
+      "env": {
+        "SEED_DEV_ACCOUNT": "1"
+      },
+      "port": 3001
+    },
+    {
       "name": "server-compose",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
@@ -38,6 +51,68 @@
         "VTT_SERVER": "http://127.0.0.1:3001"
       },
       "port": 5173
+    },
+    {
+      "name": "server-isolated",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=@vtt/server"
+      ],
+      "env": {
+        "PORT": "3101",
+        "SEED_DEV_ACCOUNT": "1"
+      },
+      "port": 3101
+    },
+    {
+      "name": "web-isolated",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=@vtt/web",
+        "--",
+        "--port",
+        "5273",
+        "--strictPort"
+      ],
+      "env": {
+        "VTT_SERVER": "http://127.0.0.1:3101"
+      },
+      "port": 5273
+    },
+    {
+      "name": "server-isolated-2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=@vtt/server"
+      ],
+      "env": {
+        "PORT": "3201",
+        "SEED_DEV_ACCOUNT": "1"
+      },
+      "port": 3201
+    },
+    {
+      "name": "web-isolated-2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=@vtt/web",
+        "--",
+        "--port",
+        "5373",
+        "--strictPort"
+      ],
+      "env": {
+        "VTT_SERVER": "http://127.0.0.1:3201"
+      },
+      "port": 5373
     }
   ]
 }

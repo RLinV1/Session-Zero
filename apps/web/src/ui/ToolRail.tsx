@@ -73,6 +73,7 @@ export function ToolRail({
   onSelect,
   onOptions,
   onClear,
+  movementControls,
   selectOnly = false,
   lineOfSight,
   onToggleLineOfSight,
@@ -86,6 +87,7 @@ export function ToolRail({
   onSelect: (kind: ToolKind) => void;
   onOptions: (options: ToolOptions) => void;
   onClear: () => void;
+  movementControls?: ReactNode;
   /** Only Select, with no marks to clear: a template being edited (ADR 0033). */
   selectOnly?: boolean;
   /** GM only: whether the scene's line of sight is on (ADR 0044). */
@@ -152,6 +154,8 @@ export function ToolRail({
           </>
         )}
       </div>
+
+      {active === "measure" && movementControls}
 
       {active === "draw" && (
         <div className="tool-options" role="group" aria-label="Draw options">
