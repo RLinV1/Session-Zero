@@ -35,6 +35,8 @@ export const BUILTIN_ASSETS: readonly LibraryAsset[] = [
  * wide, so a library card or the home page never downloads a full map just to show a picture of it.
  */
 export const SHIPPED_MAP_THUMBS: Readonly<Record<string, { src: string; alt: string }>> = {
+  "emberwatch-archive": { src: "/img/home/emberwatch-archive-thumb.webp", alt: "A top-down copper-lit archive with bookcases, a reading hall, a locked vault and a looping passage." },
+  "moonwater-baths": { src: "/img/home/moonwater-baths-thumb.webp", alt: "A top-down teal stone bathhouse with two pools, pillars, glazed windows and a secluded southern gallery." },
   "broken-span": {
     src: "/img/home/broken-span-thumb.webp",
     alt: "A top-down battle map of a ruined keep split by a rushing chasm, joined by two stone bridges.",

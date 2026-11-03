@@ -10,8 +10,8 @@
     { "source": "scripts/home-src/merchant-deck.webp", "slug": "merchant-deck", "width": 1536, "height": 1024, "cell": 64, "cellY": 64, "offX": 0, "offY": 0, "col": 2, "row": 2 }
   ],
   "builtinThumbs": [
-    { "file": "public/img/hero-map.webp", "slug": "broken-span", "cell": 69.4, "offX": 10, "offY": 31 },
-    { "file": "public/img/map-ice.webp", "slug": "hollowfrost-keep", "cell": 70, "offX": 47, "offY": 46 },
+    { "file": "public/img/hero-map.webp", "slug": "broken-span", "cell": 70, "offX": 8, "offY": 18 },
+    { "file": "public/img/map-ice.webp", "slug": "hollowfrost-keep", "cell": 70.3, "offX": 54, "offY": 43 },
     { "file": "public/img/map-jungle.webp", "slug": "temple-green-sun", "cell": 70, "offX": 21, "offY": 36 }
   ]
 }

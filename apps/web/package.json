@@ -11,6 +11,7 @@
     "test": "vitest run",
     "maps:home": "node scripts/home-maps.mjs",
     "images:ambient": "node scripts/ambient-images.mjs",
+    "render:compact": "node scripts/renderCompactMaps.mjs",
     "render:crypt": "node scripts/renderCryptMap.mjs"
   },
   "dependencies": {

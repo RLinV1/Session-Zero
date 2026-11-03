@@ -1,5 +1,7 @@
 import { DEFAULT_GRID, type GridSpec, type Point } from "./geometry";
 import type { Portal } from "./state";
+import { EMBERWATCH_ARCHIVE_WALLS } from "./shippedWalls/emberwatch-archive";
+import { MOONWATER_BATHS_WALLS } from "./shippedWalls/moonwater-baths";
 import { BROKEN_SPAN_WALLS } from "./shippedWalls/broken-span";
 import { HOLLOWFROST_KEEP_WALLS } from "./shippedWalls/hollowfrost-keep";
 import { SUNKEN_CRYPT_WALLS } from "./shippedWalls/sunken-crypt";
@@ -42,10 +44,12 @@ function shipped(
 }
 
 export const SHIPPED_MAPS: readonly ShippedMap[] = [
-  shipped("broken-span", "The Broken Span", "/img/hero-map.webp", { width: 3344, height: 1882 }, { cellSize: 69.4, offsetX: 10, offsetY: 31 }, BROKEN_SPAN_WALLS),
-  shipped("hollowfrost-keep", "Hollowfrost Keep", "/img/map-ice.webp", { width: 3269, height: 1882 }, { cellSize: 70, offsetX: 47, offsetY: 46 }, HOLLOWFROST_KEEP_WALLS),
+  shipped("broken-span", "The Broken Span", "/img/hero-map.webp", { width: 3344, height: 1882 }, { cellSize: 70, offsetX: 8, offsetY: 18 }, BROKEN_SPAN_WALLS),
+  shipped("hollowfrost-keep", "Hollowfrost Keep", "/img/map-ice.webp", { width: 3269, height: 1882 }, { cellSize: 70.3, offsetX: 54, offsetY: 43 }, HOLLOWFROST_KEEP_WALLS),
   shipped("temple-green-sun", "Temple of the Green Sun", "/img/map-jungle.webp", { width: 2740, height: 1604 }, { cellSize: 70, offsetX: 21, offsetY: 36 }, TEMPLE_GREEN_SUN_WALLS),
   shipped("sunken-crypt", "Sunken Crypt", "/img/map-crypt.webp", { width: 2800, height: 1680 }, { cellSize: 70, offsetX: 0, offsetY: 0 }, SUNKEN_CRYPT_WALLS),
+  shipped("emberwatch-archive", "Emberwatch Archive", "/img/map-emberwatch-archive.webp", { width: 1960, height: 1400 }, { cellSize: 70, offsetX: 0, offsetY: 0 }, EMBERWATCH_ARCHIVE_WALLS),
+  shipped("moonwater-baths", "Moonwater Baths", "/img/map-moonwater-baths.webp", { width: 1960, height: 1400 }, { cellSize: 70, offsetX: 0, offsetY: 0 }, MOONWATER_BATHS_WALLS),
 ];
 
 export function shippedMapByUrl(url: string): ShippedMap | undefined {
