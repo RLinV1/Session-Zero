@@ -97,6 +97,13 @@ export function renderApartments(canvas: HTMLCanvasElement, width: number, heigh
         line(facePoint(u - 0.25, z - 0.34), facePoint(u + 0.25, z + 0.34), "#775c35", 1.7);
         line(facePoint(u + 0.25, z - 0.34), facePoint(u - 0.25, z + 0.34), "#775c35", 1.7);
       }
+      if (b.id === "ivy-house" && (side === "east" || side === "west")) {
+        for (let leaf = 0; leaf < 30; leaf++) {
+          const z = 0.3 + random(leaf, b.x) * (b.height - 0.5);
+          const u = 0.3 + Math.sin(z * 2.5) * 0.15 + random(leaf, b.y) * 0.45;
+          poly([facePoint(u, z), facePoint(u + 0.13, z + 0.14), facePoint(u + 0.28, z + 0.03), facePoint(u + 0.12, z - 0.1)], shade([72, 103 + random(leaf, 2) * 30, 63], facePoint(u, z), normal));
+        }
+      }
       if (side === "south" || side === "north") {
         const u = length / 2;
         poly([facePoint(u - 0.34, 0.15), facePoint(u + 0.34, 0.15), facePoint(u + 0.34, 1.55), facePoint(u - 0.34, 1.55)], "#352f28", "#9b8a67");
@@ -112,7 +119,7 @@ export function renderApartments(canvas: HTMLCanvasElement, width: number, heigh
     poly([{ x: cx, y: cy, z: b.height + 0.8 }, { x: cx + 0.5, y: cy, z: b.height + 0.8 }, { x: cx + 0.5, y: cy + 0.5, z: b.height + 0.8 }, { x: cx, y: cy + 0.5, z: b.height + 0.8 }], "#a08360");
     ctx.restore();
   }
-  // Market canopies, barrels and lantern posts echo the supplied street reference.
+  // Market canopies and lantern posts echo the supplied street reference.
   for (const [sx, sy, blue] of [[8, 2.5, 0], [7.5, 16.5, 1]] as const) {
     for (const dx of [0, 2]) for (const dy of [0, 1.2]) line({ x: sx + dx, y: sy + dy, z: 0 }, { x: sx + dx, y: sy + dy, z: 1.5 }, "#71593a", 4);
     for (let stripe = 0; stripe < 8; stripe++) poly([{ x: sx + stripe * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy, z: 1.5 }, { x: sx + (stripe + 1) * 0.25, y: sy + 1.25, z: 1.25 }, { x: sx + stripe * 0.25, y: sy + 1.25, z: 1.25 }], stripe % 2 ? (blue ? "#5c7b89" : "#a38b62") : "#d6c8a5", "#8e826733");

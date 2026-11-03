@@ -18,6 +18,11 @@ describe("isometric lighting geometry", () => {
     expect(blocksLight(floor, { x: 2, y: 6, z: 1.5 }, building)).toBe(true);
     expect(blocksLight(floor, { x: 9, y: 6, z: 1.5 }, building)).toBe(false);
   });
+  it("shortens a building shadow as the light rises", () => {
+    const floor = { x: 10, y: 6, z: 0.02 };
+    expect(blocksLight(floor, { x: 2, y: 6, z: 1.5 }, building)).toBe(true);
+    expect(blocksLight(floor, { x: 2, y: 6, z: 10 }, building)).toBe(false);
+  });
   it("routes around apartments instead of through their walls", () => {
     const path = findPath({ x: 2.5, y: 5.5 }, { x: 8.5, y: 5.5 }, [building]);
     expect(path.at(-1)).toEqual({ x: 8.5, y: 5.5 });

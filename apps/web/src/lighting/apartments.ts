@@ -16,4 +16,6 @@ export const LAMPS: readonly Point2[] = [{ x: 8, y: 7.5 }, { x: 12, y: 11.5 }, {
 export const WINDOW_LIGHTS: readonly Light[] = APARTMENTS.flatMap((b) => [
   { x: b.x + 1, y: b.y + b.depth + 0.08, z: 1.1, range: 3.5, strength: 0.6, color: [1, 0.65, 0.3] as const },
   { x: b.x + b.width + 0.08, y: b.y + 1.5, z: 1.3, range: 3.5, strength: 0.7, color: [1, 0.65, 0.3] as const },
+  { x: b.x + 1, y: b.y - 0.08, z: 1.1, range: 3.5, strength: 0.6, color: [1, 0.65, 0.3] as const },
+  { x: b.x - 0.08, y: b.y + 1.5, z: 1.3, range: 3.5, strength: 0.7, color: [1, 0.65, 0.3] as const },
 ]);
