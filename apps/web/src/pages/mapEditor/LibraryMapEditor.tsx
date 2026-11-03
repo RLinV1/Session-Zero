@@ -62,7 +62,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
     active.current = true;
     let live = true;
     api.library.preparation(asset.id).then(
-      (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(preparation.grid)); } } },
+      (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(normalizeLegacyGridForBoard(preparation.grid, asset))); } } },
       (err: unknown) => { if (live) setLoadError(err instanceof Error ? err.message : "Could not load this map's walls and fog"); },
     );
     return () => { live = false; active.current = false; };
@@ -82,6 +82,14 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
     walls: draft.walls, fog: draft.fog, terrain: { base: draft.terrain ?? [], effects: [] },
   } : null, [asset, draft, parsedGrid, savedAsset.grid]);
 
+  const applyGridDraft = (next: typeof gridDraft) => {
+    const parsed = parseGridDraft(next, asset);
+    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.length || (stored?.terrain?.length && !resetTerrain))) {
+      if (!window.confirm("Reset base terrain and apply this grid change? Cancel keeps the current grid and terrain.")) return;
+      setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: [] } : current);
+    }
+    setGridDraft(next); setSaveError(null);
+  };
   const discard = () => {
     suggestionSession.blocked = true;
     setGridDraft(toGridDraft(normalizeLegacyGridForBoard(savedAsset.grid ?? DEFAULT_GRID, asset)));
@@ -132,6 +140,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         </span>}
         {saveError && !prompt && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
       </nav>}>
+      {loadError && <p role="alert" className="error">{loadError}</p>}
       {waiting ? <GridPreparation label={preparation.label} onSkip={preparation.skip} /> :
       <div className="map-editor-shell"><div className="map-editor-body" role="tabpanel" inert={saving || !revision}>
         <GuideStepContext.Provider value={step}>
@@ -139,23 +148,15 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {importDiagnostics && importDiagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{importDiagnostics.length} import warnings</summary><ul>{importDiagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
         {step === "grid" && <HudLayout className="map-editor-grid"><GridForm
           grid={savedAsset.grid ?? DEFAULT_GRID} map={asset} draft={gridDraft} hasDraft={gridDirty}
-          onChange={(next) => {
-            const parsed = parseGridDraft(next, asset);
-            if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.length || stored?.terrain?.length) && !resetTerrain) {
-              if (!window.confirm("Reset base terrain and apply this grid change? Cancel keeps the current grid and terrain.")) return;
-              setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: [] } : current);
-            }
-            setGridDraft(next); setSaveError(null);
-          }} onCancel={discard}
+          onChange={applyGridDraft} onCancel={discard}
           onApply={async () => { await save(); }} applying={saving} error={null} hideActions advancedOpen
           detection={detection.status} detectionError={detection.error}
           detectionDenied={detection.accessDenied}
           detectionNotice={setup.preparation.notice} focusCanvas={!savedAsset.grid}
           suggestionSession={suggestionSession}
-          onUseSuggestion={(candidate) => setGridDraft(withGridSuggestion(gridDraft, candidate))}
+          onUseSuggestion={(candidate) => applyGridDraft(withGridSuggestion(gridDraft, candidate))}
           allowUnchanged={!savedAsset.grid}
         /></HudLayout>}
-        {step !== "grid" && loadError && <p role="alert" className="error">{loadError}</p>}
         {step !== "grid" && !loadError && !state && <p className="muted">Loading…</p>}
         {step === "walls" && state && <WallSetup connection={connection} state={state} token="" detection={false} />}
         {step === "fog" && state && <FogSetup connection={connection} state={state} />}
