@@ -255,6 +255,9 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await page.mouse.move(fogFrom.x, fogFrom.y); await page.mouse.down(); await page.mouse.move(fogTo.x, fogTo.y, { steps: 8 }); await page.mouse.up();
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 225, y: 25 });
+    // The wire observer can receive the move before this page renders its new hit area.
+    await expect(page.getByRole("status").filter({ hasText: new RegExp(`seq ${gm.seq}$`) })).toBeVisible();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await page.mouse.click(fogTo.x, fogTo.y);
     await expect(card).toBeVisible();
     await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();

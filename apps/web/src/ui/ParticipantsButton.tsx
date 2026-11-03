@@ -212,7 +212,8 @@ const MAX_AVATARS = 5;
 
 /** The initials take whichever ink reads at 4.5:1 on the fill; the GM's accent keeps the CSS white. */
 function avatarStyle(p: Participant, playerIndex: number) {
-  if (p.role === "gm") return { background: "var(--accent)" };
+  // "GM" says who it is; rust is kept for the one main action and the active turn (design-language).
+  if (p.role === "gm") return { background: "var(--raised)", color: "var(--text)", boxShadow: "0 0 0 2px var(--panel), inset 0 0 0 1px var(--border-strong)" };
   const fill = AVATAR_COLORS[playerIndex % AVATAR_COLORS.length]!;
   return { background: fill, color: inkOn(fill) };
 }

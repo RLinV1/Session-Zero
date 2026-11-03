@@ -143,7 +143,7 @@ export function GuideTour({ role = "gm", steps: given, onClose }: { role?: Role;
           <button type="button" className="secondary" onClick={() => go(index - 1)} disabled={index === 0}>
             Back
           </button>
-          <button ref={nextRef} type="button" onClick={() => go(index + 1)}>
+          <button className="primary" ref={nextRef} type="button" onClick={() => go(index + 1)}>
             {last ? "Done" : "Next"}
           </button>
         </div>

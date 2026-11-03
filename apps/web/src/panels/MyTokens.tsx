@@ -3,6 +3,8 @@ import type { RoomConnection } from "../net/roomConnection";
 import { ConditionMarker } from "./ConditionMarker";
 import { PanelSection } from "../ui/PanelSection";
 import { useDisplayedHealth } from "../board/nukeHealth";
+import { hpLevel } from "../ui/palette";
+import { TokenDisc } from "../ui/TokenDisc";
 
 /**
  * The player's own characters, promoted above everything else (FR-PL-03).
@@ -51,7 +53,7 @@ export function MyTokens({
           return (
             <li key={token.id} className={isActive ? "my-token active" : "my-token"}>
               <button type="button" className="my-token-head" onClick={() => onFocusToken(token.id)}>
-                <span className="swatch large" style={{ background: token.color }} aria-hidden />
+                <TokenDisc name={token.name} color={token.color} image={token.imageUrl} size="1.75rem" className="small" />
                 <span className="my-token-name">{token.name}</span>
                 {isActive && <span className="badge active-badge">your turn</span>}
               </button>
@@ -64,7 +66,7 @@ export function MyTokens({
                       {token.stats.maxHp !== null && `/${token.stats.maxHp}`} HP
                     </span>
                   )}
-                  {token.stats.ac !== null && <span className="muted">AC {token.stats.ac}</span>}
+                  {token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
                 </p>
               )}
 
@@ -77,7 +79,7 @@ export function MyTokens({
                   aria-valuenow={stats.hp ?? 0}
                   aria-label={`${token.name} hit points`}
                 >
-                  <span style={{ width: `${fraction * 100}%` }} data-level={level(fraction)} />
+                  <span style={{ width: `${fraction * 100}%` }} data-level={hpLevel(fraction)} />
                 </div>
               )}
 
@@ -126,6 +128,5 @@ export function MyTokens({
   );
 }
 
-const level = (f: number) => (f > 0.5 ? "ok" : f > 0.25 ? "warn" : "critical");
 /** The server rejects hp above maxHp, so clamp rather than letting a tap fail. */
 const clamp = (hp: number, maxHp: number | null) => (maxHp === null ? hp : Math.min(hp, maxHp));

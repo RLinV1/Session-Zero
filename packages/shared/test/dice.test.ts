@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { formatExpression, parseDiceExpression, rollDice } from "../src";
+import { formatExpression, parseDiceExpression, rollDice, isDiceRoll } from "../src";
 import { alice, attempt, baseRoom, gm, resetRandom, run } from "./fixtures";
 
 describe("dice expressions (FR-TAC-09)", () => {
@@ -55,12 +55,12 @@ describe("rolling in a room (FR-GM-22)", () => {
       byParticipantId: alice.id,
       visibility: "public",
     });
-    expect(state.rolls[0]!.total).toBe(state.rolls[0]!.dice.reduce((a, b) => a + b, 0) + 1);
+    expect(state.rolls.filter(isDiceRoll)[0]!.total).toBe(state.rolls.filter(isDiceRoll)[0]!.dice.reduce((a, b) => a + b, 0) + 1);
   });
 
   it("lets the GM roll privately", () => {
     const { state } = run(baseRoom(), gm, { type: "dice.roll", expression: "1d20", visibility: "gm" });
-    expect(state.rolls[0]!.visibility).toBe("gm");
+    expect(state.rolls.filter(isDiceRoll)[0]!.visibility).toBe("gm");
   });
 
   it("refuses a player a GM-only roll", () => {
@@ -84,6 +84,6 @@ describe("rolling in a room (FR-GM-22)", () => {
     }
     expect(state.rolls).toHaveLength(30);
     // The full history is still in the event log; state keeps only the tail.
-    expect(state.rolls.at(-1)!.id).not.toEqual(state.rolls[0]!.id);
+    expect(state.rolls.filter(isDiceRoll).at(-1)!.id).not.toEqual(state.rolls.filter(isDiceRoll)[0]!.id);
   });
 });

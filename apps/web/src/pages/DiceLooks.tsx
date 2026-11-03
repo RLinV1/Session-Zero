@@ -373,7 +373,7 @@ export function SaveBrowserLooksOffer() {
           {result.failed.join(", ")} could not be saved and stayed in this browser.
         </p>
       )}
-      <button type="button" onClick={() => void save()} disabled={busy}>
+      <button className="primary" type="button" onClick={() => void save()} disabled={busy}>
         {busy ? "Saving…" : "Save to my account"}
       </button>
     </div>

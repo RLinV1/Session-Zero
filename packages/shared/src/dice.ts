@@ -89,6 +89,53 @@ export const DiceRoll = z.object({
 });
 export type DiceRoll = z.infer<typeof DiceRoll>;
 
+/** Most tokens one group roll or area effect may name (ADR 0046). */
+export const MAX_GROUP_ROLL_TOKENS = 30;
+
+/** One die result set: the dice in roll order and their total with the modifier. */
+export const RolledDice = z.object({
+  dice: z.array(z.number().int().positive()).min(1).max(MAX_DICE),
+  total: z.number().int(),
+});
+export type RolledDice = z.infer<typeof RolledDice>;
+
+/**
+ * One token's result in a group roll (ADR 0046). `name` and `hidden` are as they were when rolled,
+ * like `AttackSide`, so the log reads right after a rename or delete and a concealed token stays so.
+ */
+export const GroupRollEntry = AttackSide.extend(RolledDice.shape);
+export type GroupRollEntry = z.infer<typeof GroupRollEntry>;
+
+/**
+ * The same expression rolled once for each of several tokens, logged as one entry (ADR 0046).
+ * `kind` tells it apart from a `DiceRoll`, which has none.
+ */
+export const GroupRoll = z.object({
+  kind: z.literal("group"),
+  id: z.string().min(1).max(64),
+  expression: z.string().min(1).max(32),
+  label: z.string().min(1).max(MAX_ATTACK_LABEL).nullable(),
+  byParticipantId: z.string().min(1).max(64),
+  visibility: DiceVisibility,
+  /** One per token, in the order the GM chose them. A player's copy holds only the tokens they can see. */
+  entries: z.array(GroupRollEntry).max(MAX_GROUP_ROLL_TOKENS),
+});
+export type GroupRoll = z.infer<typeof GroupRoll>;
+
+/** An entry in the roll log: a plain or attack roll, or a group roll (ADR 0046). */
+export const LoggedRoll = z.union([GroupRoll, DiceRoll]);
+export type LoggedRoll = DiceRoll | GroupRoll;
+
+export const isGroupRoll = (roll: LoggedRoll): roll is GroupRoll => (roll as Partial<GroupRoll>).kind === "group";
+export const isDiceRoll = (roll: LoggedRoll): roll is DiceRoll => !isGroupRoll(roll);
+
+/** The plain and attack rolls in a log, leaving out group rolls. */
+export const diceRollsOf = (rolls: readonly LoggedRoll[]): DiceRoll[] => rolls.filter(isDiceRoll);
+
+/** The plain or attack roll with this id, if it is still in the log. Group rolls never match. */
+export const findDiceRoll = (rolls: readonly LoggedRoll[], id: string): DiceRoll | undefined =>
+  rolls.find((r): r is DiceRoll => !isGroupRoll(r) && r.id === id);
+
 const PATTERN = /^\s*(\d*)\s*d\s*(\d+)\s*(?:([+-])\s*(\d+))?\s*$/i;
 
 export type ParseResult =

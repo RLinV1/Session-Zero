@@ -32,6 +32,7 @@ import {
   type Point,
   type RejectionCode,
   type ResolvedEncounter,
+  type RoomPreview,
   type RoomState,
   type ServerMessage,
   type TableState,
@@ -199,6 +200,29 @@ export class LiveRoom {
    */
   boardForOwner(): TableState {
     return tableOf(this.state);
+  }
+
+  /**
+   * The board as this seat sees it, for the dashboard card's picture (gm-dashboard). Filtered like
+   * every room payload (invariant 3), then cut down to what the picture draws.
+   */
+  previewFor(participantId: string): RoomPreview | null {
+    const viewer = this.activeParticipant(participantId);
+    if (this.isClosed || !viewer) return null;
+    const view = filterStateForViewer(this.state, viewer);
+    const map = view.scene.map;
+    return {
+      map: map && { url: map.url, width: map.width, height: map.height },
+      grid: view.scene.grid,
+      tokens: Object.values(view.tokens).map((t) => ({
+        position: t.position,
+        size: t.size,
+        color: t.color,
+        imageUrl: t.imageUrl,
+        hidden: t.hidden,
+      })),
+      fog: Object.values(view.fog).map((region) => region.points),
+    };
   }
 
   /** The participant, only while they are still in the room (ADR 0006). */

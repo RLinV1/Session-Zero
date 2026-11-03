@@ -142,7 +142,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
       <span className={dirty ? "encounter-edit-state unsaved" : "encounter-edit-state"} role="status">
         {dirty ? "Unsaved changes" : "Saved"}
       </span>
-      <button type="button" className="small" disabled={busy || !session} onClick={() => void save()}>
+      <button type="button" className="small primary" disabled={busy || !session} onClick={() => void save()}>
         {busy ? "Saving…" : "Save"}
       </button>
       {/* Only a saved template can start a room: the room is made from what is stored. */}
@@ -167,7 +167,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
           </label>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="submit" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save"}</button>
+            <button type="submit" className="primary" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save"}</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => { setPrompt(null); setPendingClose(false); }}>Cancel</button>
           </div>
         </form>
@@ -176,7 +176,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
         <div className="stack">
           <p>This encounter has changes you haven't saved. Save them to the template, or discard them?</p>
           <div className="row button-row">
-            <button type="button" disabled={busy} onClick={() => { setPrompt(null); void saveThenLeave(); }}>Save</button>
+            <button type="button" className="primary" disabled={busy} onClick={() => { setPrompt(null); void saveThenLeave(); }}>Save</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => void leave()}>Discard</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Keep editing</button>
           </div>
@@ -187,7 +187,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
           <p>The room is made from the saved template. Save your changes first, or open it without them?</p>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="button" disabled={busy} onClick={async () => { if (await save()) askRoomDetails(); }}>Save</button>
+            <button type="button" className="primary" disabled={busy} onClick={async () => { if (await save()) askRoomDetails(); }}>Save</button>
             <button type="button" className="secondary" disabled={busy} onClick={askRoomDetails}>Discard</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Cancel</button>
           </div>
@@ -199,7 +199,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
           <RoomDetailsFields value={details} onChange={setDetails} disabled={busy} />
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="submit" disabled={busy || !roomDetailsReady(details)}>{busy ? "Opening…" : "Open room"}</button>
+            <button type="submit" className="primary" disabled={busy || !roomDetailsReady(details)}>{busy ? "Opening…" : "Open room"}</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Cancel</button>
           </div>
         </form>
@@ -208,7 +208,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
         <div className="stack">
           <p>Leave without saving? The template stays as it was last saved.</p>
           <div className="row button-row">
-            <button type="button" disabled={busy} onClick={() => void leave()}>Discard</button>
+            <button type="button" className="primary" disabled={busy} onClick={() => void leave()}>Discard</button>
             <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Keep editing</button>
           </div>
         </div>

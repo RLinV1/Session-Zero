@@ -108,7 +108,7 @@ function ResolveForm({
       <div className="resolve-departure">
         <p>{departed.displayName} doesn't own any tokens now. Nothing is left to decide.</p>
         <div className="row modal-actions">
-          <button type="button" onClick={onDone}>
+          <button className="primary" type="button" onClick={onDone}>
             Done
           </button>
         </div>
@@ -193,7 +193,7 @@ function ResolveForm({
         <button type="button" className="secondary" onClick={onDone} disabled={busy}>
           Close
         </button>
-        <button type="submit" disabled={busy || actions.length === 0}>
+        <button className="primary" type="submit" disabled={busy || actions.length === 0}>
           {busy ? "Applying…" : actions.length === 0 ? "Apply" : `Apply to ${actions.length} ${actions.length === 1 ? "token" : "tokens"}`}
         </button>
       </div>

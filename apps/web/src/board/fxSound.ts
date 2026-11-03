@@ -48,6 +48,8 @@ export interface ScheduledVoice {
   offset: number;
   /** Stereo position, -1..1. */
   pan: number;
+  /** A tone layer's `glide`, in seconds at this play's speed. */
+  glide?: number;
 }
 
 export interface ScheduleOptions {
@@ -117,6 +119,7 @@ export function scheduleSound(def: AnimationDef, { reduced, rng }: ScheduleOptio
         beat,
         offset: Math.max(0, -start) * speed,
         pan: layer.pan ?? (layer.spread ? (rng() * 2 - 1) * layer.spread : 0),
+        ...(layer.kind === "tone" && layer.glide ? { glide: layer.glide * (layer.env === "hit" ? hitStretch : scale) } : {}),
       });
     }
   }
@@ -307,7 +310,10 @@ function renderVoice(e: Engine, voice: ScheduledVoice, t0: number, out: GainNode
   if (layer.kind === "tone") {
     const osc = ctx.createOscillator();
     osc.type = layer.wave;
-    sweep(osc.frequency, layer.freq[0] * pitch, layer.freq[1] * pitch, start, end);
+    if (voice.glide) {
+      osc.frequency.setValueAtTime(layer.freq[0] * pitch, start);
+      osc.frequency.setTargetAtTime(layer.freq[1] * pitch, start, voice.glide);
+    } else sweep(osc.frequency, layer.freq[0] * pitch, layer.freq[1] * pitch, start, end);
     if (layer.vibrato) {
       const lfo = ctx.createOscillator();
       lfo.frequency.value = layer.vibrato.rate;

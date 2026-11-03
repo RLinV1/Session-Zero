@@ -1,5 +1,6 @@
 import type { AnimationShape } from "@vtt/shared";
-import type { ResolvedAnimation } from "./effectPresets";
+import { SHAPE_DEFAULTS, type ResolvedAnimation } from "./effectPresets";
+import { NUKE_DROP_SHARE } from "./fxBudget";
 
 /**
  * What each animation shape sounds like (`fxSound.ts` plays it). Each shape has a theme, a real
@@ -35,10 +36,10 @@ export const SOUND_THEMES: Record<AnimationShape, string> = {
   beam: "a humming energy beam",
   frost: "ice cracking and spikes shattering like glass",
   poison: "a glass vial smashing, then bubbling venom",
-  smite: "a church bell and a thunderclap under a rising holy chord",
+  smite: "a choir singing as the spell is cast, then a pillar of light breaking the ground with a deep boom, rolling thunder and falling rock",
   sonic: "war drums booming in a shockwave",
   tornado: "a howling twister full of stones",
-  nuke: "a falling bomb, a thunderous blast and a long rolling aftermath",
+  nuke: "an air-raid siren winding up, a thunderous blast and a long rolling aftermath",
 };
 
 /** Each clip in `public/sfx` and the moment (seconds) of its hit, measured from the file; `length` in seconds. */
@@ -157,6 +158,12 @@ export interface ToneLayer extends LayerBase {
   freq: [number, number];
   vibrato?: { rate: number; depth: number };
   filter?: FilterSpec;
+  /**
+   * Seconds (a time constant) for the pitch to get most of the way from `freq[0]` to `freq[1]`:
+   * it then settles on `freq[1]` the way a motor spins up, fast and then slower, instead of
+   * sweeping evenly to it over the whole layer.
+   */
+  glide?: number;
 }
 
 export interface NoiseLayer extends LayerBase {
@@ -187,6 +194,7 @@ type Hz = number | [number, number];
 interface Extra {
   repeat?: LayerBase["repeat"];
   vibrato?: ToneLayer["vibrato"];
+  glide?: ToneLayer["glide"];
   /** A fixed lowpass on a tone or clip. */
   lp?: number;
   /** A bandpass on a tone, swept from the first cutoff to the second: a formant, so it sounds like a voice. */
@@ -212,11 +220,11 @@ function tone(cue: Cue, wave: ToneLayer["wave"], at: At, dur: number, att: Att, 
 }
 
 const FILTERS = { bp: "bandpass", lp: "lowpass", hp: "highpass" } as const;
-function noise(cue: Cue, color: NoiseColor, at: At, dur: number, att: Att, cutoff: Hz, filter: keyof typeof FILTERS, q: number, gain: number, wet: number, extra: Omit<Extra, "vibrato" | "lp" | "bp" | "q"> = {}): NoiseLayer {
+function noise(cue: Cue, color: NoiseColor, at: At, dur: number, att: Att, cutoff: Hz, filter: keyof typeof FILTERS, q: number, gain: number, wet: number, extra: Omit<Extra, "vibrato" | "glide" | "lp" | "bp" | "q"> = {}): NoiseLayer {
   return { kind: "noise", cue, color, at, dur, ...envelope(att), filter: { type: FILTERS[filter], freq: hz(cutoff), q }, gain, wet, ...extra };
 }
 
-interface ClipExtra extends Omit<Extra, "vibrato" | "bp" | "q"> {
+interface ClipExtra extends Omit<Extra, "vibrato" | "glide" | "bp" | "q"> {
   rate?: number;
   /** Seconds to play; the whole clip (at its rate) when left out. */
   dur?: number;
@@ -234,6 +242,25 @@ function clip(cue: Cue, name: SfxClip, at: At, gain: number, extra: ClipExtra = 
 const x = (count: NonNullable<LayerBase["repeat"]>["count"], every: NonNullable<LayerBase["repeat"]>["every"], decay?: number) => ({ repeat: { count, every, ...(decay ? { decay } : {}) } });
 const vib = (rate: number, depth: number) => ({ vibrato: { rate, depth } });
 
+/** A sung vowel's first two formants, in Hz; each may move, so a vowel can open as it is sung. */
+type Vowel = [Hz, Hz];
+const OH_TO_AH: Vowel = [[560, 740], [950, 1150]];
+
+/**
+ * A choir section singing `notes` on `vowel`. Each note is two sawtooth singers a few cents apart,
+ * one through the vowel's first formant and one, quieter, through its second, each with a vibrato
+ * of its own, so a chord sounds like a crowd of voices rather than an organ.
+ */
+function choir(cue: Cue, at: At, dur: number, att: Att, notes: Hz[], vowel: Vowel, gain: number, wet: number, hall: number): ToneLayer[] {
+  return notes.flatMap((note, i) => {
+    const [from, to] = hz(note);
+    return [
+      tone(cue, "sawtooth", at, dur, att, [from, to], gain, wet, { ...vib(5.1 + 0.37 * i, from * 0.006), bp: vowel[0], q: 4, hall }),
+      tone(cue, "sawtooth", at, dur, att, [from * 1.004, to * 1.004], gain * 0.55, wet, { ...vib(5.8 + 0.29 * i, from * 0.007), bp: vowel[1], q: 6, hall }),
+    ];
+  });
+}
+
 // ---------- hit spacings the drawing derives from the animation (SOUND-PLAN.md, general rule 2) ----------
 
 /** Slash and claw: cut i starts `i * min(0.06, 0.35 / n) * D`. */
@@ -250,6 +277,21 @@ const chopEvery = (d: ResolvedAnimation) => Math.max((2 * Math.PI) / (d.count * 
 const chopCount = (d: ResolvedAnimation) => Math.floor((0.93 * d.duration) / chopEvery(d)) + 1;
 /** Tornado: `6 + 3n` chunks of rubble. */
 const rubble = (d: ResolvedAnimation) => 6 + 3 * d.count;
+/** The nuke's blast, after the bomb's fall under the siren. */
+const BLAST = NUKE_DROP_SHARE;
+/** `s` seconds after the nuke's blast, at its default duration. */
+const afterBlast = (s: number) => BLAST + s / SHAPE_DEFAULTS.nuke.duration;
+
+/**
+ * A dual-tone air-raid siren winding up, modelled on a recording of one: two tones a minor third
+ * apart (6:5) at nearly even strength, mellow (a sawtooth through a dark horn, its second harmonic
+ * about 12 dB down), with a faint 10 Hz flutter, gliding up as its rotor spins up and settling on
+ * the top pair.
+ */
+function siren(cue: Cue, at: At, dur: number, att: Att, freq: [number, number], glide: number, gain: number, wet: number, hall: number): ToneLayer[] {
+  return [1, 1.2].map((ratio, i) =>
+    tone(cue, "sawtooth", at, dur, att, [freq[0] * ratio, freq[1] * ratio], gain * (i ? 0.9 : 1), wet, { ...vib(10, 1.2), lp: 900, glide, hall }));
+}
 
 export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
   slash: [
@@ -420,18 +462,38 @@ export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
     clip("tail", "whisper", 0.65, 0.25, { rate: 0.7, wet: 0.3, hall: 0.5 }),
   ],
   smite: [
-    tone("launch", "triangle", 0, 1.6, H(0.9), [220, 247], 0.14, 0.7, vib(5.5, 3)),
-    tone("launch", "triangle", 0, 1.6, H(0.9), [330, 370], 0.1, 0.7, vib(5.5, 4.5)),
-    tone("launch", "sine", 0.025, 1.5, H(1), [440, 494], 0.08, 0.7, vib(6, 6)),
+    // The casting: a choir comes in at once on E major, "oh" opening to "ah", a soprano joining
+    // above it, and sings while the holy circle draws and the light gathers, under the bowl; the
+    // pads are its chest. It holds to 0.1 s before the strike and dies away under the thunder, so
+    // the strike itself has no choir in it.
+    ...choir("launch", 0, 1.8, H(0.12), [165, 247, 330, 415, 494], OH_TO_AH, 0.4, 0.4, 0.5),
+    ...choir("launch", 0.06, 1.65, H(0.3), [659], OH_TO_AH, 0.28, 0.4, 0.6),
+    tone("launch", "triangle", 0, 1.8, H(0.15), 165, 0.14, 0.7, vib(5.5, 2)),
+    tone("launch", "triangle", 0, 1.8, H(0.15), 247, 0.1, 0.7, vib(5.5, 3)),
+    tone("launch", "sine", 0, 1.8, H(0.2), 330, 0.08, 0.7, vib(6, 4)),
     clip("launch", "singing-bowl", 0, 0.35, { dur: 2, wet: 0.6 }),
-    tone("travel", "sawtooth", 0.341, 0.56, R, [160, 1400], 0.12, 0.3, { ...vib(12, 40), lp: 2500 }),
-    noise("travel", "pink", 0.341, 0.56, R, [500, 6000], "bp", 1.5, 0.18, 0.3),
-    clip("impact", "church-bell", 0.62, 0.8, { dur: 3, wet: 0.3, hall: 0.5 }),
-    clip("impact", "thunder-crack", 0.62, 0.85, { wet: 0.3, hall: 0.4 }),
+    tone("travel", "sawtooth", 0.341, 0.7, R, [160, 1400], 0.12, 0.3, { ...vib(12, 40), lp: 2500 }),
+    noise("travel", "pink", 0.341, 0.7, R, [500, 6000], "bp", 1.5, 0.18, 0.3),
+    // The pillar breaks the ground: a deep crunch of stone and a slowed blast, the ground booming
+    // two and a half octaves down over a heavy thump and a dark rumble, then the earth rolling
+    // and big rubble falling back. The crack of the light and the bell sit low under it; the gong
+    // rings an octave down.
+    clip("impact", "hammer-concrete", 0.62, 1, { rate: 0.6, lp: 2500, wet: 0.2 }),
+    clip("impact", "blast", 0.62, 0.8, { rate: 0.5, wet: 0.2 }),
+    clip("impact", "thunder-crack", 0.62, 1, { rate: 0.4, lp: 1000, wet: 0.3, hall: 0.4 }),
+    clip("impact", "thunder-crack", 0.62, 0.3, { rate: 0.8, lp: 3000, wet: 0.3, hall: 0.4 }),
+    clip("impact", "church-bell", 0.62, 0.25, { dur: 3, wet: 0.3, hall: 0.5 }),
     tone("impact", "sine", 0.62, 1.4, 0.006, [58, 36], 0.8, 0.3),
-    tone("impact", "triangle", 0.62, 0.4, 0.004, [150, 70], 0.5, 0.15),
-    clip("tail", "gong", 0.62, 0.5, { rate: 0.8, dur: 3, wet: 0.3, hall: 0.5 }),
-    tone("tail", "sawtooth", 0.62, 0.55, H(0.02), 110, 0.15, 0.4, { ...vib(40, 6), lp: 700 }),
+    tone("impact", "sine", 0.62, 0.6, 0.004, [90, 30], 0.95, 0.2),
+    tone("impact", "triangle", 0.62, 0.45, 0.004, [130, 55], 0.55, 0.15),
+    noise("impact", "brown", 0.62, 1.2, 0.01, [1800, 100], "lp", 0.8, 0.45, 0.35),
+    // Held, not hit: it starts on the strike and swells to its own peak 0.7 s later, so none of it
+    // leads into the casting.
+    clip("tail", "thunder-roll", 0.62, 0.55, { rate: 0.55, att: H(0.05), dur: 2, lp: 900, hall: 0.4 }),
+    clip("tail", "stones-fall", 0.63, 0.9, { rate: 0.75, spread: 0.3 }),
+    clip("tail", "stones-fall-2", 0.66, 0.6, { rate: 0.8, spread: 0.6, ...x(3, 0.12) }),
+    clip("tail", "gong", 0.62, 0.4, { rate: 0.5, dur: 3, wet: 0.3, hall: 0.5 }),
+    tone("tail", "sawtooth", 0.62, 0.69, H(0.02), 110, 0.15, 0.4, { ...vib(40, 6), lp: 700 }),
   ],
   sonic: [
     clip("launch", "bass-tom", 0, 0.8, x("count", sonicGap, 0.85)),
@@ -453,21 +515,23 @@ export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
     clip("tail", "stones-fall", 0.6, 0.4, { spread: 0.8, ...x(6, 0.09) }),
   ],
   nuke: [
-    // Ends 20 ms before the blast: a breath of silence before the wall.
-    tone("launch", "sine", 0, 0.86, R, [2600, 900], 0.2, 0.1, vib(6, 40)),
-    tone("launch", "sawtooth", 0, 0.88, R, [55, 110], 0.2, 0.1, { lp: 200 }),
-    clip("impact", "blast", 0.22, 1, { wet: 0.3, hall: 0.3 }),
-    clip("impact", "thunder-crack", 0.22, 1, { rate: 0.45, wet: 0.2, hall: 0.6 }),
-    tone("impact", "sine", 0.22, 2.6, 0.005, [80, 24], 0.85, 0.2),
-    tone("impact", "triangle", 0.22, 1.6, 0.005, [140, 50], 0.5, 0.2),
-    noise("impact", "brown", 0.22, 2.2, 0.01, [4000, 120], "lp", 0.8, 0.45, 0.45),
-    clip("tail", "thunder-roll", 0.22, 0.8, { rate: 0.6, dur: 3.5, hall: 0.5 }),
-    clip("tail", "thunder-crack", 0.26, 0.45, { rate: 0.5, hall: 0.6, ...x(2, 0.15) }),
-    clip("tail", "fire-roar", 0.3, 0.5, { rate: 0.6, att: H(0.3), dur: 1.6, wet: 0.3 }),
+    // An air-raid siren winds up before the bomb falls, louder as it climbs, and settles on its
+    // top pair (574 and 689 Hz) about 2 s in. It holds until the blast and is swallowed by it; the
+    // drone under it ends 20 ms before it, a breath before the wall.
+    ...siren("launch", 0, 3.7, H(1.2), [140, 574], 0.7, 0.28, 0.25, 0.5),
+    tone("launch", "sawtooth", 0, 2.99, R, [55, 110], 0.2, 0.1, { lp: 200 }),
+    clip("impact", "blast", BLAST, 1, { wet: 0.3, hall: 0.3 }),
+    clip("impact", "thunder-crack", BLAST, 1, { rate: 0.45, wet: 0.2, hall: 0.6 }),
+    tone("impact", "sine", BLAST, 2.6, 0.005, [80, 24], 0.85, 0.2),
+    tone("impact", "triangle", BLAST, 1.6, 0.005, [140, 50], 0.5, 0.2),
+    noise("impact", "brown", BLAST, 2.2, 0.01, [4000, 120], "lp", 0.8, 0.45, 0.45),
+    clip("tail", "thunder-roll", BLAST, 0.8, { rate: 0.6, dur: 3.5, hall: 0.5 }),
+    clip("tail", "thunder-crack", afterBlast(0.16), 0.45, { rate: 0.5, hall: 0.6, ...x(2, 0.15) }),
+    clip("tail", "fire-roar", afterBlast(0.32), 0.5, { rate: 0.6, att: H(0.3), dur: 1.6, wet: 0.3 }),
     // The ringing in the ears; any louder and it only irritates.
-    clip("tail", "tinnitus", 0.26, 0.05, { att: 0.05, dur: 1.8, wet: 0 }),
-    clip("tail", "stones-fall-2", 0.45, 0.15, { spread: 0.9, ...x(10, 0.15) }),
-    clip("tail", "wind-strong", 0.55, 0.3, { att: H(0.4), dur: 2, wet: 0.3 }),
+    clip("tail", "tinnitus", afterBlast(0.16), 0.05, { att: 0.05, dur: 1.8, wet: 0 }),
+    clip("tail", "stones-fall-2", afterBlast(0.92), 0.15, { spread: 0.9, ...x(10, 0.15) }),
+    clip("tail", "wind-strong", afterBlast(1.32), 0.3, { att: H(0.4), dur: 2, wet: 0.3 }),
   ],
 };
 

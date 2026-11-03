@@ -340,6 +340,10 @@ Adopt [`INTERFACE.md`](INTERFACE.md) §11.9's ground/panel/text/accent palette. 
 fallbacks, self-hosted when available; numeric values also set tabular figures. Use one
 Phosphor outline icon family with a consistent optical stroke; do not mix icon families.
 
+Pages outside the table (home, sign-in, sign-up, join, not found, GM dashboard, library)
+support a light and a dark theme, following one stored choice that defaults to the system
+preference; §11.9 lists the light values. The table and the encounter editor stay dark.
+
 | Token family | Selected defaults |
 | --- | --- |
 | Spacing | 4, 8, 12, 16, 24, 32, 48, 64px |
@@ -390,7 +394,8 @@ just to preserve a panel size. Respect the 44px coarse-pointer target even in de
 Announce connection changes, accepted/rejected user actions, active-turn changes and scene
 replacement through restrained live regions. Do not announce seq increments, every drag
 sample or other users' every movement. Reduce motion across home demos, pings, transitions
-and drag settling. Continuous decorative pulsing is removed: active turn and connection
+and drag settling, whether the system asks for it or the in-app Reduced animations setting
+does; the two count the same. Continuous decorative pulsing is removed: active turn and connection
 use static labeled indicators by default. Animate only transform/opacity, and do not spring
 an authoritative token through misleading intermediate positions.
 

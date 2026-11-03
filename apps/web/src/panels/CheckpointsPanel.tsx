@@ -152,7 +152,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
               <button type="button" className="secondary" onClick={() => setPreviewing(null)}>
                 Cancel
               </button>
-              <button type="button" disabled={busy || (!previewState && !previewError)} onClick={() => void restore(previewing)}>
+              <button className="primary" type="button" disabled={busy || (!previewState && !previewError)} onClick={() => void restore(previewing)}>
                 Restore {previewing.name}
               </button>
             </div>
@@ -167,7 +167,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
               afterwards, and deleting it can't be undone.
             </p>
             <div className="row button-row">
-              <button type="button" disabled={busy} onClick={() => void remove(deleting)}>
+              <button className="primary" type="button" disabled={busy} onClick={() => void remove(deleting)}>
                 Delete {deleting.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setDeleting(null)}>

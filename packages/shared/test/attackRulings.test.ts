@@ -12,6 +12,7 @@ import {
   type CommittedEvent,
   type DiceRoll,
   type RoomState,
+  isDiceRoll
 } from "../src";
 import { alice, attempt, baseRoom, bob, gm, resetRandom, run, withToken } from "./fixtures";
 
@@ -42,7 +43,7 @@ function rolled(state: RoomState, actor = alice, input: CommandInput): { state: 
   return { state: result.state, roll: event.roll };
 }
 
-const rollIn = (state: RoomState, id: string) => state.rolls.find((r) => r.id === id);
+const rollIn = (state: RoomState, id: string) => state.rolls.filter(isDiceRoll).find((r) => r.id === id);
 
 beforeEach(resetRandom);
 
@@ -177,11 +178,11 @@ describe("rulings never reveal hidden information (FR-GM-23, ADR 0011)", () => {
     expect(filterEventForViewer(committed(applied!, 31), afterStats, alice)).toEqual({ kind: "redacted", seq: 31 });
 
     const end = reduce(afterStats, applied!);
-    const seen = filterStateForViewer(end, alice).rolls.at(-1)!;
+    const seen = filterStateForViewer(end, alice).rolls.filter(isDiceRoll).at(-1)!;
     expect(seen).not.toHaveProperty("damageApplied");
     expect(seen.attack?.target).toBeNull();
     expect(JSON.stringify(filterStateForViewer(end, alice))).not.toContain("Shadow");
-    expect(filterStateForViewer(end, gm).rolls.at(-1)?.damageApplied).toBe(true);
+    expect(filterStateForViewer(end, gm).rolls.filter(isDiceRoll).at(-1)?.damageApplied).toBe(true);
   });
 
   it("keeps an Unknown target unknown when it is revealed before damage is applied", () => {
@@ -201,7 +202,7 @@ describe("rulings never reveal hidden information (FR-GM-23, ADR 0011)", () => {
     const result = run(hidden, gm, { type: "roll.applyDamage", rollId: roll.id });
     const afterStats = reduce(hidden, result.events[0]!);
     expect(filterEventForViewer(committed(result.events[1]!, 51), afterStats, alice)).toEqual({ kind: "redacted", seq: 51 });
-    expect(filterStateForViewer(result.state, alice).rolls.at(-1)).not.toHaveProperty("damageApplied");
+    expect(filterStateForViewer(result.state, alice).rolls.filter(isDiceRoll).at(-1)).not.toHaveProperty("damageApplied");
   });
 
   it("still shows Applied to players when the target is visible", () => {
@@ -210,7 +211,7 @@ describe("rulings never reveal hidden information (FR-GM-23, ADR 0011)", () => {
     const result = run(s0, gm, { type: "roll.applyDamage", rollId: roll.id });
     const event = committed(result.events[1]!, 61);
     expect(filterEventForViewer(event, reduce(s0, result.events[0]!), bob)).toEqual({ kind: "event", committed: event });
-    expect(filterStateForViewer(result.state, bob).rolls.at(-1)?.damageApplied).toBe(true);
+    expect(filterStateForViewer(result.state, bob).rolls.filter(isDiceRoll).at(-1)?.damageApplied).toBe(true);
   });
 });
 

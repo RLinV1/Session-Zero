@@ -124,7 +124,7 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
             {points?.map((p) => <option key={p.id} value={p.id}>{p.label} · {formatTime(p.at)}</option>)}
           </select>
         </label>
-        <button ref={exitRef} type="button" className="replay-exit" onClick={onExit}>
+        <button ref={exitRef} type="button" className="replay-exit primary" onClick={onExit}>
           Back to the live table
         </button>
       </div>

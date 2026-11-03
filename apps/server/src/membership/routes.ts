@@ -5,6 +5,7 @@ import {
   type InviteSeatResponse,
   type KeepSeatRefusedResponse,
   type MyRoomsResponse,
+  type RoomPreview,
   type SeatEndedResponse,
   type SeatResponse,
 } from "@vtt/shared";
@@ -137,6 +138,25 @@ export function registerMembershipRoutes(app: Express, deps: { store: RoomStore;
       }
       const response: MyRoomsResponse = { hosting, playing: await store.summarizeRooms(playingIds) };
       res.json(response);
+    })().catch(internalError(req, res));
+  });
+
+  /**
+   * A hosted room's board, small, for its dashboard card (gm-dashboard): what the room's GM seat
+   * sees. A room the account does not own is the same 404 as a missing one.
+   */
+  app.get("/api/me/rooms/:roomId/preview", (req, res) => {
+    void (async () => {
+      res.setHeader("Cache-Control", "no-store");
+      const account = requireAccount(res);
+      if (!account) return;
+      const roomId = RoomIdParam.safeParse(req.params.roomId);
+      if (!roomId.success || (await store.findRoomOwner(roomId.data)) !== account.user.ownerId) return void notFound(res);
+      const room = await registry.get(roomId.data);
+      const gm = room && !room.closed ? room.gmParticipant() : undefined;
+      const preview: RoomPreview | null = room && gm ? room.previewFor(gm.id) : null;
+      if (!preview) return void notFound(res);
+      res.json(preview);
     })().catch(internalError(req, res));
   });
 }

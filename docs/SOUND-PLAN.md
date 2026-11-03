@@ -4,7 +4,7 @@ This is the sound plan for the 20 board animations: the 19 strike shapes drawn b
 (`apps/web/src/board/fx.ts`, `fxStrikes.ts`) and the nuke drawn by `playNuke` (`nukeFx.ts`). All
 sound is generated in code with the Web Audio API; no audio files. Every beat time below was read
 from the drawing code, not guessed: `landAt = spec.land * duration` in `playStrike`, the per-shape
-`draw`/`after` functions in `fxStrikes.ts`, and `blastAt = duration * NUKE_DROP_SHARE` (0.22, in
+`draw`/`after` functions in `fxStrikes.ts`, and `blastAt = duration * NUKE_DROP_SHARE` (0.46, in
 `fxBudget.ts`) in `nukeFx.ts`.
 
 **As built** (`apps/web/src/board/fxSound.ts`, `fxSoundRecipes.ts`), where it differs from the rules
@@ -39,10 +39,10 @@ synth layer had. A clip that has not loaded yet is left out of that play.
 | beam | humming energy beam | blaster, transformer hum, welding arc |
 | frost | ice spell | icy wind, ice cracking, singing bowl ring, glass burst for the shatter |
 | poison | poison vial | whoosh, breaking glass, splash, boiling, a slowed whisper from the skulls |
-| smite | holy strike | singing bowl, church bell, thunder crack, gong, over the synth chord |
+| smite | holy strike | a synthesized choir and singing bowl while it is cast; on the strike, all played slow and deep: a hammer on concrete, a blast, thunder crack, rolling thunder, falling stones, gong, with a soft church bell |
 | sonic | war drums | bass tom per arc, slowed bass tom per impact, gong |
 | tornado | twister full of stones | howling and strong wind, stone rattle, heavy whoosh, falling stones |
-| nuke | nuclear blast | blast, thunder crack far down, rolling thunder, echo cracks, fire roar, tinnitus, falling rubble, aftermath wind |
+| nuke | nuclear blast | over a synthesized air-raid siren while the bomb falls: blast, thunder crack far down, rolling thunder, echo cracks, fire roar, tinnitus, falling rubble, aftermath wind |
 
 Reduced animations play one short soft clip per shape (a punch, a sword cut, an electric shock,
 fire, ice, wind, a bell, or a distant thunder for the nuke) instead of the synth cues listed
@@ -72,14 +72,14 @@ animation's duration, "L" means its landing time (`land * D`), "n" means `def.co
 | beam | 1.4 | 0.25 | 0.35 | 1, held and sustained | 4.8 | no |
 | frost | 1.4 | 0.45 | 0.63 | 1 landing, 7 spikes, 1 shatter at 1.169 s | 7.3 | no |
 | poison | 1.6 | 0.55 | 0.88 | 1 shatter, then about 6 bubble pops | 2.6 | no |
-| smite | 2.0 | 0.62 | 1.24 | 1 | 9.5 | YES |
+| smite | 2.5 | 0.62 | 1.55 | 1 | 9.5 | YES |
 | sonic | 1.2 | 0.45 | 0.54 | 4 pulses, 0.09 s apart | 12.8 | no |
 | tornado | 1.7 | 0.55 | 0.935 | 1 (then 15 chunks of debris fall) | 12.1 | YES |
-| nuke | 4.0 | 0.22 | 0.88 | 1 | page shake 19.8 for 2.4 s | YES |
+| nuke | 6.5 | 0.46 | 2.99 | 1 | page shake 19.8 for 2.7 s | YES |
 
 "Map shake" is `shake * 16 * sqrt(big)` pixels, easing out over `min(impactLen, 0.5)` s from L. It is
 a good guide to how heavy the low end of an impact should be. The nuke shakes the whole page
-instead (`screenShake.ts`: `shake * 22` px, starting at 0.88 s, lasting `0.6 * D` = 2.4 s).
+instead (`screenShake.ts`: `shake * 22` px, starting at 2.99 s, lasting `0.77 * (D - L)` = 2.7 s).
 
 ## How to read the recipes
 
@@ -194,13 +194,13 @@ Played once, at the moment the still marker appears. Wet 0 unless stated.
   moment `Board.playEffect` runs, so it also leads the picture by under a frame; sound sits with it.
 - **Editor preview** has its own funnel: `AnimationPreview.play(def)` (always full motion, stops the
   previous play, stops on hidden tab). The nuke there has no `onImpact` callback.
-- **Nuke `onImpact`** fires on the first rendered frame with `elapsed >= 0.88 s`, so up to 33 ms
+- **Nuke `onImpact`** fires on the first rendered frame with `elapsed >= 2.99 s`, so up to 33 ms
   late (more on a slow frame). It also fires immediately, at construction, under reduced motion.
   It releases the held HP numbers in the UI, so nothing else should depend on the sound.
 - **Strikes under reduced motion** are static (`animated: false`): `BoardView` never calls
   `update`, it only sets a 0.6 s removal timer. The ring is drawn at construction, so the cue goes
   at `playStrikeFx` time.
-- **Count and duration are free for the GM** (count 1 to 12, duration 0.2 to 4 s). The sub-hit
+- **Count and duration are free for the GM** (count 1 to 12, duration 0.2 to 8 s; it was 4 s before ADR 0047). The sub-hit
   formulas in each shape section are the exact ones, so the engine can compute them from the
   def instead of hard-coding the defaults.
 - The schema forbids a `nuke` shape on an attack (`StrikeAnimationDef` in `shared`), so
@@ -806,57 +806,88 @@ For n beams multiply the hum and shimmer gain by `1 + 0.15 * (n - 1)`, max 1.6.
 ## 17. smite (showpiece)
 
 **Visual beats**
-- 0.00 to 0.186 (0 to 0.372 s): a holy circle (sigil) draws itself out on the ground under the
+- 0.00 to 0.186 (0 to 0.465 s): a holy circle (sigil) draws itself out on the ground under the
   target, growing from 35 % to 100 % (`easeOut(u / 0.3)`) and turning, with motes of light rising
   off its ring. A glow forms at the caster and grows to the strike.
-- 0.186 to 0.341 (0.372 to 0.682 s): the circle holds and brightens, turning faster
+- 0.186 to 0.341 (0.465 to 0.853 s): the circle holds and brightens, turning faster
   (angle grows as `u + u^2`).
-- 0.341 to 0.62 (0.682 to 1.24 s): a thin shaft of light gathers above the target, widening from
+- 0.341 to 0.62 (0.853 to 1.55 s): a thin shaft of light gathers above the target, widening from
   0.35 to 0.85 radii and brightening to 0.7 alpha, flickering.
-- **0.62 (1.24 s): the pillar of light crashes down** at full height (18 radii) and about 3 radii
+- **0.62 (1.55 s): the pillar of light crashes down** at full height (18 radii) and about 3 radii
   wide. Light impact (flash, 3 rings, 50 sparks, 9.5 px shake). The circle flares outward and
   fades.
-- 0.62 to 0.894 (1.24 to 1.787 s): the pillar lingers and thins (`f = 1 - k / (0.3 + 0.7 * trail)`),
+- 0.62 to 0.894 (1.55 to 2.235 s): the pillar lingers and thins (`f = 1 - k / (0.3 + 0.7 * trail)`),
   with motes of light rising from its foot.
 - 0.894 to 1.00: only the fading circle and the last sparks remain.
 - Count n > 1: n pillars side by side, all at the same time.
 
 **Sound cues**
-- Launch: a soft choral swell begins at once and rises all the way to the strike; shimmering
-  high air.
-- Gather (0.341): a riser sweeping up for 0.56 s, ending exactly on 0.62.
-- Impact: sub boom, crack, a bell chord at 0.62; a warm sawtooth body while the pillar lingers.
-- Tail: long reverb of bells and shimmer.
+- Launch (the casting): a choir comes in at once on an E major chord, "oh" opening to "ah", a
+  soprano joining above it at 0.06, and sings while the circle draws and the light gathers. It holds
+  to 0.1 s before the strike and dies away under the thunder: no choir in the strike itself.
+  Shimmering high air.
+- Gather (0.341): a riser sweeping up for 0.7 s, ending exactly on 0.62.
+- Impact: the pillar breaks the ground at 0.62, deep: a crunch of stone (0.6 speed) and a blast
+  (0.5 speed), the ground booming two and a half octaves down (thunder at 0.4 speed), a heavy thump,
+  the sub and a dark brown-noise rumble. The crack of the light and the bell sit low under it. A
+  warm sawtooth body while the pillar lingers.
+- Tail: the earth rolling (rolling thunder held from 0.62, swelling to its peak 0.7 s later), big
+  rubble falling back (0.63, then three smaller falls from 0.66), the gong an octave down.
 
-**Character:** reverent and enormous: a held breath, then thunder with bells in it.
+**Character:** reverent and enormous: a choir singing the spell, then the light breaking the ground
+open, deep.
+
+The default duration was 2.0 s until the casting choir went in; it is 2.5 s so the casting lasts
+longer before the strike (1.55 s instead of 1.24 s). Every Start below is a share of the duration,
+so the picture and the sound moved together.
 
 **Recipe**
 
 | Layer | Src | Start | Dur | Att | Hz | Filter | Gain | Wet | Repeat |
 |---|---|---|---|---|---|---|---|---|---|
-| pad root | tri vib 5.5/3 | 0 (0) | 1.60 | 0.90 H | 220→247 | | 0.16 | 0.70 | |
-| pad fifth | tri vib 5.5/4.5 | 0 (0) | 1.60 | 0.90 H | 330→370 | | 0.12 | 0.70 | |
-| pad octave | sine vib 6/6 | 0.025 (0.05) | 1.50 | 1.00 H | 440→494 | | 0.10 | 0.70 | |
-| holy shimmer | white | 0.05 (0.10) | 1.20 | 0.90 H | 7000→9000 | bp Q6 | 0.05 | 0.60 | |
-| gather riser (tone) | saw vib 12/40 | 0.341 (0.682) | 0.56 | R | 160→1400 | lp 2500 | 0.12 | 0.30 | |
-| gather riser (air) | pink | 0.341 (0.682) | 0.56 | R | 500→6000 | bp Q1.5 | 0.18 | 0.30 | |
-| strike sub | sine | 0.62 (1.24) | 1.40 | 0.006 | 58→36 | | 0.80 | 0.30 | |
-| strike crack | white | 0.62 (1.24) | 0.35 | 0.002 | 4000→900 | bp Q0.9 | 0.70 | 0.40 | |
-| bell low | sine | 0.62 (1.24) | 1.60 | 0.002 | 784 | | 0.20 | 0.80 | |
-| bell high | sine | 0.62 (1.24) | 1.40 | 0.002 | 1175 | | 0.14 | 0.80 | |
-| pillar body | saw vib 40/6 | 0.62 (1.24) | 0.55 | 0.02 H | 110 | lp 700 | 0.20 | 0.40 | |
+| casting choir | choir x5 | 0 (0) | 1.80 | 0.12 H | E3 B3 E4 G#4 B4 | vowel oh→ah | 0.40 | 0.40 | |
+| casting soprano | choir | 0.06 (0.15) | 1.65 | 0.30 H | E5 | vowel oh→ah | 0.28 | 0.40 | |
+| pad root | tri vib 5.5/2 | 0 (0) | 1.80 | 0.15 H | 165 | | 0.14 | 0.70 | |
+| pad fifth | tri vib 5.5/3 | 0 (0) | 1.80 | 0.15 H | 247 | | 0.10 | 0.70 | |
+| pad octave | sine vib 6/4 | 0 (0) | 1.80 | 0.20 H | 330 | | 0.08 | 0.70 | |
+| holy shimmer | white | 0.05 (0.125) | 1.50 | 0.90 H | 7000→9000 | bp Q6 | 0.05 | 0.60 | |
+| gather riser (tone) | saw vib 12/40 | 0.341 (0.853) | 0.70 | R | 160→1400 | lp 2500 | 0.12 | 0.30 | |
+| gather riser (air) | pink | 0.341 (0.853) | 0.70 | R | 500→6000 | bp Q1.5 | 0.18 | 0.30 | |
+| strike sub | sine | 0.62 (1.55) | 1.40 | 0.006 | 58→36 | | 0.80 | 0.30 | |
+| strike crack | white | 0.62 (1.55) | 0.35 | 0.002 | 4000→900 | bp Q0.9 | 0.70 | 0.40 | |
+| ground smash | hammer-concrete x0.6 | 0.62 (1.55) | clip | | | lp 2500 | 1.00 | 0.20 | |
+| ground blast | blast x0.5 | 0.62 (1.55) | clip | | | | 0.80 | 0.20 | |
+| ground boom | thunder-crack x0.4 | 0.62 (1.55) | clip | | | lp 1000 | 1.00 | 0.30 | |
+| ground thump | sine | 0.62 (1.55) | 0.60 | 0.004 | 90→30 | | 0.95 | 0.20 | |
+| ground body | tri | 0.62 (1.55) | 0.45 | 0.004 | 130→55 | | 0.55 | 0.15 | |
+| ground rumble | brown | 0.62 (1.55) | 1.20 | 0.01 | 1800→100 | lp Q0.8 | 0.45 | 0.35 | |
+| earth rolling | thunder-roll x0.55 | 0.62 (1.55) | 2.00 | 0.05 H | | lp 900 | 0.55 | 0.10 | |
+| rubble | stones-fall x0.75 | 0.63 (1.575) | clip | | | | 0.90 | 0.10 | |
+| rubble, small | stones-fall-2 x0.8 | 0.66 (1.65) | clip | | | | 0.60 | 0.10 | x3 @0.12 |
 
-The pads end at 1.6 s, 0.36 s after the strike, so they carry into the chord. Add a mid-bass layer
+In the recorded version the light's own thunder crack plays at 0.8 speed under lp 3000 at 0.3, the
+church bell at 0.25 and the gong at 0.5 speed (an octave down) at 0.4, all under the ground break;
+the synth triangle above replaces the 150→70 one.
+| bell low | sine | 0.62 (1.55) | 1.60 | 0.002 | 784 | | 0.20 | 0.80 | |
+| bell high | sine | 0.62 (1.55) | 1.40 | 0.002 | 1175 | | 0.14 | 0.80 | |
+| pillar body | saw vib 40/6 | 0.62 (1.55) | 0.69 | 0.02 H | 110 | lp 700 | 0.20 | 0.40 | |
+
+The pads are the casting choir's chest and end with it. The choir and pads hold to 0.8 of their 1.8 s
+(1.44 s, 0.11 s before the strike), then fade out exponentially, about 24 dB down by the strike; the
+thunder covers the rest. A `choir` voice is
+two sawtooth singers per note, a few cents apart, each with its own vibrato (about 10 cents), one
+through the vowel's first formant (oh 560 Hz opening to ah 740 Hz, Q4) and one at 0.55 the gain
+through its second (950 opening to 1150 Hz, Q6); the choir sends 0.5 to 0.6 to the hall. Add a mid-bass layer
 (`tri 150→70`, Gain 0.5, Dur 0.4) at 0.62 if the sub is not audible on small speakers.
 
 **AI sound-effect prompts**
 
-Launch clip, 1.24 s:
+Launch clip, 1.55 s:
 ```
-Sound effect, 1.24 seconds. A divine summoning building up: a shimmering, swelling synthesised choir-like pad (no words, no singing) with soft high chimes and airy sparkle, followed in the last 0.55 seconds by a rising sweep of rushing light. No tail: cut off at the peak. Dry, no reverb, no music, no voices, peak -3 dBFS.
+Sound effect, 1.55 seconds. A divine summoning: a holy choir comes in at once on a held major chord, "oh" opening to "ah" (no words), with soft high chimes and airy sparkle, followed in the last 0.7 seconds by a rising sweep of rushing light. No tail: cut off at the peak. Dry, no reverb, no instruments, peak -3 dBFS.
 ```
 
-Impact clip, 2.5 s (0.76 s of action and a long natural fade):
+Impact clip, 2.5 s (0.95 s of action and a long natural fade):
 ```
 Sound effect, 2.5 seconds. A pillar of holy light striking the ground. The first sample is a thunderous crack with a deep sub-bass boom, immediately joined by a radiant chord of bells and a warm glowing tone that holds for about half a second, sparkling shimmer, then a long gentle fade. Dry, no reverb, no music, no voices, peak -1 dBFS.
 ```
@@ -947,40 +978,46 @@ Sound effect, 1.6 seconds. A tornado arriving and unwinding. The first sample is
 
 ## 20. nuke (showpiece)
 
-The nuke is drawn by `playNuke`, not `playStrike`: `blastAt = D * 0.22` = 0.88 s, `blastLen` = 3.12 s.
-Here "t" in the code is `(elapsed - 0.88) / 3.12`; the table converts it.
+The nuke is drawn by `playNuke`, not `playStrike`: `blastAt = D * 0.46` = 2.99 s, `blastLen` = 3.51 s,
+at its default duration of 6.5 s. Here "t" in the code is `(elapsed - 2.99) / 3.51`; the table
+converts it. Until the air-raid siren replaced the bomb's whistle the nuke lasted 4 s and blasted
+at 0.22 of it (0.88 s); ADR 0047 raised the duration cap from 4 to 8 s so the siren has about 3 s.
 
 **Visual beats**
-- 0.00 to 0.22 (0 to 0.88 s): the bomb falls from above the screen to the target
-  (`y = lerp(top, target, fall^2)`, so it accelerates), swaying slightly. A thin orange ring
-  closes round the target (2.5 to 1.5 bomb units). The screen slowly darkens (dark red shade,
-  0 to 0.22 alpha).
-- **0.22 (0.88 s): `onImpact` fires.** White flash at 0.855 alpha, fading as `(1 - t/0.24 s)^2`
-  to zero at 1.12 s. A starburst flare fades by 1.38 s. Up to 64 embers burst out. The screen
-  darkens to 0.58 and then lightens to 0.12 by the end. The whole page shakes from 0.88 to 3.28 s (strongest first,
-  quadratic ease-out, 19.8 px).
-- 0.22 to 0.255 (0.88 to 1.02 s): the cloud and fireball fade in.
-- 0.22 to 0.36 (0.88 to 1.44 s): the fireball grows to full size (1.4 times the smaller screen side across);
-  it fades from 0.329 (1.317 s) to 0.524 (2.097 s).
-- Three shockwave rings race to the screen edge: ring 0 0.22 to 0.727 (0.88 to 2.908 s), ring 1
-  0.26 to 0.766 (1.036 to 3.064 s), ring 2 0.298 to 0.805 (1.192 to 3.22 s). A blast wave of dust and
-  air runs 0.22 to 0.61 (0.88 to 2.44 s) with an echo 0.298 to 0.688 (1.19 to 2.75 s).
-- 0.22 to 0.727 (0.88 to 2.908 s): the mushroom cloud rises (`easeOut(t / 0.65)`); the skirt of dust
-  spreads until about 2.13 s; the dust ring expands until 0.657 (2.627 s) and fades from 0.594
-  (2.378 s) to the end.
-- 0.727 to 0.828 (2.908 to 3.31 s): the cloud hangs at full strength; **0.828 to 1.00 (3.31 to
-  4.0 s): it fades out.**
-- 1.00 (4.0 s): the run ends. Reduced motion: an immediate `onImpact` and a still ring for 0.8 s.
+- 0.00 to 0.46 (0 to 2.99 s): a thin orange ring closes round the target (2.5 to 1.5 bomb units)
+  and the screen slowly darkens (dark red shade, 0 to 0.22 alpha) while the siren winds up.
+- 0.325 to 0.46 (2.11 to 2.99 s): the bomb falls from above the screen to the target
+  (`NUKE_FALL_SHARE` 0.135 of the run, 0.88 s, as fast as before the siren; `y = lerp(top, target,
+  fall^2)`, so it accelerates), swaying slightly.
+- **0.46 (2.99 s): `onImpact` fires.** White flash at 0.855 alpha, fading as `(1 - t/0.24 s)^2`
+  to zero at 3.23 s. A starburst flare fades by 3.49 s. Up to 64 embers burst out. The screen
+  darkens to 0.58 and then lightens to 0.12 by the end. The whole page shakes from 2.99 to 5.69 s
+  (0.77 of the blast; strongest first, quadratic ease-out, 19.8 px).
+- 0.46 to 0.484 (2.99 to 3.148 s): the cloud and fireball fade in.
+- 0.46 to 0.557 (2.99 to 3.622 s): the fireball grows to full size (1.4 times the smaller screen side
+  across); it fades from 0.536 (3.481 s) to 0.671 (4.359 s).
+- Three shockwave rings race to the screen edge: ring 0 0.46 to 0.811 (2.99 to 5.272 s), ring 1
+  0.487 to 0.838 (3.166 to 5.447 s), ring 2 0.514 to 0.865 (3.341 to 5.623 s). A blast wave of dust
+  and air runs 0.46 to 0.73 (2.99 to 4.745 s) with an echo 0.514 to 0.784 (3.341 to 5.096 s).
+- 0.46 to 0.811 (2.99 to 5.272 s): the mushroom cloud rises (`easeOut(t / 0.65)`); the skirt of dust
+  spreads until about 4.39 s; the dust ring expands until 0.762 (4.956 s) and fades from 0.719
+  (4.675 s) to the end.
+- 0.811 to 0.881 (5.272 to 5.728 s): the cloud hangs at full strength; **0.881 to 1.00 (5.728 to
+  6.5 s): it fades out.**
+- 1.00 (6.5 s): the run ends. Reduced motion: an immediate `onImpact` and a still ring for 0.8 s.
 
 **Sound cues**
-- Fall (0 to 0.88): a thin whistle falling in pitch as the volume grows, a low drone climbing
-  underneath. End the whistle about 20 ms before the blast so there is a tiny gap of tension.
-- Blast (0.88): a crack, a mid thump and a very deep boom together; a big body of noise.
-- Flash (0.88 to 1.12): the ears ring (a faint high tone) from about 1.04 s.
-- Rings 1 and 2 (1.04, 1.19): two quieter booms like echoes.
-- Rise (0.88 to 2.9): a low rumble that slowly sinks; a fire roar while the fireball fades
-  (1.2 to 2.1).
-- Tail (1.8 to 4.0): embers crackling, wind, and the reverb. Let the reverb tail ring past 4.0.
+- Fall (0 to 2.99): a dual-tone air-raid siren winds up, climbing fast and then settling on its
+  top pair (574 and 689 Hz) about 2 s in, growing louder as it climbs; a low drone climbs
+  underneath. The siren holds until the blast and is swallowed by it; the drone ends about 20 ms
+  before it, a tiny gap of tension.
+- Blast (2.99): a crack, a mid thump and a very deep boom together; a big body of noise.
+- Flash (2.99 to 3.23): the ears ring (a faint high tone) from about 3.15 s.
+- Rings 1 and 2: two quieter booms like echoes (3.15, 3.30).
+- Rise (2.99 to 5.3): a low rumble that slowly sinks; a fire roar from 3.31 s while the fireball
+  fades.
+- Tail (3.9 to 6.5): falling debris from 3.91 s, wind from 4.31 s, and the reverb. Let the reverb
+  tail ring past 6.5.
 
 **Character:** dread, then a wall: the loudest, lowest, longest sound in the game.
 
@@ -988,35 +1025,46 @@ Here "t" in the code is `(elapsed - 0.88) / 3.12`; the table converts it.
 
 | Layer | Src | Start | Dur | Att | Hz | Filter | Gain | Wet | Repeat |
 |---|---|---|---|---|---|---|---|---|---|
-| bomb whistle | sine vib 6/40 | 0 (0) | 0.86 | R | 2600→900 | | 0.18 | 0.10 | |
-| dread drone | saw | 0 (0) | 0.88 | R | 55→110 | lp 200 | 0.20 | 0.10 | |
-| blast crack | white | 0.22 (0.88) | 0.45 | 0.002 | 12000→300 | lp Q0.7 | 0.70 | 0.25 | |
-| sub boom | sine | 0.22 (0.88) | 2.60 | 0.005 | 80→24 | | 0.80 | 0.20 | |
-| mid thump | tri | 0.22 (0.88) | 1.60 | 0.005 | 140→50 | | 0.50 | 0.20 | |
-| blast body | brown | 0.22 (0.88) | 2.20 | 0.01 | 4000→120 | lp Q0.8 | 0.60 | 0.45 | |
-| echo booms | brown | 0.26 (1.04) | 0.90 | 0.01 | 600→80 | lp Q0.8 | 0.40 | 0.60 | x2 @0.15 |
-| rumble | brown | 0.30 (1.20) | 2.20 | 0.30 | 260→70 | lp Q0.7 | 0.45 | 0.40 | |
-| fire roar | pink | 0.30 (1.20) | 1.40 | 0.30 H | 1800→400 | lp Q0.7 | 0.30 | 0.30 | |
-| ear ring | sine | 0.26 (1.04) | 1.80 | 0.05 | 7200 | | 0.04 | 0 | |
-| ember crackle | white | 0.45 (1.80) | 0.03 | 0.001 | 3500 | hp Q1 | 0.08 | 0.30 | x24 @0.07 |
-| smoke tail | pink | 0.60 (2.40) | 2.00 | 0.80 | 900→200 | lp Q0.7 | 0.20 | 0.60 | |
+| siren | siren (2 saw, x1 and x1.2, vib 10/1.2, glide 0.7 s) | 0 (0) | 3.70 | 1.20 H | 140→574 | lp 900 | 0.28 | 0.25 | |
+| dread drone | saw | 0 (0) | 2.99 | R | 55→110 | lp 200 | 0.20 | 0.10 | |
+| blast crack | white | 0.46 (2.99) | 0.45 | 0.002 | 12000→300 | lp Q0.7 | 0.70 | 0.25 | |
+| sub boom | sine | 0.46 (2.99) | 2.60 | 0.005 | 80→24 | | 0.80 | 0.20 | |
+| mid thump | tri | 0.46 (2.99) | 1.60 | 0.005 | 140→50 | | 0.50 | 0.20 | |
+| blast body | brown | 0.46 (2.99) | 2.20 | 0.01 | 4000→120 | lp Q0.8 | 0.60 | 0.45 | |
+| echo booms | brown | 0.485 (3.15) | 0.90 | 0.01 | 600→80 | lp Q0.8 | 0.40 | 0.60 | x2 @0.15 |
+| rumble | brown | 0.509 (3.31) | 2.20 | 0.30 | 260→70 | lp Q0.7 | 0.45 | 0.40 | |
+| fire roar | pink | 0.509 (3.31) | 1.40 | 0.30 H | 1800→400 | lp Q0.7 | 0.30 | 0.30 | |
+| ear ring | sine | 0.485 (3.15) | 1.80 | 0.05 | 7200 | | 0.04 | 0 | |
+| ember crackle | white | 0.602 (3.91) | 0.03 | 0.001 | 3500 | hp Q1 | 0.08 | 0.30 | x24 @0.07 |
+| smoke tail | pink | 0.694 (4.51) | 2.00 | 0.80 | 900→200 | lp Q0.7 | 0.20 | 0.60 | |
 
-Notes: the "sub boom" at 24 Hz is felt more than heard, so the 140 Hz "mid thump" carries the
+Notes: the siren is synthesized, modelled on a recording of a dual-tone air-raid siren ("Nuclear
+Alarm Siren", Prestigigator, 2012) that was measured, never copied: it winds up from about 136 Hz
+over some 4 s, holds two even tones at 574 and 689 Hz (6:5, a minor third) with their second
+harmonics about 15 dB down and their third about 22 dB down (98 % of the energy between 500 and
+1500 Hz) and a faint 10 Hz flutter, then wails down about 8 semitones and back every 10.5 s. The
+3 s before the blast holds the wind-up and the top, not the wail. Each tone is a sawtooth through a
+900 Hz lowpass (the second at 0.9 the gain), with a 10 Hz, 1.2 Hz vibrato, and its pitch glides to
+the top with a 0.7 s time constant (`glide`, `setTargetAtTime`), fast and then settling, as a rotor
+spins up; the reference's 1.3 s is compressed to fit. It sends 0.5 to the hall, holds to 0.8 of its
+length (2.96 s) and fades out exponentially under the blast. The recipe places every blast-phase layer with `afterBlast(s)`,
+`s` seconds after `NUKE_DROP_SHARE`, so they follow the drop if it changes again.
+The "sub boom" at 24 Hz is felt more than heard, so the 140 Hz "mid thump" carries the
 weight on laptop speakers. Gains here are before the master compressor, which will pull the
 impact down; do not lower them to avoid clipping. Duck other sound effects and music by about
-6 dB for 1.5 s from 0.88 s. Keep the "ear ring" at or below Gain 0.04: it is a deliberate
+6 dB for 1.5 s from 2.99 s. Keep the "ear ring" at or below Gain 0.04: it is a deliberate
 detail, but a sustained high tone is irritating.
 
 **AI sound-effect prompts**
 
-Launch clip, 0.88 s:
+Launch clip, 3 s:
 ```
-Sound effect, 0.88 seconds. A large aerial bomb falling from the sky: a thin metallic whistle that starts faint and falls steadily in pitch while getting louder and closer, with a low rising rumble underneath. No tail, no impact: cut off at the loudest point. Dry, no reverb, no music, no voices, peak -3 dBFS.
+Sound effect, 3 seconds. A civil-defence air-raid siren winding up: a mechanical dual-tone siren (two tones a minor third apart) climbing fast in pitch and then settling on its top note, growing louder as it climbs, with a low rising rumble underneath. No tail, no impact: cut off at the loudest point. Dry, no reverb, no music, no voices, peak -3 dBFS.
 ```
 
-Impact clip, 4.0 s (3.1 s of action and 0.9 s of natural fade):
+Impact clip, 4.5 s (3.5 s of action and 1 s of natural fade):
 ```
-Sound effect, 4 seconds. A massive nuclear detonation. The first sample is a violent full-spectrum crack, followed within 50 milliseconds by a deep sub-bass boom (30 to 80 Hz) that decays over about 2.5 seconds; a rolling roar of fire and rushing air; two quieter booming echoes about 0.15 seconds apart starting 0.15 seconds after the blast; a low rumble that slowly sinks while a faint high ringing tone hovers; and sparse fire crackles and falling debris at the end. Dry, no music, no voices, peak -1 dBFS.
+Sound effect, 4.5 seconds. A massive nuclear detonation. The first sample is a violent full-spectrum crack, followed within 50 milliseconds by a deep sub-bass boom (30 to 80 Hz) that decays over about 2.5 seconds; a rolling roar of fire and rushing air; two quieter booming echoes about 0.15 seconds apart starting 0.15 seconds after the blast; a low rumble that slowly sinks while a faint high ringing tone hovers; and sparse fire crackles and falling debris at the end. Dry, no music, no voices, peak -1 dBFS.
 ```
 
 ---

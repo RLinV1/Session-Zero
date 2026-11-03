@@ -32,6 +32,20 @@ All seven Blockers were fixed after the audit, in the working tree on `feat/anim
 
 `docs/INTERFACE.md` §11.9 and `docs/FRONTEND-CONTRACT.md` §13.8 token notes were updated to match. `npm run lint`, `npm run typecheck` and `npm test` pass (720 shared, 488 server + 41 skipped, 934 web, 2 bench). Majors and Minors are unchanged.
 
+### Status update — design language (2026-11-01, uncommitted, not yet merged)
+
+The OpenSpec change `product-design-language` addresses the items below in the working tree on `main`. Its four PRs are not open yet, so none of this is merged. Each row names the change's task that did the work; `openspec/changes/product-design-language/verification-log.md` has the evidence.
+
+| Item | What the change did | Task |
+| --- | --- | --- |
+| P2 Single rust accent, UI-009 | Buttons are neutral by default and `button.primary` is rust, one per page section, dialog or panel. Selected tabs, tools and segments are a raised neutral surface with a 2 px rust underline. The GM's avatar is no longer rust. UI-031 (the board's yellow active-turn ring, rust on banners and mentions) is **not** addressed. | 2.6, 2.7, 6.1 |
+| P3 Spacing/radius/size scale, UI-032 | `--radius-control` (6px) and `--radius-surface` (12px) replace `--radius` and every literal radius, with circles for tokens and swatches. **Only the radius half:** the off-scale paddings and gaps remain. UI-033 (control heights) is **not** addressed. | 1.1, 2.5 |
+| P4 Geist + tabular numerals, UI-034 | `--font-mono` is on `:root`. Every numeric readout is Geist Mono with tabular figures, board labels are Geist, and Alegreya is gone. | 2.2, 2.3, 2.4 |
+| C5 | Geist on every surface, including the table and the board, with no Google Fonts request. INTERFACE §11.9 records it. | 2.2, 2.3, 2.9 |
+| C12 | Light and dark on the home, entry and hub pages from `:root[data-theme="light"]`, set by route before paint. The table stays dark. INTERFACE §11.9 and FRONTEND-CONTRACT §13.8 record it. | 1.1, 1.2, 1.5, 4.8, 4.9 |
+
+Verify each row against its merged PR before calling the item closed.
+
 ## 2. Summary
 
 | # | Principle | Status | Findings | Note |

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Token } from "@vtt/shared";
+import { isDiceRoll, type Token } from "@vtt/shared";
 import { startServer, type TestClient } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -30,7 +30,7 @@ async function setup() {
   return { gm, alice, bob, aria: byName("Aria"), goblin: byName("Goblin 2"), shadow: byName("Shadow Lurker") };
 }
 
-const lastRoll = (c: TestClient) => c.state.rolls.at(-1);
+const lastRoll = (c: TestClient) => c.state.rolls.filter(isDiceRoll).at(-1);
 
 describe("attack rolls over the wire (FR-TAC-09, FR-GM-23, ADR 0010)", () => {
   it("shows a player's attack with names to everyone", async () => {

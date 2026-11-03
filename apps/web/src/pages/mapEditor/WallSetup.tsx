@@ -460,7 +460,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                     Apply confident walls only ({confident})
                   </button>
                 )}
-                <button type="button" disabled={busy || keeping === 0} onClick={() => void apply()}>
+                <button className="primary" type="button" disabled={busy || keeping === 0} onClick={() => void apply()}>
                   {wallCount > 0 ? `Replace with ${keeping} walls` : `Apply ${keeping} walls`}
                 </button>
               </div>

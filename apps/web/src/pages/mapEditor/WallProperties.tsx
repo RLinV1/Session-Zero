@@ -72,7 +72,7 @@ export function WallProperties({ wall, map, onSave, disabled = false }: { wall: 
       <p className="muted small-print">Choose Door or Window to give this imported opening the table’s visibility and player controls.</p>
     </>}
     {error && <p role="alert" className="error">{error}</p>}
-    <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save geometry"}</button>
+    <button className="primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save geometry"}</button>
     </fieldset>
   </form>;
 }

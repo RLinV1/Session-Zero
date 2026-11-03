@@ -8,6 +8,7 @@ import {
   type CommittedEvent,
   type DiceRoll,
   type RoomState,
+  isDiceRoll
 } from "../src";
 import { alice, attempt, baseRoom, bob, gm, resetRandom, run, withToken } from "./fixtures";
 
@@ -99,11 +100,11 @@ describe("attack rolls never reveal hidden tokens (FR-GM-23, ADR 0010)", () => {
     const { state: after, roll } = rolled(state, gm, attackRoll(shadow.id, aria.id, { attack: { actorTokenId: shadow.id, targetTokenId: aria.id, label: "Claws" } }));
 
     expect(filterEventForViewer(committed({ type: "DiceRolled", roll }), before, alice)).toEqual({ kind: "resync" });
-    const seen = filterStateForViewer(after, alice).rolls.at(-1)!;
+    const seen = filterStateForViewer(after, alice).rolls.filter(isDiceRoll).at(-1)!;
     expect(seen.attack).toEqual({ actor: null, target: roll.attack!.target, label: "Claws", kind: "toHit" });
     expect(JSON.stringify(filterStateForViewer(after, alice))).not.toContain(shadow.id);
     expect(JSON.stringify(filterStateForViewer(after, alice))).not.toContain("Shadow");
-    expect(filterStateForViewer(after, gm).rolls.at(-1)).toEqual(roll);
+    expect(filterStateForViewer(after, gm).rolls.filter(isDiceRoll).at(-1)).toEqual(roll);
   });
 
   it("passes a public attack between visible tokens as a normal event", () => {
@@ -124,9 +125,9 @@ describe("attack rolls never reveal hidden tokens (FR-GM-23, ADR 0010)", () => {
     const { state, aria, goblin } = table();
     const attacked = rolled(state, alice, attackRoll(aria.id, goblin.id)).state;
     const hidden = run(attacked, gm, { type: "token.setHidden", tokenId: goblin.id, hidden: true }).state;
-    expect(filterStateForViewer(hidden, alice).rolls.at(-1)!.attack?.target).toBeNull();
+    expect(filterStateForViewer(hidden, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.target).toBeNull();
     expect(JSON.stringify(filterStateForViewer(hidden, alice))).not.toContain(goblin.id);
-    expect(filterStateForViewer(hidden, gm).rolls.at(-1)!.attack?.target?.name).toBe("Goblin 2");
+    expect(filterStateForViewer(hidden, gm).rolls.filter(isDiceRoll).at(-1)!.attack?.target?.name).toBe("Goblin 2");
   });
 
   it("keeps a side concealed after the hidden token is renamed and revealed", () => {
@@ -134,7 +135,7 @@ describe("attack rolls never reveal hidden tokens (FR-GM-23, ADR 0010)", () => {
     const attacked = rolled(state, gm, attackRoll(shadow.id, aria.id)).state;
     const renamed = run(attacked, gm, { type: "token.configure", tokenId: shadow.id, changes: { name: "Innkeeper", hidden: false } }).state;
     expect(renamed.tokens[shadow.id]?.hidden).toBe(false);
-    expect(filterStateForViewer(renamed, alice).rolls.at(-1)!.attack?.actor).toBeNull();
+    expect(filterStateForViewer(renamed, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.actor).toBeNull();
     expect(JSON.stringify(filterStateForViewer(renamed, alice).rolls)).not.toContain("Shadow");
   });
 
@@ -142,19 +143,19 @@ describe("attack rolls never reveal hidden tokens (FR-GM-23, ADR 0010)", () => {
     const { state, aria, goblin } = table();
     const hidden = run(rolled(state, alice, attackRoll(aria.id, goblin.id)).state, gm, { type: "token.setHidden", tokenId: goblin.id, hidden: true }).state;
     const deleted = run(hidden, gm, { type: "token.delete", tokenId: goblin.id }).state;
-    expect(filterStateForViewer(deleted, alice).rolls.at(-1)!.attack?.target).toBeNull();
+    expect(filterStateForViewer(deleted, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.target).toBeNull();
     const revealed = run(hidden, gm, { type: "token.setHidden", tokenId: goblin.id, hidden: false }).state;
-    expect(filterStateForViewer(revealed, alice).rolls.at(-1)!.attack?.target).toBeNull();
-    expect(filterStateForViewer(revealed, gm).rolls.at(-1)!.attack?.target?.name).toBe("Goblin 2");
+    expect(filterStateForViewer(revealed, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.target).toBeNull();
+    expect(filterStateForViewer(revealed, gm).rolls.filter(isDiceRoll).at(-1)!.attack?.target?.name).toBe("Goblin 2");
   });
 
   it("keeps a deleted target's name only if it was visible when rolled", () => {
     const { state, aria, goblin, shadow } = table();
     const visibleThenDeleted = run(rolled(state, alice, attackRoll(aria.id, goblin.id)).state, gm, { type: "token.delete", tokenId: goblin.id }).state;
-    expect(filterStateForViewer(visibleThenDeleted, alice).rolls.at(-1)!.attack?.target?.name).toBe("Goblin 2");
+    expect(filterStateForViewer(visibleThenDeleted, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.target?.name).toBe("Goblin 2");
 
     const hiddenThenDeleted = run(rolled(state, gm, attackRoll(shadow.id, aria.id)).state, gm, { type: "token.delete", tokenId: shadow.id }).state;
-    expect(filterStateForViewer(hiddenThenDeleted, alice).rolls.at(-1)!.attack?.actor).toBeNull();
+    expect(filterStateForViewer(hiddenThenDeleted, alice).rolls.filter(isDiceRoll).at(-1)!.attack?.actor).toBeNull();
   });
 });
 

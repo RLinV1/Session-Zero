@@ -76,7 +76,7 @@ export function HudLayout({ className, children }: { className: string; children
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => setLayout((now) => ({ ...now, collapsed: !now.collapsed }))}
         >
-          {layout.collapsed ? <CaretLeft size={14} weight="bold" aria-hidden="true" /> : <CaretRight size={14} weight="bold" aria-hidden="true" />}
+          {layout.collapsed ? <CaretLeft size={14} aria-hidden="true" /> : <CaretRight size={14} aria-hidden="true" />}
         </button>
       </div>
     </div>

@@ -54,6 +54,12 @@ describe("animation sounds (FR-TAC-09)", () => {
     expect(cracks(8)).toHaveLength(8);
   });
 
+  it("winds the nuke's siren up like a rotor, in step with the nuke's duration", () => {
+    const glides = (duration: number) => scheduleSound({ ...SHAPE_DEFAULTS.nuke, duration }, { reduced: false, rng: still }).flatMap((v) => (v.glide ? [v.glide] : []));
+    expect(glides(SHAPE_DEFAULTS.nuke.duration)).toEqual([0.7, 0.7]);
+    expect(glides(SHAPE_DEFAULTS.nuke.duration / 2)).toEqual([0.35, 0.35]);
+  });
+
   it("gives every shape a real-world theme", () => {
     for (const shape of ANIMATION_SHAPES) expect(SOUND_THEMES[shape].length, shape).toBeGreaterThan(10);
   });

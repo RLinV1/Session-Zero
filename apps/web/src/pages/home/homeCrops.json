@@ -1,0 +1,17 @@
+{
+  "crop": { "width": 1400, "height": 788, "squares": 20 },
+  "thumbWidth": 640,
+  "maps": [
+    { "source": "scripts/home-src/canal-market.webp", "slug": "canal-market", "width": 1536, "height": 1024, "cell": 64, "cellY": 64, "offX": 0, "offY": 0, "col": 2, "row": 1 },
+    { "source": "scripts/home-src/sun-tomb.webp", "slug": "sun-tomb", "width": 1536, "height": 1024, "cell": 64, "cellY": 64, "offX": 0, "offY": 0, "col": 2, "row": 1 },
+    { "source": "scripts/home-src/forge-hall.webp", "slug": "forge-hall", "width": 1536, "height": 1024, "cell": 56.4, "cellY": 57.5, "offX": 35.5, "offY": 54.5, "col": 3, "row": 1 },
+    { "source": "scripts/home-src/moor-inn.webp", "slug": "moor-inn", "width": 1536, "height": 1024, "cell": 61.65, "cellY": 62.1, "offX": 59, "offY": 62, "col": 0, "row": 1 },
+    { "source": "scripts/home-src/goblin-camp.webp", "slug": "goblin-camp", "width": 1536, "height": 1024, "cell": 54.85, "cellY": 52.75, "offX": 53, "offY": 41.75, "col": 5, "row": 3 },
+    { "source": "scripts/home-src/merchant-deck.webp", "slug": "merchant-deck", "width": 1536, "height": 1024, "cell": 64, "cellY": 64, "offX": 0, "offY": 0, "col": 2, "row": 2 }
+  ],
+  "builtinThumbs": [
+    { "file": "public/img/hero-map.webp", "slug": "broken-span", "cell": 69.4, "offX": 10, "offY": 31 },
+    { "file": "public/img/map-ice.webp", "slug": "hollowfrost-keep", "cell": 70, "offX": 47, "offY": 46 },
+    { "file": "public/img/map-jungle.webp", "slug": "temple-green-sun", "cell": 70, "offX": 21, "offY": 36 }
+  ]
+}

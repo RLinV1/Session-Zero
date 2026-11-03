@@ -62,7 +62,7 @@ export function StagePanel({ id, picks, onDone }: { id: string; picks: StagePick
       </section>
       <div className="stage-panel-actions">
         <button type="button" className="secondary small" disabled={!anyChosen} onClick={clearAllStagePicks}>Reset stage</button>
-        <button type="button" className="small" onClick={onDone}>Done</button>
+        <button type="button" className="small primary" onClick={onDone}>Done</button>
       </div>
     </div>
   );

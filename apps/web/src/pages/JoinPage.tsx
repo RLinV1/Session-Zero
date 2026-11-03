@@ -6,6 +6,7 @@ import { gmRoomForInvite, guestRoomForInvite, newGuestToken, rememberInvite, sav
 import { ensureSeat } from "../net/seats";
 import { navigate } from "../router";
 import { joinFailure } from "./joinFailure";
+import { EntryPage } from "../ui/SiteHeader";
 
 /**
  * Join from a shareable link (FR-PL-01). No account needed, and none is asked for or promoted
@@ -53,22 +54,22 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
 
   if (seat) {
     return (
-      <main className="centered">
+      <EntryPage>
         <div className="card">
           <h1>You're already at this table</h1>
           <p className="muted">Your seat is kept on your account, so you can pick up where you left off.</p>
           {error && <p role="alert" className="error">{error}</p>}
-          <button type="button" onClick={() => void resume(seat.roomId)} disabled={busy}>
+          <button type="button" className="primary" onClick={() => void resume(seat.roomId)} disabled={busy}>
             {busy ? "Opening…" : `Resume as ${seat.displayName}`}
           </button>
         </div>
-      </main>
+      </EntryPage>
     );
   }
 
   if (gmRoomId) {
     return (
-      <main className="centered">
+      <EntryPage>
         <div className="card">
           <h1>You're the GM of this room</h1>
           <p className="muted">
@@ -76,11 +77,11 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
             link with your players. To test as a player yourself, open it in a private window, another
             browser, or another device.
           </p>
-          <button type="button" onClick={() => navigate(`/r/${gmRoomId}`, { replace: true })}>
+          <button type="button" className="primary" onClick={() => navigate(`/r/${gmRoomId}`, { replace: true })}>
             Back to GM view
           </button>
         </div>
-      </main>
+      </EntryPage>
     );
   }
 
@@ -113,7 +114,7 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
   }
 
   return (
-    <main className="centered">
+    <EntryPage>
       <form className="card" onSubmit={onSubmit}>
         <h1>Join the table</h1>
         <label>
@@ -133,10 +134,10 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
           />
         </label>
         {error && <p id="join-error" role="alert" className="error">{error}</p>}
-        <button type="submit" disabled={busy}>
+        <button className="primary" type="submit" disabled={busy}>
           {busy ? "Joining…" : "Join"}
         </button>
       </form>
-    </main>
+    </EntryPage>
   );
 }

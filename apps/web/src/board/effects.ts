@@ -1,4 +1,4 @@
-import type { AnimationDef, ConditionId, DiceRoll, DomainEvent, Participant, Point, RoomState } from "@vtt/shared";
+import { diceRollsOf, findDiceRoll, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "./effectPresets";
 import { getClientSettings } from "../ui/clientSettings";
 
@@ -15,7 +15,9 @@ export type AttackEffect =
   | { kind: "strike"; fromId: string; toId: string; animation: AnimationDef }
   | { kind: "nuke"; animation: AnimationDef; origin: Point; amount: number; tokenIds: string[] }
   | { kind: "hit" | "miss"; tokenId: string }
-  | { kind: "damage"; tokenId: string; amount: number };
+  | { kind: "damage"; tokenId: string; amount: number }
+  /** An area effect resolved (ADR 0046): each damaged target's number, all at once. */
+  | { kind: "damages"; hits: { tokenId: string; amount: number }[] };
 
 /**
  * The animation a live event should trigger for this viewer, or null. Only reads the viewer's own
@@ -47,6 +49,11 @@ export function attackEffectFor(event: DomainEvent, after: RoomState, viewer: Pa
       const tokenId = targetOf(after, event.rollId, visible);
       // "−0" says nothing.
       return tokenId && event.amount > 0 ? { kind: "damage", tokenId, amount: event.amount } : null;
+    }
+    case "AreaEffectResolved": {
+      // The viewer's copy carries amounts only for targets they can see; heals and 0 show nothing.
+      const hits = event.amounts.filter((a) => a.amount > 0 && visible(a.tokenId));
+      return hits.length > 0 ? { kind: "damages", hits } : null;
     }
     case "MapNuked": {
       // Names no token: the blast hits the viewer's own copy, so a hidden token gets no number (FR-GM-23).
@@ -90,9 +97,10 @@ export function strikeAnimation(roll: DiceRoll, state: RoomState): AnimationDef 
  * whose sides were hidden from a player leaves the damage roll to strike for them.
  */
 function followsToHit(state: RoomState, rollId: string, actorId: string, targetId: string): boolean {
-  const at = state.rolls.findIndex((roll) => roll.id === rollId);
-  for (let i = (at === -1 ? state.rolls.length : at) - 1; i >= 0; i--) {
-    const attack = state.rolls[i]!.attack;
+  const rolls = diceRollsOf(state.rolls);
+  const at = rolls.findIndex((roll) => roll.id === rollId);
+  for (let i = (at === -1 ? rolls.length : at) - 1; i >= 0; i--) {
+    const attack = rolls[i]!.attack;
     if (attack?.actor?.tokenId === actorId && attack.target?.tokenId === targetId) return attack.kind === "toHit";
   }
   return false;
@@ -103,7 +111,7 @@ function followsToHit(state: RoomState, rollId: string, actorId: string, targetI
  * "Unknown → Aria" plays nothing: the spec allows no attack animation once either side is hidden.
  */
 function targetOf(state: RoomState, rollId: string, visible: (tokenId: string) => boolean): string | null {
-  const attack = state.rolls.find((roll) => roll.id === rollId)?.attack;
+  const attack = findDiceRoll(state.rolls, rollId)?.attack;
   if (!attack?.actor || !attack.target || !visible(attack.actor.tokenId)) return null;
   return visible(attack.target.tokenId) ? attack.target.tokenId : null;
 }
@@ -125,13 +133,14 @@ export interface AttackPlan {
 const NUKE_NUMBERS_MS = 1650;
 
 export function attackPlan(effect: AttackEffect, reducedMotion: boolean): AttackPlan {
-  if (reducedMotion) return { motion: false, durationMs: effect.kind === "damage" || effect.kind === "nuke" ? 1000 : 600 };
+  if (reducedMotion) return { motion: false, durationMs: effect.kind === "damage" || effect.kind === "damages" || effect.kind === "nuke" ? 1000 : 600 };
   switch (effect.kind) {
     case "strike":
       return { motion: true, durationMs: Math.round(effect.animation.duration * 1000) };
     case "nuke":
       return { motion: true, durationMs: Math.max(NUKE_NUMBERS_MS, Math.round(effect.animation.duration * 1000)) };
-    case "damage": return { motion: true, durationMs: 1500 };
+    case "damage":
+    case "damages": return { motion: true, durationMs: 1500 };
     default: return { motion: true, durationMs: 900 };
   }
 }

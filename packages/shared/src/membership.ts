@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { GridSpec, Point } from "./geometry";
 import type { GmRoomSummary, SessionEndReason } from "./protocol";
 import type { Role } from "./state";
 
@@ -51,4 +52,17 @@ export type PlayingRoomSummary = GmRoomSummary;
 export interface MyRoomsResponse {
   hosting: GmRoomSummary[];
   playing: PlayingRoomSummary[];
+}
+
+/**
+ * `GET /api/me/rooms/:roomId/preview`: a hosted room's board as its GM seat sees it, drawn small
+ * on the room's dashboard card. Only what the picture needs, in board coordinates: no names,
+ * stats or ids.
+ */
+export interface RoomPreview {
+  map: { url: string; width: number; height: number } | null;
+  grid: GridSpec;
+  tokens: { position: Point; size: number; color: string; imageUrl: string | null; hidden: boolean }[];
+  /** Each fog region's outline. */
+  fog: Point[][];
 }

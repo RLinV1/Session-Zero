@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Crosshair, DiceFive, DotsThree, Eye, EyeSlash, Minus, PencilSimple, Plus, SlidersHorizontal, Sword, Target, X } from "@phosphor-icons/react";
 import {
   can,
+  isGroupRoll,
   MAX_ATTACK_LABEL,
   MAX_ATTACK_TARGETS,
   type AttackKind,
   type AnimationDef,
   type DiceRoll,
   type DiceVisibility,
+  type LoggedRoll,
   type Participant,
   type Point,
   type RoomState,
@@ -449,7 +451,7 @@ function AttackForm({
               title="Attack options"
               align="right"
               className="icon-button attack-more"
-              buttonContent={<DotsThree size={20} weight="bold" aria-hidden="true" />}
+              buttonContent={<DotsThree size={20} aria-hidden="true" />}
             >
               {(close) => (
                 <div className="menu-list">
@@ -503,7 +505,7 @@ function AttackForm({
             <div className="attack-roll-row">
               <button
                 type="button"
-                className="attack-roll"
+                className="attack-roll primary"
                 disabled={!target || busy || rolling}
                 title={rolling ? "Your dice are still on the board" : undefined}
                 onClick={() => (followUp ? rollDamage(chosen, hits) : rollPreset(chosen))}
@@ -588,7 +590,7 @@ function AttackForm({
             <div className="attack-roll-row">
               <button
                 type="submit"
-                className="attack-roll"
+                className="attack-roll primary"
                 disabled={busy || rolling || !target}
                 title={rolling ? "Your dice are still on the board" : undefined}
               >
@@ -701,7 +703,7 @@ export function PresetEditor({
         <button type="button" className="secondary" onClick={onCancel}>
           Cancel
         </button>
-        <button type="submit">Save</button>
+        <button type="submit" className="primary">Save</button>
       </div>
     </form>
   );
@@ -770,10 +772,11 @@ function DiceField({
  * The to-hit roll that last decided `preset` against `targetId`, if it was a Hit not yet followed by
  * that attack's damage; the damage button then rolls at that target.
  */
-function hitOn(rolls: readonly DiceRoll[], participantId: string, attackerId: string, targetId: string, preset: AttackPreset): DiceRoll | null {
+function hitOn(rolls: readonly LoggedRoll[], participantId: string, attackerId: string, targetId: string, preset: AttackPreset): DiceRoll | null {
   const label = (kind: AttackKind) => presetRollLabel(preset, kind);
   for (let i = rolls.length - 1; i >= 0; i--) {
     const roll = rolls[i]!;
+    if (isGroupRoll(roll)) continue;
     const attack = roll.attack;
     if (!attack || roll.byParticipantId !== participantId || attack.actor?.tokenId !== attackerId || attack.target?.tokenId !== targetId) continue;
     if (attack.kind === "damage" && attack.label === label("damage")) return null;

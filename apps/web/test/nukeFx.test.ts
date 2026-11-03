@@ -2,7 +2,7 @@
 import { Container, Graphics } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 import { playNuke, type FxHost } from "../src/board/fx";
-import { NUKE_DROP_SHARE, nukeLayout } from "../src/board/fxBudget";
+import { NUKE_DROP_SHARE, NUKE_FALL_SHARE, nukeLayout } from "../src/board/fxBudget";
 import { NUKE_PRESET } from "../src/board/effectPresets";
 
 vi.hoisted(() => { HTMLCanvasElement.prototype.getContext = () => null; });
@@ -24,6 +24,26 @@ describe("nuke fire and render budget (FR-TAC-06, ADR 0038)", () => {
     expect(onImpact).toHaveBeenCalledTimes(1);
     fx.destroy();
   });
+  it("holds the bomb above the screen through the siren, then drops it in 0.88 s", () => {
+    const h = host();
+    const fx = playNuke(h, { def: NUKE_PRESET, origin: { x: 600, y: 400 }, unit: 60, extent: 720 });
+    const bomb = (h.layer.children[0] as Container).children.find((c) => c.label === "nuke-bomb")!;
+    const impact = NUKE_PRESET.duration * NUKE_DROP_SHARE;
+    const fall = NUKE_PRESET.duration * NUKE_FALL_SHARE;
+    expect(fall).toBeCloseTo(0.88, 2);
+    fx.update(0.1);
+    const waiting = bomb.position.y;
+    expect(waiting).toBeLessThan(0);
+    fx.update(impact - fall - 0.05);
+    expect(bomb.position.y).toBe(waiting);
+    fx.update(impact - fall / 2);
+    expect(bomb.position.y).toBeGreaterThan(waiting);
+    expect(bomb.position.y).toBeLessThan(400);
+    fx.update(impact - 0.04);
+    expect(bomb.position.y).toBeGreaterThan(300);
+    fx.destroy();
+  });
+
   it("keeps the mushroom cap inside wide and narrow viewports", () => {
     for (const [width, height] of [[1600, 900], [390, 844], [800, 300]]) {
       for (const size of [0.25, 3, 6]) {

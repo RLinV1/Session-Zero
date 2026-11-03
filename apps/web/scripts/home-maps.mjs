@@ -1,43 +1,44 @@
 /**
- * Cuts the home page's map crops and shelf thumbnails from the built-in maps
- * (top-down-default-maps). Run by hand after a map changes: `npm run maps:home -w @vtt/web`.
- * The outputs are committed, so nothing else needs `sharp`.
+ * Cuts the home page's map crops and thumbnails. Run by hand after a map changes:
+ * `npm run maps:home -w @vtt/web`. The outputs are committed, so nothing else needs `sharp`.
  *
- * Each crop is 20 squares wide, starts on a grid intersection, and comes out at 1400 x 788,
- * so every crop has exact 70 px squares from its top-left corner whatever the source cell.
+ * - `maps`: the home page's own maps (generated for it; sources in scripts/home-src, prompts in
+ *   public/img/home/CREDITS.md). Each crop is 20 squares wide, starts on a grid intersection and
+ *   comes out at 1400 x 788, so every crop has exact 70 px squares from its top-left corner
+ *   whatever the source's squares were. A source whose squares aren't quite square (`cellY`) is
+ *   scaled on each axis on its own. Each also gets a whole-map thumbnail for the library strip.
+ * - `builtinThumbs`: the library's thumbnails of the built-in maps (the crypt's comes from
+ *   renderCryptMap.mjs instead).
+ *
  * Check images with the grid drawn in red go to scripts/out/ for review.
  */
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+// The crop table is shared with the home page (src/pages/home/crops.ts), which places walls and
+// tokens on these crops: one table, so the pictures and the geometry on them never disagree.
+import crops from "../src/pages/home/homeCrops.json" with { type: "json" };
 
 const root = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
-
-/** Grids match `src/net/builtinAssets.ts`; crop origins are in grid squares. */
-const MAPS = [
-  { file: "hero-map", slug: "broken-span", cell: 69.4, offX: 10, offY: 31, col: 2, row: 5 },
-  { file: "map-ice", slug: "hollowfrost-keep", cell: 70, offX: 47, offY: 46, col: 23, row: 7 },
-  { file: "map-jungle", slug: "temple-green-sun", cell: 70, offX: 21, offY: 36, col: 18, row: 5 },
-];
-
-const CROP = { width: 1400, height: 788, squares: 20 };
-const THUMB_WIDTH = 640;
+const CROP = crops.crop;
+const THUMB_WIDTH = crops.thumbWidth;
+const SQUARE = CROP.width / CROP.squares;
 
 /** An SVG of grid lines to lay over an image, for the check images only. */
-function gridSvg(width, height, cell, offX, offY) {
+function gridSvg(width, height, cellX, cellY, offX, offY) {
   const lines = [];
-  for (let x = offX; x < width; x += cell) lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}"/>`);
-  for (let y = offY; y < height; y += cell) lines.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}"/>`);
+  for (let x = offX; x < width; x += cellX) lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}"/>`);
+  for (let y = offY; y < height; y += cellY) lines.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}"/>`);
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
       `<g stroke="#ff0000" stroke-width="1.5">${lines.join("")}</g></svg>`,
   );
 }
 
-async function check(buffer, out, cell, offX, offY) {
+async function check(buffer, out, cellX, cellY, offX, offY) {
   const { width, height } = await sharp(buffer).metadata();
   await sharp(buffer)
-    .composite([{ input: gridSvg(width, height, cell, offX, offY) }])
+    .composite([{ input: gridSvg(width, height, cellX, cellY, offX, offY) }])
     .png()
     .toFile(root(`scripts/out/${out}`));
 }
@@ -45,27 +46,39 @@ async function check(buffer, out, cell, offX, offY) {
 await mkdir(root("public/img/home"), { recursive: true });
 await mkdir(root("scripts/out"), { recursive: true });
 
-for (const m of MAPS) {
-  const source = root(`public/img/${m.file}.webp`);
+for (const m of crops.maps) {
+  const source = root(m.source);
   const { width, height } = await sharp(source).metadata();
+  if (width !== m.width || height !== m.height) throw new Error(`${m.slug}: the table says ${m.width}x${m.height}, the source is ${width}x${height}`);
 
-  // Scale so one square is exactly 70 px, then take a whole-pixel crop from the snapped
-  // origin. For a 70 px map the scale is 1; for the others it moves the origin under 1 px.
-  const scale = CROP.width / CROP.squares / m.cell;
-  const left = Math.round((m.offX + m.col * m.cell) * scale);
-  const top = Math.round((m.offY + m.row * m.cell) * scale);
+  // Scale so one square is exactly 70 px on each axis, then take a whole-pixel crop from the
+  // snapped origin.
+  const scaleX = SQUARE / m.cell;
+  const scaleY = SQUARE / m.cellY;
+  const left = Math.round((m.offX + m.col * m.cell) * scaleX);
+  const top = Math.round((m.offY + m.row * m.cellY) * scaleY);
   const crop = await sharp(source)
-    .resize(Math.round(width * scale), Math.round(height * scale))
+    .resize(Math.round(width * scaleX), Math.round(height * scaleY), { fit: "fill" })
     .extract({ left, top, width: CROP.width, height: CROP.height })
     .webp({ quality: 82 })
     .toBuffer();
   await sharp(crop).toFile(root(`public/img/home/${m.slug}.webp`));
-  await check(crop, `${m.slug}.png`, CROP.width / CROP.squares, 0, 0);
+  await check(crop, `${m.slug}.png`, SQUARE, SQUARE, 0, 0);
 
   const t = THUMB_WIDTH / width;
   const thumb = await sharp(source).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer();
   await sharp(thumb).toFile(root(`public/img/home/${m.slug}-thumb.webp`));
-  await check(thumb, `${m.slug}-thumb.png`, m.cell * t, m.offX * t, m.offY * t);
+  await check(thumb, `${m.slug}-thumb.png`, m.cell * t, m.cellY * t, m.offX * t, m.offY * t);
 
-  console.log(`${m.slug}: crop at (${left}, ${top}) x${scale.toFixed(4)}, thumbnail ${THUMB_WIDTH} wide`);
+  console.log(`${m.slug}: crop at (${left}, ${top}) x${scaleX.toFixed(4)} y${scaleY.toFixed(4)}, thumbnail ${THUMB_WIDTH} wide`);
+}
+
+for (const m of crops.builtinThumbs) {
+  const source = root(m.file);
+  const { width } = await sharp(source).metadata();
+  const t = THUMB_WIDTH / width;
+  const thumb = await sharp(source).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer();
+  await sharp(thumb).toFile(root(`public/img/home/${m.slug}-thumb.webp`));
+  await check(thumb, `${m.slug}-thumb.png`, m.cell * t, m.cell * t, m.offX * t, m.offY * t);
+  console.log(`${m.slug}: library thumbnail ${THUMB_WIDTH} wide`);
 }

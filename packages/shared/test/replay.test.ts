@@ -155,6 +155,42 @@ describe("Replay is filtered for the viewer (FR-PL-07)", () => {
     }
   });
 
+  it("preserves terrain and area effects together through filtered wire snapshots", () => {
+    const r = room();
+    r.run(gm, { type: "scene.setMap", map: { url: "/map.png", width: 700, height: 700 } });
+    r.run(gm, { type: "token.create", name: "Fighter", position: { x: 35, y: 35 }, ownerIds: [alice.id] });
+    r.run(gm, { type: "token.create", name: "Hidden goblin", position: { x: 315, y: 315 }, hidden: true });
+    const tokenIds = Object.keys(r.state.tokens);
+    const hiddenId = tokenIds.find((id) => r.state.tokens[id]!.hidden)!;
+    r.run(gm, { type: "dice.rollGroup", tokenIds, expression: "1d20" });
+    r.run(gm, { type: "areaEffect.start", tokenIds, expression: "1d20", label: "Fireball" });
+    r.run(gm, {
+      type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 2, end: 2, kind: "difficult" }],
+      context: { boardEpoch: r.state.boardEpoch ?? 0, revision: r.state.terrainRevision ?? 0 },
+    });
+    r.run(gm, { type: "fog.add", region: { shape: "rect", from: { x: 140, y: 0 }, to: { x: 210, y: 70 } } });
+
+    for (const viewer of [alice, gm]) {
+      const replay = ReplayResponse.parse(JSON.parse(JSON.stringify(replayFrom("room-1", r.log, viewer, startPoint(r.log, viewer)))));
+      const states = replayStates(replay);
+      replay.frames.forEach((frame, i) => {
+        const seq = frame.kind === "event" ? frame.committed.seq : frame.seq;
+        const truth = filterStateForViewer(replayTo("room-1", r.log, seq), viewer);
+        const shown = states[i + 1]!;
+        expect(tableOf(shown)).toEqual(tableOf(truth));
+        expect(shown.terrainView).toEqual(truth.terrainView);
+        expect(shown.sight).toEqual(truth.sight);
+        expect(shown.boardEpoch).toEqual(truth.boardEpoch);
+        expect(shown.areaEffect).toEqual(truth.areaEffect);
+        expect(shown.rolls).toEqual(truth.rolls);
+      });
+      if (viewer.role === "player") {
+        expect(JSON.stringify(replay)).not.toContain(hiddenId);
+        expect(states.every((state) => state.terrain === undefined && state.terrainRevision === undefined)).toBe(true);
+      }
+    }
+  });
+
   it("describes visible steps and keeps snapshot steps neutral", () => {
     const { r } = session();
     const replay = replayFrom("room-1", r.log, alice, startPoint(r.log, alice));

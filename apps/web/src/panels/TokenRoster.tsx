@@ -34,6 +34,8 @@ import { PanelSection } from "../ui/PanelSection";
 import { CollapseToggle, GroupHeading, NewGroupButton } from "./GroupHeading";
 import { groupedTokens } from "./tokenGroups";
 import { GroupMoveMenu } from "./GroupMoveMenu";
+import { hpLevel } from "../ui/palette";
+import { TokenDisc } from "../ui/TokenDisc";
 
 /**
  * Focusable token roster (FR-GM-24), showing stats and conditions (FR-TAC-07/08).
@@ -293,7 +295,7 @@ function RosterRow({
       <div className="roster-main">
         {handle}
         <button type="button" className="roster-focus" onClick={onFocus}>
-          <span className="swatch" style={{ background: token.color }} aria-hidden />
+          <TokenDisc name={token.name} color={token.color} image={token.imageUrl} size="1.5rem" className="small" />
           <span className="token-name">{token.name}</span>
           {token.hidden && <span className="badge">hidden</span>}
           {isActive && <span className="badge active-badge">active turn</span>}
@@ -303,7 +305,7 @@ function RosterRow({
               {token.stats.maxHp !== null && `/${token.stats.maxHp}`} HP
             </span>
           )}
-          {token.stats.ac !== null && <span className="muted">AC {token.stats.ac}</span>}
+          {token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
         </button>
         {editable && (
           <button type="button" className="icon-button roster-edit" onClick={onEdit} aria-label={`Edit ${token.name}`} title="Edit">
@@ -326,7 +328,7 @@ function RosterRow({
           aria-valuenow={stats.hp ?? 0}
           aria-label={`${token.name} hit points`}
         >
-          <span style={{ width: `${fraction * 100}%` }} data-level={level(fraction)} />
+          <span style={{ width: `${fraction * 100}%` }} data-level={hpLevel(fraction)} />
         </div>
       )}
 
@@ -601,7 +603,7 @@ export function TokenEditor({
             <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(null)}>
               Back
             </button>
-            <button type="button" disabled={busy || uploading} onClick={() => void save()} autoFocus>
+            <button className="primary" type="button" disabled={busy || uploading} onClick={() => void save()} autoFocus>
               Confirm
             </button>
           </div>
@@ -641,7 +643,7 @@ export function TokenEditor({
               <Trash size={18} aria-hidden />
             </button>
           )}
-          <button type="submit" className="token-save" disabled={!hasChanges || uploading}>
+          <button type="submit" className="token-save primary" disabled={!hasChanges || uploading}>
             Save
           </button>
         </div>
@@ -664,5 +666,3 @@ export function TokenEditor({
 
 /** Every rules feature on: the editor outside a room, and in a Dungeons & Dragons room. */
 const ALL_FEATURES: PresetFeatures = { attacks: true, conditions: true, armorClass: true };
-
-const level = (f: number) => (f > 0.5 ? "ok" : f > 0.25 ? "warn" : "critical");

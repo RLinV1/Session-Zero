@@ -645,7 +645,7 @@ function MapSection(props: {
               <span className="map-editor-unsaved">
                 <span className="map-editor-draft">Unsaved changes: only you see them</span>
                 <button type="button" className="secondary small" disabled={saving} onClick={discardDraft}>Discard</button>
-                <button type="button" className="small" disabled={saving} onClick={() => void saveDraft()}>
+                <button type="button" className="small primary" disabled={saving} onClick={() => void saveDraft()}>
                   {saving ? "Saving…" : "Save changes"}
                 </button>
               </span>
@@ -740,7 +740,7 @@ function MapSection(props: {
             ))}
             {step === "walls" && (importedState ? <div className="map-editor-import">
               <WallSetup key={prep?.uvtt?.id} connection={importEdits} state={importedState} token={props.token} detection={false} initialMode="select" />
-              <div className="map-editor-import-apply"><button type="button" disabled={applyingMap} onClick={requestApply}>{applyingMap ? "Applying map…" : "Apply map"}</button>{prepError && <p role="alert" className="error">{prepError}</p>}</div>
+              <div className="map-editor-import-apply"><button type="button" className="primary" disabled={applyingMap} onClick={requestApply}>{applyingMap ? "Applying map…" : "Apply map"}</button>{prepError && <p role="alert" className="error">{prepError}</p>}</div>
             </div> : prep ? <p className="map-editor-empty">Apply this map before setting up its walls.</p> : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.walls(draftEdits, draftState)}</Fragment>)}
             {step === "fog" && (prep
               ? <p className="map-editor-empty">Apply the draft map in the Grid step first, then set up its fog here.</p>
@@ -770,7 +770,7 @@ function MapSection(props: {
             </label>
           ))}
           <div className="row button-row">
-            <button type="submit" ref={applyRef}>Apply map</button>
+            <button type="submit" className="primary" ref={applyRef}>Apply map</button>
             <button type="button" className="secondary" onClick={() => { setAskingPolicy(false); setAfterPolicy(null); }}>Cancel</button>
           </div>
         </form>
@@ -829,7 +829,7 @@ function MapSection(props: {
               {blocked && <p className="muted">{blocked}</p>}
               {error && <p role="alert" className="error">{error}</p>}
               <div className="row button-row">
-                <button type="button" disabled={pendingSaving || blocked !== null} onClick={() => void savePending()}>
+                <button type="button" className="primary" disabled={pendingSaving || blocked !== null} onClick={() => void savePending()}>
                   {pendingSaving ? "Saving…" : text.save}
                 </button>
                 <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>Discard</button>

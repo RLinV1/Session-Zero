@@ -1,5 +1,7 @@
-/** Share of a nuke spent showing the falling bomb before impact. */
-export const NUKE_DROP_SHARE = 0.22;
+/** Share of a nuke before impact: the siren winds up, and the bomb falls at the end of it. */
+export const NUKE_DROP_SHARE = 0.46;
+/** Share of a nuke the bomb takes to fall, ending on the impact: 0.88 s at the default 6.5 s, as before the siren. */
+export const NUKE_FALL_SHARE = 0.135;
 /** Heavy effects render at 30 fps, independent of display refresh rate. */
 export const FX_FRAME_MS = 1000 / 30;
 

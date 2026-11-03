@@ -12,8 +12,8 @@ describe("whole-screen nuke shake (FR-TAC-06, ADR 0038)", () => {
     const el = { animate } as unknown as HTMLElement;
     const stop = shakeScreen(nuke, el);
     const [frames, options] = animate.mock.calls[0]!;
-    expect(options.duration).toBe(1200);
-    expect(options.delay).toBe(440);
+    expect(options.duration).toBeCloseTo(831.6);
+    expect(options.delay).toBe(920);
     expect(frames.at(-1)?.transform).toBe("translate(0.0px, 0.0px) rotate(0.00deg)");
     expect(frames.some((f) => f.transform !== frames.at(-1)?.transform)).toBe(true);
     stop();

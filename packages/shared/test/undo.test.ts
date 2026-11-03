@@ -17,6 +17,7 @@ import {
   type DomainEvent,
   type Participant,
   type RoomState,
+  isDiceRoll
 } from "../src";
 import { alice, baseRoom, ctx, gm, withToken } from "./fixtures";
 
@@ -369,7 +370,7 @@ describe("undoing combat actions (FR-REC-02, ADR 0011)", () => {
     expect(describeUndo(undoableAction(ruled.state.undo, ruled.commandId)!, ruled.state.tokens).verb).toBe("ruling on Aria → Goblin");
     const undone = act(ruled.state, gm, { type: "history.undo", commandId: ruled.commandId });
     expect(undone.events[0]).toEqual({ type: "RollRuled", rollId: hit.rollId, verdict: null, previous: "hit" });
-    expect(undone.state.rolls.find((r) => r.id === hit.rollId)!.verdict).toBeUndefined();
+    expect(undone.state.rolls.filter(isDiceRoll).find((r) => r.id === hit.rollId)!.verdict).toBeUndefined();
   });
 
   it("refuses to undo a ruling that has been changed since", () => {
@@ -393,7 +394,7 @@ describe("undoing combat actions (FR-REC-02, ADR 0011)", () => {
     const undone = act(applied.state, gm, { type: "history.undo", commandId: applied.commandId });
     expect(undone.events.map((e) => e.type)).toEqual(["RollDamageUnapplied", "TokenStatsSet", "ActionUndone"]);
     expect(undone.state.tokens[goblin]!.stats.hp).toBe(15);
-    expect(undone.state.rolls.find((r) => r.id === damage.rollId)!.damageApplied).toBeUndefined();
+    expect(undone.state.rolls.filter(isDiceRoll).find((r) => r.id === damage.rollId)!.damageApplied).toBeUndefined();
     // The roll can be applied again afterwards.
     expect(decide(undone.state, gm, Command.parse({ type: "roll.applyDamage", rollId: damage.rollId }), ctx).ok).toBe(true);
   });

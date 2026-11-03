@@ -2,6 +2,7 @@ export * from "./conditions";
 export * from "./animation";
 export * from "./attackPresets";
 export * from "./dice";
+export * from "./areaEffects";
 export * from "./geometry";
 export * from "./mapTokenAdjustment";
 export * from "./gridRenderLimit";

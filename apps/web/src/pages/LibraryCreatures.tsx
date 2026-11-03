@@ -12,6 +12,7 @@ import { Modal } from "../ui/Modal";
 import { TokenPreview } from "../ui/TokenPreview";
 import { creatureSummary, type CreaturePrefill } from "./creatureDraft";
 import { LibraryPicker } from "./LibraryPicker";
+import { TokenDisc } from "../ui/TokenDisc";
 
 /** A creature in the library's Creatures tab (library-creatures): its art or a colour disc, name and stats. */
 export function CreatureCard(props: {
@@ -39,9 +40,7 @@ export function CreatureCard(props: {
   return (
     <li className="asset-card creature-card">
       <div className="asset-thumb token">
-        {creature.imageUrl
-          ? <img src={creature.imageUrl} alt="" loading="lazy" />
-          : <span className="creature-disc" style={{ background: creature.color }} aria-hidden="true" />}
+        <TokenDisc name={creature.name} color={creature.color} image={creature.imageUrl} size="5.5rem" />
       </div>
       <strong className="asset-name" title={creature.name}>{creature.name}</strong>
       <span className="muted asset-meta">{creatureSummary(creature)}</span>
@@ -203,7 +202,7 @@ export function CreatureForm(props: {
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
           <button type="button" className="secondary" disabled={saving} onClick={props.onCancel}>Cancel</button>
-          <button type="submit" disabled={!parsed.success || saving}>
+          <button className="primary" type="submit" disabled={!parsed.success || saving}>
             {saving ? "Saving…" : creature ? "Save creature" : "Create creature"}
           </button>
         </div>

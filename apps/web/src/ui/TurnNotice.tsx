@@ -48,7 +48,7 @@ export function TurnNotice({ state, you, onFocusToken }: { state: RoomState; you
         It's <strong>{notice.name}</strong>'s turn.
       </p>
       <div className="row">
-        <button type="button" className="small" onClick={() => onFocusToken(notice.id)}>
+        <button type="button" className="small primary" onClick={() => onFocusToken(notice.id)}>
           Show on board
         </button>
         <button type="button" className="small secondary" onClick={() => setNotice(null)} aria-label={`Dismiss: ${notice.name}'s turn`}>

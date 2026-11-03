@@ -162,7 +162,7 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
         title="Invite link options"
         align="right"
         className="tool-button share-button share-menu-button"
-        buttonContent={<CaretDown size={12} weight="bold" aria-hidden="true" />}
+        buttonContent={<CaretDown size={12} aria-hidden="true" />}
       >
         {(close) => (
           <button

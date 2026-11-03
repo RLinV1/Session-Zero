@@ -32,6 +32,7 @@ import {
   type LibraryUsageResponse,
   type MeResponse,
   type MyRoomsResponse,
+  type RoomPreview,
   type SaveEncounterEditRequest,
   type SaveEncounterRequest,
   type SeatResponse,
@@ -346,6 +347,8 @@ export const api = {
   /** The account's rooms and seats (room-membership, ADR 0017 M). */
   me: {
     rooms: () => accountRequest<MyRoomsResponse>("/api/me/rooms"),
+    /** A hosted room's board, small, for its dashboard card (gm-dashboard). */
+    roomPreview: (roomId: string) => accountRequest<RoomPreview>(`/api/me/rooms/${encodeURIComponent(roomId)}/preview`),
   },
 
   /** The account's active seat in an invite's room, if any (room-membership): Resume instead of joining twice. */

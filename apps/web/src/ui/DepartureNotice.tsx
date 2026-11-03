@@ -51,7 +51,7 @@ export function DepartureNotices({ state, onReview }: { state: RoomState; onRevi
               {onReview && pending.has(id) && (
                 <button
                   type="button"
-                  className="small"
+                  className="small primary"
                   onClick={() => {
                     dismiss(id);
                     onReview(id);

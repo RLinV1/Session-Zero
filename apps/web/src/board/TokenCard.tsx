@@ -53,11 +53,13 @@ export function TokenCard({
       <div className="token-card-body">
       <dl>
         <dt>HP</dt>
-        <dd>{token.stats.hp === null ? "Not tracked" : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}</dd>
+        <dd className={token.stats.hp === null ? undefined : "num"}>
+          {token.stats.hp === null ? "Not tracked" : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}
+        </dd>
         {token.stats.ac !== null && (
           <>
             <dt>AC</dt>
-            <dd>{token.stats.ac}</dd>
+            <dd className="num">{token.stats.ac}</dd>
           </>
         )}
         {presetOf(state).features.conditions && (
@@ -79,7 +81,7 @@ export function TokenCard({
             {token.initiative != null && (
               <>
                 <dt>Initiative</dt>
-                <dd>{String(token.initiative)}</dd>
+                <dd className="num">{String(token.initiative)}</dd>
               </>
             )}
           </>

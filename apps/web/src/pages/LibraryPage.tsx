@@ -2,12 +2,14 @@ import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
 import { IconAction } from "../ui/IconAction";
 import { useEffect, useMemo, useState } from "react";
 import { type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
-import { Link } from "../Link";
 import { api } from "../net/api";
 import { builtinsMatching } from "../net/builtinAssets";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import { Modal } from "../ui/Modal";
 import { AccountMenu } from "../account/AccountPages";
+import { EmptyState } from "../ui/EmptyState";
+import { MapThumbnail } from "../ui/MapThumbnail";
+import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { RequireAccount } from "../account/RequireAccount";
 import { LibraryMapEditor } from "./mapEditor/LibraryMapEditor";
 import { AnimationsTab } from "./LibraryAnimations";
@@ -17,6 +19,7 @@ import { LibraryPicker } from "./LibraryPicker";
 import { startEncounterEdit } from "./encounterEdit/startEdit";
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
+import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
 
 /**
  * Maps and token art are uploaded assets; creatures are reusable token setups (library-creatures);
@@ -57,16 +60,15 @@ function DiceLibrary() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   return (
-    <main className="home gm-page">
-      <header className="home-header">
-        <Link href="/" className="brand">
-          Virtual Tabletop
-        </Link>
-      </header>
+    <>
+    <div className="page-shell page-bar">
+      <SiteHeader />
+    </div>
+    <main className="page-shell home gm-page">
       <h1>Dice looks</h1>
       <div className="library-toolbar">
         <input type="search" aria-label="Search by name" placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button type="button" onClick={() => void createDiceLook().then(setEditing)}>
+        <button type="button" className="primary" onClick={() => void createDiceLook().then(setEditing)}>
           New dice look
         </button>
       </div>
@@ -74,6 +76,7 @@ function DiceLibrary() {
       <DiceLookCards query={query} onEdit={setEditing} />
       <DiceLookModal lookId={editing} onClose={() => setEditing(null)} />
     </main>
+    </>
   );
 }
 
@@ -156,16 +159,11 @@ function Library() {
   const replace = (next: LibraryAsset) => setAssets((all) => (all ?? []).map((a) => (a.id === next.id ? next : a)));
 
   return (
-    <main className="home gm-page">
-      <header className="home-header">
-        <Link href="/" className="brand">
-          Virtual Tabletop
-        </Link>
-        <nav className="home-nav">
-          <Link href="/gm-dashboard">My rooms</Link>
-          <AccountMenu />
-        </nav>
-      </header>
+    <>
+    <div className="page-shell page-bar">
+      <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} />
+    </div>
+    <main className="page-shell home gm-page">
       <h1>Asset library</h1>
       {error && <p role="alert" className="error">{error}</p>}
 
@@ -196,11 +194,11 @@ function Library() {
           onChange={(e) => setQuery(e.target.value)}
         />
         {tab === "dice" ? (
-          <button type="button" onClick={() => void createDiceLook().then(setDiceTarget)}>New dice look</button>
+          <button type="button" className="primary" onClick={() => void createDiceLook().then(setDiceTarget)}>New dice look</button>
         ) : tab === "creature" ? (
-          <button type="button" onClick={() => setCreatureTarget("new")}>New creature</button>
+          <button type="button" className="primary" onClick={() => setCreatureTarget("new")}>New creature</button>
         ) : tab === "encounter" ? (
-          <button type="button" disabled={startingEncounter} onClick={() => setPickingEncounterMap(true)}>
+          <button type="button" className="primary" disabled={startingEncounter} onClick={() => setPickingEncounterMap(true)}>
             {startingEncounter ? "Opening…" : "New encounter"}
           </button>
         ) : tab === "animation" ? null : (
@@ -228,13 +226,14 @@ function Library() {
       ) : tab === "encounter" ? (
         <>
           {!encounters && !error && <p className="muted" aria-busy="true">Loading…</p>}
-          {encounters && shownEncounters.length === 0 && (
-            <p className="muted">
-              {query
-                ? "None of your encounter templates match that search."
-                : "You haven't saved any encounter templates yet. Use New encounter to place creatures and fog on one of your maps, or save a room you run from the Encounter templates section of its Manage tab."}
-            </p>
-          )}
+          {encounters && shownEncounters.length === 0 && (query ? (
+            <p className="muted">None of your encounter templates match that search.</p>
+          ) : (
+            // The toolbar's New encounter is right above, so the empty state adds no second one.
+            <EmptyState picture="empty-library">
+              You haven't saved any encounter templates yet. Use New encounter to place creatures and fog on one of your maps, or save a room you run from the Encounter templates section of its Manage tab.
+            </EmptyState>
+          ))}
           <ul className="plain asset-grid" role="tabpanel">
             {shownEncounters.map((encounter) => (
               <EncounterCard
@@ -249,13 +248,13 @@ function Library() {
       ) : tab === "creature" ? (
         <>
           {!creatures && !error && <p className="muted" aria-busy="true">Loading…</p>}
-          {creatures && shownCreatures.length === 0 && (
-            <p className="muted">
-              {query
-                ? "None of your creatures match that search."
-                : "You haven't made any creatures yet. A creature saves a name, size, HP and AC, so you can place it from Add token without setting it up again."}
-            </p>
-          )}
+          {creatures && shownCreatures.length === 0 && (query ? (
+            <p className="muted">None of your creatures match that search.</p>
+          ) : (
+            <EmptyState picture="empty-library">
+              You haven't made any creatures yet. A creature saves a name, size, HP and AC, so you can place it from Add token without setting it up again.
+            </EmptyState>
+          ))}
           <ul className="plain asset-grid" role="tabpanel">
             {shownCreatures.map((creature) => (
                 <CreatureCard
@@ -270,13 +269,13 @@ function Library() {
       ) : (
         <>
           {!assets && !error && <p className="muted" aria-busy="true">Loading…</p>}
-          {assets && shown.length === 0 && (
-            <p className="muted">
-              {query
-                ? "None of your uploads match that search."
-                : `You haven't uploaded any ${kind === "map" ? "maps" : "token art"} yet. The ones below are ready to use.`}
-            </p>
-          )}
+          {assets && shown.length === 0 && (query ? (
+            <p className="muted">None of your uploads match that search.</p>
+          ) : (
+            <EmptyState picture="empty-library">
+              You haven't uploaded any {kind === "map" ? "maps" : "token art"} yet. The ones below are ready to use.
+            </EmptyState>
+          ))}
           <ul className="plain asset-grid" role="tabpanel">
             {shown.map((asset) => (
                 <AssetCard
@@ -343,6 +342,7 @@ function Library() {
         }}
       />
     </main>
+    </>
   );
 }
 
@@ -351,7 +351,11 @@ function BuiltinCard({ asset }: { asset: LibraryAsset }) {
   return (
     <li className="asset-card">
       <div className={asset.kind === "token" ? "asset-thumb token" : "asset-thumb"}>
-        <img src={asset.url} alt="" loading="lazy" decoding="async" />
+        {asset.kind === "map" ? (
+          <MapThumbnail url={asset.url} width={asset.width} height={asset.height} grid={asset.grid} />
+        ) : (
+          <img src={asset.url} alt="" loading="lazy" decoding="async" />
+        )}
       </div>
       <strong className="asset-name" title={asset.name}>
         {asset.name}
@@ -394,7 +398,7 @@ function UploadButton(props: {
       <input
         type="file"
         className="sr-only"
-        accept={props.kind === "map" ? "image/png,image/jpeg,image/webp,.uvtt,.dd2vtt,.df2vtt" : "image/png,image/jpeg,image/webp"}
+        accept={props.kind === "map" ? MAP_ACCEPT : IMAGE_ACCEPT}
         disabled={busy}
         onChange={(e) => {
           void onFile(e.target.files?.[0]);
@@ -463,7 +467,11 @@ function AssetCard(props: {
   return (
     <li className="asset-card">
       <div className={asset.kind === "token" ? "asset-thumb token" : "asset-thumb"}>
-        <img src={asset.url} alt="" loading="lazy" />
+        {asset.kind === "map" ? (
+          <MapThumbnail url={asset.url} width={asset.width} height={asset.height} grid={asset.grid} />
+        ) : (
+          <img src={asset.url} alt="" loading="lazy" decoding="async" />
+        )}
       </div>
       {editing ? (
         <form
@@ -474,7 +482,7 @@ function AssetCard(props: {
           }}
         >
           <input aria-label="Name" value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} />
-          <button type="submit" className="small">
+          <button type="submit" className="small primary">
             Save
           </button>
         </form>

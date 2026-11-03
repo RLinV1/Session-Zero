@@ -288,6 +288,17 @@ function AttackEffectView({
       </>
     );
   }
+  if (effect.kind === "damages") {
+    return (
+      <>
+        {effect.hits.map((hit, index) => {
+          const token = find(hit.tokenId);
+          // Past a couple of dozen, the rest show still, as the nuke's numbers do.
+          return token ? <Damage key={hit.tokenId} at={token.position} r={radiusOf(token, cell)} amount={hit.amount} reduced={reduced || index >= 24} /> : null;
+        })}
+      </>
+    );
+  }
   const target = find(effect.tokenId);
   if (!target) return null;
   const r = radiusOf(target, cell);

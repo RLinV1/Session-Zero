@@ -1,8 +1,11 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { House } from "@phosphor-icons/react";
-import { can, filterStateForViewer, isActive, presetOf, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, presetOf, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
+import { templateArea, tokensTouchingArea } from "../board/tools";
+import { dropFor } from "../board/tokenDice";
+import type { GroupSelection } from "../panels/GroupSelection";
 import { NukeHealthContext, useNukeHealth } from "../board/nukeHealth";
 import { PendingDrops, type DiceDrop } from "../board/diceDrops";
 import type { TokenDraft } from "../board/placement";
@@ -20,7 +23,7 @@ import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/r
 import { ChatPanel } from "../panels/ChatPanel";
 import { PanelTabs, RoomPanel, isTabId, type TabBadges, type TabId } from "../panels/RoomPanel";
 import { trayRoll, type RollThrow } from "../panels/DicePanel";
-import { outcomeKey, pendingRulings } from "../panels/attackRoll";
+import { outcomeKey, pendingRulingCount } from "../panels/attackRoll";
 import { ActivityLog } from "../panels/ActivityLog";
 import type { AttackPick } from "../panels/AttackPanel";
 import { useEncounterReset } from "../panels/attackSession";
@@ -39,6 +42,8 @@ import { ReplayBar } from "../ui/ReplayBar";
 import { ShareButton } from "../ui/ShareButton";
 import { GuideTour } from "../ui/GuideTour";
 import { RoomMenu } from "../ui/RoomMenu";
+import { motionReduced } from "../ui/motion";
+import { BoardEmptyState } from "../ui/BoardEmptyState";
 import { isBoolean, usePersistentState } from "../ui/usePersistentState";
 import { PanelResizeHandle, clampPanelWidth, isPanelWidth } from "../ui/PanelResizeHandle";
 import { EncounterEditBar } from "./encounterEdit/EncounterEditBar";
@@ -241,6 +246,26 @@ function Room({ roomId, connection, token, features }: {
   // Ending the encounter clears the target and the last roll, but keeps the attacker and named attacks (attack-panel-encounter-reset).
   const attackReset = useEncounterReset(roomId, state, you?.id ?? null, () => setAttackPick((p) => ({ ...p, targetId: null })));
   const showPing = useCallback((at: Point) => boardRef.current?.showPing(at), []);
+  // The GM's group selection for a group roll or an area effect (ADR 0046). Local to this screen.
+  const [groupTokenIds, setGroupTokenIds] = useState<string[]>([]);
+  const toggleGroupToken = useCallback((tokenId: string) => setGroupTokenIds((ids) => (ids.includes(tokenId) ? ids.filter((id) => id !== tokenId) : [...ids, tokenId])), []);
+  const latestState = useRef(state);
+  latestState.current = state;
+  /** Every token the picked template touches, hidden ones included: the GM sees them all. */
+  const pickTemplate = useCallback((templateId: string) => {
+    const room = latestState.current;
+    const template = room?.templates[templateId];
+    if (!room || !template) return;
+    const grid = room.scene.grid;
+    setGroupTokenIds(tokensTouchingArea(templateArea(template, grid), Object.values(room.tokens), grid).map((t) => t.id));
+  }, []);
+  const groupSelection = useMemo<GroupSelection>(() => ({
+    // Tokens deleted since they were chosen drop out.
+    tokenIds: groupTokenIds.filter((id) => state?.tokens[id]),
+    remove: (tokenId) => setGroupTokenIds((ids) => ids.filter((id) => id !== tokenId)),
+    clear: () => setGroupTokenIds([]),
+    fromTemplate: () => boardRef.current?.startTemplatePick(),
+  }), [groupTokenIds, state?.tokens]);
   const diceBoard = useMemo<DiceBoard>(
     () => ({
       aimThrow: (client, velocity) => boardRef.current?.aimThrow(client, velocity) ?? null,
@@ -355,16 +380,21 @@ function Room({ roomId, connection, token, features }: {
   // Play-tab indicator (attack-ux-polish): the GM's pending rulings, or a dot when the GM has
   // ruled on a player's latest roll since they last had Play in view.
   const playVisible = tab === "play" && !(sidebarCollapsed && !compact);
-  const pendingCount = state && you?.role === "gm" ? pendingRulings(state).length : 0;
-  const myLatest = state && you ? [...state.rolls].reverse().find((r) => r.attack && r.byParticipantId === you.id) : undefined;
+  const pendingCount = state && you?.role === "gm" ? pendingRulingCount(state) : 0;
+  const myLatest = state && you ? diceRollsOf(state.rolls).reverse().find((r) => r.attack && r.byParticipantId === you.id) : undefined;
   const outcome = outcomeKey(myLatest);
   /** The outcome last seen with Play in view; undefined until the room has loaded. */
   const [seenOutcome, setSeenOutcome] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     if (state && (playVisible || seenOutcome === undefined)) setSeenOutcome(outcome);
   }, [state, playVisible, outcome, seenOutcome]);
+  // A player holding a damage call is told from any tab (ADR 0046).
+  const effect = state?.areaEffect ?? null;
+  const damageCalled = you?.role !== "gm" && !!effect && effect.call?.participantId === you?.id && areaEffectStage(effect) === "called";
   const tabBadges: TabBadges = pendingCount > 0
     ? { play: { count: pendingCount, label: `${pendingCount} ${pendingCount === 1 ? "ruling" : "rulings"} pending` } }
+    : damageCalled && !playVisible
+      ? { play: { label: "damage roll called" } }
     : you?.role !== "gm" && !playVisible && outcome && seenOutcome !== undefined && outcome !== seenOutcome
       ? { play: { label: "new ruling" } }
       : {};
@@ -443,10 +473,33 @@ function Room({ roomId, connection, token, features }: {
       stop();
     };
   }, [connection, land]);
+  // Group and area-effect rolls drop onto their tokens (ADR 0046), each viewer drawing only what
+  // its filtered events carry. Their totals wait for the drop, like any roll's.
+  const dropping = useRef(new Set<string>());
+  useEffect(() => {
+    const stop = connection.onCommitted((committed, _before, after) => {
+      const viewer = connection.snapshot.you;
+      if (!viewer) return;
+      const drop = dropFor(committed.event, after, viewer);
+      if (!drop) return;
+      const roller = committed.actorId ?? "";
+      const done = () => {
+        dropping.current.delete(drop.rollId);
+        land(drop.rollId);
+      };
+      dropping.current.add(drop.rollId);
+      setAirborne((s) => new Set(s).add(drop.rollId));
+      if (!boardRef.current?.dropDice(drop, diceFor.current(roller, roller === viewer.id), done)) done();
+    });
+    return () => {
+      stop();
+    };
+  }, [connection, land]);
   // A private roll whose tray has gone (another tab, or a newer roll in its place) lands now.
   const latestRollId = state?.rolls.at(-1)?.id;
   useEffect(() => {
     for (const id of airborne) {
+      if (dropping.current.has(id)) continue;
       const roll = state?.rolls.find((r) => r.id === id);
       const inTray = diceVisible && id === latestRollId;
       if (!roll || (roll.visibility === "gm" && !inTray)) land(id);
@@ -458,7 +511,7 @@ function Room({ roomId, connection, token, features }: {
     return () => window.clearTimeout(timer);
   }, [cardRollId]);
   // The card shows only rolls the viewed player could see, so a GM-only roll vanishes when a preview starts.
-  const cardRoll = cardRollId ? (preview?.state ?? state)?.rolls.find((r) => r.id === cardRollId) : undefined;
+  const cardRoll = cardRollId ? findDiceRoll((preview?.state ?? state)?.rolls ?? [], cardRollId) : undefined;
   // Your dice are still showing: on the board until they fade, or in a private tray until they land.
   const rolling = onBoard.size > 0 || !!state?.rolls.some((r) => airborne.has(r.id) && r.byParticipantId === you?.id);
   const rollThrow: RollThrow = { airborne, rolling, justLandedId: landedId, onLanded: land, expectDrop };
@@ -496,9 +549,28 @@ function Room({ roomId, connection, token, features }: {
    * until it has, so wait out the transition before showing anything in it.
    */
   const openSidebar = (then: () => void) => {
-    const wait = collapsed && !matchMedia("(prefers-reduced-motion: reduce)").matches ? 220 : 0;
+    // No transition runs under reduced motion (data-motion), so there is nothing to wait out.
+    const wait = collapsed && !motionReduced() ? 220 : 0;
     setSidebarCollapsed(false);
     window.setTimeout(then, wait);
+  };
+  /**
+   * The empty board's one action: the Battle map section of the Manage tab, opened if it was
+   * folded, brought into view, and its first control focused.
+   */
+  const chooseMap = () => {
+    setTab("gm");
+    openSidebar(() =>
+      requestAnimationFrame(() => {
+        const section = document.querySelector<HTMLElement>('[data-tour="gm-map"]');
+        const toggle = section?.querySelector<HTMLButtonElement>('.section-toggle[aria-expanded="false"]');
+        toggle?.click();
+        requestAnimationFrame(() => {
+          section?.scrollIntoView({ block: "start" });
+          section?.querySelector<HTMLElement>(".panel-section-body button, .panel-section-body input, .panel-section-body label")?.focus();
+        });
+      }),
+    );
   };
   /** The editor lives in the Tokens tab, so editing from the board goes there (token-card-actions). */
   const editToken = (tokenId: string | null) => {
@@ -598,6 +670,9 @@ function Room({ roomId, connection, token, features }: {
         gridPreview={you.role === "gm" && !readOnly ? gridPreview : null}
         onPickTarget={pickTarget}
         onEditToken={editToken}
+        groupSelection={you.role === "gm" && !readOnly ? groupSelection.tokenIds : undefined}
+        onToggleGroupToken={you.role === "gm" && !readOnly ? toggleGroupToken : undefined}
+        onPickTemplate={pickTemplate}
         landedRollId={landedId}
         selectOnly={features.selectOnly}
         replayFrame={replaying ? replayFrame : null}
@@ -609,7 +684,14 @@ function Room({ roomId, connection, token, features }: {
             <KeepSeatNotice roomId={roomId} token={token} name={you.displayName} />
           </div>
         )}
-        overlay={features.notices && <RollCard roll={cardRoll} rollerName={(roll) => shownState!.participants[roll.byParticipantId]?.displayName ?? "Someone"} />}
+        overlay={
+          <>
+            {!shownState!.scene.map && !replaying && (
+              <BoardEmptyState isGm={you.role === "gm" && !readOnly} onChooseMap={chooseMap} />
+            )}
+            {features.notices && <RollCard roll={cardRoll} rollerName={(roll) => shownState!.participants[roll.byParticipantId]?.displayName ?? "Someone"} />}
+          </>
+        }
       />
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label="Room controls">
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}
@@ -684,6 +766,7 @@ function Room({ roomId, connection, token, features }: {
               onDuplicateToken={duplicateToken}
               editingTokenId={editingTokenId}
               onEditToken={editToken}
+              groupSelection={groupSelection}
               compact={compact}
               tab={tab}
               onTab={setTab}

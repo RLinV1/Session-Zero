@@ -128,7 +128,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {dirty && <span className="map-editor-unsaved">
           <span className="map-editor-draft">Unsaved changes: not saved to this map yet</span>
           <button type="button" className="secondary small" disabled={saving} onClick={discard}>Discard</button>
-          <button type="button" className="small" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
+          <button type="button" className="small primary" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
         </span>}
         {saveError && !prompt && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
       </nav>}>
@@ -169,7 +169,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {saveError && <p role="alert" className="error">{saveError}</p>}
         {!parsedGrid && <p className="error">Fix the grid before saving your changes.</p>}
         <div className="row button-row">
-          <button type="button" disabled={saving || !parsedGrid || !revision} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? "Saving…" : "Save"}</button>
+          <button type="button" className="primary" disabled={saving || !parsedGrid || !revision} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? "Saving…" : "Save"}</button>
           <button type="button" className="secondary" disabled={saving} onClick={() => onClose(savedAsset)}>Discard</button>
           <button type="button" className="secondary" disabled={saving} onClick={() => setPrompt(false)}>Keep editing</button>
         </div>

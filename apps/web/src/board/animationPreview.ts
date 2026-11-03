@@ -1,5 +1,6 @@
 import { Application, Assets, CanvasTextMetrics, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { graphicsBudget, subscribeGraphicsSettings } from "../ui/clientSettings";
+import { motionReduced } from "../ui/motion";
 import type { AnimationDef } from "@vtt/shared";
 import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
@@ -30,9 +31,9 @@ const MAX_SCALE = 2;
 const SIDE_COLOR: Record<StageSide, number> = { attacker: 0x3b82f6, target: 0xef4444 };
 /** How far the map reaches past the stage on every side, so a screen shake never shows its edge. */
 const BACKDROP_BLEED = 16;
-/** The app's small-caps label face (index.html loads it), so the name tags match the panels. */
-const LABEL_FACE = "Alegreya Sans SC";
-const LABEL_STYLE = { fontFamily: `"${LABEL_FACE}", "Alegreya Sans", system-ui, sans-serif`, fontWeight: "700", fontSize: 10, fill: 0xe6e8eb } as const;
+/** The app's one typeface (main.tsx self-hosts it), so the name tags match the panels and the board. */
+const LABEL_FACE = "Geist Sans";
+const LABEL_STYLE = { fontFamily: `"${LABEL_FACE}", system-ui, sans-serif`, fontWeight: "700", fontSize: 10, fill: 0xe6e8eb } as const;
 /** The name tags draw small and are magnified with the stage, so their text is drawn finer. */
 const LABEL_RESOLUTION = 4;
 const LABEL_TEXT = { attacker: "Attacker", target: "Target" } as const;
@@ -363,9 +364,9 @@ export class AnimationPreview {
       screen: { width, height },
       reducedMotion: false,
     };
-    // A nuke shakes the whole page at its blast, as it does on the board (unless the system asks
-    // for reduced motion: the editor plays everything else in full).
-    if (def.shape === "nuke" && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) this.stopShake = shakeScreen(def);
+    // A nuke shakes the whole page at its blast, as it does on the board (unless the system or the
+    // in-app setting asks for reduced motion: the editor plays everything else in full).
+    if (def.shape === "nuke" && !motionReduced()) this.stopShake = shakeScreen(def);
     this.run = withSound(
       def.shape === "nuke"
         ? playNuke({ ...host, layer: this.screenFxLayer }, { def, origin: { x: width / 2, y: height / 2 }, unit: STAGE_CELL, extent: Math.hypot(width, height) / 2 })

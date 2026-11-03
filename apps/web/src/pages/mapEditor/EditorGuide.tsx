@@ -13,7 +13,7 @@ export function EditorGuide({ step }: { step: string }) {
   return (
     <>
       <button ref={button} type="button" className="map-editor-guide" aria-label="Guide" title="Guide" onClick={() => setOpen(true)}>
-        <Question size={20} weight="bold" aria-hidden="true" />
+        <Question size={20} aria-hidden="true" />
       </button>
       {/* Inside the editor dialog, so its inert page and focus trap do not cover the tour. */}
       {open && createPortal(

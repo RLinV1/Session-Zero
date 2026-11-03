@@ -163,7 +163,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
               and rooms already made from it don't change.
             </p>
             <div className="row button-row">
-              <button type="button" disabled={busy} onClick={() => void replace(confirmingReplace)}>
+              <button className="primary" type="button" disabled={busy} onClick={() => void replace(confirmingReplace)}>
                 Replace {confirmingReplace.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setConfirmingReplace(null)}>
@@ -182,7 +182,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
               and a running encounter ends. Chat, dice rolls and players stay. You can undo this from the activity log.
             </p>
             <div className="row button-row">
-              <button type="button" disabled={busy} onClick={() => void apply(confirming)}>
+              <button className="primary" type="button" disabled={busy} onClick={() => void apply(confirming)}>
                 Apply {confirming.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(null)}>

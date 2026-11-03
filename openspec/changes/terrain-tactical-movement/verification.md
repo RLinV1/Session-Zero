@@ -1,5 +1,33 @@
 # Terrain and tactical movement — verification
 
+## Main synchronization — 2026-11-03
+
+PR #134 merges `origin/main` through `6298da81a7c61097c3ba05356d6b7617c24e5b75` into `feat/terrain-tactical-movement`, preserving both branch histories. Nine conflicted files were reconciled across the board, movement ruler, library editor, styles, reducer, replay, undo and visibility. Main's personal movement planner, area effects, group rolls and design styles remain integrated with terrain editing, private movement feedback and preparation revision checks.
+
+A new replay regression round-trips the combined terrain/area-effect/group-roll flow through the wire schema, compares each replayed state with the authoritative filtered state, and checks that hidden tokens and canonical terrain stay private. The movement planner's board mock now includes the terrain view methods and connection subscription used by the merged component.
+
+Verification used Node **22.23.2**:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | PASS |
+| `npm run typecheck` | PASS, including browser TypeScript |
+| `npm test` | PASS: **886 shared + 553 server + 1171 web + 2 latency = 2612 passed**, **51 skipped** |
+| `npm run build` | PASS |
+| `openspec validate terrain-tactical-movement --strict` | PASS |
+| `npm run test:browser -- browser/terrain.spec.ts` | PASS: **12/12**, covering desktop/touch/narrow Chromium, Firefox and WebKit with separate GM/player sessions |
+| Staged and working-tree whitespace/conflict checks | PASS |
+
+The service-dependent tests were skipped because this run did not configure PostgreSQL, Redis or optional S3 persistence. The local relay benchmark delivered 300/300 messages to both recipients, with p95 **116.7 ms** for each, below the existing 150 ms threshold. These results do not establish hosted performance or architecture approval.
+
+The first browser run passed 11/12 cases. WebKit desktop clicked the moved token after the separate wire observer caught up, before the test synchronized with the browser's rendered state. The test now waits for the page's committed sequence and two animation frames before clicking the destination; the complete six-project rerun passed. Its original failure trace is preserved at `/private/tmp/vtt-terrain-sync-webkit-failure-20261103/`. No production timing or movement behavior was changed for this test correction.
+
+Task 4.2 and Raymond's architecture/resource review remain open. The PR also has nine existing unresolved review threads, including stale terrain protection for map/UVTT applications and size-only token configuration. Clean conflict resolution and passing checks do not resolve those findings. The original checkout remains on `main` with its pre-existing package-lock, skills and tmp changes intact.
+
+Logs: `/private/tmp/vtt-terrain-sync-tests-final.log`, `vtt-terrain-sync-typecheck.log`, `vtt-terrain-sync-lint.log`, `vtt-terrain-sync-build.log`, `vtt-terrain-sync-openspec.log` and `vtt-terrain-sync-browser-final.log` (all under `/private/tmp`). Earlier sections retain their historical verification evidence.
+
+## Earlier verification runs
+
 Implemented and verified on `feat/terrain-tactical-movement` in `/private/tmp/vtt-terrain-tactical-movement`, based on `origin/main` at `ffeb553`. References below to uncommitted changes, HEAD values and unpublished state describe the corresponding verification run; Git and the pull request record the current publication status. The original checkout remains on `main` at `4dff92b` with its existing package-lock, skills and tmp changes preserved.
 
 ## Delivered behavior

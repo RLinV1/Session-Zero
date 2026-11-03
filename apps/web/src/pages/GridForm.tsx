@@ -164,7 +164,7 @@ export function GridForm({
           <button type="button" className="grid-advanced-toggle" aria-expanded={advanced}
             aria-controls={advancedId} onClick={() => setAdvanced((open) => !open)}>
             <span className="grid-advanced-title">Advanced</span>
-            <CaretDown size={14} weight="bold" className="grid-advanced-caret" aria-hidden="true" />
+            <CaretDown size={14} className="grid-advanced-caret" aria-hidden="true" />
           </button>
         )}
         <div id={advancedId} className="grid-advanced-body" hidden={!advancedOpen && !advanced}>
@@ -226,11 +226,11 @@ export function GridForm({
         {!hideActions && (actionSlot ? (dirty ? createPortal(<span className="map-editor-unsaved">
           {dirty && <span className="map-editor-draft">Unsaved changes: only you see them</span>}
           <button type="button" className="secondary small" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel === "Cancel" ? "Discard" : cancelLabel}</button>
-          <button type="submit" form={formId} className="small" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel === "Apply grid" ? "Save changes" : submitLabel}</button>
+          <button type="submit" form={formId} className="small primary" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel === "Apply grid" ? "Save changes" : submitLabel}</button>
         </span>, actionSlot) : null) : (
           <div className="grid-actions">
             <button type="button" className="secondary" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel}</button>
-            <button type="submit" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel}</button>
+            <button className="primary" type="submit" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel}</button>
           </div>
         ))}
         {children}
