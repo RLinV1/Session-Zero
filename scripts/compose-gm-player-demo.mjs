@@ -1,4 +1,4 @@
-/* global document, console, MediaRecorder, setInterval, clearInterval, Blob, btoa, Buffer */
+/* global document, MediaRecorder */
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';

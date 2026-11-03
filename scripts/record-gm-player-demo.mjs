@@ -1,4 +1,4 @@
-/* global process, console, setTimeout, fetch, window, localStorage, location */
+/* global window, localStorage, location */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
