@@ -27,7 +27,7 @@ describe("choosing what happens to tokens on a map change (KAN-67)", () => {
   });
 
   it("sends the choice with the map and grid, and omits it when none is asked", () => {
-    const prep = startPrep(newMap, undefined, DEFAULT_GRID);
+    const prep = startPrep(newMap, undefined, DEFAULT_GRID, { boardEpoch: 0, revision: 0 });
     expect(prepCommand(prep, "recenter")).toMatchObject({ type: "scene.setMap", tokenPolicy: "recenter" });
     expect(prepCommand(prep)).not.toHaveProperty("tokenPolicy");
   });

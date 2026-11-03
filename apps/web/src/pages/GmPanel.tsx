@@ -512,6 +512,8 @@ function MapSection(props: {
 
   async function onChange(file: File | undefined) {
     if (!file) return;
+    // Capture before image decoding/upload: room updates must not rebase this preparation.
+    const terrainContext = { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 };
     if (/\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file.name)) { setEditorOpen(true); if (!prep) setStep("map"); }
     setBusy(true);
     const generation = ++prepGeneration.current;
@@ -537,7 +539,7 @@ function MapSection(props: {
       // Nothing is sent yet: the upload becomes a private draft (KAN-59).
       props.onError(null);
       if (prep?.uvtt) void api.uvtt.discard(props.roomId, props.token, prep.uvtt.id).catch(() => {});
-      setPrep(startPrep({ url, width, height, ...(asset && { assetId: asset.id }) }, undefined, props.currentGrid));
+      setPrep(startPrep({ url, width, height, ...(asset && { assetId: asset.id }) }, undefined, props.currentGrid, terrainContext));
       setStep("grid");
       // An upload from the Manage tab opens the editor to line up its grid.
       setEditorOpen(true);
@@ -553,7 +555,7 @@ function MapSection(props: {
   const place = async (asset: LibraryAsset) => {
     const map = { url: asset.url, width: asset.width, height: asset.height, assetId: libraryAssetId(asset) };
     prepGeneration.current++;
-    const next = startPrep(map, asset.grid, props.currentGrid);
+    const next = startPrep(map, asset.grid, props.currentGrid, { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 });
     if (editorOpen || !asset.grid) {
       setPicking(false);
       setPickError(null);

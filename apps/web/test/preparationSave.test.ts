@@ -54,7 +54,7 @@ describe("terrain preparation saves (FR-GM-15, FR-REC-02)", () => {
   });
   it("carries an explicit placement reset without silently resetting overridden library geometry", () => {
     const map = { url: "/library", width: 1000, height: 1000, assetId: "asset" };
-    const prep = startPrep(map, grid, grid);
+    const prep = startPrep(map, grid, grid, { boardEpoch: 0, revision: 0 });
     const edited = { ...prep, draft: { ...prep.draft, cellSize: "20" } };
     expect(prepCommand(edited)).toMatchObject({ includeLibraryBoard: true, grid: { cellSize: 20 } });
     expect(prepCommand(edited)).not.toHaveProperty("resetTerrain");

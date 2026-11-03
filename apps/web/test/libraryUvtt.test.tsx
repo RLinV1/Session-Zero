@@ -106,7 +106,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
     fireEvent.click(await screen.findByTitle(asset.name));
     expect(fake.commands).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true }]));
+    await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.setMap", map: { url: asset.url, width: 800, height: 600, assetId: asset.id }, grid: asset.grid, includeLibraryBoard: true, terrainContext: { boardEpoch: 0, revision: 0 } }]));
     expect(api.library.board).not.toHaveBeenCalled();
   });
 });

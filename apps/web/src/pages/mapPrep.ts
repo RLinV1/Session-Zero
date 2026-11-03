@@ -6,6 +6,8 @@ import { gridsEqual, newGridPreparation, newGridSuggestionSession, parseGridDraf
  * image and its grid draft, held by the GM's browser only. Nothing reaches the room until Apply.
  */
 export interface MapPrep {
+  /** Room baseline from the start of preparation; UVTT imports use their server-held baseline. */
+  terrainContext?: { boardEpoch: number; revision: number };
   /** Explicitly discard the library base instead of reinterpreting its cell indices. */
   resetTerrain?: boolean;
   map: MapImage;
@@ -26,9 +28,9 @@ export interface MapPrep {
  * current grid, since the GM usually lines that up next. Either way it is fitted to this map
  * (offsets normalised, cells at least the map's minimum), so the untouched draft is valid.
  */
-export function startPrep(map: MapImage, savedGrid: GridSpec | null | undefined, currentGrid: GridSpec): MapPrep {
+export function startPrep(map: MapImage, savedGrid: GridSpec | null | undefined, currentGrid: GridSpec, terrainContext: NonNullable<MapPrep["terrainContext"]>): MapPrep {
   const initial = normalizeLegacyGridForBoard(savedGrid ?? currentGrid, map);
-  return { map, initial, draft: toGridDraft(initial), gridConfigured: !!savedGrid,
+  return { map, initial, terrainContext: { ...terrainContext }, draft: toGridDraft(initial), gridConfigured: !!savedGrid,
     suggestionSession: newGridSuggestionSession(), preparation: newGridPreparation(!savedGrid) };
 }
 
@@ -41,7 +43,7 @@ export function prepDirty(prep: MapPrep): boolean {
 /** The one command Apply sends: map and grid together, a single `MapSet` (ADR 0004). Null while the grid is invalid. */
 export function prepCommand(prep: MapPrep, tokenPolicy?: MapTokenPolicy): Extract<Command, { type: "scene.setMap" }> | null {
   const grid = parseGridDraft(prep.draft, prep.map);
-  return grid ? { type: "scene.setMap", map: prep.map, grid, ...(prep.map.assetId ? { includeLibraryBoard: true } : {}), ...(prep.resetTerrain ? { resetTerrain: true } : {}), ...(tokenPolicy ? { tokenPolicy } : {}) } : null;
+  return grid ? { type: "scene.setMap", map: prep.map, grid, terrainContext: prep.terrainContext, ...(prep.map.assetId ? { includeLibraryBoard: true } : {}), ...(prep.resetTerrain ? { resetTerrain: true } : {}), ...(tokenPolicy ? { tokenPolicy } : {}) } : null;
 }
 
 /** The choices for tokens already on a map that is about to be replaced (KAN-67, ADR 0042). */
