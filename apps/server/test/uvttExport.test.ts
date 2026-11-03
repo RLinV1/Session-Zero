@@ -90,7 +90,10 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
       { actorId: "gm", event: { type: "MapSet", map: scene.map, previous: null, gridChange: { grid, previous: DEFAULT_GRID }, tokenChanges: [], wallChange: { walls: Object.values(scene.walls), previous: [] } } },
     ]);
     const room = await LiveRoom.load("room", store);
+    // Capture must wait for an earlier queued terrain edit, including its revision and sequence.
+    const painting = room.submit("gm", Command.parse({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 0, end: 0, kind: "difficult" }], context: { boardEpoch: 1, revision: 1 } }));
     const captured = (await room.captureScene("gm"))!;
+    expect((await painting).ok).toBe(true); expect(captured.terrainRevision).toBe(2);
     expect(await room.captureScene("player")).toBeNull();
     let release!: () => void, started!: () => void;
     const reading = new Promise<void>((resolve) => { started = resolve; });
@@ -98,12 +101,13 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
     const exporting = exportUvttScene(captured, "room", store, { put: assets.put.bind(assets), delete: assets.delete.bind(assets), readPrivate: async () => { started(); await gate; return bytes; } }, null);
     try {
       await reading;
-      expect((await room.submit("gm", Command.parse({ type: "scene.setGrid", grid: { ...grid, cellSize: 70 } }))).ok).toBe(true);
+      expect((await room.submit("gm", Command.parse({ type: "scene.setGrid", grid: { ...grid, cellSize: 70 }, resetTerrain: true }))).ok).toBe(true);
       expect((await room.submit("gm", Command.parse({ type: "scene.setMap", map: { ...scene.map!, url: "/changed.png" } }))).ok).toBe(true);
       expect(room.currentGrid().cellSize).toBe(70); expect(room.currentMap()?.url).toBe("/changed.png");
     } finally { release(); }
     const output = await exporting;
-    expect(output.resolution.pixels_per_grid).toBe(50); expect(captured.seq).toBe(3);
+    expect(output.resolution.pixels_per_grid).toBe(50); expect(captured.seq).toBe(4);
+    expect(captured.terrainRevision).toBe(2); expect(output).not.toHaveProperty("terrainRevision"); expect(output).not.toHaveProperty("terrain");
     expect(output.image).toBe(bytes.toString("base64")); expect(captured.walls).toEqual(scene.walls);
     // Export the shipped image itself, independently of the controlled allowlist fixture.
     const builtInDir = path.resolve(import.meta.dirname, "../../web/public/img");

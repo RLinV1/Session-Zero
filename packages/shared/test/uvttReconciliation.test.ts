@@ -5,6 +5,10 @@ import { alice, baseRoom, ctx, gm } from "./fixtures";
 const map = { url: "/uvtt.png", width: 700, height: 700 };
 const imported: Wall = { id: "p", a: { x: 140, y: 70 }, b: { x: 140, y: 210 }, uvttPortal: { position: { x: 8, y: -25 }, rotation: 1.2, closed: true, freestanding: true }, source: "objects_line_of_sight" };
 const initial = (): RoomState => ({ ...baseRoom(), scene: { ...baseRoom().scene, map }, walls: { p: imported } });
+const preparationFor = (state: RoomState): PreparedUvttScene => ({
+  map: { ...map, url: "/import.png" }, grid: state.scene.grid, walls: [imported],
+  baseline: { map: state.scene.map, grid: state.scene.grid, walls: state.walls, fog: state.fog, terrainRevision: state.terrainRevision ?? 0 },
+});
 function apply(state: RoomState, command: CommandInput, id: string, actor = gm, prep?: PreparedUvttScene) {
   const result = decide(state, actor, Command.parse(command), { ...ctx, preparedUvtt: prep });
   if (!result.ok) throw new Error(result.message);
@@ -54,15 +58,40 @@ describe("UVTT reconciled with native portals and fog (FR-GM-06/12/18/23, FR-REC
   });
   it("guards draft fog and runtime portal edits while preserving legacy replay and first-map null undo", () => {
     const state = initial();
-    const prep: PreparedUvttScene = { map: { ...map, url: "/import.png" }, grid: state.scene.grid, walls: [imported], baseline: { map, grid: state.scene.grid, walls: state.walls, fog: state.fog } };
+    const prep = preparationFor(state);
     const fogged = apply(state, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 70, y: 70 } } }, "fog").state;
     expect(decide(fogged, gm, Command.parse({ type: "scene.importUVTT", importId: "p", revision: 1 }), { ...ctx, preparedUvtt: prep })).toMatchObject({ ok: false, message: expect.stringContaining("fog") });
     const fresh = baseRoom();
-    const first = apply(fresh, { type: "scene.importUVTT", importId: "p", revision: 1 }, "import", gm, { ...prep, baseline: { map: null, grid: fresh.scene.grid, walls: fresh.walls, fog: fresh.fog } });
+    const first = apply(fresh, { type: "scene.importUVTT", importId: "p", revision: 1 }, "import", gm, preparationFor(fresh));
     expect(tableOf(apply(first.state, { type: "history.undo", commandId: "import" }, "undo").state)).toEqual(tableOf(fresh));
     const designated = apply(first.state, { type: "portal.set", wallId: Object.keys(first.state.walls)[0]!, portal: { kind: "door", state: "open" } }, "designate").state;
     expect(decide(designated, gm, Command.parse({ type: "history.undo", commandId: "import" }), ctx)).toMatchObject({ ok: false, message: expect.stringContaining("portals") });
     expect(reduce(state, { type: "MapSet", map: prep.map, previous: map }).fog).toEqual(state.fog);
     expect(reduce(state, { type: "MapSet", map: prep.map, previous: map }).walls).toEqual(state.walls);
+  });
+  it.each(["map", "grid", "walls", "fog"] as const)("still guards changed %s independently of the terrain revision", (field) => {
+    const state = initial();
+    const changed: Record<typeof field, RoomState> = {
+      map: { ...state, scene: { ...state.scene, map: { ...map, url: "/other.png" } } },
+      grid: { ...state, scene: { ...state.scene, grid: { ...state.scene.grid, offsetX: 1 } } },
+      walls: { ...state, walls: {} },
+      fog: { ...state, fog: { f: { id: "f", shape: "rect", points: [{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 70 }, { x: 0, y: 70 }] } } },
+    };
+    expect(decide(changed[field], gm, Command.parse({ type: "scene.importUVTT", importId: "p", revision: 1 }), { ...ctx, preparedUvtt: preparationFor(state) })).toMatchObject({ ok: false, code: "invalid", message: expect.stringContaining("changed") });
+  });
+  it.each([
+    { name: "absent terrain", terrain: undefined },
+    { name: "explicit Normal terrain", terrain: { base: [], effects: [] } },
+    { name: "existing terrain", terrain: { base: [{ row: 0, start: 0, end: 0, kind: "difficult" as const }], effects: [] } },
+  ])("treats an absent revision as zero for legacy rooms with $name (FR-TAC-03)", ({ terrain }) => {
+    const state: RoomState = { ...initial(), terrain };
+    expect(state.terrainRevision).toBeUndefined();
+    const prep = preparationFor(state);
+    const command = { type: "scene.importUVTT" as const, importId: "p", revision: 1 };
+    expect(apply(state, command, "import", gm, prep).state.terrain).toBeUndefined();
+    expect(decide({ ...state, terrainRevision: 0 }, gm, Command.parse(command), { ...ctx, preparedUvtt: prep }).ok).toBe(true);
+    const painted = apply(state, { type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 1, end: 1, kind: "blocked" }], context: { boardEpoch: 0, revision: 0 } }, "paint").state;
+    expect(painted.terrainRevision).toBe(1);
+    expect(decide(painted, gm, Command.parse(command), { ...ctx, preparedUvtt: prep })).toMatchObject({ ok: false, code: "invalid", message: expect.stringContaining("terrain") });
   });
 });

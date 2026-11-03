@@ -167,7 +167,7 @@ export class LiveRoom {
       const actor = this.activeParticipant(actorId);
       if (this.isClosed || !actor || !can.administer(actor)) return null;
       const view = filterStateForViewer(this.state, actor);
-      return structuredClone({ map: view.scene.map, grid: view.scene.grid, walls: view.walls, fog: view.fog, seq: this.seq });
+      return structuredClone({ map: view.scene.map, grid: view.scene.grid, walls: view.walls, fog: view.fog, terrainRevision: view.terrainRevision ?? 0, seq: this.seq });
     });
   }
 

@@ -27,6 +27,14 @@ async function upload(roomId: string, token: string, value: unknown = null, file
   return fetch(url(roomId), { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
 }
 const prepared = async (roomId: string, token: string) => { const res = await upload(roomId, token); expect(res.status).toBe(201); return UvttPreparation.parse(await res.json()); };
+const terrainContext = (client: TestClient) => ({ boardEpoch: client.state.boardEpoch ?? 0, revision: client.state.terrainRevision ?? 0 });
+async function seedTerrain(client: TestClient) {
+  await ok(client, { type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 0, end: 0, kind: "difficult" }], context: terrainContext(client) });
+  await ok(client, { type: "terrain.effect.create", name: "Private ice", context: terrainContext(client) });
+  const effectId = client.state.terrain!.effects[0]!.id;
+  await ok(client, { type: "terrain.paint", layerId: effectId, paint: [{ row: 0, start: 1, end: 1, kind: "blocked" }], context: terrainContext(client) });
+  return effectId;
+}
 
 async function setup() {
   const creds = await server.createRoom(); const gm = await connect(creds); const gm2 = await connect(creds);
@@ -43,6 +51,8 @@ async function setup() {
 describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/23)", () => {
   it("keeps drafts private, uses current tokens, delivers one scene, retries once, undoes exactly and survives reload", async () => {
     const { creds, gm, gm2, alice, bob, ac, bc } = await setup();
+    await seedTerrain(gm);
+    await Promise.all([gm2, alice, bob].map((c) => c.waitForSeq(gm.seq)));
     const counts = [gm.seq, gm2.rawLog.length, alice.rawLog.length, bob.rawLog.length];
     const prep = await prepared(creds.roomId, creds.guestToken);
     expect(gm.seq).toBe(counts[0]); expect([gm2.rawLog.length, alice.rawLog.length, bob.rawLog.length]).toEqual(counts.slice(1));
@@ -63,6 +73,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     }
     expect(gm.state.tokens[hero.id]?.position).toEqual({ x: 121.5, y: 81.5 });
     expect(gm.state.fog).toEqual({});
+    expect(gm.state.terrain).toBeUndefined();
     expect(bob.state.tokens[hero.id]).toBeDefined(); expect(alice.state.tokens[hero.id]).toBeDefined();
     expect(Object.values(gm.state.walls).find((w) => w.uvttPortal)?.uvttPortal).toEqual({ closed: false, freestanding: true, rotation: 0.8, position: { x: 62.5, y: -25 } });
     const retry = await ok(gm, { type: "scene.importUVTT", importId: prep.id, revision: prep.revision });
@@ -76,6 +87,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(await sharp(await readFile(`${server.uploadDir}/${next.map.url.split("/").at(-1)}`)).raw().toBuffer()).toEqual(await sharp(await readFile(`${server.uploadDir}/${prep.map.url.split("/").at(-1)}`)).raw().toBuffer());
     await ok(gm, { type: "history.undo", commandId });
     expect(gm.state.scene).toEqual(before.scene); expect(gm.state.walls).toEqual(before.walls); expect(gm.state.fog).toEqual(before.fog); expect(gm.state.tokens).toEqual(before.tokens);
+    expect(gm.state.terrain).toEqual(before.terrain);
     for (const player of [alice, bob]) {
       await player.waitForSeq(gm.seq); expect(player.state).toEqual(viewFor(gm.state, player));
       const rawOffset = player.rawLog.length;
@@ -145,6 +157,69 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(gm.state.fog).toEqual({});
     await ok(gm, { type: "fog.add", region: { shape: "rect", from: { x: 10, y: 10 }, to: { x: 60, y: 60 } } });
     expect((await gm.command({ type: "history.undo", commandId })).type).toBe("rejected");
+  });
+  it.each(["base paint", "effect creation", "effect paint", "effect rename", "effect removal", "paint undone"] as const)("refuses a prepared import after %s without writes or rebasing its draft (FR-TAC-03)", async (edit) => {
+    const { creds, gm, gm2 } = await setup();
+    const effectId = await seedTerrain(gm);
+    const originalTerrain = structuredClone(gm.state.terrain);
+    const originalRevision = gm.state.terrainRevision!;
+    const prep = await prepared(creds.roomId, creds.guestToken);
+    await gm2.waitForSeq(gm.seq);
+    const context = terrainContext(gm2);
+    const paint: CommandInput = { type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 0, end: 0, kind: "blocked" }], context };
+    const edits: Record<typeof edit, CommandInput> = {
+      "base paint": paint,
+      "effect creation": { type: "terrain.effect.create", name: "New effect", context },
+      "effect paint": { type: "terrain.paint", layerId: effectId, paint: [{ row: 0, start: 2, end: 2, kind: "difficult" }], context },
+      "effect rename": { type: "terrain.effect.rename", effectId, name: "Renamed ice", context },
+      "effect removal": { type: "terrain.effect.remove", effectId, context },
+      "paint undone": paint,
+    };
+    await ok(gm2, edits[edit]);
+    if (edit === "paint undone") {
+      await ok(gm2, { type: "history.undo", commandId: gm2.state.undo.at(-1)!.commandId });
+      expect(gm2.state.terrain).toEqual(originalTerrain);
+      expect(gm2.state.terrainRevision).toBe(originalRevision + 2);
+    }
+    await gm.waitForSeq(gm2.seq);
+    const before = structuredClone(gm.state), beforeSeq = gm.seq;
+    const events = await store.loadEvents(creds.roomId);
+    const append = vi.spyOn(store, "append");
+    const refuse = async (revision: number) => {
+      expect(await gm.command({ type: "scene.importUVTT", importId: prep.id, revision })).toMatchObject({ type: "rejected", code: "invalid", message: expect.stringMatching(/terrain.*changed.*draft has been kept/) });
+      expect(append).not.toHaveBeenCalled();
+      expect(await store.loadEvents(creds.roomId)).toEqual(events);
+      expect(gm.seq).toBe(beforeSeq); expect(gm.state).toEqual(before);
+    };
+    await refuse(prep.revision);
+    // Releasing a failed lease permits edits, but editing the preparation must retain its original baseline.
+    const revised = await fetch(url(creds.roomId, `imports/${prep.id}`), { method: "PUT", headers: { authorization: `Bearer ${creds.guestToken}`, "content-type": "application/json" }, body: JSON.stringify({ revision: prep.revision, grid: { ...prep.grid, offsetX: 5 }, walls: prep.walls }) });
+    expect(revised.status).toBe(200);
+    await refuse(UvttPreparation.parse(await revised.json()).revision);
+    expect((await fetch(url(creds.roomId, `imports/${prep.id}`), { method: "DELETE", headers: { authorization: `Bearer ${creds.guestToken}` } })).status).toBe(204);
+  });
+  it("keeps the original terrain baseline when terrain changes during file validation (FR-TAC-03)", async () => {
+    const { creds, gm } = await setup();
+    let started!: () => void, release!: () => void;
+    const validating = new Promise<void>((resolve) => { started = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const validate = UvttValidationPool.prototype.validate;
+    vi.spyOn(UvttValidationPool.prototype, "validate").mockImplementationOnce(async function (this: UvttValidationPool, filename, grid) {
+      started(); await gate;
+      return validate.call(this, filename, grid);
+    });
+    const uploading = prepared(creds.roomId, creds.guestToken);
+    try {
+      await validating;
+      await seedTerrain(gm);
+    } finally { release(); }
+    const prep = await uploading;
+    const before = structuredClone(gm.state), beforeSeq = gm.seq;
+    const events = await store.loadEvents(creds.roomId);
+    const append = vi.spyOn(store, "append");
+    expect(await gm.command({ type: "scene.importUVTT", importId: prep.id, revision: prep.revision })).toMatchObject({ type: "rejected", code: "invalid", message: expect.stringContaining("terrain") });
+    expect(append).not.toHaveBeenCalled(); expect(await store.loadEvents(creds.roomId)).toEqual(events);
+    expect(gm.seq).toBe(beforeSeq); expect(gm.state).toEqual(before);
   });
   it("retains rejected drafts, guards baseline/revision, handles append failure and cancellation", async () => {
     const { creds, gm } = await setup();

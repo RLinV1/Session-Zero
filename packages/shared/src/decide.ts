@@ -212,8 +212,8 @@ export function decide(
       const prep = ctx.preparedUvtt;
       if (!prep) return reject("not_found", "This preparation has expired or the server restarted. Re-import the file.");
       const { baseline, map, grid } = prep;
-      if (!sameValue(state.scene.map, baseline.map) || !sameValue(state.scene.grid, baseline.grid) || !sameValue(state.walls, baseline.walls) || !sameValue(state.fog, baseline.fog)) {
-        return reject("invalid", "The applied map, grid, walls or fog changed while editing. Re-import against the current scene; your draft has been kept.");
+      if (!sameValue(state.scene.map, baseline.map) || !sameValue(state.scene.grid, baseline.grid) || !sameValue(state.walls, baseline.walls) || !sameValue(state.fog, baseline.fog) || (state.terrainRevision ?? 0) !== baseline.terrainRevision) {
+        return reject("invalid", "The applied map, grid, walls, fog or terrain changed while editing. Re-import against the current scene; your draft has been kept.");
       }
       try { validateUvttDraft(grid, prep.walls, map); } catch { return reject("invalid", "The prepared grid or geometry is invalid."); }
       const adjustment = adjustMapTokens(Object.values(state.tokens), state.scene.map, map, state.scene.grid, grid, command.tokenPolicy);

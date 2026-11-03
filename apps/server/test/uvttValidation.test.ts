@@ -113,7 +113,7 @@ describe("bounded private UVTT preparation lifecycle (FR-GM-07)", () => {
   it("binds room/GM, enforces two drafts, revisions, leases, receipts, expiry and retry", () => {
     let now = 0; const store = new UvttPreparations(() => now);
     const data = { map: { url: "/uploads/map.png", width: 400, height: 300 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] };
-    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} };
+    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 };
     const one = store.create("room", "gm", data, baseline);
     expect(() => store.assertCanCreate("room", "gm")).not.toThrow();
     expect(() => store.assertCanCreate("room", "gm")).not.toThrow();
@@ -142,14 +142,14 @@ describe("bounded private UVTT preparation lifecycle (FR-GM-07)", () => {
   });
   it("enforces the process draft cap across owners", () => {
     const store = new UvttPreparations();
-    for (let i = 0; i < UVTT_MAX_DRAFTS; i++) store.create(`r${i}`, `gm${i}`, { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} });
+    for (let i = 0; i < UVTT_MAX_DRAFTS; i++) store.create(`r${i}`, `gm${i}`, { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 });
     expect(() => store.assertCanCreate("last", "gm")).toThrow(/Too many/);
-    expect(() => store.create("last", "gm", { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} })).toThrow(/Too many/);
+    expect(() => store.create("last", "gm", { map: { url: "/x", width: 2, height: 2 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] }, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 })).toThrow(/Too many/);
   });
   it("keeps applied receipts retryable without consuming draft capacity", () => {
     const store = new UvttPreparations(() => 0);
     const data = { map: { url: "/map.png", width: 400, height: 300 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] };
-    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} };
+    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 };
     const receipts = Array.from({ length: UVTT_MAX_DRAFTS }, (_, i) => {
       const prep = store.create("room", "gm", data, baseline);
       const lease = store.lease("room", "gm", prep.id, 1);
@@ -168,7 +168,7 @@ describe("bounded private UVTT preparation lifecycle (FR-GM-07)", () => {
   it("excludes expired drafts from capacity while keeping expired leases counted until release", () => {
     let now = 0; const store = new UvttPreparations(() => now);
     const data = { map: { url: "/map.png", width: 400, height: 300 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] };
-    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} };
+    const baseline = { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 };
     const first = store.create("room", "gm", data, baseline);
     store.create("room", "gm", data, baseline);
     const lease = store.lease("room", "gm", first.id, 1);
@@ -185,7 +185,7 @@ describe("bounded private UVTT preparation lifecycle (FR-GM-07)", () => {
   it("revalidates edited portal bounds, removes duplicate blocking geometry and retains exact metadata", () => {
     const store = new UvttPreparations();
     const data = { map: { url: "/map.png", width: 400, height: 300 }, grid: DEFAULT_GRID, walls: [], diagnostics: [] };
-    const prep = store.create("room", "gm", data, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {} });
+    const prep = store.create("room", "gm", data, { map: null, grid: DEFAULT_GRID, walls: {}, fog: {}, terrainRevision: 0 });
     const portal = { a: { x: 100, y: 100 }, b: { x: 200, y: 100 }, uvttPortal: { position: { x: -50, y: 20 }, closed: false, rotation: 0.8, freestanding: true } };
     const edit = store.edit("room", "gm", prep.id, { revision: 1, grid: DEFAULT_GRID, walls: [{ a: { x: 0, y: 100 }, b: { x: 400, y: 100 } }, portal] })!;
     expect(edit.walls).toEqual([{ a: { x: 0, y: 100 }, b: portal.a }, { a: portal.b, b: { x: 400, y: 100 } }, portal]);
