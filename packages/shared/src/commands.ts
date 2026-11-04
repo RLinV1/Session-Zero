@@ -484,6 +484,8 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("encounter.apply"),
     templateId: Id,
+    /** Keep the room's walls, fog, terrain and lighting; only valid on the template's own map and grid (ADR 0050). */
+    keepMapSetup: z.boolean().optional(),
   }).strict(),
   /** GM reverses one recent action, picked from the activity log by its `commandId` (FR-REC-02, ADR 0013). */
   z.object({

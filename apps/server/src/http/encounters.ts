@@ -149,6 +149,7 @@ export function toSummary(record: EncounterRecord): EncounterSummary {
     name: record.name,
     mapName: record.mapName,
     mapAssetId: record.mapAssetId,
+    grid: record.data.grid,
     tokenCount: record.data.tokens.length,
     fogCount: record.data.fog.length,
     createdAt: record.createdAt,

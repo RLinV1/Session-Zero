@@ -220,3 +220,67 @@ describe("template walls", () => {
     expect(encounterTable(ENCOUNTER, () => `fresh-${++id}`).walls).toEqual({});
   });
 });
+
+describe("apply encounter template, keeping the map's setup (FR-GM-13)", () => {
+  /** A room on the template's own map with walls, a portal, fog, terrain and line of sight. */
+  function prepared() {
+    const r = room();
+    r.run(gm, { type: "scene.setMap", map: ENCOUNTER.scene.map!, grid: DEFAULT_GRID });
+    r.run(gm, { type: "token.create", name: "Hero", position: { x: 35, y: 35 }, ownerIds: [alice.id] });
+    r.run(gm, { type: "wall.add", walls: [{ a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, { a: { x: 100, y: 0 }, b: { x: 100, y: 100 }, portal: { kind: "door", state: "closed" } }] });
+    r.run(gm, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 100, y: 100 } } });
+    r.run(gm, {
+      type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 2, end: 2, kind: "difficult" }],
+      context: { boardEpoch: r.state.boardEpoch ?? 0, revision: r.state.terrainRevision ?? 0 },
+    });
+    r.run(gm, { type: "scene.setLineOfSight", enabled: true });
+    return r;
+  }
+
+  it("takes the template's tokens and keeps the room's walls, portal, fog, terrain and sight flag", () => {
+    const r = prepared();
+    const { walls, fog, terrain } = r.state;
+    r.run(gm, { type: "encounter.apply", templateId: "tpl-1", keepMapSetup: true });
+    expect(Object.values(r.state.tokens).map((t) => t.name).sort()).toEqual(["Ambusher", "Goblin"]);
+    expect(r.state.walls).toEqual(walls);
+    expect(Object.values(r.state.walls).some((w) => w.portal?.kind === "door")).toBe(true);
+    expect(r.state.fog).toEqual(fog);
+    expect(r.state.terrain).toEqual(terrain);
+    expect(r.state.scene.lineOfSight).toBe(true);
+    expect(r.state.scene.map).toEqual(ENCOUNTER.scene.map);
+  });
+
+  it("without the flag behaves as before: the template's fog and no walls", () => {
+    const r = prepared();
+    r.run(gm, { type: "encounter.apply", templateId: "tpl-1" });
+    expect(r.state.walls).toEqual({});
+    expect(Object.values(r.state.fog)).toHaveLength(1);
+    expect(r.state.terrain).toBeUndefined();
+    expect(r.state.scene.lineOfSight).toBeUndefined();
+  });
+
+  it("rejects a room on a different map and changes nothing", () => {
+    const r = busy();
+    const before = tableOf(r.state);
+    expect(r.attempt(gm, { type: "encounter.apply", templateId: "tpl-1", keepMapSetup: true })).toMatchObject({ ok: false, code: "invalid" });
+    expect(tableOf(r.state)).toEqual(before);
+  });
+
+  it("rejects the same map under a different grid", () => {
+    const shelf = [{ ...ENCOUNTER, scene: { ...ENCOUNTER.scene, grid: { ...DEFAULT_GRID, cellSize: DEFAULT_GRID.cellSize + 10 } } }];
+    const r = room(shelf);
+    r.run(gm, { type: "scene.setMap", map: ENCOUNTER.scene.map!, grid: DEFAULT_GRID });
+    expect(r.attempt(gm, { type: "encounter.apply", templateId: "tpl-1", keepMapSetup: true })).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("still lets only the GM keep the setup", () => {
+    expect(prepared().attempt(alice, { type: "encounter.apply", templateId: "tpl-1", keepMapSetup: true })).toMatchObject({ ok: false, code: "forbidden" });
+  });
+
+  it("carries the replaced board so it can be undone exactly", () => {
+    const r = prepared();
+    const before = tableOf(r.state);
+    const [event] = r.run(gm, { type: "encounter.apply", templateId: "tpl-1", keepMapSetup: true });
+    expect(event).toMatchObject({ type: "EncounterApplied", previous: before });
+  });
+});

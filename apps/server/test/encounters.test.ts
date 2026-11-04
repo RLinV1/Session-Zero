@@ -380,3 +380,35 @@ describe("replace a template from a room (FR-GM-13, ADR 0033)", () => {
     expect((await replace(cookie, crypto.randomUUID(), creds.roomId)).status).toBe(404);
   });
 });
+
+describe("encounter apply keeping the map's setup over the wire (FR-GM-13, ADR 0050)", () => {
+  it("keeps the room's walls and fog on the same map, rejects a forged flag on another, and resyncs players filtered", async () => {
+    const prep = await prepared();
+    const saved = (await (await save(prep.cookie, prep.creds.roomId)).json()) as EncounterSummary;
+    const target = await server.createRoom("GM", { cookie: prep.cookie, roomName: "Table" });
+    const gm = await connect(target);
+    const bob = await connect(await server.join(target.inviteCode, "Bob"));
+
+    // A different map: the flag is refused and the board is untouched.
+    const other = await upload(prep.cookie, "map", "Elsewhere");
+    await ok(gm.command({ type: "scene.setMap", map: { url: other.url, width: other.width, height: other.height, assetId: other.id } }));
+    const before = tableOf(gm.state);
+    expect(await gm.command({ type: "encounter.apply", templateId: saved.id, keepMapSetup: true })).toMatchObject({ type: "rejected", code: "invalid" });
+    expect(tableOf(gm.state)).toEqual(before);
+
+    // The template's own map, with a wall and a secret fog region of the room's own.
+    await ok(gm.command({ type: "scene.setMap", map: { url: prep.map.url, width: prep.map.width, height: prep.map.height, assetId: prep.map.id }, grid: saved.grid }));
+    await ok(gm.command({ type: "wall.add", walls: [{ a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }] }));
+    await ok(gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 50, y: 50 } } }));
+    const walls = gm.state.walls;
+    const fog = gm.state.fog;
+    await ok(gm.command({ type: "encounter.apply", templateId: saved.id, keepMapSetup: true }));
+    await bob.waitForSeq(gm.seq);
+    expect(gm.state.walls).toEqual(walls);
+    expect(gm.state.fog).toEqual(fog);
+    expect(Object.values(gm.state.tokens).map((t) => t.name).sort()).toEqual(["Goblin", "Orc", "Rogue"]);
+    expect(bob.state).toEqual(viewFor(gm.state, bob));
+    expect(named(bob, "Orc")).toBeUndefined();
+    expect(bob.rawLog.join("\n")).not.toContain("EncounterApplied");
+  });
+});

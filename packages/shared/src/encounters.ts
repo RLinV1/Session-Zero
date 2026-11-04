@@ -1,4 +1,4 @@
-import { TerrainRuns, type TerrainRun } from "./terrain";
+import { TerrainRuns, gridGeometryChanged, type TerrainRun } from "./terrain";
 import { z } from "zod";
 import { GridSpec } from "./geometry";
 import { FogRegion, Id, MapImage, Scene, Token, Wall, MAX_WALLS, type TableState } from "./state";
@@ -80,4 +80,14 @@ export function encounterTable(encounter: ResolvedEncounter, newId: () => string
 /** Rebuilds a map image from a template's saved reference and the address the server resolved. */
 export function templateMapImage(data: EncounterTemplateData["map"], url: string): MapImage {
   return { url, width: data.width, height: data.height, assetId: data.assetId };
+}
+
+/**
+ * Whether a room's scene is on the template's map and grid, the precondition of `keepMapSetup`
+ * (ADR 0050): same asset id when both have one, else same URL. `decide` enforces it; the UI uses it as a hint.
+ */
+export function sameMapAndGrid(a: Pick<Scene, "map" | "grid">, b: Pick<Scene, "map" | "grid">): boolean {
+  if (!a.map || !b.map) return false;
+  const sameMap = a.map.assetId !== undefined && b.map.assetId !== undefined ? a.map.assetId === b.map.assetId : a.map.url === b.map.url;
+  return sameMap && !gridGeometryChanged(a.grid, b.grid);
 }
