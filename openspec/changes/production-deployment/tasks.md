@@ -26,3 +26,9 @@
 - [ ] 5.2 Generate secrets with `random_password`, default the site name to an `sslip.io` host from the Elastic IP, support a `domain` variable and an HTTP-only mode; verify `terraform plan` with dummy variables shows the expected resources
 - [x] 5.3 Add `deploy/terraform/.gitignore` (state, tfvars) and a `terraform.tfvars.example`; verify `git status` shows no state or secret files after `terraform init`
 - [x] 5.4 Document apply/destroy and credential setup in `docs/DEPLOYMENT.md`; verify every variable in `variables.tf` appears in the docs
+
+## 6. Terraform (one Compute Engine VM)
+
+- [x] 6.1 Add `deploy/terraform-gcp/` (versions, variables, main, outputs, `startup.sh.tftpl`, README, `terraform.tfvars.example`, `.gitignore`); verify `terraform fmt -check` and `terraform validate` pass
+- [x] 6.2 Match the AWS behaviour: generated secrets, `sslip.io` default host, `domain` and `enable_https` options; verify the rendered startup script writes the exact variable names used by `docker-compose.prod.yml`
+- [x] 6.3 Add a "Google Cloud with Terraform" section to `docs/DEPLOYMENT.md` (project setup, billing, `gcloud auth`, apply, wait, open the URL, destroy) and verify every variable appears in the docs

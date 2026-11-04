@@ -10,7 +10,7 @@ Today `Dockerfile` copies the whole repo and runs `npm run dev`; `docker-compose
 - No change to application code or shared contracts.
 
 **Non-Goals:**
-- Terraform for managed services (RDS, ElastiCache, ECS) and any GCP Terraform; only the single-VM AWS configuration is in scope.
+- Terraform for managed services (RDS, ElastiCache, ECS); only single-VM Terraform for AWS and for Google Cloud is in scope.
 - Multi-region, autoscaling, or zero-downtime rollout automation.
 - Compiling the server to JS (stays on `tsx`, see decisions).
 
@@ -47,3 +47,11 @@ Additive. Existing dev workflow is untouched. Rollback: remove the new files; no
 - `SITE_ADDRESS` and `CLIENT_ORIGIN` default to `<elastic-ip-with-dashes>.sslip.io` for HTTPS without owning a domain; a `domain` variable overrides it. HTTP-only mode via a variable.
 - Generated secrets live in Terraform state; state is local and gitignored, and the docs say so. Nothing is applied by the agent: the user runs `terraform apply` with their own AWS credentials.
 - Requires the repo to be cloneable from the VM (public URL or deploy token variable).
+
+## Addendum: Terraform for one Compute Engine VM
+
+- New folder `deploy/terraform-gcp/`, same shape as the AWS one: `google` provider, a `google_compute_instance` (Ubuntu 24.04 LTS, `e2-standard-2` default, 30 GB pd-balanced), `google_compute_firewall` rules (80/443 open, 22 from `ssh_cidr`, via a network tag), and a `google_compute_address` reserved static IP.
+- `metadata_startup_script` reuses the AWS script's steps (Docker install, clone, `.env.production`, `docker compose up`); the template is copied, not shared, so the AWS folder stays untouched.
+- The same `sslip.io` hostname, `domain` override and `enable_https` switch, with the same defaults.
+- Variables add `project_id` (required) and `zone`; `ssh_cidr` stays required.
+- Auth: `gcloud auth application-default login`; nothing is applied by the agent.

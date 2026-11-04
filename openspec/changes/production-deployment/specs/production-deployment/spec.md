@@ -60,3 +60,14 @@ The repository SHALL include a Terraform configuration that creates a single AWS
 #### Scenario: Teardown
 - **WHEN** the operator runs `terraform destroy`
 - **THEN** the instance, security group and Elastic IP are removed
+
+### Requirement: One-VM Google Cloud deployment can be created and removed with Terraform
+The repository SHALL include a Terraform configuration that creates a single Compute Engine VM with a reserved static IP and starts the production stack on it, using generated secrets, and that removes everything it created on `terraform destroy`. Secrets SHALL NOT be committed.
+
+#### Scenario: Apply in a fresh project
+- **WHEN** an operator with Google Cloud credentials runs `terraform apply` with `project_id` and `ssh_cidr`
+- **THEN** the VM starts, the production stack comes up, and the output prints the site URL
+
+#### Scenario: Teardown
+- **WHEN** the operator runs `terraform destroy`
+- **THEN** the VM, firewall rules and static address are removed

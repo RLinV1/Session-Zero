@@ -63,8 +63,12 @@ services:
       interval: 3s
       timeout: 3s
       retries: 30
-  # BullMQ consumer for wall detection (FR-GM-11). Must stay running (never scale to zero).
+  # BullMQ consumer for wall detection (FR-GM-11). Off by default because wall detection is not
+  # ready: without this worker a queued wall job waits for the server's 10 minute job timeout
+  # before failing. Enable with `docker compose ... --profile walls`. When enabled it must stay
+  # running (never scale to zero).
   vision-walls:
+    profiles: ["walls"]
     build: ./services/vision
     restart: unless-stopped
     command: ["python", "wall_worker.py"]
