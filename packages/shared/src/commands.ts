@@ -350,6 +350,11 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("room.setReducedEffects"),
     enabled: z.boolean(),
   }),
+  /** GM only: remove a token automatically when its HP reaches 0 or below (ADR 0049). */
+  z.object({
+    type: z.literal("room.setAutoRemoveDefeated"),
+    enabled: z.boolean(),
+  }),
   /** GM only: damage every token with HP and play a map-wide blast (ADR 0038). */
   z.object({
     type: z.literal("nuke.detonate"),

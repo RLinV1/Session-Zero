@@ -604,6 +604,7 @@ export class LiveRoom {
       switch (filtered.kind) {
         case "event":
           client.send({ type: "event", committed: filtered.committed });
+          if (filtered.thenResync) this.sendSnapshot(client);
           break;
         case "redacted":
           client.send({ type: "redacted", seq: filtered.seq });

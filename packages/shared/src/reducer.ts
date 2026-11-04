@@ -403,6 +403,9 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "ReducedEffectsSet":
       return { ...state, reducedEffects: event.enabled };
 
+    case "AutoRemoveDefeatedSet":
+      return { ...state, autoRemoveDefeated: event.enabled };
+
     default:
       return assertNever(event);
   }

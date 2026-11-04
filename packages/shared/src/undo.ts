@@ -62,9 +62,12 @@ type CompleteMapSet = MapSetEvent & {
   gridChange: NonNullable<MapSetEvent["gridChange"]>;
   tokenChanges: NonNullable<MapSetEvent["tokenChanges"]>;
 };
+/** A deletion by the auto-remove option; the only `TokenDeleted` undo can reverse (ADR 0049). */
+type DefeatDeleted = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" };
 export type ReversibleEvent =
   | Exclude<Extract<DomainEvent, { type: (typeof REVERSIBLE_EVENT_TYPES)[number] }>, MapSetEvent>
-  | CompleteMapSet;
+  | CompleteMapSet
+  | DefeatDeleted;
 
 
 
@@ -103,6 +106,7 @@ export interface EventMeta {
 /** Whether an event type can take part in an undoable action. */
 export function isReversible(event: DomainEvent): event is ReversibleEvent {
   if (event.type === "MapSet") return event.gridChange !== undefined && event.tokenChanges !== undefined;
+  if (event.type === "TokenDeleted") return event.reason === "defeated";
   return (REVERSIBLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
 
@@ -163,7 +167,7 @@ function withLabels(
     return { tokenNames: names, rollLabels };
   }
 
-  if (event.type === "TokenCreated") return { tokenNames: { ...tokenNames, [event.token.id]: event.token.name }, rollLabels };
+  if (event.type === "TokenCreated" || event.type === "TokenDeleted") return { tokenNames: { ...tokenNames, [event.token.id]: event.token.name }, rollLabels };
   if (event.type === "TokensGrouped") {
     const names = Object.fromEntries(event.changes.flatMap(({ tokenId }) => {
       const token = state.tokens[tokenId];
@@ -199,7 +203,7 @@ function canUndo(entry: UndoEntry): boolean {
   // A resolve that changed no token has nothing to put back (ADR 0046).
   if (entry.events.every((e) => e.type === "AreaEffectResolved")) return false;
   const statsEdit = entry.events.some((e) => e.type === "TokenStatsSet");
-  return !statsEdit || entry.events.some((e) => e.type === "RollDamageApplied" || e.type === "MapNuked" || e.type === "AreaEffectResolved");
+  return !statsEdit || entry.events.some((e) => e.type === "RollDamageApplied" || e.type === "MapNuked" || e.type === "AreaEffectResolved" || (e.type === "TokenDeleted" && e.reason === "defeated"));
 }
 
 /** The compensating events that restore what `event` replaced (invariant 6), in order. */
@@ -207,6 +211,8 @@ export function inverseOf(event: ReversibleEvent): DomainEvent[] {
   switch (event.type) {
     case "TokenCreated":
       return [{ type: "TokenDeleted", token: event.token }];
+    case "TokenDeleted":
+      return [{ type: "TokenCreated", token: event.token }];
     case "InitiativeStarted":
       return [{
         type: "InitiativeStartUndone",
@@ -244,7 +250,7 @@ export function inverseOf(event: ReversibleEvent): DomainEvent[] {
   }
 }
 
-type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "InitiativeStarted" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" | "AreaEffectResolved" }>;
+type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "TokenDeleted" | "InitiativeStarted" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" | "AreaEffectResolved" }>;
 
 /** The single compensating event for the reversible types that need only one. */
 function inverseOfOne(event: SingleInverse): DomainEvent {
@@ -323,6 +329,8 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
     e.type === "FogAdded" ? n - (state.fog[e.region.id] ? 1 : 0)
     : e.type === "FogRemoved" ? n + 1 : n, 0);
   if (fogAfter > MAX_FOG_REGIONS) return `Can't undo: the room would hold more than ${MAX_FOG_REGIONS} fog regions.`;
+  // Tokens the action itself removed are absent by design, so their other events aren't compared.
+  const defeated = new Set(entry.events.flatMap((e) => (e.type === "TokenDeleted" ? [e.token.id] : [])));
   let terrain = state.terrain ?? emptyTerrain();
   for (const event of [...entry.events].reverse()) {
     if (event.type === "TerrainPainted") {
@@ -368,6 +376,12 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
     if (isGroupEvent(event)) {
       const conflict = groupUndoConflict(state, event);
       if (conflict) return conflict;
+      continue;
+    }
+    if (event.type === "TokenDeleted") {
+      if (state.tokens[event.token.id]) return `Can't undo: ${event.token.name} is already back.`;
+      const wanted = normalizeName(event.token.name);
+      if (Object.values(state.tokens).some((t) => normalizeName(t.name) === wanted)) return `Can't undo: another token is now named ${event.token.name}.`;
       continue;
     }
     if (event.type === "TokenCreated") {
@@ -449,6 +463,7 @@ export function undoConflict(state: RoomState, entry: UndoEntry): string | null 
       if (!current) return `Can't undo: ${label} has changed since.`;
       continue;
     }
+    if (defeated.has(event.tokenId)) continue;
     const token = state.tokens[event.tokenId];
     const name = token?.name ?? entry.tokenNames[event.tokenId] ?? "That token";
     if (!token) return `Can't undo: ${name} no longer exists.`;
@@ -597,6 +612,12 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"]): { v
   }
   const first = entry.events[0];
   if (!first) return { verb: "last action", noun: "an action" };
+  const defeats = entry.events.filter((e) => e.type === "TokenDeleted");
+  if (first.type === "TokenDeleted" || defeats.length > 0) {
+    const names = defeats.map((e) => e.token.name);
+    const who = names.length === 1 ? names[0]! : `${names.length} tokens`;
+    return { verb: `${who} defeated and removed`, noun: `${who} being defeated and removed` };
+  }
   if (first.type === "GridSet") return { verb: "grid change", noun: "the grid change" };
   if (first.type === "TerrainPainted" || first.type === "TerrainEffectCreated" || first.type === "TerrainEffectRemoved" || first.type === "TerrainEffectRenamed") return { verb: "terrain edit", noun: "the terrain edit" };
   if (first.type === "MapSet") {
