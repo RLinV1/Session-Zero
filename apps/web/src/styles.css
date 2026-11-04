@@ -331,7 +331,11 @@ a.tool-button { text-decoration: none; }
 .token-card dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: 0; }
 .token-card dt { color: var(--muted); }
 .token-card dd { margin: 0; }
-.token-card-actions { margin-top: var(--space-2); gap: var(--space-2); }
+.token-card-actions { margin-top: var(--space-3); gap: var(--space-2); }
+.token-card-reposition { align-self: flex-start; max-width: 100%; margin: var(--space-3) 0 var(--space-2); white-space: normal; }
+.token-card-reposition[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.token-card-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.token-card-delete:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .token-card .arrow-keys-switch { margin-top: var(--space-2); }
 .token-card .arrow-keys-switch + .small-print { margin: var(--space-1) 0 0; }
 
@@ -3555,9 +3559,9 @@ dialog.modal.create-room-modal { width: min(27rem, calc(100vw - 2rem)); }
 .share-copy { flex: none; width: 2.5rem; height: auto; min-height: 2.5rem; }
 .share-copy:disabled { opacity: 0.5; }
 .share-hint { margin: 0; font-size: var(--fs-sm); }
+.share-actions { display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); padding-top: var(--space-4); }
+.share-action-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .share-qr-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.4rem; }
-.share-reset-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-4); }
-.share-reset-row p { flex: 1 1 12rem; }
 .share-reset { display: inline-flex; align-items: center; gap: 0.4rem; flex: none; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .share-qr-modal { width: min(19rem, calc(100vw - 2rem)); }

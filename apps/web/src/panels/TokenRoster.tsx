@@ -1,6 +1,6 @@
 import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { presetOf, type PresetFeatures } from "@vtt/shared";
-import { PencilSimple, Trash } from "@phosphor-icons/react";
+import { Copy, PencilSimple, Trash } from "@phosphor-icons/react";
 import {
   can,
   CreatureFields,
@@ -305,8 +305,8 @@ function RosterRow({
           </button>
         )}
         {onDuplicate && (
-          <button type="button" className="link small" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`}>
-            Duplicate
+          <button type="button" className="icon-button roster-edit" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`} title="Duplicate">
+            <Copy size={16} aria-hidden="true" />
           </button>
         )}
       </div>

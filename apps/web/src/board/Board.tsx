@@ -654,6 +654,20 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     startPlacing({ kind: "duplicate", tokenId, ghost: { name, size, rotation, color, imageUrl, hidden, stats } }, size);
   };
 
+  /** Delete a token through the same guarded room command used by the other board actions. */
+  const deleteToken = async (tokenId: string) => {
+    const result = await guarded.command({ type: "token.delete", tokenId });
+    if (!result.ok) {
+      setRefusal({ message: result.message, at: Date.now() });
+      return false;
+    }
+    setRefusal(null);
+    setRepositionId(null);
+    repositionRef.current = null;
+    deselect();
+    return true;
+  };
+
   useImperativeHandle(ref, () => ({
     focusToken: (tokenId: string) => viewRef.current?.focusToken(tokenId),
     placeToken: (next: TokenDraft) => {
@@ -818,6 +832,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           // Out of the way of the editor and the placement ghost.
           onEdit={onEditToken && (() => { deselect(); onEditToken(selected.id); })}
           onDuplicate={() => { deselect(); duplicateToken(selected.id); }}
+          onDelete={() => deleteToken(selected.id)}
           onMove={(to) => moveToken(selected.id, to)}
           movementReadout={movementNotice}
           reposition={you.role === "gm" && !readOnly ? { on: repositionId === selected.id, toggle: () => setRepositionId((id) => id === selected.id ? null : selected.id) } : undefined}
