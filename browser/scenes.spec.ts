@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { io } from "socket.io-client";
-import { SOCKET_EVENTS, emptyRoomState, reduceReceived, type CommandInput, type ServerMessage } from "@vtt/shared";
+import { SOCKET_EVENTS, emptyRoomState, reduceReceived, sceneNamesOf, type CommandInput, type ServerMessage } from "@vtt/shared";
 
 test("GM switches scenes from the header and returns to preserved tokens", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
@@ -41,20 +41,21 @@ test("GM switches scenes from the header and returns to preserved tokens", async
     await command({ type: "token.create", name: "Tavern guard", position: { x: 35, y: 35 }, stats: { hp: 3, maxHp: 10, ac: null } });
     await page.goto(`/r/${credentials.roomId}`);
     await page.getByRole("tab", { name: "Manage", exact: true }).click();
-    await page.getByLabel("New scene name").fill("Cellar");
-    await page.getByRole("button", { name: "Create scene", exact: true }).click();
+    await page.getByRole("button", { name: "New scene", exact: true }).click();
+    await page.getByLabel("Scene name").fill("Cellar");
+    await page.keyboard.press("Enter");
     const setup = page.getByRole("dialog", { name: "Prepare scene" });
     await expect(setup.getByRole("button", { name: "Encounter template", exact: true })).toBeVisible();
     await expect(setup.getByRole("button", { name: "Map", exact: true })).toBeVisible();
-    await setup.getByRole("button", { name: "Checkpoint", exact: true }).click();
-    await expect(setup.getByText("No checkpoints in this room.")).toBeVisible();
+    await expect(setup.getByRole("button", { name: "Checkpoint", exact: true })).toHaveCount(0);
     await setup.getByRole("button", { name: "Current map", exact: true }).click();
     await expect(setup).toBeHidden();
     await expect(page.locator(".board-canvas")).toHaveCount(1);
-    const selector = page.getByRole("combobox", { name: "Viewing scene" });
-    await expect(selector.locator("option:checked")).toHaveText("Cellar");
+    const selector = page.getByRole("button", { name: "Viewing scene" });
+    const pick = async (name: string | RegExp) => { await selector.click(); await page.getByRole("option", { name }).click(); };
+    await expect(selector).toContainText("Cellar");
     await expect(page.getByText("This is not the active scene.", { exact: true })).toBeVisible();
-    const cellarId = await selector.inputValue();
+    const cellarId = Object.entries(sceneNamesOf(state)).find(([, n]) => n === "Cellar")?.[0] ?? "";
     await page.getByRole("button", { name: "Edit map", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "Edit map", exact: true });
     await editor.getByRole("tab", { name: /Terrain$/ }).click();
@@ -68,16 +69,16 @@ test("GM switches scenes from the header and returns to preserved tokens", async
     await command({ type: "scene.prepare", sceneId: cellarId, command: { type: "token.create", name: "Cellar rat", position: { x: 35, y: 35 } } });
     await page.getByRole("tab", { name: "Tokens", exact: true }).click();
     await expect(page.getByText("Cellar rat", { exact: true }).first()).toBeVisible();
-    await selector.selectOption("initial");
+    await pick(/Tavern/);
     await expect(page.getByText("Tavern guard", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Cellar rat", { exact: true })).toHaveCount(0);
-    await selector.selectOption(cellarId);
+    await pick(/Cellar/);
     await expect(page.getByText("Cellar rat", { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Activate", exact: true }).click();
     await expect.poll(() => state.terrain?.base).toEqual(preparedTerrain);
     await expect(page.getByText("This is not the active scene.", { exact: true })).toHaveCount(0);
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "Viewing scene" })).toHaveValue(cellarId);
+    await expect(page.getByRole("button", { name: "Viewing scene" })).toContainText("Cellar");
     await page.screenshot({ path: testInfo.outputPath("scenes.png") });
     expect(errors).toEqual([]);
   } finally { socket.disconnect(); }

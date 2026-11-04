@@ -8,6 +8,7 @@ import { ConditionPicker } from "../panels/ConditionMarker";
 import { api } from "../net/api";
 import { randomTokenColor } from "../ui/tokenColors";
 import { isBuiltin } from "../net/builtinAssets";
+import { BUILTIN_CREATURES } from "../net/builtinCreatures";
 import { Modal } from "../ui/Modal";
 import { TokenPreview } from "../ui/TokenPreview";
 import { creatureSummary, type CreaturePrefill } from "./creatureDraft";
@@ -67,7 +68,25 @@ export function CreatureCard(props: {
   );
 }
 
-const FIELD_HINTS: Record<string, string> = {
+/** A creature included with the app: read-only art, name and stats; GMs place it from "From creature". */
+export function BuiltinCreatureCard(props: { creature: LibraryCreature }) {
+  const { creature } = props;
+  const stats: [string, number | null][] = [["HP", creature.maxHp ?? null], ["AC", creature.ac ?? null]];
+  return (
+    <li className="asset-card creature-card builtin-creature">
+      <TokenDisc name={creature.name} color={creature.color} image={creature.imageUrl} size="6rem" className="builtin-creature-portrait" />
+      <strong className="asset-name" title={creature.name}>{creature.name}</strong>
+      <dl className="builtin-creature-stats">
+        {stats.map(([label, value]) => value !== null && (
+          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+        ))}
+        <div><dt>Attacks</dt><dd>{creature.attacks?.length ?? 0}</dd></div>
+      </dl>
+    </li>
+  );
+}
+
+const FIELD_HINTS:Record<string, string> = {
   name: "Give it a name of up to 60 characters.",
   size: "Size must be above 0 and at most 10 cells.",
   hp: `HP must be a whole number from ${MIN_HP} to 9999, or blank.`,
@@ -262,7 +281,7 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
   }, []);
 
   const q = query.trim().toLowerCase();
-  const shown = (creatures ?? []).filter((c) => !q || c.name.toLowerCase().includes(q));
+  const shown = [...(creatures ?? []), ...(creatures ? BUILTIN_CREATURES : [])].filter((c) => !q || c.name.toLowerCase().includes(q));
 
   return (
     <div className="library-picker" role="group" aria-label="Choose a creature">
@@ -271,7 +290,7 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
       {!creatures && !error && <p className="muted">Loading…</p>}
       {creatures && shown.length === 0 && (
         <p className="muted">
-          {creatures.length === 0 ? "No creatures yet. Make them on the library's Creatures tab." : "Nothing matches that search."}
+          {creatures.length === 0 && !q ? "No creatures yet. Make them on the library's Creatures tab." : "Nothing matches that search."}
         </p>
       )}
       <ul className="plain picker-grid">
@@ -295,7 +314,9 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
 async function importBuiltinArt(asset: LibraryAsset): Promise<LibraryAsset> {
   const existing = (await api.library.list()).find((a) => a.kind === "token" && a.name === asset.name);
   if (existing) return existing;
-  const blob = await (await fetch(asset.url)).blob();
-  const file = new File([blob], `${asset.name}.${asset.url.split(".").pop() ?? "webp"}`, { type: blob.type });
+  // The server accepts only png/jpeg/webp (imageUpload.ts IMAGE_TYPES), so upload the shipped PNG source, not the SVG.
+  const src = asset.url.replace(/([^/]+)\.svg$/, "source/$1.png");
+  const blob = await (await fetch(src)).blob();
+  const file = new File([blob], `${asset.name}.${src.split(".").pop() ?? "webp"}`, { type: blob.type });
   return api.library.upload(file, { kind: "token", name: asset.name, width: asset.width, height: asset.height });
 }

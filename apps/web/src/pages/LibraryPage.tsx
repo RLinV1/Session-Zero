@@ -6,6 +6,7 @@ import { api } from "../net/api";
 import { builtinsMatching } from "../net/builtinAssets";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import { Modal } from "../ui/Modal";
+import { isCroppable, TokenArtCropper } from "../ui/TokenArtCropper";
 import { AccountMenu } from "../account/AccountPages";
 import { EmptyState } from "../ui/EmptyState";
 import { MapThumbnail } from "../ui/MapThumbnail";
@@ -13,10 +14,10 @@ import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { RequireAccount } from "../account/RequireAccount";
 import { LibraryMapEditor } from "./mapEditor/LibraryMapEditor";
 import { AnimationsTab } from "./LibraryAnimations";
-import { CreatureCard, CreatureForm } from "./LibraryCreatures";
+import { BuiltinCreatureCard, CreatureCard, CreatureForm } from "./LibraryCreatures";
+import { BUILTIN_CREATURES } from "../net/builtinCreatures";
 import { EncounterCard } from "./LibraryEncounters";
-import { LibraryPicker } from "./LibraryPicker";
-import { startEncounterEdit } from "./encounterEdit/startEdit";
+import { LibraryPicker } from "./LibraryPicker";import { startEncounterEdit } from "./encounterEdit/startEdit";
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
 import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
@@ -91,6 +92,7 @@ function Library() {
   const [error, setError] = useState<string | null>(null);
   /** The creature open in the New/Edit form. */
   const [creatureTarget, setCreatureTarget] = useState<LibraryCreature | "new" | null>(null);
+  /** An included creature being copied into the library: the New form, prefilled. */
   /** The dice look open in its editor (dice-image-skins). */
   const [diceTarget, setDiceTarget] = useState<string | null>(null);
   /** The owned map whose grid is open in the editor. */
@@ -150,6 +152,11 @@ function Library() {
     const q = query.trim().toLowerCase();
     return (creatures ?? []).filter((c) => !q || c.name.toLowerCase().includes(q));
   }, [creatures, query]);
+
+  const builtinCreatures = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return BUILTIN_CREATURES.filter((c) => !q || c.name.toLowerCase().includes(q));
+  }, [query]);
 
   const shownEncounters = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -239,6 +246,7 @@ function Library() {
               <EncounterCard
                 key={encounter.id}
                 encounter={encounter}
+                map={encounter.mapAssetId ? assets?.find((a) => a.id === encounter.mapAssetId) : undefined}
                 onChanged={(next) => setEncounters((all) => (all ?? []).map((e) => (e.id === next.id ? next : e)))}
                 onDeleted={() => setEncounters((all) => (all ?? []).filter((e) => e.id !== encounter.id))}
               />
@@ -265,6 +273,17 @@ function Library() {
                 />
               ))}
           </ul>
+          {builtinCreatures.length > 0 && (
+            <section className="builtin-assets" aria-labelledby="builtin-creatures-heading">
+              <h2 id="builtin-creatures-heading">Included with the app</h2>
+              <p className="muted">Every GM has these. Place them from “From creature” in any room.</p>
+              <ul className="plain asset-grid">
+                {builtinCreatures.map((creature) => (
+                  <BuiltinCreatureCard key={creature.id} creature={creature} />
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       ) : (
         <>
@@ -325,7 +344,7 @@ function Library() {
         )}
       </Modal>
 
-      <DiceLookModal lookId={diceTarget} onClose={() => setDiceTarget(null)} />
+      <DiceLookModal lookId={diceTarget}onClose={() => setDiceTarget(null)} />
 
       <Modal open={pickingEncounterMap} title="Choose a map for the encounter" onClose={() => setPickingEncounterMap(false)}>
         {/* Only the GM's own maps: a template keeps its map by library id (ADR 0024). */}
@@ -374,6 +393,7 @@ function UploadButton(props: {
   onError: (message: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   async function onFile(file: File | undefined) {
     if (!file) return;
     setBusy(true);
@@ -393,6 +413,7 @@ function UploadButton(props: {
     }
   }
   return (
+    <>
     <label className="upload-button">
       <span>{busy ? "Uploading…" : props.kind === "map" ? "Upload map" : "Upload token art"}</span>
       <input
@@ -401,11 +422,16 @@ function UploadButton(props: {
         accept={props.kind === "map" ? MAP_ACCEPT : IMAGE_ACCEPT}
         disabled={busy}
         onChange={(e) => {
-          void onFile(e.target.files?.[0]);
+          const file = e.target.files?.[0];
+          // Token art is framed first (token-art-cropper); maps and other types upload as they are.
+          if (file && props.kind === "token" && isCroppable(file)) setCropFile(file);
+          else void onFile(file);
           e.target.value = "";
         }}
       />
     </label>
+    {cropFile && <TokenArtCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(f) => { setCropFile(null); void onFile(f); }} />}
+    </>
   );
 }
 

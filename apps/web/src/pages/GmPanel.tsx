@@ -112,8 +112,8 @@ export function GmPanel({
       />
       {features.tableAdmin && (
         <>
-          <EncounterPanel connection={connection} state={state} />
           <ScenesPanel connection={connection} state={state} />
+          <EncounterPanel connection={connection} state={state} />
         </>
       )}
     </>

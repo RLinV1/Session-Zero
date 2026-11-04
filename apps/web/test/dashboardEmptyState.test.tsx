@@ -15,6 +15,8 @@ function stubRooms(rooms: { hosting: unknown[]; playing: unknown[] }) {
 }
 
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   accountStore.setState({ status: "signedIn", account: { id: "a1", email: "tony@example.com", displayName: "Tony" } });
 });
 afterEach(() => {
@@ -35,6 +37,7 @@ describe("the dashboard with no rooms (design-language: Empty states show the ne
     expect(picture.getAttribute("alt")).toBe("");
     expect(within(empty).getAllByRole("button")).toHaveLength(1);
     fireEvent.click(within(empty).getByRole("button", { name: "Create a room" }));
+    expect(screen.getByRole("dialog", { name: "Create a room" })).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByLabelText("Room name"));
   });
 

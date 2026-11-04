@@ -78,26 +78,29 @@ export function PopoverButton({
 
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
+    // Capture phase: a board or panel that stops propagation must not keep the popover open.
+    // mousedown too, for input that never emits pointer events.
+    const outside = (e: Event) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !wrapRef.current?.contains(e.target as Node)) return;
+      e.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("mousedown", outside, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("mousedown", outside, true);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   return (
-    <div
-      ref={wrapRef}
-      className="popover-anchor"
-      data-tour={tourId}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && open) {
-          e.stopPropagation();
-          setOpen(false);
-          buttonRef.current?.focus();
-        }
-      }}
-    >
+    <div ref={wrapRef} className="popover-anchor" data-tour={tourId}>
       <button
         {...buttonProps}
         ref={(el) => {

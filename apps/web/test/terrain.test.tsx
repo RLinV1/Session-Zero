@@ -10,6 +10,36 @@ import { stubMapEditorEnvironment, fakeConnection, room, drag } from "./mapEdito
 beforeEach(stubMapEditorEnvironment);
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
+  it("creates a layer from the plus button and caps at 32 (FR-TAC-03)", async () => {
+    const { connection, commands } = fakeConnection();
+    const { rerender } = render(<TerrainSetup connection={connection} state={room()} live />);
+    expect(screen.queryByLabelText("New layer name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add layer" }));
+    const input = screen.getByLabelText("New layer name");
+    fireEvent.change(input, { target: { value: "Ice" } }); fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(commands).toEqual([expect.objectContaining({ type: "terrain.effect.create", name: "Ice" })]));
+    await waitFor(() => expect(screen.queryByLabelText("New layer name")).toBeNull());
+    const effects = Array.from({ length: 32 }, (_, i) => ({ id: `e${i}`, name: `L${i}`, runs: [] }));
+    rerender(<TerrainSetup connection={connection} state={{ ...room(), terrain: { base: [], effects } }} live />);
+    expect((screen.getByRole("button", { name: "Add layer" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("shows Add layer disabled with a reason outside a live room (FR-TAC-03)", () => {
+    const { connection } = fakeConnection();
+    render(<TerrainSetup connection={connection} state={room()} />);
+    const add = screen.getByRole("button", { name: "Add layer" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    expect(add.title).toMatch(/live room/);
+  });
+  it("opens the Guide with the keyboard rows and closes on Escape", () => {
+    const { connection } = fakeConnection();
+    render(<TerrainSetup connection={connection} state={room()} live />);
+    expect(screen.queryByText(/Esc cancels/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Guide" }));
+    expect(screen.getByText(/Esc cancels/)).toBeTruthy();
+    expect(screen.getByText(/Undo each stroke from Activity/)).toBeTruthy();
+    fireEvent.keyDown(screen.getByText(/Esc cancels/), { key: "Escape" });
+    expect(screen.queryByText(/Esc cancels/)).toBeNull();
+  });
   it("paints one rectangle as one command and cancels keyboard previews", async () => {
     const { connection, commands } = fakeConnection();
     render(<TerrainSetup connection={connection} state={room()} live />);

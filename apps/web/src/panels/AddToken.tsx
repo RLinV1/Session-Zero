@@ -9,6 +9,7 @@ import { creatureDraft } from "../pages/creatureDraft";
 import { CreaturePicker } from "../pages/LibraryCreatures";
 import { LibraryPicker } from "../pages/LibraryPicker";
 import { Modal } from "../ui/Modal";
+import { isCroppable, TokenArtCropper } from "../ui/TokenArtCropper";
 import { TokenPreview } from "../ui/TokenPreview";
 import { ConditionPicker } from "./ConditionMarker";
 import { statsWithDefaults } from "./tokenDefaults";
@@ -142,6 +143,7 @@ function AddToken(props: {
   const [name, setName] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [hidden, setHidden] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [size, setSize] = useState("1");
   const [rotation, setRotation] = useState("0");
   const [hp, setHp] = useState("");
@@ -163,6 +165,12 @@ function AddToken(props: {
   const typedStats = { hp: optionalNumber(hp), maxHp: optionalNumber(maxHp), ac: optionalNumber(ac) };
   // What each blank field will become, given the others as typed now (token-stat-defaults).
   const defaults = statsWithDefaults(typedStats);
+
+  /** Token art is framed first (token-art-cropper); other file types upload as they are. */
+  function pickArt(file: File | undefined) {
+    if (file && isCroppable(file)) setCropFile(file);
+    else void onUpload(file);
+  }
 
   async function onUpload(file: File | undefined) {
     if (!file) return;
@@ -255,7 +263,10 @@ function AddToken(props: {
                   className="sr-only"
                   accept="image/png,image/jpeg,image/webp"
                   disabled={uploading}
-                  onChange={(e) => void onUpload(e.target.files?.[0])}
+                  onChange={(e) => {
+                    pickArt(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
                 />
               </label>
               <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>
@@ -287,6 +298,7 @@ function AddToken(props: {
       </form>
       {/* The attack editor is a form of its own, so it can't be nested in this one. */}
       {features.attacks && attackList.editor}
+      {cropFile && <TokenArtCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(f) => { setCropFile(null); void onUpload(f); }} />}
       <Modal open={picking} title="Choose a token image" onClose={() => setPicking(false)}>
         <LibraryPicker
           kind="token"

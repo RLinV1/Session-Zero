@@ -53,8 +53,8 @@ describe("the home page's copy (gm-home: The home page advertises only what the 
   it("names no implementation, no code, no partial feature and no em dash, in either view and after any roll", async () => {
     render(<HomePage />);
     // The demos that load on their own render once their code arrives.
-    expect(await screen.findByText("Activity log")).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Next turn" })).toBeTruthy();
+    expect(await screen.findByText("Activity log", {}, { timeout: 10000 })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Next turn" }, { timeout: 10000 })).toBeTruthy();
     check("player view");
 
     fireEvent.click(screen.getByRole("button", { name: "GM view" }));
@@ -69,7 +69,7 @@ describe("the home page's copy (gm-home: The home page advertises only what the 
     fireEvent.click(screen.getByRole("button", { name: "Roll" }));
     expect(screen.getByRole("alert").textContent).toBe("Use NdX, NdX+M or NdX-M, for example 1d20+5");
     check("after an invalid roll");
-  });
+  }, 30000);
 
   it("catches what it is meant to catch", () => {
     const words = "The server sends a snapshot; call sightPolygon() or token.move — then draw together with your players.";

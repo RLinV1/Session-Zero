@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { accountStore } from "../src/account/accountStore";
 import { GmDashboardPage } from "../src/pages/GmDashboardPage";
@@ -23,10 +23,14 @@ function stubFetch() {
   return calls;
 }
 
+/** The form lives in a dialog behind the page's Create room button. */
+const openCreate = () => fireEvent.click(screen.getByRole("button", { name: "Create room" }));
 const roomName = () => screen.getByLabelText("Room name") as HTMLInputElement;
 const yourName = () => screen.getByLabelText("Your name") as HTMLInputElement;
 
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   accountStore.setState({ status: "signedIn", account: { id: "a1", email: "tony@example.com", displayName: "Tony" } });
 });
 afterEach(() => {
@@ -41,6 +45,7 @@ describe("create-room form starting values (FR-GM-01)", () => {
   it("fills in the account's name, leaves the room name empty, and shows no example text", () => {
     stubFetch();
     render(<GmDashboardPage />);
+    openCreate();
     expect(yourName().value).toBe("Tony");
     expect(roomName().value).toBe("");
     expect(yourName().hasAttribute("placeholder")).toBe(false);
@@ -50,9 +55,10 @@ describe("create-room form starting values (FR-GM-01)", () => {
   it("creates the room with the name the GM typed, without touching the account", async () => {
     const calls = stubFetch();
     render(<GmDashboardPage />);
+    openCreate();
     fireEvent.change(yourName(), { target: { value: "DM Tony" } });
     fireEvent.change(roomName(), { target: { value: "Friday campaign" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create room" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create room" }));
 
     await waitFor(() => expect(calls.some((c) => c.url === "/api/rooms" && c.method === "POST")).toBe(true));
     const created = calls.find((c) => c.url === "/api/rooms" && c.method === "POST");

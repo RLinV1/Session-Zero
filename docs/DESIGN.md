@@ -1,7 +1,9 @@
-# Design Document — Virtual Tabletop
+# Design Document — Session Zero
 
 **Course:** CSE 416 · **Team:** Antonio Cottone, Raymond Lin, Vincent Chen, Christos Psimadas ·
 **Last updated:** 2026-10-19
+
+The name comes from the "session zero" of tabletop RPGs, the meeting before a campaign where the group agrees on what to play and makes characters; the app is where that preparation starts ("Your game starts here.").
 
 Requirements live in [`../README.md`](../README.md) and are referenced by ID (FR-PL-02).
 This document covers architecture, stack, repository, data and identity, and what the
@@ -165,7 +167,7 @@ checkpoint preview) and ephemeral relays alike. A seq a viewer may not see arriv
 | Board renderer | PixiJS v8 | WebGL masks are what keep 100 tokens plus fog at 60 FPS; canvas2d will not. |
 | App shell | React + TypeScript | Where the WCAG 2.2 AA target lives, and agents are strong at React, so UI parallelizes across four people. |
 | Build | Vite | Instant HMR during canvas work, zero-config production build. |
-| Transport | Socket.IO | Rooms map one-to-one onto VTT rooms; reconnection, acks and `volatile.emit` are built in. |
+| Transport | Socket.IO | Rooms map one-to-one onto Session Zero rooms; reconnection, acks and `volatile.emit` are built in. |
 | Server | Node + Express | Sharing the kernel and protocol types with the client removes a whole class of desync bug. |
 | Validation | zod | Express validates nothing on its own; zod guards every trust boundary (FR-GM-15). |
 | Database | PostgreSQL + Prisma | An append-only event table with snapshots is inherently relational, and migrations stop four people fighting over schema drift. |

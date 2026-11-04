@@ -1,9 +1,10 @@
+import { ArrowsClockwise, Plus, Play } from "@phosphor-icons/react";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { MAX_ENCOUNTER_NAME, type EncounterSummary, type RoomState } from "@vtt/shared";
 import { ScenePreparationContext } from "./ScenePreparationContext";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
-import { encounterSummary } from "../pages/LibraryEncounters";
+import { EncounterThumb, encounterSummary, useLibraryMaps } from "../pages/LibraryEncounters";
 import { EncounterPreviewBoard, useEncounterPreview } from "../pages/EncounterPreviewModal";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
@@ -20,17 +21,17 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   const preparing = useContext(ScenePreparationContext)?.preparing ?? false;
   const [templates, setTemplates] = useState<EncounterSummary[] | null>(null);
   const [name, setName] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [confirming, setConfirming] = useState<EncounterSummary | null>(null);
-  /** Where Save writes: "" for a new template, or the id of a template to replace. */
-  const [target, setTarget] = useState("");
   const [confirmingReplace, setConfirmingReplace] = useState<EncounterSummary | null>(null);
+  const maps = useLibraryMaps();
+  const tokenCount = Object.keys(state.tokens).length;
   const roomMapId = state.scene.map?.assetId ?? null;
   /** A template can only be replaced from a room on its own map (the server checks too). */
   const sameMap = (t: EncounterSummary) => t.mapAssetId !== null && t.mapAssetId === roomMapId;
-  const replacing = templates?.find((t) => t.id === target) ?? null;
 
   const refresh = useCallback(() => {
     api.library.encounters.list().then(
@@ -43,16 +44,20 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   }, []);
   useEffect(refresh, [refresh]);
 
+  const closeSave = () => {
+    setSaveOpen(false);
+    setName("");
+  };
+
   const save = async () => {
     if (busy || preparing) return;
-    if (replacing) return setConfirmingReplace(replacing);
     const trimmed = name.trim();
     if (!trimmed) return setError("Give the template a name.");
     setBusy(true);
     try {
       const saved = await api.library.encounters.save({ roomId: state.roomId, name: trimmed });
       setTemplates((all) => [saved, ...(all ?? [])]);
-      setName("");
+      closeSave();
       setError(null);
       setStatus(`Saved encounter template "${saved.name}".`);
     } catch (err) {
@@ -68,7 +73,6 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
     try {
       const saved = await api.library.encounters.replaceFromRoom(template.id, state.roomId);
       setTemplates((all) => [saved, ...(all ?? []).filter((t) => t.id !== saved.id)]);
-      setTarget("");
       setError(null);
       setStatus(`Replaced encounter template "${saved.name}" with this room's board.`);
     } catch (err) {
@@ -93,32 +97,71 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   };
 
   return (
-    <PanelSection id="gm-encounters" title="Encounter templates">
-      <p className="muted">{preparing ? "Apply a template to this private scene." : "Save this room’s map, grid, tokens and fog, then reuse it in any of your rooms."}</p>
-      {!preparing && <form
-        className="row checkpoint-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        {templates && templates.length > 0 && (
-          <label className="checkpoint-name">
-            <span className="sr-only">Save to</span>
-            <select value={target} onChange={(e) => setTarget(e.target.value)} disabled={busy}>
-              <option value="">Save as new</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id} disabled={!sameMap(t)}>
-                  Replace {t.name}{sameMap(t) ? "" : " (different map)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!replacing && (
-          <label className="checkpoint-name">
-            <span className="sr-only">Encounter name</span>
+    <PanelSection
+      id="gm-encounters"
+      title="Encounter templates"
+      actions={!preparing && (
+        <button type="button" className="secondary small encounter-save-btn" aria-label="Save as template" title="Save this board as a template" onClick={() => setSaveOpen(true)}>
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      )}
+    >
+      <p className="muted" title="Saves this room's map, grid, tokens and fog so you can reuse it in any of your rooms.">
+        {preparing ? "Apply a template to this private scene." : "Reuse a prepared board in any room."}
+      </p>
+      {error && !saveOpen && <p role="alert" className="error">{error}</p>}
+      <p role="status" className="sr-only">{status}</p>
+      {templates === null ? (
+        <p className="muted" aria-busy="true">Loading…</p>
+      ) : templates.length === 0 ? (
+        <p className="muted">No templates yet. Use + above to save this board as your first one.</p>
+      ) : (
+        <ul className="plain encounter-list">
+          {templates.map((t) => (
+            <li key={t.id} className="encounter-row">
+              <EncounterThumb map={t.mapAssetId ? maps.get(t.mapAssetId) : undefined} />
+              <span className="encounter-row-text">
+                <strong>{t.name}</strong>
+                <span className="muted">{t.mapName === null ? "map deleted" : encounterSummary(t)}</span>
+              </span>
+              {!preparing && (
+                <button
+                  type="button"
+                  className="secondary small encounter-replace-btn"
+                  disabled={busy || !sameMap(t)}
+                  aria-label={`Replace ${t.name}`}
+                  title={sameMap(t) ? `Replace ${t.name} with this room's board` : "Only available in a room on this template's map"}
+                  onClick={() => setConfirmingReplace(t)}
+                >
+                  <ArrowsClockwise size={16} aria-hidden="true" />
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary small"
+                disabled={busy || t.mapName === null}
+                aria-label={`Apply ${t.name}`}
+                title={`Apply ${t.name}`}
+                onClick={() => setConfirming(t)}
+              >
+                <Play size={16} aria-hidden="true" /> Apply
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Modal open={saveOpen} title="Save encounter template" onClose={closeSave}>
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <label className="stack">
+            <span>Template name</span>
             <input
+              autoFocus
               value={name}
               maxLength={MAX_ENCOUNTER_NAME}
               placeholder="Encounter name"
@@ -126,37 +169,18 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
               disabled={busy}
             />
           </label>
-        )}
-        <button type="submit" className="secondary" disabled={busy}>
-          {replacing ? "Replace" : "Save"}
-        </button>
-      </form>}
-      {error && <p role="alert" className="error">{error}</p>}
-      <p role="status" className="sr-only">{status}</p>
-      {templates === null ? (
-        <p className="muted" aria-busy="true">Loading…</p>
-      ) : templates.length === 0 ? (
-        <p className="muted">No templates yet.</p>
-      ) : (
-        <ul className="plain checkpoint-list">
-          {templates.map((t) => (
-            <li key={t.id} className="checkpoint-row">
-              <span>
-                {t.name} <span className="muted">· {t.mapName === null ? "map deleted" : encounterSummary(t)}</span>
-              </span>
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy || t.mapName === null}
-                aria-label={`Apply ${t.name}`}
-                onClick={() => setConfirming(t)}
-              >
-                Apply
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+          <p className="muted">
+            {roomMapId
+              ? `Saves this room's map, grid, ${tokenCount} token${tokenCount === 1 ? "" : "s"} and fog. To overwrite an existing template, use its Replace button in the list.`
+              : "Add a map from your library to this room first. A template is saved on a map."}
+          </p>
+          {error && <p role="alert" className="error">{error}</p>}
+          <div className="row modal-actions">
+            <button type="button" className="secondary" onClick={closeSave}>Cancel</button>
+            <button type="submit" className="primary" disabled={busy || !roomMapId || !name.trim()}>Save</button>
+          </div>
+        </form>
+      </Modal>
       <Modal open={confirmingReplace !== null} title="Replace encounter template?" onClose={() => setConfirmingReplace(null)}>
         {confirmingReplace && (
           <div className="stack">

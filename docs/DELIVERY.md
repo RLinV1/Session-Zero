@@ -1,4 +1,4 @@
-# Delivery Plan — Virtual Tabletop
+# Delivery Plan — Session Zero
 
 Part of the [design document](DESIGN.md) — see also [`INTERFACE.md`](INTERFACE.md) and
 [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md).

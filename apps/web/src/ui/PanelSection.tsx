@@ -83,7 +83,7 @@ export function PanelSection({ id, title, actions, children }: Props) {
             <span className="section-title">{title}</span>
           </button>
         </h2>
-        {actions}
+        {!collapsed && actions}
       </div>
       <div id={bodyId} className="panel-section-body" hidden={collapsed}>
         {children}

@@ -1,8 +1,10 @@
 import { useId, useRef, useState } from "react";
+import { ArrowCounterClockwise, Eraser, Hand, Keyboard, MapTrifold, Mountains, PaintBrush, PencilSimple, Plus, Prohibit, Question, Rectangle, Stack, Trash } from "@phosphor-icons/react";
 import { cellAt, cellRect, compressTerrain, effectiveTerrain, emptyTerrain, paintTerrain, replaceTerrainLayer, terrainLayer, type CommandInput, type PaintRun, type Point, type RoomState, type TerrainKind, type TerrainRun } from "@vtt/shared";
 import type { EditorConnection } from "../../net/roomConnection";
 import { MapCanvas } from "./MapCanvas";
 import { HudLayout } from "./HudLayout";
+import { PopoverButton } from "../../ui/Popover";
 
 /** The same cell patterns in private preparation and the synchronized live editor. */
 export function TerrainCells({ runs, grid, temporary = false, erase = false }: { runs: TerrainRun[]; grid: RoomState["scene"]["grid"]; temporary?: boolean; erase?: boolean }) {
@@ -20,12 +22,16 @@ export function TerrainCells({ runs, grid, temporary = false, erase = false }: {
   </g>;
 }
 
+const TOOLS = [["brush", "Cell brush", PaintBrush], ["rect", "Rectangle", Rectangle], ["pan", "Pan", Hand]] as const;
+const KINDS = [[null, "Normal / Erase layer", Eraser], ["difficult", "Difficult · ×2", Mountains], ["blocked", "Blocked", Prohibit]] as const;
 type Stroke = { from: { col: number; row: number }; to: { col: number; row: number }; cells: Map<string, TerrainKind>; erase: boolean; context: { boardEpoch: number; revision: number }; layerId: string };
 export function TerrainSetup({ connection, state, live = false }: { connection: EditorConnection; state: RoomState; live?: boolean }) {
   const [mode, setMode] = useState<"brush" | "rect" | "pan">("brush");
   const [kind, setKind] = useState<TerrainKind | null>("difficult");
   const [layerId, setLayerId] = useState("base");
   const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<TerrainRun[]>([]);
@@ -98,17 +104,46 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
       </>}
     </MapCanvas>
     <aside className="map-editor-hud" aria-label="Terrain tools">
-      <fieldset className="stack terrain-controls" disabled={busy}>
-        <legend>{live ? "Live terrain" : "Prepare terrain"}</legend>
-        <p className="muted small-print">{live ? "Completed strokes update the table immediately. Undo each stroke from Activity." : "Only you see these changes until Save or Apply."}</p>
-        <label>Layer<select value={actualLayer} onChange={(e) => { cancel(); setLayerId(e.target.value); }}><option value="base">Base terrain</option>{live && terrain.effects.map((effect) => <option key={effect.id} value={effect.id}>{effect.name}</option>)}</select></label>
-        <div className="row" role="group" aria-label="Terrain selection">{(["brush", "rect", "pan"] as const).map((tool) => <button type="button" key={tool} className="secondary" aria-pressed={mode === tool} onClick={() => { cancel(); setMode(tool); }}>{tool === "brush" ? "Cell brush" : tool === "rect" ? "Rectangle" : "Pan"}</button>)}</div>
-        <div className="stack" role="group" aria-label="Terrain kind">{([null, "difficult", "blocked"] as const).map((value) => <button type="button" className="secondary" key={value ?? "normal"} aria-pressed={kind === value} onClick={() => { cancel(); setKind(value); }}>{value === null ? "Normal / Erase layer" : value === "difficult" ? "Difficult · ×2" : "Blocked"}</button>)}</div>
-        <p className="muted small-print">Arrow keys move the cell cursor. Enter starts a stroke or rectangle; Enter again applies it. Esc cancels. Blocked wins across layers; Difficult doubles once.</p>
+      <div className="terrain-head">
+        <h3>{live ? "Live terrain" : "Prepare terrain"}</h3>
+        <PopoverButton label="Guide" title="Guide" align="right" className="terrain-icon" buttonContent={<Question size={18} aria-hidden />}>
+          <ul className="terrain-guide">
+            <li><PaintBrush aria-hidden /><span>Brush paints cells, Rectangle fills an area, Pan moves the map.</span></li>
+            <li><Prohibit aria-hidden /><span>Blocked wins across layers. Difficult doubles once.</span></li>
+            <li><Keyboard aria-hidden /><span>Arrows move the cursor. Enter starts or applies. Esc cancels.</span></li>
+            <li><ArrowCounterClockwise aria-hidden /><span>{live ? "Undo each stroke from Activity." : "Only you see this until Save or Apply."}</span></li>
+          </ul>
+        </PopoverButton>
+      </div>
+      <fieldset className="terrain-controls" disabled={busy}>
+        <div className="terrain-tools">
+          <div className="terrain-seg" role="group" aria-label="Terrain selection">{TOOLS.map(([tool, label, Icon]) => <button type="button" key={tool} className="terrain-icon" aria-label={label} title={label} aria-pressed={mode === tool} onClick={() => { cancel(); setMode(tool); }}><Icon size={20} aria-hidden /></button>)}</div>
+          <div className="terrain-seg" role="group" aria-label="Terrain kind">{KINDS.map(([value, label, Icon]) => <button type="button" key={value ?? "normal"} className={`terrain-icon terrain-kind-${value ?? "normal"}`} aria-label={label} title={label} aria-pressed={kind === value} onClick={() => { cancel(); setKind(value); }}><Icon size={20} aria-hidden />{value === "difficult" && <sup>×2</sup>}</button>)}</div>
+        </div>
         {preview.length > 0 && <div className="row"><button type="button" onClick={() => void commit()}>Apply preview</button><button type="button" className="secondary" onClick={cancel}>Cancel stroke</button></div>}
-        {live && <><label>New temporary effect<input maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ice, rubble…" /></label><button type="button" disabled={!name.trim() || terrain.effects.length >= 32} onClick={async () => { if (await send({ type: "terrain.effect.create", name: name.trim(), context: context() })) setName(""); }}>Create effect</button>
-          {terrain.effects.map((effect) => <div className="stack terrain-effect" key={effect.id}><label>Effect name<input key={effect.name} defaultValue={effect.name} maxLength={60} onBlur={(e) => { const value = e.target.value.trim(); if (value && value !== effect.name) void send({ type: "terrain.effect.rename", effectId: effect.id, name: value, context: context() }); }} /></label><button type="button" className="secondary" onClick={async () => { if (await send({ type: "terrain.effect.remove", effectId: effect.id, context: context() })) { setLayerId("base"); cancel(); } }}>Remove {effect.name}</button></div>)}
-        </>}
+        <section className="terrain-layers" aria-label="Layers">
+          <header><span>Layers</span><button type="button" className="terrain-icon" aria-label="Add layer" title={!live ? "Extra layers can only be added in a live room. Drafts paint the base terrain only." : terrain.effects.length >= 32 ? "Layer limit reached (32)" : "Add layer"} disabled={!live || terrain.effects.length >= 32} onClick={() => setAdding(true)}><Plus size={18} aria-hidden /></button></header>
+          {adding && live && <input className="terrain-new" autoFocus maxLength={60} aria-label="New layer name" placeholder="Layer name (Ice, rubble…)" value={name}
+            onChange={(e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }}
+            onKeyDown={async (e) => {
+              if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setName(""); setAdding(false); }
+              else if (e.key === "Enter" && name.trim() && terrain.effects.length < 32) { e.preventDefault(); if (await send({ type: "terrain.effect.create", name: name.trim(), context: context() })) { setName(""); setAdding(false); } }
+            }} />}
+          <ul>
+            {live && terrain.effects.map((effect) => <li key={effect.id} className="terrain-layer" aria-current={actualLayer === effect.id}>
+              {renamingId === effect.id
+                ? <><span className="terrain-chip terrain-chip-effect"><Stack size={14} aria-hidden /></span><input className="terrain-rename" autoFocus onFocus={(e) => e.target.select()} aria-label="Layer name" defaultValue={effect.name} maxLength={60}
+                  onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRenamingId(null); } else if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                  onBlur={(e) => { const value = e.target.value.trim(); setRenamingId(null); if (value && value !== effect.name) void send({ type: "terrain.effect.rename", effectId: effect.id, name: value, context: context() }); }} /></>
+                : <button type="button" className="terrain-layer-pick" aria-label={effect.name} title={effect.name} onClick={() => { cancel(); setLayerId(effect.id); }}><span className="terrain-chip terrain-chip-effect"><Stack size={14} aria-hidden /></span><span className="terrain-layer-name">{effect.name}</span></button>}
+              <button type="button" className="terrain-icon" aria-label={`Rename ${effect.name}`} title="Rename" onClick={(e) => { e.stopPropagation(); setRenamingId(effect.id); }}><PencilSimple size={16} aria-hidden /></button>
+              <button type="button" className="terrain-icon" aria-label={`Remove ${effect.name}`} title={`Remove ${effect.name}`} onClick={async (e) => { e.stopPropagation(); if (await send({ type: "terrain.effect.remove", effectId: effect.id, context: context() })) { setLayerId("base"); cancel(); } }}><Trash size={16} aria-hidden /></button>
+            </li>)}
+            <li className="terrain-layer" aria-current={actualLayer === "base"}>
+              <button type="button" className="terrain-layer-pick" aria-label="Base terrain" title="Base terrain" aria-pressed={actualLayer === "base"} onClick={() => { cancel(); setLayerId("base"); }}><span className="terrain-chip terrain-chip-base"><MapTrifold size={14} aria-hidden /></span><span className="terrain-layer-name">Base terrain</span></button>
+            </li>
+          </ul>
+        </section>
       </fieldset>
       {busy && <p role="status">Saving terrain…</p>}
       {error && <p role="alert" className="error">{error}</p>}

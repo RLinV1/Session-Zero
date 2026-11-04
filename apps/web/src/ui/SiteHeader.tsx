@@ -4,10 +4,10 @@ import { Link } from "../Link";
 import { useGroundTheme, type ThemeChoice } from "../theme";
 
 /**
- * The product's name, in one place (design-language: "One header"). The group has not picked
- * the name yet; when it does, this line and public/brand-mark.svg are all that change.
+ * The product's name, in one place (design-language: "One header"). To rename the product,
+ * this line, index.html and public/brand-mark.svg are all that change.
  */
-export const PRODUCT_NAME = "Virtual Tabletop";
+export const PRODUCT_NAME = "Session Zero";
 
 /** The mark and the name, linking home. */
 export function Brand() {
