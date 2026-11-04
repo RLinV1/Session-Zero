@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { ClockCounterClockwise, DotsThree, Rewind, GearSix } from "@phosphor-icons/react";
+import { ClockCounterClockwise, DotsThree, Rewind, GearSix, ShareNetwork } from "@phosphor-icons/react";
 import { SettingsMenu, type SettingsRoom } from "./SettingsMenu";
 import { GuideIcon } from "./GuideTour";
 import { PopoverButton } from "./Popover";
@@ -8,7 +8,7 @@ import { PopoverButton } from "./Popover";
  * The room bar's "More" menu: the activity log, replay and the guide, folded into one button so
  * the bar stays short. Each item closes the menu, then opens its own view.
  */
-export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRef, room }: {
+export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare, buttonRef, room }: {
   /** Lets the GM change table settings from the Settings dialog; omitted while previewing. */
   room?: SettingsRoom;
   /** GM only; omitted for everyone else. */
@@ -17,6 +17,8 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRe
   onReplay?: () => void;
   replaying: boolean;
   onGuide: () => void;
+  /** Phone only: Share folds into this menu instead of a button of its own. */
+  onShare?: () => void;
   /** The menu button, so the guide can hand focus back to it. */
   buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
@@ -31,12 +33,17 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRe
       align="right"
       tourId="guide"
       buttonRef={menuButtonRef}
-      buttonContent={<><DotsThree size={16} aria-hidden="true" /> More</>}
+      buttonContent={<><DotsThree size={16} aria-hidden="true" /> <span className="menu-label">More</span></>}
     >
       {(close) => {
         const item = (action: () => void) => () => { close(); action(); };
         return (
           <div className="room-menu">
+            {onShare && (
+              <button type="button" className="tool-button" onClick={item(onShare)}>
+                <ShareNetwork size={16} aria-hidden="true" /> Share
+              </button>
+            )}
             <button type="button" className="tool-button" onClick={item(() => setSettingsOpen(true))}>
               <GearSix size={16} aria-hidden="true" /> Settings
             </button>

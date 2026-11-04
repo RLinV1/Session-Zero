@@ -95,9 +95,12 @@ export function PopoverButton({
     };
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("mousedown", outside, true);
+    // Focus moving elsewhere (a modal opening, Tab leaving) closes it too, so it never lingers behind a dialog.
+    document.addEventListener("focusin", outside, true);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("mousedown", outside, true);
+      document.removeEventListener("focusin", outside, true);
     };
   }, [open]);
 

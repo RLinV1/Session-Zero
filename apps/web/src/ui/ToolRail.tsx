@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AreaColor, MAX_LINE_WIDTH_CELLS } from "@vtt/shared";
 import { isBoolean, usePersistentState } from "./usePersistentState";
-import { CaretDoubleLeft, CaretDoubleRight, Circle, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
+import { usePhone } from "./usePhone";
+import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
 import { AREA_SHADES, AREA_SIZES, DRAW_COLORS, type AreaShape, type BoardTool, type DrawShape, type FogMode } from "../board/tools";
 
 /** The options each tool remembers while another tool is active. */
@@ -95,6 +96,14 @@ export function ToolRail({
   onToggleLineOfSight?: () => void;
 }) {
   const [collapsed, setCollapsed] = usePersistentState("vtt.ui.toolRail", false, isBoolean);
+  const phone = usePhone();
+  // Phone: the other tools sit in a flyout above the rail until one is picked.
+  const [flyout, setFlyout] = useState(false);
+  const currentRef = useRef<HTMLButtonElement>(null);
+  // A tool picked on the phone must not stay active once the desktop rail is hidden.
+  useEffect(() => {
+    if (!phone && collapsed && active !== "select") onSelect("select");
+  }, [phone, collapsed, active, onSelect]);
   const toggle = (
     <button
       type="button"
@@ -111,50 +120,8 @@ export function ToolRail({
       {collapsed ? <CaretDoubleRight size={14} aria-hidden="true" /> : <CaretDoubleLeft size={14} aria-hidden="true" />}
     </button>
   );
-  // Hidden, the rail is just its toggle; the active tool keeps working on the board.
-  // Untagged while hidden, so the guide skips its Board tools step rather than spotlight the toggle.
-  if (collapsed) return <div className="tool-rail-wrap"><div className="tool-rail">{toggle}</div></div>;
-  return (
-    <div className="tool-rail-wrap" data-tour="tools">
-      <div className="tool-rail" role="toolbar" aria-label="Board tools" aria-orientation="vertical">
-        {toggle}
-        {TOOLS.filter((t) => (isGm || !t.gmOnly) && (!selectOnly || t.kind === "select")).map((t) => (
-          <button
-            key={t.kind}
-            type="button"
-            className="tool-button rail-button labelled"
-            aria-pressed={active === t.kind}
-            title={t.label}
-            onClick={() => onSelect(t.kind)}
-          >
-            {t.icon}
-            <span className="rail-label">{t.label}</span>
-          </button>
-        ))}
-        {isGm && !selectOnly && onToggleLineOfSight && (
-          <button
-            type="button"
-            className="tool-button rail-button labelled"
-            aria-pressed={!!lineOfSight}
-            aria-label="Line of sight"
-            title={`Line of sight: ${lineOfSight ? "on" : "off"}`}
-            onClick={onToggleLineOfSight}
-          >
-            <Lightbulb size={18} aria-hidden="true" />
-            <span className="rail-label">Sight</span>
-          </button>
-        )}
-        {!selectOnly && (
-          <>
-            <span className="rail-divider" aria-hidden="true" />
-            <button type="button" className="tool-button rail-button labelled" aria-label="Clear all my marks" title="Clear all my marks" onClick={onClear}>
-              <Trash size={18} aria-hidden="true" />
-              <span className="rail-label">Clear</span>
-            </button>
-          </>
-        )}
-      </div>
-
+  const extras = (
+    <>
       {active === "measure" && movementControls}
 
       {active === "draw" && (
@@ -243,6 +210,92 @@ export function ToolRail({
           />
         </div>
       )}
+    </>
+  );
+  const visibleTools = TOOLS.filter((t) => (isGm || !t.gmOnly) && (!selectOnly || t.kind === "select"));
+  if (phone) {
+    const current = TOOLS.find((t) => t.kind === active) ?? TOOLS[0]!;
+    const pick = (run: () => void) => () => { setFlyout(false); run(); currentRef.current?.focus(); };
+    return (
+      <div className="tool-rail-wrap" data-tour="tools">
+        <div className="tool-rail" role="toolbar" aria-label="Board tools">
+          {selectOnly ? (
+            <button type="button" className="tool-button rail-button" aria-pressed="false" aria-label={`${current.label} tool`} title={current.label}>
+              {current.icon}
+            </button>
+          ) : (
+            <button ref={currentRef} type="button" className="tool-button rail-button rail-current" aria-expanded={flyout} aria-haspopup="true" aria-label={`Board tools, ${current.label} selected`} title={`Board tools (${current.label})`} onClick={() => setFlyout((o) => !o)}>
+              {current.icon}
+              <CaretUp size={9} weight="bold" className="rail-caret" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+        {flyout && (
+          <div className="tool-flyout" role="group" aria-label="Board tools">
+            {visibleTools.map((t) => (
+              <button key={t.kind} type="button" className="tool-button rail-button" aria-pressed={active === t.kind} aria-label={t.label} title={t.label} onClick={pick(() => onSelect(t.kind))}>
+                {t.icon}
+              </button>
+            ))}
+            {isGm && onToggleLineOfSight && (
+              <button type="button" className="tool-button rail-button" aria-pressed={!!lineOfSight} aria-label="Line of sight" title={`Line of sight: ${lineOfSight ? "on" : "off"}`} onClick={pick(onToggleLineOfSight)}>
+                <Lightbulb size={18} aria-hidden="true" />
+              </button>
+            )}
+            <button type="button" className="tool-button rail-button" aria-label="Clear all my marks" title="Clear all my marks" onClick={pick(onClear)}>
+              <Trash size={18} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        {extras}
+      </div>
+    );
+  }
+  // Hidden, the rail is just its toggle; the active tool keeps working on the board.
+  // Untagged while hidden, so the guide skips its Board tools step rather than spotlight the toggle.
+  if (collapsed) return <div className="tool-rail-wrap"><div className="tool-rail">{toggle}</div></div>;
+  return (
+    <div className="tool-rail-wrap" data-tour="tools">
+      <div className="tool-rail" role="toolbar" aria-label="Board tools" aria-orientation="vertical">
+        {toggle}
+        {TOOLS.filter((t) => (isGm || !t.gmOnly) && (!selectOnly || t.kind === "select")).map((t) => (
+          <button
+            key={t.kind}
+            type="button"
+            className="tool-button rail-button labelled"
+            aria-pressed={active === t.kind}
+            title={t.label}
+            onClick={() => onSelect(t.kind)}
+          >
+            {t.icon}
+            <span className="rail-label">{t.label}</span>
+          </button>
+        ))}
+        {isGm && !selectOnly && onToggleLineOfSight && (
+          <button
+            type="button"
+            className="tool-button rail-button labelled"
+            aria-pressed={!!lineOfSight}
+            aria-label="Line of sight"
+            title={`Line of sight: ${lineOfSight ? "on" : "off"}`}
+            onClick={onToggleLineOfSight}
+          >
+            <Lightbulb size={18} aria-hidden="true" />
+            <span className="rail-label">Sight</span>
+          </button>
+        )}
+        {!selectOnly && (
+          <>
+            <span className="rail-divider" aria-hidden="true" />
+            <button type="button" className="tool-button rail-button labelled" aria-label="Clear all my marks" title="Clear all my marks" onClick={onClear}>
+              <Trash size={18} aria-hidden="true" />
+              <span className="rail-label">Clear</span>
+            </button>
+          </>
+        )}
+      </div>
+
+      {extras}
     </div>
   );
 }

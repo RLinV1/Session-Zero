@@ -1135,14 +1135,17 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   .room,
   .room.sidebar-collapsed {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 46dvh 1fr;
+    grid-template-rows: auto 55vh 1fr;
+    grid-template-rows: auto 55svh 1fr;
     height: auto; min-height: 100dvh;
   }
+  /* The panel body's 5rem bottom padding lets the last content scroll clear of the chat button. */
+  .chat-widget { right: var(--space-3); bottom: var(--space-3); }
   .panel { border-left: none; border-top: 1px solid var(--border); }
   .room > .panel { grid-row: 3; }
   .room-topbar { padding: var(--space-1) var(--space-2); }
   /* The page scrolls on a phone, not a nested panel. */
-  .panel-body { width: auto; height: auto; overflow: visible; padding: 0.6rem 0.75rem; gap: var(--space-2); }
+  .panel-body { width: auto; height: auto; overflow: visible; padding: 0.6rem 0.75rem 5rem; gap: var(--space-2); }
 
   /* The header was eating the panel before the tabs came into view. One line each. */
   .panel-header { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; padding-bottom: 0; }
@@ -1380,8 +1383,10 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 
 .library-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 .library-toolbar input[type="search"] { flex: 1; min-width: 10rem; }
-.tabs { display: flex; border: 1px solid var(--border); border-radius: var(--radius-control); overflow: hidden; }
-.tab { background: transparent; border: none; border-radius: 0; color: var(--muted); font-weight: 600; }
+/* Scrolls inside itself when the tabs outgrow the width (a phone), instead of clipping the last one. */
+.tabs { display: flex; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { background: transparent; border: none; border-radius: 0; color: var(--muted); font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
 
 .upload-button {
   display: inline-flex; align-items: center; justify-content: center; flex-direction: row;
@@ -1564,6 +1569,14 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+@media (max-width: 720px) {
+  dialog.modal, .modal-body { max-height: calc(100vh - 1.5rem); max-height: calc(100dvh - 1.5rem); }
+  /* The header (with its close button) stays put while the body scrolls under it. */
+  .modal-head {
+    position: sticky; top: 0; z-index: 2; background: var(--raised);
+    margin-top: calc(-1 * var(--space-3)); padding-block: var(--space-3) var(--space-2);
+  }
+}
 .modal-title { margin: 0; font-family: var(--font-ui); font-size: 1.1rem; font-weight: 700; letter-spacing: 0; color: var(--text); }
 .modal-close {
   display: grid; place-items: center; width: 2rem; height: 2rem; min-height: 0; padding: 0;
@@ -2350,7 +2363,7 @@ button.link.leave-table:hover { color: var(--danger); text-decoration-color: var
 .scene-activation-popup button { flex: none; }
 dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: var(--panel); border-color: var(--rule); }
 .scene-setup .modal-body { gap: var(--space-2); padding: var(--space-4); }
-.scene-setup .modal-head { padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
+.scene-setup .modal-head { background: var(--panel); padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
 .scene-setup .modal-body > p { margin: 0; font-size: var(--fs-sm); }
 .scene-setup .stack { gap: var(--space-2); }
 .scene-setup h3 { margin: 0; font-size: var(--fs-sm); }
@@ -3605,3 +3618,141 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .share-qr { padding: var(--space-3); background: #fff; border-radius: var(--radius-surface); border: 1px solid var(--border); line-height: 0; }
 .share-qr svg { display: block; max-width: 100%; height: auto; }
 .share-qr-body .modal-actions { align-self: stretch; justify-content: flex-end; }
+
+/* ---------- Room on a phone ----------
+   One row of 44px controls on an 8px rhythm, one primary control per region, the rest behind a
+   menu or a fold. Last in the file so it wins ties with the desktop rules above. */
+@media (max-width: 720px) {
+  /* Top bar: home, title, scene, people, menu. Share, tabs and board options live elsewhere. */
+  /* Above the chat button, so the More menu opens over it. */
+  .room-topbar { position: relative; z-index: 60; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); }
+  .room-topbar .topbar-start, .room-topbar .topbar-start:has(.scene-switcher) { flex: 1 1 auto; min-width: 0; gap: var(--space-2); }
+  .room-topbar .topbar-center { flex: none; }
+  .room-topbar .topbar-end { flex: none; flex-wrap: nowrap; gap: var(--space-2); }
+  .room-topbar .tool-button, .room-topbar .scene-trigger { min-height: 44px; }
+  .room-topbar .tool-button { min-width: 44px; justify-content: center; padding: 0 var(--space-2); }
+  .room-topbar .room-title { flex: 1 1 0; min-width: 2.5rem; }
+  .room-topbar .scene-switcher { flex: 0 1 auto; min-width: 0; }
+  .room-topbar .scene-trigger { max-width: 8.5rem; }
+  .room-topbar .scene-pill, .room-topbar .menu-label { display: none; }
+  .room-topbar .share-group { display: contents; }
+  .room-menu .tool-button { min-height: 44px; }
+
+  /* Board options: one button over the board's top-left; its popover holds Paint terrain, Fit, Show. */
+  /* Over the empty-board card, so an open menu is never half hidden by it. */
+  .board-toolbar { top: var(--space-2); left: var(--space-2); z-index: 6; }
+  .board-menu-button { width: 44px; height: 44px; min-height: 44px; justify-content: center; padding: 0; }
+  .board-filters-inline { display: flex; flex-direction: column; }
+  .board-filters-inline .board-filters-row { min-height: 44px; padding-inline: var(--space-2); }
+
+  /* Tool rail: the active tool and one expander along the board's bottom edge; the rest open above. */
+  .tool-rail-wrap {
+    left: var(--space-2); right: auto; top: auto; bottom: var(--space-2);
+    flex-direction: column-reverse; align-items: flex-start; gap: var(--space-2);
+    max-width: calc(100% - 2 * var(--space-2)); max-height: none; z-index: 6;
+  }
+  .tool-rail { flex-direction: row; align-self: auto; overflow: visible; gap: var(--space-1); padding: 0; background: none; border: 0; }
+  .tool-button.rail-button, .tool-button.rail-button.labelled { width: 44px; height: 44px; min-height: 44px; padding: 0; }
+  .tool-flyout, .tool-options {
+    padding: var(--space-1); max-width: 100%;
+    background: rgba(18, 20, 23, 0.85); border: 1px solid var(--border); border-radius: var(--radius-surface);
+  }
+  .rail-current { position: relative; }
+  .rail-current .rail-caret { position: absolute; top: 3px; right: 3px; color: var(--muted); }
+  .rail-current[aria-expanded="true"] { border-color: var(--accent); }
+  .tool-flyout { display: grid; grid-template-columns: repeat(4, 44px); gap: var(--space-1); }
+  .tool-options { padding: var(--space-2); }
+  .tool-swatches { flex-wrap: wrap; }
+
+  /* Status: a dot and one line. The words stay for screen readers. */
+  .panel-header { flex-wrap: nowrap; align-items: center; gap: var(--space-2); }
+  .panel-header .status { flex: none; font-size: 0; line-height: 1; }
+  .panel-header .status::before { font-size: var(--fs-sm); }
+  .panel-header .whoami { width: auto; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* The chat button rests on the board's top-right corner, so it never covers the panel below. */
+  .room { position: relative; }
+  .chat-widget {
+    position: absolute; grid-column: 1; grid-row: 2; align-self: start; justify-self: end; margin: var(--space-2);
+    left: auto !important; top: auto !important; right: auto !important; bottom: auto !important;
+    align-items: flex-end; flex-direction: column-reverse;
+  }
+  .chat-popup { max-height: 60svh; }
+  .panel-body { padding-bottom: var(--space-4); }
+  .chat-fab { width: 44px; height: 44px; }
+
+  /* Library > Animations: New animation stays on one line; the built-in picker takes the rest. */
+  .row:has(> .start-from-builtin) > .primary { flex: none; white-space: nowrap; }
+  .start-from-builtin { flex: 1 1 0; min-width: 0; }
+
+  /* Map editor: one 44px header row (steps scroll sideways; the title stays for screen readers).
+     While there are unsaved edits the row wraps so Discard and Save changes stay in reach. */
+  .map-editor .modal-head:has(> .map-editor-steps) { gap: var(--space-2); }
+  .map-editor .modal-head:has(> .map-editor-steps) .modal-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .map-editor-steps { min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .map-editor-steps:has(.map-editor-unsaved) { flex-wrap: wrap; overflow: visible; }
+  .map-editor-step { flex: none; padding: 0 var(--space-3); white-space: nowrap; }
+  .map-editor-unsaved { margin-left: 0; }
+  .map-editor-unsaved .map-editor-draft { display: none; }
+  .animation-editor-tabs .map-editor-step { flex: 1 1 0; padding-inline: var(--space-1); font-size: var(--fs-sm); }
+
+  /* Site header links and the account forms' way back: 44px, same size as the text around them. */
+  .site-header .nav-link, .site-header .nav-cta { min-height: 44px; display: inline-flex; align-items: center; }
+  .entry form > a { font-size: var(--fs-sm); display: inline-flex; align-items: center; min-height: 44px; }
+
+  /* Library pickers: names wrap to two lines instead of cutting off. */
+  .picker-grid { grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr)); max-height: none; overflow: visible; }
+  .picker-item { justify-content: flex-start; }
+  .picker-item span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.25; }
+
+  /* Animation editor: the whole form scrolls in the dialog, not a small box inside it. */
+  .animation-editor-modal .modal-body { overflow-y: auto; }
+  .animation-editor-workspace { flex: none; display: flex; flex-direction: column; }
+  .animation-editor-canvas { flex: none; height: 16rem; }
+  .animation-editor-controls { overflow: visible; }
+
+  @media (orientation: portrait) {
+    .tabbar .tab { display: flex; align-items: center; justify-content: center; gap: var(--space-1); flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 var(--space-1); white-space: nowrap; }
+  }
+}
+
+/* ==========================================================================
+   Home page on a phone: the room's clean phone UI (44px controls, one row, nothing wrapping)
+   and fog that fits its band. Phone widths only; desktop is untouched.
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* Fog: the light theme's left-edge fade (a later, more specific rule) beat the phone's bottom
+     fade, washing the map's left side white. The band was also shorter than a wisp, so each wisp
+     was cut flat top and bottom and read as a smudge; size the wisps to fit the band. */
+  :root[data-theme="light"] .hero-art::after { background: linear-gradient(0deg, var(--bg) 0%, transparent 28%); }
+  .fog-divider { height: 9rem; margin-block: -3rem; }
+  .fog-wisp { left: -30%; width: 120%; }
+  .fog-wisp + .fog-wisp { left: 30%; }
+
+  /* Hero: the two actions share one row at one height. */
+  .hero-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .hero-buttons .cta, .hero-buttons .ui-button { min-height: 2.75rem; padding-inline: var(--space-3); justify-content: center; }
+
+  /* Controls in the demos: 44px, as in the room. */
+  .home-page .ui-button, .home-page .cta, .home-page .secondary.small, .home-page .condition-toggle { min-height: 2.75rem; }
+  .home-page .attack-pick select, .home-page .dice-demo-form input { min-height: 2.75rem; }
+  .home-page .icon-button { min-width: 2.75rem; min-height: 2.75rem; }
+  .dice-demo-form { flex-wrap: nowrap; }
+  .dice-demo-form label { flex: 1 1 auto; min-width: 0; }
+  .players-join { align-self: stretch; }
+  .closing-copy .cta { align-self: stretch; justify-content: center; }
+
+  /* One row: the five conditions scroll sideways instead of wrapping into a block of buttons. */
+  .condition-list { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--space-4)); padding-inline: var(--space-4); }
+  .condition-list::-webkit-scrollbar { display: none; }
+  .condition-toggle { flex: none; }
+  .animation-preview-toolbar { flex-wrap: nowrap; }
+  .animation-preview-toolbar select { flex: 1; min-width: 0; }
+
+  /* Same vertical rhythm for every section, and a library strip that starts at the page edge. */
+  .home-section { padding-block: 2.5rem; }
+  .section-copy { margin-bottom: var(--space-5); }
+  .play-grid { margin-top: 2rem; gap: var(--space-3); }
+  .prepare-step + .prepare-step { margin-top: 2rem; }
+  .phone-frame { width: min(15rem, 64vw); }
+}

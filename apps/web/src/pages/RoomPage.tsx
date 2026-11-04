@@ -257,6 +257,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   }, [roomId, roomName]);
   const boardRef = useRef<BoardHandle>(null);
   const compact = useCompactLayout();
+  // On a phone Share lives in the More menu and opens its dialog from there.
+  const [shareOpen, setShareOpen] = useState(false);
   const focusToken = useCallback((tokenId: string) => boardRef.current?.focusToken(tokenId), []);
   // Who attacks whom (attack-targeting): chosen in the Play tab's Attack section or on the board.
   const [attackPick, setAttackPick] = useState<AttackPick>({ attackerId: null, targetId: null });
@@ -673,12 +675,13 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             replaying={replaying}
             // The sidebar's steps need it open.
             onGuide={() => openSidebar(() => setGuideOpen(true))}
+            onShare={compact && you.role === "gm" && !readOnly ? () => setShareOpen(true) : undefined}
           />}
           {features.tableChrome && you.role === "gm" && !readOnly && (
             <ActivityLog open={logOpen} onClose={() => setLogOpen(false)} roomId={state.roomId} token={token} seq={seq} state={state} connection={connection} />
           )}
           {/* Last, in the top-right corner: visible with the sidebar shown or hidden. */}
-          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} />}
+          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
         </div>
       </header>
       {/* Same element, same position in both states: collapsing must never remount the

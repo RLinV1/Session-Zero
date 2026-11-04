@@ -1,5 +1,9 @@
 import { createContext, useContext, useId, useRef, type ReactNode } from "react";
 import { isBooleanRecord, usePersistentState } from "./usePersistentState";
+import { usePhone } from "./usePhone";
+
+/** On a phone the others start folded; the one each tab is mostly used for stays open (until the person chooses). */
+const PHONE_OPEN = new Set(["initiative", "damage-call", "tokens", "dice", "scenes"]);
 
 /**
  * Collapse state for every side-panel section, one record per browser (room-sidebar-layout).
@@ -28,11 +32,13 @@ const SectionCollapseContext = createContext<SectionCollapse>({
 export function SectionCollapseProvider({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = usePersistentState<Record<string, boolean>>("vtt.ui.sections", {}, isBooleanRecord);
   const toggled = useRef(new Set<string>());
+  const phone = usePhone();
+  const defaultCollapsed = (id: string) => phone && !PHONE_OPEN.has(id);
   const value: SectionCollapse = {
-    isCollapsed: (id) => collapsed[id] === true,
+    isCollapsed: (id) => (id in collapsed ? collapsed[id] === true : defaultCollapsed(id)),
     toggle: (id) => {
       toggled.current.add(id);
-      setCollapsed((c) => ({ ...c, [id]: !c[id] }));
+      setCollapsed((c) => ({ ...c, [id]: !(id in c ? c[id] === true : defaultCollapsed(id)) }));
     },
     setCollapsed: (id, next) => {
       toggled.current.delete(id);

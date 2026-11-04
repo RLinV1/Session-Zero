@@ -2,7 +2,9 @@ import { TerrainSetup } from "../pages/mapEditor/TerrainSetup";
 import { Modal } from "../ui/Modal";
 import { MovementControls } from "./MovementControls";
 import { defaultMovementSettings, movementReadout, type MovementSettings } from "./movementRuler";
-import { CornersOut, Eye } from "@phosphor-icons/react";
+import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phosphor-icons/react";
+import { PopoverButton } from "../ui/Popover";
+import { usePhone } from "../ui/usePhone";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
@@ -751,6 +753,26 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     },
   }), []);
 
+  const phone = usePhone();
+  const canPaint = you.role === "gm" && !readOnly && !selectOnly;
+  const filters = (inline: boolean) => (
+    <BoardFilters
+      inline={inline}
+      value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals, terrain: showTerrain }}
+      available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: true }}
+      sight={gmCanSee && losOn ? {
+        checked: tokenView,
+        onChange: (on) => { setEyeStarted(false); setTokenView(on); setViewedIds([]); },
+      } : undefined}
+      onChange={(next) => {
+        setGmFog(next.fog ? "tint" : "off");
+        setShowWalls(next.walls);
+        setShowPortals(next.portals);
+        setShowTerrain(next.terrain);
+      }}
+    />
+  );
+
   return (
     <div className="board" data-tour="board">
       <div
@@ -769,25 +791,37 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {drops.length > 0 && <DroppedDice drops={drops} subscribe={followView} onDone={dropDone} />}
       <div className="board-toolbar">
         {toolbar}
-        {you.role === "gm" && !readOnly && !selectOnly && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>Paint terrain</button>}
-        <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title="Fit the map to the screen">
-          <CornersOut size={16} aria-hidden="true" />
-          Fit
-        </button>
-        <BoardFilters
-            value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals, terrain: showTerrain }}
-            available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: true }}
-            sight={gmCanSee && losOn ? {
-              checked: tokenView,
-              onChange: (on) => { setEyeStarted(false); setTokenView(on); setViewedIds([]); },
-            } : undefined}
-            onChange={(next) => {
-              setGmFog(next.fog ? "tint" : "off");
-              setShowWalls(next.walls);
-              setShowPortals(next.portals);
-              setShowTerrain(next.terrain);
-            }}
-          />
+        {phone ? (
+          <>
+          {/* Two 44px buttons on a phone: board options (Paint terrain, Fit) and, separately, the view filter. */}
+          <PopoverButton label="Board options" title="Board options" className="tool-button board-menu-button" buttonContent={<SlidersHorizontal size={18} aria-hidden="true" />}>
+            {(close) => (
+              <div className="room-menu">
+                {canPaint && (
+                  <button type="button" className="tool-button" onClick={() => { close(); if (state.scene.map) setTerrainOpen(true); else setNoMapNotice(true); }}>
+                    <PaintBrush size={16} aria-hidden="true" /> Paint terrain
+                  </button>
+                )}
+                <button type="button" className="tool-button" data-tour="fit" onClick={() => { close(); viewRef.current?.resetView(); }}>
+                  <CornersOut size={16} aria-hidden="true" /> Fit map to screen
+                </button>
+              </div>
+            )}
+          </PopoverButton>
+          <PopoverButton label="View filters" title="View filters" placement="fixed" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
+            <div className="room-menu">{filters(true)}</div>
+          </PopoverButton>
+          </>
+        ) : (
+          <>
+            {canPaint && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>Paint terrain</button>}
+            <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title="Fit the map to the screen">
+              <CornersOut size={16} aria-hidden="true" />
+              Fit
+            </button>
+            {filters(false)}
+          </>
+        )}
       </div>
       {tokenView && gmCanSee && viewing.length === 0 && (
         <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />No tokens on the map to see through</p>
