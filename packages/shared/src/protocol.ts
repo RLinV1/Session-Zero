@@ -367,6 +367,8 @@ export interface EncounterSummary {
   mapName: string | null;
   /** The library map's id, or null when that map has since been deleted. */
   mapAssetId: string | null;
+  /** The template's grid, so the apply confirmation can tell whether the room's matches (ADR 0050). */
+  grid?: GridSpec;
   tokenCount: number;
   fogCount: number;
   createdAt: string;

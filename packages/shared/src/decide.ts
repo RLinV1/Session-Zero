@@ -11,7 +11,7 @@ import { MIN_HP, type ConditionId } from "./conditions";
 import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
 import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
-import { encounterTable, type ResolvedEncounter } from "./encounters";
+import { encounterTable, sameMapAndGrid, type ResolvedEncounter } from "./encounters";
 import { footprintCrossesWall, isSnapped, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
 import { canRenderGrid } from "./gridRenderLimit";
 import { adjustMapTokens } from "./mapTokenAdjustment";
@@ -1222,14 +1222,29 @@ export function decide(
       // A template that is another account's reads exactly like one that does not exist.
       const encounter = ctx.encounterTemplate?.(command.templateId) ?? null;
       if (!encounter) return reject("invalid", "That encounter template isn't available.");
-      return accept({
-        type: "EncounterApplied",
-        templateId: encounter.id,
-        name: encounter.name,
-        // A template saved in another game's room loads without the features this room has off (KAN-63).
-        applied: tableForPreset(encounterTable(encounter, ctx.newId), presetOf(state)),
-        previous: tableOf(state),
-      });
+      if (command.keepMapSetup && !sameMapAndGrid(state.scene, encounter.scene)) {
+        return reject("invalid", "Keeping this map's setup needs the room to be on the template's map and grid.");
+      }
+      // A template saved in another game's room loads without the features this room has off (KAN-63).
+      const table = tableForPreset(encounterTable(encounter, ctx.newId), presetOf(state));
+      const { lineOfSight, isometric, sightRange } = state.scene;
+      const applied: TableState = command.keepMapSetup
+        ? {
+            ...table,
+            walls: state.walls,
+            fog: state.fog,
+            scene: {
+              ...table.scene,
+              ...(lineOfSight !== undefined && { lineOfSight }),
+              ...(isometric !== undefined && { isometric }),
+              ...(sightRange !== undefined && { sightRange }),
+            },
+            ...(state.terrain ? { terrain: state.terrain } : {}),
+          }
+        : table;
+      // keepMapSetup with no room terrain must not inherit the template's.
+      if (command.keepMapSetup && !state.terrain) delete applied.terrain;
+      return accept({ type: "EncounterApplied", templateId: encounter.id, name: encounter.name, applied, previous: tableOf(state) });
     }
 
     case "checkpoint.restore": {

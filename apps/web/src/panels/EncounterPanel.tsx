@@ -1,6 +1,6 @@
 import { ArrowsClockwise, Plus, Play } from "@phosphor-icons/react";
 import { useCallback, useContext, useEffect, useState } from "react";
-import { MAX_ENCOUNTER_NAME, type EncounterSummary, type RoomState } from "@vtt/shared";
+import { MAX_ENCOUNTER_NAME, gridGeometryChanged, type EncounterSummary, type RoomState } from "@vtt/shared";
 import { ScenePreparationContext } from "./ScenePreparationContext";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
@@ -26,12 +26,16 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [confirming, setConfirming] = useState<EncounterSummary | null>(null);
+  const [keepSetup, setKeepSetup] = useState(false);
   const [confirmingReplace, setConfirmingReplace] = useState<EncounterSummary | null>(null);
   const maps = useLibraryMaps();
   const tokenCount = Object.keys(state.tokens).length;
   const roomMapId = state.scene.map?.assetId ?? null;
   /** A template can only be replaced from a room on its own map (the server checks too). */
   const sameMap = (t: EncounterSummary) => t.mapAssetId !== null && t.mapAssetId === roomMapId;
+
+  /** The keep-setup option is offered only on the template's own map and grid (a hint; the server checks, ADR 0050). */
+  const canKeepSetup = (t: EncounterSummary) => sameMap(t) && t.grid !== undefined && !gridGeometryChanged(state.scene.grid, t.grid);
 
   const refresh = useCallback(() => {
     api.library.encounters.list().then(
@@ -87,7 +91,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
     if (busy) return;
     setBusy(true);
     try {
-      const result = await connection.command({ type: "encounter.apply", templateId: template.id });
+      const result = await connection.command({ type: "encounter.apply", templateId: template.id, ...(keepSetup && canKeepSetup(template) && { keepMapSetup: true }) });
       setError(result.ok ? null : result.message);
       if (result.ok) setStatus(`Applied "${template.name}"${preparing ? " to the private scene." : ". Undo it from the activity log if that was wrong."}`);
     } finally {
@@ -142,7 +146,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
                 disabled={busy || t.mapName === null}
                 aria-label={`Apply ${t.name}`}
                 title={`Apply ${t.name}`}
-                onClick={() => setConfirming(t)}
+                onClick={() => { setKeepSetup(false); setConfirming(t); }}
               >
                 <Play size={16} aria-hidden="true" /> Apply
               </button>
@@ -206,6 +210,12 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
             <p>
               {preparing ? <>Replace this private scene with <strong>{confirming.name}</strong>? Players stay on the live scene.</> : <>Replace this room’s board with <strong>{confirming.name}</strong>? The map, grid, tokens and fog are swapped, and a running encounter ends. Chat, dice rolls and players stay. You can undo this from the activity log.</>}
             </p>
+            {canKeepSetup(confirming) && (
+              <label className="checkbox">
+                <input type="checkbox" checked={keepSetup} disabled={busy} onChange={(e) => setKeepSetup(e.target.checked)} />
+                Keep this map's walls, fog, terrain and lighting
+              </label>
+            )}
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void apply(confirming)}>
                 Apply {confirming.name}
