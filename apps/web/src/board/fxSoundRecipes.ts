@@ -52,7 +52,7 @@ export const SFX_CLIPS = {
   "beast-growl": { hit: 0.06, length: 1.3 },
   "blade-swing": { hit: 0.2, length: 0.58 },
   blast: { hit: 0, length: 0.33 },
-  blaster: { hit: 0.03, length: 0.57 },
+  "laser-zap": { hit: 0.03, length: 0.57 },
   boiling: { hit: 0, length: 3 },
   "bowl-reversed": { hit: 1.1, length: 1.17 },
   "bow-release": { hit: 0.07, length: 0.45 },
@@ -432,7 +432,7 @@ export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
     clip("tail", "thunder-roll", 0.33, 0.4, { dur: 2.5, hall: 0.5 }),
   ],
   beam: [
-    clip("launch", "blaster", 0, 0.8, { wet: 0.2 }),
+    clip("launch", "laser-zap", 0, 0.8, { wet: 0.2 }),
     clip("travel", "transformer-hum", 0, 0.45, { att: H(0.04), dur: 0.98 }),
     tone("travel", "sawtooth", 0, 0.98, H(0.04), [220, 230], 0.12, 0.2, { ...vib(8.75, 6), lp: 1600 }),
     tone("travel", "sine", 0, 0.98, H(0.05), [1100, 1500], 0.06, 0.3, vib(8.75, 40)),

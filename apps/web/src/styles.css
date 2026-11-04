@@ -1191,12 +1191,13 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 /* The home and hub pages share one width, so the header's mark and toggle sit in the same
    place on every page (design-language: "One header"). */
 .page-shell { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
-.page-bar { padding-top: 1.1rem; }
+/* Above the page content, so the account menu's panel opens over the hero rather than behind it. */
+.page-shell.page-bar { padding-top: 1.1rem; position: relative; z-index: 5; }
 .home { padding: 0.5rem 0 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
 
 /* One header: the mark and name at the left; the page's navigation, the account control and
    the theme toggle at the right. */
-.site-header { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; min-height: 3.25rem; padding: 0.55rem 0; }
+.site-header { position: relative; z-index: 20; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; min-height: 3.25rem; padding: 0.55rem 0; }
 .brand {
   display: inline-flex; align-items: center; gap: 0.6rem; margin-right: auto;
   font-weight: 700; font-size: 1.02rem; letter-spacing: -0.015em; color: var(--text); text-decoration: none;
@@ -1358,6 +1359,9 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 }
 .notice p { margin: 0; color: var(--muted); }
 .small-print { font-size: 0.85rem; margin: 0; }
+.delete-account-warning { border-color: var(--danger); margin-bottom: var(--space-2); }
+.delete-account-warning p { color: inherit; }
+.delete-account-warning ul { margin: 0; padding-left: 1.1rem; color: var(--muted); }
 
 /* Continue as guest sits above the sign-in fields while accounts don't exist (gm-dashboard). */
 .guest-option { display: flex; flex-direction: column; gap: var(--space-2); }

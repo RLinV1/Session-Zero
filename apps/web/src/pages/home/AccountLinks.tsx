@@ -1,15 +1,19 @@
+import { AccountMenu } from "../../account/AccountPages";
 import { useAccount } from "../../account/accountStore";
 import { Link } from "../../Link";
 
-/** Top bar: sign in or create an account; signed in, the way back to your rooms. */
+/** Top bar: sign in or create an account; signed in, the account menu and the way back to your rooms. */
 export function AccountLinks() {
   const account = useAccount();
   if (account.status === "loading") return null;
   if (account.status === "signedIn") {
     return (
-      <Link href="/gm-dashboard" className="nav-cta">
-        Your rooms
-      </Link>
+      <span className="account-pair">
+        <AccountMenu />
+        <Link href="/gm-dashboard" className="nav-cta">
+          Your rooms
+        </Link>
+      </span>
     );
   }
   // One group, so a phone can give the pair a row of its own and keep the toggle top right.

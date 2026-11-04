@@ -7,7 +7,7 @@ import { loadGmToken } from "../net/identity";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
 import { SettingsMenu } from "../ui/SettingsMenu";
-import { changePassword, signIn, signOut, signUp, useAccount } from "./accountStore";
+import { changePassword, deleteAccount, signIn, signOut, signUp, useAccount } from "./accountStore";
 import { safeNext } from "./safeNext";
 
 /** Where to go after signing in: the page that sent the person here, if it is on this site. */
@@ -230,6 +230,7 @@ export function AccountMenu() {
   const account = useAccount();
   const [open, setOpen] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   if (account.status !== "signedIn") return null;
   return (
@@ -256,6 +257,9 @@ export function AccountMenu() {
           <button type="button" className="secondary small" onClick={() => setChanging(true)}>
             Change password
           </button>
+          <button type="button" className="secondary small" onClick={() => setDeleting(true)}>
+            Delete account
+          </button>
           <button
             type="button"
             className="secondary small"
@@ -266,6 +270,7 @@ export function AccountMenu() {
         </div>
       )}
       <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
+      <DeleteAccountDialog open={deleting} email={account.account.email} onClose={() => setDeleting(false)} />
       <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
@@ -356,6 +361,107 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
           </div>
         </form>
       )}
+    </Modal>
+  );
+}
+
+/** Permanent account deletion, gated by the typed email and the password (account-deletion). */
+export function DeleteAccountDialog({ open, email, onClose }: { open: boolean; email: string; onClose: () => void }) {
+  const [typedEmail, setTypedEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ message: string; field?: string } | null>(null);
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  const emailMatches = typedEmail.trim().toLowerCase() === email.trim().toLowerCase();
+  const ready = emailMatches && password.length > 0 && !busy;
+
+  function close() {
+    setTypedEmail("");
+    setPassword("");
+    setError(null);
+    onClose();
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAccount(password);
+      close();
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(describe(err));
+      setPassword("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const passwordError = error?.field === "password" ? error.message : null;
+  const otherError = error && error.field !== "password" ? error.message : null;
+
+  return (
+    <Modal open={open} title="Delete account" onClose={() => !busy && close()} initialFocus={firstRef}>
+      <form onSubmit={(e) => void submit(e)}>
+        <div className="notice delete-account-warning" role="note">
+          <p>
+            <strong>Deleting your account is permanent and cannot be undone.</strong> This removes:
+          </p>
+          <ul>
+            <li>your rooms and their history</li>
+            <li>your library</li>
+            <li>uploaded images</li>
+            <li>your sessions on every device</li>
+          </ul>
+        </div>
+        <label>
+          Type <strong>{email}</strong> to confirm
+          <input
+            ref={firstRef}
+            type="text"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            required
+            value={typedEmail}
+            onChange={(e) => setTypedEmail(e.target.value)}
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            maxLength={PASSWORD_MAX}
+            value={password}
+            aria-invalid={passwordError ? true : undefined}
+            aria-describedby={passwordError ? "delete-account-password-error" : undefined}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {passwordError && (
+            <span id="delete-account-password-error" role="alert" className="error small">
+              {passwordError}
+            </span>
+          )}
+        </label>
+        {otherError && (
+          <p role="alert" className="error">
+            {otherError}
+          </p>
+        )}
+        <div className="row modal-actions">
+          <button type="button" className="secondary" onClick={close} disabled={busy}>
+            Cancel
+          </button>
+          <button className="danger-fill" type="submit" disabled={!ready}>
+            {busy ? "Deleting…" : "Delete account"}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

@@ -7,6 +7,7 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
+  type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
   type SessionRecord,
@@ -229,6 +230,10 @@ export class MemoryRoomStore implements RoomStore {
 
   async listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]> {
     return this.summarize([...this.rooms.entries()].filter(([, room]) => room.ownerGmId === ownerGmId && !room.temporary));
+  }
+
+  async listOwnedRoomIds(ownerGmId: string) {
+    return [...this.rooms.entries()].filter(([, room]) => room.ownerGmId === ownerGmId).map(([id]) => id);
   }
 
   async summarizeRooms(roomIds: string[]) {
@@ -536,6 +541,33 @@ export class MemoryRoomStore implements RoomStore {
   async setActiveDiceLook(userId: string, lookId: string | null) {
     const user = this.users.get(userId);
     if (user) user.activeDiceLookId = lookId;
+  }
+
+  async deleteUser(userId: string): Promise<DeletedUser | null> {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    // As the foreign key does in Postgres.
+    if ((await this.listOwnedRoomIds(user.ownerId)).length > 0) throw new Error("User still owns rooms");
+    const { credentialHashes } = this.endSessions((s) => s.userId === userId);
+    for (const [key, member] of this.members) if (member.userId === userId) this.members.delete(key);
+    const objectKeys: string[] = [];
+    const owned = <T extends { ownerGmId: string | null }>(map: Map<string, T>) =>
+      [...map.entries()].filter(([, row]) => row.ownerGmId === user.ownerId);
+    for (const [id, look] of owned(this.diceLooks)) {
+      objectKeys.push(...Object.values(look.faces).map((f) => f.objectKey));
+      this.diceLooks.delete(id);
+    }
+    for (const [id] of owned(this.animations)) this.animations.delete(id);
+    for (const [id] of owned(this.encounters)) this.encounters.delete(id);
+    for (const [id] of owned(this.creatures)) this.creatures.delete(id);
+    for (const [id, asset] of owned(this.assets)) {
+      if (!asset.objectKey.startsWith("shipped:")) objectKeys.push(asset.objectKey);
+      this.assets.delete(id);
+      this.trackDetection({ scope: "library", id });
+      for (const ids of this.refs.values()) ids.delete(id);
+    }
+    this.users.delete(userId);
+    return { credentialHashes, objectKeys };
   }
 
   async createSession(session: SessionRecord) {

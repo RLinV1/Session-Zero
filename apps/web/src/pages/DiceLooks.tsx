@@ -47,11 +47,11 @@ export function DiceLookCards({ query, onEdit }: { query: string; onEdit: (id: s
         <p className="muted">
           {q
             ? "None of your dice looks match that search."
-            : `You haven't made any dice looks yet. A dice look paints your own dice with pictures, one per die type, from templates an image AI can fill in. ${
+            : `No dice looks yet. A dice look puts your own pictures on your dice, one per die type. ${
                 kept === "account"
-                  ? "It's saved to your account: pick it in any room's Dice panel, on any device."
-                  : "It's kept in this browser: pick it in a room's Dice panel."
-              } Only you see it for now.`}
+                  ? "Saved to your account; pick it in any room's Dice panel."
+                  : "Kept in this browser; pick it in a room's Dice panel."
+              }`}
         </p>
       )}
       <ul className="plain asset-grid" role="tabpanel">

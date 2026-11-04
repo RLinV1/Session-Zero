@@ -44,20 +44,23 @@ describe("privacy and terms pages (site-policies)", () => {
     expect(document.querySelector(".card")).toBeNull();
   });
 
-  it("names the team with 'and' as authors and 'or' as people to ask", () => {
-    render(<PrivacyPage />);
-    expect(screen.getByText(/built by Antonio Cottone, Raymond Lin, Christos Psimadas and Vincent Chen/)).toBeTruthy();
-    expect(screen.getByText(/Ask any of us \(Antonio Cottone, Raymond Lin, Christos Psimadas or Vincent Chen\)/)).toBeTruthy();
-  });
-
-  it("says what is kept, the one cookie, and how to get an account deleted", () => {
+  it("says what is kept, the one cookie, and that deletion is the Delete account button", () => {
     render(<PrivacyPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Privacy" })).toBeTruthy();
-    for (const name of ["What we keep", "What we don't do", "Cookies and browser storage", "Deleting your data"]) {
+    for (const name of ["What we keep", "What we don't do", "How long we keep it", "Cookies and browser storage", "Deleting your data", "Contact"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeTruthy();
     }
     expect(screen.getByText(/There is one cookie/)).toBeTruthy();
-    expect(screen.getByText(/no button to delete an account yet/).textContent).toContain("Vincent Chen");
+    expect(screen.getByText("Delete account").closest("li")?.textContent).toMatch(/account menu/);
+    expect(screen.getByRole("link", { name: "GitHub issue tracker" }).getAttribute("href")).toBe("https://github.com/RLinV1/Session-Zero/issues");
+  });
+
+  it("no longer reads like a course handout", () => {
+    for (const page of [<PrivacyPage key="p" />, <TermsPage key="t" />]) {
+      const { unmount } = render(page);
+      expect(document.querySelector("article")?.textContent).not.toMatch(/student project|not a business|CSE 416|Ask any of us|no button to delete/);
+      unmount();
+    }
   });
 
   it("covers uploads and links back to privacy", () => {

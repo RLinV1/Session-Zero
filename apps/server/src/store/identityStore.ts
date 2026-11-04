@@ -43,6 +43,12 @@ export interface EndedSessions {
   credentialHashes: string[];
 }
 
+/** What deleting an account ended and orphaned, for the caller to close sockets and remove objects. */
+export interface DeletedUser extends EndedSessions {
+  /** Stored objects of the account's library (assets and dice faces); never built-in art. */
+  objectKeys: string[];
+}
+
 export interface IdentityStore {
   /** Creates the user and its owner row together. Throws `EmailTakenError` on a duplicate email. */
   createUser(user: NewUserRecord): Promise<UserRecord>;
@@ -55,6 +61,13 @@ export interface IdentityStore {
   setPasswordHash(userId: string, passwordHash: string, changed: boolean): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */
   setActiveDiceLook(userId: string, lookId: string | null): Promise<void>;
+
+  /**
+   * Erases the account in one transaction: its sessions (seat credentials first), room
+   * memberships, library rows, then the user and its owner row. Its rooms must already be deleted
+   * (the foreign keys refuse otherwise). Null when there is no such user.
+   */
+  deleteUser(userId: string): Promise<DeletedUser | null>;
 
   createSession(session: SessionRecord): Promise<void>;
   findSession(tokenHash: string): Promise<SessionRecord | null>;

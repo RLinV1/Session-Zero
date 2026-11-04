@@ -36,7 +36,7 @@ synth layer had. A clip that has not loaded yet is left out of that play.
 | explosion | dynamite | fuse sizzle, landing thud, blast, deep thunder, rolling thunder, falling stones |
 | bolt | lightning bolt | electric shock, welding arc, whip crack, thunder crack, shocks per fork |
 | chain | chain lightning | rising arc, thunder crack, whip crack and shock per jump, rolling thunder |
-| beam | humming energy beam | blaster, transformer hum, welding arc |
+| beam | humming energy beam | laser zap, transformer hum, welding arc |
 | frost | ice spell | icy wind, ice cracking, singing bowl ring, glass burst for the shatter |
 | poison | poison vial | whoosh, breaking glass, splash, boiling, a slowed whisper from the skulls |
 | smite | holy strike | a synthesized choir and singing bowl while it is cast; on the strike, all played slow and deep: a hammer on concrete, a blast, thunder crack, rolling thunder, falling stones, gong, with a soft church bell |

@@ -64,7 +64,7 @@ Additional sounds: Joseph SARDIN - BigSoundBank.com. Sword sounds by
 | `arc-crackle.mp3` | [Short welds (BigSoundBank #0952)](https://bigsoundbank.com/short-welds-s0952.html) | Joseph SARDIN | CC0 1.0 (public domain) | 2.750–3.750 s | bolt, chain, beam |
 | `electric-shock.mp3` | [Electric shock (BigSoundBank #0134)](https://bigsoundbank.com/electric-shock-s0134.html) | Joseph SARDIN | CC0 1.0 (public domain) | 18.550–18.950 s | bolt, chain, reduced animations |
 | `whip-crack.mp3` | [Whip crack #1 (BigSoundBank #2949)](https://bigsoundbank.com/whip-crack-1-s2949.html) | Joseph SARDIN | CC0 1.0 (public domain) | 0.200–0.800 s | bolt, chain |
-| `blaster.mp3` | [Star Wars Blaster #2 (BigSoundBank #1758)](https://bigsoundbank.com/star-wars-blaster-2-s1758.html) | Joseph SARDIN | CC0 1.0 (public domain) | 0.000–0.570 s | beam |
+| `laser-zap.mp3` | [Blaster #2 (BigSoundBank #1758)](https://bigsoundbank.com/star-wars-blaster-2-s1758.html) | Joseph SARDIN | CC0 1.0 (public domain) | 0.000–0.570 s | beam |
 | `transformer-hum.mp3` | [Neon or transformer #1 (BigSoundBank #2118)](https://bigsoundbank.com/neon-or-transformer-1-s2118.html) | Joseph SARDIN | CC0 1.0 (public domain) | 3.000–6.000 s | beam |
 | `ice-crack.mp3` | [Cracking ice #1 (BigSoundBank #2205)](https://bigsoundbank.com/cracking-ice-1-s2205.html) | Joseph SARDIN | CC0 1.0 (public domain) | 0.250–1.850 s | frost |
 | `ice-crack-2.mp3` | [Cracking ice #2 (BigSoundBank #2206)](https://bigsoundbank.com/cracking-ice-2-s2206.html) | Joseph SARDIN | CC0 1.0 (public domain) | 0.150–1.250 s | frost, reduced animations |
