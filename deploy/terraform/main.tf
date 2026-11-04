@@ -9,6 +9,10 @@ data "aws_subnets" "default" {
   }
 }
 
+data "aws_ec2_managed_prefix_list" "ec2_instance_connect" {
+  name = "com.amazonaws.${var.region}.ec2-instance-connect"
+}
+
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -62,6 +66,14 @@ resource "aws_security_group" "vtt" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = [var.ssh_cidr]
+  }
+
+  ingress {
+    description     = "SSH via EC2 Instance Connect"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.ec2_instance_connect.id]
   }
 
   egress {
