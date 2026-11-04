@@ -1,6 +1,6 @@
 import { diceRollsOf, findDiceRoll, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "./effectPresets";
-import { getClientSettings } from "../ui/clientSettings";
+import { getClientSettings, QUALITY, type GraphicsQuality } from "../ui/clientSettings";
 
 /**
  * What the board draws for attacks and conditions (KAN-76). Pure: no Pixi, no DOM beyond
@@ -17,7 +17,9 @@ export type AttackEffect =
   | { kind: "hit" | "miss"; tokenId: string }
   | { kind: "damage"; tokenId: string; amount: number }
   /** An area effect resolved (ADR 0046): each damaged target's number, all at once. */
-  | { kind: "damages"; hits: { tokenId: string; amount: number }[] };
+  | { kind: "damages"; hits: { tokenId: string; amount: number }[] }
+  /** The auto-remove option took a token at 0 HP (ADR 0049); the board keeps it drawn while it falls. */
+  | { kind: "defeat"; tokenId: string };
 
 /**
  * The animation a live event should trigger for this viewer, or null. Only reads the viewer's own
@@ -54,6 +56,11 @@ export function attackEffectFor(event: DomainEvent, after: RoomState, viewer: Pa
       // The viewer's copy carries amounts only for targets they can see; heals and 0 show nothing.
       const hits = event.amounts.filter((a) => a.amount > 0 && visible(a.tokenId));
       return hits.length > 0 ? { kind: "damages", hits } : null;
+    }
+    case "TokenDeleted": {
+      // The token is gone from `after`, so visibility comes from the event's copy of it (FR-GM-23).
+      if (event.reason !== "defeated") return null;
+      return viewer.role === "gm" || !event.token.hidden ? { kind: "defeat", tokenId: event.token.id } : null;
     }
     case "MapNuked": {
       // Names no token: the blast hits the viewer's own copy, so a hidden token gets no number (FR-GM-23).
@@ -131,6 +138,27 @@ export interface AttackPlan {
  */
 /** The nuke's damage numbers start 0.25 s in and play for 1.4 s, so the effect must outlast them. */
 const NUKE_NUMBERS_MS = 1650;
+
+/** Death animations playing at once; past this, further defeats just fade. */
+export const MAX_DEFEAT_EFFECTS = 6;
+/** Full death effect length, and the plain fade used for reduced motion, low quality or a crowd. */
+export const DEFEAT_MS = 700;
+export const DEFEAT_FADE_MS = 200;
+
+export interface DefeatPlan {
+  /** False: the token only fades; no shake, shrink, grey or particles. */
+  motion: boolean;
+  durationMs: number;
+  particles: number;
+}
+
+/** How a defeated token leaves: the full effect, or a plain 200 ms fade (FR-TAC-07). */
+export function defeatPlan(input: { reducedMotion: boolean; quality: GraphicsQuality; active: number }): DefeatPlan {
+  if (input.reducedMotion || input.quality === "low" || input.active >= MAX_DEFEAT_EFFECTS) {
+    return { motion: false, durationMs: DEFEAT_FADE_MS, particles: 0 };
+  }
+  return { motion: true, durationMs: DEFEAT_MS, particles: Math.round(QUALITY[input.quality].particles / 5) };
+}
 
 export function attackPlan(effect: AttackEffect, reducedMotion: boolean): AttackPlan {
   if (reducedMotion) return { motion: false, durationMs: effect.kind === "damage" || effect.kind === "damages" || effect.kind === "nuke" ? 1000 : 600 };

@@ -425,3 +425,63 @@ describe("animation sound playback (FR-TAC-09)", () => {
     expect(lateOut.gain.value).toBe(1);
   });
 });
+
+describe("defeat sound (FR-TAC-07)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function freshModule() {
+    vi.resetModules();
+    return import("../src/board/fxSound");
+  }
+
+  it("is short, soft and quieter than the attack sounds", async () => {
+    const sound = await freshModule();
+    const voices = sound.scheduleDefeat();
+    expect(soundLength(voices)).toBeGreaterThanOrEqual(0.5);
+    expect(soundLength(voices)).toBeLessThanOrEqual(0.8);
+    const loudestAttack = Math.max(...ANIMATION_SHAPES.flatMap((s) => SHAPE_SOUNDS[s].map((l) => l.gain)));
+    expect(Math.max(...voices.map((v) => v.gain))).toBeLessThan(loudestAttack);
+  });
+
+  it("plays nothing at volume 0", async () => {
+    const audio = fakeAudio();
+    const sound = await freshModule();
+    setClientSettings({ soundVolume: 0 });
+    expect(sound.playDefeatSound()).toBeNull();
+    expect(audio.started).toEqual([]);
+  });
+
+  it("schedules its sound nodes and can be cut", async () => {
+    const audio = fakeAudio();
+    const sound = await freshModule();
+    const handle = sound.playDefeatSound();
+    expect(handle).not.toBeNull();
+    expect(audio.started).toContain("tone");
+    expect(audio.started).toContain("noise");
+    handle!.stop();
+    handle!.stop();
+  });
+
+  it("caps defeats heard at once, each quieter than the last", async () => {
+    const audio = fakeAudio();
+    const sound = await freshModule();
+    const before = audio.outs.length;
+    const plays = Array.from({ length: 6 }, () => sound.playDefeatSound());
+    expect(plays.filter(Boolean)).toHaveLength(sound.MAX_DEFEAT_SOUNDS);
+    expect(sound.scheduleDefeat(0.5)[0]!.gain).toBeLessThan(sound.scheduleDefeat()[0]!.gain);
+    expect(audio.outs.length).toBeGreaterThan(before);
+  });
+
+  it("does not throw and plays nothing without an AudioContext or when it cannot start", async () => {
+    const sound = await freshModule();
+    expect(() => sound.playDefeatSound()).not.toThrow();
+    expect(sound.playDefeatSound()).toBeNull();
+    fakeAudio();
+    vi.stubGlobal("AudioContext", class { constructor() { throw new Error("blocked"); } });
+    const blocked = await freshModule();
+    expect(blocked.playDefeatSound()).toBeNull();
+  });
+});

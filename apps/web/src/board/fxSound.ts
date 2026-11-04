@@ -543,6 +543,50 @@ export function playDiceSound(t: DiceThrowSound): SoundHandle | null {
   return startVoices(e, voices, { startedAt: performance.now() }, dicePlaying);
 }
 
+// ---------- defeat ----------
+
+/** Defeat sounds heard at once; a further one is skipped, and each one already playing makes the next quieter. */
+export const MAX_DEFEAT_SOUNDS = 3;
+/** Seconds a defeat sound holds its slot: it is over well before the reverb's full length. */
+const DEFEAT_SLOT_S = 0.9;
+const DEFEAT_GAIN = 0.5;
+const defeatPlaying: Array<{ startedAt: number; endsAt: number }> = [];
+
+const defeatLayer = { cue: "impact", at: 0, env: "hit", pan: 0 } as const;
+/** A soft, low fall with a dull thud and a little dust: under the attacks in the mix, unlike dice. */
+const DEFEAT_LAYERS: readonly SoundLayer[] = [
+  { ...defeatLayer, kind: "tone", wave: "sine", freq: [120, 36], glide: 0.16, dur: 0.6, attack: 0.004, gain: 0.55, wet: 0.1 },
+  { ...defeatLayer, kind: "noise", color: "brown", filter: { type: "lowpass", freq: [900, 180], q: 0.7 }, dur: 0.16, attack: 0.002, gain: 0.35, wet: 0.1 },
+  { ...defeatLayer, cue: "tail", kind: "noise", color: "pink", filter: { type: "bandpass", freq: [1800, 500], q: 0.8 }, dur: 0.5, attack: 0.03, gain: 0.07, wet: 0.35 },
+];
+
+/** Places the defeat sound's layers in time, each `level` times as loud. Pure, like `scheduleSound`. */
+export function scheduleDefeat(level = 1): ScheduledVoice[] {
+  return DEFEAT_LAYERS.map((layer) => ({
+    layer, start: 0, dur: layer.dur, attack: layer.attack, gain: layer.gain * DEFEAT_GAIN * level, pitch: 1, beat: 0, offset: 0, pan: 0,
+    ...(layer.kind === "tone" && layer.glide ? { glide: layer.glide } : {}),
+  }));
+}
+
+/**
+ * Plays a defeated token's fall now (about 0.6 s, low and soft). Null when it is not heard (see
+ * `playFxSound`) or `MAX_DEFEAT_SOUNDS` are already playing. Reduced animations do not silence it:
+ * only the volume setting does.
+ */
+export function playDefeatSound(): SoundHandle | null {
+  try {
+    const e = readyEngine();
+    if (!e) return null;
+    prune(defeatPlaying, e.ctx.currentTime);
+    if (defeatPlaying.length >= MAX_DEFEAT_SOUNDS) return null;
+    const handle = startVoices(e, scheduleDefeat(0.7 ** defeatPlaying.length), { startedAt: performance.now() }, defeatPlaying);
+    defeatPlaying[defeatPlaying.length - 1]!.endsAt = e.ctx.currentTime + DEFEAT_SLOT_S;
+    return handle;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * `run` with its sound: the sound starts now, and an effect destroyed before its animation is over
  * (replaced, evicted, the page hidden, the editor stopped) cuts it short. One that ends on its own

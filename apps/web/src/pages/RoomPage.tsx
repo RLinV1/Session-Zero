@@ -666,6 +666,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           )}
           {features.tableChrome && <RoomMenu
             buttonRef={guideButtonRef}
+            room={readOnly ? undefined : { connection, state, you }}
             onActivityLog={you.role === "gm" && !readOnly ? () => setLogOpen(true) : undefined}
             // Everyone may replay what they could see (FR-PL-07); not while previewing as a player.
             onReplay={preview ? undefined : () => (replaying ? exitReplay() : setReplaying(true))}

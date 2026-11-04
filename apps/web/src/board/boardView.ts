@@ -42,9 +42,11 @@ import { canRenderGrid, DEFAULT_BOARD_SIZE } from "./gridRenderLimit";
 import { gridLines } from "./gridLines";
 import {
   MAX_ATTACK_EFFECTS,
+  MAX_DEFEAT_EFFECTS,
   artStyleFor,
   attackPlan,
   conditionLoopWanted,
+  defeatPlan,
   loopFrameDue,
   loopingConditions,
   prefersReducedMotion,
@@ -54,7 +56,7 @@ import {
 import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
 import { conditionIcon, loadConditionIcons } from "./conditionIcons";
-import { armSound, withSound } from "./fxSound";
+import { armSound, playDefeatSound, withSound } from "./fxSound";
 import { getClientSettings, graphicsBudget, subscribeGraphicsSettings } from "../ui/clientSettings";
 import { averageColor, fogDistanceField, fogPalette, makeFogDensityCanvas, makeFogDistanceCanvas, type Rgb } from "./fogTexture";
 import { WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "./fogPuffs";
@@ -469,6 +471,8 @@ export class BoardView {
   private stepSkipped = false;
   /** Attack animations playing (KAN-76), oldest first. */
   private attackFx: AttackFx[] = [];
+  /** Defeated tokens (ADR 0049) kept drawn while they fall; each value finishes that token's effect and removes its sprite at once. */
+  private dying = new Map<string, () => void>();
   /** The device's reduced-motion preference, and the GM's table-wide setting (`RoomState.reducedEffects`). */
   private osReduced = prefersReducedMotion();
   private tableReduced = false;
@@ -733,6 +737,7 @@ export class BoardView {
     for (const { run, timer } of this.fxRuns) { window.clearTimeout(timer); run.destroy(); }
     this.fxRuns = [];
     this.attackFx = [];
+    for (const finish of [...this.dying.values()]) finish();
     this.loopRegistered = false;
     this.stopMotionWatch?.();
     this.hatch?.destroy(true);
@@ -771,6 +776,8 @@ export class BoardView {
     const before = this.state;
     this.state = state;
     this.you = you;
+    // A different scene is a different board: nothing of the old one keeps playing.
+    if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
     const table = state.reducedEffects ?? false;
     if (table !== this.tableReduced) {
       const before = this.reducedMotion;
@@ -2030,6 +2037,11 @@ export class BoardView {
     const grid = state.scene.grid;
 
     for (const [id, view] of this.tokens) {
+      if (this.dying.has(id)) {
+        // Still falling: leave it. Back in the room (undo) or resynced: end it now so a fresh sprite is drawn.
+        if (!state.tokens[id]) continue;
+        this.dying.get(id)!();
+      }
       if (!state.tokens[id]) {
         // A filter is not a child: free the Unconscious greyscale's GPU resources by hand.
         view.grey?.destroy();
@@ -2205,6 +2217,7 @@ export class BoardView {
     if (!this.initialized || !this.state) return;
     if (effect.kind === "strike") return this.playStrikeFx(effect);
     if (effect.kind === "nuke") return this.playNukeFx(effect);
+    if (effect.kind === "defeat") return this.playDefeat(effect.tokenId);
     // The overlay supplies the still hit marker; no canvas frames are needed without a shake.
     if (effect.kind !== "hit" || this.reducedMotion) return;
     const target = this.tokens.get(effect.tokenId);
@@ -2237,6 +2250,79 @@ export class BoardView {
     };
     this.attackFx.push(fx);
     this.animations.add(fx.step);
+    this.invalidate();
+  }
+
+  /**
+   * A defeated token (ADR 0049) falls before it leaves: it greys, shakes, shrinks and fades while a few
+   * flecks scatter. `syncTokens` keeps the sprite until this ends; the position is never changed. Reduced
+   * motion, low quality or a crowd of deaths get a plain 200 ms fade. A timer backs the frame loop.
+   */
+  private playDefeat(tokenId: string) {
+    const view = this.tokens.get(tokenId);
+    if (!view || view.container.destroyed || this.dying.has(tokenId)) return;
+    const plan = defeatPlan({ reducedMotion: this.reducedMotion, quality: getClientSettings().graphicsQuality, active: this.dying.size });
+    const { container, art, radius } = view;
+    container.eventMode = "none";
+    // Sound follows the volume setting, not reduced motion; a crowd past the effect cap stays quiet.
+    if (this.dying.size < MAX_DEFEAT_EFFECTS) playDefeatSound();
+    if (this.drag?.tokenId === tokenId) this.drag = null;
+    const flecks = new Container();
+    flecks.position.set(container.position.x, container.position.y);
+    const bits = Array.from({ length: plan.particles }, (_, i) => {
+      const angle = (i / plan.particles) * Math.PI * 2 + (i % 3) * 0.4;
+      const g = new Graphics().circle(0, 0, Math.max(2, radius * (0.05 + (i % 4) * 0.015))).fill({ color: i % 2 ? 0xd9d2c5 : 0x8f2a2a });
+      flecks.addChild(g);
+      return { g, dx: Math.cos(angle), dy: Math.sin(angle), reach: 0.9 + (i % 5) * 0.18 };
+    });
+    if (plan.particles > 0) this.fxLayer.addChild(flecks);
+    if (plan.motion) {
+      view.grey ??= new ColorMatrixFilter();
+      view.grey.greyscale(0.45, false);
+      art.filters = [view.grey];
+    }
+    const started = performance.now();
+    let timer = 0;
+    const finish = () => {
+      window.clearTimeout(timer);
+      this.animations.delete(step);
+      this.dying.delete(tokenId);
+      flecks.destroy({ children: true });
+      if (!container.destroyed) {
+        view.grey?.destroy();
+        container.destroy({ children: true });
+      }
+      this.tokens.delete(tokenId);
+      this.pendingMoves.delete(tokenId);
+      this.invalidate();
+    };
+    const step = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - started) / plan.durationMs));
+      if (t >= 1 || container.destroyed) {
+        finish();
+        return false;
+      }
+      if (!plan.motion) {
+        container.alpha = 1 - t;
+        return true;
+      }
+      // Shudder for the first quarter, then shrink and fade away.
+      view.shake.x = t < 0.25 ? Math.sin(t * 160) * radius * 0.12 * (1 - t / 0.25) : 0;
+      this.applyArtOffset(view, 0, 0);
+      const u = Math.max(0, (t - 0.25) / 0.75);
+      container.alpha = 1 - u * u;
+      container.scale.set(1 - 0.4 * u);
+      const out = 1 - (1 - t) * (1 - t);
+      for (const b of bits) {
+        b.g.position.set(b.dx * radius * b.reach * out, b.dy * radius * b.reach * out + radius * 0.3 * t * t);
+        b.g.alpha = Math.max(0, 1 - t * 1.2);
+      }
+      return true;
+    };
+    this.dying.set(tokenId, finish);
+    timer = window.setTimeout(finish, plan.durationMs + 300);
+    this.animations.add(step);
+    this.schedule();
     this.invalidate();
   }
 
