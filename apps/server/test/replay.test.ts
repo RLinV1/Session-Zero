@@ -57,9 +57,9 @@ describe("Encounter replay API (FR-PL-07)", () => {
     }
   });
 
-  it("limits each participant to 30 replay requests a minute, shared by both routes", async () => {
+  it("limits each participant to 150 replay requests a minute, shared by both routes", async () => {
     const { owner, alice } = await table();
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 150; i++) {
       const path = i % 2 ? `/api/rooms/${owner.roomId}/replay/start` : `/api/rooms/${owner.roomId}/replay`;
       expect((await get(path, alice.guestToken)).status).toBe(200);
     }

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SIGN_IN_FAILED } from "@vtt/shared";
 import { hashToken } from "../src/domain/credentials";
 import { SESSION_IDLE_MS } from "../src/identity/sessions";
+import { RateLimiter } from "../src/identity/rateLimit";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { startServer } from "./helpers";
 
@@ -278,14 +279,16 @@ describe("user accounts (FR-GM-01)", () => {
       expect((await change("new password", "newer password")).status).toBe(204);
     });
 
-    it("limits sign-ups to 10 an hour from one address", async () => {
+    it("enforces the configured sign-up budget per address", async () => {
       server = await startServer();
+      server.app.limits.signUpPerIp = new RateLimiter(10, 60 * 60_000);
       for (let i = 0; i < 10; i++) await server.signUp();
       await expect(server.signUp()).rejects.toThrow(/429/);
     });
 
-    it("limits sign-ins to 30 per 15 minutes from one address", async () => {
+    it("enforces the configured sign-in budget per address", async () => {
       server = await startServer();
+      server.app.limits.signInPerIp = new RateLimiter(30, 15 * 60_000);
       for (let i = 0; i < 30; i++) {
         await server.anonymous().request("POST", "/api/auth/signin", { email: `u${i}@example.com`, password: "x" });
       }

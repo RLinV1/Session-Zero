@@ -158,6 +158,21 @@ Every payload containing room data passes through `filterStateForViewer` or
 checkpoint preview) and ephemeral relays alike. A seq a viewer may not see arrives as
 `redacted`, so their counter advances without leaking the content.
 
+HTTP request budgets are per server process and return `429` with `Retry-After` when exhausted:
+
+| Action | Budget | Scope |
+| --- | --- | --- |
+| Sign up | 50/hour | IP address |
+| Sign in | 150/15 minutes | IP address |
+| Invite joins | 150/15 minutes | IP address and room |
+| Replay | 150/minute | Participant and room |
+| Wall detection | 50/15 minutes | Room |
+| Image uploads | 300/15 minutes | Account, shared across rooms and library |
+| UVTT import attempts | 25/minute | Account for library imports; GM and room for room imports |
+
+Failed password guesses remain limited to 10/15 minutes per email, and failed current-password
+checks to 10/15 minutes per account. Room capacity, file sizes and worker concurrency are separate limits.
+
 ---
 
 ## 2. Stack

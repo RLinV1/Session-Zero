@@ -22,18 +22,18 @@ const MINUTE = 60 * 1000;
 export function accountLimits(now: () => number = Date.now) {
   return {
     signInFailuresPerEmail: new RateLimiter(10, 15 * MINUTE, now),
-    signInPerIp: new RateLimiter(30, 15 * MINUTE, now),
-    signUpPerIp: new RateLimiter(10, 60 * MINUTE, now),
+    signInPerIp: new RateLimiter(150, 15 * MINUTE, now),
+    signUpPerIp: new RateLimiter(50, 60 * MINUTE, now),
     /** Wrong current passwords on a password change, per account: the sign-in budget, so a stolen cookie gains nothing. */
     passwordChangeFailuresPerUser: new RateLimiter(10, 15 * MINUTE, now),
     /** Invite join attempts per IP per room, so join-and-leave can't grow a room's log without bound. */
-    joinsPerIpPerRoom: new RateLimiter(30, 15 * MINUTE, now),
+    joinsPerIpPerRoom: new RateLimiter(150, 15 * MINUTE, now),
     /** Replay requests per participant: each one folds the room's whole log on the event loop (FR-PL-07). */
-    replaysPerParticipant: new RateLimiter(30, MINUTE, now),
+    replaysPerParticipant: new RateLimiter(150, MINUTE, now),
     /** Wall detection runs per room, so one room can't hold the few server-wide job slots (FR-GM-11). */
-    wallDetectionsPerRoom: new RateLimiter(10, 15 * MINUTE, now),
+    wallDetectionsPerRoom: new RateLimiter(50, 15 * MINUTE, now),
     /** Image uploads per account, in rooms and the library together: each one is stored and may queue analysis (FR-GM-02). */
-    uploadsPerOwner: new RateLimiter(60, 15 * MINUTE, now),
+    uploadsPerOwner: new RateLimiter(300, 15 * MINUTE, now),
   };
 }
 export type AccountLimits = ReturnType<typeof accountLimits>;
