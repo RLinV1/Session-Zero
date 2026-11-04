@@ -681,7 +681,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             <ActivityLog open={logOpen} onClose={() => setLogOpen(false)} roomId={state.roomId} token={token} seq={seq} state={state} connection={connection} />
           )}
           {/* Last, in the top-right corner: visible with the sidebar shown or hidden. */}
-          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} hideTrigger={compact} open={compact ? shareOpen : undefined} onOpenChange={compact ? setShareOpen : undefined} />}
+          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
         </div>
       </header>
       {/* Same element, same position in both states: collapsing must never remount the

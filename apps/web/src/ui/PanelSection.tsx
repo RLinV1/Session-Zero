@@ -33,11 +33,12 @@ export function SectionCollapseProvider({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = usePersistentState<Record<string, boolean>>("vtt.ui.sections", {}, isBooleanRecord);
   const toggled = useRef(new Set<string>());
   const phone = usePhone();
+  const defaultCollapsed = (id: string) => phone && !PHONE_OPEN.has(id);
   const value: SectionCollapse = {
-    isCollapsed: (id) => (id in collapsed ? collapsed[id] === true : phone && !PHONE_OPEN.has(id)),
+    isCollapsed: (id) => (id in collapsed ? collapsed[id] === true : defaultCollapsed(id)),
     toggle: (id) => {
       toggled.current.add(id);
-      setCollapsed((c) => ({ ...c, [id]: !c[id] }));
+      setCollapsed((c) => ({ ...c, [id]: !(id in c ? c[id] === true : defaultCollapsed(id)) }));
     },
     setCollapsed: (id, next) => {
       toggled.current.delete(id);

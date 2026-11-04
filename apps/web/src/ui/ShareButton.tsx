@@ -14,13 +14,15 @@ import { Modal } from "./Modal";
  * reset made in another tab or device is what is shown and copied (FR-GM-20).
  * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
-export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideTrigger = false }: {
+export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
   roomId: string;
   token: string;
   /** Lets a menu item drive the dialog (phone); the button itself is then hidden. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
+  /** Where focus goes once the dialog closes, when the opener is gone (phone menu item). */
+  onAfterClose?: () => void;
 }) {
   const [ownOpen, setOwnOpen] = useState(false);
   const open = openProp ?? ownOpen;
@@ -128,7 +130,7 @@ export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideT
           Share
         </button>
       )}
-      <Modal open={open} title="Share this room" className="share-modal" onClose={() => !busy && setOpen(false)}>
+      <Modal open={open} title="Share this room" className="share-modal" onAfterClose={onAfterClose} onClose={() => !busy && setOpen(false)}>
         <div className="share-body" aria-busy={!link && !loadFailed}>
           {loadFailed && (
             <div role="alert" className="error">

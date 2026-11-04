@@ -808,7 +808,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
               </div>
             )}
           </PopoverButton>
-          <PopoverButton label="View filters" title="View filters" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
+          <PopoverButton label="View filters" title="View filters" placement="fixed" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
             <div className="room-menu">{filters(true)}</div>
           </PopoverButton>
           </>
