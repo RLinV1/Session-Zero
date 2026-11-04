@@ -1,4 +1,4 @@
-import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun } from "@vtt/shared";
+import { effectiveTerrain, emptyTerrain, cellRect, rulerPathCost, type TerrainRun } from "@vtt/shared";
 import { budgetLabel, defaultMovementSettings, movementPreview, type MovementPreview, type MovementSettings } from "./movementRuler";
 import {
   Application,
@@ -1877,10 +1877,14 @@ export class BoardView {
       case "measure": {
         const settings = this.movementSettings ?? defaultMovementSettings(grid);
         const m = measure(mark.from, mark.to, grid, mark.free, settings.rule, mark.tokenSize);
-        const color = m.units > settings.allowance + 1e-9 ? 0xffa570 : MEASURE_COLOR;
+        // Terrain is the viewer's filtered view: effective for the GM, terrainView for players.
+        const runs = this.you?.role === "gm" ? effectiveTerrain(this.state?.terrain ?? emptyTerrain()) : this.state?.terrainView?.runs ?? [];
+        const path = rulerPathCost(m.from, m.to, grid, mark.free ? "euclidean" : settings.rule, runs);
+        const units = path.difficult ? path.cost : m.units; // off Difficult ground keep the exact existing distance
+        const color = path.blocked || units > settings.allowance + 1e-9 ? 0xffa570 : MEASURE_COLOR;
         g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color });
         g.circle(m.from.x, m.from.y, 4 * px).circle(m.to.x, m.to.y, 4 * px).fill({ color });
-        const label = budgetLabel(m.units, settings.allowance, grid);
+        const label = path.blocked ? "Blocked" : budgetLabel(units, settings.allowance, grid) + (path.difficult ? ` · ${path.difficult} difficult` : "");
         this.showLabel(label, m.to);
         this.callbacks.movementFeedback?.(label);
         return;

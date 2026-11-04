@@ -1,4 +1,8 @@
-# Virtual Tabletop (VTT) — Project Specification
+# Session Zero (virtual tabletop) — Project Specification
+
+## Why the name
+
+In tabletop role-playing games, a "session zero" is the meeting before the campaign starts. The group decides which campaign to play, agrees on tone and rules, and makes characters. This app is where that starts: you prepare the map, scenes and encounters before play begins. So "Session Zero" fits the tagline "Your game starts here."
 
 **Course:** CSE 416  
 **Team:** Antonio Cottone, Raymond Lin, Vincent Chen, Christos Psimadas  
@@ -175,11 +179,11 @@ Functional requirements are organized by the user need they satisfy and identify
 
 ### Elevator pitch
 
-A browser-based virtual tabletop that takes a game master from an arbitrary battle-map image to a playable, recoverable online encounter in minutes. The GM uploads a map, receives automatic grid alignment, and can optionally import or infer wall and portal data. Players join remotely through a shareable link with no account or client installation, then interact with the same synchronized board using owned-token movement, distance rulers, target pings, and area-of-effect (AoE) templates. When someone makes a mistake, the GM inspects the action log, undoes the action, and every connected browser receives the corrected state.
+Session Zero is a browser-based virtual tabletop that takes a game master from an arbitrary battle-map image to a playable, recoverable online encounter in minutes. The GM uploads a map, receives automatic grid alignment, and can optionally import or infer wall and portal data. Players join remotely through a shareable link with no account or client installation, then interact with the same synchronized board using owned-token movement, distance rulers, target pings, and area-of-effect (AoE) templates. When someone makes a mistake, the GM inspects the action log, undoes the action, and every connected browser receives the corrected state.
 
 ### One-sentence differentiator
 
-**A low-prep, system-agnostic online VTT that combines assisted map setup, fast guest joining, tactical browser interactions, and deterministic multi-user recovery.**
+**A low-prep, system-agnostic online virtual tabletop that combines assisted map setup, fast guest joining, tactical browser interactions, and deterministic multi-user recovery.**
 
 ### The four workflow promises
 

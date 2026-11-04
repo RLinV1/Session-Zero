@@ -1,7 +1,8 @@
 import { Eye, PencilSimple, TextAa, Trash } from "@phosphor-icons/react";
 import { IconAction } from "../ui/IconAction";
-import { useState, type FormEvent } from "react";
-import { MAX_ENCOUNTER_NAME, type EncounterSummary } from "@vtt/shared";
+import { useEffect, useState, type FormEvent } from "react";
+import { MAX_ENCOUNTER_NAME, type EncounterSummary, type LibraryAsset } from "@vtt/shared";
+import { MapThumbnail } from "../ui/MapThumbnail";
 import { api } from "../net/api";
 import { formatRelative } from "../ui/formatRelative";
 import { startEncounterEdit } from "./encounterEdit/startEdit";
@@ -14,12 +15,37 @@ export function encounterSummary(encounter: EncounterSummary): string {
   return `${tokens}${fog}`;
 }
 
+/** The account's library maps by id, so a template can show its map (no schema change: EncounterSummary carries only mapAssetId). */
+export function useLibraryMaps(): Map<string, LibraryAsset> {
+  const [maps, setMaps] = useState<Map<string, LibraryAsset>>(new Map());
+  useEffect(() => {
+    let live = true;
+    api.library.list().then(
+      (list) => live && setMaps(new Map(list.filter((a) => a.kind === "map").map((a) => [a.id, a]))),
+      () => {}, // thumbnails are decoration; the row still works without one
+    );
+    return () => { live = false; };
+  }, []);
+  return maps;
+}
+
+/** A template's map as a small thumbnail, or an empty frame while it is unknown or deleted. */
+export function EncounterThumb({ map }: { map: LibraryAsset | undefined }) {
+  return (
+    <div className="asset-thumb encounter-thumb" aria-hidden="true">
+      {map && <MapThumbnail url={map.url} width={map.width} height={map.height} grid={map.grid} />}
+    </div>
+  );
+}
+
 /**
  * An encounter template in the library's Encounters tab (encounter-templates, FR-GM-13): edit in a
  * temporary room (ADR 0033), rename and delete.
  */
 export function EncounterCard(props: {
   encounter: EncounterSummary;
+  /** The template's library map, for its preview image. */
+  map?: LibraryAsset;
   onChanged: (encounter: EncounterSummary) => void;
   onDeleted: () => void;
 }) {
@@ -72,6 +98,7 @@ export function EncounterCard(props: {
 
   return (
     <li className="asset-card encounter-card">
+      <EncounterThumb map={props.map} />
       {editing ? (
         <form className="row" onSubmit={(e) => void rename(e)}>
           <label className="grow">

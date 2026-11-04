@@ -15,11 +15,9 @@ const template = (overrides: Partial<EncounterSummary> = {}): EncounterSummary =
 });
 
 describe("the GM's Encounter templates section (encounter-templates, FR-GM-13)", () => {
-  it("offers a named save and waits for the list before saying anything about it", () => {
+  it("offers a header save action and waits for the list before saying anything about it", () => {
     const html = renderToStaticMarkup(<EncounterPanel connection={connection} state={emptyRoomState("r1")} />);
-    expect(html).toContain('<span class="sr-only">Encounter name</span>');
-    expect(html).toContain('placeholder="Encounter name"');
-    expect(html).toContain(`maxLength="60"`);
+    expect(html).toContain('aria-label="Save as template"');
     expect(html).toContain("Encounter templates");
     expect(text(html)).toContain("Loading…");
     expect(text(html)).not.toContain("No templates yet.");

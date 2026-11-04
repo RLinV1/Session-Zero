@@ -285,7 +285,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         )}
       </div>
       <aside className="map-editor-hud" aria-label="Sight settings">
-        <section className="sight-section">
+        <section className="sight-setting">
           <h3 className="map-editor-heading">Line of sight</h3>
           <div className="map-editor-modes" role="radiogroup" aria-label="Line of sight" data-guide="sight-toggle">
             <button type="button" role="radio" aria-checked={!enabled} className="tool-button map-editor-mode"
@@ -300,7 +300,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
             </button>
           </div>
         </section>
-        <section className="sight-section">
+        <section className="sight-setting">
           <h3 className="map-editor-heading">Map style</h3>
           <div className="map-editor-modes" role="radiogroup" aria-label="Map style" data-guide="map-style">
             <button type="button" role="radio" aria-checked={!isometric} className="tool-button map-editor-mode"
@@ -313,7 +313,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
             </button>
           </div>
         </section>
-        <section className="sight-section">
+        <section className="sight-setting">
           <h3 className="map-editor-heading">Range</h3>
           <div className="map-editor-modes" role="radiogroup" aria-label="Sight range">
             <button type="button" role="radio" aria-checked={range === null} className="tool-button map-editor-mode"

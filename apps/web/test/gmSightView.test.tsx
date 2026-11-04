@@ -49,7 +49,7 @@ describe("GM token view (FR-GM-19)", () => {
   });
 
   it("the Show menu has a Token view checkbox only when given sight, hints at Shift-click, and sends no filter change", () => {
-    const flags = { fog: false, walls: true, portals: false };
+    const flags = { fog: false, walls: true, portals: false, terrain: false };
     const onChange = vi.fn();
     const pick = vi.fn();
     const { rerender } = render(<BoardFilters value={flags} available={flags} onChange={onChange} />);

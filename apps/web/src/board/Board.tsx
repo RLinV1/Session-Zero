@@ -168,7 +168,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const viewRef = useRef<BoardView | null>(null);
   /** GM only: "off" hides fog from this view. Not remembered: every time the board opens, fog is shown. */
   const [terrainOpen, setTerrainOpen] = useState(false);
-  const [showTerrain, setShowTerrain] = useState(true);
+  const [showTerrain, setShowTerrain] = useState(false);
+  const [noMapNotice, setNoMapNotice] = useState(false);
   const [movementNotice, setMovementNotice] = useState<string | null>(null);
   const [repositionId, setRepositionId] = useState<string | null>(null);
   const repositionRef = useRef(repositionId); repositionRef.current = repositionId;
@@ -194,7 +195,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const hasWalls = Object.values(state.walls).some((wall) => !wall.portal);
   /** Strikes waiting for their thrown dice to land, by roll id, oldest first (KAN-76). */
   const waitingStrikes = useRef(new Map<string, { effect: AttackEffect; timer: number }>());
-  const latest = useRef({ tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: true, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
+  const latest = useRef({ tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: false, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
   latest.current = { tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
   // Sends nothing while previewing as a player, whatever the board is asked to do. Stable for as
   // long as the connection is, so entering and leaving a preview never rebuilds the board view.
@@ -238,7 +239,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const source = placing?.source ?? null;
 
   /** Arrow keys move the selected token one square while the token card's switch is on (WCAG 2.1.1, 2.5.7). */
-  const [arrowKeys, setArrowKeys] = usePersistentState<boolean>("vtt.ui.arrowKeyMove", false, (v): v is boolean => typeof v === "boolean");
+  const [arrowKeys, setArrowKeys] = usePersistentState<boolean>("vtt.ui.arrowKeyMove", true, (v): v is boolean => typeof v === "boolean");
   // One move at a time for the buttons and the keys together: a second step must start from the landed square.
   const movePending = useRef(false);
   const moveToken = useCallback(async (tokenId: string, to: Point) => {
@@ -751,16 +752,14 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {drops.length > 0 && <DroppedDice drops={drops} subscribe={followView} onDone={dropDone} />}
       <div className="board-toolbar">
         {toolbar}
-        <button type="button" className="tool-button" aria-pressed={showTerrain} onClick={() => setShowTerrain((value) => !value)}>Show terrain</button>
-        {you.role === "gm" && !readOnly && !selectOnly && <button type="button" className="tool-button" onClick={() => setTerrainOpen(true)}>Paint terrain</button>}
+        {you.role === "gm" && !readOnly && !selectOnly && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>Paint terrain</button>}
         <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title="Fit the map to the screen">
           <CornersOut size={16} aria-hidden="true" />
           Fit
         </button>
-        {you.role === "gm" && (
-          <BoardFilters
-            value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals }}
-            available={{ fog: hasFog, walls: hasWalls, portals: hasPortals }}
+        <BoardFilters
+            value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals, terrain: showTerrain }}
+            available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: true }}
             sight={gmCanSee && losOn ? {
               checked: tokenView,
               onChange: (on) => { setTokenView(on); setViewedIds(on && selectedId ? [selectedId] : []); },
@@ -769,9 +768,9 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
               setGmFog(next.fog ? "tint" : "off");
               setShowWalls(next.walls);
               setShowPortals(next.portals);
+              setShowTerrain(next.terrain);
             }}
           />
-        )}
       </div>
       {tokenView && gmCanSee && viewing.length === 0 && (
         <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />Select a token to see its view</p>
@@ -805,6 +804,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {tool.kind === "measure" && movementFeedback && <p className="movement-feedback" role="status">{movementFeedback}</p>}
       {overlay}
       {notices}
+      {noMapNotice && !state.scene.map && <p className="board-movement-readout" role="status">Add a map first to paint terrain.</p>}
       {movementNotice && !selected && !readOnly && <p className="board-movement-readout" role="status">{movementNotice}</p>}
       {terrainOpen && you.role === "gm" && !readOnly && <Modal open title="Live terrain" className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live /></div></Modal>}
       {refusal && <p key={refusal.at} className="board-refusal" role="alert">{refusal.message}</p>}

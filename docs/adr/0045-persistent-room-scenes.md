@@ -22,7 +22,7 @@ Only board preparation commands are accepted. Scene management, live combat, cha
 
 Selecting a scene previews it for the GM. Activate explicitly switches the room; Selecting the Live scene leaves preparation without switching players. Activation is offered in a nonmodal board popup explaining that the viewed scene is not active. Private view selection is local and resets to the live scene on reload; prepared content persists.
 
-New scenes open a setup modal offering an encounter template, a map, or a checkpoint from the current room. Maps use the existing library/upload picker. Template application and checkpoint restoration use the private scene connection, so players remain on the live board until activation. Checkpoint save/delete controls remain hidden from Manage.
+New scenes open a setup modal offering the current map, an encounter template, or a map. Restoring a checkpoint is not offered when creating a scene; the `scene.prepare` + `checkpoint.restore` backend path remains but has no UI entry point. Maps use the existing library/upload picker. Template application uses the private scene connection, so players remain on the live board until activation. Checkpoint save/delete controls remain hidden from Manage.
 
 The Current map setup option uses GM-only scene.copyCurrent to copy the authoritative live board and groups into an existing inactive scene through ScenePrepared. It captures the live map, tokens, HP, fog, walls, portals, initiative and groups at command processing time. It never switches the room or overwrites its active board; subsequent edits to either board are independent. Requests naming missing or active destinations, requests from players and temporary encounter-editing rooms are rejected.
 

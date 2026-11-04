@@ -1,4 +1,4 @@
-# Frontend Implementation Contract — Virtual Tabletop
+# Frontend Implementation Contract — Session Zero
 
 Part of the [design document](DESIGN.md) — see also [`DELIVERY.md`](DELIVERY.md) and
 [`INTERFACE.md`](INTERFACE.md).

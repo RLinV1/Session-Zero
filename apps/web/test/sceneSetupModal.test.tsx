@@ -14,7 +14,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function setup() {
   const state = emptyRoomState("r");
   state.activeSceneId = "private-copy";
-  state.checkpoints = [{ id: "checkpoint-1", name: "Before ambush", seq: 2 }];
+  state.checkpoints = [{ id: "checkpoint-1", name: "Before ambush", seq: 2 }]; // exists in the room but is not offered here
   const command = vi.fn().mockResolvedValue({ ok: true });
   const onClose = vi.fn(); const onChooseMap = vi.fn();
   const props = { open: true, state, connection: { command } as unknown as RoomConnection, onClose, onChooseMap };
@@ -28,14 +28,12 @@ describe("new scene setup", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(command).toHaveBeenCalledWith({ type: "scene.copyCurrent", sceneId: "private-copy" });
   });
-  it("offers starting points and applies only a checkpoint belonging to this room", async () => {
-    const { command, onClose } = setup();
+  it("offers starting points but no checkpoint restore", () => {
+    setup();
     expect(screen.getByRole("button", { name: "Encounter template" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Map" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Checkpoint" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply Before ambush" }));
-    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(command).toHaveBeenCalledWith({ type: "checkpoint.restore", checkpointId: "checkpoint-1" });
+    expect(screen.queryByRole("button", { name: "Checkpoint" })).toBeNull();
+    expect(screen.queryByText("Before ambush")).toBeNull();
   });
   it("lists encounter templates and applies a selection without activating", async () => {
     vi.spyOn(api.library.encounters, "list").mockResolvedValue([{ id: "template-1", name: "Goblin camp", mapName: "Cave" }] as EncounterSummary[]);
@@ -53,13 +51,5 @@ describe("new scene setup", () => {
     rerender(<SceneSetupModal {...props} open={false} />);
     fireEvent(document.querySelector("dialog")!, new Event("close"));
     expect(onChooseMap).toHaveBeenCalledOnce();
-  });
-  it("keeps a rejected restoration open and explains the failure", async () => {
-    const { command, onClose } = setup();
-    command.mockResolvedValue({ ok: false, message: "Checkpoint is unavailable" });
-    fireEvent.click(screen.getByRole("button", { name: "Checkpoint" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply Before ambush" }));
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Checkpoint is unavailable");
-    expect(onClose).not.toHaveBeenCalled();
   });
 });

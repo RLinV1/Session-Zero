@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, type Participant, type RoomState, type Token } from "@vtt/shared";
-import { ARROW_STEPS, MoveControl, ownsArrowKeys, stepTo } from "../src/ui/MoveControl";
+import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../src/ui/MoveControl";
 import { TokenCard } from "../src/board/TokenCard";
 
 const gm: Participant = { id: "gm", role: "gm", displayName: "Mara" };
@@ -23,56 +23,21 @@ const state: RoomState = {
 
 afterEach(cleanup);
 
-describe("moving a token without dragging (FR-PL-04, WCAG 2.5.7)", () => {
-  it("steps one grid square in board coordinates", async () => {
-    const onMove = vi.fn().mockResolvedValue(undefined);
-    render(<MoveControl name="Fighter" at={{ x: 105, y: 105 }} step={70} onMove={onMove} />);
-    fireEvent.click(screen.getByRole("button", { name: "Move Fighter right one square" }));
-    await waitFor(() => expect(onMove).toHaveBeenCalledWith({ x: 175, y: 105 }));
-    fireEvent.click(screen.getByRole("button", { name: "Move Fighter up one square" }));
-    await waitFor(() => expect(onMove).toHaveBeenLastCalledWith({ x: 105, y: 35 }));
-  });
-
-  it("refuses a step that would leave the map, without taking it out of the tab order", () => {
-    const onMove = vi.fn();
-    render(<MoveControl name="Fighter" at={{ x: 35, y: 35 }} step={70} bounds={{ width: 140, height: 140 }} onMove={onMove} />);
-    const left = screen.getByRole("button", { name: "Move Fighter left one square" }) as HTMLButtonElement;
-    expect(left.getAttribute("aria-disabled")).toBe("true");
-    expect(left.disabled).toBe(false);
-    expect(screen.getByRole("button", { name: "Move Fighter up one square" }).getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByRole("button", { name: "Move Fighter right one square" }).getAttribute("aria-disabled")).toBeNull();
-    fireEvent.click(left);
-    expect(onMove).not.toHaveBeenCalled();
-  });
-
-  it("allows one move at a time, so a second press can't start from a stale square", async () => {
-    let finish: () => void = () => {};
-    const onMove = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
-    render(<MoveControl name="Fighter" at={{ x: 105, y: 105 }} step={70} onMove={onMove} />);
-    const right = screen.getByRole("button", { name: "Move Fighter right one square" }) as HTMLButtonElement;
-    right.focus();
-    fireEvent.click(right);
-    await waitFor(() => expect(right.getAttribute("aria-disabled")).toBe("true"));
-    fireEvent.click(right);
-    expect(onMove).toHaveBeenCalledTimes(1);
-    // Still focused: a keyboard user keeps their place between steps.
-    expect(document.activeElement).toBe(right);
-    finish();
-    await waitFor(() => expect(right.getAttribute("aria-disabled")).toBeNull());
-  });
-
-  it("is on the board's token card for the owner and the GM, not for other players", () => {
+describe("the token card has no on-screen move pad (FR-PL-04)", () => {
+  it("shows the arrow-key switch, not Move buttons, to the owner and the GM only", () => {
     const onMove = vi.fn();
     for (const [you, shown] of [[alice, true], [gm, true], [bob, false]] as const) {
-      render(<TokenCard token={fighter} state={state} you={you} onClose={() => {}} onMove={onMove} />);
-      expect(!!screen.queryByRole("group", { name: "Move Fighter" }), you.displayName).toBe(shown);
+      render(<TokenCard token={fighter} state={state} you={you} onClose={() => {}} onMove={onMove} arrowKeys={{ on: true, onToggle: () => {} }} />);
+      expect(!!screen.queryByRole("switch", { name: "Move with arrow keys" }), you.displayName).toBe(shown);
+      expect(screen.queryByRole("group", { name: "Move Fighter" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Move Fighter .* one square/ })).toBeNull();
       cleanup();
     }
   });
 
   it("is not offered while previewing or replaying", () => {
-    render(<TokenCard token={fighter} state={state} you={gm} readOnly onClose={() => {}} onMove={vi.fn()} />);
-    expect(screen.queryByRole("group", { name: "Move Fighter" })).toBeNull();
+    render(<TokenCard token={fighter} state={state} you={gm} readOnly onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: true, onToggle: () => {} }} />);
+    expect(screen.queryByRole("switch", { name: "Move with arrow keys" })).toBeNull();
   });
 });
 

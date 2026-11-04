@@ -5,6 +5,7 @@ export interface BoardFilterState {
   fog: boolean;
   walls: boolean;
   portals: boolean;
+  terrain: boolean;
   /** Only the map editor's menu has a Grid row. */
   grid?: boolean;
 }
@@ -36,6 +37,7 @@ export function BoardFilters({ value, available, onChange, sight }: {
     { key: "fog", label: "Fog" },
     { key: "walls", label: "Walls" },
     { key: "portals", label: "Doors and windows" },
+    { key: "terrain", label: "Terrain" },
     { key: "grid", label: "Grid" },
   ];
   const shown = rows.filter((row) => available[row.key] === true);

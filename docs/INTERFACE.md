@@ -1,4 +1,4 @@
-# Interface and Page Design — Virtual Tabletop
+# Interface and Page Design — Session Zero
 
 Part of the [design document](DESIGN.md) — see also [`DELIVERY.md`](DELIVERY.md) and
 [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md).

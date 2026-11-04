@@ -85,7 +85,7 @@ describe("New encounter in the library (encounter-templates, ADR 0033)", () => {
 });
 
 describe("replace a template from a room (encounter-templates, ADR 0033)", () => {
-  it("offers Replace for templates on this room's map, marks the others, and confirms first", async () => {
+  it("offers a per-row Replace for templates on this room's map, disables the others, and confirms first", async () => {
     const state = emptyRoomState("room-1");
     state.scene = { map: { url: "/uploads/crypt.png", width: 800, height: 600, assetId: "m1" }, grid: DEFAULT_GRID };
     vi.spyOn(api.library.encounters, "list").mockResolvedValue([
@@ -97,14 +97,10 @@ describe("replace a template from a room (encounter-templates, ADR 0033)", () =>
     const connection = { command: vi.fn() } as never;
     render(<EncounterPanel connection={connection} state={state} />);
 
-    const target = (await screen.findByLabelText("Save to")) as HTMLSelectElement;
-    const options = within(target).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["Save as new", "Replace Crypt guards", "Replace Cave ambush (different map)"]);
-    expect((options[2] as HTMLOptionElement).disabled).toBe(true);
-
-    fireEvent.change(target, { target: { value: "t1" } });
-    expect(screen.queryByLabelText("Template name")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    const own = (await screen.findByRole("button", { name: "Replace Crypt guards" })) as HTMLButtonElement;
+    expect(own.disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Replace Cave ambush" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(own);
     const confirm = screen.getByRole("dialog", { name: "Replace encounter template?" });
     expect(replaceFromRoom).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByRole("button", { name: "Replace Crypt guards" }));

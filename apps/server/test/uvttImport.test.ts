@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_GRID, UvttPreparation, replayTo, type CommandInput } from "@vtt/shared";
+import { DEFAULT_GRID, UvttError, UvttPreparation, replayTo, type CommandInput } from "@vtt/shared";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import { UvttValidationPool } from "../src/uvtt/validationPool";
@@ -319,10 +319,11 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(oversized.status).toBe(413); expect((await oversized.text()).length).toBeLessThan(200);
   });
   it("caps multipart uploads and rate-limits authorized preparation attempts", async () => {
+    vi.spyOn(UvttValidationPool.prototype, "validate").mockRejectedValue(new UvttError([{ code: "unsupported_format", path: "file", severity: "error", message: "Unsupported format" }]));
     const creds = await server.createRoom();
     const body = new FormData(); body.append("file", new Blob([new Uint8Array(40 * 1024 * 1024 + 1)]), "large.uvtt");
     expect((await fetch(url(creds.roomId), { method: "POST", headers: { authorization: `Bearer ${creds.guestToken}` }, body })).status).toBe(413);
-    for (let i = 0; i < 4; i++) expect((await upload(creds.roomId, creds.guestToken, { format: 2 })).status).toBe(422);
+    for (let i = 0; i < 24; i++) expect((await upload(creds.roomId, creds.guestToken, { format: 2 })).status).toBe(422);
     const limited = await upload(creds.roomId, creds.guestToken, { format: 2 });
     expect(limited.status).toBe(429); expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(await readdir(server.uploadDir).catch(() => [])).toEqual([]);

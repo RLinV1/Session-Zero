@@ -48,7 +48,8 @@ describe("image upload limit (FR-GM-02)", () => {
   it("refuses a room upload once that account's budget is spent, even from a new room", async () => {
     const { cookie } = await server.signUp();
     const first = await server.createRoom("GM", { cookie, roomName: "A" });
-    for (let i = 0; i < 60; i++) server.app.limits.uploadsPerOwner.hit(`upload:${(await server.store.findRoomOwner(first.roomId))!}`);
+    const ownerId = (await server.store.findRoomOwner(first.roomId))!;
+    for (let i = 0; i < 300; i++) server.app.limits.uploadsPerOwner.hit(`upload:${ownerId}`);
     const fresh = await server.createRoom("GM", { cookie, roomName: "B" });
     expect((await roomUpload(fresh.guestToken)).status).toBe(429);
     expect((await libraryUpload(cookie)).status).toBe(429);
