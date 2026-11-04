@@ -20,7 +20,8 @@ export function baseRoom(): RoomState {
     { type: "ParticipantJoined", participant: alice },
     { type: "ParticipantJoined", participant: bob },
   ];
-  return reduceAll(emptyRoomState("room-1"), events);
+  // Auto-remove at 0 HP is on in a real room (ADR 0049); the fixture opts out so damage tests keep their tokens.
+  return { ...reduceAll(emptyRoomState("room-1"), events), autoRemoveDefeated: false };
 }
 
 let n = 0;

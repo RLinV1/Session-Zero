@@ -130,7 +130,7 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
 
 export type FilteredEvent =
   /** Deliver as-is. */
-  | { kind: "event"; committed: CommittedEvent }
+  | { kind: "event"; committed: CommittedEvent; thenResync?: true }
   /** Viewer may not see this; deliver only the seq so their ordering stays gap-free. */
   | { kind: "redacted"; seq: number }
   /** The viewer's visible world changed shape; send a fresh filtered snapshot instead. */
@@ -163,6 +163,8 @@ export function filterEventForViewer(
   const byVisibility = (wasConcealed: boolean, isConcealed: boolean): FilteredEvent =>
     wasConcealed !== isConcealed ? { kind: "resync" } : isConcealed ? redacted : pass;
 
+  /** Set when the event is delivered and the viewer's sight must then be resynced. */
+  let thenResync = false;
   // With line of sight on, anything that can move, add or remove a sight polygon resyncs the
   // player, since `sight` reaches them only in snapshots (ADR 0044).
   if (before.scene.lineOfSight) {
@@ -180,8 +182,15 @@ export function filterEventForViewer(
         break;
       // A token the viewer owns before or after the event is a sight origin.
       case "TokenCreated":
-      case "TokenDeleted":
         if (e.token.ownerIds.includes(viewer.id)) return { kind: "resync" };
+        break;
+      case "TokenDeleted":
+        // A defeat is delivered first so the board can play the death animation, then resynced
+        // for the lost sight origin (ADR 0049).
+        if (e.token.ownerIds.includes(viewer.id)) {
+          if (e.reason !== "defeated") return { kind: "resync" };
+          thenResync = true;
+        }
         break;
       case "TokenMoved":
       case "TokenHiddenSet":
@@ -223,6 +232,7 @@ export function filterEventForViewer(
     case "TokenDeleted":
       return concealedFrom(conc(), e.token, viewer) ? redacted : {
         kind: "event", committed: { ...withoutCommandId, event: { ...e, token: tokenForViewer(e.token, viewer) } },
+        ...(thenResync && { thenResync: true }),
       };
     case "TokenMoved": {
       // Moving into or out of fog changes what the viewer may see (ADR 0016).
@@ -261,6 +271,7 @@ export function filterEventForViewer(
     case "MapNuked":
     case "MapNukeUndone":
     case "ReducedEffectsSet":
+    case "AutoRemoveDefeatedSet":
       // Names no token and has no GM-only content: the blast is for the whole table (ADR 0038).
       return pass;
     case "GroupRolled": {

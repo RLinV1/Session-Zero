@@ -20,9 +20,27 @@ export function GroupSelectionList({ selection, state, idPrefix }: { selection: 
   const hasTemplates = Object.keys(state.templates).length > 0;
   return (
     <div className="group-selection" role="group" aria-labelledby={`${idPrefix}-selection-label`}>
-      <p id={`${idPrefix}-selection-label`} className="group-selection-label">
-        {tokens.length === 0 ? "No tokens selected" : `${tokens.length} ${tokens.length === 1 ? "token" : "tokens"} selected`}
-      </p>
+      <div className="group-selection-head">
+        <p id={`${idPrefix}-selection-label`} className="group-selection-label">
+          {tokens.length === 0 ? "No tokens selected" : `${tokens.length} ${tokens.length === 1 ? "token" : "tokens"} selected`}
+        </p>
+        <div className="group-selection-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={!hasTemplates}
+            title={hasTemplates ? "Click an area on the board to select every token it touches" : "Place an area on the board first"}
+            onClick={selection.fromTemplate}
+          >
+            From template
+          </button>
+          {tokens.length > 0 && (
+            <button type="button" className="secondary" onClick={selection.clear}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
       {tokens.length > 0 && (
         <ul className="plain group-selection-tokens">
           {tokens.map((token) => (
@@ -36,23 +54,7 @@ export function GroupSelectionList({ selection, state, idPrefix }: { selection: 
           ))}
         </ul>
       )}
-      <div className="row group-selection-actions">
-        <button
-          type="button"
-          className="secondary small"
-          disabled={!hasTemplates}
-          title={hasTemplates ? "Click an area on the board to select every token it touches" : "Place an area on the board first"}
-          onClick={selection.fromTemplate}
-        >
-          From template
-        </button>
-        {tokens.length > 0 && (
-          <button type="button" className="secondary small" onClick={selection.clear}>
-            Clear
-          </button>
-        )}
-      </div>
-      <p className="muted small-print">Shift-click tokens on the board to add or remove them.</p>
+      <p className="muted small-print group-selection-hint">Shift-click tokens on the board to add or remove them.</p>
     </div>
   );
 }

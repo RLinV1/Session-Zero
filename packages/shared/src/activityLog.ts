@@ -108,7 +108,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "TerrainEffectRenamed": return `${actorName} renamed a terrain effect`;
     case "TokenMoved": return `${actorName} moved ${tokenName(event.tokenId)} from ${formatPoint(event.from)} to ${formatPoint(event.to)}`;
     case "TokenAppearanceSet": return `${actorName} updated ${event.previous.name} to ${event.name} (size ${event.size}, rotation ${event.rotation}°)`;
-    case "TokenDeleted": return `${actorName} deleted ${event.token.name}`;
+    case "TokenDeleted": return event.reason === "defeated" ? `${event.token.name} was defeated and removed` : `${actorName} deleted ${event.token.name}`;
     case "TokenOwnersSet": return `${actorName} assigned ${tokenName(event.tokenId)} to ${event.ownerIds.length ? event.ownerIds.map(participantName).join(", ") : "no players"}`;
     case "TokenHiddenSet": return `${actorName} ${event.hidden ? "hid" : "revealed"} ${tokenName(event.tokenId)}`;
     case "TokenStatsSet": return `${actorName} updated ${tokenName(event.tokenId)}'s stats: HP ${event.stats.hp ?? "unset"}/${event.stats.maxHp ?? "unset"}, AC ${event.stats.ac ?? "unset"}`;
@@ -173,6 +173,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       const roll = rolledEarlier(event.rollId);
       return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
     }
+    case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
     case "ReducedEffectsSet": return `${actorName} turned reduced animations ${event.enabled ? "on" : "off"} for the table`;
     case "MapNuked": return `${actorName} detonated a nuke (${event.amount} damage)`;
     case "MapNukeUndone": return `${actorName} took back a nuke (${event.amount} damage)`;

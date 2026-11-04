@@ -180,7 +180,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const [showPortals, setShowPortals] = usePersistentState<boolean>("vtt.ui.gmShowPortals", true, (v): v is boolean => typeof v === "boolean");
   /** GM only: darken this browser's board to what the selected token sees (gm-token-sight-view). View-only, nothing is sent. */
   const [tokenView, setTokenView] = useState(false);
-  /** The tokens Token view shows the sight of: the clicked token, plus any Shift-clicked ones. */
+  /** Narrows Token view to these tokens (set only by a card's eye); empty means every token on the map. */
   const [viewedIds, setViewedIds] = useState<string[]>([]);
   const gmCanSee = you.role === "gm" && !readOnly;
   const losOn = state.scene.lineOfSight === true;
@@ -190,6 +190,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   useEffect(() => {
     if (!tokenView && viewedIds.length > 0) setViewedIds([]);
   }, [tokenView, viewedIds]);
+  /** True when Token view was switched on from a card's eye (not the Show menu): the eye then switches it back off, otherwise it returns to all tokens. */
+  const [eyeStarted, setEyeStarted] = useState(false);
+  useEffect(() => {
+    if (!tokenView && eyeStarted) setEyeStarted(false);
+  }, [tokenView, eyeStarted]);
   const hasFog = Object.keys(state.fog).length > 0;
   const hasPortals = Object.values(state.walls).some((wall) => wall.portal);
   const hasWalls = Object.values(state.walls).some((wall) => !wall.portal);
@@ -209,15 +214,17 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     const timer = setTimeout(() => setRefusal(null), 4000);
     return () => clearTimeout(timer);
   }, [refusal]);
-  /** Closing the token panel deselects the token, and Token view goes with it. */
-  const deselect = () => { setSelectedId(null); setViewedIds([]); };
+  /** Closing the card deselects the token and drops the eye's narrowing: back to all tokens, or off if the eye alone turned Token view on. */
+  const deselect = () => { setSelectedId(null); setViewedIds([]); if (eyeStarted) setTokenView(false); };
   const selected = selectedId ? renderedState.tokens[selectedId] ?? null : null;
   const [movementSettings, setMovementSettings] = useState<MovementSettings>(() => defaultMovementSettings(state.scene.grid));
   const [movementFeedback, setMovementFeedback] = useState("");
   const rulerOrigin = selected && can.moveToken(you, selected) ? selected.position : null;
   const rulerRef = useRef({ settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
   rulerRef.current = { settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
-  const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds) : [];
+  // Token view with no narrowing (viewedIds empty) is "all tokens": the union of every token's sight, hidden ones included.
+  // Only a card's eye narrows it to that token; the eye again or closing the card returns to all tokens (or off, if the eye started it).
+  const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds.length > 0 ? viewedIds : Object.keys(state.tokens)) : [];
   const sightId = sightKey(state, viewing);
   // Keyed on what shapes the sight, so an unrelated event keeps the same array and the mask is not rebuilt.
   const sight = useMemo(() => gmSightPolygons(state, viewing), [state.scene, state.walls, state.fog, sightId]);
@@ -321,7 +328,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const playEffect = (effect: AttackEffect) => {
     viewRef.current?.playAttackEffect(effect);
     // Strikes are entirely Pixi: they need neither the DOM overlay nor its animation libraries.
-    if (effect.kind === "strike") return;
+    if (effect.kind === "strike" || effect.kind === "defeat") return;
     // A nuke shakes the whole page, not just the board.
     if (effect.kind === "nuke" && !effectiveReducedMotion(latest.current.state)) shakeScreen(effect.animation);
     const id = nextEffectId.current++;
@@ -409,12 +416,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         return result.ok;
       },
       placeToken: (at) => void placeRef.current(at),
-      selectToken: (tokenId, extend) => {
-        // Shift-click adds or removes a token from Token view; the normal selection stays put.
-        if (extend && tokenId && latest.current.tokenView) return setViewedIds((now) => (now.includes(tokenId) ? now.filter((i) => i !== tokenId) : [...now, tokenId]));
-        setSelectedId(tokenId);
-        setViewedIds(tokenId ? [tokenId] : []);
-      },
+      // Selecting only opens the card; which sight Token view shows changes only through the card's eye.
+      selectToken: (tokenId) => setSelectedId(tokenId),
       cancelPlacement: () => setPlacing(null),
       togglePortal: (wallId, lock) => {
         const portal = latest.current.state.walls[wallId]?.portal;
@@ -776,7 +779,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
             available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: true }}
             sight={gmCanSee && losOn ? {
               checked: tokenView,
-              onChange: (on) => { setTokenView(on); setViewedIds(on && selectedId ? [selectedId] : []); },
+              onChange: (on) => { setEyeStarted(false); setTokenView(on); setViewedIds([]); },
             } : undefined}
             onChange={(next) => {
               setGmFog(next.fog ? "tint" : "off");
@@ -787,7 +790,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           />
       </div>
       {tokenView && gmCanSee && viewing.length === 0 && (
-        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />Select a token to see its view</p>
+        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />No tokens on the map to see through</p>
       )}
       {/* Line of sight with no token to see through: the map shows dimmed, and this says why. */}
       {you.role === "player" && losOn && state.scene.map && state.sight?.length === 0 && (
@@ -837,6 +840,21 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           movementReadout={movementNotice}
           reposition={you.role === "gm" && !readOnly ? { on: repositionId === selected.id, toggle: () => setRepositionId((id) => id === selected.id ? null : selected.id) } : undefined}
           arrowKeys={{ on: arrowKeys, onToggle: setArrowKeys }}
+          sight={gmCanSee && losOn ? (() => {
+            const on = tokenView && viewedIds.includes(selected.id);
+            return {
+              on,
+              onToggle: () => {
+                if (on) {
+                  if (eyeStarted) setTokenView(false); else setViewedIds([]);
+                } else {
+                  if (!tokenView) setEyeStarted(true);
+                  setTokenView(true);
+                  setViewedIds([selected.id]);
+                }
+              },
+            };
+          })() : undefined}
         />
       )}
       {placing && (

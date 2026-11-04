@@ -1,6 +1,6 @@
 import { useRef, useState, type RefObject } from "react";
 import { ClockCounterClockwise, DotsThree, Rewind, GearSix } from "@phosphor-icons/react";
-import { SettingsMenu } from "./SettingsMenu";
+import { SettingsMenu, type SettingsRoom } from "./SettingsMenu";
 import { GuideIcon } from "./GuideTour";
 import { PopoverButton } from "./Popover";
 
@@ -8,7 +8,9 @@ import { PopoverButton } from "./Popover";
  * The room bar's "More" menu: the activity log, replay and the guide, folded into one button so
  * the bar stays short. Each item closes the menu, then opens its own view.
  */
-export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRef }: {
+export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRef, room }: {
+  /** Lets the GM change table settings from the Settings dialog; omitted while previewing. */
+  room?: SettingsRoom;
   /** GM only; omitted for everyone else. */
   onActivityLog?: () => void;
   /** Omitted while previewing as a player. */
@@ -58,7 +60,7 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, buttonRe
         );
       }}
     </PopoverButton>
-    <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} onAfterClose={() => menuButtonRef.current?.focus()} />
+    <SettingsMenu room={room} open={settingsOpen} onClose={() => setSettingsOpen(false)} onAfterClose={() => menuButtonRef.current?.focus()} />
     </>
   );
 }

@@ -550,7 +550,7 @@ export function decide(
       }
       if (moved && outOfFog) events.push(moved);
       if (hiddenEvent && !changes.hidden) events.push(hiddenEvent);
-      return accept(...events);
+      return accept(...withDefeats(state, events));
     }
 
     case "token.setAppearance": {
@@ -621,12 +621,12 @@ export function decide(
       if (command.stats.hp !== null && command.stats.maxHp !== null && command.stats.hp > command.stats.maxHp) {
         return reject("invalid", "Current HP cannot exceed maximum HP");
       }
-      return accept({
+      return accept(...withDefeats(state, [{
         type: "TokenStatsSet",
         tokenId: token.id,
         stats: command.stats,
         previous: token.stats,
-      });
+      }]));
     }
 
     case "token.setImage": {
@@ -788,7 +788,7 @@ export function decide(
       const applied: DomainEvent = { type: "RollDamageApplied", rollId: roll.id, amount };
       // Nothing to change (no damage, or already at the floor): just mark the roll applied.
       if (hp === target.stats.hp) return accept(applied);
-      return accept({ type: "TokenStatsSet", tokenId: target.id, stats: { ...target.stats, hp }, previous: target.stats }, applied);
+      return accept(...withDefeats(state, [{ type: "TokenStatsSet", tokenId: target.id, stats: { ...target.stats, hp }, previous: target.stats }, applied]));
     }
 
     case "dice.rollGroup": {
@@ -903,7 +903,7 @@ export function decide(
           changes.push({ type: "TokenConditionsSet", tokenId: token.id, conditions, previous: token.conditions });
         }
       }
-      return accept(...changes, { type: "AreaEffectResolved", effect, amounts });
+      return accept(...withDefeats(state, [...changes, { type: "AreaEffectResolved", effect, amounts }]));
     }
 
     case "areaEffect.close": {
@@ -918,6 +918,13 @@ export function decide(
       const previous = state.reducedEffects ?? false;
       if (previous === command.enabled) return reject("invalid", command.enabled ? "Reduced animations are already on" : "Reduced animations are already off");
       return accept({ type: "ReducedEffectsSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setAutoRemoveDefeated": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.autoRemoveDefeated ?? true;
+      if (previous === command.enabled) return reject("invalid", command.enabled ? "Automatic removal is already on" : "Automatic removal is already off");
+      return accept({ type: "AutoRemoveDefeatedSet", enabled: command.enabled, previous });
     }
 
     case "nuke.detonate": {
@@ -942,7 +949,7 @@ export function decide(
         ...(command.animation && { animation: command.animation }),
       };
       // Announce the falling bomb before HP events, so clients can hold their display until impact.
-      return accept(blast, ...damaged);
+      return accept(...withDefeats(state, [blast, ...damaged]));
     }
 
     case "template.place": {
@@ -1528,6 +1535,25 @@ function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?:
   if (uses.conditions && !preset.features.conditions) return reject("invalid", `Conditions are off in ${preset.name}.`);
   if (uses.ac != null && !preset.features.armorClass) return reject("invalid", `AC is off in ${preset.name}.`);
   return null;
+}
+
+/**
+ * With the room option on, appends a defeat `TokenDeleted` for every token a command's stats
+ * events leave at 0 HP or below, after that token's last event in the batch so nothing later
+ * names a missing token (ADR 0049). Pure: the deleted token is folded from the batch.
+ */
+function withDefeats(state: RoomState, events: DomainEvent[]): DomainEvent[] {
+  if (state.autoRemoveDefeated === false) return events;
+  const ids = [...new Set(events.flatMap((e) => (e.type === "TokenStatsSet" ? [e.tokenId] : [])))];
+  const defeats = new Map<number, DomainEvent>();
+  for (const id of ids) {
+    const mine = events.filter((e) => "tokenId" in e && e.tokenId === id);
+    const token = reduceAll(state, mine).tokens[id];
+    if (!token || token.stats.hp === null || token.stats.hp > 0) continue;
+    defeats.set(events.lastIndexOf(mine[mine.length - 1]!), { type: "TokenDeleted", token, reason: "defeated" });
+  }
+  if (defeats.size === 0) return events;
+  return events.flatMap((e, i) => (defeats.has(i) ? [e, defeats.get(i)!] : [e]));
 }
 
 const accept = (...events: DomainEvent[]): Decision => ({ ok: true, events });

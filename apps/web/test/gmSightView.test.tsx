@@ -48,7 +48,7 @@ describe("GM token view (FR-GM-19)", () => {
     expect(gmSightPolygons(s, ["b"])).toBeNull();
   });
 
-  it("the Show menu has a Token view checkbox only when given sight, hints at Shift-click, and sends no filter change", () => {
+  it("the Show menu has a Token view checkbox only when given sight, and sends no filter change", () => {
     const flags = { fog: false, walls: true, portals: false, terrain: false };
     const onChange = vi.fn();
     const pick = vi.fn();
@@ -56,12 +56,11 @@ describe("GM token view (FR-GM-19)", () => {
     fireEvent.click(screen.getByRole("button", { name: /show/i }));
     expect(screen.queryByLabelText("Token view")).toBeNull();
     rerender(<BoardFilters value={flags} available={flags} onChange={onChange} sight={{ checked: false, onChange: pick }} />);
-    expect(screen.queryByText("Shift-click to add tokens")).toBeNull();
     fireEvent.click(screen.getByLabelText("Token view"));
     expect(pick).toHaveBeenCalledWith(true);
     expect(onChange).not.toHaveBeenCalled();
     rerender(<BoardFilters value={flags} available={flags} onChange={onChange} sight={{ checked: true, onChange: pick }} />);
-    expect(screen.getByText("Shift-click to add tokens")).toBeTruthy();
+    expect((screen.getByLabelText("Token view") as HTMLInputElement).checked).toBe(true);
   });
 });
 

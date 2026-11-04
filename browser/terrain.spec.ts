@@ -225,9 +225,10 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await expect(editor.getByRole("button", { name: "Base terrain", exact: true })).toHaveAttribute("aria-pressed", "true");
     expect(gm.state.terrain?.base).toEqual([{ row: 0, start: 1, end: 2, kind: "difficult" }]);
     await canvas.focus(); await canvas.press("Enter");
-    await expect(editor.getByRole("button", { name: "Apply preview" })).toBeVisible();
+    await expect(editor.getByText(/Preview ready/)).toBeVisible();
+    await expect(editor.getByRole("button", { name: /Apply preview|Cancel stroke/ })).toHaveCount(0);
     await canvas.press("Escape");
-    await expect(editor.getByRole("button", { name: "Apply preview" })).toHaveCount(0);
+    await expect(editor.getByText(/Preview ready/)).toHaveCount(0);
     await editor.screenshot({ path: testInfo.outputPath("terrain-editor.png") });
     const viewport = page.viewportSize()!; const close = editor.getByRole("button", { name: "Close", exact: true }); const closeBox = await close.boundingBox();
     expect(closeBox!.y).toBeGreaterThanOrEqual(0); expect(closeBox!.y + closeBox!.height).toBeLessThanOrEqual(viewport.height);

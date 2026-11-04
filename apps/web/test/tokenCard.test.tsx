@@ -32,6 +32,27 @@ describe("board token card actions (FR-GM-08, token-card-actions)", () => {
     expect(onDuplicate).toHaveBeenCalledOnce();
   });
 
+  it("draws Edit as an icon with no visible text (FR-GM-19)", () => {
+    show(gm);
+    const edit = screen.getByRole("button", { name: "Edit Fighter" });
+    expect(edit.textContent).toBe("");
+    expect(edit.getAttribute("title")).toBe("Edit token");
+  });
+
+  it("shows the eye only when given sight, with a pressed state, and toggles (FR-GM-19)", () => {
+    show(gm);
+    expect(screen.queryByRole("button", { name: /view as Fighter/i })).toBeNull();
+    cleanup();
+    const onToggle = vi.fn();
+    const { rerender } = render(<TokenCard token={fighter} state={state} you={gm} onClose={() => {}} sight={{ on: false, onToggle }} />);
+    const eye = screen.getByRole("button", { name: "View as Fighter" });
+    expect(eye.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(eye);
+    expect(onToggle).toHaveBeenCalledOnce();
+    rerender(<TokenCard token={fighter} state={state} you={gm} onClose={() => {}} sight={{ on: true, onToggle }} />);
+    expect(screen.getByRole("button", { name: "Stop viewing as Fighter" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("offers the token's owner Edit but not Duplicate", () => {
     show(alice);
     expect(screen.getByRole("button", { name: "Edit Fighter" })).toBeTruthy();

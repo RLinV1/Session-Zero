@@ -109,6 +109,8 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("TokenDeleted"),
     token: Token,
+    /** "defeated": removed by the auto-remove option after its HP reached 0 (ADR 0049). Reversible by undo. */
+    reason: z.literal("defeated").optional(),
   }),
   z.object({
     type: z.literal("TokenOwnersSet"),
@@ -275,6 +277,12 @@ export const DomainEvent = z.discriminatedUnion("type", [
   /** The GM turned the table's reduced animations on or off (ADR 0038). */
   z.object({
     type: z.literal("ReducedEffectsSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM turned automatic removal of defeated tokens on or off (ADR 0049). */
+  z.object({
+    type: z.literal("AutoRemoveDefeatedSet"),
     enabled: z.boolean(),
     previous: z.boolean(),
   }),

@@ -376,6 +376,11 @@ export interface RoomState {
    */
   reducedEffects: boolean;
   /**
+   * The table removes a token when its HP reaches 0 or below (ADR 0049); the GM can turn it off. Public.
+   * On by default. Absent in older snapshots and logs, which read as true (`?? true`).
+   */
+  autoRemoveDefeated: boolean;
+  /**
    * The open area effect, if any (ADR 0046). At most one per room. Rooms from before it read as
    * null. Players get a projection: no saves, no concealed targets.
    */
@@ -414,6 +419,7 @@ export function emptyRoomState(roomId: Id): RoomState {
     groups: {},
     tokenGroups: {},
     reducedEffects: false,
+    autoRemoveDefeated: true,
     areaEffect: null,
   };
 }

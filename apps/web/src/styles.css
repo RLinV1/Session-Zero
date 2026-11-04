@@ -334,6 +334,7 @@ a.tool-button { text-decoration: none; }
 .token-card-actions { margin-top: var(--space-3); gap: var(--space-2); }
 .token-card-reposition { align-self: flex-start; max-width: 100%; margin: var(--space-3) 0 var(--space-2); white-space: normal; }
 .token-card-reposition[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.token-card-sight.is-on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .token-card-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 .token-card-delete:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .token-card .arrow-keys-switch { margin-top: var(--space-2); }
@@ -652,7 +653,7 @@ button.small { min-height: 0; padding: 0.2rem 0.5rem; font-size: var(--fs-sm); }
 /* --- Dice --- */
 .dice-form { display: flex; flex-direction: column; gap: 0.4rem; }
 .dice-row { display: flex; gap: 0.4rem; }
-.dice-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.dice-row input, .dice-row select { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
 .dice-quick { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 label.checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: var(--fs-sm); color: var(--text); }
 
@@ -797,7 +798,10 @@ label.checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-siz
 .client-settings legend { font-weight: 700; padding: 0 0 .75rem; }
 .client-settings-modal { width: min(34rem, calc(100vw - 2rem)); }
 .client-settings { gap: var(--space-5); }
-.client-settings .settings-section + .settings-section { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+.client-settings .settings-tabs { flex: none; flex-wrap: nowrap; }
+.client-settings .settings-tabs .map-editor-step { flex: 1 1 0; min-width: 0; }
+/* Fixed to the tallest panel (Graphics) so the dialog does not jump between tabs. */
+.client-settings .settings-panel { min-height: 15rem; align-content: start; }
 .client-settings p { margin: 0; }
 .client-settings .range-label { align-items: center; color: var(--text); gap: var(--space-4); }
 .client-settings .range-label label { font-size: var(--fs-md); }
@@ -2808,7 +2812,7 @@ dialog.modal.checkpoint-preview-modal { width: min(64rem, calc(100vw - 2rem)); }
 .animation-editor-controls .animation-sliders { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
 .animation-editor-controls .animation-slider { row-gap: 0; }
 .animation-colours { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); align-items: end; }
-.animation-colours label { font-size: var(--fs-sm); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.animation-colours label { font-size: var(--fs-sm); min-width: 0; overflow-wrap: anywhere; }
 .animation-colours input[type="color"] { width: 100%; height: 3rem; padding: var(--space-1); }
 .animation-editor-controls input:not([type="checkbox"]), .animation-editor-controls select { max-width: 100%; width: 100%; }
 .animation-editor-controls .stack { gap: var(--space-4); }
@@ -2875,18 +2879,37 @@ button.stage-slot:hover:not(:disabled) { filter: none; border-color: var(--borde
 /* Group rolls and area effects (ADR 0046). */
 .group-roll-form { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); gap: var(--space-2); }
 .group-roll-heading { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
-.group-selection { display: flex; flex-direction: column; gap: 0.35rem; }
-.group-selection-label { margin: 0; font-size: var(--fs-sm); }
-.group-selection-tokens { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.group-selection-token { display: inline-flex; align-items: center; gap: 0.25rem; }
+.group-selection { display: flex; flex-direction: column; gap: var(--space-1); }
+.group-selection-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.group-selection-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.group-selection-tokens { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.group-selection-token { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0 0.15rem 0 0.45rem; font-size: var(--fs-xs); }
+.group-selection-hint { font-size: var(--fs-xs); }
+/* Text-weight action: no box, so it never competes with a primary. */
+button.quiet-action { background: none; border: none; min-height: 0; padding: 0.1rem 0.25rem; font-size: var(--fs-sm); font-weight: 500; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+button.quiet-action:hover:not(:disabled) { filter: none; color: var(--text); }
 .group-selection-token .icon-button, .condition-adder .icon-button { min-height: 0; padding: 0.1rem; border: none; background: transparent; }
-.group-selection-actions { flex-wrap: wrap; }
+.group-selection-actions { display: flex; gap: var(--space-1); flex-shrink: 0; }
+.group-selection-actions button { min-height: 0; padding: 0.2rem 0.6rem; font-size: var(--fs-sm); }
 .group-roll .roll-detail { width: 100%; }
 .group-roll-entries { display: flex; flex-direction: column; gap: 0.1rem; font-variant-numeric: tabular-nums; }
 .area-effect { gap: var(--space-2); }
-.area-effect-targets { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.area-effect-targets { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.area-effect-targets li { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: 0.2rem var(--space-2); background: var(--raised); border-radius: var(--radius-control); }
+.area-effect-name { min-width: 0; overflow-wrap: anywhere; }
+.area-effect-figures { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.area-effect-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.area-effect-footer > .area-effect-skip:only-child { margin-left: auto; }
 .area-effect-waiting, .area-effect-damage { margin: 0; }
 .damage-mode { border: none; margin: 0; padding: 0; display: flex; gap: var(--space-3); flex-wrap: wrap; }
+/* Segmented choice over real radios: the inputs stay in the tab order and the a11y tree. */
+.damage-mode.segmented { gap: 0; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--panel); flex-wrap: nowrap; }
+.segmented label { position: relative; flex: 1; display: block; margin: 0; }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segmented span { display: block; padding: 0.25rem 0.4rem; text-align: center; font-size: var(--fs-sm); color: var(--muted); border-radius: calc(var(--radius-control) - 2px); }
+.segmented input:checked + span { background: var(--raised); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.segmented input:hover:not(:checked) + span { color: var(--text); }
+.segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
 .area-effect-rows { display: flex; flex-direction: column; gap: var(--space-2); }
 .area-effect-row { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
 .area-effect-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -3439,9 +3462,16 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .terrain-controls { display: grid; gap: var(--space-3); }
 .terrain-controls button.terrain-icon, .terrain-head button.terrain-icon { min-height: 36px; min-width: 36px; padding: 0; display: inline-grid; place-items: center; position: relative; background: var(--raised); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; }
 .terrain-controls button.terrain-icon:disabled { opacity: .45; }
-.terrain-tools { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.terrain-seg { display: inline-flex; gap: var(--space-1); }
-.terrain-icon sup { position: absolute; right: 2px; top: 1px; font-size: .62rem; font-weight: 700; color: #d5a64d; }
+.terrain-tools { display: grid; gap: var(--space-3); }
+.terrain-group { display: grid; gap: var(--space-1); min-width: 0; }
+.terrain-group-label { font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+/* Segmented control: equal cells filling the panel width, one shared track. */
+.terrain-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; background: var(--field); border: 1px solid var(--border); border-radius: 8px; }
+.terrain-controls .terrain-seg button.terrain-icon { width: 100%; min-height: 40px; background: transparent; border: 0; border-radius: 6px; color: var(--muted); }
+.terrain-controls .terrain-seg button.terrain-icon:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--raised); color: var(--text); }
+.terrain-controls .terrain-seg button.terrain-icon[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); outline: 0; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.terrain-controls .terrain-seg button.terrain-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; position: relative; z-index: 1; }
+.terrain-icon sup { position: absolute; right: 4px; top: 3px; font-size: .62rem; line-height: 1; font-weight: 700; color: #d5a64d; }
 .terrain-kind-blocked[aria-pressed="true"] { color: #d57474; }
 .terrain-kind-difficult[aria-pressed="true"] { color: #d5a64d; }
 .terrain-layers { border: 1px solid var(--border); border-radius: 8px; background: var(--field); overflow: clip; }
@@ -3458,7 +3488,9 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .terrain-chip-base { background: #4f6b52; }
 .terrain-layers input.terrain-new { width: calc(100% - 1rem); margin: var(--space-1) var(--space-2); }
 .terrain-layer .terrain-rename { flex: 1; min-width: 0; margin: var(--space-1) 0; }
-.terrain-guide { list-style: none; margin: 0; padding: var(--space-2); display: grid; gap: var(--space-2); width: 16rem; max-width: 80vw; font-size: .85rem; }
+.terrain-guide { list-style: none; margin: 0; padding: var(--space-2); display: grid; gap: var(--space-2); width: 16rem; max-width: calc(100vw - 3rem); font-size: .85rem; }
+.terrain-layers-note { margin: 0; padding: var(--space-1) var(--space-2); }
+.terrain-guide span { min-width: 0; overflow-wrap: anywhere; }
 .terrain-guide li { display: flex; gap: var(--space-2); align-items: flex-start; }
 .terrain-guide svg { flex: none; width: 18px; height: 18px; color: var(--accent-text); }
 

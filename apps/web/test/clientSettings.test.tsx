@@ -15,14 +15,16 @@ afterEach(() => { cleanup(); setClientSettings(DEFAULT_CLIENT_SETTINGS); });
 describe("browser settings (FR-TAC-06)", () => {
   it("applies graphics budgets and persists both audio preferences", () => {
     render(<SettingsMenu open onClose={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Graphics quality"), { target: { value: "low" } });
-    expect(graphicsBudget()).toMatchObject({ resolution: 1, emitters: 0, glow: false });
     fireEvent.change(screen.getByRole("slider", { name: /Music volume/ }), { target: { value: "25" } });
     fireEvent.change(screen.getByRole("slider", { name: /Sound effects volume/ }), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Graphics" }));
+    fireEvent.change(screen.getByLabelText("Graphics quality"), { target: { value: "low" } });
+    expect(graphicsBudget()).toMatchObject({ resolution: 1, emitters: 0, glow: false });
     expect(JSON.parse(localStorage.getItem(CLIENT_SETTINGS_KEY)!)).toMatchObject({ graphicsQuality: "low", musicVolume: 25, soundVolume: 0 });
   });
   it("combines local, device and table reduced effects without overriding either", () => {
     render(<SettingsMenu open onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Graphics" }));
     fireEvent.click(screen.getByRole("switch", { name: "Reduced animations" }));
     expect(getClientSettings().reducedAnimations).toBe(true);
     expect(effectiveReducedMotion({ reducedEffects: false }, false)).toBe(true);
@@ -54,5 +56,36 @@ describe("browser settings (FR-TAC-06)", () => {
     stop();
     setClientSettings({ graphicsQuality: "high" });
     expect(changes).toBe(1);
+  });
+});
+
+describe("settings tabs (FR-TAC-06)", () => {
+  it("shows Audio and Graphics to everyone, Audio first, and switches panels", () => {
+    render(<SettingsMenu open onClose={() => {}} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics"]);
+    expect(screen.getByRole("tab", { name: "Audio" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Audio" }).id);
+    expect(screen.queryByLabelText("Graphics quality")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Graphics" }));
+    expect(screen.getByLabelText("Graphics quality")).toBeTruthy();
+    expect(screen.queryByRole("slider", { name: /Music volume/ })).toBeNull();
+  });
+  it("moves between tabs with the arrow, Home and End keys", () => {
+    render(<SettingsMenu open onClose={() => {}} />);
+    const audio = screen.getByRole("tab", { name: "Audio" });
+    fireEvent.keyDown(audio, { key: "ArrowRight" });
+    const graphics = screen.getByRole("tab", { name: "Graphics" });
+    expect(graphics.getAttribute("aria-selected")).toBe("true");
+    expect(graphics.tabIndex).toBe(0);
+    expect(audio.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(graphics);
+    fireEvent.keyDown(graphics, { key: "ArrowRight" });
+    expect(audio.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(audio, { key: "ArrowLeft" });
+    expect(graphics.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(graphics, { key: "Home" });
+    expect(audio.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(audio, { key: "End" });
+    expect(graphics.getAttribute("aria-selected")).toBe("true");
   });
 });

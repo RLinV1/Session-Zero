@@ -277,7 +277,7 @@ function AttackEffectView({
     return token && (isGm || !token.hidden) ? token : null;
   };
   // Strikes and the nuke blast are drawn by the Pixi board (fx.ts); the overlay adds the nuke numbers.
-  if (effect.kind === "strike") return null;
+  if (effect.kind === "strike" || effect.kind === "defeat") return null;
   if (effect.kind === "nuke") {
     return (
       <>

@@ -36,6 +36,8 @@ const seqOf = (reply: unknown) => (reply as { seq: number }).seq;
 describe("Area Effect over the wire (FR-TAC-06, FR-TAC-09, ADR 0046)", () => {
   it("runs the whole flow: start, call, reassign, per-target damage, resolve", async () => {
     const { gm, alice, bob, one, two, assassin } = await setup();
+    // Damage can take a 7 HP goblin below 0; this test checks the resulting HP, not removal (ADR 0049).
+    await gm.command({ type: "room.setAutoRemoveDefeated", enabled: false });
     expect(await gm.command({ type: "areaEffect.start", tokenIds: [one.id, two.id, assassin.id], expression: "1d20+2", label: "Fireball" })).toMatchObject({ type: "ack" });
     const effectId = gm.state.areaEffect!.id;
 

@@ -1,0 +1,3 @@
+- [x] Board: empty narrowing means all tokens; remove click and Shift-click narrowing
+- [x] TokenCard: eye button, icon-only Edit, drop arrow-key caption
+- [x] Tests: tokenCard, moveControl, gmSightView

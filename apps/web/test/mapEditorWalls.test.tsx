@@ -5,7 +5,7 @@ import { toGridDraft } from "../src/pages/gridDraft";
 import { MAX_WALLS_PER_ADD, SAMPLE_TOLERANCE_DEFAULT, type DetectedWallsResponse, type RoomState, type Wall } from "@vtt/shared";
 import { api } from "../src/net/api";
 import { GmPanel } from "../src/pages/GmPanel";
-import { WallSetup } from "../src/pages/mapEditor/WallSetup";
+import { WallSetup, resetHandledDetections } from "../src/pages/mapEditor/WallSetup";
 import { MAP_URL, TOKEN, click, fakeConnection, pointer, room, stubMapEditorEnvironment } from "./mapEditorHarness";
 
 // The panels below the map section have nothing to do with the editor.
@@ -25,6 +25,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetHandledDetections();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -221,6 +222,47 @@ describe("map editor walls (FR-GM-09, FR-GM-11)", () => {
     const legend = within(within(dialog).getByRole("list", { name: "Detected wall colours" }));
     for (const entry of ["Wall", "Door", "Window", "Closed", "Open", "Locked", "Doubtful"]) expect(legend.getByText(entry)).toBeTruthy();
     expect(legend.queryByText("Erased")).toBeNull();
+  });
+
+  it("a discarded result does not reopen on remount, but a new run does (FR-GM-09)", async () => {
+    const done = { status: "done", wallCount: 7, width: 800, height: 600 } as const;
+    vi.spyOn(api.walls, "status").mockResolvedValue(done);
+    const first = fakeConnection();
+    const view = render(<WallSetup connection={first.connection} state={room()} token={TOKEN} />);
+    const dialog = await screen.findByRole("dialog", { name: "Detected walls" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull());
+    view.unmount();
+
+    // Back on the tab: the server still says "done" for the same result.
+    const second = fakeConnection();
+    const again = render(<WallSetup connection={second.connection} state={room()} token={TOKEN} />);
+    const button = await screen.findByRole("button", { name: "Detect walls" });
+    await waitFor(() => expect(api.walls.detected).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull();
+    again.unmount();
+
+    // Pressing Detect walls again that finds identical walls (same resultId) still opens the modal.
+    vi.spyOn(api.walls, "status").mockResolvedValue(null);
+    vi.spyOn(api.walls, "detect").mockResolvedValue({ status: "queued" });
+    const third = fakeConnection();
+    const rerun = render(<WallSetup connection={third.connection} state={room()} token={TOKEN} />);
+    const detectButton = await screen.findByRole("button", { name: "Detect walls" });
+    await waitFor(() => expect((detectButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(detectButton);
+    await waitFor(() => expect(api.walls.detect).toHaveBeenCalled());
+    third.notify(done);
+    const reopened = await screen.findByRole("dialog", { name: "Detected walls" });
+    fireEvent.click(within(reopened).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Detected walls" })).toBeNull());
+    rerun.unmount();
+
+    // A new run has a new result id and opens the modal.
+    vi.spyOn(api.walls, "status").mockResolvedValue(done);
+    vi.spyOn(api.walls, "detected").mockResolvedValue({ resultId: "result-b", walls: detectedRows(7) });
+    render(<WallSetup connection={fakeConnection().connection} state={room()} token={TOKEN} />);
+    expect(await screen.findByRole("dialog", { name: "Detected walls" })).toBeTruthy();
   });
 
   it("Discard adds nothing and leaves Detect walls ready (FR-GM-09)", async () => {

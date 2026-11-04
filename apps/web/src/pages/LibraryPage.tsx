@@ -1,7 +1,7 @@
 import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
 import { IconAction } from "../ui/IconAction";
 import { useEffect, useMemo, useState } from "react";
-import { type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
+import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
 import { api } from "../net/api";
 import { builtinsMatching } from "../net/builtinAssets";
 import { imageSize, nameFromFile } from "../net/imageFile";
@@ -141,12 +141,27 @@ function Library() {
     };
   }, []);
 
-  const shown = useMemo(() => {
+  // Maps: the seeded shipped-map rows (ADR 0036) are listed under "Included with the app", not among the uploads.
+  const { shown, seededMaps, seededUrls } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (assets ?? []).filter((a) => a.kind === kind && (!q || a.name.toLowerCase().includes(q)));
+    const mine: LibraryAsset[] = [];
+    const seeded: LibraryAsset[] = [];
+    const urls = new Set<string>();
+    for (const a of assets ?? []) {
+      if (a.kind !== kind) continue;
+      const isShipped = kind === "map" && !!shippedMapByUrl(a.url);
+      if (isShipped) urls.add(a.url);
+      if (q && !a.name.toLowerCase().includes(q)) continue;
+      (isShipped ? seeded : mine).push(a);
+    }
+    return { shown: mine, seededMaps: seeded, seededUrls: urls };
   }, [assets, kind, query]);
 
-  const builtins = useMemo(() => (tab === "creature" || tab === "encounter" || tab === "animation" || tab === "dice" || kind === "map" ? [] : builtinsMatching(kind, query)), [tab, kind, query]);
+  // Static copies fill in until the account's own shipped rows exist; once a row is seeded its twin is dropped.
+  const builtins = useMemo(
+    () => (tab === "creature" || tab === "encounter" || tab === "animation" || tab === "dice" ? [] : builtinsMatching(kind, query).filter((b) => !seededUrls.has(b.url))),
+    [tab, kind, query, seededUrls],
+  );
 
   const shownCreatures = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -313,12 +328,21 @@ function Library() {
         </>
       )}
 
-      {builtins.length > 0 && (
+      {(builtins.length > 0 || seededMaps.length > 0) && (
         <section className="builtin-assets" aria-labelledby="builtin-heading">
           <h2 id="builtin-heading">Included with the app</h2>
           <p className="muted">Every GM has these. Place them from “From library” in any room.</p>
           {kind === "token" && <p className="muted small-print">Portrait sources and credits. <a href="/img/tokens/enemies/CREDITS.md" target="_blank" rel="noreferrer">Art credits and license</a></p>}
           <ul className="plain asset-grid">
+            {seededMaps.map((asset) => (
+              <AssetCard
+                key={asset.id}
+                asset={asset}
+                onChanged={replace}
+                onEditGrid={() => setGridTarget(asset)}
+                onDeleted={() => setAssets((all) => (all ?? []).filter((a) => a.id !== asset.id))}
+              />
+            ))}
             {builtins.map((asset) => (
               <BuiltinCard key={asset.id} asset={asset} />
             ))}
