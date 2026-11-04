@@ -84,6 +84,9 @@ export const PreparationEdit = z.discriminatedUnion("type", [
   z.object({ type: z.literal("scene.setIsometric"), expectedSceneId: Id.optional(), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("scene.setSightRange"), expectedSceneId: Id.optional(), range: z.number().positive().finite().nullable() }).strict(),
   z.object({ type: z.literal("terrain.paint"), expectedSceneId: Id.optional(), layerId: z.string().min(1).max(64), paint: z.array(PaintRun).min(1).max(MAX_TERRAIN_CELLS), context: TerrainContext }).strict(),
+  z.object({ type: z.literal("terrain.effect.create"), expectedSceneId: Id.optional(), name: z.string().trim().min(1).max(60), effectId: Id.optional(), context: TerrainContext }).strict(),
+  z.object({ type: z.literal("terrain.effect.rename"), expectedSceneId: Id.optional(), effectId: Id, name: z.string().trim().min(1).max(60), context: TerrainContext }).strict(),
+  z.object({ type: z.literal("terrain.effect.remove"), expectedSceneId: Id.optional(), effectId: Id, context: TerrainContext }).strict(),
   z.object({
     type: z.literal("fog.replace"), expectedSceneId: Id.optional(),
     expectedMapUrl: z.string().min(1).max(2048).optional(),
@@ -211,9 +214,6 @@ const BoardCommand = z.discriminatedUnion("type", [
     groupId: Id.nullable(),
     tokenIds: z.array(Id).min(1).max(100),
   }).strict(),
-  z.object({ type: z.literal("terrain.effect.create"), expectedSceneId: Id.optional(), name: z.string().trim().min(1).max(60), context: TerrainContext }),
-  z.object({ type: z.literal("terrain.effect.rename"), expectedSceneId: Id.optional(), effectId: Id, name: z.string().trim().min(1).max(60), context: TerrainContext }),
-  z.object({ type: z.literal("terrain.effect.remove"), expectedSceneId: Id.optional(), effectId: Id, context: TerrainContext }),
   z.object({
     type: z.literal("token.move"), expectedSceneId: Id.optional(),
     tokenId: Id,

@@ -823,7 +823,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {notices}
       {noMapNotice && !state.scene.map && <p className="board-movement-readout" role="status">Add a map first to paint terrain.</p>}
       {movementNotice && !selected && !readOnly && <p className="board-movement-readout" role="status">{movementNotice}</p>}
-      {terrainOpen && you.role === "gm" && !readOnly && <Modal open title="Live terrain" className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live /></div></Modal>}
+      {terrainOpen && you.role === "gm" && !readOnly && <Modal open title="Live terrain" className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live layers /></div></Modal>}
       {refusal && <p key={refusal.at} className="board-refusal" role="alert">{refusal.message}</p>}
       {selected && (
         <TokenCard

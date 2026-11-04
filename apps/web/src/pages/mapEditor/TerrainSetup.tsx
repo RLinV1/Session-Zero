@@ -25,7 +25,7 @@ export function TerrainCells({ runs, grid, temporary = false, erase = false }: {
 const TOOLS = [["brush", "Cell brush", PaintBrush], ["rect", "Rectangle", Rectangle], ["pan", "Pan", Hand]] as const;
 const KINDS = [[null, "Normal / Erase layer", Eraser], ["difficult", "Difficult · ×2", Mountains], ["blocked", "Blocked", Prohibit]] as const;
 type Stroke = { from: { col: number; row: number }; to: { col: number; row: number }; cells: Map<string, TerrainKind>; erase: boolean; context: { boardEpoch: number; revision: number }; layerId: string };
-export function TerrainSetup({ connection, state, live = false }: { connection: EditorConnection; state: RoomState; live?: boolean }) {
+export function TerrainSetup({ connection, state, live = false, layers = live }: { connection: EditorConnection; state: RoomState; live?: boolean; layers?: boolean }) {
   const [mode, setMode] = useState<"brush" | "rect" | "pan">("brush");
   const [kind, setKind] = useState<TerrainKind | null>("difficult");
   const [layerId, setLayerId] = useState("base");
@@ -124,17 +124,17 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
           <div className="terrain-group"><span className="terrain-group-label" aria-hidden>Paint</span><div className="terrain-seg" role="group" aria-label="Terrain kind">{KINDS.map(([value, label, Icon]) => <button type="button" key={value ?? "normal"} className={`terrain-icon terrain-kind-${value ?? "normal"}`} aria-label={label} title={label} aria-pressed={kind === value} onClick={() => { cancel(); setKind(value); }}><Icon size={20} aria-hidden />{value === "difficult" && <sup>×2</sup>}</button>)}</div></div>
         </div>
         <section className="terrain-layers" aria-label="Layers">
-          <header><span>Layers</span>{live && <button type="button" className="terrain-icon" aria-label="Add layer" title={terrain.effects.length >= 32 ? "Layer limit reached (32)" : "Add layer"} disabled={terrain.effects.length >= 32} onClick={() => setAdding(true)}><Plus size={18} aria-hidden /></button>}</header>
-          {/* Drafts save the base terrain only (effect layers are live-room state with no draft or library storage). */}
-          {!live && <p className="muted small-print terrain-layers-note">Extra layers are available in a live room.</p>}
-          {adding && live && <input className="terrain-new" autoFocus maxLength={60} aria-label="New layer name" placeholder="Layer name (Ice, rubble…)" value={name}
+          <header><span>Layers</span>{layers && <button type="button" className="terrain-icon" aria-label="Add layer" title={terrain.effects.length >= 32 ? "Layer limit reached (32)" : "Add layer"} disabled={terrain.effects.length >= 32} onClick={() => setAdding(true)}><Plus size={18} aria-hidden /></button>}</header>
+          {/* Library maps store base terrain only. */}
+          {!layers && <p className="muted small-print terrain-layers-note">Layers are for room maps.</p>}
+          {adding && layers && <input className="terrain-new" autoFocus maxLength={60} aria-label="New layer name" placeholder="Layer name (Ice, rubble…)" value={name}
             onChange={(e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }}
             onKeyDown={async (e) => {
               if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setName(""); setAdding(false); }
               else if (e.key === "Enter" && name.trim() && terrain.effects.length < 32) { e.preventDefault(); if (await send({ type: "terrain.effect.create", name: name.trim(), context: context() })) { setName(""); setAdding(false); } }
             }} />}
           <ul>
-            {live && terrain.effects.map((effect) => <li key={effect.id} className="terrain-layer" aria-current={actualLayer === effect.id}>
+            {layers && terrain.effects.map((effect) => <li key={effect.id} className="terrain-layer" aria-current={actualLayer === effect.id}>
               {renamingId === effect.id
                 ? <><span className="terrain-chip terrain-chip-effect"><Stack size={14} aria-hidden /></span><input className="terrain-rename" autoFocus onFocus={(e) => e.target.select()} aria-label="Layer name" defaultValue={effect.name} maxLength={60}
                   onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRenamingId(null); } else if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}

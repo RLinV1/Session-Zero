@@ -208,3 +208,45 @@ describe("moving and reshaping fog in the draft (map editor Fog step)", () => {
     expect(plannedEdits(saved, unlimited)).toEqual([{ type: "scene.setSightRange", range: null }]);
   });
 });
+
+describe("room terrain layers in the map editor draft (FR-GM-15)", () => {
+  const ctx = { boardEpoch: 2, revision: 5 };
+  const withTerrain = (terrain: NonNullable<MapDraft["terrain"]>): MapDraft => ({ ...fresh(), terrain, terrainContext: ctx });
+  const roomWith = (terrain: NonNullable<MapDraft["terrain"]>) => ({ ...room, terrain, boardEpoch: 2, terrainRevision: 5 });
+  const cell = { row: 0, start: 1, end: 2, kind: "difficult" } as const;
+
+  it("creates a layer and paints it by the same client-chosen id, advancing the revision", () => {
+    let draft = withTerrain({ base: [], effects: [] });
+    draft = applyToDraft(draft, { type: "terrain.effect.create", name: "Ice", context: ctx }, newId)!;
+    const id = draft.terrain!.effects[0]!.id;
+    draft = applyToDraft(draft, { type: "terrain.paint", layerId: id, paint: [cell], context: ctx }, newId)!;
+    draft = applyToDraft(draft, { type: "terrain.paint", layerId: "base", paint: [cell], context: ctx }, newId)!;
+    const edits = plannedEdits(roomWith({ base: [], effects: [] }), draft);
+    expect(edits.map((e) => e.type)).toEqual(["terrain.effect.create", "terrain.paint", "terrain.paint"]);
+    const create = edits[0] as Extract<typeof edits[number], { type: "terrain.effect.create" }>;
+    expect(create.name).toBe("Ice");
+    expect(create.effectId).toBeDefined();
+    expect(create.effectId).not.toBe(id);
+    expect(edits[1]).toMatchObject({ layerId: "base", context: { boardEpoch: 2, revision: 6 } });
+    expect(edits[2]).toMatchObject({ layerId: create.effectId, context: { boardEpoch: 2, revision: 7 } });
+    expect(create.context).toEqual({ boardEpoch: 2, revision: 5 });
+  });
+
+  it("renames and removes room layers", () => {
+    const saved = roomWith({ base: [], effects: [{ id: "e1", name: "Ice", runs: [cell] }, { id: "e2", name: "Mud", runs: [] }] });
+    let draft = draftFrom(saved);
+    draft = applyToDraft(draft, { type: "terrain.effect.rename", effectId: "e1", name: "Black ice", context: ctx }, newId)!;
+    draft = applyToDraft(draft, { type: "terrain.effect.remove", effectId: "e2", context: ctx }, newId)!;
+    expect(plannedEdits(saved, draft)).toEqual([
+      { type: "terrain.effect.remove", effectId: "e2", context: { boardEpoch: 2, revision: 5 } },
+      { type: "terrain.effect.rename", effectId: "e1", name: "Black ice", context: { boardEpoch: 2, revision: 6 } },
+    ]);
+  });
+
+  it("caps layers at 32 and ignores paint on an unknown layer", () => {
+    let draft = withTerrain({ base: [], effects: [] });
+    for (let i = 0; i < 33; i++) draft = applyToDraft(draft, { type: "terrain.effect.create", name: `L${i}`, context: ctx }, newId)!;
+    expect(draft.terrain!.effects).toHaveLength(32);
+    expect(applyToDraft(draft, { type: "terrain.paint", layerId: "nope", paint: [cell], context: ctx }, newId)).toBe(draft);
+  });
+});
