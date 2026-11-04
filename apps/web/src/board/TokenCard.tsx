@@ -1,4 +1,7 @@
+import { useRef, useState } from "react";
+import { Copy, Trash } from "@phosphor-icons/react";
 import { can, conditionSpec, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
+import { Modal } from "../ui/Modal";
 
 /**
  * The details card for the token selected on the board, with Edit, Duplicate and a one-square
@@ -13,6 +16,7 @@ export function TokenCard({
   onClose,
   onEdit,
   onDuplicate,
+  onDelete,
   onMove,
   arrowKeys,
   reposition,
@@ -28,6 +32,8 @@ export function TokenCard({
   onEdit?: () => void;
   /** Starts placing copies on the board, once per click. */
   onDuplicate?: () => void;
+  /** Deletes the token for everyone when the GM confirms. */
+  onDelete?: () => Promise<boolean>;
   /** Sends `token.move` to a board point; the alternative to dragging. */
   onMove?: (to: Point) => Promise<unknown>;
   /** The switch that lets the arrow keys move this token; the board listens while it's on. */
@@ -35,9 +41,12 @@ export function TokenCard({
   reposition?: { on: boolean; toggle: () => void };
   movementReadout?: string | null;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   // Same rules the server enforces; these only decide whether to draw the buttons.
   const showEdit = !readOnly && !!onEdit && can.editToken(you, token);
   const showDuplicate = !readOnly && !!onDuplicate && you.role === "gm";
+  const showDelete = !readOnly && !!onDelete && you.role === "gm";
   const showMove = !readOnly && !!onMove && can.moveToken(you, token);
 
   return (
@@ -85,7 +94,17 @@ export function TokenCard({
           </>
         )}
       </dl>
-      {showMove && reposition && <button type="button" className="secondary" aria-pressed={reposition.on} onClick={reposition.toggle}>Reposition next move</button>}
+      {showMove && reposition && (
+        <button
+          type="button"
+          className="secondary token-card-reposition"
+          aria-pressed={reposition.on}
+          title="For the next move only, ignore walls and blocked terrain along the route. The destination must still be clear."
+          onClick={reposition.toggle}
+        >
+          Reposition next move
+        </button>
+      )}
       {showMove && arrowKeys && (
         <>
           {/* A switch, not a single-letter shortcut: the arrow keys are claimed only when asked for. */}
@@ -96,7 +115,7 @@ export function TokenCard({
           {arrowKeys.on && <p className="muted small-print">Arrow keys move {token.name} one square.</p>}
         </>
       )}
-      {(showEdit || showDuplicate) && (
+      {(showEdit || showDuplicate || showDelete) && (
         <div className="row token-card-actions">
           {showEdit && (
             <button type="button" className="secondary" onClick={onEdit} aria-label={`Edit ${token.name}`}>
@@ -104,13 +123,38 @@ export function TokenCard({
             </button>
           )}
           {showDuplicate && (
-            <button type="button" className="secondary" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`}>
-              Duplicate
+            <button type="button" className="icon-button" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`} title="Duplicate token">
+              <Copy size={18} aria-hidden="true" />
+            </button>
+          )}
+          {showDelete && (
+            <button type="button" className="icon-button token-card-delete" onClick={() => setConfirmingDelete(true)} aria-label={`Delete ${token.name}`} title="Delete token">
+              <Trash size={18} aria-hidden="true" />
             </button>
           )}
         </div>
       )}
       </div>
+      <Modal
+        open={confirmingDelete}
+        title={`Delete ${token.name}?`}
+        onClose={() => setConfirmingDelete(false)}
+        initialFocus={cancelDeleteRef}
+      >
+        <div className="leave-confirm">
+          <p>This removes the token from the room for everyone.</p>
+          <div className="row modal-actions">
+            <button ref={cancelDeleteRef} type="button" className="secondary" onClick={() => setConfirmingDelete(false)}>
+              Keep token
+            </button>
+            <button type="button" className="danger-fill" onClick={async () => {
+              if (await onDelete?.()) setConfirmingDelete(false);
+            }}>
+              Delete token
+            </button>
+          </div>
+        </div>
+      </Modal>
     </aside>
   );
 }

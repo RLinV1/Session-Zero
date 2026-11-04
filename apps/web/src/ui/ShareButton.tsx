@@ -156,27 +156,27 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
                 </div>
                 <p className="muted share-hint">Anyone with this link can join as a player.</p>
               </div>
-              <div className="share-section">
-                <button type="button" className="secondary share-qr-toggle" onClick={() => setQrOpen(true)}>
-                  <QrCode size={16} aria-hidden="true" /> Show QR code
-                </button>
+              <div className="share-actions">
+                <div className="share-action-buttons">
+                  <button type="button" className="secondary share-qr-toggle" onClick={() => setQrOpen(true)}>
+                    <QrCode size={16} aria-hidden="true" /> Show QR code
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary share-reset"
+                    onClick={() => setConfirming(true)}
+                    disabled={busy || !link}
+                  >
+                    <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
+                  </button>
+                </div>
+                <p className="muted share-hint">Reset replaces the link and QR code. The old ones stop working.</p>
               </div>
             </>
           )}
           <span className="sr-only" role="status">
             {status}
           </span>
-          <div className="share-reset-row">
-            <button
-              type="button"
-              className="secondary share-reset"
-              onClick={() => setConfirming(true)}
-              disabled={busy || !link}
-            >
-              <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
-            </button>
-            <p className="muted share-hint">Replaces the link and QR code. The old ones stop working.</p>
-          </div>
         </div>
       </Modal>
       <Modal open={qrOpen && !!link} title="QR code" className="share-qr-modal" onClose={() => setQrOpen(false)}>
