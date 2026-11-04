@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import {
   ChangePasswordRequest,
+  DeleteAccountRequest,
   SIGN_IN_FAILED,
   SignInRequest,
   SignUpRequest,
   type MeResponse,
 } from "@vtt/shared";
+import type { DeleteAccount } from "../domain/accountDeletion";
 import { EmailTakenError, type IdentityStore } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
 import { hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
@@ -41,9 +43,9 @@ export type AccountLimits = ReturnType<typeof accountLimits>;
 /** `/api/auth/*`: sign up, sign in, sign out, who am I, change password (FR-GM-01, ADR 0017 C2). */
 export function registerIdentityRoutes(
   app: Express,
-  deps: { store: IdentityStore; sessions: Sessions; limits: AccountLimits },
+  deps: { store: IdentityStore; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
 ) {
-  const { store, sessions, limits } = deps;
+  const { store, sessions, limits, deleteAccount } = deps;
 
   app.post("/api/auth/signup", (req, res) => {
     void (async () => {
@@ -136,6 +138,28 @@ export function registerIdentityRoutes(
       }
       await store.setPasswordHash(current.user.id, await hashPassword(body.data.newPassword), true);
       await sessions.endOthers(current.user.id, current.session.tokenHash);
+      res.status(204).end();
+    })().catch(internalError(res));
+  });
+
+  /** Erases the account, its rooms and its library (ADR 0050). Asks for the password again. */
+  app.delete("/api/auth/account", (req, res) => {
+    void (async () => {
+      noStore(res);
+      if (!isJson(req, res)) return;
+      const current = requireAccount(res);
+      if (!current) return;
+      const body = DeleteAccountRequest.safeParse(req.body);
+      if (!body.success) return badRequest(res, body.error.issues);
+      const userKey = `password:${current.user.id}`;
+      // The password-change budget, counted up front as there: a stolen cookie can't guess here either.
+      if (refused(res, limits.passwordChangeFailuresPerUser.hit(userKey))) return;
+      if (!(await verifyPassword(current.user.passwordHash, body.data.password))) {
+        return void res.status(403).json({ error: "Password is incorrect", field: "password" });
+      }
+      limits.passwordChangeFailuresPerUser.reset(userKey);
+      await deleteAccount(current.user.id, current.user.ownerId);
+      res.append("Set-Cookie", clearSessionCookie(sessions.cookie));
       res.status(204).end();
     })().catch(internalError(res));
   });

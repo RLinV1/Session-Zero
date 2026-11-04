@@ -50,6 +50,12 @@ export const ChangePasswordRequest = z.object({
 });
 export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
 
+/** Deleting an account re-asks for the password, as a password change does. */
+export const DeleteAccountRequest = z.object({
+  password: z.string().min(1).max(PASSWORD_MAX),
+});
+export type DeleteAccountRequest = z.infer<typeof DeleteAccountRequest>;
+
 /** Everything about an account that ever leaves the server. */
 export interface AccountView {
   id: string;

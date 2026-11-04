@@ -343,6 +343,9 @@ export const api = {
     },
     changePassword: (currentPassword: string, newPassword: string) =>
       accountRequest<void>("/api/auth/password", { method: "POST", ...jsonBody({ currentPassword, newPassword }) }),
+    /** Permanently deletes the signed-in account and everything it owns (account-deletion). */
+    deleteAccount: (password: string) =>
+      accountRequest<void>("/api/auth/account", { method: "DELETE", ...jsonBody({ password }) }),
   },
 
   /** The account's rooms and seats (room-membership, ADR 0017 M). */

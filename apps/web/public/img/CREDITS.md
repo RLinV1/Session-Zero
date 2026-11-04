@@ -16,9 +16,11 @@ viewed from directly overhead, with no creatures or creature-shaped statues, at 
 square. These are generated illustrations, not works attributed to a human artist, and no
 third-party map art is included.
 
-**Not recorded:** which image tool made them and the exact prompts. The proposal says the sources
-are in `assets/default-maps/`, but that folder was never committed. Whoever made them should add
-the tool and prompts here, as `home/CREDITS.md` and `preview/CREDITS.md` do.
+**What is known:** the three generated maps are AI-generated illustrations made for this project (generation ids and the OpenSpec change above). The image tool and exact prompts were not recorded, and the proposal's `assets/default-maps/` folder was never committed.
 
 The crypt is the project's own work: its floor, walls, pillars and doors are drawn in a headless
 browser from the script's `LAYOUT`, with no source image.
+
+## Takedown safety
+
+Every image the app ships was either generated for this project or drawn by code in this repository. None is taken from a third party, a stock site or a game, and none is hotlinked at runtime. Each folder's `CREDITS.md` records how its images were made.

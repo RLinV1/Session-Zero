@@ -152,6 +152,8 @@ export interface LibraryStore {
   findGm(tokenHash: string): Promise<string | null>;
   /** Rooms the GM owns, most recently active first. */
   listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]>;
+  /** Every room the owner has, temporary encounter-editing rooms included (account deletion). */
+  listOwnedRoomIds(ownerGmId: string): Promise<string[]>;
 
   createAsset(asset: LibraryAssetRecord): Promise<void>;
   listAssets(ownerGmId: string): Promise<LibraryAssetRecord[]>;

@@ -66,6 +66,13 @@ export async function changePassword(currentPassword: string, newPassword: strin
   await api.auth.changePassword(currentPassword, newPassword);
 }
 
+/** Deletes the account for good. The server clears the cookie; this tidies the device and shows signed out. */
+export async function deleteAccount(password: string) {
+  await api.auth.deleteAccount(password);
+  onSignOut.forEach((fn) => fn());
+  setAccount(null, true);
+}
+
 /** The session ended while the app was open (a 401 on an account request). */
 export function expireAccount() {
   if (accountStore.getState().status === "signedIn") setAccount(null, true);

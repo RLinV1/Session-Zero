@@ -18,6 +18,7 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
+  type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
   type SessionRecord,
@@ -317,6 +318,11 @@ export class PostgresRoomStore implements RoomStore {
 
   async listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]> {
     return this.summarize({ ownerGmId, temporary: false });
+  }
+
+  async listOwnedRoomIds(ownerGmId: string) {
+    const rooms = await this.prisma.room.findMany({ where: { ownerGmId }, select: { id: true } });
+    return rooms.map((r) => r.id);
   }
 
   async summarizeRooms(roomIds: string[]) {
@@ -755,6 +761,41 @@ export class PostgresRoomStore implements RoomStore {
 
   async setActiveDiceLook(userId: string, lookId: string | null) {
     await this.prisma.user.update({ where: { id: userId }, data: { activeDiceLookId: lookId } });
+  }
+
+  async deleteUser(userId: string): Promise<DeletedUser | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { ownerId: true } });
+      if (!user) return null;
+      const ownerGmId = user.ownerId;
+      const sessionHashes = (await tx.session.findMany({ where: { userId }, select: { tokenHash: true } })).map((s) => s.tokenHash);
+      const credentialHashes = (
+        await tx.credential.findMany({ where: { sessionHash: { in: sessionHashes } }, select: { tokenHash: true } })
+      ).map((c) => c.tokenHash);
+      // Credentials first: their foreign key to sessions is RESTRICT. No ON DELETE CASCADE anywhere.
+      await tx.credential.deleteMany({ where: { sessionHash: { in: sessionHashes } } });
+      await tx.session.deleteMany({ where: { userId } });
+      await tx.roomMember.deleteMany({ where: { userId } });
+      await tx.user.update({ where: { id: userId }, data: { activeDiceLookId: null } });
+
+      const looks = await tx.diceLook.findMany({ where: { ownerGmId } });
+      const assets = await tx.libraryAsset.findMany({ where: { ownerGmId }, select: { id: true, objectKey: true } });
+      await tx.assetRef.deleteMany({ where: { assetId: { in: assets.map((a) => a.id) } } });
+      await tx.libraryCreature.deleteMany({ where: { ownerGmId } });
+      await tx.encounterTemplate.deleteMany({ where: { ownerGmId } });
+      await tx.libraryAnimation.deleteMany({ where: { ownerGmId } });
+      await tx.diceLook.deleteMany({ where: { ownerGmId } });
+      await tx.libraryAsset.deleteMany({ where: { ownerGmId } });
+      await tx.user.delete({ where: { id: userId } });
+      await tx.gmIdentity.delete({ where: { id: ownerGmId } });
+      return {
+        credentialHashes,
+        objectKeys: [
+          ...looks.flatMap((l) => Object.values(toDiceLookRecord(l).faces).map((f) => f.objectKey)),
+          ...assets.map((a) => a.objectKey).filter((k) => !k.startsWith("shipped:")),
+        ],
+      };
+    });
   }
 
   async createSession(session: SessionRecord) {

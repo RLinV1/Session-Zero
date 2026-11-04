@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import { Server as SocketIOServer } from "socket.io";
+import { accountDeletion } from "./domain/accountDeletion";
 import { roomLifecycle } from "./domain/roomLifecycle";
 import { RoomRegistry } from "./domain/roomRegistry";
 import { createGridDetectionDispatcher, type Detector, type GridDetectionDispatcher } from "./domain/gridDetection";
@@ -180,7 +181,7 @@ export async function buildApp({
   const detection = dispatcher ?? await createGridDetectionDispatcher(store, assetStore, {
     detector, redisUrl: store instanceof MemoryRoomStore ? undefined : redisUrl, visionUrl,
   });
-  registerIdentityRoutes(app, { store, sessions, limits });
+  registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
   registerSocket(io, { store, registry, sessions, logger });
 

@@ -15,7 +15,6 @@ const POLICY_LINKS: { page: PolicyPageName; href: string; label: string }[] = [
 export function SiteFooter({ current }: { current?: PolicyPageName }) {
   return (
     <footer className="page-shell site-footer">
-      <p>Built for CSE 416 at Stony Brook.</p>
       <nav className="footer-links" aria-label="Policies">
         {POLICY_LINKS.map((l) => (
           <Link key={l.page} href={l.href} aria-current={current === l.page ? "page" : undefined}>
