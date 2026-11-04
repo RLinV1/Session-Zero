@@ -219,3 +219,26 @@ Cloud Run closes WebSockets after the request timeout (up to 60 minutes); the cl
 1. Development: `npm run dev`.
 2. Demo/grading: Option B using section 4 on one VM.
 3. Anything longer-lived: section 5.
+
+## Moving the one-VM deployment to Google Cloud
+
+Status: not built. The estimate below is a guess, not a measurement.
+
+**Unchanged (cloud-agnostic):** `Dockerfile.server`, `Dockerfile.web`, `docker-compose.prod.yml`, `deploy/Caddyfile`, `.env.production`, and the steps in the startup script (install Docker, clone the repo, write the env file, run `docker compose up`). The `sslip.io` hostname and Caddy's Let's Encrypt certificate only need a public IP, so they carry over.
+
+**Rewritten (the Terraform in `deploy/terraform/` is AWS-only):**
+
+| AWS | Google Cloud |
+|---|---|
+| `aws` provider | `google` provider (project, region, zone) |
+| `aws_instance` + `user_data` | Compute Engine VM + `metadata_startup_script` |
+| `aws_security_group` | firewall rules (80, 443 open; 22 from `ssh_cidr`) |
+| `aws_eip` + association | reserved static external address |
+| Ubuntu AMI lookup | Ubuntu image lookup |
+| `aws configure` credentials | a Google project with billing and `gcloud auth application-default login` |
+
+**Plan:** put it in a new folder, `deploy/terraform-gcp/`, and keep the AWS folder. Propose it as its own OpenSpec change first. Rough effort is an hour of agent work plus one test deploy.
+
+**Cost (rough, from memory, unchecked):** a 2 vCPU, 4 GB machine is about 25 to 50 USD a month depending on the type, plus the static IP and disk.
+
+**Same caveats as AWS:** the build needs enough memory, the first deploy is untested, and the VM must be destroyed when the test is over.
