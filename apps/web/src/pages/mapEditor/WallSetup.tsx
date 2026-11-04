@@ -49,6 +49,12 @@ const HINTS: Record<CanvasMode, string> = {
   sample: "Click a wall to find walls like it.",
 };
 
+/** The detection result (by resultId) the GM already applied or dismissed per room + map; module-level so it survives a remount. */
+const handledResults = new Map<string, string>();
+const handledKey = (roomId: string, mapUrl: string) => `${roomId}|${mapUrl}`;
+/** For tests: forget which results were handled. */
+export const resetHandledDetections = () => handledResults.clear();
+
 /**
  * The map editor's Walls step (map-editor, FR-GM-09/11): the wall canvas, and a side HUD with the
  * tools and automatic detection. A finished detection opens in a modal preview with Apply and Discard. Detection controls are hidden
@@ -112,6 +118,8 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     const stop = connection.onWallDetection((url, next) => {
       if (url !== mapUrl) return;
       detectionChanges.current += 1;
+      // A fresh run (the id is a hash of the walls, so it can repeat) must open its result again.
+      if (next.status === "queued" || next.status === "running") handledResults.delete(handledKey(state.roomId, mapUrl));
       setDetection({ mapUrl, status: next });
       if (next.status === "done") setMessage({ text: `Detection found ${next.wallCount} ${next.wallCount === 1 ? "wall" : "walls"}.`, error: false });
       if (next.status === "failed") setMessage({ text: next.message, error: true });
@@ -129,7 +137,15 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     }
     const abort = new AbortController();
     api.walls.detected(state.roomId, token, mapUrl, abort.signal)
-      .then((result) => { if (!abort.signal.aborted) setCandidates({ mapUrl, ...result, erased: new Set(), review: null }); })
+      .then((result) => {
+        if (abort.signal.aborted) return;
+        if (handledResults.get(handledKey(state.roomId, mapUrl)) === result.resultId) {
+          // Already applied or dismissed: no modal; clear the stale "done" status so Detect is ready.
+          setDetection((current) => (current.mapUrl === mapUrl && current.status?.status === "done" ? { mapUrl, status: null } : current));
+          return;
+        }
+        setCandidates({ mapUrl, ...result, erased: new Set(), review: null });
+      })
       .catch(() => {});
     return () => abort.abort();
   }, [done, status, state.roomId, token, mapUrl]);
@@ -147,6 +163,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
   const detect = async (sample?: Point) => {
     setBusy(true);
     setMessage(null);
+    handledResults.delete(handledKey(state.roomId, mapUrl));
     try {
       const started = await api.walls.detect(state.roomId, token, request(sample));
       detectionChanges.current += 1;
@@ -220,7 +237,8 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     if (!wasErased) reviewStep(1);
   };
   /** Drops the result without adding anything. */
-  const discard = () => setDetection({ mapUrl, status: null });
+  const markHandled = () => { if (pendingWalls) handledResults.set(handledKey(state.roomId, mapUrl), pendingWalls.resultId); };
+  const discard = () => { markHandled(); setDetection({ mapUrl, status: null }); };
 
   /** Applies the detected walls the GM has not erased; `confidentOnly` also leaves out the doubtful ones. */
   const apply = async (confidentOnly = false) => {
@@ -231,7 +249,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     const count = pendingWalls ? pendingWalls.walls.length - left.size : found;
     const ok = await run({ type: "wall.applyDetected", mapUrl, ...(exclude && { exclude }) }, `Applied ${count} walls.`);
     // The result is spent: drop its overlay so the new walls aren't drawn twice.
-    if (ok) setDetection({ mapUrl, status: null });
+    if (ok) { markHandled(); setDetection({ mapUrl, status: null }); }
   };
 
   const pending = status?.status === "queued" || status?.status === "running";

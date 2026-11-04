@@ -79,7 +79,6 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
   }, [canCancel]);
   const range = state.scene.sightRange ?? null;
   const enabled = state.scene.lineOfSight === true;
-  const isometric = state.scene.isometric === true;
 
   // The room with only the test tokens, as a player owning them would receive it. Line of sight is
   // forced on so the range can be tuned before it is turned on. Only the shown tokens are owned.
@@ -104,7 +103,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
 
   if (!map) return <p className="map-editor-empty">Apply a map before setting up sight.</p>;
 
-  const send = async (command: { type: "scene.setLineOfSight" | "scene.setIsometric"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
+  const send = async (command: { type: "scene.setLineOfSight"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
     const result = await connection.command(command);
     setMessage(result.ok ? null : result.message);
   };
@@ -297,19 +296,6 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
               onClick={() => { if (!enabled) void send({ type: "scene.setLineOfSight", enabled: true }); }}>
               <Eye size={18} aria-hidden="true" />
               <span>On</span>
-            </button>
-          </div>
-        </section>
-        <section className="sight-setting">
-          <h3 className="map-editor-heading">Map style</h3>
-          <div className="map-editor-modes" role="radiogroup" aria-label="Map style" data-guide="map-style">
-            <button type="button" role="radio" aria-checked={!isometric} className="tool-button map-editor-mode"
-              onClick={() => { if (isometric) void send({ type: "scene.setIsometric", enabled: false }); }}>
-              <span>Flat</span>
-            </button>
-            <button type="button" role="radio" aria-checked={isometric} className="tool-button map-editor-mode"
-              onClick={() => { if (!isometric) void send({ type: "scene.setIsometric", enabled: true }); }}>
-              <span>2.5D isometric</span>
             </button>
           </div>
         </section>

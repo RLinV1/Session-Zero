@@ -157,16 +157,16 @@ export function AnimationEditor({ animation, onSaved, onCancel }: { animation: L
                 </label>
                 <div className="animation-colours">
                   <label>
-                    Primary colour
-                    <input type="color" value={def.primary} onChange={(e) => set("primary", e.target.value)} />
+                    Primary
+                    <input type="color" aria-label="Primary colour" value={def.primary} onChange={(e) => set("primary", e.target.value)} />
                   </label>
                   <label>
-                    Secondary colour
-                    <input type="color" value={def.secondary} onChange={(e) => set("secondary", e.target.value)} />
+                    Secondary
+                    <input type="color" aria-label="Secondary colour" value={def.secondary} onChange={(e) => set("secondary", e.target.value)} />
                   </label>
                   <label>
-                    Accent colour
-                    <input type="color" value={def.accent ?? SHAPE_DEFAULTS[def.shape].accent} disabled={def.accent === undefined} onChange={(e) => set("accent", e.target.value)} />
+                    Accent
+                    <input type="color" aria-label="Accent colour" value={def.accent ?? SHAPE_DEFAULTS[def.shape].accent} disabled={def.accent === undefined} onChange={(e) => set("accent", e.target.value)} />
                   </label>
                 </div>
                 <div className="stack">

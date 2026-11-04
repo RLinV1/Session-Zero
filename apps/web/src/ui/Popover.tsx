@@ -1,5 +1,19 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type RefObject } from "react";
 
+/** Below the button, or above it when there isn't room, kept fully inside the window. */
+export function fixedPosition(
+  button: { top: number; bottom: number; left: number; right: number },
+  panel: { width: number; height: number },
+  align: "left" | "right",
+  view: { innerWidth: number; innerHeight: number },
+): { top: number; left: number } {
+  const gap = 8;
+  const below = button.bottom + gap + panel.height <= view.innerHeight;
+  const top = below ? button.bottom + gap : Math.max(gap, button.top - gap - panel.height);
+  const left = align === "right" ? button.right - panel.width : button.left;
+  return { top, left: Math.max(gap, Math.min(left, view.innerWidth - panel.width - gap)) };
+}
+
 /**
  * A button that opens a small anchored panel (participants list, share link).
  *
@@ -54,11 +68,7 @@ export function PopoverButton({
     const button = buttonRef.current?.getBoundingClientRect();
     const panel = panelRef.current?.getBoundingClientRect();
     if (!button || !panel) return;
-    const gap = 8;
-    const below = button.bottom + gap + panel.height <= window.innerHeight;
-    const top = below ? button.bottom + gap : Math.max(gap, button.top - gap - panel.height);
-    const left = align === "right" ? button.right - panel.width : button.left;
-    setFixedStyle({ position: "fixed", top, left: Math.max(gap, Math.min(left, window.innerWidth - panel.width - gap)), right: "auto" });
+    setFixedStyle({ position: "fixed", ...fixedPosition(button, panel, align, window), right: "auto" });
   }, [open, placement, align]);
 
   useEffect(() => {

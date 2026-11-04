@@ -39,14 +39,15 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
   const stroke = useRef<Stroke | null>(null);
   const activePointer = useRef(false);
   const busyRef = useRef(false);
+  const canvasFocus = useRef<HTMLElement>(null);
   const map = state.scene.map, grid = state.scene.grid, terrain = state.terrain ?? emptyTerrain();
   const context = () => ({ boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 });
   const cancel = () => { stroke.current = null; activePointer.current = false; setPreview([]); setError(null); };
-  const send = async (command: CommandInput) => {
+  const send = async (command: CommandInput, hint = "") => {
     if (busyRef.current) return false;
     busyRef.current = true; setBusy(true); setError(null);
-    try { const result = await connection.command(command); if (!result.ok) setError(result.message); return result.ok; }
-    catch { setError("Couldn't save terrain. Your preview has been kept; try again."); return false; }
+    try { const result = await connection.command(command); if (!result.ok) setError(result.message + hint); return result.ok; }
+    catch { setError(`Couldn't save terrain.${hint || " Try again."}`); return false; }
     finally { busyRef.current = false; setBusy(false); }
   };
   const validCell = (col: number, row: number) => { const r = cellRect(col, row, grid); return !!map && r.minX < map.width && r.maxX > 0 && r.minY < map.height && r.maxY > 0; };
@@ -78,7 +79,9 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
     activePointer.current = false;
     if (!current || current.cells.size === 0 || current.cells.size > 10000) return;
     const paint: PaintRun[] = compressTerrain(current.cells).map((run) => ({ ...run, kind: current.erase ? null : run.kind }));
-    if (await send({ type: "terrain.paint", layerId: current.layerId, paint, context: current.context })) cancel();
+    // A failed save keeps the stroke: Enter retries, Esc cancels, so hand keyboard focus back to the canvas.
+    if (await send({ type: "terrain.paint", layerId: current.layerId, paint, context: current.context }, " Your preview is kept. Press Enter to retry or Esc to cancel.")) cancel();
+    else canvasFocus.current?.closest(".terrain-editor")?.querySelector<SVGSVGElement>("svg[role=application]")?.focus();
   };
   if (!map) return <p className="map-editor-empty">Apply a map before painting terrain.</p>;
   const actualLayer = layerId === "base" || terrain.effects.some((e) => e.id === layerId) ? layerId : "base";
@@ -86,7 +89,7 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
   const displayedTerrain = erasing ? replaceTerrainLayer(terrain, stroke.current!.layerId, paintTerrain(terrainLayer(terrain, stroke.current!.layerId) ?? [], preview.map((run) => ({ ...run, kind: null })))) : terrain;
   return <HudLayout className="map-editor-split terrain-editor">
     <MapCanvas map={map} grid={grid} mode={mode} pan={mode === "pan"} label={live ? "Live terrain canvas" : "Terrain preparation canvas"}
-      onPress={(at) => { if (stroke.current) return; activePointer.current = true; begin(at); }}
+      onPress={(at) => { if (busyRef.current) return; if (stroke.current) cancel(); activePointer.current = true; begin(at); }}
       onMove={(at) => { if (at) { setCursor(cellAt(at, grid)); if (activePointer.current) fill(cellAt(at, grid)); } }}
       onRelease={(at) => { if (activePointer.current) { fill(cellAt(at, grid)); void commit(); } }}
       onCancel={cancel} onSecondary={cancel}
@@ -103,10 +106,10 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
         <rect {...(() => { const r = cellRect(cursor.col, cursor.row, grid); return { x: r.minX, y: r.minY, width: grid.cellSize, height: grid.cellSize }; })()} fill={kind === null && mode !== "pan" ? "#ffffff" : "none"} fillOpacity=".18" stroke="#ffffff" strokeWidth={grid.cellSize / 25} pointerEvents="none" />
       </>}
     </MapCanvas>
-    <aside className="map-editor-hud" aria-label="Terrain tools">
+    <aside className="map-editor-hud" aria-label="Terrain tools" ref={canvasFocus}>
       <div className="terrain-head">
         <h3>{live ? "Live terrain" : "Prepare terrain"}</h3>
-        <PopoverButton label="Guide" title="Guide" align="right" className="terrain-icon" buttonContent={<Question size={18} aria-hidden />}>
+        <PopoverButton label="Guide" title="Guide" align="right" placement="fixed" className="terrain-icon" buttonContent={<Question size={18} aria-hidden />}>
           <ul className="terrain-guide">
             <li><PaintBrush aria-hidden /><span>Brush paints cells, Rectangle fills an area, Pan moves the map.</span></li>
             <li><Prohibit aria-hidden /><span>Blocked wins across layers. Difficult doubles once.</span></li>
@@ -117,12 +120,13 @@ export function TerrainSetup({ connection, state, live = false }: { connection: 
       </div>
       <fieldset className="terrain-controls" disabled={busy}>
         <div className="terrain-tools">
-          <div className="terrain-seg" role="group" aria-label="Terrain selection">{TOOLS.map(([tool, label, Icon]) => <button type="button" key={tool} className="terrain-icon" aria-label={label} title={label} aria-pressed={mode === tool} onClick={() => { cancel(); setMode(tool); }}><Icon size={20} aria-hidden /></button>)}</div>
-          <div className="terrain-seg" role="group" aria-label="Terrain kind">{KINDS.map(([value, label, Icon]) => <button type="button" key={value ?? "normal"} className={`terrain-icon terrain-kind-${value ?? "normal"}`} aria-label={label} title={label} aria-pressed={kind === value} onClick={() => { cancel(); setKind(value); }}><Icon size={20} aria-hidden />{value === "difficult" && <sup>×2</sup>}</button>)}</div>
+          <div className="terrain-group"><span className="terrain-group-label" aria-hidden>Tool</span><div className="terrain-seg" role="group" aria-label="Terrain selection">{TOOLS.map(([tool, label, Icon]) => <button type="button" key={tool} className="terrain-icon" aria-label={label} title={label} aria-pressed={mode === tool} onClick={() => { cancel(); setMode(tool); }}><Icon size={20} aria-hidden /></button>)}</div></div>
+          <div className="terrain-group"><span className="terrain-group-label" aria-hidden>Paint</span><div className="terrain-seg" role="group" aria-label="Terrain kind">{KINDS.map(([value, label, Icon]) => <button type="button" key={value ?? "normal"} className={`terrain-icon terrain-kind-${value ?? "normal"}`} aria-label={label} title={label} aria-pressed={kind === value} onClick={() => { cancel(); setKind(value); }}><Icon size={20} aria-hidden />{value === "difficult" && <sup>×2</sup>}</button>)}</div></div>
         </div>
-        {preview.length > 0 && <div className="row"><button type="button" onClick={() => void commit()}>Apply preview</button><button type="button" className="secondary" onClick={cancel}>Cancel stroke</button></div>}
         <section className="terrain-layers" aria-label="Layers">
-          <header><span>Layers</span><button type="button" className="terrain-icon" aria-label="Add layer" title={!live ? "Extra layers can only be added in a live room. Drafts paint the base terrain only." : terrain.effects.length >= 32 ? "Layer limit reached (32)" : "Add layer"} disabled={!live || terrain.effects.length >= 32} onClick={() => setAdding(true)}><Plus size={18} aria-hidden /></button></header>
+          <header><span>Layers</span>{live && <button type="button" className="terrain-icon" aria-label="Add layer" title={terrain.effects.length >= 32 ? "Layer limit reached (32)" : "Add layer"} disabled={terrain.effects.length >= 32} onClick={() => setAdding(true)}><Plus size={18} aria-hidden /></button>}</header>
+          {/* Drafts save the base terrain only (effect layers are live-room state with no draft or library storage). */}
+          {!live && <p className="muted small-print terrain-layers-note">Extra layers are available in a live room.</p>}
           {adding && live && <input className="terrain-new" autoFocus maxLength={60} aria-label="New layer name" placeholder="Layer name (Ice, rubble…)" value={name}
             onChange={(e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }}
             onKeyDown={async (e) => {

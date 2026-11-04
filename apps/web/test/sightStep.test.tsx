@@ -126,21 +126,6 @@ describe("map editor Sight step (FR-GM-19)", () => {
     ]));
   });
 
-  it("sends the map style only on Save changes (FR-GM-19)", async () => {
-    const fake = mount(withPlayer(room())); openSight();
-    const flat = within(editor()).getByRole("radio", { name: "Flat" });
-    const iso = within(editor()).getByRole("radio", { name: "2.5D isometric" });
-    expect(flat.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(iso);
-    expect(iso.getAttribute("aria-checked")).toBe("true");
-    expect(fake.commands).toEqual([]);
-    fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fake.commands).toEqual([{
-      type: "scene.savePreparation", expectedMapUrl: MAP_URL, expectedSceneId: "initial", context: { boardEpoch: 0, revision: 0 },
-      edits: [{ type: "scene.setIsometric", expectedSceneId: "initial", enabled: true }],
-    }]));
-  });
-
   it("previews sight with test tokens only, added, moved and removed without sending anything", () => {
     const state = room({ walls: [{ id: "w", a: { x: 250, y: 0 }, b: { x: 250, y: 600 } }] });
     state.tokens = { hero: { ...token, position: { x: 100, y: 300 } } };

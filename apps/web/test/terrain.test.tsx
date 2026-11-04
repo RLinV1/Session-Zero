@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, filterStateForViewer, movementFeedbackForViewer, type MovementPreviewRequest, type RoomState, type Token, type Participant } from "@vtt/shared";
 import { Modal } from "../src/ui/Modal";
+import { fixedPosition } from "../src/ui/Popover";
 import { TerrainSetup } from "../src/pages/mapEditor/TerrainSetup";
 import { movementPreview, movementReadout } from "../src/board/movementRuler";
 import { draftFrom, planDraftSave, applyToDraft } from "../src/pages/mapEditor/mapDraft";
@@ -23,12 +24,26 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
     rerender(<TerrainSetup connection={connection} state={{ ...room(), terrain: { base: [], effects } }} live />);
     expect((screen.getByRole("button", { name: "Add layer" }) as HTMLButtonElement).disabled).toBe(true);
   });
-  it("shows Add layer disabled with a reason outside a live room (FR-TAC-03)", () => {
+  it("focuses the new layer name input when + is clicked in a live room (FR-TAC-03)", () => {
+    const { connection } = fakeConnection();
+    render(<TerrainSetup connection={connection} state={room()} live />);
+    fireEvent.click(screen.getByRole("button", { name: "Add layer" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("New layer name"));
+  });
+  it("hides Add layer in drafts and says why, instead of a dead button (FR-TAC-03)", () => {
     const { connection } = fakeConnection();
     render(<TerrainSetup connection={connection} state={room()} />);
-    const add = screen.getByRole("button", { name: "Add layer" }) as HTMLButtonElement;
-    expect(add.disabled).toBe(true);
-    expect(add.title).toMatch(/live room/);
+    expect(screen.queryByRole("button", { name: "Add layer" })).toBeNull();
+    expect(screen.getByText(/Extra layers are available in a live room/)).toBeTruthy();
+  });
+  it("keeps a fixed popover fully inside the window", () => {
+    const view = { innerWidth: 400, innerHeight: 300 }, panel = { width: 256, height: 120 };
+    // Right-aligned to a button near the left edge: shifted in, not cut off.
+    expect(fixedPosition({ top: 10, bottom: 40, left: 20, right: 60 }, panel, "right", view).left).toBe(8);
+    // Near the right edge: pulled back so the right side stays visible.
+    expect(fixedPosition({ top: 10, bottom: 40, left: 380, right: 400 }, panel, "left", view).left).toBe(400 - 256 - 8);
+    // No room below: opens above.
+    expect(fixedPosition({ top: 250, bottom: 280, left: 100, right: 140 }, panel, "left", view).top).toBe(250 - 8 - 120);
   });
   it("opens the Guide with the keyboard rows and closes on Escape", () => {
     const { connection } = fakeConnection();
@@ -74,10 +89,21 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
     vi.mocked(connection.command).mockImplementationOnce(async () => ({ ok: false, code: "invalid", message: "Terrain changed" }));
     render(<TerrainSetup connection={connection} state={{ ...room(), terrainRevision: 5, boardEpoch: 2 }} />);
     const canvas = screen.getByRole("application"); drag(canvas, { x: 25, y: 25 }, { x: 75, y: 25 });
-    await screen.findByText("Terrain changed");
-    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+    await screen.findByText(/Terrain changed.*Press Enter to retry or Esc to cancel/);
+    expect(screen.queryByRole("button", { name: /Apply preview|Cancel stroke/ })).toBeNull();
+    fireEvent.keyDown(canvas, { key: "Enter" });
     await waitFor(() => expect(commands).toHaveLength(1));
     expect(commands[0]).toMatchObject({ context: { revision: 5, boardEpoch: 2 } });
+  });
+  it("after a failed save, Enter retries and a fresh press replaces the stale stroke", async () => {
+    const { connection, commands } = fakeConnection();
+    vi.mocked(connection.command).mockImplementationOnce(async () => { throw new Error("offline"); });
+    render(<TerrainSetup connection={connection} state={room()} live />);
+    const canvas = screen.getByRole("application", { name: "Live terrain canvas" }); drag(canvas, { x: 25, y: 25 }, { x: 75, y: 25 });
+    await screen.findByText(/Couldn't save terrain.*Press Enter to retry or Esc to cancel/);
+    drag(canvas, { x: 25, y: 125 }, { x: 25, y: 125 });
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0]).toMatchObject({ type: "terrain.paint", paint: [{ row: 2, start: 0, end: 0, kind: "difficult" }] });
   });
   it("keeps private base painting out of the connection until one guarded save", () => {
     const state = room();

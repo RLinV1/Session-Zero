@@ -100,15 +100,15 @@ function StartForm({ connection, state, selection }: { connection: RoomConnectio
   return (
     <form onSubmit={start} className="stack">
       <GroupSelectionList selection={selection} state={state} idPrefix="area-effect" />
-      <label htmlFor="area-effect-label">Effect name</label>
-      <input id="area-effect-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder="New Effect" autoComplete="off" data-area-effect-focus />
       <label htmlFor="area-effect-expression">Roll for each token</label>
       <div className="dice-row">
-        <input id="area-effect-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} />
+        <input id="area-effect-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} data-area-effect-focus />
         <button className="primary" type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? "Select tokens first" : undefined}>
           Start
         </button>
       </div>
+      <label htmlFor="area-effect-label">Effect name <span className="muted">(optional)</span></label>
+      <input id="area-effect-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder="New Effect" autoComplete="off" />
       {error && <p role="alert" className="error">{error}</p>}
     </form>
   );
@@ -118,6 +118,7 @@ function OpenEffect({ connection, state, you, effect, onResolve, airborne }: { c
   const stage = areaEffectStage(effect);
   const { busy, error, send } = useSender(connection);
   const skip = () => void send({ type: "areaEffect.close", effectId: effect.id });
+  const skipButton = <button type="button" className="quiet-action area-effect-skip" disabled={busy} onClick={skip}>Skip</button>;
 
   return (
     <div className="stack area-effect">
@@ -131,24 +132,24 @@ function OpenEffect({ connection, state, you, effect, onResolve, airborne }: { c
           <>
             <DamageRollForm connection={connection} effect={effect} visibleTargets={effect.targets.length} />
             <CallForm connection={connection} state={state} you={you} effect={effect} label="Reassign" />
-            <button type="button" className="secondary" disabled={busy} onClick={skip}>Skip</button>
+            <div className="area-effect-footer">{skipButton}</div>
           </>
         ) : (
           <>
             <p className="area-effect-waiting" role="status">Waiting on {callerName(state, effect.call.participantId)} to roll damage.</p>
             <CallForm connection={connection} state={state} you={you} effect={effect} label="Reassign" />
-            <div className="row">
-              <button type="button" disabled={busy} onClick={() => void send({ type: "areaEffect.call", effectId: effect.id, participantId: you.id })}>Take over</button>
-              <button type="button" className="secondary" disabled={busy} onClick={skip}>Skip</button>
+            <div className="area-effect-footer">
+              <button type="button" className="secondary" disabled={busy} onClick={() => void send({ type: "areaEffect.call", effectId: effect.id, participantId: you.id })}>Take over</button>
+              {skipButton}
             </div>
           </>
         )
       )}
 
       {stage !== "called" && (
-        <div className="row">
+        <div className="area-effect-footer">
           <ResolveButton stage={stage} disabled={busy} onClick={onResolve} />
-          <button type="button" className="secondary" disabled={busy} onClick={skip}>Skip</button>
+          {skipButton}
         </div>
       )}
       {error && <p role="alert" className="error">{error}</p>}
@@ -176,9 +177,11 @@ function TargetList({ state, effect, rolling }: { state: RoomState; effect: Area
         const token = state.tokens[t.tokenId];
         return (
           <li key={t.tokenId} className={token ? undefined : "muted"}>
-            <span>{t.name}</span>
-            {t.roll && <span> · {effect.expression} <strong>{rolling ? "…" : t.roll.total}</strong></span>}
-            {!token ? <em className="badge">gone</em> : token.stats.hp !== null && <span className="muted"> · {token.stats.hp}{token.stats.maxHp !== null ? `/${token.stats.maxHp}` : ""} HP</span>}
+            <span className="area-effect-name">{t.name}</span>
+            <span className="area-effect-figures">
+              {t.roll && <span>{effect.expression} <strong>{rolling ? "…" : t.roll.total}</strong></span>}
+              {!token ? <em className="badge">gone</em> : token.stats.hp !== null && <span className="muted">{token.stats.hp}{token.stats.maxHp !== null ? `/${token.stats.maxHp}` : ""} HP</span>}
+            </span>
           </li>
         );
       })}
@@ -207,6 +210,8 @@ function CallForm({ connection, state, you, effect, label }: { connection: RoomC
   // The one just called drops out of the list; fall back to whoever is first.
   const selected = candidates.some((p) => p.id === choice) ? choice : candidates[0]?.id ?? "";
   const id = `area-effect-${label.toLowerCase()}`;
+  // Nobody else to hand it to (the GM alone): an empty list and a dead button is noise.
+  if (label === "Reassign" && candidates.length === 0) return null;
   return (
     <form
       className="stack"
@@ -222,7 +227,7 @@ function CallForm({ connection, state, you, effect, label }: { connection: RoomC
             <option key={p.id} value={p.id}>{p.id === you.id ? `${p.displayName} (you)` : p.displayName}</option>
           ))}
         </select>
-        <button className="primary" type="submit" disabled={busy || !selected}>{label}</button>
+        <button className={label === "Call" ? "primary" : "secondary"} type="submit" disabled={busy || !selected}>{label}</button>
       </div>
       {error && <p role="alert" className="error">{error}</p>}
     </form>
@@ -256,15 +261,15 @@ function DamageRollForm({ connection, effect, visibleTargets }: { connection: Ro
         />
         <button type="submit" className="primary" disabled={busy || !parsed.ok}>Roll</button>
       </div>
-      <fieldset className="damage-mode">
+      <fieldset className="damage-mode segmented">
         <legend className="sr-only">How to roll</legend>
-        <label className="checkbox">
+        <label>
           <input type="radio" name={name} checked={mode === "single"} onChange={() => setMode("single")} />
-          One roll for all
+          <span>One roll for all</span>
         </label>
-        <label className="checkbox">
+        <label>
           <input type="radio" name={name} checked={mode === "perTarget"} onChange={() => setMode("perTarget")} />
-          One roll per target
+          <span>One roll per target</span>
         </label>
       </fieldset>
       {error && <p role="alert" className="error">{error}</p>}
