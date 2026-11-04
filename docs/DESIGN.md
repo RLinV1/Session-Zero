@@ -1,17 +1,21 @@
 # Design Document — Session Zero
 
 **Course:** CSE 416 · **Team:** Antonio Cottone, Raymond Lin, Vincent Chen, Christos Psimadas ·
-**Last updated:** 2026-10-19
+**Last updated:** 2026-11-04 · **Status:** deployed
 
 The name comes from the "session zero" of tabletop RPGs, the meeting before a campaign where the group agrees on what to play and makes characters; the app is where that preparation starts ("Your game starts here.").
 
+Session Zero is **deployed**: the production stack (`docker-compose.prod.yml`) runs on a
+single cloud VM behind Caddy, provisioned with the project's Terraform (§2, *Production*).
+
 Requirements live in [`../README.md`](../README.md) and are referenced by ID (FR-PL-02).
-This document covers architecture, stack, repository, data and identity, and what the
-running build does today. Individual decisions are recorded as ADRs (§8); this document
+This document covers architecture, stack, repository, data and identity, deployment, and what
+the running build does today. Individual decisions are recorded as ADRs (§8); this document
 summarizes them and links out rather than repeating them.
 
 | Document | Contents |
 | --- | --- |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Production stack, one-VM setup on AWS or Google Cloud, Terraform, managed-service mapping |
 | [`DELIVERY.md`](DELIVERY.md) | Slice sequencing, task split, cut order |
 | [`INTERFACE.md`](INTERFACE.md) | Page inventory, information architecture, design system |
 | [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) | Accepted frontend decisions; overrides older statements |
@@ -72,17 +76,22 @@ summarizes them and links out rather than repeating them.
    ║ └──────────────────────────────────────────┘                 ║
    ╚══════════════════════════════════════════════════════════════╝
 
-   The App Server and the web client run on the host for development;
+   Development: the App Server and the web client run on the host;
    `docker compose up -d --build` also runs them in containers.
    Each service is optional: with DATABASE_URL, REDIS_URL or
    S3_ENDPOINT unset the server falls back to in-memory state,
    Postgres-only sequencing, and uploads on local disk (dev only,
    and only when no S3 store answers at 127.0.0.1:8333).
+
+   Production: the same services run from docker-compose.prod.yml
+   on one VM, with Caddy in front serving the built web app and
+   proxying /api, /socket.io, /uploads and /health to the server
+   (see §2, Production).
 ```
 
 `packages/shared` is the contract both sides import: zod schemas, `decide`, `reduce`,
-visibility filters, plus pure helpers both sides need (dice, geometry, UVTT parsing, the
-activity-log formatter, replay points). Pure TypeScript, no I/O, so the rules are
+visibility filters, plus pure helpers both sides need (dice, geometry, sight, terrain and
+movement cost, UVTT parsing, the activity-log formatter, replay points). Pure TypeScript, no I/O, so the rules are
 unit-testable without a network or a browser.
 
 ### The one rule
@@ -101,18 +110,23 @@ is what makes undo, the activity log, checkpoints and replay possible.
 
 ### The command surface
 
-49 commands produce 47 event types. Grouped by area:
+72 commands produce 67 event types. Grouped by area:
 
 | Area | Commands |
 | --- | --- |
-| Scene | `scene.setMap`, `scene.setGrid`, `scene.importUVTT` |
+| Map | `scene.setMap`, `scene.setGrid`, `scene.importUVTT`, `scene.savePreparation` |
+| Sight and style | `scene.setLineOfSight`, `scene.setSightRange`, `scene.setIsometric` |
+| Scenes | `scene.create`, `scene.prepare`, `scene.copyCurrent`, `scene.rename`, `scene.switch`, `scene.delete` |
+| Terrain | `terrain.paint`, `terrain.effect.create`, `terrain.effect.rename`, `terrain.effect.remove` |
 | Tokens | `token.create`, `token.duplicate`, `token.move`, `token.setAppearance`, `token.configure`, `token.setImage`, `token.setStats`, `token.setConditions`, `token.setOwners`, `token.setHidden`, `token.delete` |
 | Groups | `group.create`, `group.rename`, `group.delete`, `group.assign` |
 | Walls and portals | `wall.add`, `wall.update`, `wall.remove`, `wall.clear`, `wall.applyDetected`, `portal.set`, `portal.setState` |
 | Fog | `fog.add`, `fog.replace`, `fog.remove` |
 | Areas | `template.place`, `template.remove` |
 | Turn order | `initiative.start`, `initiative.advance`, `initiative.end` |
-| Dice and attacks | `dice.roll`, `roll.rule`, `roll.applyDamage`, `nuke.detonate`, `room.setReducedEffects` |
+| Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.applyDamage`, `nuke.detonate` |
+| Area effects | `areaEffect.start`, `areaEffect.call`, `areaEffect.rollDamage`, `areaEffect.resolve`, `areaEffect.close` |
+| Room settings | `room.setReducedEffects`, `room.setAutoRemoveDefeated` |
 | Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
 | Chat | `chat.send` |
 | Recovery | `history.undo`, `checkpoint.create`, `checkpoint.restore`, `checkpoint.delete`, `encounter.apply` |
@@ -122,7 +136,7 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Channel | Carries | Persisted | Ordered | Delivery |
 | --- | --- | --- | --- | --- |
 | Committed | Commands in, events out | Yes, with `seq` | Yes | Reliable |
-| Ephemeral | `ping`, `tokenDragPreview`, `diceDrop`, `templatePreview` (area aiming) | No | No | `volatile.emit`, dropped under backpressure |
+| Ephemeral | `ping`, `tokenDragPreview`, `tokenMovePreview` (answered with `tokenMoveFeedback`: clear, blocked or unknown), `diceDrop`, `templatePreview` (area aiming) | No | No | `volatile.emit`, dropped under backpressure |
 
 Pointer chatter must never queue ahead of committed state, which is why the ephemeral
 channel gets no sequence number and no persistence (FR-SYNC-03). Ephemeral relays still
@@ -130,8 +144,8 @@ pass the visibility rules: a GM-only area aim is never relayed to players, and a
 aim says whether it was GM-only so players do not learn of it. A latency benchmark
 (`npm run test:bench --workspace=@vtt/server`) guards the channel's round-trip time.
 
-The ruler, the Draw tool's lines and shapes, and brush strokes are per-viewer marks that
-are never sent anywhere (see §6, FR-TAC-03/04).
+The ruler (with its personal movement budget), the Draw tool's lines and shapes, and brush
+strokes are per-viewer marks that are never sent anywhere (see §6, FR-TAC-03/04).
 
 ### Request paths
 
@@ -194,7 +208,8 @@ checks to 10/15 minutes per account. Room capacity, file sizes and worker concur
 | Tests | Vitest + Playwright + Python `unittest` | Vitest shares Vite's transform; Playwright (`npm run test:browser`) drives real browsers through the UVTT flow; the vision service has its own suite. |
 | CI | GitHub Actions | Free for the repo, and the whole matrix is one YAML job. |
 | Local services | Docker Compose | Everyone runs identical versions of Postgres, Redis, SeaweedFS and the vision service with one command. |
-| Hosting | Fly.io or Railway | Both hold persistent WebSocket connections; serverless cannot. |
+| Hosting | One cloud VM running `docker-compose.prod.yml`, provisioned by Terraform (AWS EC2 or Google Compute Engine) | Holds persistent WebSocket connections, which serverless cannot; the same compose file as development keeps production and local stacks alike; cheapest option that runs the vision service. |
+| Edge | Caddy | Serves the built web app, proxies the backend on one origin, and obtains TLS certificates on its own. |
 
 ### Running the backing services
 
@@ -261,9 +276,34 @@ dependency tree stays out of the Node services. Two processes run from it:
   tells the room's GM. Detected walls carry a confidence (ADR 0038) and are applied only
   after the GM reviews the preview. See [`WALL-DETECTION.md`](WALL-DETECTION.md).
 
+### Production
+
+The app is deployed as the one-VM production stack described in
+[`DEPLOYMENT.md`](DEPLOYMENT.md) §4 (OpenSpec change `production-deployment`).
+
+| Piece | What it does |
+| --- | --- |
+| `docker-compose.prod.yml` | `postgres`, `redis`, `s3` (SeaweedFS), `vision`, a one-shot `migrate` (`prisma migrate deploy`), `server` and `web`. `vision-walls` sits behind the `walls` profile and is **off by default**. |
+| `Dockerfile.server` | Production server image: runs the TypeScript with `tsx` (no build step, no watch), with a `/health` container health check. |
+| `Dockerfile.web` | Vite build served by Caddy (`deploy/Caddyfile`): static files with an SPA fallback, `/api`, `/socket.io`, `/uploads` and `/health` proxied to `server:3001`. |
+| `deploy/env.production.example` | Every required variable. Compose refuses to start, naming the variable, without `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` or `CLIENT_ORIGIN`. |
+| `deploy/terraform/`, `deploy/terraform-gcp/` | One VM on AWS or Google Cloud: firewall (22 from one CIDR, 80, 443), static IP, generated secrets, Docker install, clone and `up -d --build`. The host defaults to `<ip>.sslip.io` so Caddy can issue a certificate without a domain. |
+
+Only ports 80 and 443 are published; Postgres, Redis, S3 and vision stay on the compose
+network. Production runs with `NODE_ENV=production`, `COOKIE_SECURE=1`, `TRUST_PROXY` and no
+`SEED_DEV_ACCOUNT`, and the server refuses to start without real S3 credentials. CI builds
+all three images on every push so a broken Dockerfile fails before deploy.
+
+Releases are `git pull` and the same `up -d --build`: `migrate` runs first, then the server
+restarts. Data lives on the `pgdata`, `s3data` and `redisdata` volumes of that one VM, so
+backups are manual and the VM is a single point of failure — acceptable for the course, and
+[`DEPLOYMENT.md`](DEPLOYMENT.md) §5 maps the same images onto managed services (RDS or Cloud
+SQL, ElastiCache or Memorystore, S3 or Cloud Storage) if that changes.
+
 ### Choices we did not make
 
-- **Konva over PixiJS** — friendlier API, but dynamic line of sight needs cheap masking. If LoS is cut, Konva becomes the better call.
+- **Konva over PixiJS** — friendlier API, but dynamic line of sight needs cheap masking. Line of sight shipped on Pixi masks (`board/sightMask.ts`), which settled this.
+- **Fly.io or Railway** — the original hosting plan. A plain VM with the production compose file runs the Python vision service and the Node stack side by side with no platform-specific config.
 - **JWT for sessions** — stateless verification buys nothing with one app server, and opaque tokens revoke instantly.
 - **Fastify over Express** — built-in schema validation would serve FR-GM-15 directly. Worth revisiting as the socket surface grows.
 - **A CRDT** — rejected. CRDTs converge without a referee; this system *needs* one. Merge-anything semantics contradict authorization and hidden information.
@@ -276,7 +316,8 @@ npm workspaces, one install from the root.
 
 ```
 packages/shared    the contract: schemas, decide, reduce, visibility filters, and pure
-                   helpers (dice, geometry, uvtt, activityLog, replay, undo). No I/O.
+                   helpers (dice, geometry, sight, terrain, movement, scenes, uvtt,
+                   activityLog, replay, undo). No I/O.
 apps/server        Express + Socket.IO.
   domain/            liveRoom.ts is the pipeline; roomRegistry, room lifecycle,
                      grid and wall detection, encounter templates, shipped maps
@@ -288,19 +329,27 @@ apps/server        Express + Socket.IO.
                      identity and membership stores
   ws/socket.ts       the Socket.IO gateway
 apps/web           React panels + PixiJS board.
-  board/             boardView.ts and everything Pixi: tools, fog, effects, dice throws
+  board/             boardView.ts and everything Pixi: tools, fog, sight mask, movement
+                     ruler, effects and sound, dice throws
+  lighting/          2.5D (isometric) rendering for maps marked isometric (ADR 0048)
   net/               roomConnection.ts is the sync client; REST client and identity
-  pages/             home, GM dashboard, library, room, map editor, encounter editor
+  pages/             home, GM dashboard, library, room, map editor, encounter editor,
+                     privacy and terms
   panels/            the room's side panels (roster, initiative, dice, attacks, chat, …)
   ui/                shared components
-browser/           Playwright specs (UVTT import and export end to end)
+browser/           Playwright specs (UVTT, grid detection, scenes, terrain)
 services/vision    Python grid detector (FastAPI) and the BullMQ wall-detection worker.
+deploy/            Caddyfile, production env template, Terraform for AWS and Google Cloud
+Dockerfile.server,
+Dockerfile.web,
+docker-compose.prod.yml   the production images and stack (§2, Production)
 openspec/          change proposals and accepted capability specs
 ```
 
 ```bash
 npm install
 npm run dev           # server :3001, web :5173 (proxies /api, /socket.io, /uploads)
+npm run dev:db        # same, on the compose Postgres and Redis (migrates first)
 npm run lint
 npm run typecheck
 npm test              # shared + server + web vitest suites, then the latency bench
@@ -311,7 +360,8 @@ npm run build
 CI runs on every push to `main` and every pull request: install → generate Prisma client →
 lint → typecheck → test → vision service tests (grid and wall detection) → build → boot the
 server and poll `/health`. The smoke test is the reason the in-memory fallback exists; CI
-starts no containers.
+starts no service containers. A separate `images` job builds the server, web and vision
+production images (build only, no push).
 
 Conventions: commands are `noun.verb`, events are `PastTense`, tests and PR titles carry the
 FR ID. Changes are planned with OpenSpec (`/opsx:propose`). Schema changes in
@@ -323,7 +373,9 @@ FR ID. Changes are planned with OpenSpec (`/opsx:propose`). Schema changes in
 
 The walking skeleton (heartbeat) proved the risky paths — server-authoritative sync,
 durable guest identity, and player-safe filtering. The build has since grown to cover
-every M1 and M2 requirement in the README and most of M3.
+every M1 and M2 requirement in the README and nearly all of M3, including the stretch goals
+dynamic line of sight and interactive portal states, and it is **deployed** to a public cloud
+VM (§2, *Production*).
 
 **Working today.**
 
@@ -336,38 +388,55 @@ every M1 and M2 requirement in the README and most of M3.
   The map editor walks through grid, walls and fog; wall detection proposes walls with
   confidence for review; walls and portals (doors, windows; open, closed, locked) can be
   drawn and edited by hand. UVTT/dd2vtt files import into a room or the library with
-  validation, and a prepared scene exports back to `.uvtt`. Changing the map can move
-  existing tokens with it atomically (ADR 0042).
+  validation, and a prepared scene exports back to `.uvtt`; imported openings can all be made
+  doors in one click. Changing the map can move existing tokens with it atomically (ADR 0042).
+  The editor's Sight step previews line of sight with test tokens and marks a map flat or
+  2.5D (ADR 0048). Grid detection also uses reviewed classical line-segment estimates (ADR 0045).
+- *Terrain.* The GM paints Difficult and Blocked terrain plus up to 32 named temporary
+  effects. Moves are costed against it (Difficult doubles, Blocked refuses), resizes must
+  land on a clear footprint, and players see only an effective projection of terrain they can
+  actually see (ADR 0046, terrain).
 - *Tokens.* Create tokens from scratch or from saved library creatures, place several in a
   row, duplicate to a chosen square, group them, and set image, colour, size, rotation, HP,
-  conditions, initiative score and named attacks. Assign owners; players move only their
-  own tokens, and walls and closed portals block movement. Hide a token and it never reaches
-  player clients.
-- *Play.* Pan, zoom, ping, and measure. Manual fog in rectangles or polygons. Shared area
-  templates (circles, cones, lines, squares) aimed live on the ephemeral channel, in colours,
-  optionally GM-only. Initiative with turn notices. Dice expressions, public or GM-only,
-  thrown on the board with 3D dice and per-player dice looks. Attack rolls against one or
-  several targets, with GM rulings and damage application, and board animations
+  conditions (painted icons), initiative score and named attacks. Assign owners; players move
+  only their own tokens (also with the arrow keys), and walls, closed portals and Blocked
+  terrain stop movement, with live clear/blocked feedback while dragging. Hide a token and it
+  never reaches player clients. Tokens at 0 HP can be removed automatically, with a death
+  animation, as a room setting (ADR 0049).
+- *Line of sight.* With line of sight on, each player sees only what their tokens can see:
+  walls and closed or locked doors block sight, windows and open doors do not, and an optional
+  sight range limits it. Sight is computed on the server and anything outside it is concealed
+  by the same filters as fog (ADR 0044). The GM can view as any token.
+- *Play.* Pan, zoom, ping, and measure with a personal movement-budget ruler (equal,
+  alternating or Euclidean diagonals). Manual fog in rectangles or polygons, drawn as flowing
+  painted fog. Shared area templates (circles, cones, lines, squares) aimed live on the
+  ephemeral channel, in colours, optionally GM-only. Initiative with turn notices. Dice
+  expressions, public or GM-only, thrown on the board with 3D dice and per-player dice looks;
+  group rolls across many tokens. Attack rolls against one or several targets, with GM
+  rulings and damage application; area effects that run saves, a GM call and damage across
+  every token in an area (ADR 0046, area effects). Themed board animations and sound
   (reducible per room). Room chat with `@` mentions.
 - *Recovery.* A human-readable activity log, undo for reversible actions, named checkpoints
   that can be previewed, restored and deleted, and an encounter replay that any participant
   can step through from a checkpoint or the start of an encounter, filtered as themselves.
-- *Scenes.* The GM switches between named live scenes from the room header. Leaving automatically saves the board, including token identities, HP, ownership, fog, walls, portals, initiative and groups. Inactive scenes and their names remain GM-only. Checkpoints recover the active board; encounter templates seed reusable setups (ADR 0045).
+- *Scenes.* The GM switches between named live scenes from the room header. Leaving automatically saves the board, including token identities, HP, ownership, fog, walls, portals, terrain, initiative and groups. A new scene can be prepared privately (from the current map, an encounter template or a map) and activated when ready. Inactive scenes and their names remain GM-only. Checkpoints recover the active board; encounter templates seed reusable setups (ADR 0045, scenes).
 - *Reuse.* Encounter templates save the map, walls, portals, fog and monster roster, are
   edited in a temporary room, and are applied to a live room in one command. Game presets
   (ADR 0027) set up stats and conditions for a system.
 - *Durability.* Reload and come back as the same participant with the same role. Kill the
   server and, with Postgres configured, the room is still there.
+- *Deployment.* The production stack runs on a cloud VM over HTTPS (§2, *Production*). The
+  GM dashboard shows board previews of hosted rooms; the site has privacy and terms pages.
 
-**Tests.** About 1,800 automated cases: ~590 unit tests over the pure kernel
-(`packages/shared/test`), ~490 server tests including multi-client integration tests over
+**Tests.** About 2,450 automated cases: ~780 unit tests over the pure kernel
+(`packages/shared/test`), ~570 server tests including multi-client integration tests over
 real sockets and Postgres store tests that run when a database is configured
-(`apps/server/test`), ~690 web tests (`apps/web/test`), 33 Python tests for the vision
-service, and Playwright browser specs.
+(`apps/server/test`), ~1,050 web tests (`apps/web/test`), 50 Python tests for the vision
+service, and Playwright browser specs for UVTT, grid detection, scenes and terrain.
 
-**Not built yet.** Dynamic line of sight (FR-GM-19), a shared movement-budget ruler
-(FR-TAC-03), and shared drawing overlays (FR-TAC-04). Wall detection does not yet classify
-doors and windows.
+**Not built yet.** Shared drawing overlays (FR-TAC-04): the Draw tool works, but only on the
+viewer's own board. Wall detection does not yet classify doors and windows, and its worker is
+off by default in production.
 
 **Run it — no containers.** A fresh clone plays without Docker, because the store,
 sequencer and asset sink each fall back when their environment variable is unset (§2).
@@ -385,8 +454,13 @@ including the restart `tsx watch` performs each time you save a file.
 **Run it — with persistence.** Needed to exercise the Postgres event store, S3 uploads,
 Redis sequencing and detection, and therefore needed for any manual test of restart
 survival, reconnection or recovery. Use the commands in §2, or
-`docker compose up -d --build` for the whole stack. The startup line tells you which store
-you got: `using Postgres event store` or `DATABASE_URL unset — using in-memory store`.
+`npm run dev:db`, or `docker compose up -d --build` for the whole stack. The startup line
+tells you which store you got: `using Postgres event store` or
+`DATABASE_URL unset — using in-memory store`.
+
+**Run it — production.** `docker compose --env-file .env.production -f
+docker-compose.prod.yml up -d --build` on a VM, or `terraform apply` in `deploy/terraform`
+(AWS) or `deploy/terraform-gcp` (Google Cloud). See [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
@@ -413,7 +487,8 @@ you got: `using Postgres event store` or `DATABASE_URL unset — using in-memory
 | `asset_refs` | — | Projection of which library assets a room's current state references; derived, never read back into state |
 | `room_uploads` | — | Images uploaded inside a room, so room deletion can remove them (ADR 0009) |
 
-Room state is the fold of its events. Snapshots are an optimization and can be deleted
+Room state is the fold of its events. Scenes, terrain and line-of-sight settings are part of
+that state, so they needed no new tables. Snapshots are an optimization and can be deleted
 without data loss. Library, account and membership tables are ordinary CRUD data beside the
 log, not room state.
 
@@ -438,8 +513,12 @@ accounts, so guests are first-class and accounts remain a hosting requirement on
 
 Hidden information never leaves the server. Both filters in `visibility.ts` are updated
 together whenever a new kind of hidden data is added. Today that covers hidden tokens,
-tokens under fog that the viewer does not own, fog regions, walls (GM-only), GM-only
-portals and areas, GM-only rolls and rulings, checkpoint names, and private metadata.
+tokens under fog or outside the viewer's line of sight that the viewer does not own, fog
+regions, walls (GM-only), GM-only portals and areas, GM-only rolls and rulings, canonical
+terrain layers and effect names (players get only an effective projection), inactive
+scenes and their names, checkpoint names, and private metadata. A player's sight polygon is
+computed server-side and added to their filtered state; scene switches and sight changes
+reach players as filtered snapshots, never as raw events.
 Authorization is decided in `decide()`; the client's `can.*` helpers are UI hints with no
 security value. The GM can "View as player" to check what players see; replays and
 checkpoint previews are built through the same filters.
@@ -469,13 +548,14 @@ checkpoint previews are built through the same filters.
 | FR-GM-15 | Server-side authorization | `decide()`, zod at every boundary | B |
 | FR-GM-16 | Token visibility controls | `token.setHidden` + filters | B |
 | FR-GM-17 | Manual fog of war | `fog.*` + filters (ADR 0016, 0032) | B |
-| FR-GM-18 | Interactive portal states | `portal.setState`, movement blocking | ~ |
-| FR-GM-19 | Dynamic line of sight | Pixi masking + raycast | D |
+| FR-GM-18 | Interactive portal states | `portal.setState`, movement and sight blocking | B |
+| FR-GM-19 | Dynamic line of sight | `sight.ts` on the server, `sightMask.ts` (ADR 0044) | B |
 | FR-GM-20 | Guest revocation, invite regeneration | `participant.revoke`, `POST /api/rooms/:id/invite` | B |
 | FR-GM-21 | Initiative and turn order | `initiative.*`, turn notice (ADR 0022) | B |
 | FR-GM-22 | Public and GM-only rolls | `DiceVisibility` + filters | B |
 | FR-GM-23 | Player-safe state filtering | `visibility.ts` | B |
 | FR-GM-24 | Focusable token roster | `TokenRoster.tsx` | B |
+| FR-GM-25 | Scene switching | `scene.create/switch/prepare/…`, `savedScenes` (ADR 0045) | B |
 | FR-PL-01 | Shareable guest link | `rooms.invite_code` | B |
 | FR-PL-02 | Durable guest identity | Hashed `localStorage` token, `room_members` | B |
 | FR-PL-03 | Responsive Player Board | `RoomPanel`, `MyTokens` | B |
@@ -485,13 +565,13 @@ checkpoint previews are built through the same filters.
 | FR-PL-07 | Replay for late joiners | `/api/rooms/:id/replay`, `ReplayBar` (ADR 0025) | B |
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
 | FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
-| FR-TAC-03 | Movement budget ruler | Local Measure tool | ~ |
+| FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |
 | FR-TAC-04 | Drawing overlays | Local Draw tool | ~ |
 | FR-TAC-05 | Target pings | Ephemeral `ping` | B |
-| FR-TAC-06 | AoE templates | `templatePreview` → `template.place` (ADR 0007, 0021, 0040) | B |
-| FR-TAC-07 | Token statistics and conditions | `token.setStats/setConditions` | B |
-| FR-TAC-08 | Accessible condition markers | `ConditionMarker.tsx` | B |
-| FR-TAC-09 | Shared dice expressions | `dice.ts`, server-rolled | B |
+| FR-TAC-06 | AoE templates | `templatePreview` → `template.place`, `areaEffect.*` (ADR 0007, 0021, 0040, 0046) | B |
+| FR-TAC-07 | Token statistics and conditions | `token.setStats/setConditions`, auto-remove at 0 HP (ADR 0049) | B |
+| FR-TAC-08 | Accessible condition markers | `ConditionMarker.tsx`, painted icons | B |
+| FR-TAC-09 | Shared dice expressions | `dice.ts`, server-rolled, `dice.rollGroup` | B |
 | FR-SYNC-01 | Server-authoritative state | `LiveRoom` | B |
 | FR-SYNC-02 | Real-time persistent sync | Postgres store | B |
 | FR-SYNC-03 | Ephemeral interaction channel | `volatile.emit` | B |
@@ -502,22 +582,24 @@ checkpoint previews are built through the same filters.
 
 **Why the partials are partial.**
 FR-GM-11 detects walls, with confidence, but does not yet classify doors and windows; the
-GM reviews every result on its preview before applying it, and adds portals by hand.
-FR-GM-18 has portal states that block movement and toggle live, but nothing blocks sight
-until line of sight (FR-GM-19) lands.
-FR-TAC-03 has a Measure tool that reads distance in grid units, but it is local to the
-viewer, uses the fixed 5e diagonal rule (configurable diagonals are KAN-32), and shows no
-movement budget.
+GM reviews every result on its preview before applying it, and adds portals by hand. The
+`vision-walls` worker is behind the `walls` compose profile and off in the deployed stack,
+so production wall detection must be switched on explicitly.
 FR-TAC-04 draws lines, rectangles, circles and strokes, but only on the viewer's own board;
 nothing is shared with the table yet.
+
+FR-TAC-03 is now built as the README specifies it: a personal ruler with a local allowance
+and selectable diagonals, with no per-turn tracking. Terrain-aware movement cost (ADR 0046)
+goes beyond it.
 
 ---
 
 ## 7. Open Decisions
 
-- **Line of sight.** Whether FR-GM-19 ships; if it is cut, revisit Konva (§2). Portal `kind` already distinguishes windows so a closed window can let sight through.
-- **Shared rulers and drawings.** FR-TAC-03 would move the ruler onto the ephemeral channel; FR-TAC-04 needs a committed overlay type, a new event, and a decision on whether drawings are undoable.
-- **Door and window detection.** Whether `vision-walls` classifies portals or the GM keeps placing them by hand.
+- **Shared drawings.** FR-TAC-04 needs a committed overlay type, a new event, and a decision on whether drawings are undoable.
+- **Sight updates.** Owned-token moves resync their owner with a full snapshot while line of sight is on (ADR 0044). Diff-style sight updates can come later without a schema change if this costs too much on large tables.
+- **Door and window detection.** Whether `vision-walls` classifies portals or the GM keeps placing them by hand, and when the worker is turned on in production.
+- **Hosting beyond one VM.** The deployed VM is a single point of failure with manually backed-up volumes. Moving to managed Postgres, Redis and object storage ([`DEPLOYMENT.md`](DEPLOYMENT.md) §5) needs no code change, only environment variables.
 - **Legacy GM device identities.** `gm_identities` still holds pre-account device rows; a follow-up removes them and renames the table to `owners`.
 - **Duplicate names.** Participant and token names are not unique (KAN-61, KAN-62).
 - **Proposed ADRs.** Many ADRs below are implemented but still marked *Proposed* pending Real-Time Architecture review.
@@ -583,7 +665,14 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0041](adr/0041-uvtt-scenes-and-portals.md) | UVTT scenes, portal metadata and atomic geometry | Proposed |
 | [0042](adr/0042-map-token-adjustment.md) | Atomic token adjustment when applying a map | Proposed |
 | [0043](adr/0043-library-uvtt-import-and-atomic-placement.md) | Library UVTT import and atomic map placement | Proposed |
+| [0044](adr/0044-line-of-sight.md) | Line of sight | Proposed |
+| [0045](adr/0045-classical-lsd-grid-estimates.md) | Versioned private classical LSD grid estimates | Proposed |
+| [0045](adr/0045-persistent-room-scenes.md) | Persistent room scenes | Proposed; implementation authorized |
+| [0046](adr/0046-area-effects-and-group-rolls.md) | Area effects and group rolls | Proposed |
 | [0046](adr/0046-terrain-tactical-movement.md) | Terrain and tactical movement | Proposed; Raymond review required |
+| [0047](adr/0047-longer-animations-for-the-nuke-siren.md) | Longer animations for the nuke's siren | Proposed |
+| [0048](adr/0048-map-isometric-flag.md) | 2.5D map style flag | Proposed |
+| [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
 
-Numbers 0033, 0036 and 0038 were each used twice by parallel branches; ADR 0017 (accounts) is
+Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.
