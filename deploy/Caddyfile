@@ -1,0 +1,19 @@
+# SITE_ADDRESS decides the protocol:
+#   :80              plain HTTP (a VM reached by IP; the default)
+#   vtt.example.com  automatic HTTPS (needs DNS pointing here and ports 80 and 443 open)
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# One origin for the browser: API, sockets (WebSocket upgrades pass through) and uploads go to the app server.
+	@backend path /api/* /socket.io/* /uploads/* /health
+	handle @backend {
+		reverse_proxy server:3001
+	}
+
+	# Everything else is the built web app; unknown paths get index.html so client routes survive a reload.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -1,0 +1,12 @@
+# cp terraform.tfvars.example terraform.tfvars   (terraform.tfvars is git-ignored)
+project_id = "my-gcp-project-id"  # your Google Cloud project ID
+ssh_cidr   = "203.0.113.7/32"     # your public IP followed by /32
+repo_ref   = "main"
+
+# region       = "us-east1"
+# zone         = "us-east1-b"
+# machine_type = "e2-medium"
+# disk_gb      = 30
+# repo_url     = "https://github.com/RLinV1/Virtual-Tabletop.git"
+# domain       = "vtt.example.com"
+# enable_https = true
