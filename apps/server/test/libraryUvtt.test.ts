@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LibraryMapBoard, UvttPreparation, replayTo, type CommandInput, type LibraryUvttImportResponse } from "@vtt/shared";
+import { LibraryMapBoard, UvttError, UvttPreparation, replayTo, type CommandInput, type LibraryUvttImportResponse } from "@vtt/shared";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { UvttValidationPool } from "../src/uvtt/validationPool";
 import { startServer, viewFor, type TestClient } from "./helpers";
@@ -67,14 +67,14 @@ describe("UVTT maps in the asset library (KAN-43/44, FR-GM-06/07/12)", () => {
   });
 
   it("authorizes and checks origin before validation, and rate-limits attempts", async () => {
-    const validate = vi.spyOn(UvttValidationPool.prototype, "validate");
+    const validate = vi.spyOn(UvttValidationPool.prototype, "validate").mockRejectedValue(new UvttError([{ code: "invalid_json", path: "file", severity: "error", message: "Invalid JSON" }]));
     expect((await upload()).status).toBe(401);
     const account = await server.signUp();
     expect((await upload(account.cookie, undefined, undefined, { origin: "https://elsewhere.invalid" })).status).toBe(403);
     expect(validate).not.toHaveBeenCalled();
-    for (let i = 0; i < 5; i++) expect((await upload(account.cookie, "{")).status).toBe(422);
+    for (let i = 0; i < 25; i++) expect((await upload(account.cookie, "{")).status).toBe(422);
     expect((await upload(account.cookie)).status).toBe(429);
-    expect(validate).toHaveBeenCalledTimes(5);
+    expect(validate).toHaveBeenCalledTimes(25);
   });
 
   it("rejects malformed supported data without assets, and removes image/raw files after failed storage", async () => {

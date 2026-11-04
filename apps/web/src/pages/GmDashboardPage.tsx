@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Plus } from "@phosphor-icons/react";
 import { presetOf } from "@vtt/shared";
 import type { EncounterSummary, GmRoomSummary, LegacySummary, MyRoomsResponse } from "@vtt/shared";
 import { AccountMenu } from "../account/AccountPages";
@@ -33,6 +34,7 @@ type RoomsState = { status: "loading" } | { status: "loaded"; rooms: MyRoomsResp
 function Dashboard() {
   const [rooms, setRooms] = useState<RoomsState>({ status: "loading" });
   const [refresh, setRefresh] = useState(0);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -51,15 +53,20 @@ function Dashboard() {
       <SiteHeader nav={<HubNav current="rooms" />} account={<AccountMenu />} />
     </div>
     <main className="page-shell home gm-page">
-      <h1>Your rooms</h1>
+      <div className="page-title-row">
+        <h1>Your rooms</h1>
+        <button type="button" className="primary" onClick={() => setCreating(true)}>
+          <Plus size={16} aria-hidden /> Create room
+        </button>
+      </div>
       <LegacyMoveBanner onMoved={() => setRefresh((n) => n + 1)} />
       <div className="dashboard-grid">
-        <CreateRoomCard />
         <div className="room-sections">
-          <HostingCard state={rooms} onDeleted={(id) => setRooms((s) => withoutRoom(s, id))} />
+          <HostingCard state={rooms} onDeleted={(id) => setRooms((s) => withoutRoom(s, id))} onCreate={() => setCreating(true)} />
           <PlayingCard state={rooms} />
         </div>
       </div>
+      <CreateRoom open={creating} onClose={() => setCreating(false)} />
       <p className="muted small-print">Your rooms and library are saved to your account, on any device you sign in on.</p>
     </main>
     </>
@@ -72,13 +79,15 @@ function withoutRoom(state: RoomsState, id: string): RoomsState {
 }
 
 /** Hosting needs the account, which the session cookie carries; the GM seat is kept on it too. */
-function CreateRoomCard() {
+function CreateRoom({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [details, setDetails] = useRoomDetails();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** The GM's saved encounters, offered as a starting board (encounter-templates, FR-GM-13). */
   const [templates, setTemplates] = useState<EncounterSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
+  /** The Room name input, so the modal opens with the cursor where typing starts. */
+  const focusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -101,30 +110,44 @@ function CreateRoomCard() {
     }
   }
 
+  function close() {
+    if (busy) return;
+    setError(null);
+    onClose();
+  }
+
   return (
-    <form className="card create-room" aria-labelledby="create-room-heading" onSubmit={onSubmit}>
-      <h2 id="create-room-heading">Create a room</h2>
-      <RoomDetailsFields value={details} onChange={setDetails} />
-      {templates.length > 0 && (
-        <label>
-          Start from template
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">Empty room</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </label>
-      )}
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-      <button className="primary" type="submit" disabled={busy}>
-        {busy ? "Creating…" : "Create room"}
-      </button>
-    </form>
+    <Modal open={open} title="Create a room" onClose={close} initialFocus={focusRef} className="create-room-modal">
+      <form className="create-room" onSubmit={onSubmit}>
+        <div className="create-room-fields" ref={(el) => { focusRef.current = el?.querySelector("input") ?? null; }}>
+          <RoomDetailsFields value={details} onChange={setDetails} />
+        </div>
+        {templates.length > 0 && (
+          <label>
+            Start from template
+            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <option value="">Empty room</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div className="row modal-actions">
+          <button type="button" className="secondary" onClick={close} disabled={busy}>
+            Cancel
+          </button>
+          <button className="primary" type="submit" disabled={busy}>
+            {busy ? "Creating…" : "Create room"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -184,13 +207,8 @@ function RoomCard(props: { room: GmRoomSummary; opening: boolean; preview?: bool
   );
 }
 
-/** The empty state's one action: the create form is beside it, so take the GM there. */
-function focusCreateRoom() {
-  document.querySelector<HTMLInputElement>(".create-room input")?.focus();
-}
-
 /** Rooms the account owns. */
-function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: string) => void }) {
+function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDeleted: (id: string) => void; onCreate: () => void }) {
   const { open, opening, error } = useOpenRoom();
   /** The room awaiting delete confirmation. */
   const [confirming, setConfirming] = useState<GmRoomSummary | null>(null);
@@ -239,7 +257,7 @@ function HostingCard({ state, onDeleted }: { state: RoomsState; onDeleted: (id: 
         <EmptyState
           picture="empty-rooms"
           action={
-            <button type="button" onClick={focusCreateRoom}>
+            <button type="button" onClick={onCreate}>
               Create a room
             </button>
           }

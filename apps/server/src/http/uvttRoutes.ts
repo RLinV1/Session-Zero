@@ -26,7 +26,7 @@ const expired = "This preparation expired or the server restarted. Re-import the
 /** Mount BEFORE the general JSON parser so only authorized draft edits have the larger limit. */
 export function registerUvttRoutes(app: Express, deps: Deps) {
   const auths = new WeakMap<Request, Auth>();
-  const attempts = new RateLimiter(5, 60_000, deps.now);
+  const attempts = new RateLimiter(25, 60_000, deps.now);
   const base = "/api/rooms/:roomId/uvtt";
   const failure = (res: Response, error: unknown) => {
     if (error instanceof multer.MulterError) res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: "Use one UVTT file, at most 40 MiB, without additional fields." });

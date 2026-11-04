@@ -47,7 +47,8 @@ async function wire(credentials: Credentials) {
 async function enter(page: Page, credentials: Credentials) {
   await page.addInitScript((creds) => localStorage.setItem(`vtt.credentials.${creds.roomId}`, JSON.stringify(creds)), credentials);
   await page.goto(`/r/${credentials.roomId}`);
-  await expect(page.getByRole("button", { name: "Show terrain", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  await page.getByLabel("Terrain", { exact: true }).setChecked(true);
 }
 
 test("GM editor resizes reject obstructions atomically and preserve fog concealment (FR-TAC-03, FR-GM-23)", async ({ page, browser }, testInfo) => {
@@ -209,17 +210,19 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await editor.screenshot({ path: testInfo.outputPath("terrain-erase-preview.png") });
     await canvas.press("Escape");
     await editor.getByRole("button", { name: "Difficult · ×2", exact: true }).click();
-    await editor.getByLabel("New temporary effect").fill("Private spell name"); await editor.getByRole("button", { name: "Create effect", exact: true }).click();
+    await editor.getByRole("button", { name: "Add layer", exact: true }).click(); await editor.getByLabel("New layer name").fill("Private spell name"); await editor.getByLabel("New layer name").press("Enter");
     await expect.poll(() => gm.state.terrain?.effects.length).toBe(1);
-    await editor.getByRole("combobox", { name: "Layer", exact: true }).selectOption({ label: "Private spell name" });
+    await editor.getByRole("button", { name: "Private spell name", exact: true }).click();
     await editor.getByRole("button", { name: "Blocked", exact: true }).click();
     await canvas.focus(); await canvas.press("Enter"); await canvas.press("Enter");
     await expect.poll(() => gm.state.terrain?.effects[0]?.runs.length).toBe(1);
     await expect.poll(() => player.state.terrainView?.temporary.length).toBe(1);
-    await editor.getByRole("button", { name: "Remove Private spell name", exact: true }).click();
+    await editor.getByRole("button", { name: "Rename Private spell name", exact: true }).click();
+    await editor.getByLabel("Layer name").fill("Spell layer"); await editor.getByLabel("Layer name").press("Enter");
+    await expect.poll(() => gm.state.terrain?.effects[0]?.name).toBe("Spell layer");
+    await editor.getByRole("button", { name: "Remove Spell layer", exact: true }).click();
     await expect.poll(() => gm.state.terrain?.effects.length).toBe(0);
-    await expect(editor.getByRole("combobox", { name: "Layer", exact: true })).toBeEnabled();
-    await expect(editor.getByRole("combobox", { name: "Layer", exact: true })).toHaveValue("base");
+    await expect(editor.getByRole("button", { name: "Base terrain", exact: true })).toHaveAttribute("aria-pressed", "true");
     expect(gm.state.terrain?.base).toEqual([{ row: 0, start: 1, end: 2, kind: "difficult" }]);
     await canvas.focus(); await canvas.press("Enter");
     await expect(editor.getByRole("button", { name: "Apply preview" })).toBeVisible();
@@ -274,12 +277,12 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     expect(scout.position).toEqual({ x: 25, y: 25 });
     await page.mouse.click(from.x, from.y);
     const card = page.getByRole("complementary", { name: "Scout details" }); await expect(card).toBeVisible();
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 75, y: 25 });
     await expect(page.getByRole("status").filter({ hasText: "Cost 10 ft" })).toBeVisible();
     // Paint over an occupied token, then ordinary movement is refused until GM resolution.
     expect((await gm.command({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 1, end: 1, kind: "blocked" }], context: { boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 } })).type).toBe("ack");
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect(page.getByRole("alert").filter({ hasText: "That move is unavailable." })).toBeVisible();
     // A refused destination consumes Reposition too; it never carries into a second attempt.
     expect((await gm.command({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 2, end: 2, kind: "blocked" }], context: { boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 } })).type).toBe("ack");
@@ -290,21 +293,20 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     expect(gm.seq).toBe(cancelSeq);
     const beforeRepositionRefusal = gmRefusals.length;
     await card.getByRole("button", { name: "Reposition next move" }).click();
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect.poll(() => gmRefusals.length).toBe(beforeRepositionRefusal + 1);
     await expect(card.getByRole("button", { name: "Reposition next move" })).toHaveAttribute("aria-pressed", "false");
-    await expect(card.getByRole("group", { name: "Move Scout", exact: true })).not.toHaveAttribute("aria-busy", "true");
     expect(gm.state.tokens[scout.id]?.position).toEqual({ x: 75, y: 25 });
     expect((await gm.command({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 2, end: 2, kind: "difficult" }], context: { boardEpoch: gm.state.boardEpoch ?? 0, revision: gm.state.terrainRevision ?? 0 } })).type).toBe("ack");
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect.poll(() => gmRefusals.length).toBe(beforeRepositionRefusal + 2);
     await expect(page.getByRole("alert").filter({ hasText: "That move is unavailable." })).toBeVisible();
     expect(gm.state.tokens[scout.id]?.position).toEqual({ x: 75, y: 25 });
     await card.getByRole("button", { name: "Reposition next move" }).click();
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 125, y: 25 });
     await expect(card.getByRole("button", { name: "Reposition next move" })).toHaveAttribute("aria-pressed", "false");
-    await card.getByRole("switch", { name: "Move with arrow keys", exact: true }).check();
+    await card.getByRole("switch", { name: "Move with arrow keys", exact: true }).setChecked(true);
     await page.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 175, y: 25 });
     const cardBox = (await card.boundingBox())!, boardBox = (await host.boundingBox())!;
@@ -333,10 +335,9 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await page.mouse.click(fogTo.x, fogTo.y);
     await expect(card).toBeVisible();
-    await card.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 275, y: 25 });
     await expect(card.getByRole("status")).toContainText("Cost 10 ft");
-    await expect(card.getByRole("group", { name: "Move Scout", exact: true })).not.toHaveAttribute("aria-busy", "true");
     const caughtUp = () => expect(page.getByRole("status").filter({ hasText: new RegExp(`seq ${gm.seq}$`) })).toBeVisible();
     await caughtUp();
     // An owner can leave fog after the GM puts their token there.
@@ -417,21 +418,19 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     const ownerCentre = await centreOwner(); await playerPage.mouse.click(ownerCentre.x, ownerCentre.y);
     await expect(playerCard).toBeVisible();
     await expect(playerCard.getByRole("button", { name: "Reposition next move" })).toHaveCount(0);
-    await playerCard.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await playerPage.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 275, y: 75 });
     await expect(playerCard.getByRole("status")).toContainText("Cost unknown");
-    await expect(playerCard.getByRole("group", { name: "Move Scout", exact: true })).not.toHaveAttribute("aria-busy", "true");
-    await playerCard.getByRole("switch", { name: "Move with arrow keys", exact: true }).check();
+    await playerCard.getByRole("switch", { name: "Move with arrow keys", exact: true }).setChecked(true);
     for (const x of [325, 375]) {
       await playerCaughtUp();
       await playerPage.keyboard.press("ArrowRight");
       await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x, y: 75 });
     }
     await playerCaughtUp();
-    await playerCard.getByRole("button", { name: "Move Scout left one square", exact: true }).click();
+    await playerPage.keyboard.press("ArrowLeft");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 325, y: 75 });
-    await expect(playerCard.getByRole("group", { name: "Move Scout", exact: true })).not.toHaveAttribute("aria-busy", "true");
-    await playerCard.getByRole("button", { name: "Move Scout right one square", exact: true }).click();
+    await playerPage.keyboard.press("ArrowRight");
     await expect.poll(() => gm.state.tokens[scout.id]?.position).toEqual({ x: 375, y: 75 });
     expect(gm.state.fog).toEqual(fogBeforeOwner);
     // Clear endpoints on either side of a thin fog strip remain traversable.
@@ -527,7 +526,7 @@ test("library placement refuses shifted terrain until an explicit reset (FR-GM-1
     await expect(editor.getByRole("alert")).toContainText("requires resetting terrain");
     expect(gm.seq).toBe(beforeSeq); expect(gm.state.scene.grid.cellSize).toBe(10); expect(gm.state.terrain?.base).toEqual(base);
     await page.screenshot({ path: testInfo.outputPath("library-terrain-reset.png") });
-    await editor.getByRole("checkbox", { name: "Reset prepared terrain when applying", exact: true }).check();
+    await editor.getByRole("checkbox", { name: "Reset prepared terrain when applying", exact: true }).setChecked(true);
     await editor.getByRole("button", { name: "Apply map", exact: true }).click();
     await expect.poll(() => gm.state.scene.grid.cellSize).toBe(20);
     expect(gm.state.terrain?.base ?? []).toEqual([]);

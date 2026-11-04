@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, trustProxyFromEnv, type App } from "../src/app";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
+import { RateLimiter } from "../src/identity/rateLimit";
 import { listenForFetch, newGuestToken, startServer } from "./helpers";
 
 describe("TRUST_PROXY can't let clients forge their address (security-hardening)", () => {
@@ -48,6 +49,7 @@ describe("TRUST_PROXY can't let clients forge their address (security-hardening)
     vi.stubEnv("TRUST_PROXY", "1");
     const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
     const app: App = await buildApp({ store, uploadDir, clientOrigin: "*" });
+    app.limits.joinsPerIpPerRoom = new RateLimiter(30, 15 * 60_000);
     const base = await listenForFetch(app);
     try {
       // The proxy appends the address it saw; the client controls everything before it.

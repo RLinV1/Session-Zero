@@ -57,7 +57,7 @@ const STEPS: StepSpec[] = [
     target: "share",
     title: "Invite players",
     body: {
-      gm: "Share, up here in the corner, copies the invite link for your players. If a link leaks, open the arrow beside it and choose Reset link to make a new one; nobody already here is affected.",
+      gm: "Share, up here in the corner, opens the invite link and QR code for your players. If a link leaks, choose Reset link there to make a new one; nobody already here is affected.",
     },
   },
   {

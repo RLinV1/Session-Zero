@@ -21,7 +21,8 @@ describe("scene management", () => {
     const state = { ...emptyRoomState("r"), activeSceneId: "tavern", sceneNames: { tavern: "Tavern", cellar: "Cellar" } };
     const command = vi.fn().mockResolvedValue({ ok: true });
     render(<ScenePreparationContext.Provider value={{ activeId: "tavern", preparing: false, preview: (sceneId) => command({ type: "preview", sceneId }) }}><SceneSwitcher state={state} connection={{ command } as unknown as RoomConnection} /></ScenePreparationContext.Provider>);
-    fireEvent.change(screen.getByRole("combobox", { name: "Viewing scene" }), { target: { value: "cellar" } });
+    fireEvent.click(screen.getByRole("button", { name: "Viewing scene" }));
+    fireEvent.click(screen.getByRole("option", { name: /Cellar/ }));
     await waitFor(() => expect(command).toHaveBeenCalledWith({ type: "preview", sceneId: "cellar" }));
   });
   it("previews a saved scene in one click", async () => {
@@ -33,9 +34,21 @@ describe("scene management", () => {
   it("creates a named private scene", async () => {
     const command = setup(emptyRoomState("r"));
     expect(screen.getByText(/Prepare privately/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("New scene name"), { target: { value: "Courtyard" } });
+    expect(screen.queryByLabelText("Scene name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New scene" }));
+    expect((screen.getByRole("button", { name: "Create scene" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Courtyard" } });
     fireEvent.click(screen.getByRole("button", { name: "Create scene" }));
     await waitFor(() => expect(command).toHaveBeenCalledWith({ type: "scene.create", name: "Courtyard", activate: false }));
+  });
+  it("cancel closes the new scene dialog and clears the name", () => {
+    const command = setup(emptyRoomState("r"));
+    fireEvent.click(screen.getByRole("button", { name: "New scene" }));
+    fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "New scene" }));
+    expect((screen.getByLabelText("Scene name") as HTMLInputElement).value).toBe("");
+    expect(command).not.toHaveBeenCalled();
   });
   it("activates only when the GM explicitly clicks Activate", async () => {
     const state = { ...emptyRoomState("r"), activeSceneId: "cellar", sceneNames: { tavern: "Tavern", cellar: "Cellar" } };

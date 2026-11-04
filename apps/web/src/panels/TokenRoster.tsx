@@ -10,13 +10,11 @@ import {
   type AttackPreset,
   type ConditionId,
   type Participant,
-  type Point,
   type RoomState,
   type Token,
   type TokenGroup,
   type TokenUpdate,
 } from "@vtt/shared";
-import { MoveControl } from "../ui/MoveControl";
 import type { RoomConnection } from "../net/roomConnection";
 import { api } from "../net/api";
 import { useAccount } from "../account/accountStore";
@@ -30,6 +28,7 @@ import { ConditionMarker, ConditionPicker } from "./ConditionMarker";
 import type { TokenDraft } from "../board/placement";
 import { AddTokenButton } from "./AddToken";
 import { Modal } from "../ui/Modal";
+import { isCroppable, TokenArtCropper } from "../ui/TokenArtCropper";
 import { PanelSection } from "../ui/PanelSection";
 import { CollapseToggle, GroupHeading, NewGroupButton } from "./GroupHeading";
 import { groupedTokens } from "./tokenGroups";
@@ -239,13 +238,6 @@ export function TokenRoster({
             groups={Object.values(state.groups)}
             groupId={state.tokenGroups[editing.id] ?? null}
             features={presetOf(state).features}
-            // The GM moves by Board X/Y here (or the board's token card); a step from here would
-            // be undone by saving the editor's stale X/Y, so the editor only offers it to owners.
-            move={!isGm && can.moveToken(you, editing) ? {
-              step: state.scene.grid.cellSize,
-              bounds: state.scene.map ? { width: state.scene.map.width, height: state.scene.map.height } : undefined,
-              onMove: (to) => send({ type: "token.move", tokenId: editing.id, to, expectedOrigin: editing.position, boardEpoch: state.boardEpoch ?? 0 }),
-            } : undefined}
             onSave={async (changes, groupId) => {
               if (Object.keys(changes).length > 0 && !(await send({ type: "token.configure", tokenId: editing.id, changes }))) return;
               if (groupId !== undefined && !(await send({ type: "group.assign", groupId, tokenIds: [editing.id] }))) return;
@@ -366,7 +358,6 @@ export function TokenEditor({
   groups = [],
   groupId: savedGroupId = null,
   features = ALL_FEATURES,
-  move,
   onSave,
   onDelete,
   onDuplicate,
@@ -384,7 +375,6 @@ export function TokenEditor({
   /** What the room's game preset turns on (KAN-63); everything when omitted. */
   features?: PresetFeatures;
   /** A one-square Move control, the keyboard path to moving this token (WCAG 2.5.7). */
-  move?: { step: number; bounds?: { width: number; height: number }; onMove: (to: Point) => Promise<unknown> };
   /** `groupId` is undefined when the group did not change. */
   onSave: (changes: TokenUpdate, groupId?: string | null) => Promise<void>;
   onDelete: () => void;
@@ -401,6 +391,7 @@ export function TokenEditor({
   const hasLibrary = useAccount().status === "signedIn";
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [maxHp, setMaxHp] = useState(token.stats.maxHp?.toString() ?? "");
   const [ac, setAc] = useState(token.stats.ac?.toString() ?? "");
@@ -466,6 +457,12 @@ export function TokenEditor({
     }
   };
 
+  /** Token art is framed first (token-art-cropper); other file types upload as they are. */
+  function pickArt(file: File | undefined) {
+    if (file && isCroppable(file)) setCropFile(file);
+    else void onUpload(file);
+  }
+
   async function onUpload(file: File | undefined) {
     if (!file) return;
     setUploadError(null);
@@ -508,7 +505,6 @@ export function TokenEditor({
           </label>
         )}
       </div>
-      {move && <MoveControl name={token.name} at={token.position} step={move.step} bounds={move.bounds} onMove={move.onMove} />}
 
       {features.conditions && (
         <details className="token-editor-section">
@@ -583,7 +579,7 @@ export function TokenEditor({
               <label className="upload-button secondary">
                 <span>{uploading ? "Uploading…" : image.url ? "Replace image" : "Upload image"}</span>
                 <input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" disabled={uploading}
-                  onChange={(e) => void onUpload(e.target.files?.[0])} />
+                  onChange={(e) => { pickArt(e.target.files?.[0]); e.target.value = ""; }} />
               </label>
               <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>{hasLibrary ? "From library" : "Built-in art"}</button>
             </div>
@@ -652,6 +648,7 @@ export function TokenEditor({
     {/* Outside the editor's form: a form nested in a form would submit the editor instead. */}
     {features.attacks && attackList.editor}
     <p role="status" className={creatureStatus ? "muted small-print" : "sr-only"}>{creatureStatus}</p>
+    {cropFile && <TokenArtCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(f) => { setCropFile(null); void onUpload(f); }} />}
     {isGm && (
       <Modal open={picking} title="Choose a token image" onClose={() => setPicking(false)}>
         <LibraryPicker kind="token" onPick={(asset) => {

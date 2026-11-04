@@ -44,4 +44,16 @@ describe("personal movement planner board integration (FR-TAC-03)", () => {
     expect(screen.queryByRole("group", { name: "Personal movement planner" })).toBeNull();
     expect(command).not.toHaveBeenCalled(); expect(preview).not.toHaveBeenCalled(); expect(ephemeral).not.toHaveBeenCalled();
   });
+
+  it("Paint terrain with no map shows a notice instead of the Live terrain modal, and Terrain is a Show filter", async () => {
+    const connection = { command: vi.fn(), preview: vi.fn(), ephemeral: vi.fn(), onCommitted: () => () => {}, onEphemeral: () => () => {}, store: { subscribe: () => () => {} } } as unknown as RoomConnection;
+    render(<Board connection={connection} state={emptyRoomState("r")} you={{ id: "g", displayName: "GM", role: "gm" }} gridPreview={null} />);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Show terrain" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Paint terrain" }));
+    expect(screen.getByText("Add a map first to paint terrain.")).toBeTruthy();
+    expect(screen.queryByText("Live terrain")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^show$/i }));
+    expect((screen.getByLabelText("Terrain") as HTMLInputElement).checked).toBe(false);
+  });
 });

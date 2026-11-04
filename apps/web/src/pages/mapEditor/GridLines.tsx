@@ -25,7 +25,7 @@ export function useShowGrid(): [boolean, (on: boolean) => void] {
 export function MapFilter() {
   const [on, setOn] = useShowGrid();
   if (!useContext(GuideStepContext)) return null;
-  const off = { fog: false, walls: false, portals: false };
+  const off = { fog: false, walls: false, portals: false, terrain: false };
   return (
     <div className="map-editor-filter-slot">
       <BoardFilters value={{ ...off, grid: on }} available={{ ...off, grid: true }} onChange={(next) => setOn(next.grid === true)} />

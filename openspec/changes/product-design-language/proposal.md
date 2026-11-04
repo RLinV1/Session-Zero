@@ -61,7 +61,7 @@ The home page also undersells the product. It shows four features: grid alignmen
   - new images under `public/img/`
 - **packages/shared, apps/server:** no changes. The home demos import existing pure functions only. No schema or protocol change, so no ADR.
 - **Docs:** INTERFACE.md §11.9 and §11.5; FRONTEND-CONTRACT §13.8 only where it lacks the light theme.
-- **Review:** the table font change needs the Board owner's agreement (INTERFACE.md §11.1 makes interface direction their call). The product name is undecided, so the wordmark stays "Virtual Tabletop" inside one component.
+- **Review:** the table font change needs the Board owner's agreement (INTERFACE.md §11.1 makes interface direction their call). The product is named Session Zero, and the wordmark reads "Session Zero" inside one component.
 - **Not in scope:**
   - Map thumbnails on dashboard room cards. `GmRoomSummary` carries no map, so this needs a shared schema change and an ADR; it is a follow-up.
   - A light theme for the table.

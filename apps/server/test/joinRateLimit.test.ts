@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
+import { RateLimiter } from "../src/identity/rateLimit";
 import { startServer, type TestClient } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -14,6 +15,8 @@ afterEach(async () => {
 async function startWithClock() {
   now = Date.parse("2026-10-08T12:00:00.000Z");
   server = await startServer(new MemoryRoomStore(), { now: () => now });
+  // Exercise exhaustion below the room's 32-player cap; default budgets have their own test.
+  server.app.limits.joinsPerIpPerRoom = new RateLimiter(30, 15 * 60_000, () => now);
 }
 
 const connect = async (creds: { roomId: string; guestToken: string }) => {
@@ -30,7 +33,7 @@ async function joinTimes(inviteCode: string, count: number, prefix = "Player") {
 }
 
 describe("invite joins are rate-limited per address and room (security-hardening, FR-PL-01)", () => {
-  it("refuses the 31st attempt in 15 minutes with 429, appending nothing and keeping no credential", async () => {
+  it("refuses attempts above the configured budget with 429, appending nothing and keeping no credential", async () => {
     await startWithClock();
     const room = await server.createRoom("Sam");
     const gm = await connect(room);

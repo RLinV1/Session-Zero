@@ -1,5 +1,4 @@
 import { can, conditionSpec, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
-import { MoveControl } from "../ui/MoveControl";
 
 /**
  * The details card for the token selected on the board, with Edit, Duplicate and a one-square
@@ -40,7 +39,6 @@ export function TokenCard({
   const showEdit = !readOnly && !!onEdit && can.editToken(you, token);
   const showDuplicate = !readOnly && !!onDuplicate && you.role === "gm";
   const showMove = !readOnly && !!onMove && can.moveToken(you, token);
-  const map = state.scene.map;
 
   return (
     <aside className="token-card" aria-label={`${token.name} details`}>
@@ -88,15 +86,6 @@ export function TokenCard({
         )}
       </dl>
       {showMove && reposition && <button type="button" className="secondary" aria-pressed={reposition.on} onClick={reposition.toggle}>Reposition next move</button>}
-      {showMove && (
-        <MoveControl
-          name={token.name}
-          at={token.position}
-          step={state.scene.grid.cellSize}
-          bounds={map ? { width: map.width, height: map.height } : undefined}
-          onMove={onMove!}
-        />
-      )}
       {showMove && arrowKeys && (
         <>
           {/* A switch, not a single-letter shortcut: the arrow keys are claimed only when asked for. */}

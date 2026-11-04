@@ -1,32 +1,34 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { CaretDown } from "@phosphor-icons/react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ArrowsClockwise, Check, Copy, QrCode } from "@phosphor-icons/react";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
 import { Modal } from "./Modal";
-import { PopoverButton } from "./Popover";
 
 /**
- * The GM's Share control, last in the room's top bar. One click on Share copies the invite
- * link; there is no popover to open first. Rendered only for the GM, who is the only one
- * holding an invite code.
+ * The GM's Share control, last in the room's top bar. One button opens a "Share this room" modal
+ * with the invite link, an on-demand QR code and a Reset link action. Rendered only for the GM, who is the
+ * only one holding an invite code.
  *
- * The code is read from the server on each click, not from this browser's cache, so a reset
- * made in another tab or device is what gets copied (FR-GM-20). The chevron beside it opens a
- * small menu whose "Reset link" clears the current code and makes a new one, so a leaked link
- * stops admitting anyone new. One control, no tab of its own (isolate-room-load-failures).
+ * The code is read from the server each time the modal opens, not from this browser's cache, so a
+ * reset made in another tab or device is what is shown and copied (FR-GM-20).
+ * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
 export function ShareButton({ roomId, token }: { roomId: string; token: string }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [result, setResult] = useState<"copied" | "failed" | "reset" | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const fieldId = useId();
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const shareRef = useRef<HTMLButtonElement>(null);
-  const shareHintId = useId();
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  /** Shows a short-lived result on the Share button. */
+  /** Shows a short-lived result in the modal. */
   const flash = (value: typeof result) => {
     setResult(value);
     clearTimeout(timer.current);
@@ -34,71 +36,52 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
   };
 
   /** Keeps this browser's cached code current, so it still recognises the link as the GM's. */
-  const remember = (inviteCode: string) => {
-    const creds = loadCredentials(roomId);
-    if (creds && creds.inviteCode !== inviteCode) saveCredentials({ ...creds, inviteCode });
-  };
+  const remember = useCallback(
+    (inviteCode: string) => {
+      const creds = loadCredentials(roomId);
+      if (creds && creds.inviteCode !== inviteCode) saveCredentials({ ...creds, inviteCode });
+    },
+    [roomId],
+  );
 
   /**
-   * Bumped when a reset starts and again when it ends. A copy whose fetch began under an older
-   * generation may hold the code the reset just killed, so it is dropped rather than copied or
-   * cached over the new one.
+   * Bumped on every load and when a reset starts and ends. A fetch that began under an older
+   * generation may hold the code a reset just killed, so it is dropped rather than shown or cached.
    */
   const generation = useRef(0);
-  /**
-   * A copy whose link has arrived but whose clipboard write hasn't finished. Reset waits for it,
-   * so a copy and a reset never interleave. A copy still fetching isn't tracked: the generation
-   * check drops it, and waiting on its request would stall the reset behind a slow network.
-   */
-  const pendingCopy = useRef<Promise<void> | null>(null);
 
-  /**
-   * Copies the current invite link. The clipboard write starts inside the click itself, with the
-   * text still being fetched: browsers that only allow clipboard writes during the user's gesture
-   * (Safari) would refuse one made after awaiting the server. Where `ClipboardItem` can't take a
-   * pending value, it falls back to fetching first and then writing.
-   */
-  const copy = () => {
-    if (busy) return;
-    const started = generation.current;
-    const link = api.getInvite(roomId, token).then(({ inviteCode }) => {
-      // A reset started after this fetch: this code may be dead, so neither copy nor cache it.
-      if (generation.current !== started) throw new StaleInvite();
-      remember(inviteCode);
-      // From here the write is committed to this link; a reset must wait for it to land. This
-      // callback runs after the fetch, so `done` below is always assigned by then.
-      pendingCopy.current = done;
-      return `${location.origin}/join/${inviteCode}`;
-    });
-    const done = finishCopy(link);
-    void done.finally(() => {
-      if (pendingCopy.current === done) pendingCopy.current = null;
-    });
-  };
+  const load = useCallback(() => {
+    const started = ++generation.current;
+    setLoadFailed(false);
+    api.getInvite(roomId, token).then(
+      ({ inviteCode }) => {
+        if (generation.current !== started) return;
+        remember(inviteCode);
+        setCode(inviteCode);
+      },
+      () => {
+        if (generation.current === started) setLoadFailed(true);
+      },
+    );
+  }, [roomId, token, remember]);
 
-  /** Writes the link once it resolves, reporting the outcome; a stale link is dropped quietly. */
-  async function finishCopy(link: Promise<string>) {
-    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-      try {
-        const blob = link.then((url) => new Blob([url], { type: "text/plain" }));
-        await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
-        return flash("copied");
-      } catch {
-        // Fall through: the fetch failed, the link went stale, or the browser refused a pending
-        // ClipboardItem. The branches below tell those apart.
-      }
-    }
-    let url: string;
-    try {
-      url = await link;
-    } catch (err) {
-      return err instanceof StaleInvite ? undefined : flash("failed");
-    }
+  // Fetch on each open, so a reset made elsewhere shows up.
+  useEffect(() => {
+    if (!open) return;
+    setCode(null);
+    setQrOpen(false);
+    load();
+  }, [open, load]);
+
+  const link = code ? `${location.origin}/join/${code}` : null;
+
+  async function copy(button: HTMLButtonElement) {
+    if (!link || busy) return;
     let ok = true;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(link);
     } catch {
-      ok = legacyCopy(url);
+      ok = legacyCopy(link, button.closest("dialog") ?? document.body);
     }
     flash(ok ? "copied" : "failed");
   }
@@ -107,29 +90,17 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
     setConfirming(false);
     setError(null);
   };
-  /**
-   * The menu item that opened the confirmation is gone by the time it closes, so focus goes back
-   * to Share rather than being lost to the page. An effect, not the click handler: the modal's
-   * own effect (a child's, so it runs first) must close the dialog before focus can leave it.
-   */
-  const wasConfirming = useRef(false);
-  useEffect(() => {
-    if (wasConfirming.current && !confirming) shareRef.current?.focus();
-    wasConfirming.current = confirming;
-  }, [confirming]);
 
   /** Replaces the invite code after confirmation; the old link stops working. */
   async function reset() {
-    // Invalidate fetches still in flight first, then let a copy whose link already arrived finish
-    // writing, so it lands on the clipboard before the reset rather than after it.
     generation.current++;
     setBusy(true);
     setError(null);
-    await pendingCopy.current;
     try {
       const { inviteCode } = await api.resetInvite(roomId, token);
       remember(inviteCode);
       closeConfirm();
+      setCode(inviteCode);
       flash("reset");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't reset the link");
@@ -139,53 +110,98 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
     }
   }
 
-  const label =
-    result === "copied" ? "Copied" : result === "failed" ? "Copy failed" : result === "reset" ? "Link reset" : "Share";
+  const status = result === "copied" ? "Copied" : result === "failed" ? "Copy failed" : result === "reset" ? "Link reset" : "";
 
   return (
     <div className="share-group" data-tour="share">
-      <button
-        ref={shareRef}
-        type="button"
-        className="tool-button share-button"
-        title="Copy the invite link"
-        // The visible word is the name (WCAG 2.5.3); what it does is the description.
-        aria-describedby={shareHintId}
-        disabled={busy}
-        onClick={() => void copy()}
-      >
-        {label}
+      <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
+        Share
       </button>
-      <span id={shareHintId} className="sr-only">Copies the invite link. Anyone with it can join as a player.</span>
-      <PopoverButton
-        label="Invite link options"
-        title="Invite link options"
-        align="right"
-        className="tool-button share-button share-menu-button"
-        buttonContent={<CaretDown size={12} aria-hidden="true" />}
-      >
-        {(close) => (
-          <button
-            type="button"
-            className="share-menu-item share-reset"
-            onClick={() => {
-              close();
-              setConfirming(true);
-            }}
-          >
-            Reset link
-          </button>
+      <Modal open={open} title="Share this room" className="share-modal" onClose={() => !busy && setOpen(false)}>
+        <div className="share-body" aria-busy={!link && !loadFailed}>
+          {loadFailed && (
+            <div role="alert" className="error">
+              Couldn't load the link{" "}
+              <button type="button" className="secondary" onClick={load}>
+                Retry
+              </button>
+            </div>
+          )}
+          {!link && !loadFailed && <p className="muted">Loading…</p>}
+          {link && (
+            <>
+              <div className="share-section">
+                <label className="field-label" htmlFor={fieldId}>
+                  Invite link
+                </label>
+                <div className="share-link-row">
+                  <input
+                    id={fieldId}
+                    type="text"
+                    readOnly
+                    className="share-link-field"
+                    value={link}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    type="button"
+                    className="icon-button share-copy"
+                    aria-label="Copy link"
+                    title="Copy link"
+                    onClick={(e) => void copy(e.currentTarget)}
+                    disabled={busy}
+                  >
+                    {result === "copied" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                  </button>
+                </div>
+                <p className="muted share-hint">Anyone with this link can join as a player.</p>
+              </div>
+              <div className="share-section">
+                <button type="button" className="secondary share-qr-toggle" onClick={() => setQrOpen(true)}>
+                  <QrCode size={16} aria-hidden="true" /> Show QR code
+                </button>
+              </div>
+            </>
+          )}
+          <span className="sr-only" role="status">
+            {status}
+          </span>
+          <div className="share-reset-row">
+            <button
+              type="button"
+              className="secondary share-reset"
+              onClick={() => setConfirming(true)}
+              disabled={busy || !link}
+            >
+              <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
+            </button>
+            <p className="muted share-hint">Replaces the link and QR code. The old ones stop working.</p>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={qrOpen && !!link} title="QR code" className="share-qr-modal" onClose={() => setQrOpen(false)}>
+        {link && (
+          <div className="share-qr-body">
+            <div className="share-qr">
+              <QRCodeSVG
+                value={link}
+                size={220}
+                marginSize={4}
+                bgColor="#ffffff"
+                fgColor="#000000"
+                role="img"
+                aria-label="QR code for the invite link"
+              />
+            </div>
+            <p className="muted share-hint">Scan to join as a player.</p>
+            <div className="row modal-actions">
+              <button type="button" className="secondary" onClick={() => setQrOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
         )}
-      </PopoverButton>
-      <span className="sr-only" role="status">
-        {result === "copied"
-          ? "Invite link copied"
-          : result === "failed"
-            ? "Couldn't copy the invite link"
-            : result === "reset"
-              ? "Invite link reset. The old link no longer works."
-              : ""}
-      </span>
+      </Modal>
       <Modal
         open={confirming}
         title="Reset the invite link?"
@@ -217,17 +233,15 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
   );
 }
 
-/** A fetched invite code that a reset has since replaced. */
-class StaleInvite extends Error {}
-
 /** Fallback for when the async clipboard API is unavailable (e.g. plain http on a LAN address). */
-function legacyCopy(text: string): boolean {
+function legacyCopy(text: string, container: HTMLElement): boolean {
   const field = document.createElement("textarea");
   field.value = text;
   field.setAttribute("readonly", "");
   field.style.position = "fixed";
   field.style.opacity = "0";
-  document.body.appendChild(field);
+  // Fields outside a native modal dialog are inert and cannot be selected.
+  container.appendChild(field);
   field.select();
   try {
     return document.execCommand("copy");

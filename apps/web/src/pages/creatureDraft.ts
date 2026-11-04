@@ -10,7 +10,7 @@ export interface CreatureDraft {
   conditions: ConditionId[];
   attacks: AttackPreset[];
   /** Null for a creature drawn as a plain colour disc. */
-  image: { url: string; assetId: string } | null;
+  image: { url: string; assetId: string | null } | null;
 }
 
 export function creatureDraft(creature: LibraryCreature): CreatureDraft {
@@ -21,7 +21,7 @@ export function creatureDraft(creature: LibraryCreature): CreatureDraft {
     color: creature.color,
     conditions: creature.conditions,
     attacks: structuredClone(creature.attacks ?? []),
-    image: creature.imageUrl && creature.imageAssetId ? { url: creature.imageUrl, assetId: creature.imageAssetId } : null,
+    image: creature.imageUrl ? { url: creature.imageUrl, assetId: creature.imageAssetId } : null,
   };
 }
 
