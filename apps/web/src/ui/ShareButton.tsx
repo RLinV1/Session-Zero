@@ -14,8 +14,17 @@ import { Modal } from "./Modal";
  * reset made in another tab or device is what is shown and copied (FR-GM-20).
  * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
-export function ShareButton({ roomId, token }: { roomId: string; token: string }) {
-  const [open, setOpen] = useState(false);
+export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideTrigger = false }: {
+  roomId: string;
+  token: string;
+  /** Lets a menu item drive the dialog (phone); the button itself is then hidden. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [code, setCode] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [result, setResult] = useState<"copied" | "failed" | "reset" | null>(null);
@@ -114,9 +123,11 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
 
   return (
     <div className="share-group" data-tour="share">
-      <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
-        Share
-      </button>
+      {!hideTrigger && (
+        <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
+          Share
+        </button>
+      )}
       <Modal open={open} title="Share this room" className="share-modal" onClose={() => !busy && setOpen(false)}>
         <div className="share-body" aria-busy={!link && !loadFailed}>
           {loadFailed && (
