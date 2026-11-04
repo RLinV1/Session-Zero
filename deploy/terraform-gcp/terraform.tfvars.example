@@ -7,6 +7,6 @@ repo_ref   = "main"
 # zone         = "us-east1-b"
 # machine_type = "e2-medium"
 # disk_gb      = 30
-# repo_url     = "https://github.com/RLinV1/Virtual-Tabletop.git"
+# repo_url     = "https://github.com/RLinV1/Session-Zero.git"
 # domain       = "vtt.example.com"
 # enable_https = true

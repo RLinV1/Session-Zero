@@ -35,7 +35,7 @@ variable "ssh_cidr" {
 variable "repo_url" {
   description = "Git URL the VM clones. Must be reachable without credentials and contain the deploy files on repo_ref."
   type        = string
-  default     = "https://github.com/RLinV1/Virtual-Tabletop.git"
+  default     = "https://github.com/RLinV1/Session-Zero.git"
 }
 
 variable "repo_ref" {

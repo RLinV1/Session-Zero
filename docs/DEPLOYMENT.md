@@ -169,7 +169,7 @@ terraform output site_url
 | `disk_gb` | `30` | Root gp3 disk, GB |
 | `ssh_cidr` | none, required | CIDR allowed on port 22, for example `203.0.113.7/32` |
 | `ssh_key_name` | empty | Existing EC2 key pair; empty means no SSH login |
-| `repo_url` | `https://github.com/RLinV1/Virtual-Tabletop.git` | Repo the VM clones; must be public |
+| `repo_url` | `https://github.com/RLinV1/Session-Zero.git` | Repo the VM clones; must be public |
 | `repo_ref` | `main` | Branch or tag to check out |
 | `domain` | empty | Your domain (point its A record at `public_ip`); empty uses `<ip-with-dashes>.sslip.io` |
 | `enable_https` | `true` | `false` gives plain HTTP at the bare IP with `COOKIE_SECURE=0` (demo only) |
@@ -223,7 +223,7 @@ generated secrets, Docker install, `git clone`, `.env.production` and `docker co
 | `machine_type` | `e2-medium` | 2 vCPU, 4 GB; if the build is Killed use `e2-standard-2` (8 GB) |
 | `disk_gb` | `30` | Boot disk (pd-balanced), GB |
 | `ssh_cidr` | none, required | CIDR allowed on port 22, for example `203.0.113.7/32` |
-| `repo_url` | `https://github.com/RLinV1/Virtual-Tabletop.git` | Repo the VM clones; must be public |
+| `repo_url` | `https://github.com/RLinV1/Session-Zero.git` | Repo the VM clones; must be public |
 | `repo_ref` | `main` | Branch or tag to check out; must contain the deploy files |
 | `domain` | empty | Your domain (A record to `public_ip`); empty uses `<ip-with-dashes>.sslip.io` |
 | `enable_https` | `true` | `false` gives plain HTTP at the bare IP with `COOKIE_SECURE=0` (demo only) |
