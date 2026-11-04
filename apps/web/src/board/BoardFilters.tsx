@@ -63,7 +63,6 @@ export function BoardFilters({ value, available, onChange, sight }: {
                 <input type="checkbox" checked={sight.checked} onChange={(e) => sight.onChange(e.target.checked)} />
                 Token view
               </label>
-              {sight.checked && <p className="board-filters-sub">Shift-click to add tokens</p>}
             </div>
           )}
         </div>

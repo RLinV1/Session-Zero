@@ -78,9 +78,9 @@ describe("moving the selected token with the arrow keys (FR-PL-04, WCAG 2.1.1)",
     expect(screen.queryByRole("switch", { name: "Move with arrow keys" })).toBeNull();
   });
 
-  it("says what the arrow keys do while the switch is on", () => {
+  it("shows the switch on with no caption under it", () => {
     render(<TokenCard token={fighter} state={state} you={alice} onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: true, onToggle: () => {} }} />);
     expect((screen.getByRole("switch", { name: "Move with arrow keys" }) as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByText("Arrow keys move Fighter one square.")).toBeTruthy();
+    expect(screen.queryByText(/Arrow keys move/)).toBeNull();
   });
 });

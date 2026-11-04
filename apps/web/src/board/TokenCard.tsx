@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Copy, Trash } from "@phosphor-icons/react";
+import { Copy, Eye, EyeSlash, PencilSimple, Trash } from "@phosphor-icons/react";
 import { can, conditionSpec, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
 import { Modal } from "../ui/Modal";
 
@@ -20,6 +20,7 @@ export function TokenCard({
   onMove,
   arrowKeys,
   reposition,
+  sight,
   movementReadout,
 }: {
   token: Token;
@@ -39,6 +40,8 @@ export function TokenCard({
   /** The switch that lets the arrow keys move this token; the board listens while it's on. */
   arrowKeys?: { on: boolean; onToggle: (on: boolean) => void };
   reposition?: { on: boolean; toggle: () => void };
+  /** GM Token view: the eye that narrows the board to this token's sight (gm-token-sight-view). Omit to hide the button. */
+  sight?: { on: boolean; onToggle: () => void };
   movementReadout?: string | null;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -106,25 +109,34 @@ export function TokenCard({
         </button>
       )}
       {showMove && arrowKeys && (
-        <>
-          {/* A switch, not a single-letter shortcut: the arrow keys are claimed only when asked for. */}
-          <label className="checkbox arrow-keys-switch">
-            <input type="checkbox" role="switch" checked={arrowKeys.on} onChange={(e) => arrowKeys.onToggle(e.target.checked)} />
-            Move with arrow keys
-          </label>
-          {arrowKeys.on && <p className="muted small-print">Arrow keys move {token.name} one square.</p>}
-        </>
+        // A switch, not a single-letter shortcut: the arrow keys are claimed only when asked for.
+        <label className="checkbox arrow-keys-switch">
+          <input type="checkbox" role="switch" checked={arrowKeys.on} onChange={(e) => arrowKeys.onToggle(e.target.checked)} />
+          Move with arrow keys
+        </label>
       )}
-      {(showEdit || showDuplicate || showDelete) && (
+      {(showEdit || showDuplicate || showDelete || !!sight) && (
         <div className="row token-card-actions">
           {showEdit && (
-            <button type="button" className="secondary" onClick={onEdit} aria-label={`Edit ${token.name}`}>
-              Edit
+            <button type="button" className="icon-button" onClick={onEdit} aria-label={`Edit ${token.name}`} title="Edit token">
+              <PencilSimple size={18} aria-hidden="true" />
             </button>
           )}
           {showDuplicate && (
             <button type="button" className="icon-button" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`} title="Duplicate token">
               <Copy size={18} aria-hidden="true" />
+            </button>
+          )}
+          {sight && (
+            <button
+              type="button"
+              className={`icon-button token-card-sight${sight.on ? " is-on" : ""}`}
+              onClick={sight.onToggle}
+              aria-pressed={sight.on}
+              aria-label={sight.on ? `Stop viewing as ${token.name}` : `View as ${token.name}`}
+              title={sight.on ? `Stop viewing as ${token.name}` : `View as ${token.name}`}
+            >
+              {sight.on ? <EyeSlash size={18} weight="fill" aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
             </button>
           )}
           {showDelete && (
