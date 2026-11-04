@@ -39,7 +39,6 @@ export function TokenCard({
   const showEdit = !readOnly && !!onEdit && can.editToken(you, token);
   const showDuplicate = !readOnly && !!onDuplicate && you.role === "gm";
   const showMove = !readOnly && !!onMove && can.moveToken(you, token);
-  const map = state.scene.map;
 
   return (
     <aside className="token-card" aria-label={`${token.name} details`}>
