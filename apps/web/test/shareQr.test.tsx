@@ -20,6 +20,37 @@ afterEach(() => {
 });
 
 describe("share modal (FR-GM-20)", () => {
+  it("waits for the invite to load before allowing a reset", async () => {
+    let resolve!: (value: { inviteCode: string }) => void;
+    vi.spyOn(api, "getInvite").mockImplementation(() => new Promise((r) => { resolve = r; }));
+    render(<ShareButton roomId="r" token="t" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect((screen.getByRole("button", { name: "Reset link" }) as HTMLButtonElement).disabled).toBe(true);
+    resolve({ inviteCode: "abc123" });
+    await screen.findByLabelText("Invite link");
+    expect((screen.getByRole("button", { name: "Reset link" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("selects the fallback copy field inside the active modal when clipboard access is unavailable", async () => {
+    vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    let copied = "";
+    Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => {
+      // Native modal dialogs make fields outside them inert, so only this selection can be copied.
+      const field = document.querySelector<HTMLTextAreaElement>("dialog[open] textarea");
+      if (!field || field.selectionStart !== 0 || field.selectionEnd !== field.value.length) return false;
+      copied = field.value;
+      return true;
+    }) });
+    render(<ShareButton roomId="r" token="t" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByLabelText("Invite link");
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Copied"));
+    expect(copied).toBe(`${location.origin}/join/abc123`);
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
   it("shows the full link, copies it, opens the QR popup on demand and resets after confirming", async () => {
     vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);
     vi.spyOn(api, "resetInvite").mockResolvedValue({ inviteCode: "new456" } as never);

@@ -43,6 +43,21 @@ describe("TokenArtCropper (FR-GM-08)", () => {
     expect((screen.getByRole("button", { name: "Use art" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("uses the actual encoded format when the browser falls back from WebP to PNG", async () => {
+    vi.stubGlobal("createImageBitmap", async () => ({ width: 400, height: 400, close() {} }));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => ({ drawImage() {} })) as unknown as HTMLCanvasElement["getContext"]);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"], { type: "image/png" })));
+    const onConfirm = vi.fn();
+    render(<TokenArtCropper file={new File(["a"], "goblin.webp", { type: "image/webp" })} onCancel={() => {}} onConfirm={onConfirm} />);
+    const use = screen.getByRole("button", { name: "Use art" });
+    await waitFor(() => expect((use as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(use);
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    const file = onConfirm.mock.calls[0]![0] as File;
+    expect(file.type).toBe("image/png");
+    expect(file.name).toBe("goblin.png");
+  });
+
   it("only crops the upload allowlist", () => {
     expect(isCroppable(new File([""], "a.webp", { type: "image/webp" }))).toBe(true);
     expect(isCroppable(new File([""], "a.gif", { type: "image/gif" }))).toBe(false);

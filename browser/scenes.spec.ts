@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { io } from "socket.io-client";
-import { SOCKET_EVENTS, emptyRoomState, reduceReceived, sceneNamesOf, type CommandInput, type ServerMessage } from "@vtt/shared";
+import { INITIAL_SCENE_ID, SOCKET_EVENTS, emptyRoomState, reduceReceived, sceneNamesOf, type CommandInput, type ServerMessage } from "@vtt/shared";
 
 test("GM switches scenes from the header and returns to preserved tokens", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
@@ -35,6 +35,7 @@ test("GM switches scenes from the header and returns to preserved tokens", async
       socket.on(SOCKET_EVENTS.event, listener);
       socket.emit(SOCKET_EVENTS.message, { type: "command", clientCommandId, command: input });
     });
+    await command({ type: "scene.rename", sceneId: state.activeSceneId ?? INITIAL_SCENE_ID, name: "Tavern" });
     await command({ type: "scene.setMap", map: { url: "/img/map-emberwatch-archive.webp", width: 1960, height: 1400 } });
     const liveTerrain = [{ row: 3, start: 3, end: 3, kind: "blocked" as const }];
     await command({ type: "terrain.paint", layerId: "base", context: { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 }, paint: liveTerrain });

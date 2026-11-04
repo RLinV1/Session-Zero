@@ -4,8 +4,14 @@ import { CreateCreatureRequest, creatureHpValid } from "@vtt/shared";
 import { BUILTIN_CREATURES, isBuiltinCreature } from "../src/net/builtinCreatures";
 import { BuiltinCreatureCard } from "../src/pages/LibraryCreatures";
 import { creatureDraft } from "../src/pages/creatureDraft";
+import { savedCreatureDraft } from "../src/panels/AddToken";
 
 describe("default creatures (builtin-default-creatures, FR-TAC-07)", () => {
+  it.each(BUILTIN_CREATURES)("places $name with its shipped art and no library asset id", (creature) => {
+    expect(savedCreatureDraft(creature, false, { attacks: true, conditions: true, armorClass: true })).toMatchObject({
+      imageUrl: creature.imageUrl, assetId: null,
+    });
+  });
   it("ships four with unique ids and names, each on its shipped token art", () => {
     expect(BUILTIN_CREATURES.length).toBe(4);
     expect(BUILTIN_CREATURES.map((c) => c.imageUrl)).toEqual(
@@ -22,7 +28,7 @@ describe("default creatures (builtin-default-creatures, FR-TAC-07)", () => {
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     expect(creatureHpValid({ hp: c.hp ?? null, maxHp: c.maxHp ?? null })).toBe(true);
     expect(c.attacks?.length).toBeGreaterThanOrEqual(1);
-    expect(creatureDraft(c).image).toBeNull();
+    expect(creatureDraft(c).image).toEqual({ url: c.imageUrl, assetId: null });
   });
 
   it("shows the art, name and stats with no actions at all", () => {

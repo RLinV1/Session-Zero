@@ -75,13 +75,13 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
 
   const link = code ? `${location.origin}/join/${code}` : null;
 
-  async function copy() {
+  async function copy(button: HTMLButtonElement) {
     if (!link || busy) return;
     let ok = true;
     try {
       await navigator.clipboard.writeText(link);
     } catch {
-      ok = legacyCopy(link);
+      ok = legacyCopy(link, button.closest("dialog") ?? document.body);
     }
     flash(ok ? "copied" : "failed");
   }
@@ -148,7 +148,7 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
                     className="icon-button share-copy"
                     aria-label="Copy link"
                     title="Copy link"
-                    onClick={() => void copy()}
+                    onClick={(e) => void copy(e.currentTarget)}
                     disabled={busy}
                   >
                     {result === "copied" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
@@ -171,7 +171,7 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
               type="button"
               className="secondary share-reset"
               onClick={() => setConfirming(true)}
-              disabled={busy}
+              disabled={busy || !link}
             >
               <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
             </button>
@@ -234,13 +234,14 @@ export function ShareButton({ roomId, token }: { roomId: string; token: string }
 }
 
 /** Fallback for when the async clipboard API is unavailable (e.g. plain http on a LAN address). */
-function legacyCopy(text: string): boolean {
+function legacyCopy(text: string, container: HTMLElement): boolean {
   const field = document.createElement("textarea");
   field.value = text;
   field.setAttribute("readonly", "");
   field.style.position = "fixed";
   field.style.opacity = "0";
-  document.body.appendChild(field);
+  // Fields outside a native modal dialog are inert and cannot be selected.
+  container.appendChild(field);
   field.select();
   try {
     return document.execCommand("copy");

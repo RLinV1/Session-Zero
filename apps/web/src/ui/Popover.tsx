@@ -83,24 +83,23 @@ export function PopoverButton({
     const outside = (e: Event) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !wrapRef.current?.contains(e.target as Node)) return;
-      e.stopPropagation();
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("mousedown", outside, true);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("mousedown", outside, true);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
   return (
-    <div ref={wrapRef} className="popover-anchor" data-tour={tourId}>
+    <div ref={wrapRef} className="popover-anchor" data-tour={tourId}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        buttonRef.current?.focus();
+      }}>
       <button
         {...buttonProps}
         ref={(el) => {

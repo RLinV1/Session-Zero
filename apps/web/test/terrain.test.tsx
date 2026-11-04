@@ -40,6 +40,16 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
     fireEvent.keyDown(screen.getByText(/Esc cancels/), { key: "Escape" });
     expect(screen.queryByText(/Esc cancels/)).toBeNull();
   });
+  it("Escape closes the Guide before the surrounding terrain editor", () => {
+    const { connection } = fakeConnection(), close = vi.fn();
+    render(<Modal open title="Terrain" onClose={close}><TerrainSetup connection={connection} state={room()} live /></Modal>);
+    const guide = screen.getByRole("button", { name: "Guide" });
+    fireEvent.click(guide);
+    fireEvent.keyDown(screen.getByText(/Esc cancels/), { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Esc cancels/)).toBeNull();
+    expect(document.activeElement).toBe(guide);
+  });
   it("paints one rectangle as one command and cancels keyboard previews", async () => {
     const { connection, commands } = fakeConnection();
     render(<TerrainSetup connection={connection} state={room()} live />);

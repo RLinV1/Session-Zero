@@ -81,8 +81,8 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
     const type = file.type; // PNG/WebP keep their transparency
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, 0.92));
     if (!blob) return setError("Could not crop that image");
-    const ext = type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
-    onConfirm(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.${ext}`, { type }));
+    const ext = blob.type === "image/jpeg" ? "jpg" : blob.type === "image/webp" ? "webp" : "png";
+    onConfirm(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.${ext}`, { type: blob.type }));
   }
 
   const scale = coverScale(w, h, VIEW) * zoom;
