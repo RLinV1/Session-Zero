@@ -29,8 +29,8 @@ run the app. Both open at <http://localhost:5173>.
 ### Option A — without Docker
 
 ```bash
-git clone https://github.com/RLinV1/Virtual-Tabletop.git
-cd Virtual-Tabletop
+git clone https://github.com/RLinV1/Session-Zero.git
+cd Session-Zero
 npm install
 npm run dev
 ```
