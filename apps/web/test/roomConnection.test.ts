@@ -242,3 +242,14 @@ describe("scene changes", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("RoomConnection when a seat has too many connections (ADR 0051)", () => {
+  it("stops for good without forgetting the seat, as reconnecting would close another tab", () => {
+    const { connection } = open();
+    const disconnect = vi.fn();
+    (connection as unknown as { socket: { disconnect(): void } }).socket = { disconnect };
+    handle(connection, { type: "error", code: "too_many_connections", message: "Too many" });
+    expect(connection.snapshot).toMatchObject({ status: "unauthorized", refusal: "too_many_connections" });
+    expect(disconnect).toHaveBeenCalled();
+  });
+});

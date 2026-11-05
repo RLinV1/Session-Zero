@@ -38,7 +38,7 @@ export interface RoomSnapshot {
    * Set with status `unauthorized`: the server's code. `unauthorized` means the credential no
    * longer exists (seat or room deleted); `not_found` can also mean the room failed to load.
    */
-  refusal: "unauthorized" | "not_found" | null;
+  refusal: "unauthorized" | "not_found" | "too_many_connections" | null;
 }
 
 export type CommandResult =
@@ -308,6 +308,11 @@ export class RoomConnection {
       case "error":
         if (msg.code === "unauthorized" || msg.code === "not_found") {
           this.update({ status: "unauthorized", refusal: msg.code });
+        }
+        // The seat is fine, but reconnecting would only close another of its tabs (ADR 0051).
+        if (msg.code === "too_many_connections") {
+          this.update({ status: "unauthorized", refusal: msg.code });
+          this.socket?.disconnect();
         }
         console.warn("Server error:", msg.message);
         return;

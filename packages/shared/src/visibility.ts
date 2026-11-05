@@ -272,6 +272,7 @@ export function filterEventForViewer(
     case "MapNukeUndone":
     case "ReducedEffectsSet":
     case "AutoRemoveDefeatedSet":
+    case "JoinsLockSet":
       // Names no token and has no GM-only content: the blast is for the whole table (ADR 0038).
       return pass;
     case "GroupRolled": {

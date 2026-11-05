@@ -174,6 +174,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
     }
     case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
+    case "JoinsLockSet": return event.locked ? `${actorName} locked the room to new players` : `${actorName} unlocked the room`;
     case "ReducedEffectsSet": return `${actorName} turned reduced animations ${event.enabled ? "on" : "off"} for the table`;
     case "MapNuked": return `${actorName} detonated a nuke (${event.amount} damage)`;
     case "MapNukeUndone": return `${actorName} took back a nuke (${event.amount} damage)`;
