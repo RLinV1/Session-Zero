@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROOM_FULL, type Participant } from "@vtt/shared";
+import { ROOM_FULL, ROOM_LOCKED, type Participant } from "@vtt/shared";
 import { ApiError } from "../src/net/api";
 import { joinFailure } from "../src/pages/joinFailure";
 import { playerSeats } from "../src/ui/ParticipantsButton";
@@ -10,6 +10,11 @@ describe("a full room on the join page (room-player-cap, FR-PL-01)", () => {
   it("shows the server's message without blaming the name", () => {
     const full = new ApiError("This room is full: it holds 32 players. Ask the GM for a seat.", 409, { code: ROOM_FULL });
     expect(joinFailure(full)).toEqual({ message: "This room is full: it holds 32 players. Ask the GM for a seat.", nameIsCause: false });
+  });
+
+  it("doesn't blame the name for a locked room (ADR 0051)", () => {
+    const locked = new ApiError("This room is locked, so no one new can join. Ask the GM to unlock it.", 409, { code: ROOM_LOCKED });
+    expect(joinFailure(locked).nameIsCause).toBe(false);
   });
 
   it("doesn't blame the name for too many joins from this address (security-hardening)", () => {

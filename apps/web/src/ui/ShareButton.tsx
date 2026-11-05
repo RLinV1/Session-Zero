@@ -3,20 +3,24 @@ import { ArrowsClockwise, Check, Copy, QrCode } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
+import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
 
 /**
  * The GM's Share control, last in the room's top bar. One button opens a "Share this room" modal
- * with the invite link, an on-demand QR code and a Reset link action. Rendered only for the GM, who is the
- * only one holding an invite code.
+ * with the invite link, an on-demand QR code, a Reset link action and the room's lock (ADR 0051). Rendered
+ * only for the GM, who is the only one holding an invite code.
  *
  * The code is read from the server each time the modal opens, not from this browser's cache, so a
  * reset made in another tab or device is what is shown and copied (FR-GM-20).
  * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
-export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
+export function ShareButton({ roomId, token, connection, joinsLocked, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
   roomId: string;
   token: string;
+  connection: Pick<RoomConnection, "command">;
+  /** The room's lock on new joins, from its state: another GM tab may change it while this is open. */
+  joinsLocked: boolean;
   /** Lets a menu item drive the dialog (phone); the button itself is then hidden. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -28,6 +32,9 @@ export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideT
   const open = openProp ?? ownOpen;
   const setOpen = onOpenChange ?? setOwnOpen;
   const [code, setCode] = useState<string | null>(null);
+  const [locking, setLocking] = useState(false);
+  const [lockError, setLockError] = useState<string | null>(null);
+  const lockHintId = useId();
   const [loadFailed, setLoadFailed] = useState(false);
   const [result, setResult] = useState<"copied" | "failed" | "reset" | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -85,6 +92,15 @@ export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideT
   }, [open, load]);
 
   const link = code ? `${location.origin}/join/${code}` : null;
+
+  /** Locks or unlocks new joins. The switch follows the room's state once the server has decided. */
+  async function setLocked(locked: boolean) {
+    setLocking(true);
+    setLockError(null);
+    const result = await connection.command({ type: "room.setJoinsLocked", locked });
+    setLocking(false);
+    if (!result.ok) setLockError(result.message);
+  }
 
   async function copy(button: HTMLButtonElement) {
     if (!link || busy) return;
@@ -167,7 +183,9 @@ export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideT
                     {result === "copied" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                   </button>
                 </div>
-                <p className="muted share-hint">Anyone with this link can join as a player.</p>
+                <p className="muted share-hint">
+                  {joinsLocked ? "The room is locked, so this link can't admit anyone new." : "Anyone with this link can join as a player."}
+                </p>
               </div>
             </>
           )}
@@ -188,6 +206,24 @@ export function ShareButton({ roomId, token, open: openProp, onOpenChange, hideT
               </button>
             </div>
             <p className="muted share-hint">Reset replaces the link and QR code. The old ones stop working.</p>
+          </div>
+          {/* Outside the link's own loading: a leaked link should be stoppable even if it won't load. */}
+          <div className="share-actions" aria-busy={locking}>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={joinsLocked}
+                disabled={locking}
+                aria-describedby={lockHintId}
+                onChange={(e) => void setLocked(e.target.checked)}
+              />
+              Lock the room
+            </label>
+            <p id={lockHintId} className="muted share-hint">
+              Stops anyone new joining, even with the link. Players already here can still come back.
+            </p>
+            {lockError && <p role="alert" className="error small">{lockError}</p>}
           </div>
           <span className="sr-only" role="status">
             {status}

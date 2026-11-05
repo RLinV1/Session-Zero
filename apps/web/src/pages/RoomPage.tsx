@@ -543,6 +543,21 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
 
   if (status === "ended") return <SessionEnded roomId={roomId} roomName={state?.name ?? null} reason={endReason} />;
 
+  if (refusal === "too_many_connections") {
+    return (
+      <main className="centered">
+        <div className="card">
+          <h1>Open in too many places</h1>
+          <p className="muted">
+            This seat is open in too many tabs or devices, so this one was closed. Close the ones you aren't using,
+            then reload this page.
+          </p>
+          <button type="button" onClick={() => location.reload()}>Reload</button>
+        </div>
+      </main>
+    );
+  }
+
   if (status === "unauthorized") {
     return (
       <main className="centered">
@@ -681,7 +696,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             <ActivityLog open={logOpen} onClose={() => setLogOpen(false)} roomId={state.roomId} token={token} seq={seq} state={state} connection={connection} />
           )}
           {/* Last, in the top-right corner: visible with the sidebar shown or hidden. */}
-          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
+          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} connection={connection} joinsLocked={state.joinsLocked ?? false} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
         </div>
       </header>
       {/* Same element, same position in both states: collapsing must never remount the

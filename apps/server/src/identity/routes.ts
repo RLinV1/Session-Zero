@@ -30,6 +30,8 @@ export function accountLimits(now: () => number = Date.now) {
     passwordChangeFailuresPerUser: new RateLimiter(10, 15 * MINUTE, now),
     /** Invite join attempts per IP per room, so join-and-leave can't grow a room's log without bound. */
     joinsPerIpPerRoom: new RateLimiter(150, 15 * MINUTE, now),
+    /** Invite requests per IP, any code and any room: a wrong code costs a lookup too. A whole class can share an address. */
+    inviteLookupsPerIp: new RateLimiter(300, 15 * MINUTE, now),
     /** Replay requests per participant: each one folds the room's whole log on the event loop (FR-PL-07). */
     replaysPerParticipant: new RateLimiter(150, MINUTE, now),
     /** Wall detection runs per room, so one room can't hold the few server-wide job slots (FR-GM-11). */
@@ -169,6 +171,8 @@ export function registerIdentityRoutes(
     res.append("Set-Cookie", sessionCookie(token, new Date(session.expiresAt), sessions.cookie));
   }
 }
+
+export const TOO_MANY_INVITE_ATTEMPTS = "Too many invite attempts from this address. Try again later.";
 
 /** A 429 with `Retry-After` when the limiter refused; true if it did. */
 export function refused(res: Response, limit: LimitResult, error = "Too many attempts. Try again later."): boolean {
