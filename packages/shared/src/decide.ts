@@ -439,7 +439,7 @@ export function decide(
       }
       if (command.type === "terrain.effect.create") {
         if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return reject("invalid", "Remove a temporary effect before creating another.");
-        return accept({ type: "TerrainEffectCreated", effect: { id: ctx.newId(), name: command.name, runs: [] } });
+        return accept({ type: "TerrainEffectCreated", effect: { id: command.effectId && !terrain.effects.some((e) => e.id === command.effectId) ? command.effectId : ctx.newId(), name: command.name, runs: [] } });
       }
       const effect = terrain.effects.find((e) => e.id === command.effectId);
       if (!effect) return notFound("terrain effect");
