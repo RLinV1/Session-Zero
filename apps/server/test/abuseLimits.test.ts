@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WebSocket } from "ws";
 import { ROOM_LOCKED, type EphemeralPayload, type ServerMessage } from "@vtt/shared";
 import { RateLimiter } from "../src/identity/rateLimit";
 import { startServer, type TestClient } from "./helpers";
@@ -183,6 +184,59 @@ describe("connections per seat (ADR 0051)", () => {
     await expect(server.connect(seat)).rejects.toThrow("too_many_connections");
     skipAhead(60_001);
     expect((await connect(seat)).seq).toBeGreaterThan(0);
+  });
+});
+
+describe("handshakes per connection (FR-PL-05, ADR 0051)", () => {
+  /** A connection used as a script would use it. Socket.IO's own client closes it after one refusal. */
+  async function rawConnection() {
+    const socket = new WebSocket(`${server.base.replace("http", "ws")}/socket.io/?EIO=4&transport=websocket`);
+    const refusals: string[] = [];
+    const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+    const opened = new Promise<void>((resolve) => socket.once("message", () => resolve()));
+    socket.on("message", (data) => {
+      const text = String(data);
+      if (text.startsWith("44")) refusals.push((JSON.parse(text.slice(2)) as { message: string }).message);
+    });
+    await opened;
+    return { socket, refusals, closed };
+  }
+  const handshake = (auth: unknown) => `40${JSON.stringify(auth)}`;
+  const wrong = (roomId: string) => ({ roomId, guestToken: server.newGuestToken() });
+
+  it("looks up three credentials from a burst of 2,000 on one connection, then closes it", async () => {
+    const { roomId } = await server.createRoom("GM");
+    const lookups = vi.spyOn(server.store, "findCredential");
+    const { socket, closed } = await rawConnection();
+    for (let i = 0; i < 2000; i++) socket.send(handshake(wrong(roomId)));
+    await closed;
+    expect(lookups).toHaveBeenCalledTimes(3);
+    // Packets read along with the fourth still reach the check after the close. None may stay half-made.
+    const { _preConnectSockets: pending } = server.app.io.of("/") as unknown as { _preConnectSockets: Map<string, unknown> };
+    await vi.waitFor(() => expect(pending.size).toBe(0));
+  });
+
+  it("answers three handshakes of any kind, one at a time, and closes on the fourth", async () => {
+    const { roomId } = await server.createRoom("GM");
+    const { socket, refusals, closed } = await rawConnection();
+    for (const [i, auth] of [{}, wrong(roomId), wrong(roomId)].entries()) {
+      socket.send(handshake(auth));
+      await vi.waitFor(() => expect(refusals).toHaveLength(i + 1));
+    }
+    expect(refusals).toEqual(["bad_request", "unauthorized", "unauthorized"]);
+    socket.send(handshake(wrong(roomId)));
+    await closed;
+    expect(refusals).toHaveLength(3);
+  });
+
+  it("charges each connection separately, so a real client is never closed for it", async () => {
+    const room = await server.createRoom("GM");
+    const { socket, closed } = await rawConnection();
+    for (let i = 0; i < 4; i++) socket.send(handshake(wrong(room.roomId)));
+    await closed;
+    // Each of these is a new connection, from the same address as the one just closed.
+    for (let i = 0; i < 5; i++) await expect(server.connect(wrong(room.roomId))).rejects.toThrow("unauthorized");
+    expect((await connect(room)).seq).toBeGreaterThan(0);
   });
 });
 

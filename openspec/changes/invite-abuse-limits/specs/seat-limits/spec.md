@@ -54,6 +54,17 @@ A seat SHALL hold at most 8 open connections and SHALL open at most 120 new conn
 - **WHEN** a seat opens over 120 connections in a minute
 - **THEN** further connections are refused until the minute has passed
 
+### Requirement: Handshakes are limited per connection
+The server SHALL run at most 3 handshakes on one connection, counted on arrival, whatever their outcome. A fourth SHALL close the connection and SHALL NOT look up a credential.
+
+#### Scenario: A script repeating handshakes on one socket
+- **WHEN** one connection sends 2,000 handshakes with wrong credentials
+- **THEN** three credentials are looked up and the connection closes
+
+#### Scenario: A real client refused and trying again
+- **WHEN** the Socket.IO client is refused and later opens a new connection
+- **THEN** it was told why it was refused, and the new connection has its own count
+
 ### Requirement: Invite requests are limited per address
 The server SHALL accept at most 300 invite requests per 15 minutes from one address, for any code, counted before the code is looked up.
 

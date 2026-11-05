@@ -48,7 +48,7 @@ be read, so check what a Compute Engine VM gets before relying on it.
 
 | Zone | Paths | Per address, per 10 s | Real use |
 |---|---|---|---|
-| `sockets` | `/socket.io/*` | 100 | One per tab. Each with a bad credential costs two database lookups |
+| `sockets` | `/socket.io/*` | 100 | One per tab. A handshake with a bad credential costs two database lookups, and the app allows 3 on each socket |
 | `api` | `/api/*`, `/health` | 500 | A room load is 4 calls, so a class of 33 on one address needs about 132 |
 | `uploads` | `/uploads/*` | 1,000 | Each reads object storage even when the file doesn't exist. Cached by the browser for a year after |
 | none | Everything else | No limit | Static files that Caddy serves itself |
@@ -75,7 +75,10 @@ Neither Caddy nor Cloudflare Free documents a cap on open connections per addres
 
 - **No valid seat:** new connections are capped at 100 per 10 s and each is closed after 45 s without a handshake
   (measured), so at most about 450 per address.
-- **A valid seat:** ADR 0051 allows 8 per seat, and 120 new ones a minute (once `fix/invite-abuse-limits` merges).
+- **A valid seat:** ADR 0051 allows 8 per seat, and 120 new ones a minute.
+- **Handshakes on one socket:** the app closes a socket on its fourth (ADR 0051). No edge can do this: Caddy counts one
+  request, and [Cloudflare's WAF stops inspecting once a socket is open](https://developers.cloudflare.com/network/websockets/).
+  With Caddy's budget, that bounds failed handshakes at 600 database lookups per 10 s per address.
 - **A hard cap, on a VM reached directly:** only the kernel can do this. Tested under Docker's NAT with a limit of 3:
 
   ```bash
@@ -151,11 +154,6 @@ and the client reconnects (FR-PL-05). The Free plan's 100 MB upload limit is abo
 
 ## Still open
 
-- **One socket can run unlimited handshakes, and no edge can see it.** One allowed upgrade carried 2,000 invalid
-  handshakes in 94 ms, and with Postgres each is two lookups. Caddy counts one request, and
-  [Cloudflare's WAF stops inspecting once a socket is open](https://developers.cloudflare.com/network/websockets/). So
-  ADR 0051's "belongs at the network edge" is only partly true. The fix is in the app: close a connection after a few
-  refused handshakes in `ws/socket.ts`, once `fix/invite-abuse-limits` has merged, since it reworks that file.
 - The app's own per-address limits count each IPv6 address separately, while Caddy groups them by /64.
 - The Caddy module is third-party and pinned to a commit, because its one tagged release is from 2024. Update the pin
   when Caddy moves on: CI validates the Caddyfile against the built image.

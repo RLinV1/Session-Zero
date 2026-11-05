@@ -81,6 +81,33 @@ one upgrade, 2000 CONNECT packets sent, 2000 refused by the handshake check in 9
 
 Reading `ws/socket.ts`, each runs `findCredential` and `findRevokedCredential`.
 
+### Fixed, 2026-11-05
+
+`HANDSHAKES_PER_CONNECTION` in `ws/socket.ts`, added after `fix/invite-abuse-limits` merged. The Caddy row used the same
+setup as above, rebuilt from the final source. The other rows ran in-process with spies on the store, because the
+image gives no way to count lookups.
+
+| Check | Before | After |
+|---|---|---|
+| 2,000 `CONNECT` packets on one upgrade, through Caddy | 2,000 refused in 94 ms, socket left open | 1 refusal reached the client, socket closed at 39 ms |
+| `findCredential` calls for that burst | Not counted; every packet ran the check | 3 |
+| `findRevokedCredential` calls | Not counted; every packet ran the check | 3 |
+| Half-made sockets left in Socket.IO after it | Not measured | 0 |
+
+The three new tests in `apps/server/test/abuseLimits.test.ts` timed out on the unchanged code. Two deliberate breaks
+show what the burst test guards:
+
+| Break | Result |
+|---|---|
+| Count refusals instead of arrivals | 564 lookups, and the test fails |
+| Close the connection without calling `next` | 561 half-made sockets left behind, and the test fails |
+
+Packets keep reaching the check after the close because Socket.IO's `_add` awaits `_createSocket`. Every packet from one
+network read passes the engine's "still open" test before any of them reaches `io.use`. They cost no lookups, and later
+reads are dropped.
+
+Not measured: Postgres. The lookup count doesn't depend on the store, because the count is taken before the first lookup.
+
 ## Logs and the privacy page
 
 The page says addresses are "never saved", and Docker writes container logs to disk.
@@ -99,6 +126,15 @@ Through Caddy at `http://127.0.0.1:18080`, test account `edge-browser@test.inval
 - A signed-in GM loading an empty room: 4 API calls (`/api/auth/me`, `/api/library/dice`, the seat and the invite), 36
   static files. The socket connected and the console had no errors.
 - `/privacy` shows the updated sentence.
+
+With the handshake limit in, 2026-11-05, same setup, test account `edge-handshake@test.invalid`, a new empty room:
+
+| Step | Result |
+|---|---|
+| Open the room | "Connected · seq 2" |
+| Restart Caddy, which drops the socket | "Reconnecting…", then "Connected · seq 2" 1.4 s later |
+| Restart the server, which wipes its in-memory data so the credential is unknown | "Reconnecting…", then "No access to this room" 1.2 s later |
+| Console | No errors at any step |
 
 ## Build, config and firewall
 
@@ -128,4 +164,5 @@ figures come from a search summary. That Tunnel is free also comes from secondar
 ## Cleanup
 
 Removed: all test containers, the network, the test images, and the Terraform, dind and `node:22-alpine` images. Kept:
-`caddy:2-alpine` and `caddy:2-builder-alpine`, which `Dockerfile.web` uses anyway. Nothing was left listening.
+`caddy:2-alpine` and `caddy:2-builder-alpine`, which `Dockerfile.web` uses anyway. Nothing was left listening. The
+2026-11-05 containers, network and images were removed the same way.
