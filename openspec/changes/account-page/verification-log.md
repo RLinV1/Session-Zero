@@ -51,9 +51,15 @@ Run on `http://127.0.0.1:5473` (API :3401), both from this worktree (confirmed b
 
 Re-run after this fix: `npm run lint` and `npm run typecheck` exit 0; `npm test` exits 0 (998, 601 with 53 skipped, 1298 and 2 tests). Those tests don't apply the stylesheet, so they guard against breakage, not the colour.
 
-**Not covered:**
-- This branch is cut before PR #162, so it shows the name left of "Your rooms". The screenshot's order comes from `main`. Only the order differs; neither button's styles changed in that PR.
-- The reduced-motion rule was changed but not exercised.
+**Not covered:** the reduced-motion rule was changed but not exercised.
+
+### After merging `origin/main` at `cf3262e`
+
+The merge was clean. It brought in PR #162, which puts the name to the right of "Your rooms", as in the user's screenshot.
+
+- `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and `openspec validate account-page --strict` all exit 0 (1015, 625 with 53 skipped, 1313 and 2 tests).
+- In the browser, from the merged code on the same ports: signing in at `/account` stays on `/account`; the home header reads "Your rooms", the name, then the theme toggle; in dark theme all three have fill `rgb(24, 27, 32)` and border `rgb(100, 106, 120)`, 33.6px tall, and the two text buttons have the same text colour and weight. No console errors.
+- The hover, light-theme and phone checks above were not repeated on the merged code. The merge changed none of the header control rules.
 
 ## Things that went wrong
 
