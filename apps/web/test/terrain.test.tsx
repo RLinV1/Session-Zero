@@ -30,11 +30,17 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add layer" }));
     expect(document.activeElement).toBe(screen.getByLabelText("New layer name"));
   });
-  it("hides Add layer in drafts and says why, instead of a dead button (FR-TAC-03)", () => {
+  it("hides Add layer in the library editor and says why, instead of a dead button (FR-TAC-03)", () => {
     const { connection } = fakeConnection();
     render(<TerrainSetup connection={connection} state={room()} />);
     expect(screen.queryByRole("button", { name: "Add layer" })).toBeNull();
-    expect(screen.getByText(/Extra layers are available in a live room/)).toBeTruthy();
+    expect(screen.getByText(/Layers are for room maps/)).toBeTruthy();
+  });
+  it("offers Add layer in a room map-editor draft (FR-TAC-03)", () => {
+    const { connection } = fakeConnection();
+    render(<TerrainSetup connection={connection} state={room()} layers />);
+    expect(screen.getByRole("button", { name: "Add layer" })).toBeTruthy();
+    expect(screen.queryByText(/Layers are for room maps/)).toBeNull();
   });
   it("keeps a fixed popover fully inside the window", () => {
     const view = { innerWidth: 400, innerHeight: 300 }, panel = { width: 256, height: 120 };
