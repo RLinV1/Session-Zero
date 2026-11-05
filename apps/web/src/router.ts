@@ -7,6 +7,7 @@ export type Route =
   | { page: "library" }
   | { page: "signin" }
   | { page: "signup" }
+  | { page: "account"; creating: boolean }
   | { page: "privacy" }
   | { page: "terms" }
   | { page: "join"; inviteCode: string }
@@ -21,6 +22,8 @@ export function parseRoute(pathname: string): Route {
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };
   if (/^\/signup\/?$/.test(pathname)) return { page: "signup" };
+  if (/^\/account\/?$/.test(pathname)) return { page: "account", creating: false };
+  if (/^\/account\/new\/?$/.test(pathname)) return { page: "account", creating: true };
   if (/^\/privacy\/?$/.test(pathname)) return { page: "privacy" };
   if (/^\/terms\/?$/.test(pathname)) return { page: "terms" };
   const join = pathname.match(/^\/join\/([^/]+)\/?$/);

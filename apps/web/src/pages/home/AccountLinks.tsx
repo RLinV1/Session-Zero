@@ -19,10 +19,10 @@ export function AccountLinks() {
   // One group, so a phone can give the pair a row of its own and keep the toggle top right.
   return (
     <span className="account-pair">
-      <Link href="/signin" className="nav-link">
+      <Link href="/account" className="nav-link">
         Sign in
       </Link>
-      <Link href="/signup" className="nav-cta">
+      <Link href="/account/new" className="nav-cta">
         Create account
       </Link>
     </span>
