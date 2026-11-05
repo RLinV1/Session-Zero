@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { MAX_PLAYERS_PER_ROOM, isActive, pendingDepartures, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { inkOn } from "./color";
@@ -13,8 +13,9 @@ import { PopoverButton } from "./Popover";
  * filtered snapshot; nothing here is persisted. Active participants are listed first, then players
  * who left on their own, marked AFK (KAN-73). Only active ones are counted.
  *
- * The GM also gets Remove on each player (FR-GM-20), and how many of the room's player seats are
- * taken (room-player-cap): the GM is the one who can free a seat. The confirmation is a sibling of the
+ * The GM also gets Remove on each player (FR-GM-20), Remove several for clearing out a leaked link's
+ * visitors (ADR 0051), and how many of the room's player seats are taken (room-player-cap): the GM is
+ * the one who can free a seat. The confirmations are siblings of the
  * popover, not inside it: the popover closes on any press outside itself, and that would
  * unmount a modal living in it.
  */
@@ -43,9 +44,11 @@ export function ParticipantsButton({
   const away = awayParticipants(state);
   const count = participants.length;
   const [removing, setRemoving] = useState<Participant | null>(null);
+  const [removingSeveral, setRemovingSeveral] = useState(false);
   const isGm = you.role === "gm";
   // A Remove dialog that was open when the preview started closes with it.
   if (readOnly && removing) setRemoving(null);
+  if (readOnly && removingSeveral) setRemovingSeveral(false);
 
   return (
     <>
@@ -103,6 +106,11 @@ export function ParticipantsButton({
             </li>
           ))}
         </ul>
+        {isGm && !readOnly && participants.filter((p) => p.role === "player").length >= 2 && (
+          <button type="button" className="link danger participant-remove-several" onClick={() => setRemovingSeveral(true)}>
+            Remove several…
+          </button>
+        )}
       </PopoverButton>
       {isGm && !readOnly && (
         <RemoveParticipant
@@ -112,6 +120,18 @@ export function ParticipantsButton({
           onClose={() => setRemoving(null)}
           onRemoved={(id) => {
             setRemoving(null);
+            onReviewDeparture(id);
+          }}
+        />
+      )}
+      {isGm && !readOnly && (
+        <RemoveSeveral
+          connection={connection}
+          state={state}
+          open={removingSeveral}
+          onClose={() => setRemovingSeveral(false)}
+          onRemoved={(id) => {
+            setRemovingSeveral(false);
             onReviewDeparture(id);
           }}
         />
@@ -181,8 +201,8 @@ function RemoveParticipant({
               : `Their ${owned === 1 ? "token stays" : `${owned} tokens stay`} on the board under your control, and you choose what happens to ${owned === 1 ? "it" : "them"} next.`}
           </p>
           <p className="muted">
-            They can still join again as a new player with the current invite link. To stop that, reset the link from
-            Share.
+            They can still join again as a new player with the current invite link. To stop that, lock the room or
+            reset the link from Share.
           </p>
           {error && (
             <p role="alert" className="error">
@@ -199,6 +219,107 @@ function RemoveParticipant({
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+/** Removes the players the GM ticks in one step (ADR 0051). All or none: a refusal changes nothing. */
+function RemoveSeveral({
+  connection,
+  state,
+  open,
+  onClose,
+  onRemoved,
+}: {
+  connection: RoomConnection;
+  state: RoomState;
+  open: boolean;
+  onClose: () => void;
+  /** Called after a removal that left tokens to review, with the first player to review. */
+  onRemoved: (participantId: string) => void;
+}) {
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const allId = useId();
+  const players = Object.values(state.participants).filter((p) => p.role === "player" && isActive(p));
+  // From the live list: someone who left while this was open isn't sent, or the whole removal is refused.
+  const chosen = players.filter((p) => picked.has(p.id));
+
+  const close = () => {
+    if (busy) return;
+    setPicked(new Set());
+    setError(null);
+    onClose();
+  };
+
+  const toggle = (id: string, on: boolean) => {
+    const next = new Set(picked);
+    if (on) next.add(id);
+    else next.delete(id);
+    setPicked(next);
+  };
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    const result = await connection.command({ type: "participant.revokeMany", participantIds: chosen.map((p) => p.id) });
+    setBusy(false);
+    if (!result.ok) return setError(result.message);
+    setPicked(new Set());
+    // Read the pending list from the connection, not this render: it's already reduced there.
+    const latest = connection.snapshot.state;
+    const pending = latest ? pendingDepartures(latest).find((d) => chosen.some((p) => p.id === d.participant.id)) : undefined;
+    if (pending) onRemoved(pending.participant.id);
+    else onClose();
+  }
+
+  return (
+    <Modal open={open} title="Remove players" onClose={close} initialFocus={cancelRef}>
+      <div className="leave-confirm">
+        <p>
+          Everyone you tick is disconnected straight away, on every device, and can't come back with that seat. Any
+          tokens they control stay on the board under your control, and you choose what happens to them next.
+        </p>
+        <label className="checkbox" htmlFor={allId}>
+          <input
+            id={allId}
+            type="checkbox"
+            checked={players.length > 0 && chosen.length === players.length}
+            disabled={busy || players.length === 0}
+            onChange={(e) => setPicked(new Set(e.target.checked ? players.map((p) => p.id) : []))}
+          />
+          Everyone ({players.length})
+        </label>
+        <ul className="plain remove-several-list">
+          {players.map((p) => (
+            <li key={p.id}>
+              <label className="checkbox">
+                <input type="checkbox" checked={picked.has(p.id)} disabled={busy} onChange={(e) => toggle(p.id, e.target.checked)} />
+                <span className="participant-name">{p.displayName}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p className="muted">
+          They can still join again as new players with the current invite link. To stop that, lock the room or reset
+          the link from Share.
+        </p>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div className="row modal-actions">
+          <button ref={cancelRef} type="button" className="secondary" onClick={close} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="danger-fill" onClick={() => void remove()} disabled={busy || chosen.length === 0}>
+            {busy ? "Removing…" : chosen.length === 1 ? "Remove 1 player" : `Remove ${chosen.length} players`}
+          </button>
+        </div>
+      </div>
     </Modal>
   );
 }

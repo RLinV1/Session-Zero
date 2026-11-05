@@ -13,6 +13,7 @@ import {
   JoinRoomRequest,
   HistoryQuery,
   ROOM_FULL,
+  ROOM_LOCKED,
   HistoryResponse,
   CheckpointPreviewResponse,
   ReplayPointsResponse,
@@ -34,7 +35,7 @@ import type { AssetStore } from "../store/assetStore";
 import type { RoomRegistry } from "../domain/roomRegistry";
 import type { RoomStore } from "../store/roomStore";
 import { requireAccount, signedIn } from "../identity/middleware";
-import { refused, type AccountLimits } from "../identity/routes";
+import { refused, TOO_MANY_INVITE_ATTEMPTS, type AccountLimits } from "../identity/routes";
 import { registerMembershipRoutes } from "../membership/routes";
 import { registerDiceLookRoutes } from "../ownership/diceLooks";
 import { registerLegacyRoutes } from "../ownership/legacy";
@@ -115,6 +116,8 @@ export function registerRoutes(
       const body = JoinRoomRequest.safeParse(req.body);
       if (!body.success) return res.status(400).json({ error: body.error.issues });
 
+      // Before the lookup, so a wrong code is counted too (ADR 0051).
+      if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${req.ip}`), TOO_MANY_INVITE_ATTEMPTS)) return;
       const roomId = await store.findRoomByInvite(req.params.inviteCode);
       const room = roomId ? await registry.get(roomId) : null;
       // A temporary encounter-editing room is its GM's alone (ADR 0033): its code reads as unknown.
@@ -137,6 +140,7 @@ export function registerRoutes(
         return res.status(409).json({ error: joined.message, code: ALREADY_MEMBER });
       }
       if (!joined.ok && joined.code === "removed") return res.status(403).json({ error: joined.message });
+      if (!joined.ok && joined.reason === "room_locked") return res.status(409).json({ error: joined.message, code: ROOM_LOCKED });
       // Already MAX_PLAYERS_PER_ROOM players at the table (room-player-cap).
       if (!joined.ok && joined.reason === "room_full") return res.status(409).json({ error: joined.message, code: ROOM_FULL });
       if (!joined.ok) return res.status(joined.reason === "name_taken" ? 409 : 400).json({ error: joined.message });
@@ -367,7 +371,7 @@ export function registerRoutes(
   registerEncounterEditRoutes(app, { store, registry, rooms });
   registerLegacyRoutes(app, { store });
   registerDiceLookRoutes(app, { store, uploadDir, assets });
-  registerMembershipRoutes(app, { store, registry });
+  registerMembershipRoutes(app, { store, registry, limits });
 
   /** FR-REC-01: history belongs to this room's GM, never merely any valid GM token. */
   app.get("/api/rooms/:roomId/history", (req, res) => {

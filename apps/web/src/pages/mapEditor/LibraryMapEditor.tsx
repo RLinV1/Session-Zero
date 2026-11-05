@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_GRID, emptyRoomState, gridGeometryChanged, normalizeLegacyGridForBoard, type LibraryAsset, type LibraryMapBoard, type UvttIssue } from "@vtt/shared";
+import { DEFAULT_GRID, emptyRoomState, emptyTerrain, gridGeometryChanged, normalizeLegacyGridForBoard, type LibraryAsset, type LibraryMapBoard, type UvttIssue } from "@vtt/shared";
 import { api } from "../../net/api";
 import { Modal } from "../../ui/Modal";
 import { GridForm } from "../GridForm";
@@ -79,14 +79,14 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const state = useMemo(() => draft ? {
     ...emptyRoomState("library"),
     scene: { map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID },
-    walls: draft.walls, fog: draft.fog, terrain: { base: draft.terrain ?? [], effects: [] },
+    walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? emptyTerrain(),
   } : null, [asset, draft, parsedGrid, savedAsset.grid]);
 
   const applyGridDraft = (next: typeof gridDraft) => {
     const parsed = parseGridDraft(next, asset);
-    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.length || (stored?.terrain?.length && !resetTerrain))) {
+    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.base.length || (stored?.terrain?.length && !resetTerrain))) {
       if (!window.confirm("Reset base terrain and apply this grid change? Cancel keeps the current grid and terrain.")) return;
-      setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: [] } : current);
+      setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: emptyTerrain() } : current);
     }
     setGridDraft(next); setSaveError(null);
   };
@@ -160,7 +160,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {step !== "grid" && !loadError && !state && <p className="muted">Loading…</p>}
         {step === "walls" && state && <WallSetup connection={connection} state={state} token="" detection={false} />}
         {step === "fog" && state && <FogSetup connection={connection} state={state} />}
-        {step === "terrain" && state && <TerrainSetup connection={connection} state={state} />}
+        {step === "terrain" && state && <TerrainSetup connection={connection} state={state} layers={false} />}
         </GuideStepContext.Provider>
       </div></div>}
     </Modal>

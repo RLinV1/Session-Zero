@@ -381,6 +381,11 @@ export interface RoomState {
    */
   autoRemoveDefeated: boolean;
   /**
+   * The GM has stopped new players joining by invite (ADR 0051). Seats already taken are untouched.
+   * Public. Absent in older snapshots and logs, which read as false.
+   */
+  joinsLocked: boolean;
+  /**
    * The open area effect, if any (ADR 0046). At most one per room. Rooms from before it read as
    * null. Players get a projection: no saves, no concealed targets.
    */
@@ -420,6 +425,7 @@ export function emptyRoomState(roomId: Id): RoomState {
     tokenGroups: {},
     reducedEffects: false,
     autoRemoveDefeated: true,
+    joinsLocked: false,
     areaEffect: null,
   };
 }

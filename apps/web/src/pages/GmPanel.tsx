@@ -1,6 +1,6 @@
 import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { gridGeometryChanged, sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
+import { emptyTerrain, gridGeometryChanged, sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { libraryAssetId } from "../net/builtinAssets";
 import { useAccount } from "../account/accountStore";
@@ -291,10 +291,10 @@ function MapSection(props: {
     ),
     [props.connection, props.roomId, props.token, editorSession],
   );
-  const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: { ...(props.room.terrain ?? { effects: [] }), base: draft.terrain ?? [] }, scene: draftScene(props.room.scene, draft) } : props.room;
+  const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, draft) } : props.room;
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
-    if (geometryChanged && draft && !sameValue(draft.terrain ?? [], props.room.terrain?.base ?? [])) {
+    if (geometryChanged && draft && !sameValue(draft.terrain ?? emptyTerrain(), props.room.terrain ?? emptyTerrain())) {
       setSaveError("Save or discard private terrain before changing grid spacing or origin.");
       return false;
     }
@@ -302,7 +302,7 @@ function MapSection(props: {
     // Cosmetic edits do not reset or rebase private terrain, including stale drafts.
     if (applied && geometryChanged) {
       const current = props.connection.snapshot?.state;
-      if (current?.scene.map?.url === liveMapUrl) setDraft((previous) => previous ? { ...previous, terrain: current.terrain?.base, terrainContext: { boardEpoch: current.boardEpoch ?? 0, revision: current.terrainRevision ?? 0 } } : previous);
+      if (current?.scene.map?.url === liveMapUrl) setDraft((previous) => previous ? { ...previous, terrain: current.terrain ?? emptyTerrain(), terrainContext: { boardEpoch: current.boardEpoch ?? 0, revision: current.terrainRevision ?? 0 } } : previous);
     }
     return applied;
   };
@@ -747,7 +747,7 @@ function MapSection(props: {
             {step === "fog" && (prep
               ? <p className="map-editor-empty">Apply the draft map in the Grid step first, then set up its fog here.</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.fog(draftEdits, draftState)}</Fragment>)}
-            {step === "terrain" && (prep ? <p className="map-editor-empty">Apply the draft map before preparing terrain.</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} />)}
+            {step === "terrain" && (prep ? <p className="map-editor-empty">Apply the draft map before preparing terrain.</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} layers />)}
         {step === "sight" && (prep
               ? <p className="map-editor-empty">Apply a map before setting up sight.</p>
               : !props.map ? <p className="map-editor-empty">Apply a map before setting up sight.</p>

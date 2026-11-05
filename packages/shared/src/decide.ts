@@ -439,7 +439,7 @@ export function decide(
       }
       if (command.type === "terrain.effect.create") {
         if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return reject("invalid", "Remove a temporary effect before creating another.");
-        return accept({ type: "TerrainEffectCreated", effect: { id: ctx.newId(), name: command.name, runs: [] } });
+        return accept({ type: "TerrainEffectCreated", effect: { id: command.effectId && !terrain.effects.some((e) => e.id === command.effectId) ? command.effectId : ctx.newId(), name: command.name, runs: [] } });
       }
       const effect = terrain.effects.find((e) => e.id === command.effectId);
       if (!effect) return notFound("terrain effect");
@@ -927,6 +927,13 @@ export function decide(
       return accept({ type: "AutoRemoveDefeatedSet", enabled: command.enabled, previous });
     }
 
+    case "room.setJoinsLocked": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.joinsLocked ?? false;
+      if (previous === command.locked) return reject("invalid", command.locked ? "The room is already locked" : "The room is already unlocked");
+      return accept({ type: "JoinsLockSet", locked: command.locked, previous });
+    }
+
     case "nuke.detonate": {
       if (!can.administer(actor)) return forbidden();
       const off = presetRefusal(state, { attacks: true });
@@ -1160,11 +1167,17 @@ export function decide(
     case "participant.revoke": {
       if (!can.administer(actor)) return forbidden();
       const target = state.participants[command.participantId];
-      if (!target) return notFound("participant");
-      if (target.id === actor.id) return reject("invalid", "You can't remove yourself.");
-      if (target.role === "gm") return reject("invalid", "The GM can't be removed.");
-      if (!isActive(target)) return reject("invalid", `${target.displayName} is no longer in the room.`);
-      return accept({ type: "ParticipantRevoked", participant: target });
+      return revokeRefusal(target, actor) ?? accept({ type: "ParticipantRevoked", participant: target! });
+    }
+
+    case "participant.revokeMany": {
+      if (!can.administer(actor)) return forbidden();
+      const targets = [...new Set(command.participantIds)].map((id) => state.participants[id]);
+      for (const target of targets) {
+        const refusal = revokeRefusal(target, actor);
+        if (refusal) return refusal;
+      }
+      return accept(...targets.map((target) => ({ type: "ParticipantRevoked" as const, participant: target! })));
     }
 
     case "participant.resolveDeparture":
@@ -1464,7 +1477,7 @@ export function isDisplayNameTaken(state: RoomState, name: string, exceptId?: st
 }
 
 /** Server-side detail so the join route can pick 400 vs 409. Never sent to clients. */
-export type JoinRejectionReason = "blank" | "room_full" | "name_taken";
+export type JoinRejectionReason = "blank" | "room_locked" | "room_full" | "name_taken";
 export type JoinDecision =
   | { ok: true; events: DomainEvent[] }
   | { ok: false; code: RejectionCode; message: string; reason: JoinRejectionReason };
@@ -1478,6 +1491,7 @@ export type JoinDecision =
 export function decideJoin(state: RoomState, participant: Participant): JoinDecision {
   const displayName = participant.displayName.trim();
   if (!displayName) return { ok: false, code: "invalid", message: BLANK_NAME, reason: "blank" };
+  if (state.joinsLocked) return { ok: false, code: "invalid", message: ROOM_LOCKED_MESSAGE, reason: "room_locked" };
   if (activePlayerCount(state) >= MAX_PLAYERS_PER_ROOM) {
     return { ok: false, code: "invalid", message: ROOM_FULL_MESSAGE, reason: "room_full" };
   }
@@ -1487,6 +1501,15 @@ export function decideJoin(state: RoomState, participant: Participant): JoinDeci
   return { ok: true, events: [{ type: "ParticipantJoined", participant: { ...participant, displayName } }] };
 }
 
+/** Why the GM can't remove this participant, or null when they can (FR-GM-20). */
+function revokeRefusal(target: Participant | undefined, actor: Participant): Decision | null {
+  if (!target) return notFound("participant");
+  if (target.id === actor.id) return reject("invalid", "You can't remove yourself.");
+  if (target.role === "gm") return reject("invalid", "The GM can't be removed.");
+  if (!isActive(target)) return reject("invalid", `${target.displayName} is no longer in the room.`);
+  return null;
+}
+
 /** Players holding a seat: the GM, and anyone who left or was removed, are not counted (room-player-cap). */
 export function activePlayerCount(state: RoomState) {
   return Object.values(state.participants).filter((p) => p.role === "player" && isActive(p)).length;
@@ -1494,6 +1517,7 @@ export function activePlayerCount(state: RoomState) {
 
 const BLANK_NAME = "Display name can't be blank.";
 const ROOM_FULL_MESSAGE = `This room is full: it holds ${MAX_PLAYERS_PER_ROOM} players. Ask the GM for a seat.`;
+const ROOM_LOCKED_MESSAGE = "This room is locked, so no one new can join. Ask the GM to unlock it.";
 const nameTaken = (name: string) => `The name "${name}" is already taken in this room. Choose another name.`;
 
 /**

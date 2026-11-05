@@ -9,10 +9,10 @@ export function AccountLinks() {
   if (account.status === "signedIn") {
     return (
       <span className="account-pair">
-        <AccountMenu />
         <Link href="/gm-dashboard" className="nav-cta">
           Your rooms
         </Link>
+        <AccountMenu />
       </span>
     );
   }

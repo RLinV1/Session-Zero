@@ -1,4 +1,4 @@
-import { paintTerrain, terrainCells, compressTerrain, TerrainRuns, type PaintRun, type TerrainRun } from "@vtt/shared";
+import { paintTerrain, terrainCells, compressTerrain, emptyTerrain, replaceTerrainLayer, terrainLayer, MAX_TERRAIN_EFFECTS, TerrainRuns, type PaintRun, type Terrain, type TerrainRun } from "@vtt/shared";
 import {
   MAX_WALLS_PER_ADD, MAX_WALLS_PER_REMOVE,
   polygonArea, wallsFitMap, removePortalOverlaps, sameValue,
@@ -13,7 +13,8 @@ export interface MapDraft {
   /** The applied map this draft belongs to. */
   mapUrl: string;
   sceneId?: string;
-  terrain?: TerrainRun[];
+  /** Base and extra layers; library drafts hold the base only. */
+  terrain?: Terrain;
   terrainContext?: { boardEpoch: number; revision: number };
   walls: Record<string, Wall>;
   fog: Record<string, FogRegion>;
@@ -29,7 +30,7 @@ export interface MapDraft {
 export const DRAFT_ID = "draft:";
 
 export function draftFrom(state: Pick<RoomState, "scene" | "walls" | "fog"> & Partial<Pick<RoomState, "terrain" | "boardEpoch" | "terrainRevision" | "activeSceneId">>): MapDraft {
-  return { sceneId: state.activeSceneId ?? "initial", terrain: state.terrain?.base, terrainContext: { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 }, mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
+  return { sceneId: state.activeSceneId ?? "initial", terrain: state.terrain ?? emptyTerrain(), terrainContext: { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 }, mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
 }
 
 const pointKey = (p: Point) => `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`;
@@ -114,20 +115,41 @@ export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog"> &
   const removeIds = Object.values(room.fog).filter((f) => !retainedFogIds.has(f.id)).map((f) => f.id);
   const add = Object.values(draft.fog).filter((f) => !fogMatches.has(f.id)).map(fogAdd);
   if (removeIds.length > 0 || add.length > 0) commands.push({ type: "fog.replace", removeIds, add });
-  if (!sameValue(room.terrain?.base ?? [], draft.terrain ?? [])) {
-    const old = terrainCells(room.terrain?.base ?? []), next = terrainCells(draft.terrain ?? []);
+  const roomTerrain = room.terrain ?? emptyTerrain(), draftTerrain = draft.terrain ?? emptyTerrain();
+  const start = draft.terrainContext ?? { boardEpoch: room.boardEpoch ?? 0, revision: room.terrainRevision ?? 0 };
+  // Every terrain command bumps the revision once, so each carries the next one in emitted order.
+  let revision = start.revision;
+  const context = () => ({ boardEpoch: start.boardEpoch, revision: revision++ });
+  const draftIds = new Set(draftTerrain.effects.map((e) => e.id));
+  const roomEffects = new Map(roomTerrain.effects.map((e) => [e.id, e]));
+  for (const effect of roomTerrain.effects) if (!draftIds.has(effect.id)) commands.push({ type: "terrain.effect.remove", effectId: effect.id, context: context() });
+  const layers: [string, TerrainRun[], TerrainRun[]][] = [["base", roomTerrain.base, draftTerrain.base]];
+  const stamp = Date.now().toString(36);
+  draftTerrain.effects.forEach((effect, index) => {
+    const retained = roomEffects.get(effect.id);
+    if (retained) {
+      if (retained.name !== effect.name) commands.push({ type: "terrain.effect.rename", effectId: effect.id, name: effect.name, context: context() });
+      layers.push([effect.id, retained.runs, effect.runs]);
+    } else {
+      const effectId = `eff-${index}-${stamp}`;
+      commands.push({ type: "terrain.effect.create", name: effect.name, effectId, context: context() });
+      layers.push([effectId, [], effect.runs]);
+    }
+  });
+  for (const [layerId, before, after] of layers) {
+    if (sameValue(before, after)) continue;
+    const old = terrainCells(before), next = terrainCells(after);
     const removed = new Map([...old].filter(([key]) => !next.has(key)));
     const changed = new Map([...next].filter(([key, kind]) => old.get(key) !== kind));
     const paint: PaintRun[] = [...compressTerrain(removed).map((r) => ({ ...r, kind: null })), ...compressTerrain(changed)];
-    const context = draft.terrainContext ?? { boardEpoch: room.boardEpoch ?? 0, revision: room.terrainRevision ?? 0 };
     // A run has bounded coordinates; 256 runs leave ample room below the 32-KiB paint cap.
-    for (const [index, part] of chunks(paint, 256).entries()) commands.push({ type: "terrain.paint", layerId: "base", paint: part, context: { ...context, revision: context.revision + index } });
+    for (const part of chunks(paint, 256)) commands.push({ type: "terrain.paint", layerId, paint: part, context: context() });
   }
   const sight: PreparationEdit[] = [];
   if ((room.scene.lineOfSight ?? false) !== draft.lineOfSight) sight.push({ type: "scene.setLineOfSight", enabled: draft.lineOfSight });
   if ((room.scene.isometric ?? false) !== draft.isometric) sight.push({ type: "scene.setIsometric", enabled: draft.isometric });
   if ((room.scene.sightRange ?? null) !== draft.sightRange) sight.push({ type: "scene.setSightRange", range: draft.sightRange });
-  const edits = [...commands.map((command) => command.type === "terrain.paint" ? command : { ...command, expectedMapUrl: draft.mapUrl }), ...sight].map((command) => ({ ...command, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }) }));
+  const edits = [...commands.map((command) => command.type.startsWith("terrain.") ? command : { ...command, expectedMapUrl: draft.mapUrl }), ...sight].map((command) => ({ ...command, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }) }));
   return edits.length ? [{ type: "scene.savePreparation", expectedMapUrl: draft.mapUrl, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }),
     context: draft.terrainContext ?? { boardEpoch: room.boardEpoch ?? 0, revision: room.terrainRevision ?? 0 }, edits }] : [];
 }
@@ -153,6 +175,7 @@ const fogPoints = (region: FogAdd): Point[] => region.shape === "rect"
 /** Why the server would refuse this wall or fog addition on a map of this size, or null: the draft only holds what Save can send. */
 export function draftCommandProblem(command: CommandInput, map: { width: number; height: number }): string | null {
   if (command.type === "terrain.paint" && !TerrainRuns.safeParse(paintTerrain([], command.paint)).success) return "Too many terrain cells.";
+  if (command.type === "terrain.effect.create" && !command.name.trim()) return "Name the layer.";
   if (command.type === "wall.add" || command.type === "wall.update") {
     const walls = command.type === "wall.add" ? command.walls : [command.wall];
     if (walls.some((w) => w.a.x === w.b.x && w.a.y === w.b.y)) return "A wall needs two different ends.";
@@ -169,7 +192,24 @@ export function draftCommandProblem(command: CommandInput, map: { width: number;
  */
 export function applyToDraft(draft: MapDraft, command: CommandInput, newId: () => string): MapDraft | null {
   switch (command.type) {
-    case "terrain.paint": return { ...draft, terrain: paintTerrain(draft.terrain ?? [], command.paint) };
+    case "terrain.paint": {
+      const terrain = draft.terrain ?? emptyTerrain(), layer = terrainLayer(terrain, command.layerId);
+      return layer ? { ...draft, terrain: replaceTerrainLayer(terrain, command.layerId, paintTerrain(layer, command.paint)) } : draft;
+    }
+    case "terrain.effect.create": {
+      const terrain = draft.terrain ?? emptyTerrain();
+      if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return draft;
+      const id = command.effectId ?? newId();
+      return { ...draft, terrain: { ...terrain, effects: [...terrain.effects, { id, name: command.name.trim(), runs: [] }] } };
+    }
+    case "terrain.effect.rename": {
+      const terrain = draft.terrain ?? emptyTerrain();
+      return { ...draft, terrain: { ...terrain, effects: terrain.effects.map((e) => e.id === command.effectId ? { ...e, name: command.name.trim() } : e) } };
+    }
+    case "terrain.effect.remove": {
+      const terrain = draft.terrain ?? emptyTerrain();
+      return { ...draft, terrain: { ...terrain, effects: terrain.effects.filter((e) => e.id !== command.effectId) } };
+    }
     case "wall.add": {
       const walls = { ...draft.walls };
       for (const wall of command.walls) {

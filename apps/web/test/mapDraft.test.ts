@@ -38,7 +38,7 @@ describe("map editor drafts (map-editor-drafts)", () => {
     draft = applyToDraft(draft, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 70, y: 70 } } }, newId)!;
     expect(plannedEdits(room, draft).map((c) => c.type)).toEqual(["wall.add", "fog.replace"]);
     const saved = { ...room, walls: { ...room.walls, w3: { ...reversed, id: "w3" } }, fog: { ...room.fog, f2: { ...room.fog.f1, id: "f2" } } };
-    expect(plannedEdits(saved, draft)).toEqual([]);
+    expect(plannedEdits(saved, draft)).toMatchObject([]);
     const savedDraft = { mapUrl: expectedMapUrl, walls: saved.walls, fog: saved.fog, lineOfSight: false, isometric: false, sightRange: null };
     let erased = applyToDraft(savedDraft, { type: "wall.remove", wallIds: ["w1"] }, newId)!;
     erased = applyToDraft(erased, { type: "fog.remove", regionId: "f1" }, newId)!;
@@ -54,7 +54,7 @@ describe("map editor drafts (map-editor-drafts)", () => {
     const open = { kind: "window", state: "open" } as const;
     const saved = { ...room, walls: { w1: { ...room.walls.w1, portal: closed }, w2: { ...room.walls.w1, id: "w2", portal: open } } };
     const draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, isometric: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
-    expect(plannedEdits(saved, draft)).toEqual([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
+    expect(plannedEdits(saved, draft)).toMatchObject([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
     const detected = withDetectedWalls(draft, [room.walls.w1, room.walls.w1], newId);
     expect(Object.keys(detected.walls)).toEqual(["w1"]);
     expect(detected.walls.w1!.portal).toEqual({ kind: "door", state: "locked" });
@@ -127,7 +127,7 @@ describe("map editor drafts (map-editor-drafts)", () => {
   it("agrees with the room again once a save has reached it, whatever ids the room gave", () => {
     const draft = applyToDraft(fresh(), { type: "fog.add", expectedMapUrl, region: { shape: "rect", from: { x: 0, y: 140 }, to: { x: 70, y: 210 } } }, newId)!;
     const saved = { ...room, fog: { ...room.fog, f9: rect("f9", 0, 140, 70, 210) } };
-    expect(plannedEdits(saved, draft)).toEqual([]);
+    expect(plannedEdits(saved, draft)).toMatchObject([]);
   });
 });
 
@@ -165,10 +165,10 @@ describe("UVTT metadata in the existing private editor (FR-GM-06/09)", () => {
     const saved = { ...room, walls: { w1: imported } };
     let draft = applyToDraft({ mapUrl: expectedMapUrl, ...saved, lineOfSight: false, isometric: false, sightRange: null }, { type: "portal.set", wallId: "w1", portal: { kind: "door", state: "locked" } }, newId)!;
     expect(draft.walls.w1!.uvttPortal).toEqual(imported.uvttPortal);
-    expect(plannedEdits(saved, draft)).toEqual([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
+    expect(plannedEdits(saved, draft)).toMatchObject([{ type: "portal.set", expectedMapUrl, wallId: "w1", portal: { kind: "door", state: "locked" } }]);
     expect(withDetectedWalls(draft, [imported], newId).walls.w1).toEqual(draft.walls.w1);
     draft = applyToDraft(draft, { type: "wall.update", wall: { ...draft.walls.w1!, b: { x: 160.0000001, y: 0 } } }, newId)!;
-    expect(plannedEdits(saved, draft)).toEqual([{ type: "wall.update", expectedMapUrl, wall: draft.walls.w1 }]);
+    expect(plannedEdits(saved, draft)).toMatchObject([{ type: "wall.update", expectedMapUrl, wall: draft.walls.w1 }]);
   });
   it("adds a new imported portal with metadata and normalizes overlap in the draft", () => {
     const empty = { ...room, walls: {} };
@@ -206,5 +206,47 @@ describe("moving and reshaping fog in the draft (map editor Fog step)", () => {
     expect(plannedEdits(saved, { ...draft, fog: room.fog })).toEqual([]);
     const unlimited = applyToDraft({ ...draft, fog: room.fog }, { type: "scene.setSightRange", range: null }, newId)!;
     expect(plannedEdits(saved, unlimited)).toEqual([{ type: "scene.setSightRange", range: null }]);
+  });
+});
+
+describe("room terrain layers in the map editor draft (FR-GM-15)", () => {
+  const ctx = { boardEpoch: 2, revision: 5 };
+  const withTerrain = (terrain: NonNullable<MapDraft["terrain"]>): MapDraft => ({ ...fresh(), terrain, terrainContext: ctx });
+  const roomWith = (terrain: NonNullable<MapDraft["terrain"]>) => ({ ...room, terrain, boardEpoch: 2, terrainRevision: 5 });
+  const cell = { row: 0, start: 1, end: 2, kind: "difficult" } as const;
+
+  it("creates a layer and paints it by the same client-chosen id, advancing the revision", () => {
+    let draft = withTerrain({ base: [], effects: [] });
+    draft = applyToDraft(draft, { type: "terrain.effect.create", name: "Ice", context: ctx }, newId)!;
+    const id = draft.terrain!.effects[0]!.id;
+    draft = applyToDraft(draft, { type: "terrain.paint", layerId: id, paint: [cell], context: ctx }, newId)!;
+    draft = applyToDraft(draft, { type: "terrain.paint", layerId: "base", paint: [cell], context: ctx }, newId)!;
+    const edits = plannedEdits(roomWith({ base: [], effects: [] }), draft);
+    expect(edits.map((e) => e.type)).toEqual(["terrain.effect.create", "terrain.paint", "terrain.paint"]);
+    const create = edits[0] as Extract<typeof edits[number], { type: "terrain.effect.create" }>;
+    expect(create.name).toBe("Ice");
+    expect(create.effectId).toBeDefined();
+    expect(create.effectId).not.toBe(id);
+    expect(edits[1]).toMatchObject({ layerId: "base", context: { boardEpoch: 2, revision: 6 } });
+    expect(edits[2]).toMatchObject({ layerId: create.effectId, context: { boardEpoch: 2, revision: 7 } });
+    expect(create.context).toEqual({ boardEpoch: 2, revision: 5 });
+  });
+
+  it("renames and removes room layers", () => {
+    const saved = roomWith({ base: [], effects: [{ id: "e1", name: "Ice", runs: [cell] }, { id: "e2", name: "Mud", runs: [] }] });
+    let draft = draftFrom(saved);
+    draft = applyToDraft(draft, { type: "terrain.effect.rename", effectId: "e1", name: "Black ice", context: ctx }, newId)!;
+    draft = applyToDraft(draft, { type: "terrain.effect.remove", effectId: "e2", context: ctx }, newId)!;
+    expect(plannedEdits(saved, draft)).toMatchObject([
+      { type: "terrain.effect.remove", effectId: "e2", context: { boardEpoch: 2, revision: 5 } },
+      { type: "terrain.effect.rename", effectId: "e1", name: "Black ice", context: { boardEpoch: 2, revision: 6 } },
+    ]);
+  });
+
+  it("caps layers at 32 and ignores paint on an unknown layer", () => {
+    let draft = withTerrain({ base: [], effects: [] });
+    for (let i = 0; i < 33; i++) draft = applyToDraft(draft, { type: "terrain.effect.create", name: `L${i}`, context: ctx }, newId)!;
+    expect(draft.terrain!.effects).toHaveLength(32);
+    expect(applyToDraft(draft, { type: "terrain.paint", layerId: "nope", paint: [cell], context: ctx }, newId)).toBe(draft);
   });
 });

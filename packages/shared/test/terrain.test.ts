@@ -375,3 +375,23 @@ describe("terrain privacy (FR-GM-23)", () => {
     expect(state.tokens[token.id]!.position).toEqual({ x: 5, y: 5 });
   });
 });
+describe("terrain.effect.create with a client effect id (FR-GM-15)", () => {
+  const create = (s: RoomState, effectId?: string) => run(s, gm, { type: "terrain.effect.create", name: "Fire", ...(effectId ? { effectId } : {}), context: context(s) });
+  it("uses the supplied id when unused, so a save can paint the layer it creates", () => {
+    const { state } = setup();
+    const made = create(state, "mine").state;
+    expect(made.terrain?.effects.map((e) => e.id)).toEqual(["mine"]);
+  });
+  it("falls back to a generated id when the supplied id already exists", () => {
+    const { state } = setup();
+    const once = create(state, "mine").state;
+    const twice = create(once, "mine").state;
+    const ids = twice.terrain!.effects.map((e) => e.id);
+    expect(ids).toHaveLength(2); expect(ids[0]).toBe("mine"); expect(ids[1]).not.toBe("mine");
+  });
+  it("generates an id when none is supplied", () => {
+    const { state } = setup();
+    const id = create(state).state.terrain!.effects[0]!.id;
+    expect(id).toBeTruthy();
+  });
+});
