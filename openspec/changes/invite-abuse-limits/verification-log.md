@@ -37,7 +37,9 @@ The key presses in steps 11 and 12 were synthetic `keydown` events at a 30 ms in
 
 ## Automated
 
-`npm run lint`, `npm run typecheck`, `npm test` and `npm run build`, run on the final code.
+`npm run lint`, `npm run typecheck`, `npm run build`, `openspec validate --strict` and `npm test`, run again after merging `origin/main` at `4a27363`, which also changed `commands.ts` and `decide.ts`. All passed: 1,015 shared, 625 server, 1,300 web and 2 benchmark tests. 53 server tests skipped because they need a database or Redis.
+
+The browser and socket checks above ran before that merge and were not repeated. The merged commits change terrain layers and the home header, not the code those checks exercise.
 
 ## Not covered
 
