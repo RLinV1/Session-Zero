@@ -5,6 +5,10 @@
 #
 # Only the web container is published. Postgres, Redis, S3 and vision stay on the private network.
 name: vtt
+# The server logs every request, and Docker keeps logs forever unless told otherwise: a flood would fill the disk.
+x-rotated-logs: &rotated-logs
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
 services:
   postgres:
     image: postgres:17
@@ -90,6 +94,7 @@ services:
   server:
     build: { context: ., dockerfile: Dockerfile.server }
     restart: unless-stopped
+    logging: *rotated-logs
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -102,7 +107,8 @@ services:
       VISION_URL: http://vision:8000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:?set CLIENT_ORIGIN (the public URL, e.g. https://vtt.example.com) in .env.production}
       COOKIE_SECURE: ${COOKIE_SECURE:-1}
-      # One proxy (the web container) sits in front of the server.
+      # One proxy (the web container) sits in front of the server. Stays 1 behind a CDN too: Caddy
+      # sends a single address, and TRUSTED_PROXIES decides whose word it takes (docs/EDGE-PROTECTION.md).
       TRUST_PROXY: ${TRUST_PROXY:-1}
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -112,8 +118,10 @@ services:
   web:
     build: { context: ., dockerfile: Dockerfile.web }
     restart: unless-stopped
+    logging: *rotated-logs
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     ports:
       - "80:80"
       - "443:443"
@@ -121,6 +129,17 @@ services:
       - caddydata:/data
     depends_on:
       server: { condition: service_healthy }
+  # Off by default. A Cloudflare Tunnel connects outward, so the VM's web ports can be closed and all
+  # traffic passes Cloudflare first (docs/EDGE-PROTECTION.md). Enable with `--profile cloudflare`.
+  cloudflared:
+    profiles: ["cloudflare"]
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      web: { condition: service_started }
 volumes:
   pgdata:
   redisdata:

@@ -55,3 +55,9 @@ variable "enable_https" {
   type        = bool
   default     = true
 }
+
+variable "close_web_ports" {
+  description = "true: no inbound 80 or 443, for when a Cloudflare Tunnel is the only way in (docs/EDGE-PROTECTION.md). Changes the firewall in place; the VM is kept."
+  type        = bool
+  default     = false
+}

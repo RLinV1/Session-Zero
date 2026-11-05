@@ -32,6 +32,7 @@ resource "google_compute_firewall" "web" {
   network       = "default"
   source_ranges = ["0.0.0.0/0"]
   target_tags   = [local.tag]
+  disabled      = var.close_web_ports
 
   allow {
     protocol = "tcp"

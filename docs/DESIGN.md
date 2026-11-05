@@ -285,7 +285,7 @@ The app is deployed as the one-VM production stack described in
 | --- | --- |
 | `docker-compose.prod.yml` | `postgres`, `redis`, `s3` (SeaweedFS), `vision`, a one-shot `migrate` (`prisma migrate deploy`), `server` and `web`. `vision-walls` sits behind the `walls` profile and is **off by default**. |
 | `Dockerfile.server` | Production server image: runs the TypeScript with `tsx` (no build step, no watch), with a `/health` container health check. |
-| `Dockerfile.web` | Vite build served by Caddy (`deploy/Caddyfile`): static files with an SPA fallback, `/api`, `/socket.io`, `/uploads` and `/health` proxied to `server:3001`. |
+| `Dockerfile.web` | Vite build served by Caddy (`deploy/Caddyfile`): static files with an SPA fallback, `/api`, `/socket.io`, `/uploads` and `/health` proxied to `server:3001`, with per-address limits ([`EDGE-PROTECTION.md`](EDGE-PROTECTION.md)). |
 | `deploy/env.production.example` | Every required variable. Compose refuses to start, naming the variable, without `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` or `CLIENT_ORIGIN`. |
 | `deploy/terraform/`, `deploy/terraform-gcp/` | One VM on AWS or Google Cloud: firewall (22 from one CIDR, 80, 443), static IP, generated secrets, Docker install, clone and `up -d --build`. The host defaults to `<ip>.sslip.io` so Caddy can issue a certificate without a domain. |
 
