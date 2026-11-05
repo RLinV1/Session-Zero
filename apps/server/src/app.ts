@@ -53,6 +53,11 @@ export interface AppOptions {
   cookieSecure?: boolean;
   /** The clock sessions and rate limits read; tests move it forward. */
   now?: () => number;
+  /**
+   * Per-seat cap on committed commands at the socket gateway (security-hardening); defaults to
+   * the gateway's own limit. Tests raise it so a seat can fire many commands in a tight loop.
+   */
+  commandRateLimit?: { limit: number; windowMs: number };
 }
 
 /**
@@ -89,6 +94,7 @@ export async function buildApp({
   builtinImageDir = fileURLToPath(new URL("../../web/public/img/", import.meta.url)),
   cookieSecure = cookieSecureFromEnv(),
   now = Date.now,
+  commandRateLimit,
 }: AppOptions): Promise<App> {
   const app = express();
   // Behind Fly or Railway, so `req.ip` (rate limits) and `req.secure` see the client (ADR 0017 I1).
@@ -183,7 +189,7 @@ export async function buildApp({
   });
   registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
-  registerSocket(io, { store, registry, sessions, logger });
+  registerSocket(io, { store, registry, sessions, logger, commandRateLimit });
 
   return {
     express: app,

@@ -24,6 +24,17 @@ const CHAT_WINDOW_MS = 10_000;
  */
 const DICE_LOOKS_PER_WINDOW = 10;
 const DICE_LOOK_WINDOW_MS = 60_000;
+/**
+ * Commands one participant may submit per COMMAND_WINDOW_MS, across every command type
+ * (security-hardening). `chat.send` and dice-look changes keep their own tighter limits below;
+ * this is the backstop for all the rest — `dice.roll`, `template.place`, owned `token.move` and
+ * so on are each a permanent event, so with no cap a joined player can grow the append-only log
+ * without bound and broadcast each row to every client. Deliberate play is one or two commands a
+ * second (each user action is one, mostly batched: a wall stroke, a terrain fill), so 120/10s is
+ * wide headroom while a flood is bounded to a per-seat rate instead of thousands a second.
+ */
+const COMMAND_PER_WINDOW = 120;
+const COMMAND_WINDOW_MS = 10_000;
 
 /**
  * Recent send times for one limit, per participant in each loaded room, oldest first. Shared by all
@@ -65,10 +76,19 @@ class SeatWindows {
  */
 export function registerSocket(
   io: SocketIOServer,
-  deps: { store: RoomStore; registry: RoomRegistry; sessions: Sessions; logger?: boolean },
+  deps: {
+    store: RoomStore;
+    registry: RoomRegistry;
+    sessions: Sessions;
+    logger?: boolean;
+    /** Overrides the per-seat command cap; tests raise it so a seat can fire many in a tight loop. */
+    commandRateLimit?: { limit: number; windowMs: number };
+  },
 ) {
   const chatWindows = new SeatWindows(CHAT_PER_WINDOW, CHAT_WINDOW_MS);
   const diceLookWindows = new SeatWindows(DICE_LOOKS_PER_WINDOW, DICE_LOOK_WINDOW_MS);
+  const commandLimit = deps.commandRateLimit ?? { limit: COMMAND_PER_WINDOW, windowMs: COMMAND_WINDOW_MS };
+  const commandWindows = new SeatWindows(commandLimit.limit, commandLimit.windowMs);
 
   // Authenticate during the handshake so an unauthorized socket never reaches a room.
   io.use(async (socket, next) => {
@@ -175,7 +195,19 @@ export function registerSocket(
 
       switch (msg.type) {
         case "command": {
-          if (msg.command.type === "chat.send" && !chatWindows.take(room, participantId, Date.now())) {
+          const now = Date.now();
+          // Backstop every command with a per-seat rate cap: each becomes a permanent event, so an
+          // unthrottled client could grow the append-only log without bound (security-hardening).
+          // The tighter chat and dice-look limits below still bite first for their own floods.
+          if (!commandWindows.take(room, participantId, now)) {
+            return send({
+              type: "rejected",
+              clientCommandId: msg.clientCommandId,
+              code: "invalid",
+              message: "You're sending commands too fast. Slow down for a moment.",
+            });
+          }
+          if (msg.command.type === "chat.send" && !chatWindows.take(room, participantId, now)) {
             return send({
               type: "rejected",
               clientCommandId: msg.clientCommandId,
@@ -184,7 +216,7 @@ export function registerSocket(
             });
           }
           const diceLookChange = msg.command.type === "participant.setDiceLook" || msg.command.type === "participant.clearDiceLook";
-          if (diceLookChange && !diceLookWindows.take(room, participantId, Date.now())) {
+          if (diceLookChange && !diceLookWindows.take(room, participantId, now)) {
             return send({
               type: "rejected",
               clientCommandId: msg.clientCommandId,
