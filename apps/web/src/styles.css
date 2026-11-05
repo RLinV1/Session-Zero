@@ -380,6 +380,8 @@ a.tool-button { text-decoration: none; }
 .participant-list li > button { flex: none; white-space: nowrap; }
 .participant-name { min-width: 0; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .participant-list .participant-away .participant-name { color: var(--muted); }
+.participant-remove-several { display: block; margin-top: var(--space-2); }
+.remove-several-list { max-height: 14rem; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-1); }
 .participant-seats { margin-bottom: var(--space-1); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
 
 .panel {

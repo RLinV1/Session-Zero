@@ -416,6 +416,16 @@ export class LiveRoom {
     }
   }
 
+  /** Closes this participant's oldest connections until at most `keep` remain, to make way for a new one (ADR 0051). */
+  closeOldestConnections(participantId: string, keep: number, message: string) {
+    const open = [...this.clients].filter((c) => c.participantId === participantId);
+    for (const client of open.slice(0, Math.max(0, open.length - keep))) {
+      this.clients.delete(client);
+      client.send({ type: "error", code: "too_many_connections", message });
+      client.close();
+    }
+  }
+
   /** The seat credentials of the open connections, for the sweep that finds deleted ones. */
   connectedCredentials(): string[] {
     return [...this.clients].flatMap((c) => (c.credentialHash ? [c.credentialHash] : []));

@@ -406,6 +406,9 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "AutoRemoveDefeatedSet":
       return { ...state, autoRemoveDefeated: event.enabled };
 
+    case "JoinsLockSet":
+      return { ...state, joinsLocked: event.locked };
+
     default:
       return assertNever(event);
   }

@@ -19,11 +19,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const connection = { command: vi.fn() };
+
 describe("share modal (FR-GM-20)", () => {
   it("waits for the invite to load before allowing a reset", async () => {
     let resolve!: (value: { inviteCode: string }) => void;
     vi.spyOn(api, "getInvite").mockImplementation(() => new Promise((r) => { resolve = r; }));
-    render(<ShareButton roomId="r" token="t" />);
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect((screen.getByRole("button", { name: "Reset link" }) as HTMLButtonElement).disabled).toBe(true);
     resolve({ inviteCode: "abc123" });
@@ -42,7 +44,7 @@ describe("share modal (FR-GM-20)", () => {
       copied = field.value;
       return true;
     }) });
-    render(<ShareButton roomId="r" token="t" />);
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByLabelText("Invite link");
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
@@ -57,7 +59,7 @@ describe("share modal (FR-GM-20)", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 
-    render(<ShareButton roomId="r" token="t" />);
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     const field = (await screen.findByLabelText("Invite link")) as HTMLInputElement;
@@ -103,11 +105,54 @@ describe("share modal (FR-GM-20)", () => {
       .spyOn(api, "getInvite")
       .mockRejectedValueOnce(new Error("nope"))
       .mockResolvedValue({ inviteCode: "abc123" } as never);
-    render(<ShareButton roomId="r" token="t" />);
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByRole("alert");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByLabelText("Invite link");
     expect(get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("locking the room from the share modal (FR-GM-20, ADR 0051)", () => {
+  const openModal = (joinsLocked: boolean) => {
+    vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={joinsLocked} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    return screen.getByRole("switch", { name: "Lock the room" }) as HTMLInputElement;
+  };
+
+  it("sends the lock and leaves the switch to follow the room's state", async () => {
+    connection.command.mockResolvedValue({ ok: true, seq: 5 });
+    const lock = openModal(false);
+    expect(lock.checked).toBe(false);
+    fireEvent.click(lock);
+    expect(connection.command).toHaveBeenCalledWith({ type: "room.setJoinsLocked", locked: true });
+    await waitFor(() => expect(lock.disabled).toBe(false));
+    expect(lock.checked).toBe(false);
+  });
+
+  it("says the link admits no one new while locked, and offers to unlock", async () => {
+    connection.command.mockResolvedValue({ ok: true, seq: 5 });
+    const lock = openModal(true);
+    expect(lock.checked).toBe(true);
+    await screen.findByText("The room is locked, so this link can't admit anyone new.");
+    fireEvent.click(lock);
+    expect(connection.command).toHaveBeenCalledWith({ type: "room.setJoinsLocked", locked: false });
+    await waitFor(() => expect(lock.disabled).toBe(false));
+  });
+
+  it("shows the server's refusal", async () => {
+    connection.command.mockResolvedValue({ ok: false, code: "invalid", message: "You're sending commands too fast. Wait a few seconds." });
+    fireEvent.click(openModal(false));
+    expect((await screen.findByRole("alert")).textContent).toContain("too fast");
+  });
+
+  it("can still lock when the link won't load", async () => {
+    vi.spyOn(api, "getInvite").mockRejectedValue(new Error("down"));
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText(/Couldn't load the link/);
+    expect((screen.getByRole("switch", { name: "Lock the room" }) as HTMLInputElement).disabled).toBe(false);
   });
 });

@@ -286,6 +286,12 @@ export const DomainEvent = z.discriminatedUnion("type", [
     enabled: z.boolean(),
     previous: z.boolean(),
   }),
+  /** The GM stopped or allowed new joins by invite (ADR 0051). */
+  z.object({
+    type: z.literal("JoinsLockSet"),
+    locked: z.boolean(),
+    previous: z.boolean(),
+  }),
   /** Undo of a nuke: the damage was taken back by the `TokenStatsSet`s before it. Plays nothing. */
   z.object({
     type: z.literal("MapNukeUndone"),

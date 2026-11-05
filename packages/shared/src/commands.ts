@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Ve
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_WALLS, Portal, PortalState, Wall } from "./state";
+import { AreaColor, AreaShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -355,6 +355,11 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("room.setAutoRemoveDefeated"),
     enabled: z.boolean(),
   }),
+  /** GM only: stop or allow new players joining by invite, whoever holds the link (ADR 0051). */
+  z.object({
+    type: z.literal("room.setJoinsLocked"),
+    locked: z.boolean(),
+  }),
   /** GM only: damage every token with HP and play a map-wide blast (ADR 0038). */
   z.object({
     type: z.literal("nuke.detonate"),
@@ -403,6 +408,11 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("participant.revoke"),
     participantId: Id,
+  }),
+  /** GM removes several players in one step, all or none (ADR 0051). */
+  z.object({
+    type: z.literal("participant.revokeMany"),
+    participantIds: z.array(Id).min(1).max(MAX_PLAYERS_PER_ROOM),
   }),
   /** GM decides, token by token, what happens to what a departed player owned (ADR 0006). */
   z.object({

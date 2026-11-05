@@ -79,6 +79,7 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     TemplatePlaced: [{ type: "TemplatePlaced", template: areaTemplate }, "Mara placed a 20 ft cone"],
     TemplateRemoved: [{ type: "TemplateRemoved", template: { ...areaTemplate, gmOnly: true } }, "Mara removed a 20 ft cone (GM only)"],
     ReducedEffectsSet: [{ type: "ReducedEffectsSet", enabled: true, previous: false }, "Mara turned reduced animations on for the table"],
+    JoinsLockSet: [{ type: "JoinsLockSet", locked: true, previous: false }, "Mara locked the room to new players"],
     AutoRemoveDefeatedSet: [{ type: "AutoRemoveDefeatedSet", enabled: false, previous: true }, "Mara turned automatic removal of defeated tokens off"],
     MapNuked: [{ type: "MapNuked", amount: 12, origin: { x: 50, y: 50 } }, "Mara detonated a nuke (12 damage)"],
     MapNukeUndone: [{ type: "MapNukeUndone", amount: 12, origin: { x: 50, y: 50 } }, "Mara took back a nuke (12 damage)"],

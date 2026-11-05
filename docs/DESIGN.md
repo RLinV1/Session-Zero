@@ -126,8 +126,8 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Turn order | `initiative.start`, `initiative.advance`, `initiative.end` |
 | Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.applyDamage`, `nuke.detonate` |
 | Area effects | `areaEffect.start`, `areaEffect.call`, `areaEffect.rollDamage`, `areaEffect.resolve`, `areaEffect.close` |
-| Room settings | `room.setReducedEffects`, `room.setAutoRemoveDefeated` |
-| Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
+| Room settings | `room.setReducedEffects`, `room.setAutoRemoveDefeated`, `room.setJoinsLocked` |
+| Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.revokeMany`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
 | Chat | `chat.send` |
 | Recovery | `history.undo`, `checkpoint.create`, `checkpoint.restore`, `checkpoint.delete`, `encounter.apply` |
 
@@ -179,6 +179,7 @@ HTTP request budgets are per server process and return `429` with `Retry-After` 
 | Sign up | 50/hour | IP address |
 | Sign in | 150/15 minutes | IP address |
 | Invite joins | 150/15 minutes | IP address and room |
+| Invite requests, any code | 300/15 minutes | IP address |
 | Replay | 150/minute | Participant and room |
 | Wall detection | 50/15 minutes | Room |
 | Image uploads | 300/15 minutes | Account, shared across rooms and library |
@@ -186,6 +187,10 @@ HTTP request budgets are per server process and return `429` with `Retry-After` 
 
 Failed password guesses remain limited to 10/15 minutes per email, and failed current-password
 checks to 10/15 minutes per account. Room capacity, file sizes and worker concurrency are separate limits.
+
+Each seat also has socket limits, shared across its connections ([ADR 0051](adr/0051-seat-limits-and-room-lock.md)):
+800 commands per 20 seconds and 1,800 per 5 minutes for a player, 3,000 per 30 seconds for the GM, 30 resyncs a minute, 40 live messages
+a second, 8 open connections and 120 new connections a minute.
 
 ---
 
@@ -550,7 +555,7 @@ checkpoint previews are built through the same filters.
 | FR-GM-17 | Manual fog of war | `fog.*` + filters (ADR 0016, 0032) | B |
 | FR-GM-18 | Interactive portal states | `portal.setState`, movement and sight blocking | B |
 | FR-GM-19 | Dynamic line of sight | `sight.ts` on the server, `sightMask.ts` (ADR 0044) | B |
-| FR-GM-20 | Guest revocation, invite regeneration | `participant.revoke`, `POST /api/rooms/:id/invite` | B |
+| FR-GM-20 | Guest revocation, invite regeneration | `participant.revoke/revokeMany`, `room.setJoinsLocked`, `POST /api/rooms/:id/invite` | B |
 | FR-GM-21 | Initiative and turn order | `initiative.*`, turn notice (ADR 0022) | B |
 | FR-GM-22 | Public and GM-only rolls | `DiceVisibility` + filters | B |
 | FR-GM-23 | Player-safe state filtering | `visibility.ts` | B |
@@ -673,6 +678,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0047](adr/0047-longer-animations-for-the-nuke-siren.md) | Longer animations for the nuke's siren | Proposed |
 | [0048](adr/0048-map-isometric-flag.md) | 2.5D map style flag | Proposed |
 | [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
+| [0051](adr/0051-seat-limits-and-room-lock.md) | Seat limits and locking a room | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

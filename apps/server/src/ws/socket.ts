@@ -12,6 +12,7 @@ import type { Sessions } from "../identity/sessions";
 import type { RoomStore } from "../store/roomStore";
 
 const EPHEMERAL_PER_SECOND = 40;
+const MOVE_PREVIEWS_PER_SECOND = 10;
 /**
  * Chat messages one participant may send per CHAT_WINDOW_MS (KAN-75). Each one is a permanent
  * event row, so an unbounded loop would grow the log forever and hold the room's queue.
@@ -24,6 +25,32 @@ const CHAT_WINDOW_MS = 10_000;
  */
 const DICE_LOOKS_PER_WINDOW = 10;
 const DICE_LOOK_WINDOW_MS = 60_000;
+/**
+ * Commands of any kind one player may send (ADR 0051). An invite link is all it takes to hold a seat,
+ * and most commands add a permanent event. The burst limit sits above what a person can send: the
+ * fastest is a held arrow key, one `token.move` per key repeat, about 33 a second at the fastest
+ * system setting.
+ */
+const PLAYER_BURST_PER_WINDOW = 800;
+const PLAYER_BURST_WINDOW_MS = 20_000;
+/** The same budget over a longer stretch, which is what bounds a room's log: a minute of holding an arrow key. */
+const PLAYER_SUSTAINED_PER_WINDOW = 1800;
+const PLAYER_SUSTAINED_WINDOW_MS = 5 * 60_000;
+/**
+ * The GM's budget, far above any player's: making every imported opening a door sends one command
+ * per opening, up to MAX_WALLS, as fast as the acks come back.
+ */
+const GM_COMMANDS_PER_WINDOW = 3000;
+const GM_COMMAND_WINDOW_MS = 30_000;
+/** Full snapshots one participant may ask for per minute. A client asks only after missing an event. */
+const RESYNCS_PER_WINDOW = 30;
+const RESYNC_WINDOW_MS = 60_000;
+/** Open connections per participant: a few tabs and devices. A new one closes the oldest (ADR 0051). */
+const MAX_CONNECTIONS_PER_SEAT = 8;
+/** New connections per participant per minute. Each costs a full snapshot, so this bounds a reconnect loop. */
+const CONNECTS_PER_WINDOW = 120;
+const CONNECT_WINDOW_MS = 60_000;
+const TOO_MANY_CONNECTIONS = "This seat is open in too many tabs or devices. Close some, then reload this page.";
 
 /**
  * Recent send times for one limit, per participant in each loaded room, oldest first. Shared by all
@@ -54,6 +81,33 @@ class SeatWindows {
 }
 
 /**
+ * Live traffic per participant in each loaded room, one second at a time. Shared by all of a
+ * participant's connections, so opening more doesn't buy more (ADR 0051).
+ */
+class SeatLiveTraffic {
+  private rooms = new WeakMap<LiveRoom, Map<string, { windowStart: number; total: number; previews: number }>>();
+
+  /** Counts one message at `now` and returns whether to relay it. */
+  allow(room: LiveRoom, participantId: string, preview: boolean, now: number): boolean {
+    let seats = this.rooms.get(room);
+    if (!seats) this.rooms.set(room, (seats = new Map()));
+    let seat = seats.get(participantId);
+    if (!seat || now - seat.windowStart >= 1000) seats.set(participantId, (seat = { windowStart: now, total: 0, previews: 0 }));
+    if (++seat.total > EPHEMERAL_PER_SECOND) return false;
+    return !(preview && ++seat.previews > MOVE_PREVIEWS_PER_SECOND);
+  }
+}
+
+/** The id of a message that at least looks like a command, valid or not, so its sender can be answered. */
+function commandIdOf(raw: unknown): string | null {
+  return raw && typeof raw === "object" && "type" in raw && raw.type === "command"
+    && "clientCommandId" in raw && typeof raw.clientCommandId === "string"
+    && raw.clientCommandId.length > 0 && raw.clientCommandId.length <= 64
+    ? raw.clientCommandId
+    : null;
+}
+
+/**
  * Socket.IO gateway (DESIGN.md §1, §2).
  *
  * Identity is resolved once, in the handshake: Socket.IO replays `auth` on every
@@ -69,6 +123,14 @@ export function registerSocket(
 ) {
   const chatWindows = new SeatWindows(CHAT_PER_WINDOW, CHAT_WINDOW_MS);
   const diceLookWindows = new SeatWindows(DICE_LOOKS_PER_WINDOW, DICE_LOOK_WINDOW_MS);
+  const playerCommandWindows = [
+    new SeatWindows(PLAYER_BURST_PER_WINDOW, PLAYER_BURST_WINDOW_MS),
+    new SeatWindows(PLAYER_SUSTAINED_PER_WINDOW, PLAYER_SUSTAINED_WINDOW_MS),
+  ];
+  const gmCommandWindows = [new SeatWindows(GM_COMMANDS_PER_WINDOW, GM_COMMAND_WINDOW_MS)];
+  const resyncWindows = new SeatWindows(RESYNCS_PER_WINDOW, RESYNC_WINDOW_MS);
+  const connectWindows = new SeatWindows(CONNECTS_PER_WINDOW, CONNECT_WINDOW_MS);
+  const liveTraffic = new SeatLiveTraffic();
 
   // Authenticate during the handshake so an unauthorized socket never reaches a room.
   io.use(async (socket, next) => {
@@ -123,12 +185,16 @@ export function registerSocket(
       close: () => socket.disconnect(true),
     };
 
+    // Decided here, in the same tick as attach, so a burst of handshakes can't all pass on one count.
+    if (!connectWindows.take(room, participantId, Date.now())) {
+      send({ type: "error", code: "too_many_connections", message: TOO_MANY_CONNECTIONS });
+      socket.disconnect(true);
+      return;
+    }
+    room.closeOldestConnections(participantId, MAX_CONNECTIONS_PER_SEAT - 1, TOO_MANY_CONNECTIONS);
+
     // FR-PL-06: every connection starts from an authoritative, filtered snapshot.
     room.attach(client);
-
-    let windowStart = Date.now();
-    let ephemeralCount = 0;
-    let movementPreviewCount = 0;
 
     // Commands are handled one at a time so a socket's commands commit in the order sent.
     // Ephemeral messages skip that queue: a ping must not wait behind a command still
@@ -137,6 +203,21 @@ export function registerSocket(
     socket.on(SOCKET_EVENTS.message, (raw: unknown) => {
       const parsed = ClientMessage.safeParse(raw);
       if (parsed.success && parsed.data.type === "ephemeral") return relay(parsed.data.payload);
+      // Counted on arrival, not in the queue, so a flood can't pile up behind a slow store (ADR 0051).
+      const now = Date.now();
+      if (parsed.success && parsed.data.type === "resync") {
+        // Nothing to answer: the client asks again on the next event it can't place.
+        if (!resyncWindows.take(room, participantId, now)) return;
+      } else {
+        const budget = room.activeParticipant(participantId)?.role === "gm" ? gmCommandWindows : playerCommandWindows;
+        if (!budget.every((windows) => windows.take(room, participantId, now))) {
+          const clientCommandId = commandIdOf(raw);
+          if (clientCommandId) {
+            send({ type: "rejected", clientCommandId, code: "invalid", message: "You're sending commands too fast. Wait a few seconds." });
+          }
+          return;
+        }
+      }
       queue = queue.then(async () => void (await handle(raw, parsed))).catch((err) => {
         if (deps.logger) console.error("[vtt]", err);
         send({ type: "error", code: "bad_request", message: "Internal error" });
@@ -144,14 +225,7 @@ export function registerSocket(
     });
 
     const relay = (payload: Extract<ClientMessage, { type: "ephemeral" }>["payload"]) => {
-      const now = Date.now();
-      if (now - windowStart >= 1000) {
-        windowStart = now;
-        ephemeralCount = 0;
-        movementPreviewCount = 0;
-      }
-      if (++ephemeralCount > EPHEMERAL_PER_SECOND) return;
-      if (payload.type === "tokenMovePreview" && ++movementPreviewCount > 10) return;
+      if (!liveTraffic.allow(room, participantId, payload.type === "tokenMovePreview", Date.now())) return;
       room.relayEphemeral(client, payload);
     };
 
@@ -159,12 +233,11 @@ export function registerSocket(
       if (!parsed.success) {
         // A malformed command still needs a matching response so the browser can
         // settle its pending Apply request and show the validation error.
-        if (raw && typeof raw === "object" && "type" in raw && raw.type === "command"
-          && "clientCommandId" in raw && typeof raw.clientCommandId === "string"
-          && raw.clientCommandId.length > 0 && raw.clientCommandId.length <= 64) {
+        const clientCommandId = commandIdOf(raw);
+        if (clientCommandId) {
           return send({
             type: "rejected",
-            clientCommandId: raw.clientCommandId,
+            clientCommandId,
             code: "bad_request",
             message: parsed.error.issues[0]?.message ?? "Invalid command",
           });

@@ -119,7 +119,7 @@ export type ServerMessage =
    * (invariant 4); the GM fetches the result and preview over REST.
    */
   | { type: "wallDetection"; mapUrl: string; status: WallDetectionStatus }
-  | { type: "error"; code: "unauthorized" | "bad_request" | "not_found"; message: string };
+  | { type: "error"; code: "unauthorized" | "bad_request" | "not_found" | "too_many_connections"; message: string };
 
 /**
  * Socket.IO event names. One channel each way; the payload's own `type` discriminates.
@@ -157,6 +157,9 @@ export type JoinRoomRequest = z.infer<typeof JoinRoomRequest>;
 
 /** The 409 `code` for a join to a room that already holds `MAX_PLAYERS_PER_ROOM` players (room-player-cap). */
 export const ROOM_FULL = "room_full";
+
+/** The 409 `code` for a join to a room whose GM has locked it (ADR 0051). */
+export const ROOM_LOCKED = "room_locked";
 
 export interface RoomCredentials {
   roomId: string;
