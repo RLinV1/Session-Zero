@@ -93,7 +93,7 @@ export function EntryPage({ children }: { children: ReactNode }) {
 }
 
 /** The hub pages' navigation: the GM's rooms and the library, the current one marked. */
-export function HubNav({ current }: { current: "rooms" | "library" }) {
+export function HubNav({ current }: { current?: "rooms" | "library" }) {
   return (
     <>
       <Link href="/gm-dashboard" className="nav-link" aria-current={current === "rooms" ? "page" : undefined}>

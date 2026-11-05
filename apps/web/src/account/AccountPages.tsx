@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { PASSWORD_MAX, PASSWORD_MIN } from "@vtt/shared";
+import { PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
-import { EntryPage } from "../ui/SiteHeader";
+import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
 import { loadGmToken } from "../net/identity";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
 import { SettingsMenu } from "../ui/SettingsMenu";
+import { SiteFooter } from "../ui/SiteFooter";
 import { changePassword, deleteAccount, signIn, signOut, signUp, useAccount } from "./accountStore";
 import { safeNext } from "./safeNext";
 
@@ -56,28 +57,26 @@ function AccountForm(props: {
   footer: ReactNode;
 }) {
   return (
-    <EntryPage>
-      <form
-        className="card account-form"
-        onSubmit={(e: FormEvent) => {
-          e.preventDefault();
-          props.onSubmit();
-        }}
-      >
-        <h1>{props.title}</h1>
-        {props.children}
-        {props.error && (
-          <p role="alert" className="error">
-            {props.error}
-          </p>
-        )}
-        <button className="primary" type="submit" disabled={props.busy}>
-          {props.busy ? props.busyLabel : props.submitLabel}
-        </button>
-        <p className="muted small-print">{props.footer}</p>
-        <Link href="/">Back to home</Link>
-      </form>
-    </EntryPage>
+    <form
+      className="card account-form"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        props.onSubmit();
+      }}
+    >
+      <h1>{props.title}</h1>
+      {props.children}
+      {props.error && (
+        <p role="alert" className="error">
+          {props.error}
+        </p>
+      )}
+      <button className="primary" type="submit" disabled={props.busy}>
+        {props.busy ? props.busyLabel : props.submitLabel}
+      </button>
+      <p className="muted small-print">{props.footer}</p>
+      <Link href="/">Back to home</Link>
+    </form>
   );
 }
 
@@ -92,20 +91,19 @@ function LegacyNote() {
   );
 }
 
-export function SignInPage() {
-  const { status, next } = useDestination();
+/** The sign-in form. Where it leads is its page's choice: `onSignedIn`, and the link to create an account. */
+function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn?: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (status !== "signedOut") return null;
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       await signIn(email, password);
-      navigate(next, { replace: true });
+      onSignedIn?.();
     } catch (err) {
       setError(describe(err).message);
       setPassword("");
@@ -123,7 +121,7 @@ export function SignInPage() {
       onSubmit={() => void submit()}
       footer={
         <>
-          New here? <Link href={withNext("/signup")}>Create an account</Link>
+          New here? <Link href={createHref}>Create an account</Link>
         </>
       }
     >
@@ -147,21 +145,20 @@ export function SignInPage() {
   );
 }
 
-export function SignUpPage() {
-  const { status, next } = useDestination();
+/** The sign-up form, with the same two choices left to its page as `SignInForm`. */
+function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp?: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
-  if (status !== "signedOut") return null;
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       await signUp(email, password, displayName);
-      navigate(next, { replace: true });
+      onSignedUp?.();
     } catch (err) {
       setError(describe(err));
       setBusy(false);
@@ -186,7 +183,7 @@ export function SignUpPage() {
       footer={
         <>
           A free account is needed to host a game; players join from your invite link with no account. Already have one?{" "}
-          <Link href={withNext("/signin")}>Sign in</Link>
+          <Link href={signInHref}>Sign in</Link>
         </>
       }
     >
@@ -225,6 +222,136 @@ export function SignUpPage() {
   );
 }
 
+export function SignInPage() {
+  const { status, next } = useDestination();
+  if (status !== "signedOut") return null;
+  return (
+    <EntryPage>
+      <SignInForm createHref={withNext("/signup")} onSignedIn={() => navigate(next, { replace: true })} />
+    </EntryPage>
+  );
+}
+
+export function SignUpPage() {
+  const { status, next } = useDestination();
+  if (status !== "signedOut") return null;
+  return (
+    <EntryPage>
+      <SignUpForm signInHref={withNext("/signin")} onSignedUp={() => navigate(next, { replace: true })} />
+    </EntryPage>
+  );
+}
+
+/**
+ * The account page (account-page), one step from the home page's header. Signed out, it is where a
+ * visitor signs in or creates an account, and they stay here afterwards: `/signin` and `/signup`
+ * are for a page that needs an account and sends the person back to it. Signed in, it is the
+ * account itself.
+ */
+export function AccountPage({ creating }: { creating: boolean }) {
+  const account = useAccount();
+  const signedIn = account.status === "signedIn";
+  useEffect(() => {
+    if (signedIn && creating) navigate("/account", { replace: true });
+  }, [signedIn, creating]);
+
+  if (account.status === "loading") return null;
+  if (account.status === "signedIn") return <AccountOverview account={account.account} />;
+  return (
+    <div className="entry">
+      <div className="page-shell page-bar">
+        <SiteHeader />
+      </div>
+      <main className="entry-main">
+        {creating ? <SignUpForm signInHref="/account" /> : <SignInForm createHref="/account/new" />}
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}
+
+function AccountRow({ title, detail, action }: { title: string; detail: string; action: ReactNode }) {
+  return (
+    <section className="account-row">
+      <div>
+        <h2>{title}</h2>
+        <p>{detail}</p>
+      </div>
+      {action}
+    </section>
+  );
+}
+
+/** Signed in: who this is, and what the account menu offers, as a page of its own. */
+function AccountOverview({ account }: { account: AccountView }) {
+  const [changing, setChanging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  return (
+    <div className="account-page">
+      <div className="page-shell page-bar">
+        <SiteHeader nav={<HubNav />} />
+      </div>
+      <main className="page-shell">
+        <div className="account-overview">
+          <header>
+            <h1>Your account</h1>
+            <p>
+              <strong>{account.displayName}</strong>
+              <br />
+              <span className="muted">{account.email}</span>
+            </p>
+          </header>
+          <AccountRow
+            title="Sound and graphics"
+            detail="Saved in this browser."
+            action={
+              <button type="button" className="secondary" onClick={() => setSettingsOpen(true)}>
+                Settings
+              </button>
+            }
+          />
+          <AccountRow
+            title="Password"
+            detail="Changing it signs out your other devices."
+            action={
+              <button type="button" className="secondary" onClick={() => setChanging(true)}>
+                Change password
+              </button>
+            }
+          />
+          <AccountRow
+            title="This device"
+            detail="Your other devices stay signed in."
+            action={
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void signOut().then(() => navigate("/", { replace: true }))}
+              >
+                Sign out
+              </button>
+            }
+          />
+          <AccountRow
+            title="Delete account"
+            detail="Permanently removes your rooms, library and uploaded images."
+            action={
+              <button type="button" className="secondary danger" onClick={() => setDeleting(true)}>
+                Delete account
+              </button>
+            }
+          />
+        </div>
+      </main>
+      <SiteFooter />
+      <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
+      <DeleteAccountDialog open={deleting} email={account.email} onClose={() => setDeleting(false)} />
+      <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </div>
+  );
+}
+
 /** The header's account menu on GM surfaces: who is signed in, change password, sign out. */
 export function AccountMenu() {
   const account = useAccount();
@@ -251,6 +378,9 @@ export function AccountMenu() {
             <br />
             <span className="muted">{account.account.email}</span>
           </p>
+          <button type="button" className="secondary small" onClick={() => navigate("/account")}>
+            Your account
+          </button>
           <button type="button" className="secondary small" onClick={() => { setOpen(false); setSettingsOpen(true); }}>
             Settings
           </button>
