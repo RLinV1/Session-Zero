@@ -5,7 +5,7 @@ import { useGroundTheme, type ThemeChoice } from "../theme";
 
 /**
  * The product's name, in one place (design-language: "One header"). To rename the product,
- * this line, index.html and public/brand-mark.svg are all that change.
+ * this line, index.html and public/brand-mark.png are all that change.
  */
 export const PRODUCT_NAME = "Session Zero";
 
@@ -13,7 +13,7 @@ export const PRODUCT_NAME = "Session Zero";
 export function Brand() {
   return (
     <Link href="/" className="brand">
-      <img className="brand-mark" src="/brand-mark.svg" alt="" width={28} height={28} />
+      <img className="brand-mark" src="/brand-mark.png" alt="" width={28} height={28} />
       {PRODUCT_NAME}
     </Link>
   );
