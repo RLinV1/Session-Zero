@@ -89,8 +89,8 @@ export function PrivacyPage() {
           <li>No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.</li>
           <li>We don't sell or share what you put in the app with anyone.</li>
           <li>
-            Your IP address is used to slow down repeated sign-in, sign-up and join attempts. It is held in memory for an
-            hour at most and never saved.
+            Your IP address is used to slow down repeated requests, including sign-in, sign-up and join attempts. It is
+            held in memory for an hour at most and never saved.
           </li>
         </ul>
       </Part>

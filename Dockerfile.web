@@ -12,6 +12,12 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN npm run build --workspace=@vtt/web
 
+# Core Caddy has no rate limiting (docs/EDGE-PROTECTION.md). Pinned to a commit: the module's one
+# tagged release is from 2024 and predates the ipv6_prefix option the Caddyfile uses.
+FROM caddy:2-builder-alpine AS caddy
+RUN xcaddy build --with github.com/mholt/caddy-ratelimit@5625512f24f6f59d6f64fb3aafe5eecff0b286db
+
 FROM caddy:2-alpine
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /srv

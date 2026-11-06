@@ -10,3 +10,4 @@ repo_ref   = "main"
 # repo_url     = "https://github.com/RLinV1/Session-Zero.git"
 # domain       = "vtt.example.com"
 # enable_https = true
+# close_web_ports = true   # only behind a Cloudflare Tunnel (docs/EDGE-PROTECTION.md)
