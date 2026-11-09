@@ -43,7 +43,7 @@ What exists today, and what a usable product still needs:
 | `/r/:roomId/log` | Activity log and undo | **Missing** | FR-REC-01, FR-REC-02 |
 | — (no route) | Access, invites, revocation | Built as in-room controls: Remove in the Participants popover, Reset link beside Share | FR-GM-20 |
 | `/privacy`, `/terms` | Privacy notice and terms of use: reading pages with the shared header and footer, on the hub's ground | Built | `openspec/changes/site-policies` |
-| `/account`, `/account/new` | Account page, linked from the home page's header: sign in or create an account and stay here; signed in, the account's settings, password, sign out and deletion | Built | `openspec/changes/account-page` |
+| `/account` | Account page, reached from "Your account" in the account menu and never as the end of signing in: who is signed in, password, this browser's settings, sign out and deletion. Signed out, it goes to `/signin` | Built | `openspec/changes/account-page` |
 | `/library` | Saved maps, token art, encounter templates | **Deferred — do not build** | [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) §13.1 defers saved assets and omits their navigation from the initial release; needs ownership, quota and reuse requirements first |
 
 The gap is not decoration. Some of those rows are requirements with no surface at all: a GM
@@ -308,7 +308,7 @@ darkens rather than brightens so it stays above it.
 
 **Light theme and layers.** Every route belongs to one of four layers, set on `<html>` as
 `data-layer` by `App.tsx` (`theme.ts`): **home** (`/`), **entry** (sign-in, sign-up, join,
-not found), **hub** (GM dashboard, library, and the privacy and terms pages) and **table** (a room, and the encounter editor
+not found), **hub** (GM dashboard, library, the account page, and the privacy and terms pages) and **table** (a room, and the encounter editor
 that reuses it). The home, entry and hub layers follow one stored choice, light, dark or the
 system's, kept under `vtt.theme` and applied before the first render so a light page never
 flashes dark. The table is always dark: the board is the lit surface and Pixi renders

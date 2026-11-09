@@ -1,23 +1,25 @@
 ## Why
 
-Signing in from the home page sends a person to `/signin`, and from there straight to the GM dashboard, whether or not they were on their way to host. The account's own controls (password, sign out, deletion) exist only inside the header's account menu, so there is no page that is simply "your account". People should be able to sign in from the home page first and stay on the home page's side of the site, then choose what to do next.
+The account's own controls (password, sign out, deletion) existed only inside the header's account menu, so there was no page that is simply "your account".
+
+The first version of this page also caught signing in: the home page's "Sign in" led to `/account` and stayed there, so a person who signed in landed on settings they hadn't asked for, with nothing to do next. Signing in should lead to the person's rooms, which is what an account is for (`DESIGN.md` §5), and the account page should open only when someone asks for it. That version also departed from `INTERFACE.md`: the sign-in form sat on the hub layer rather than the entry layer (§11.3), the page had no account control in its header (§11.9, "One header"), and the menu stacked five identical boxed buttons with permanent deletion among them (§11.9, "Space and materiality").
 
 ## What Changes
 
-- **A new account page at `/account`.** Signed out, it shows the sign-in form under the site header. `/account/new` shows the create-account form. Signing in or up stays on the account page instead of moving on to the dashboard. Signed in, it shows who is signed in, with settings, change password, sign out and delete account, and the header links to the person's rooms and library.
-- **The home page's header points at it.** "Sign in" and "Create account", on the home and policy pages, go to `/account` and `/account/new`. The signed-in account menu gains a "Your account" entry.
-- **`/signin` and `/signup` stay as they are.** They are what a page that needs an account redirects to, and they return the person to `next`. Both pages now share their forms with the account page.
+- **A new account page at `/account`, for signed-in people.** "Your account" in the account menu is the way there. Signed out, `/account` goes to `/signin`. It shows who is signed in and the controls for password, this browser's sound and graphics, signing out and deleting the account, in labelled groups split by hairlines with deletion last.
+- **Signing in leads to the person's rooms.** "Sign in" and "Create account", on the home and policy pages, go to `/signin` and `/signup`, which return to `next` or land on `/gm-dashboard`. An old `/account/new` link shows the create-account form.
+- **A shorter account menu.** It uses the shared popover: who is signed in, "Your account", sound and graphics, and "Sign out", as rows rather than boxed buttons. Changing the password and deleting the account move to the account page. The Privacy page says where deletion now is.
 
 ## Capabilities
 
 ### New Capabilities
-- `account-page`: the page where a person signs in from the home page and finds their account's controls.
+- `account-page`: the page where a person finds their account's controls, and where signing in leads instead.
 
 ### Modified Capabilities
-None. `/signin`, `/signup` and the account menu's existing actions behave as before.
+- `account-deletion`: "Delete account" is offered on the account page rather than in the account menu.
 
 ## Impact
 
-- **apps/web:** `account/AccountPages.tsx`, `pages/home/AccountLinks.tsx`, `router.ts`, `App.tsx`, `theme.ts`, `ui/SiteHeader.tsx`, `styles.css`; test `test/accountPage.test.tsx`.
-- **docs/INTERFACE.md:** the page inventory.
-- No change to `packages/shared`, the server, or what the app stores. Deletion itself is `openspec/changes/account-deletion`; this page only opens its dialog.
+- **apps/web:** `account/AccountPages.tsx`, `pages/home/AccountLinks.tsx`, `pages/PolicyPages.tsx`, `router.ts`, `App.tsx`, `theme.ts`, `ui/SiteHeader.tsx`, `styles.css`; test `test/accountPage.test.tsx`.
+- **docs/INTERFACE.md:** the page inventory and the layers.
+- No change to `packages/shared`, the server, or what the app stores.
