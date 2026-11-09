@@ -173,6 +173,68 @@ export const GameProfile = z.strictObject({
 });
 export type GameProfile = z.infer<typeof GameProfile>;
 
+/** A build as its owner's pages see it. */
+export interface BuildSummary {
+  id: string;
+  name: string;
+  status: "open" | "closed";
+  createdAt: string;
+  updatedAt: string;
+  passExpiresAt: string | null;
+  /** When the 14-day sweep closes it, if nothing changes before then. */
+  closesAt: string;
+}
+
+export interface BuildFileView {
+  id: string;
+  kind: "map" | "token";
+  name: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  fromUvtt: boolean;
+  grid: GridSpec | null;
+  walls: number;
+  detection: { status: string; suggestion: { cellSize: number; offsetX: number; offsetY: number } | null } | null;
+  url: string;
+  published: boolean;
+}
+
+export interface BuildItemView {
+  kind: "creature" | "map" | "encounter";
+  key: string;
+  data: Record<string, unknown>;
+  flags: BuildFlag[];
+  notCarriedOver: string;
+  editedByUser: boolean;
+  published: boolean;
+  updatedAt: string;
+}
+
+export interface BuildDetail {
+  build: BuildSummary;
+  profile: GameProfile | null;
+  files: BuildFileView[];
+  items: BuildItemView[];
+}
+
+export interface BuildPublished {
+  assets: number;
+  creatures: { key: string; id: string }[];
+  maps: { key: string; id: string }[];
+  encounters: { key: string; id: string; name: string }[];
+}
+
+/** Something a build put in the library, and where it's in use, to warn before removing it. */
+export interface PublishedBuildItem {
+  type: "asset" | "creature" | "encounter";
+  id: string;
+  name: string;
+  rooms: { id: string; name: string }[];
+  creatures: { id: string; name: string }[];
+  encounters: { id: string; name: string }[];
+}
+
 /** A published creature's values at the moment of publishing, with its published art. */
 export interface BuildCreatureValues {
   name: string;

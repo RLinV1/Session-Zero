@@ -7,13 +7,17 @@ import { z } from "zod";
 import {
   BUILD_LIMITS,
   BUILD_PASS_PREFIX,
+  BuildKey,
   BuildPass,
   DEFAULT_GRID,
   DraftCreature,
   DraftEncounter,
   DraftMap,
+  DraftProposedGrid,
   GameProfile,
+  LibraryUploadFields,
   MAX_ASSET_EDGE,
+  MAX_ENCOUNTER_TEMPLATES,
   UvttError,
   canRenderGrid,
   checkBuild,
@@ -22,7 +26,9 @@ import {
   type DraftCreatureState,
   type DraftEncounterState,
   type DraftMapState,
+  type GridSpec,
 } from "@vtt/shared";
+import { planPublish } from "../domain/buildPublish";
 import { hashToken } from "../domain/credentials";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import { inspectMapUpload } from "../domain/uploadAnalysis";
@@ -34,12 +40,14 @@ import {
   BuildClosedError,
   BuildItemLockedError,
   BuildLimitError,
+  BuildPublishConflictError,
   type BuildFileKind,
   type BuildFileRecord,
   type BuildItemKind,
   type BuildItemRecord,
   type BuildRecord,
 } from "../store/buildStore";
+import { CreatureImageMissingError, EncounterLimitError, EncounterMapMissingError, UPLOAD_ALLOWANCE, UploadAllowanceError } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 import { receiveUvtt, writeUvttImage } from "../uvtt/uploads";
 import type { UvttValidationPool } from "../uvtt/validationPool";
@@ -59,6 +67,13 @@ const StartBuild = z.strictObject({ name: z.string().trim().min(1).max(80) });
 const UploadKind = z.enum(["map", "token", "uvtt"]);
 const ItemKind = z.enum(["creature", "map", "encounter"]);
 const FileId = z.uuid();
+const RenameMap = z.strictObject({ name: LibraryUploadFields.shape.name });
+const PublishRequest = z.strictObject({
+  creatures: z.array(BuildKey).max(BUILD_LIMITS.creaturesPerBuild).default([]),
+  maps: z.array(BuildKey).max(BUILD_LIMITS.mapsPerBuild).default([]),
+  encounters: z.array(BuildKey).max(BUILD_LIMITS.encountersPerBuild).default([]),
+}).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
+const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
 
 /** A pass, 256 random bits, shown once. Only its hash is ever stored (ADR 0002's approach, ADR 0053). */
 function newBuildPass(): string {
@@ -95,6 +110,8 @@ function buildSummary(build: BuildRecord) {
   return {
     id: build.id, name: build.name, status: build.status, createdAt: build.createdAt, updatedAt: build.updatedAt,
     passExpiresAt: build.passExpiresAt,
+    /** When the 14-day sweep will close it, if nothing changes before then. */
+    closesAt: new Date(Date.parse(build.updatedAt) + BUILD_LIMITS.abandonedAfterDays * 24 * 60 * 60_000).toISOString(),
   };
 }
 
@@ -222,6 +239,245 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       await acceptFile(req, res, build, () => sessions.isLive(account.session.tokenHash), fileForOwner);
     })().catch(failed(res));
   });
+
+  /** A draft item of the owner's open build, or the response already sent. */
+  const ownerItem = async (req: Request, res: Response, kind: BuildItemKind) => {
+    const found = await ownerBuild(req, res);
+    if (!found) return null;
+    const item = await store.findBuildItem(found.build.id, kind, String(req.params.key));
+    if (!item) {
+      res.status(404).json({ error: "No such item." });
+      return null;
+    }
+    return { ...found, item };
+  };
+
+  /** Filling in a value answers the flag on that field. Blanking one doesn't. */
+  const flagsAfter = (item: BuildItemRecord, patch: Record<string, unknown>) => {
+    const answered = new Set(Object.entries(patch)
+      .filter(([field, value]) => value !== null && JSON.stringify(value) !== JSON.stringify(item.data[field]))
+      .map(([field]) => field.toLowerCase()));
+    return item.flags.filter((f) => !answered.has(f.field.toLowerCase()));
+  };
+
+  /** Writes the owner's change, or answers why it can't be written. */
+  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0]) {
+    try {
+      res.json({ item: itemView(await store.editBuildItem(item)) });
+    } catch (err) {
+      if (!(err instanceof BuildItemLockedError || err instanceof BuildClosedError)) throw err;
+      res.status(409).json({ error: err.message });
+    }
+  }
+
+  app.patch("/api/builds/:id/creatures/:key", (req, res) => {
+    void (async () => {
+      const found = await ownerItem(req, res, "creature");
+      if (!found) return;
+      const { build, item } = found;
+      const patch = (req.body ?? {}) as Record<string, unknown>;
+      const parsed = DraftCreature.safeParse({ ...item.data, ...patch, key: item.key, flags: flagsAfter(item, patch), notCarriedOver: item.notCarriedOver });
+      if (!parsed.success) return void res.status(422).json({ error: issueText(parsed.error) });
+      const { key, flags, notCarriedOver, ...data } = parsed.data;
+      if (data.imageFileId && (await store.findBuildFile(build.id, data.imageFileId))?.kind !== "token") {
+        return void res.status(422).json({ error: "imageFileId: choose token art from this build." });
+      }
+      await saveOwnerEdit(res, { buildId: build.id, kind: "creature", key, data, flags, notCarriedOver });
+    })().catch(failed(res));
+  });
+
+  app.patch("/api/builds/:id/maps/:key", (req, res) => {
+    void (async () => {
+      const found = await ownerItem(req, res, "map");
+      if (!found) return;
+      const { build, item } = found;
+      const body = RenameMap.safeParse(req.body);
+      if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, name: body.data.name }, flags: item.flags, notCarriedOver: item.notCarriedOver });
+    })().catch(failed(res));
+  });
+
+  /** Only a person can confirm a grid (KAN-09). Distance per square comes from the game profile. */
+  app.post("/api/builds/:id/maps/:key/grid", (req, res) => {
+    void (async () => {
+      const found = await ownerItem(req, res, "map");
+      if (!found) return;
+      const { build, item } = found;
+      const body = DraftProposedGrid.safeParse(req.body);
+      if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
+      const map = item.data as unknown as DraftMapState;
+      const file = await store.findBuildFile(build.id, map.fileId);
+      if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
+      if (!canRenderGrid(body.data.cellSize, file) || body.data.cellSize > Math.max(file.width, file.height)) {
+        return void res.status(422).json({ error: "That square size doesn't fit this map." });
+      }
+      const grid: GridSpec = { ...body.data, unitsPerCell: build.gameProfile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell, unitLabel: build.gameProfile?.unitLabel ?? DEFAULT_GRID.unitLabel };
+      const data: DraftMapState = { ...map, grid, gridStatus: "confirmed" };
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...data }, flags: item.flags.filter((f) => f.field.toLowerCase() !== "grid"), notCarriedOver: item.notCarriedOver });
+    })().catch(failed(res));
+  });
+
+  app.patch("/api/builds/:id/encounters/:key", (req, res) => {
+    void (async () => {
+      const found = await ownerItem(req, res, "encounter");
+      if (!found) return;
+      const { build, item } = found;
+      const patch = (req.body ?? {}) as Record<string, unknown>;
+      const parsed = DraftEncounter.safeParse({ ...item.data, ...patch, key: item.key, flags: flagsAfter(item, patch), notCarriedOver: item.notCarriedOver });
+      if (!parsed.success) return void res.status(422).json({ error: issueText(parsed.error) });
+      const { key, flags, notCarriedOver, ...data } = parsed.data;
+      const refused_ = await encounterProblem(build, data);
+      if (refused_) return void res.status(422).json({ error: refused_ });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "encounter", key, data, flags, notCarriedOver });
+    })().catch(failed(res));
+  });
+
+  app.delete("/api/builds/:id/items/:kind/:key", (req, res) => {
+    void (async () => {
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const kind = ItemKind.safeParse(req.params.kind);
+      if (!kind.success) return void res.status(404).json({ error: "No such item." });
+      try {
+        if (!await store.removeBuildItem(found.build.id, kind.data, String(req.params.key), true)) return void res.status(404).json({ error: "No such item." });
+      } catch (err) {
+        if (err instanceof BuildItemLockedError || err instanceof BuildClosedError) return void res.status(409).json({ error: err.message });
+        throw err;
+      }
+      res.status(204).end();
+    })().catch(failed(res));
+  });
+
+  /**
+   * Publishing needs the owner's session from the app itself: no pass and no tool can do it, so a
+   * person always looks first (ADR 0053). Adds ordinary library items, all together or not at all.
+   */
+  app.post("/api/builds/:id/publish", (req, res) => {
+    void (async () => {
+      res.setHeader("Cache-Control", "no-store");
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const { build } = found;
+      const selection = PublishRequest.safeParse(req.body);
+      if (!selection.success) return void res.status(400).json({ error: issueText(selection.error) });
+      if (build.status !== "open") return void res.status(409).json({ error: "This build is closed." });
+      const planned = await planPublish(store, build, selection.data, new Date(now()).toISOString());
+      if (!planned.ok) return void res.status(422).json({ error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems });
+      try {
+        res.json({ published: await store.publishBuild(planned.plan, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES) });
+      } catch (err) {
+        if (err instanceof UploadAllowanceError || err instanceof EncounterLimitError || err instanceof BuildClosedError || err instanceof BuildPublishConflictError) {
+          return void res.status(409).json({ error: err.message });
+        }
+        if (err instanceof EncounterMapMissingError || err instanceof CreatureImageMissingError) return void res.status(409).json({ error: new BuildPublishConflictError().message });
+        throw err;
+      }
+    })().catch(failed(res));
+  });
+
+  app.delete("/api/builds/:id", (req, res) => {
+    void (async () => {
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      await discard(found.build.id, found.build.ownerGmId);
+      res.status(204).end();
+    })().catch(failed(res));
+  });
+
+  async function discard(id: string, ownerGmId: string) {
+    const closed = await store.closeBuild(id, ownerGmId);
+    for (const key of closed?.objectKeys ?? []) {
+      await assets.delete(key).catch(() => console.error("[vtt] could not delete a file of a closed build"));
+    }
+  }
+
+  /** What this build published, and where each thing is in use, so the page can warn before removing. */
+  app.get("/api/builds/:id/published", (req, res) => {
+    void (async () => {
+      res.setHeader("Cache-Control", "no-store");
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const { build } = found;
+      res.json({ published: await listPublished(build) });
+    })().catch(failed(res));
+  });
+
+  async function listPublished(build: BuildRecord) {
+    const owner = build.ownerGmId;
+    const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+    const result: { type: "asset" | "creature" | "encounter"; id: string; name: string; rooms: { id: string; name: string }[]; creatures: { id: string; name: string }[]; encounters: { id: string; name: string }[] }[] = [];
+    for (const file of files) {
+      if (!file.publishedAssetId) continue;
+      const asset = await store.findAsset(file.publishedAssetId, owner);
+      if (!asset) continue;
+      result.push({
+        type: "asset", id: asset.id, name: asset.name,
+        rooms: await store.assetUsage(asset.id, owner),
+        creatures: await store.creaturesUsingImage(asset.id, owner),
+        encounters: await store.encountersUsingMap(asset.id, owner),
+      });
+    }
+    for (const item of items) {
+      if (!item.publishedId) continue;
+      if (item.kind === "creature") {
+        const creature = await store.findCreature(item.publishedId, owner);
+        if (creature) result.push({ type: "creature", id: creature.id, name: creature.name, rooms: [], creatures: [], encounters: [] });
+      } else if (item.kind === "encounter") {
+        const encounter = await store.findEncounter(item.publishedId, owner);
+        if (encounter) result.push({ type: "encounter", id: encounter.id, name: encounter.name, rooms: [], creatures: [], encounters: [] });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Removes library items this build created, through the library's own deletes. Only ids the
+   * build recorded are touched, so nothing else in the library can be named here. Rooms stay.
+   * Something already deleted by hand is skipped.
+   */
+  app.post("/api/builds/:id/remove-published", (req, res) => {
+    void (async () => {
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const { build } = found;
+      const body = RemovePublished.safeParse(req.body);
+      if (!body.success) return void res.status(400).json({ error: issueText(body.error) });
+      const wanted = body.data.ids ? new Set(body.data.ids) : null;
+      const owner = build.ownerGmId;
+      const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+      const chosen = (id: string | null): id is string => id !== null && (!wanted || wanted.has(id));
+      const forgetItems: { kind: BuildItemKind; key: string }[] = [];
+      let removed = 0;
+
+      for (const item of items) {
+        if (item.kind === "map" || !chosen(item.publishedId)) continue;
+        if (item.kind === "encounter" ? await store.deleteEncounter(item.publishedId, owner) : await store.deleteCreature(item.publishedId, owner)) removed++;
+        forgetItems.push({ kind: item.kind, key: item.key });
+      }
+      const forgetFiles: string[] = [];
+      for (const file of files) {
+        if (!chosen(file.publishedAssetId)) continue;
+        const deleted = await store.deleteAsset(file.publishedAssetId, owner);
+        if (deleted) {
+          removed++;
+          // As a library delete does: rooms still naming this address draw the usual stand-in.
+          await assets.delete(deleted.objectKey).catch(() => console.error("[vtt] could not delete a published build file"));
+        }
+        forgetFiles.push(file.id);
+        for (const item of items) if (item.kind === "map" && item.publishedId === file.publishedAssetId) forgetItems.push({ kind: "map", key: item.key });
+      }
+      await store.forgetPublished(build.id, { fileIds: forgetFiles, items: forgetItems });
+      res.json({ removed });
+    })().catch(failed(res));
+  });
+
+  /** Runs the 14-day sweep: closes builds nobody has changed for that long, as if discarded. */
+  const sweepAbandoned = async () => {
+    const before = new Date(now() - BUILD_LIMITS.abandonedAfterDays * 24 * 60 * 60_000).toISOString();
+    for (const { id, ownerGmId } of await store.listAbandonedBuilds(before)) {
+      await discard(id, ownerGmId).catch(() => console.error("[vtt] could not close an abandoned build"));
+    }
+  };
 
   // ---------- The pass routes ----------
 
@@ -359,20 +615,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const parsed = DraftEncounter.safeParse(req.body);
       if (!parsed.success) return void res.status(422).json({ error: issueText(parsed.error) });
       const { key, flags, notCarriedOver, ...input } = parsed.data;
-      const items = await store.listBuildItems(build.id);
-      const mapItem = items.find((i) => i.kind === "map" && i.key === input.mapKey);
-      if (!mapItem) return void res.status(422).json({ error: `mapKey: this build has no map "${input.mapKey}".` });
-      const creatures = new Map(items.filter((i) => i.kind === "creature").map((i) => [i.key, i.data as unknown as DraftCreatureState]));
-      const map = mapItem.data as unknown as DraftMapState;
-      const grid = map.grid ?? map.proposedGrid;
-      const file = await store.findBuildFile(build.id, map.fileId);
-      for (const token of input.tokens) {
-        const creature = creatures.get(token.creatureKey);
-        if (!creature) return void res.status(422).json({ error: `tokens: this build has no creature "${token.creatureKey}".` });
-        if (token.square && grid && file && !footprintCenter(token.square, creature.size, grid, file)) {
-          return void res.status(422).json({ error: `tokens: ${token.name ?? creature.name} is off the map at column ${token.square.column}, row ${token.square.row}.` });
-        }
-      }
+      const problem = await encounterProblem(build, input);
+      if (problem) return void res.status(422).json({ error: problem });
       await saveItem(res, { buildId: build.id, kind: "encounter", key, data: { ...input }, flags, notCarriedOver }, BUILD_LIMITS.encountersPerBuild);
     })().catch(failed(res));
   });
@@ -412,6 +656,25 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   });
 
   // ---------- Shared by both families ----------
+
+  /** Why an encounter can't be saved, naming what's wrong: an unknown map or creature, or a square off the map. */
+  async function encounterProblem(build: BuildRecord, input: DraftEncounterState): Promise<string | null> {
+    const items = await store.listBuildItems(build.id);
+    const mapItem = items.find((i) => i.kind === "map" && i.key === input.mapKey);
+    if (!mapItem) return `mapKey: this build has no map "${input.mapKey}".`;
+    const creatures = new Map(items.filter((i) => i.kind === "creature").map((i) => [i.key, i.data as unknown as DraftCreatureState]));
+    const map = mapItem.data as unknown as DraftMapState;
+    const grid = map.grid ?? map.proposedGrid;
+    const file = await store.findBuildFile(build.id, map.fileId);
+    for (const token of input.tokens) {
+      const creature = creatures.get(token.creatureKey);
+      if (!creature) return `tokens: this build has no creature "${token.creatureKey}".`;
+      if (token.square && grid && file && !footprintCenter(token.square, creature.size, grid, file)) {
+        return `tokens: ${token.name ?? creature.name} is off the map at column ${token.square.column}, row ${token.square.row}.`;
+      }
+    }
+    return null;
+  }
 
   /** False when the build wasn't open, with the response already sent. */
   async function refuseClosed(res: Response, write: () => Promise<unknown>) {
@@ -505,4 +768,6 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       }),
     });
   }
+
+  return { sweepAbandoned };
 }

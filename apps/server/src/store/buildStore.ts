@@ -1,5 +1,6 @@
-import type { BuildFlag, GameProfile, GridDetectionCandidate, GridSpec, LibraryMapBoard } from "@vtt/shared";
+import { MAX_ENCOUNTER_NAME, type BuildFlag, type GameProfile, type GridDetectionCandidate, type GridSpec, type LibraryMapBoard } from "@vtt/shared";
 import type { DetectionError, DetectionState } from "./gridDetectionStore";
+import type { LibraryAssetRecord, NewCreatureRecord, NewEncounterRecord, UploadAllowance } from "./libraryStore";
 
 /**
  * The AI game builder's private drafts (FR-GM-26, FR-GM-27, ADR 0053). Nothing here is room state
@@ -98,6 +99,42 @@ export class BuildItemLockedError extends Error {
   }
 }
 
+/** Something a publish relied on changed underneath it. Nothing was published. */
+export class BuildPublishConflictError extends Error {
+  constructor() {
+    super("This build changed while publishing. Reload the page and try again.");
+  }
+}
+
+/** Everything one publish adds. Assembled first, then written in one step. */
+export interface BuildPublishPlan {
+  buildId: string;
+  ownerGmId: string;
+  assets: { fileId: string; record: LibraryAssetRecord }[];
+  creatures: { key: string; record: NewCreatureRecord }[];
+  maps: { key: string; assetId: string }[];
+  encounters: { key: string; record: NewEncounterRecord }[];
+}
+
+export interface BuildPublishResult {
+  assets: number;
+  creatures: { key: string; id: string }[];
+  maps: { key: string; id: string }[];
+  /** `name` is what it was published as, which a name clash may have numbered. */
+  encounters: { key: string; id: string; name: string }[];
+}
+
+/** A name not yet used in the owner's templates: "Crypt guards", then "Crypt guards (2)". Never overwrites. */
+export function uniqueEncounterName(name: string, existing: Iterable<string>): string {
+  const taken = new Set([...existing].map((n) => n.trim().toLowerCase()));
+  if (!taken.has(name.trim().toLowerCase())) return name;
+  for (let n = 2; ; n++) {
+    const suffix = ` (${n})`;
+    const candidate = `${name.slice(0, MAX_ENCOUNTER_NAME - suffix.length).trimEnd()}${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 /** Refuses a file that doesn't fit, naming the limit. */
 export function assertBuildFileFits(usage: BuildFileUsage, file: Pick<BuildFileRecord, "kind" | "sizeBytes">, limits: BuildFileLimits) {
   if (usage.files >= limits.files) throw new BuildLimitError(`A build can hold up to ${limits.files} files. Remove some, or start another build.`);
@@ -137,8 +174,29 @@ export interface BuildStore {
   saveBuildItem(item: NewBuildItem, maxForKind: number | null): Promise<BuildItemRecord>;
   listBuildItems(buildId: string): Promise<BuildItemRecord[]>;
   findBuildItem(buildId: string, kind: BuildItemKind, key: string): Promise<BuildItemRecord | null>;
-  /** False when there is no such item. Throws `BuildItemLockedError` or `BuildClosedError`. */
-  removeBuildItem(buildId: string, kind: BuildItemKind, key: string): Promise<boolean>;
-  /** Marks an item as changed by its owner, or as published. Used by the review page. */
+  /**
+   * False when there is no such item. Throws `BuildItemLockedError` or `BuildClosedError`. The
+   * owner may remove what they edited (`byOwner`); a pass may not. Neither may remove what was published.
+   */
+  removeBuildItem(buildId: string, kind: BuildItemKind, key: string, byOwner?: boolean): Promise<boolean>;
+  /** Marks an item as changed by its owner, or as published. */
   markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }): Promise<boolean>;
+  /** The owner's change: marks the item edited, so the AI can't overwrite it. Refuses what was published. */
+  editBuildItem(item: NewBuildItem): Promise<BuildItemRecord>;
+
+  /**
+   * Adds everything in the plan, or nothing. Throws `UploadAllowanceError`, `EncounterLimitError`,
+   * `BuildClosedError` or `BuildPublishConflictError`, and then has changed nothing.
+   * Only ever adds: a name clash on an encounter gets a number.
+   */
+  publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number): Promise<BuildPublishResult>;
+  /**
+   * Closes a build: ends its pass, deletes its unpublished items and files, and keeps the record of
+   * what it published. Returns the object keys to delete, or null when the owner has no such build.
+   */
+  closeBuild(id: string, ownerGmId: string): Promise<{ objectKeys: string[] } | null>;
+  /** Open builds not changed since `before`, for the 14-day sweep. */
+  listAbandonedBuilds(before: string): Promise<{ id: string; ownerGmId: string }[]>;
+  /** After published items were removed: drops those files, and returns those items to draft (or drops them from a closed build). */
+  forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }): Promise<void>;
 }

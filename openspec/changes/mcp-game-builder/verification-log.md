@@ -141,3 +141,51 @@ The user chose to go on before the Real-Time Architecture owner's sign-off. Task
 ### Whole project
 
 `npm run lint && npm run typecheck && npm test`, with `DATABASE_URL` on the throwaway database, passes: shared 1,087, MCP 227, server 884 with 4 skipped, web 1,331, latency bench 2 (p95 115 ms).
+
+## 2026-11-09, later still: review and publishing (group 6)
+
+The Real-Time Architecture owner's review is still owed, as above.
+
+### Environment touched
+
+- A throwaway Postgres, `build-check-pg2` on port 55493, removed afterwards.
+- This branch on `127.0.0.1:3493` and `5493`, on the in-memory store, stopped afterwards. Uploads went to the session scratchpad.
+- One made-up test account on that in-memory server, which was lost when it stopped.
+- `.claude/launch.json` was changed for a moment to start those servers and restored from git.
+- Ports 3001, 5173 and 3002, the dev database and production were not touched. The Lanternfall files were only read.
+
+### Results
+
+| Task | How it was checked | Result |
+|---|---|---|
+| 6.1 Publish | 45 integration tests, run on memory and on Postgres | An encounter brings its map, creatures and art, as ordinary library items pointing at the stored files. Failure on the last item changes nothing. The 50-template limit, the 2 GB allowance, a name clash numbered "(2)", two publishes at once, a request with only a pass (401) and one from another site (403) |
+| 6.2 Discard, remove, sweep | The same tests | Draft and unpublished files go, published items stay and can still be removed. Only ids the build recorded are touched. Items deleted by hand are skipped. Rooms stay. The 14-day sweep closes a build |
+| 6.3 Page | 31 component tests, then a browser | See below |
+| 6.4 Library entry and message | Component tests, and read in the browser | The message held `http://127.0.0.1:5493/mcp/build` and the pass |
+
+### In the browser
+
+The pass routes were fed real Lanternfall files: `guild-chandlery.dd2vtt` (2100×1540, 124 walls), `lantern-square.webp`, three tokens, a profile, four creatures and two encounters. The browser pane was hidden, so sizes were emulated at 1280×800 and 375×812.
+
+| Step | Result |
+|---|---|
+| Open the build | Flags first, then files, maps with their grids drawn, creatures and encounters. No broken images and no sideways scroll at either width |
+| A creature named `<img src=x onerror=alert(1)>` | Shown as text, and no such element exists |
+| Phone width, both editors | Nothing past the screen edge |
+| Fill in AC on a flagged character | Saved, flag gone, marked "Edited by you" |
+| Confirm a proposed grid | Status changes, and the encounter becomes publishable |
+| Publish an encounter with a token not placed | Refused, naming the token |
+| Publish the other encounter | Its map and creature come too, and it offers Start a room |
+| Start a room | Opens on Lantern Square with the account as GM and Old Wick on the board |
+
+Fixed while checking: the Publish and Hidden checkboxes sat apart from their labels.
+
+### Decisions made while building
+
+- An item with a published copy keeps that copy's id. Publishing again reuses what's in the library at that moment, so a later publish sees the GM's edits there.
+- Removing a published map or art deletes its stored file, as a library delete does, so its draft can't be published again from that file. The check reports the missing file.
+- Filling in a value clears the flag on that field. Blanking a value leaves the flag.
+
+### Whole project
+
+`npm run lint && npm run typecheck && npm test`, with `DATABASE_URL` on the throwaway database, passes: shared 1,087, MCP 227, server 974 with 4 skipped, web 1,362, latency bench 2 (p95 114 ms).

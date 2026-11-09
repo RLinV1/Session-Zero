@@ -8,7 +8,11 @@ import {
   BuildClosedError,
   BuildItemLockedError,
   BuildLimitError,
+  BuildPublishConflictError,
   assertBuildFileFits,
+  uniqueEncounterName,
+  type BuildPublishPlan,
+  type BuildPublishResult,
   type BuildFileLimits,
   type BuildFileRecord,
   type BuildFileUsage,
@@ -607,16 +611,119 @@ export class MemoryRoomStore implements RoomStore {
     return item ? structuredClone(item) : null;
   }
 
-  async removeBuildItem(buildId: string, kind: BuildItemKind, key: string) {
+  async removeBuildItem(buildId: string, kind: BuildItemKind, key: string, byOwner = false) {
     const build = this.openBuild(buildId);
     const id = `${buildId}/${kind}/${key}`;
     const existing = this.buildItems.get(id);
     if (!existing) return false;
     if (existing.publishedId) throw new BuildItemLockedError("published");
-    if (existing.editedByUser) throw new BuildItemLockedError("edited");
+    if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
     this.buildItems.delete(id);
     this.touchBuild(build);
     return true;
+  }
+
+  async editBuildItem(item: NewBuildItem) {
+    const build = this.openBuild(item.buildId);
+    const id = `${item.buildId}/${item.kind}/${item.key}`;
+    const existing = this.buildItems.get(id);
+    if (existing?.publishedId) throw new BuildItemLockedError("published");
+    const row: BuildItemRecord = { ...structuredClone(item), editedByUser: true, publishedId: null, updatedAt: new Date().toISOString() };
+    this.buildItems.set(id, row);
+    this.touchBuild(build);
+    return structuredClone(row);
+  }
+
+  async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
+    const build = this.openBuild(plan.buildId);
+    if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.publishedAssetId !== null)) throw new BuildPublishConflictError();
+    const itemId = (kind: BuildItemKind, key: string) => `${plan.buildId}/${kind}/${key}`;
+    if ([...plan.creatures.map((c) => itemId("creature", c.key)), ...plan.encounters.map((e) => itemId("encounter", e.key))]
+      .some((id) => { const item = this.buildItems.get(id); return !item || item.publishedId !== null; })) throw new BuildPublishConflictError();
+    assertFitsAllowance(
+      this.usageNow({ ownerGmId: plan.ownerGmId }),
+      { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) },
+      allowance,
+    );
+
+    // Synchronous from here, so nothing can interleave. A failure part-way puts everything back.
+    const saved = {
+      assets: new Map(this.assets), creatures: new Map(this.creatures), encounters: new Map(this.encounters),
+      buildFiles: new Map(this.buildFiles), buildItems: new Map(this.buildItems),
+    };
+    try {
+      for (const { fileId, record } of plan.assets) {
+        this.assets.set(record.id, structuredClone(record));
+        this.buildFiles.set(fileId, { ...this.buildFiles.get(fileId)!, publishedAssetId: record.id });
+      }
+      const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
+      const mark = (kind: BuildItemKind, key: string, publishedId: string) => {
+        const item = this.buildItems.get(itemId(kind, key));
+        if (item) this.buildItems.set(itemId(kind, key), { ...item, publishedId });
+      };
+      for (const { key, record } of plan.creatures) {
+        this.requireImage(record.imageAssetId);
+        this.creatures.set(record.id, structuredClone(record));
+        mark("creature", key, record.id);
+        result.creatures.push({ key, id: record.id });
+      }
+      for (const { key, assetId } of plan.maps) {
+        mark("map", key, assetId);
+        result.maps.push({ key, id: assetId });
+      }
+      for (const { key, record } of plan.encounters) {
+        const names = [...this.encounters.values()].filter((e) => e.ownerGmId === plan.ownerGmId).map((e) => e.name);
+        const name = uniqueEncounterName(record.name, names);
+        this.insertEncounter({ ...record, name }, maxEncounters);
+        mark("encounter", key, record.id);
+        result.encounters.push({ key, id: record.id, name });
+      }
+      this.touchBuild(build);
+      return result;
+    } catch (err) {
+      this.assets = saved.assets;
+      this.creatures = saved.creatures;
+      this.encounters = saved.encounters;
+      this.buildFiles = saved.buildFiles;
+      this.buildItems = saved.buildItems;
+      throw err;
+    }
+  }
+
+  async closeBuild(id: string, ownerGmId: string) {
+    const build = this.builds.get(id);
+    if (!build || build.ownerGmId !== ownerGmId) return null;
+    build.status = "closed";
+    build.passHash = null;
+    build.passExpiresAt = null;
+    this.touchBuild(build);
+    const objectKeys: string[] = [];
+    for (const [fileId, file] of this.buildFiles) {
+      if (file.buildId !== id || file.publishedAssetId) continue;
+      objectKeys.push(file.objectKey);
+      this.buildFiles.delete(fileId);
+      this.trackDetection({ scope: "build", fileId });
+    }
+    for (const [itemId, item] of this.buildItems) if (item.buildId === id && !item.publishedId) this.buildItems.delete(itemId);
+    return { objectKeys };
+  }
+
+  async listAbandonedBuilds(before: string) {
+    return [...this.builds.values()].filter((b) => b.status === "open" && b.updatedAt < before).map((b) => ({ id: b.id, ownerGmId: b.ownerGmId }));
+  }
+
+  async forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
+    for (const fileId of removed.fileIds) {
+      if (this.buildFiles.get(fileId)?.buildId === buildId) this.buildFiles.delete(fileId);
+    }
+    const open = this.builds.get(buildId)?.status === "open";
+    for (const { kind, key } of removed.items) {
+      const id = `${buildId}/${kind}/${key}`;
+      const item = this.buildItems.get(id);
+      if (!item) continue;
+      if (open) this.buildItems.set(id, { ...item, publishedId: null });
+      else this.buildItems.delete(id);
+    }
   }
 
   async markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }) {

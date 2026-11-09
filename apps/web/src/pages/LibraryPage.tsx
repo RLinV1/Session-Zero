@@ -21,12 +21,13 @@ import { LibraryPicker } from "./LibraryPicker";import { startEncounterEdit } fr
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
 import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
+import { BuildsTab } from "./build/LibraryBuilds";
 
 /**
  * Maps and token art are uploaded assets; creatures are reusable token setups (library-creatures);
  * dice are your dice looks, kept in this browser (dice-image-skins).
  */
-type Tab = AssetKind | "creature" | "encounter" | "animation" | "dice";
+type Tab = AssetKind | "creature" | "encounter" | "animation" | "dice" | "build";
 
 const TABS: { tab: Tab; label: string }[] = [
   { tab: "map", label: "Maps" },
@@ -35,6 +36,7 @@ const TABS: { tab: Tab; label: string }[] = [
   { tab: "encounter", label: "Encounters" },
   { tab: "animation", label: "Animations" },
   { tab: "dice", label: "Dice" },
+  { tab: "build", label: "AI builds" },
 ];
 
 /** `/library?tab=dice` opens on the Dice tab: the room's Dice panel links there. */
@@ -159,7 +161,7 @@ function Library() {
 
   // Static copies fill in until the account's own shipped rows exist; once a row is seeded its twin is dropped.
   const builtins = useMemo(
-    () => (tab === "creature" || tab === "encounter" || tab === "animation" || tab === "dice" ? [] : builtinsMatching(kind, query).filter((b) => !seededUrls.has(b.url))),
+    () => (tab === "creature" || tab === "encounter" || tab === "animation" || tab === "dice" || tab === "build" ? [] : builtinsMatching(kind, query).filter((b) => !seededUrls.has(b.url))),
     [tab, kind, query, seededUrls],
   );
 
@@ -223,7 +225,7 @@ function Library() {
           <button type="button" className="primary" disabled={startingEncounter} onClick={() => setPickingEncounterMap(true)}>
             {startingEncounter ? "Opening…" : "New encounter"}
           </button>
-        ) : tab === "animation" ? null : (
+        ) : tab === "animation" || tab === "build" ? null : (
           <UploadButton
             kind={kind}
             onUploaded={(a, diagnostics) => {
@@ -238,7 +240,9 @@ function Library() {
 
       {tab === "map" && <p className="muted">Upload PNG, JPEG or WebP images (up to 25 MiB), or UVTT, DD2VTT and DF2VTT maps (up to 40 MiB). UVTT imports include their grid, walls and doors.</p>}
 
-      {tab === "dice" ? (
+      {tab === "build" ? (
+        <BuildsTab query={query} onError={setError} />
+      ) : tab === "dice" ? (
         <>
           <SaveBrowserLooksOffer />
           <DiceLookCards query={query} onEdit={setDiceTarget} />

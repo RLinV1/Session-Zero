@@ -1,6 +1,13 @@
 import {
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
   GM_TOKEN_HEADER,
+  type BuildDetail,
+  type BuildFileView,
+  type BuildItemView,
+  type BuildPublished,
+  type BuildSummary,
+  type DraftProposedGrid,
+  type PublishedBuildItem,
   CheckpointPreviewResponse,
   HistoryResponse,
   ReplayPointsResponse,
@@ -115,6 +122,8 @@ async function accountRequest<T>(url: string, init: RequestInit = {}): Promise<T
   if (!res.ok) throw await errorFrom(res);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+const buildUrl = (id: string) => `/api/builds/${encodeURIComponent(id)}`;
 
 const jsonBody = (body: unknown): RequestInit => ({
   headers: { "content-type": "application/json" },
@@ -386,6 +395,36 @@ export const api = {
   legacy: {
     summary: (gmToken: string) => legacyRequest<LegacySummary>(gmToken, "/api/gm/legacy"),
     claim: (gmToken: string) => legacyRequest<LegacySummary>(gmToken, "/api/gm/legacy/claim", { method: "POST" }),
+  },
+
+  /** AI builds: private drafts the owner reviews and publishes (FR-GM-26, FR-GM-27, ADR 0053). */
+  builds: {
+    list: () => accountRequest<BuildSummary[]>("/api/builds"),
+    start: (name: string) => accountRequest<{ build: BuildSummary; pass: string; expiresAt: string }>("/api/builds", { method: "POST", ...jsonBody({ name }) }),
+    get: (id: string) => accountRequest<BuildDetail>(buildUrl(id)),
+    newPass: (id: string) => accountRequest<{ pass: string; expiresAt: string }>(`${buildUrl(id)}/pass`, { method: "POST" }),
+    cancelPass: (id: string) => accountRequest<void>(`${buildUrl(id)}/pass`, { method: "DELETE" }),
+    upload(id: string, file: File, kind: "map" | "token" | "uvtt") {
+      const form = new FormData();
+      form.append("file", file);
+      return accountRequest<{ file: BuildFileView }>(`${buildUrl(id)}/files?kind=${kind}`, { method: "POST", body: form });
+    },
+    editCreature: (id: string, key: string, patch: Record<string, unknown>) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/creatures/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch) }),
+    renameMap: (id: string, key: string, name: string) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody({ name }) }),
+    confirmGrid: (id: string, key: string, grid: DraftProposedGrid) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/grid`, { method: "POST", ...jsonBody(grid) }),
+    editEncounter: (id: string, key: string, patch: Record<string, unknown>) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/encounters/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch) }),
+    removeItem: (id: string, kind: BuildItemView["kind"], key: string) =>
+      accountRequest<void>(`${buildUrl(id)}/items/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" }),
+    publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[] }) =>
+      accountRequest<{ published: BuildPublished }>(`${buildUrl(id)}/publish`, { method: "POST", ...jsonBody(selection) }),
+    published: (id: string) => accountRequest<{ published: PublishedBuildItem[] }>(`${buildUrl(id)}/published`),
+    removePublished: (id: string, ids?: string[]) =>
+      accountRequest<{ removed: number }>(`${buildUrl(id)}/remove-published`, { method: "POST", ...jsonBody(ids ? { ids } : {}) }),
+    discard: (id: string) => accountRequest<void>(buildUrl(id), { method: "DELETE" }),
   },
 
   /** The signed-in account's library (asset-library, ADR 0017 O1). */

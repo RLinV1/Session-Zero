@@ -34,10 +34,10 @@ The user answered the five review questions on 2026-11-08, and the answers are i
 
 ## 6. Review and publish
 
-- [ ] 6.1 Add the publish route, cookie and same-origin only, one transaction, adds only, with name clashes numbered and encounter dependencies included. Verify with integration tests on both stores, including failure on the last item and the 50-template limit, and a test that a pass is refused
-- [ ] 6.2 Add discard, remove-what-was-published and the 14-day sweep. Verify that existing library items are never touched, that items already deleted are skipped and that rooms are not deleted
-- [ ] 6.3 Build the build page: drop zone, flags first, editing, grid overlay and confirm, select and publish, start a room, copy notes, cancel pass, rights notice. Verify with component tests, then in a browser at desktop and phone width
-- [ ] 6.4 Add the library entry and the message to copy to the AI. Verify the copied message holds the right address and pass
+- [x] 6.1 Add the publish route, cookie and same-origin only, one transaction, adds only, with name clashes numbered and encounter dependencies included. Verify with integration tests on both stores, including failure on the last item and the 50-template limit, and a test that a pass is refused
+- [x] 6.2 Add discard, remove-what-was-published and the 14-day sweep. Verify that existing library items are never touched, that items already deleted are skipped and that rooms are not deleted
+- [x] 6.3 Build the build page: drop zone, flags first, editing, grid overlay and confirm, select and publish, start a room, copy notes, cancel pass, rights notice. Verify with component tests, then in a browser at desktop and phone width
+- [x] 6.4 Add the library entry and the message to copy to the AI. Verify the copied message holds the right address and pass
 
 ## 7. Docs
 
