@@ -793,6 +793,9 @@ export class PostgresRoomStore implements RoomStore {
       const scope = { ownerGmId: plan.ownerGmId };
       await lockUploadAllowance(tx, scope);
       assertFitsAllowance(await readUploadUsage(tx, scope), { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) }, allowance);
+      const current = await tx.buildItem.findMany({ where: { buildId: plan.buildId }, select: { kind: true, key: true, updatedAt: true } });
+      const versions = new Map(current.map((i) => [`${i.kind}/${i.key}`, i.updatedAt.toISOString()]));
+      if (plan.reviewed.some((r) => versions.get(`${r.kind}/${r.key}`) !== r.updatedAt)) throw new BuildPublishConflictError();
 
       const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
       for (const { fileId, record } of plan.assets) {
@@ -824,7 +827,8 @@ export class PostgresRoomStore implements RoomStore {
       }
       await tx.build.update({ where: { id: plan.buildId }, data: { updatedAt: new Date() } });
       return result;
-    }));
+      // A large publish is hundreds of statements, well past Prisma's default of 5 seconds.
+    }, { timeout: 30_000, maxWait: 10_000 }));
   }
 
   async closeBuild(id: string, ownerGmId: string) {
@@ -1119,6 +1123,8 @@ export class PostgresRoomStore implements RoomStore {
       await tx.user.update({ where: { id: userId }, data: { activeDiceLookId: null } });
 
       const buildIds = (await tx.build.findMany({ where: { ownerGmId }, select: { id: true } })).map((b) => b.id);
+      // So an AI saving at this moment waits, rather than making the foreign keys refuse the delete.
+      for (const id of [...buildIds].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       // A published file's object belongs to its library row, which is collected below.
       const buildFiles = await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, publishedAssetId: null }, select: { objectKey: true } });
       await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });

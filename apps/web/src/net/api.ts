@@ -419,7 +419,7 @@ export const api = {
       accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/encounters/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch) }),
     removeItem: (id: string, kind: BuildItemView["kind"], key: string) =>
       accountRequest<void>(`${buildUrl(id)}/items/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" }),
-    publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[] }) =>
+    publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[]; reviewed: Record<string, string> }) =>
       accountRequest<{ published: BuildPublished }>(`${buildUrl(id)}/publish`, { method: "POST", ...jsonBody(selection) }),
     published: (id: string) => accountRequest<{ published: PublishedBuildItem[] }>(`${buildUrl(id)}/published`),
     removePublished: (id: string, ids?: string[]) =>

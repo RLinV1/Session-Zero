@@ -400,6 +400,31 @@ describe("files in a build (FR-GM-26)", () => {
     expect(await storedFiles()).toBe(0);
   });
 
+  it("doesn't let refused uploads use up the account's budget, so a pass can't block the owner's uploads", async () => {
+    const { pass, account } = await start();
+    const ownerId = (await store.findUserById(account.view!.id))!.ownerId;
+    for (let i = 0; i < 299; i++) server.app.limits.uploadsPerOwner.hit(`upload:${ownerId}`);
+    expect((await send(pass, "token", form("%PDF-1.7", "rules.pdf", "application/pdf"))).status).toBe(415);
+    expect((await send(pass, "token", form("%PDF-1.7", "rules.pdf", "application/pdf"))).status).toBe(415);
+    expect((await send(pass, "token", form(await png(), "a.png", "image/png"))).status).toBe(201);
+    expect((await send(pass, "token", form(await png(), "b.png", "image/png"))).status).toBe(429);
+  });
+
+  it("goes by a file's bytes, not its declared type, as curl often sends a generic one", async () => {
+    const { pass } = await start();
+    const webp = await sharp({ create: { width: 32, height: 32, channels: 3, background: "#884422" } }).webp().toBuffer();
+    const res = await send(pass, "token", form(webp, "goblin.webp", "application/octet-stream"));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ file: { name: "goblin.webp", width: 32 } });
+    expect((await readdir(server.uploadDir)).every((f) => f.endsWith(".webp"))).toBe(true);
+  });
+
+  it("still refuses a non-image with a generic declared type, leaving nothing behind", async () => {
+    const { pass } = await start();
+    expect((await send(pass, "token", form("%PDF-1.7 rules", "rules.bin", "application/octet-stream"))).status).toBe(415);
+    expect(await storedFiles()).toBe(0);
+  });
+
   it("queues grid detection on a plain map, and the AI can read the suggestion", async () => {
     const { pass } = await start();
     await uploadMap(pass);

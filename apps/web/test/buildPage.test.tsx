@@ -180,7 +180,7 @@ describe("reviewing a build (FR-GM-27)", () => {
   });
 
   it("draws the proposed grid over the map and confirms what's in the fields", async () => {
-    builds.confirmGrid.mockResolvedValue({});
+    builds.confirmGrid.mockResolvedValue({ item: map({ gridStatus: "confirmed" }) });
     await open(detail({ items: [map()] }));
     expect(host.querySelector(".build-map pattern")?.getAttribute("width")).toBe("70");
     await click(button("Confirm grid"));
@@ -199,7 +199,32 @@ describe("reviewing a build (FR-GM-27)", () => {
     const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-list input[type=checkbox]")];
     await click(boxes[0]);
     await click(button("Publish selected"));
-    expect(builds.publish).toHaveBeenCalledWith("b1", { creatures: ["a"], maps: [], encounters: [] });
+    expect(builds.publish).toHaveBeenCalledWith("b1", { creatures: ["a"], maps: [], encounters: [], reviewed: { "creature/a": "2026-11-09T00:00:00Z", "creature/b": "2026-11-09T00:00:00Z" } });
+  });
+
+  it("says what the AI changed since the person looked, and won't publish it until they've checked it", async () => {
+    builds.cancelPass.mockResolvedValue(undefined);
+    builds.publish.mockResolvedValue({ published: { assets: 0, creatures: [{ key: "goblin", id: "c1" }], maps: [], encounters: [] } });
+    await open(detail({ items: [goblin()] }));
+    await click(button("Select all"));
+    builds.get.mockResolvedValue(detail({ items: [goblin({ updatedAt: "2026-11-09T00:05:00Z" }, { hp: 99, maxHp: 99 })] }));
+    await click(button("Cancel pass"));
+    expect(text()).toContain("Changed by your AI since you looked");
+    expect(button("Publish selected")?.disabled).toBe(true);
+    await click(button("I've checked it"));
+    expect(text()).not.toContain("Changed by your AI since you looked");
+    await click(button("Publish selected"));
+    expect(builds.publish).toHaveBeenCalledWith("b1", expect.objectContaining({ reviewed: { "creature/goblin": "2026-11-09T00:05:00Z" } }));
+  });
+
+  it("doesn't call the person's own edit a change by the AI", async () => {
+    builds.editCreature.mockResolvedValue({ item: goblin({ updatedAt: "2026-11-09T00:07:00Z", editedByUser: true }) });
+    await open(detail({ items: [goblin()] }));
+    builds.get.mockResolvedValue(detail({ items: [goblin({ updatedAt: "2026-11-09T00:07:00Z", editedByUser: true })] }));
+    await click(button("Edit"));
+    await act(async () => { document.querySelector("dialog[open] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    await act(async () => { await Promise.resolve(); });
+    expect(text()).not.toContain("Changed by your AI since you looked");
   });
 
   it("asks first when something chosen still has flags", async () => {

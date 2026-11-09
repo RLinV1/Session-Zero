@@ -372,6 +372,14 @@ describe("turning a draft encounter into a template (FR-GM-27)", () => {
     expect(result).toEqual({ ok: false, problems: [{ token: "Scout", message: expect.stringContaining("map") }] });
   });
 
+  it("refuses a small token whose snapped center would hang off the map", () => {
+    const result = draftEncounterToTemplate(source({
+      creatures: new Map([["goblin", { ...goblin, size: 0.5 }]]),
+      tokens: [{ creatureKey: "goblin", square: { column: 0, row: 0 }, hidden: false }],
+    }));
+    expect(result.ok).toBe(false);
+  });
+
   it("refuses the partial column an offset grid leaves before its first line", () => {
     const result = draftEncounterToTemplate(source({
       grid: { ...grid, offsetX: 30 },

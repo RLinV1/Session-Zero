@@ -72,6 +72,8 @@ const PublishRequest = z.strictObject({
   creatures: z.array(BuildKey).max(BUILD_LIMITS.creaturesPerBuild).default([]),
   maps: z.array(BuildKey).max(BUILD_LIMITS.mapsPerBuild).default([]),
   encounters: z.array(BuildKey).max(BUILD_LIMITS.encountersPerBuild).default([]),
+  /** The version of each draft item the person was looking at, as `kind/key`. Required: a person always looks first. */
+  reviewed: z.record(z.string().max(80), z.string().max(40)),
 }).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
 const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
 
@@ -138,7 +140,7 @@ const passBuild = (res: Response) => res.locals.build as BuildRecord;
  */
 export function registerBuildRoutes(app: Express, deps: Deps) {
   const { store, assets, uploadDir, limits, detection, pool, sessions, now } = deps;
-  const receiveImage = imageUploader(uploadDir);
+  const receiveImage = imageUploader(uploadDir, MAX_IMAGE_BYTES, { anyDeclaredType: true });
   let previewsRunning = 0;
 
   const failed = (res: Response) => (err: unknown) => {
@@ -361,9 +363,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const selection = PublishRequest.safeParse(req.body);
       if (!selection.success) return void res.status(400).json({ error: issueText(selection.error) });
       if (build.status !== "open") return void res.status(409).json({ error: "This build is closed." });
-      const planned = await planPublish(store, build, selection.data, new Date(now()).toISOString());
-      if (!planned.ok) return void res.status(422).json({ error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems });
       try {
+        const planned = await planPublish(store, build, selection.data, new Date(now()).toISOString());
+        if (!planned.ok) return void res.status(422).json({ error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems });
         res.json({ published: await store.publishBuild(planned.plan, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES) });
       } catch (err) {
         if (err instanceof UploadAllowanceError || err instanceof EncounterLimitError || err instanceof BuildClosedError || err instanceof BuildPublishConflictError) {
@@ -600,6 +602,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const { key, flags, notCarriedOver, ...input } = parsed.data;
       const file = await store.findBuildFile(build.id, input.fileId);
       if (file?.kind !== "map") return void res.status(422).json({ error: `fileId: this build has no map file with id ${input.fileId}.` });
+      // One library map per file: two drafts of one picture could otherwise confirm different grids.
+      const sharing = (await store.listBuildItems(build.id)).find((i) => i.kind === "map" && i.key !== key && (i.data as unknown as DraftMapState).fileId === input.fileId);
+      if (sharing) return void res.status(422).json({ error: `fileId: map "${sharing.key}" already uses this file.` });
       const proposed = file.grid ? null : input.proposedGrid;
       if (proposed && (!canRenderGrid(proposed.cellSize, file) || proposed.cellSize > Math.max(file.width, file.height))) {
         return void res.status(422).json({ error: "proposedGrid: that square size doesn't fit this map." });
@@ -706,7 +711,10 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     const kind = UploadKind.safeParse(req.query.kind);
     if (!kind.success) return void res.status(400).json({ error: 'Add ?kind=map, ?kind=token or ?kind=uvtt to say what this file is.' });
     if (build.status !== "open") return void res.status(409).json({ error: "This build is closed." });
-    if (refused(res, limits.uploadsPerOwner.hit(`upload:${build.ownerGmId}`), "Too many uploads. Try again later.")) return;
+    // Counted only once a file is stored, so a pass, which a build's file limit caps, can't use up
+    // the budget the owner's own library and room uploads share by sending refused requests.
+    const budget = `upload:${build.ownerGmId}`;
+    if (refused(res, limits.uploadsPerOwner.check(budget), "Too many uploads. Try again later.")) return;
     const usage = await store.buildFileUsage(build.id);
     if (usage.files >= FILE_LIMITS.files) return void res.status(409).json({ error: `A build can hold up to ${FILE_LIMITS.files} files. Remove some, or start another build.` });
     if (kind.data !== "token" && usage.maps >= FILE_LIMITS.maps) return void res.status(409).json({ error: `A build can hold up to ${FILE_LIMITS.maps} maps.` });
@@ -723,6 +731,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         if (err instanceof BuildLimitError || err instanceof BuildClosedError) return void res.status(409).json({ error: err.message });
         throw err;
       }
+      limits.uploadsPerOwner.hit(budget);
       if (file.detectionStatus === "queued") await enqueueDetection(store, detection, { scope: "build", fileId: file.id }, 1);
       res.status(201).json({ file: view(file), ...(diagnostics ? { diagnostics } : {}) });
     };

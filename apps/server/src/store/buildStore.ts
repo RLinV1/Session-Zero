@@ -101,8 +101,8 @@ export class BuildItemLockedError extends Error {
 
 /** Something a publish relied on changed underneath it. Nothing was published. */
 export class BuildPublishConflictError extends Error {
-  constructor() {
-    super("This build changed while publishing. Reload the page and try again.");
+  constructor(message = "This build changed while publishing. Reload the page and try again.") {
+    super(message);
   }
 }
 
@@ -110,6 +110,8 @@ export class BuildPublishConflictError extends Error {
 export interface BuildPublishPlan {
   buildId: string;
   ownerGmId: string;
+  /** The drafts this publish relies on, at the versions the person looked at. Checked again in the write. */
+  reviewed: { kind: BuildItemKind; key: string; updatedAt: string }[];
   assets: { fileId: string; record: LibraryAssetRecord }[];
   creatures: { key: string; record: NewCreatureRecord }[];
   maps: { key: string; assetId: string }[];

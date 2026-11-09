@@ -63,7 +63,11 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
     return { ...build, fileId, artId };
   }
 
-  const publish = (account: HttpAccount, id: string, body: unknown) => account.request("POST", `/api/builds/${id}/publish`, body);
+  /** What the page sends: the version of every draft item the person is looking at (ADR 0053). */
+  const reviewedNow = async (account: HttpAccount, id: string) =>
+    Object.fromEntries((await account.json<{ items: { kind: string; key: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.map((i) => [`${i.kind}/${i.key}`, i.updatedAt]));
+  const publish = async (account: HttpAccount, id: string, body: Record<string, unknown>) =>
+    account.request("POST", `/api/builds/${id}/publish`, { ...body, reviewed: await reviewedNow(account, id) });
   const library = (account: HttpAccount) => account.json<LibraryAsset[]>("GET", "/api/library");
   const uploaded = async (account: HttpAccount) => (await library(account)).filter((a) => !a.url.startsWith("/img/"));
   const creatures = (account: HttpAccount) => account.json<LibraryCreature[]>("GET", "/api/library/creatures");
@@ -122,7 +126,91 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
     const player = await server.join(created.inviteCode, "Pat");
     const client = await server.connect({ roomId: created.roomId, guestToken: player.guestToken });
     expect(Object.values(client.state.tokens)).toEqual([]);
+    expect(client.rawLog.join("")).not.toContain("Goblin");
     client.close();
+  });
+
+  describe("publishing only what the person looked at (ADR 0053)", () => {
+    const rawPublish = (account: HttpAccount, id: string, body: unknown) => account.request("POST", `/api/builds/${id}/publish`, body);
+
+    it("refuses when the AI changed an item after the person looked, and publishes nothing", async () => {
+      const { account, id, pass } = await readyBuild();
+      const reviewed = await reviewedNow(account, id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await saveCreatures(pass, [goblin({ name: "Changed behind your back" })]);
+      const res = await rawPublish(account, id, { creatures: ["goblin"], reviewed });
+      expect(res.status).toBe(409);
+      expect(await res.text()).toMatch(/changed since you looked/i);
+      expect(await creatures(account)).toEqual([]);
+    });
+
+    it("covers what an encounter brings with it", async () => {
+      const { account, id, pass } = await readyBuild();
+      const reviewed = await reviewedNow(account, id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await saveCreatures(pass, [goblin({ hp: 99, maxHp: 99 })]);
+      expect((await rawPublish(account, id, { encounters: ["ambush"], reviewed })).status).toBe(409);
+      expect(await encounters(account)).toEqual([]);
+    });
+
+    it("refuses a hidden token made visible after the person looked", async () => {
+      const { account, id, pass } = await readyBuild();
+      const reviewed = await reviewedNow(account, id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await saveEncounter(pass, { tokens: [{ creatureKey: "goblin", square: { column: 2, row: 3 }, hidden: false }] });
+      expect((await rawPublish(account, id, { encounters: ["ambush"], reviewed })).status).toBe(409);
+      expect(await encounters(account)).toEqual([]);
+    });
+
+    it("refuses an item the person never saw, added as a dependency", async () => {
+      const { account, id, pass } = await readyBuild();
+      const reviewed = await reviewedNow(account, id);
+      await saveCreatures(pass, [goblin({ key: "boss", name: "Boss" })]);
+      await saveEncounter(pass, { key: "second", name: "Second", tokens: [{ creatureKey: "boss", square: { column: 0, row: 0 }, hidden: true }] });
+      const stale = { ...reviewed, "encounter/second": (await reviewedNow(account, id))["encounter/second"]! };
+      expect((await rawPublish(account, id, { encounters: ["second"], reviewed: stale })).status).toBe(409);
+      expect((await creatures(account)).some((c) => c.name === "Boss")).toBe(false);
+    });
+
+    it("needs the versions to be sent at all", async () => {
+      const { account, id } = await readyBuild();
+      expect((await rawPublish(account, id, { creatures: ["goblin"] })).status).toBe(400);
+      expect(await creatures(account)).toEqual([]);
+    });
+
+    it("the store itself refuses if an item changed after the plan was made", async () => {
+      const { account, id, pass, ownerId } = await readyBuild();
+      const { planPublish } = await import("../src/domain/buildPublish");
+      const { UPLOAD_ALLOWANCE } = await import("../src/store/libraryStore");
+      const build = (await store.findBuild(id, ownerId))!;
+      const planned = await planPublish(store, build, { creatures: ["goblin"], maps: [], encounters: [], reviewed: await reviewedNow(account, id) }, new Date().toISOString());
+      if (!planned.ok) throw new Error(JSON.stringify(planned.problems));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await saveCreatures(pass, [goblin({ name: "Sneaked in" })]);
+      await expect(store.publishBuild(planned.plan, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES)).rejects.toThrow(/changed/i);
+      expect(await creatures(account)).toEqual([]);
+    });
+  });
+
+  it("recovers grid detection for a map published while it was running", async () => {
+    const { pass, id, account, ownerId } = await startBuild();
+    const fileId = await upload(pass, "map", "cave.png", await png(700, 700));
+    await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Cave", fileId });
+    expect((await publish(account, id, { maps: ["cave"] })).status).toBe(200);
+    const [asset] = await store.listAssets(ownerId).then((all) => all.filter((a) => a.name === "Cave"));
+    const jobs = await store.recoverDetections(1000);
+    const status = (await store.findDetection({ scope: "library", id: asset!.id }))?.status;
+    if (status === "queued") expect(jobs.some((j) => j.target.scope === "library" && j.target.id === asset!.id)).toBe(true);
+  });
+
+  it("won't let two draft maps share one file", async () => {
+    const { pass } = await startBuild();
+    const fileId = await upload(pass, "map", "cave.png", await png(700, 700));
+    expect((await withPass(pass, "POST", "/api/build/current/maps", { key: "a", name: "A", fileId })).status).toBe(200);
+    const second = await withPass(pass, "POST", "/api/build/current/maps", { key: "b", name: "B", fileId });
+    expect(second.status).toBe(422);
+    expect((await second.json() as { error: string }).error).toContain('"a"');
+    expect((await withPass(pass, "POST", "/api/build/current/maps", { key: "a", name: "Renamed", fileId })).status).toBe(200);
   });
 
   it("publishes part of a build, and the rest stays in the draft", async () => {
@@ -232,7 +320,8 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
 
   it("gives another account a 404", async () => {
     const { id } = await readyBuild();
-    expect((await publish(await server.signUp(), id, { encounters: ["ambush"] })).status).toBe(404);
+    const other = await server.signUp();
+    expect((await other.request("POST", `/api/builds/${id}/publish`, { encounters: ["ambush"], reviewed: {} })).status).toBe(404);
   });
 
   it("needs something chosen", async () => {

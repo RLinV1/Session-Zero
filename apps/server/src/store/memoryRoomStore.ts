@@ -638,6 +638,7 @@ export class MemoryRoomStore implements RoomStore {
     const build = this.openBuild(plan.buildId);
     if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.publishedAssetId !== null)) throw new BuildPublishConflictError();
     const itemId = (kind: BuildItemKind, key: string) => `${plan.buildId}/${kind}/${key}`;
+    if (plan.reviewed.some((r) => this.buildItems.get(itemId(r.kind, r.key))?.updatedAt !== r.updatedAt)) throw new BuildPublishConflictError();
     if ([...plan.creatures.map((c) => itemId("creature", c.key)), ...plan.encounters.map((e) => itemId("encounter", e.key))]
       .some((id) => { const item = this.buildItems.get(id); return !item || item.publishedId !== null; })) throw new BuildPublishConflictError();
     assertFitsAllowance(
@@ -655,6 +656,9 @@ export class MemoryRoomStore implements RoomStore {
       for (const { fileId, record } of plan.assets) {
         this.assets.set(record.id, structuredClone(record));
         this.buildFiles.set(fileId, { ...this.buildFiles.get(fileId)!, publishedAssetId: record.id });
+        // A map published mid-detection finishes as a library map, so recovery has to know about it.
+        const target = { scope: "library" as const, id: record.id };
+        this.trackDetection(target, this.readDetection(target)?.status);
       }
       const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
       const mark = (kind: BuildItemKind, key: string, publishedId: string) => {

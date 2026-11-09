@@ -54,9 +54,19 @@ function Build({ id }: { id: string }) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [removing, setRemoving] = useState<PublishedBuildItem[] | null>(null);
 
+  /** The version of each item as this person last saw it. What the AI changes after that needs another look. */
+  const [reviewed, setReviewed] = useState<Record<string, string>>({});
+  const markReviewed = useCallback((item: BuildItemView) => setReviewed((all) => ({ ...all, [itemId(item)]: item.updatedAt })), []);
+
   const refresh = useCallback(async () => {
     try {
-      setDetail(await api.builds.get(id));
+      const latest = await api.builds.get(id);
+      setDetail(latest);
+      setReviewed((all) => {
+        const next = { ...all };
+        for (const item of latest.items) next[itemId(item)] ??= item.updatedAt;
+        return next;
+      });
       setPublished((await api.builds.published(id)).published);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setMissing(true);
@@ -109,12 +119,14 @@ function Build({ id }: { id: string }) {
   const draftItems = items.filter((i) => !i.published);
   const chosen = draftItems.filter((i) => selected.has(itemId(i)));
   const flaggedChosen = chosen.filter((i) => i.flags.length > 0).length;
+  const changed = draftItems.filter((i) => reviewed[itemId(i)] !== undefined && reviewed[itemId(i)] !== i.updatedAt);
+  const chosenChanged = chosen.some((i) => changed.includes(i));
 
   async function doPublish() {
     setConfirmingPublish(false);
     const keys = (kind: BuildItemView["kind"]) => chosen.filter((i) => i.kind === kind).map((i) => i.key);
     await run(async () => {
-      const { published: done } = await api.builds.publish(id, { creatures: keys("creature"), maps: keys("map"), encounters: keys("encounter") });
+      const { published: done } = await api.builds.publish(id, { creatures: keys("creature"), maps: keys("map"), encounters: keys("encounter"), reviewed });
       setJustPublished(done);
       setSelected(new Set());
     }, "Couldn't publish.");
@@ -156,6 +168,21 @@ function Build({ id }: { id: string }) {
             )}
             <PassPanel pass={pass} onClose={() => setPass(null)} />
 
+            {open && changed.length > 0 && (
+              <section className="build-section" aria-labelledby="build-changed">
+                <h2 id="build-changed">Changed by your AI since you looked</h2>
+                <p className="muted small-print">These can't be published until you've checked them.</p>
+                <ul className="plain build-published">
+                  {changed.map((item) => (
+                    <li key={itemId(item)}>
+                      <span>{item.kind} {item.key}</span>
+                      <button type="button" onClick={() => markReviewed(item)}>I've checked it</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             {open && issues.length > 0 && (
               <section className="build-section" aria-labelledby="build-issues">
                 <h2 id="build-issues">Needs your attention</h2>
@@ -186,7 +213,7 @@ function Build({ id }: { id: string }) {
                   {maps.map((item) => (
                     <li key={item.key}>
                       <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)}
-                        onConfirm={(grid) => run(() => api.builds.confirmGrid(id, item.key, grid), "Couldn't confirm this grid.")}
+                        onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
                         onRemove={() => void remove(item)} />
                     </li>
                   ))}
@@ -201,7 +228,7 @@ function Build({ id }: { id: string }) {
                   {creatures.map((item) => (
                     <li key={item.key}>
                       <CreatureCard item={item} files={files} checkbox={checkbox(item)}
-                        onSave={async (patch) => { await api.builds.editCreature(id, item.key, patch); await refresh(); }}
+                        onSave={async (patch) => { markReviewed((await api.builds.editCreature(id, item.key, patch)).item); await refresh(); }}
                         onRemove={() => void remove(item)} />
                     </li>
                   ))}
@@ -216,7 +243,7 @@ function Build({ id }: { id: string }) {
                   {encounters.map((item) => (
                     <li key={item.key}>
                       <EncounterCard item={item} creatures={creatures} maps={maps} checkbox={checkbox(item)}
-                        onSave={async (patch) => { await api.builds.editEncounter(id, item.key, patch); await refresh(); }}
+                        onSave={async (patch) => { markReviewed((await api.builds.editEncounter(id, item.key, patch)).item); await refresh(); }}
                         onRemove={() => void remove(item)} />
                     </li>
                   ))}
@@ -230,7 +257,7 @@ function Build({ id }: { id: string }) {
                 <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
                 <div className="row">
                   <button type="button" onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Select all</button>
-                  <button type="button" className="primary" disabled={chosen.length === 0}
+                  <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged}
                     onClick={() => { if (flaggedChosen > 0) setConfirmingPublish(true); else void doPublish(); }}>
                     Publish selected ({chosen.length})
                   </button>

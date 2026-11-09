@@ -9,7 +9,7 @@ import {
   type DraftMapState,
   type LibraryMapBoard,
 } from "@vtt/shared";
-import type { BuildFileRecord, BuildItemKind, BuildItemRecord, BuildPublishPlan, BuildRecord } from "../store/buildStore";
+import { BuildPublishConflictError, type BuildFileRecord, type BuildItemKind, type BuildItemRecord, type BuildPublishPlan, type BuildRecord } from "../store/buildStore";
 import type { LibraryAssetRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 
@@ -17,6 +17,8 @@ export interface PublishSelection {
   creatures: string[];
   maps: string[];
   encounters: string[];
+  /** The version of each item the person was looking at, keyed `kind/key`. */
+  reviewed: Record<string, string>;
 }
 
 export interface PublishProblem {
@@ -59,7 +61,23 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     for (const token of data.tokens) creatureKeys.add(token.creatureKey);
   }
 
-  const plan: BuildPublishPlan = { buildId: build.id, ownerGmId: build.ownerGmId, assets: [], creatures: [], maps: [], encounters: [] };
+  // A person looks before anything is used (ADR 0053), so every draft this publish relies on,
+  // chosen or brought along, must still be the version they saw.
+  const relied = [
+    ...encounterItems,
+    ...[...mapKeys].flatMap((key) => itemByKey.get(`map/${key}`) ?? []),
+    ...[...creatureKeys].flatMap((key) => itemByKey.get(`creature/${key}`) ?? []),
+  ].filter((item) => !item.publishedId);
+  const changed = relied.filter((item) => selection.reviewed[`${item.kind}/${item.key}`] !== item.updatedAt);
+  if (changed.length > 0) {
+    throw new BuildPublishConflictError(`Something changed since you looked at it: ${changed.map((i) => `${i.kind} ${i.key}`).join(", ")}. Check it, then publish again.`);
+  }
+
+  const plan: BuildPublishPlan = {
+    buildId: build.id, ownerGmId: build.ownerGmId,
+    reviewed: relied.map((i) => ({ kind: i.kind, key: i.key, updatedAt: i.updatedAt })),
+    assets: [], creatures: [], maps: [], encounters: [],
+  };
   const assetForFile = new Map<string, LibraryAssetRecord>();
 
   /** The library row for a file: the one it already has, or a new one added to the plan. */

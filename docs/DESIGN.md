@@ -24,6 +24,7 @@ summarizes them and links out rather than repeating them.
 | [`GAME_PRESETS.md`](GAME_PRESETS.md) | Game presets (ADR 0027) |
 | [`DICE-SKINS.md`](DICE-SKINS.md) | Dice looks and image skins |
 | [`AI-PLAYERS.md`](AI-PLAYERS.md) | User guide: connecting your own AI app to a room (FR-PL-08, FR-PL-09) |
+| [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | User guide: having your AI app build a game from your materials (FR-GM-26, FR-GM-27) |
 | [`adr/`](adr/) | Architecture decision records — index in §8 |
 | [`../openspec/`](../openspec/) | Change proposals (`changes/`) and the accepted capability specs (`specs/`) |
 
@@ -345,7 +346,8 @@ apps/server        Express + Socket.IO.
                      identity and membership stores
   ws/socket.ts       the Socket.IO gateway
 apps/mcp           MCP server: users' own AI apps hold player seats. An ordinary client of
-                   apps/server, over REST and Socket.IO only (ADR 0052).
+                   apps/server, over REST and Socket.IO only (ADR 0052). /mcp/build has the
+                   game builder's tools, kept apart from the player tools (ADR 0053).
 apps/web           React panels + PixiJS board.
   board/             boardView.ts and everything Pixi: tools, fog, sight mask, movement
                      ruler, effects and sound, dice throws
@@ -583,6 +585,8 @@ checkpoint previews are built through the same filters.
 | FR-PL-07 | Replay for late joiners | `/api/rooms/:id/replay`, `ReplayBar` (ADR 0025) | B |
 | FR-PL-08 | Connect your own AI | `apps/mcp`, Share dialog, [`AI-PLAYERS.md`](AI-PLAYERS.md) (ADR 0052) | B |
 | FR-PL-09 | Several AI seats at one table | `apps/mcp`: one seat per `join_room`, `seat` on every tool (ADR 0052) | B |
+| FR-GM-26 | AI game builder | `/mcp/build`, pass routes `/api/build/*`, `BuildStore` (ADR 0053), [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | B |
+| FR-GM-27 | Review and publish a build | Owner routes `/api/builds/*`, `domain/buildPublish.ts`, `pages/build/` (ADR 0053) | B |
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
 | FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
 | FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |

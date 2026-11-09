@@ -277,9 +277,12 @@ export function footprintCenter(square: DraftSquare, size: number, grid: Pick<Gr
   const span = size * grid.cellSize;
   const left = grid.offsetX + square.column * grid.cellSize;
   const top = grid.offsetY + square.row * grid.cellSize;
-  if (left < -EDGE_TOLERANCE || top < -EDGE_TOLERANCE) return null;
-  if (left + span > map.width + EDGE_TOLERANCE || top + span > map.height + EDGE_TOLERANCE) return null;
-  return snapTokenCenter({ x: left + span / 2, y: top + span / 2 }, size, grid as GridSpec);
+  const center = snapTokenCenter({ x: left + span / 2, y: top + span / 2 }, size, grid as GridSpec);
+  // Checked after snapping: a token under one square wide can snap to a corner of its square.
+  const half = span / 2;
+  if (center.x - half < -EDGE_TOLERANCE || center.y - half < -EDGE_TOLERANCE) return null;
+  if (center.x + half > map.width + EDGE_TOLERANCE || center.y + half > map.height + EDGE_TOLERANCE) return null;
+  return center;
 }
 
 /** A saved draft map: what the AI gave, and where its grid stands. Only the server sets the last two. */

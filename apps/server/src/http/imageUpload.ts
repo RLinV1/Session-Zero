@@ -71,7 +71,8 @@ async function checkReceivedFile(file: Express.Multer.File): Promise<ImageUpload
     return check;
   }
   const { ok: _ok, ...facts } = check;
-  const realPath = `${file.path.slice(0, -path.extname(file.path).length)}${IMAGE_TYPES[facts.contentType]}`;
+  const extension = path.extname(file.path);
+  const realPath = `${extension ? file.path.slice(0, -extension.length) : file.path}${IMAGE_TYPES[facts.contentType]}`;
   if (realPath !== file.path) await rename(file.path, realPath);
   return { ok: true, image: { ...facts, path: realPath, key: path.basename(realPath), bytes: file.size, originalName: file.originalname } };
 }
@@ -81,7 +82,7 @@ async function checkReceivedFile(file: Express.Multer.File): Promise<ImageUpload
  * browser declared is only an early filter: the file's bytes decide what it is. Files get a random
  * name, so an object key never carries the uploader's filename.
  */
-export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BYTES) {
+export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BYTES, options: { anyDeclaredType?: boolean } = {}) {
   const upload = multer({
     storage: multer.diskStorage({
       destination: (_req, _file, cb) => {
@@ -93,7 +94,8 @@ export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BY
       filename: (_req, file, cb) => cb(null, `${randomUUID()}${IMAGE_TYPES[file.mimetype] ?? ""}`),
     }),
     limits: { fileSize: maxBytes, files: 1 },
-    fileFilter: (_req, file, cb) => cb(null, Boolean(IMAGE_TYPES[file.mimetype])),
+    // A command-line client often declares a generic type. Its bytes are checked either way.
+    fileFilter: (_req, file, cb) => cb(null, options.anyDeclaredType === true || Boolean(IMAGE_TYPES[file.mimetype])),
   }).single("file");
 
   /** Runs multer and turns its errors into a status instead of an unhandled 500. */
