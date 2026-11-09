@@ -10,7 +10,7 @@ afterEach(async () => {
   await server.close();
 });
 
-/** 1x1 transparent PNG. The server checks the declared type; bytes just need to exist. */
+/** 1x1 transparent PNG: the server reads the real format from these bytes. */
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64",

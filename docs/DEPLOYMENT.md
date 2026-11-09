@@ -136,6 +136,16 @@ curl -s http://localhost/health
 The first build is slow (the vision image holds OpenCV and an ONNX model, and Caddy is compiled with its rate limit module). Update with `git pull` and the same
 `up -d --build`; `migrate` runs again first, then the server restarts. Back up the volumes `pgdata`, `s3data`, `redisdata`.
 
+### Record the size of older uploads
+
+Run this once after the release that adds the upload allowance. Images stored before it count as zero bytes until their size is recorded, so nobody is wrongly refused while this waits. It is safe to run again.
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec server npm run uploads:backfill-sizes
+```
+
+It prints how many accounts are over each limit and the largest totals, by owner id only. Going over a limit removes nothing. If real accounts are over one, raise `UPLOAD_ALLOWANCE` in `apps/server/src/store/libraryStore.ts` and redeploy.
+
 ### AWS EC2
 
 1. Launch Ubuntu 24.04, `t3.medium` (2 vCPU, 4 GB), 30 GB gp3 disk. If the build is `Killed` (out of memory), move to `t3.large` (8 GB).

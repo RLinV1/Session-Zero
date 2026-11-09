@@ -5,6 +5,7 @@ import { hashToken } from "../src/domain/credentials";
 import type { RoomStore } from "../src/store/roomStore";
 import { newGuestToken, startServer } from "./helpers";
 import { storeCases } from "./storeHarness";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -25,7 +26,7 @@ async function seedLegacy(store: RoomStore) {
   await store.createAsset({
     id: assetId, ownerGmId, kind: "token", objectKey: `${randomUUID()}.png`, url: "/uploads/x.png",
     name: "Old goblin", width: 256, height: 256, grid: null, createdAt: now,
-  });
+  }, UPLOAD_ALLOWANCE);
   await store.createCreature({
     id: randomUUID(), ownerGmId, name: "Goblin", size: 1, maxHp: 7, ac: 15, imageAssetId: assetId, createdAt: now,
   });

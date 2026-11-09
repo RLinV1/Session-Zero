@@ -5,7 +5,8 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app";
-import { DEV_S3_ENDPOINT, LocalDiskAssetStore, createAssetStore, isAwsEndpoint, type AssetStore } from "../src/store/assetStore";
+import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DEV_S3_ENDPOINT, LocalDiskAssetStore, S3AssetStore, createAssetStore, isAwsEndpoint, type AssetStore } from "../src/store/assetStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { listenForFetch } from "./helpers";
 
@@ -16,6 +17,7 @@ function fakeS3(objects: Record<string, string> = {}): AssetStore {
     delete: async () => {},
     read: async (key) => (key in objects ? { body: Readable.from([objects[key]!]), contentType: "image/png" } : null),
     readPrivate: async (key) => (key in objects ? Buffer.from(objects[key]!) : null),
+    sizeOf: async (key) => (key in objects ? Buffer.byteLength(objects[key]!) : null),
   };
 }
 
@@ -113,6 +115,38 @@ describe("keeping a disk copy alongside object storage (upload-storage)", () => 
     const store = await createAssetStore(uploadDir, { S3_ENDPOINT: "http://s3:9000" }, async () => fakeS3());
     expect(Buffer.from((await store.readPrivate("map.png", 100))!).toString()).toBe("stored bytes");
     await expect(store.readPrivate("map.png", 2)).rejects.toThrow("limit");
+  });
+
+  it("measures an object in storage, falls back to the disk copy, and answers null when neither has it (upload-limits)", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
+    await writeFile(path.join(uploadDir, "old.png"), "disk bytes");
+    const store = await createAssetStore(uploadDir, { S3_ENDPOINT: "http://s3:9000" }, async () => fakeS3({ "new.png": "stored" }));
+    expect(await store.sizeOf("new.png")).toBe(6);
+    expect(await store.sizeOf("old.png")).toBe(10);
+    expect(await store.sizeOf("gone.png")).toBeNull();
+  });
+
+  it("measures an object on local disk without leaving the upload folder (upload-limits)", async () => {
+    const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
+    await writeFile(path.join(uploadDir, "map.png"), "12345");
+    const disk = new LocalDiskAssetStore(uploadDir);
+    expect(await disk.sizeOf("map.png")).toBe(5);
+    expect(await disk.sizeOf("../map.png")).toBe(5);
+    expect(await disk.sizeOf("gone.png")).toBeNull();
+  });
+
+  it("reads an object's length from S3 and treats only a 404 as missing (upload-limits)", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send").mockImplementation(async (command: unknown) => {
+      if (!(command instanceof HeadObjectCommand)) return {};
+      if (command.input.Key === "map.png") return { ContentLength: 42 };
+      throw Object.assign(new Error("failed"), { $metadata: { httpStatusCode: command.input.Key === "gone.png" ? 404 : 500 } });
+    });
+    const store = await S3AssetStore.connect({ endpoint: "http://s3:9000" });
+    expect(await store.sizeOf("map.png")).toBe(42);
+    expect(await store.sizeOf("gone.png")).toBeNull();
+    await expect(store.sizeOf("broken.png")).rejects.toThrow("failed");
+    expect(send).toHaveBeenCalled();
   });
 });
 

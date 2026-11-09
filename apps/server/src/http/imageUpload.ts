@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, unlink } from "node:fs/promises";
+import path from "node:path";
 import type { Request, Response } from "express";
 import multer from "multer";
+import sharp from "sharp";
+import { MAX_ASSET_EDGE } from "@vtt/shared";
 
 export const IMAGE_TYPES: Record<string, string> = {
   "image/png": ".png",
@@ -9,16 +12,72 @@ export const IMAGE_TYPES: Record<string, string> = {
   "image/webp": ".webp",
 };
 
+/** The formats a stored image may really be, by the name `sharp` gives each one. */
+const REAL_FORMATS = new Map([
+  ["png", "image/png"],
+  ["jpeg", "image/jpeg"],
+  ["webp", "image/webp"],
+]);
+
+const UNSUPPORTED = "Use PNG, JPEG or WebP";
+
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
+/** What an uploaded file's own bytes say it is. */
+export interface ImageFacts {
+  contentType: string;
+  width: number;
+  height: number;
+}
+
+/** An image that passed its checks, sitting in the upload folder under its real extension. */
+export interface ReceivedImage extends ImageFacts {
+  path: string;
+  /** Random, and carries nothing of the uploader's filename (asset-library: object name reveals nothing). */
+  key: string;
+  bytes: number;
+}
+
+export type ImageCheck = ({ ok: true } & ImageFacts) | { ok: false; status: 413 | 415; error: string };
+
 export type ImageUploadResult =
-  | { ok: true; file: Express.Multer.File }
+  | { ok: true; image: ReceivedImage }
   | { ok: false; status: 413 | 415 | 400; error: string };
 
 /**
- * One multipart image, validated by MIME type and size before it reaches object storage
- * (DESIGN.md §6). Files get a random name, so an object key never carries the uploader's
- * filename (asset-library: object name reveals nothing).
+ * Reads a file's real format and size from its header (upload-limits). The size is the one a
+ * browser draws, so a JPEG stored on its side reports its turned width and height.
+ */
+export async function checkImageBytes(file: string): Promise<ImageCheck> {
+  const metadata = await sharp(file, { limitInputPixels: false }).metadata().catch(() => null);
+  const contentType = metadata?.format ? REAL_FORMATS.get(metadata.format) : undefined;
+  if (!metadata || !contentType || !metadata.width || !metadata.height) return { ok: false, status: 415, error: UNSUPPORTED };
+  const turned = (metadata.orientation ?? 1) >= 5;
+  const width = turned ? metadata.height : metadata.width;
+  const height = turned ? metadata.width : metadata.height;
+  if (Math.max(width, height) > MAX_ASSET_EDGE) {
+    return { ok: false, status: 413, error: `Images must be ${MAX_ASSET_EDGE} pixels or smaller on each side` };
+  }
+  return { ok: true, contentType, width, height };
+}
+
+/** Removes a refused file, and renames a correct image saved under the wrong label to its real extension. */
+async function checkReceivedFile(file: Express.Multer.File): Promise<ImageUploadResult> {
+  const check = await checkImageBytes(file.path);
+  if (!check.ok) {
+    await unlink(file.path).catch(() => {});
+    return check;
+  }
+  const { ok: _ok, ...facts } = check;
+  const realPath = `${file.path.slice(0, -path.extname(file.path).length)}${IMAGE_TYPES[facts.contentType]}`;
+  if (realPath !== file.path) await rename(file.path, realPath);
+  return { ok: true, image: { ...facts, path: realPath, key: path.basename(realPath), bytes: file.size } };
+}
+
+/**
+ * One multipart image, checked before it reaches object storage (DESIGN.md §6). The MIME type the
+ * browser declared is only an early filter: the file's bytes decide what it is. Files get a random
+ * name, so an object key never carries the uploader's filename.
  */
 export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BYTES) {
   const upload = multer({
@@ -47,8 +106,8 @@ export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BY
           );
         }
         if (err) return resolve({ ok: false, status: 400, error: "Upload failed" });
-        if (!req.file) return resolve({ ok: false, status: 415, error: "Use PNG, JPEG or WebP" });
-        resolve({ ok: true, file: req.file });
+        if (!req.file) return resolve({ ok: false, status: 415, error: UNSUPPORTED });
+        resolve(checkReceivedFile(req.file));
       });
     });
 }

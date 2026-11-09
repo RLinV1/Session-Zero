@@ -7,6 +7,7 @@ import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
 import { RedisSeqSource } from "../src/store/redisSeq";
 import type { RoomStore } from "../src/store/roomStore";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 /**
  * `deleteRoom` contract for both stores (ADR 0009). Postgres runs only when DATABASE_URL is
@@ -44,7 +45,7 @@ for (const [label, store] of stores) {
       await s().saveCredential(revoked, { roomId, participantId: revokedParticipant });
       await s().revokeCredentials(roomId, revokedParticipant);
       const uploadKey = `${randomUUID()}.png`;
-      await s().recordRoomUpload(roomId, uploadKey);
+      await s().recordRoomUpload(roomId, uploadKey, UPLOAD_ALLOWANCE);
       return { roomId, inviteCode, live, revoked, uploadKey };
     };
 
@@ -61,7 +62,7 @@ for (const [label, store] of stores) {
         height: 100,
         grid: DEFAULT_GRID,
         createdAt: new Date().toISOString(),
-      });
+      }, UPLOAD_ALLOWANCE);
       return id;
     };
 
@@ -134,7 +135,7 @@ describe.skipIf(!postgres)("room deletion on Postgres (KAN-72, ADR 0009)", () =>
     await postgres!.append(roomId, 0, [{ actorId: null, event: { type: "RoomCreated", name: "Stuck" } }]);
     const cred = randomUUID();
     await postgres!.saveCredential(cred, { roomId, participantId: randomUUID() });
-    await postgres!.recordRoomUpload(roomId, "stuck.png");
+    await postgres!.recordRoomUpload(roomId, "stuck.png", UPLOAD_ALLOWANCE);
 
     // The room row is removed last; failing there proves the children's deletes roll back.
     const trigger = `fail_delete_${roomId.replace(/-/g, "")}`;
