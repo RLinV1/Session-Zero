@@ -41,7 +41,7 @@ function RoutePage({ route }: { route: Route }) {
     case "signup":
       return <SignUpPage />;
     case "account":
-      return <AccountPage creating={route.creating} />;
+      return <AccountPage />;
     case "privacy":
       return <PrivacyPage />;
     case "terms":

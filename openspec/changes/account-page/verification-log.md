@@ -71,3 +71,38 @@ The merge was clean. It brought in PR #162, which puts the name to the right of 
 ## Cleanup
 
 Nothing left to clean up in the servers or browser. The worktree and branch remain until this change lands.
+
+## Revision: sign-in leads to Your rooms, account page redesigned
+
+Run on 2026-11-09 against branch `feat/sign-in-lands-on-rooms`, cut from `origin/main` at `9185cf7`. This replaces steps 1 to 7 above, which describe the first version.
+
+### Environment
+
+- **Code under test:** the worktree `.claude/worktrees/sign-in-lands-on-rooms`, with no `.env`, so the server used the in-memory store.
+- **Servers:** API on :3301 and web on :5473, confirmed by each process's working directory and by the served code. A first start on :3201 and :5373 ran from the main checkout, so it was stopped and nothing was tested on it. Temporary entries in the main checkout's `.claude/launch.json` served the worktree and have been removed. Both servers are stopped.
+- **Browser:** the app's built-in browser at `http://127.0.0.1:5473`. The tab is closed.
+- **Accounts:** the project's seeded dev account (README), and one throwaway account, `verify-sign-in-rooms@example.test`, deleted in step 12. Both lived only in that server's memory.
+
+### Steps and results
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Home header, signed out | "Sign in" links to `/signin`, "Create account" to `/signup` |
+| 2 | Follow "Sign in" | `/signin`, on the entry layer |
+| 3 | Sign in | Lands on `/gm-dashboard`, "Your rooms" |
+| 4 | Open the account menu | Name and email, then "Your account", "Sound and graphics", "Sign out"; no password or delete action |
+| 5 | Choose "Your account" | `/account`, hub layer, menu closed; groups are Signed in as, Security, This browser, Your data |
+| 6 | Both themes | Reads correctly in each. Section labels 14px, semibold, muted; no rust fill on the page; the delete button is danger text with no fill |
+| 7 | Menu on the account page | "Your account" has `aria-current="page"`; Escape closes it and focus returns to its button; a press outside closes it |
+| 8 | "Sign out" on the page | Ends on `/`, signed out, with the signed-out header links |
+| 9 | Open `/account` signed out | `/signin` with no `next`, on the entry layer |
+| 10 | Open `/account/new`; create an account at `/signup` | The create-account form; signing up lands on `/gm-dashboard` |
+| 11 | 375 x 812, 39-character display name | No horizontal overflow on `/account` or `/` (scroll width 375); the name wraps; panel inside the window on both pages; menu rows 44px; sections stack |
+| 12 | "Delete account" on the page | Dialog opens with its button disabled; after typing the email and password, lands on `/`, and `/api/auth/me` returns no account |
+| 13 | Console errors | None |
+
+### Not fully exercised
+
+- Focus returning to the account button after the settings dialog closes. The dialog's native `close` event did not fire in this unfocused pane, and neither did a plain `<dialog>` used as a control. With the event dispatched by hand, focus landed on the button, and `test/accountPage.test.tsx` covers the same path.
+
+Also run: `npm run lint`, `npm run typecheck`, `npm test` (157 web, 1319 tests, plus shared, server and bench), and `openspec validate account-page --strict` and `account-deletion --strict`. One component test was added after the full run; the account tests, lint and typecheck were rerun after it.

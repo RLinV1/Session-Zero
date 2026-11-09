@@ -132,8 +132,8 @@ export function PrivacyPage() {
       <Part title="Deleting your data">
         <ul>
           <li>
-            Choose <strong>Delete account</strong> in the account menu. It removes your rooms, library, uploads and
-            sessions immediately and permanently.
+            Choose <strong>Delete account</strong> on your account page, under Your account in the account menu. It
+            removes your rooms, library, uploads and sessions immediately and permanently.
           </li>
           <li>
             Rooms you only joined, run by someone else, keep running. What you did there, such as your name, moves and
