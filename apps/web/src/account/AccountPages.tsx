@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { PASSWORD_MAX, PASSWORD_MIN } from "@vtt/shared";
+import { CaretDown } from "@phosphor-icons/react";
+import { PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
-import { EntryPage } from "../ui/SiteHeader";
+import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
 import { loadGmToken } from "../net/identity";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
+import { PopoverButton } from "../ui/Popover";
 import { SettingsMenu } from "../ui/SettingsMenu";
+import { SiteFooter } from "../ui/SiteFooter";
 import { changePassword, deleteAccount, signIn, signOut, signUp, useAccount } from "./accountStore";
 import { safeNext } from "./safeNext";
 
@@ -56,28 +59,26 @@ function AccountForm(props: {
   footer: ReactNode;
 }) {
   return (
-    <EntryPage>
-      <form
-        className="card account-form"
-        onSubmit={(e: FormEvent) => {
-          e.preventDefault();
-          props.onSubmit();
-        }}
-      >
-        <h1>{props.title}</h1>
-        {props.children}
-        {props.error && (
-          <p role="alert" className="error">
-            {props.error}
-          </p>
-        )}
-        <button className="primary" type="submit" disabled={props.busy}>
-          {props.busy ? props.busyLabel : props.submitLabel}
-        </button>
-        <p className="muted small-print">{props.footer}</p>
-        <Link href="/">Back to home</Link>
-      </form>
-    </EntryPage>
+    <form
+      className="card account-form"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        props.onSubmit();
+      }}
+    >
+      <h1>{props.title}</h1>
+      {props.children}
+      {props.error && (
+        <p role="alert" className="error">
+          {props.error}
+        </p>
+      )}
+      <button className="primary" type="submit" disabled={props.busy}>
+        {props.busy ? props.busyLabel : props.submitLabel}
+      </button>
+      <p className="muted small-print">{props.footer}</p>
+      <Link href="/">Back to home</Link>
+    </form>
   );
 }
 
@@ -92,20 +93,18 @@ function LegacyNote() {
   );
 }
 
-export function SignInPage() {
-  const { status, next } = useDestination();
+function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (status !== "signedOut") return null;
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       await signIn(email, password);
-      navigate(next, { replace: true });
+      onSignedIn();
     } catch (err) {
       setError(describe(err).message);
       setPassword("");
@@ -123,7 +122,7 @@ export function SignInPage() {
       onSubmit={() => void submit()}
       footer={
         <>
-          New here? <Link href={withNext("/signup")}>Create an account</Link>
+          New here? <Link href={createHref}>Create an account</Link>
         </>
       }
     >
@@ -147,21 +146,19 @@ export function SignInPage() {
   );
 }
 
-export function SignUpPage() {
-  const { status, next } = useDestination();
+function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
-  if (status !== "signedOut") return null;
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       await signUp(email, password, displayName);
-      navigate(next, { replace: true });
+      onSignedUp();
     } catch (err) {
       setError(describe(err));
       setBusy(false);
@@ -186,7 +183,7 @@ export function SignUpPage() {
       footer={
         <>
           A free account is needed to host a game; players join from your invite link with no account. Already have one?{" "}
-          <Link href={withNext("/signin")}>Sign in</Link>
+          <Link href={signInHref}>Sign in</Link>
         </>
       }
     >
@@ -225,54 +222,209 @@ export function SignUpPage() {
   );
 }
 
-/** The header's account menu on GM surfaces: who is signed in, change password, sign out. */
-export function AccountMenu() {
+export function SignInPage() {
+  const { status, next } = useDestination();
+  if (status !== "signedOut") return null;
+  return (
+    <EntryPage>
+      <SignInForm createHref={withNext("/signup")} onSignedIn={() => navigate(next, { replace: true })} />
+    </EntryPage>
+  );
+}
+
+export function SignUpPage() {
+  const { status, next } = useDestination();
+  if (status !== "signedOut") return null;
+  return (
+    <EntryPage>
+      <SignUpForm signInHref={withNext("/signin")} onSignedUp={() => navigate(next, { replace: true })} />
+    </EntryPage>
+  );
+}
+
+/**
+ * The account page (account-page), reached from "Your account" in the account menu and never as
+ * the end of signing in. Signed out there is nothing to show, so it hands over to sign-in with no
+ * `next`, and signing in then lands on the person's rooms as usual.
+ */
+export function AccountPage() {
   const account = useAccount();
-  const [open, setOpen] = useState(false);
+  const signedOut = account.status === "signedOut";
+  useEffect(() => {
+    if (signedOut) navigate("/signin", { replace: true });
+  }, [signedOut]);
+
+  if (account.status !== "signedIn") return null;
+  return <AccountOverview account={account.account} />;
+}
+
+/** Ends this device's session and goes home. Disabled once pressed, so it can't send twice. */
+function SignOutButton({ className }: { className: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void signOut().then(() => navigate("/", { replace: true }));
+      }}
+    >
+      Sign out
+    </button>
+  );
+}
+
+/** One subject of the account: its name at the left, what is there to see or do at the right. */
+function AccountSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="account-section">
+      <h2>{title}</h2>
+      <div className="account-rows">{children}</div>
+    </section>
+  );
+}
+
+function AccountRow({ title, detail, action }: { title: string; detail: string; action: ReactNode }) {
+  return (
+    <div className="account-row">
+      <div>
+        <h3>{title}</h3>
+        <p>{detail}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * Signed in: who this is and everything that changes the account, grouped by what it touches.
+ * Nothing here is the page's one main action, so nothing is rust; deleting goes last and only
+ * its label is in the danger colour, with the fill kept for the dialog that confirms it.
+ */
+function AccountOverview({ account }: { account: AccountView }) {
   const [changing, setChanging] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  if (account.status !== "signedIn") return null;
   return (
-    <div className="account-menu">
-      <button
-        type="button"
-        className="secondary small"
-        aria-expanded={open}
-        aria-controls="account-menu-panel"
-        onClick={() => setOpen(!open)}
-      >
-        {account.account.displayName}
-      </button>
-      {open && (
-        <div id="account-menu-panel" className="account-menu-panel">
-          <p>
-            <strong>{account.account.displayName}</strong>
-            <br />
-            <span className="muted">{account.account.email}</span>
-          </p>
-          <button type="button" className="secondary small" onClick={() => { setOpen(false); setSettingsOpen(true); }}>
-            Settings
-          </button>
-          <button type="button" className="secondary small" onClick={() => setChanging(true)}>
-            Change password
-          </button>
-          <button type="button" className="secondary small" onClick={() => setDeleting(true)}>
-            Delete account
-          </button>
-          <button
-            type="button"
-            className="secondary small"
-            onClick={() => void signOut().then(() => navigate("/", { replace: true }))}
-          >
-            Sign out
-          </button>
+    <div className="account-page">
+      <div className="page-shell page-bar">
+        <SiteHeader nav={<HubNav />} account={<AccountMenu onAccountPage />} />
+      </div>
+      <main className="page-shell">
+        <div className="account-overview">
+          <h1>Your account</h1>
+          <AccountSection title="Signed in as">
+            <p className="account-who">
+              <strong>{account.displayName}</strong>
+              <span>{account.email}</span>
+            </p>
+          </AccountSection>
+          <AccountSection title="Security">
+            <AccountRow
+              title="Password"
+              detail="Changing it signs out your other devices."
+              action={
+                <button type="button" className="secondary" onClick={() => setChanging(true)}>
+                  Change password
+                </button>
+              }
+            />
+          </AccountSection>
+          <AccountSection title="This browser">
+            <AccountRow
+              title="Sound and graphics"
+              detail="Saved here, not on your account."
+              action={
+                <button type="button" className="secondary" onClick={() => setSettingsOpen(true)}>
+                  Open settings
+                </button>
+              }
+            />
+            <AccountRow
+              title="Signed in here"
+              detail="Your other devices stay signed in."
+              action={<SignOutButton className="secondary" />}
+            />
+          </AccountSection>
+          <AccountSection title="Your data">
+            <AccountRow
+              title="Rooms, library and uploaded images"
+              detail="Deleting your account removes these permanently. It can't be undone."
+              action={
+                <button type="button" className="secondary danger" onClick={() => setDeleting(true)}>
+                  Delete account
+                </button>
+              }
+            />
+          </AccountSection>
         </div>
-      )}
+      </main>
+      <SiteFooter />
       <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
-      <DeleteAccountDialog open={deleting} email={account.account.email} onClose={() => setDeleting(false)} />
+      <DeleteAccountDialog open={deleting} email={account.email} onClose={() => setDeleting(false)} />
       <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
+  );
+}
+
+/**
+ * The header's account control: who is signed in and the short list a person wants between pages.
+ * Changing the password and deleting the account are on the account page, one step on, so the
+ * permanent action never sits beside everyday ones.
+ */
+export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean }) {
+  const account = useAccount();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  if (account.status !== "signedIn") return null;
+  const { displayName, email } = account.account;
+  return (
+    <>
+      <PopoverButton
+        label={displayName}
+        title="Account"
+        align="right"
+        placement="fixed"
+        className="account-trigger"
+        buttonRef={buttonRef}
+        buttonContent={
+          <>
+            {displayName}
+            <CaretDown aria-hidden="true" />
+          </>
+        }
+      >
+        {(close) => (
+          <div className="account-menu">
+            <p className="account-who">
+              <strong>{displayName}</strong>
+              <span>{email}</span>
+            </p>
+            <div className="menu-list">
+              <Link href="/account" className="menu-item" aria-current={onAccountPage ? "page" : undefined} onClick={close}>
+                Your account
+              </Link>
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  setSettingsOpen(true);
+                }}
+              >
+                Sound and graphics
+              </button>
+            </div>
+            <div className="menu-list">
+              <SignOutButton className="menu-item" />
+            </div>
+          </div>
+        )}
+      </PopoverButton>
+      <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} onAfterClose={() => buttonRef.current?.focus()} />
+    </>
   );
 }
 

@@ -1152,7 +1152,7 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   /* The header was eating the panel before the tabs came into view. One line each. */
   .panel-header { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; padding-bottom: 0; }
   .panel-header h1 { font-size: 1.05rem; }
-  .panel-header .whoami { width: 100%; }
+  .panel-header .whoami-row { width: 100%; }
   .condition-picker { grid-template-columns: 1fr; }
 
   /* Touch targets: WCAG 2.2 AA (2.5.8) asks for 24px minimum; 44px is the comfortable
@@ -1215,6 +1215,10 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 /* On a phone the account control and toggle keep the first row, at the right as on every page,
    and the page's navigation takes a row of its own beneath. */
 .account-pair { display: flex; align-items: center; gap: 0.4rem; }
+/* The account control may shrink, so a long name wraps inside it rather than widening the page. */
+.site-header .popover-anchor { flex: 0 1 auto; min-width: 0; }
+.site-header .account-trigger { max-width: 100%; overflow-wrap: anywhere; }
+.account-trigger svg { flex: none; font-size: 0.8em; }
 @media (max-width: 640px) {
   .site-nav { order: 1; flex-basis: 100%; }
   /* Signed out, the pair is too wide to share the first row: it takes the second, like the
@@ -1253,6 +1257,34 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 @media (max-width: 720px) {
   .policy-terms { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
   .policy-terms dd + dt { margin-top: var(--space-3); }
+}
+
+/* The account page (account-page): on the hub's ground like the policies. One block per subject,
+   split by a fading hairline: its name at the left, what there is to see or do at the right, as
+   in the policies' "what we keep". Stacked on a phone, where each button wraps beneath its text. */
+.account-page { min-height: 100dvh; display: flex; flex-direction: column; font-family: var(--font-ui); }
+.account-page main { flex: 1; padding: var(--space-6) 0 var(--space-8); }
+.account-overview { max-width: 56rem; display: flex; flex-direction: column; gap: var(--space-5); }
+.account-overview h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.02em; }
+.account-overview p { margin: 0; }
+.account-section {
+  display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: var(--space-3) var(--space-5);
+  padding-top: var(--space-5); border-top: 1px solid var(--border);
+}
+.account-section h2 { margin: 0; }
+.account-rows { display: flex; flex-direction: column; gap: var(--space-5); }
+.account-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-5); }
+.account-row > div { flex: 1 1 16rem; }
+.account-row h3 { margin: 0 0 var(--space-1); font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.account-row p { color: var(--muted); }
+/* After button.secondary, whose colour would win. --danger is too faint as text on the light ground. */
+.account-row button.danger { color: var(--danger); }
+:root[data-theme="light"] .account-row button.danger { color: var(--danger-strong); }
+/* Who is signed in, on the page and in the menu. Names and addresses wrap rather than cut off. */
+.account-who { display: flex; flex-direction: column; gap: var(--space-1); overflow-wrap: anywhere; }
+.account-who span { color: var(--muted); }
+@media (max-width: 720px) {
+  .account-section { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* The lit table behind the entry and hub pages (ui/Ambient.tsx, design-language: "Background
@@ -1375,13 +1407,18 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .guest-divider::before,
 .guest-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 
-.account-menu { position: relative; }
-.account-menu-panel {
-  position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 10; width: min(18rem, 80vw);
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); padding: 0.9rem;
-  display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem;
+/* The header's account menu: rows split by hairlines, not a stack of boxed buttons. Neutral hover,
+   since rust marks one action and nothing here is that. */
+.account-menu { width: min(17rem, calc(100vw - 2rem)); font-size: 0.92rem; }
+.account-menu .account-who { margin: 0; padding: var(--space-2); }
+.account-menu .menu-list { min-width: 0; padding-block: var(--space-1); border-top: 1px solid var(--border); }
+.account-menu .menu-list:last-child { padding-bottom: 0; }
+.account-menu .menu-item { border-radius: var(--radius-control); }
+.account-menu .menu-item:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.account-menu .menu-item[aria-current="page"] { background: var(--hover); box-shadow: inset 0 -2px 0 var(--accent); font-weight: 600; }
+@media (pointer: coarse), (max-width: 720px) {
+  .account-menu .menu-item { min-height: 44px; }
 }
-.account-menu-panel p { margin: 0; }
 
 .library-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 .library-toolbar input[type="search"] { flex: 1; min-width: 10rem; }
@@ -1978,11 +2015,12 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 
 /* ONE secondary control family. Every bordered, non-primary action in the shared header and
-   on the home page uses it: the header links, the theme toggle, Open, Join, Roll. Same border token,
-   same fill, same radius, same type. Only the primary action (.cta) looks different, and
-   it is the only thing that should. */
+   on the home page uses it: the header links, the account menu, the theme toggle, Open, Join, Roll.
+   Same border token, same fill, same radius, same type. Only the primary action (.cta) looks
+   different, and it is the only thing that should. */
 .site-header .nav-link,
 .site-header .nav-cta,
+.site-header .account-trigger,
 .home-page .ui-button,
 .icon-button {
   display: inline-flex;
@@ -2004,6 +2042,7 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
    matches that field so the row has one baseline. */
 .site-header .nav-link,
 .site-header .nav-cta,
+.site-header .account-trigger,
 .icon-button { min-height: 2.1rem; }
 .home-page .ui-button { min-height: 2.25rem; }
 
@@ -2013,11 +2052,13 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 .site-header .nav-link:hover,
 .site-header .nav-cta:hover,
+.site-header .account-trigger:hover,
 .home-page .ui-button:hover,
 .icon-button:hover { border-color: var(--accent); background: var(--hover); color: var(--text); }
 
 .site-header .nav-link:active,
 .site-header .nav-cta:active,
+.site-header .account-trigger:active,
 .home-page .ui-button:active,
 .icon-button:active { transform: translateY(1px); }
 
@@ -2038,17 +2079,10 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .icon-button:hover { color: var(--text); border-color: var(--accent); background: var(--hover); }
 .icon-button:active { transform: translateY(1px); }
 
-/* The account menu's trigger belongs to the same family. */
-.site-header .account-menu > button {
-  min-height: 2.1rem;
-  padding: 0 0.7rem;
-  border-radius: var(--radius-control);
-  font-size: 0.92rem;
-}
-
 /* Hairlines that fade at both ends, rather than a flat rule edge to edge. */
 .part-head,
 .policy-part,
+.account-section,
 .site-footer {
   border-image: linear-gradient(90deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent) 1;
 }
@@ -2276,7 +2310,8 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
   .cta svg,
   .icon-button,
   .site-header .nav-link,
-  .site-header .nav-cta { transition: none; }
+  .site-header .nav-cta,
+  .site-header .account-trigger { transition: none; }
 }
 
 /* Each map shown whole, as the library holds it, with its own grid over it. */
@@ -2295,9 +2330,13 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 /* ---------- Leave table and departures (KAN-58, ADR 0006) ---------- */
 
-/* Quiet on purpose: never the panel's primary control. */
-button.link.leave-table { display: inline; padding: 0; font-size: inherit; color: var(--muted); text-decoration-color: var(--border-strong); }
-button.link.leave-table:hover { color: var(--danger); text-decoration-color: var(--danger); }
+/* Has its own place on the identity row, so a long name wraps or truncates and never pushes it
+   out of view. Neutral at rest, like every other button, so it is not the panel's primary
+   control; red appears only once the pointer is on it (leave-table). */
+.whoami-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.whoami-row .whoami { min-width: 0; }
+button.leave-table { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 .leave-confirm, .resolve-departure { display: flex; flex-direction: column; gap: var(--space-3); }
 .leave-confirm p, .resolve-departure p { margin: 0; }
 .leave-losses { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: var(--space-1); }
@@ -3671,7 +3710,8 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .panel-header { flex-wrap: nowrap; align-items: center; gap: var(--space-2); }
   .panel-header .status { flex: none; font-size: 0; line-height: 1; }
   .panel-header .status::before { font-size: var(--fs-sm); }
-  .panel-header .whoami { width: auto; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-header .whoami-row { width: auto; flex: 1 1 auto; min-width: 0; }
+  .panel-header .whoami { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* The chat button rests on the board's top-right corner, so it never covers the panel below. */
   .room { position: relative; }
@@ -3700,7 +3740,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .animation-editor-tabs .map-editor-step { flex: 1 1 0; padding-inline: var(--space-1); font-size: var(--fs-sm); }
 
   /* Site header links and the account forms' way back: 44px, same size as the text around them. */
-  .site-header .nav-link, .site-header .nav-cta { min-height: 44px; display: inline-flex; align-items: center; }
+  .site-header .nav-link, .site-header .nav-cta, .site-header .account-trigger { min-height: 44px; display: inline-flex; align-items: center; }
   .entry form > a { font-size: var(--fs-sm); display: inline-flex; align-items: center; min-height: 44px; }
 
   /* Library pickers: names wrap to two lines instead of cutting off. */

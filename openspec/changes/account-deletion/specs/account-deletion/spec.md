@@ -27,7 +27,7 @@ Deleting an account SHALL remove every room it owns (with each room's history, u
 - **THEN** that room continues, the user's membership row is removed, and their seat can no longer be resumed
 
 ### Requirement: Deletion is confirmed in the UI
-The account menu SHALL offer "Delete account". The dialog MUST state that deletion is permanent, require the user to type their email address, and require their password before the delete button enables.
+The account page SHALL offer "Delete account". The dialog MUST state that deletion is permanent, require the user to type their email address, and require their password before the delete button enables.
 
 #### Scenario: Confirmation gate
 - **WHEN** the dialog is open and the typed email does not match the account email

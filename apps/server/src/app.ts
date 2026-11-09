@@ -91,7 +91,7 @@ export async function buildApp({
   now = Date.now,
 }: AppOptions): Promise<App> {
   const app = express();
-  // Behind Fly or Railway, so `req.ip` (rate limits) and `req.secure` see the client (ADR 0017 I1).
+  // Behind Caddy (deploy/Caddyfile), so `req.ip` (rate limits) and `req.secure` see the client (ADR 0017 I1).
   const trustProxy = trustProxyFromEnv();
   if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
   const server = createServer(app);

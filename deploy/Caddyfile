@@ -1,13 +1,92 @@
+# Limits against floods live here; docs/EDGE-PROTECTION.md explains them and what they can't stop.
+{
+	# The privacy page says addresses are never saved, and logs land on disk. The rate limiter logs every
+	# refusal with the address, so it's left out, which also stops a flood filling the disk with refusals.
+	# Proxy errors are worth keeping, without the fields that hold an address.
+	log default {
+		exclude http.handlers.rate_limit
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip delete
+				request>remote_port delete
+				request>client_ip delete
+				request>headers delete
+			}
+		}
+	}
+
+	servers {
+		# Whose X-Forwarded-For to believe. Empty means nobody, which is right for a VM reached directly.
+		# Read from the right: a client can write anything on the left, and Cloudflare keeps what it wrote.
+		trusted_proxies static {$TRUSTED_PROXIES:}
+		trusted_proxies_strict
+		timeouts {
+			# A connection that sends no complete request head in this long is dropped (slowloris).
+			read_header 10s
+			idle 2m
+		}
+	}
+}
+
 # SITE_ADDRESS decides the protocol:
-#   :80              plain HTTP (a VM reached by IP; the default)
+#   :80              plain HTTP (a VM reached by IP, or behind a Cloudflare Tunnel; the default)
 #   vtt.example.com  automatic HTTPS (needs DNS pointing here and ports 80 and 443 open)
 {$SITE_ADDRESS::80} {
 	encode gzip
 
+	# Per client address, with a short window: each address holds 24 bytes per event in each zone it
+	# touches, so a long window would let many addresses spend the limiter's own memory. The budgets
+	# leave room for a whole class on one address (ADR 0051).
+	rate_limit {
+		# New socket connections. Each with a bad credential costs two database lookups.
+		zone sockets {
+			match {
+				path /socket.io/*
+			}
+			key {client_ip}
+			ipv6_prefix 64
+			window 10s
+			events 100
+		}
+		zone api {
+			match {
+				path /api/* /health
+			}
+			key {client_ip}
+			ipv6_prefix 64
+			window 10s
+			events 500
+		}
+		# Each one reads object storage, whether or not the file exists.
+		zone uploads {
+			match {
+				path /uploads/*
+			}
+			key {client_ip}
+			ipv6_prefix 64
+			window 10s
+			events 1000
+		}
+	}
+
+	# The web client connects by WebSocket only (roomConnection.ts). A polling request is never ours,
+	# and each one that isn't refused would open a server session without opening a connection.
+	@polling {
+		path /socket.io/*
+		query transport=polling
+	}
+	handle @polling {
+		respond 403
+	}
+
 	# One origin for the browser: API, sockets (WebSocket upgrades pass through) and uploads go to the app server.
 	@backend path /api/* /socket.io/* /uploads/* /health
 	handle @backend {
-		reverse_proxy server:3001
+		reverse_proxy server:3001 {
+			# Exactly one entry, the address decided above, so TRUST_PROXY=1 stays right whatever is in front of Caddy.
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	# AI apps connect here (docs/AI-PLAYERS.md). Its address is resolved per request, so if this service is down, only this path fails.
@@ -15,6 +94,8 @@
 	handle @mcp {
 		reverse_proxy mcp:3002 {
 			flush_interval -1
+			# As for the app server: one entry, so TRUST_PROXY=1 finds the real address behind anything.
+			header_up X-Forwarded-For {client_ip}
 		}
 	}
 

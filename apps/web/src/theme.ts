@@ -46,6 +46,7 @@ export function layerFor(route: Route): Layer {
     // The policy pages are long reading, so they take the hub's calm glow, not the entry photograph.
     case "gmDashboard":
     case "library":
+    case "account":
     case "privacy":
     case "terms":
       return "hub";

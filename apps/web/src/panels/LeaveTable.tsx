@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { SignOut } from "@phosphor-icons/react";
 import type { Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
@@ -6,7 +7,7 @@ import { Modal } from "../ui/Modal";
 /**
  * Leave table (KAN-58, ADR 0006): a player gives up their seat for good.
  *
- * Deliberately quiet: a link-style button beside "You are …", never the panel's primary
+ * A small unfilled button beside "You are …": easy to find at rest, never the panel's primary
  * control. The confirmation says exactly what is lost before anything reaches the server,
  * and its safe choice has focus. On success the server ends every tab of this seat with
  * `sessionEnded`, so there is nothing to do here but wait for the room page to swap screens.
@@ -45,8 +46,8 @@ export function LeaveTable({ connection, state, you }: { connection: RoomConnect
 
   return (
     <>
-      <button type="button" className="link leave-table" onClick={() => setOpen(true)}>
-        Leave table
+      <button type="button" className="secondary small leave-table" onClick={() => setOpen(true)}>
+        <SignOut size={14} aria-hidden="true" /> Leave table
       </button>
       <Modal open={open} title={`Leave ${state.name}?`} onClose={close} initialFocus={stayRef}>
         <div className="leave-confirm">

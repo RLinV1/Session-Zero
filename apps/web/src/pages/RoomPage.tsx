@@ -765,16 +765,12 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             <span className={`status status-${status}`} role="status">
               {STATUS_LABEL[status]} · seq {seq}
             </span>
-            {/* A div, not a p: Leave table renders its confirmation <dialog> in here. */}
-            <div className="whoami">
-              You are <strong>{shownYou!.displayName}</strong> ({shownYou!.role === "gm" ? "GM" : "player"})
+            <div className="whoami-row">
+              <div className="whoami">
+                You are <strong>{shownYou!.displayName}</strong> ({shownYou!.role === "gm" ? "GM" : "player"})
+              </div>
               {/* Players only: the GM can't leave their own room; Home is their way out. */}
-              {shownYou!.role === "player" && !readOnly && (
-                <>
-                  {" · "}
-                  <LeaveTable connection={connection} state={state} you={you} />
-                </>
-              )}
+              {shownYou!.role === "player" && !readOnly && <LeaveTable connection={connection} state={state} you={you} />}
             </div>
           </header>
           {/*

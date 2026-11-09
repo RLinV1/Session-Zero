@@ -51,6 +51,12 @@ const MAX_CONNECTIONS_PER_SEAT = 8;
 const CONNECTS_PER_WINDOW = 120;
 const CONNECT_WINDOW_MS = 60_000;
 const TOO_MANY_CONNECTIONS = "This seat is open in too many tabs or devices. Close some, then reload this page.";
+/**
+ * Handshakes one connection may try (ADR 0051). Socket.IO keeps a refused connection open for another
+ * try, so a single upgrade, all a proxy can count, could run thousands of credential lookups. Socket.IO's
+ * own client sends one: it closes the connection when refused, and a reconnect is a new connection.
+ */
+const HANDSHAKES_PER_CONNECTION = 3;
 
 /**
  * Recent send times for one limit, per participant in each loaded room, oldest first. Shared by all
@@ -131,9 +137,19 @@ export function registerSocket(
   const resyncWindows = new SeatWindows(RESYNCS_PER_WINDOW, RESYNC_WINDOW_MS);
   const connectWindows = new SeatWindows(CONNECTS_PER_WINDOW, CONNECT_WINDOW_MS);
   const liveTraffic = new SeatLiveTraffic();
+  const handshakes = new WeakMap<Socket["conn"], number>();
 
   // Authenticate during the handshake so an unauthorized socket never reaches a room.
   io.use(async (socket, next) => {
+    // Counted on arrival, not on refusal: a burst has all landed before the first lookup returns.
+    const tried = (handshakes.get(socket.conn) ?? 0) + 1;
+    handshakes.set(socket.conn, tried);
+    if (tried > HANDSHAKES_PER_CONNECTION) {
+      socket.conn.close();
+      // Nothing is sent on a closed connection, but Socket.IO only forgets this socket once called.
+      return next(new Error("too_many_handshakes"));
+    }
+
     const auth = HandshakeAuth.safeParse(socket.handshake.auth);
     if (!auth.success) return next(new Error("bad_request"));
 

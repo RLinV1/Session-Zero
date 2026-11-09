@@ -89,8 +89,8 @@ export function PrivacyPage() {
           <li>No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.</li>
           <li>We don't sell or share what you put in the app with anyone.</li>
           <li>
-            Your IP address is used to slow down repeated sign-in, sign-up and join attempts. It is held in memory for an
-            hour at most and never saved.
+            Your IP address is used to slow down repeated requests, including sign-in, sign-up and join attempts. It is
+            held in memory for an hour at most and never saved.
           </li>
         </ul>
       </Part>
@@ -132,8 +132,8 @@ export function PrivacyPage() {
       <Part title="Deleting your data">
         <ul>
           <li>
-            Choose <strong>Delete account</strong> in the account menu. It removes your rooms, library, uploads and
-            sessions immediately and permanently.
+            Choose <strong>Delete account</strong> on your account page, under Your account in the account menu. It
+            removes your rooms, library, uploads and sessions immediately and permanently.
           </li>
           <li>
             Rooms you only joined, run by someone else, keep running. What you did there, such as your name, moves and
