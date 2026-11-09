@@ -117,7 +117,7 @@ Older dice pictures are not backfilled. They are re-encoded by the browser so th
 
 ### D9. HTTP 409, and no client change
 
-Dice looks already answer 409 for "You can keep up to N". 413 stays reserved for one file that is too big. Every upload screen shows the server's `error` through `errorFrom`, so no UI work is expected; task 5.2 confirms it on each screen.
+Dice looks already answer 409 for "You can keep up to N". 413 stays reserved for one file that is too big. Every upload screen shows the server's `error` through `errorFrom`, except the dice look screen, which replaced it with a generic retry message. Task 5.2 found this, and `saveDiceLook` now passes a 409's message through.
 
 ### D10. No ADR
 

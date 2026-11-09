@@ -157,7 +157,7 @@ strokes are per-viewer marks that are never sent anywhere (see §6, FR-TAC-03/04
 | Regenerate invite | `POST /api/rooms/:roomId/invite` (GM only, FR-GM-20) |
 | My rooms | `GET /api/gm/rooms`, `GET /api/me/rooms` (joined rooms) |
 | Delete a room | `DELETE /api/rooms/:roomId` (ADR 0009) |
-| Upload room art | `POST /api/uploads` (GM only, 25 MB, PNG/JPEG/WebP) |
+| Upload room art | `POST /api/uploads` (GM only, 25 MB, PNG/JPEG/WebP, format and size read from the file) |
 | Library | `/api/library` (maps and token art), `/creatures`, `/encounters`, `/animations`, `/dice`, `/:id/board` (walls and fog prepared on a library map), `/uvtt/imports` |
 | UVTT | Import into a room via `scene.importUVTT` or into the library; export a room's scene as `.uvtt` |
 | Grid detection | `GET /api/rooms/:roomId/grid-detection`, `POST …/retry` (also per library map) |
@@ -187,6 +187,15 @@ HTTP request budgets are per server process and return `429` with `Retry-After` 
 
 Failed password guesses remain limited to 10/15 minutes per email, and failed current-password
 checks to 10/15 minutes per account. Room capacity, file sizes and worker concurrency are separate limits.
+
+Every account also has an upload allowance, which answers `409` because waiting does not help:
+
+| Allowance | Limit | Counts |
+| --- | --- | --- |
+| Library items | 1,000 | Uploaded maps and token art. Built-in maps do not count |
+| Image storage | 2 GB | Library art, images uploaded to rooms the account owns, and dice pictures. A room with no owner has its own 2 GB |
+
+Going over a limit only stops new uploads; nothing an account already holds is removed or hidden.
 
 Each seat also has socket limits, shared across its connections ([ADR 0051](adr/0051-seat-limits-and-room-lock.md)):
 800 commands per 20 seconds and 1,800 per 5 minutes for a player, 3,000 per 30 seconds for the GM, 30 resyncs a minute, 40 live messages

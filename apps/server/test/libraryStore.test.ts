@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GRID, ENCOUNTER_TEMPLATE_VERSION } from "@vtt/shared";
 import { CreatureImageMissingError, EncounterNameConflictError, EncounterLimitError, EncounterMapMissingError, type LibraryAssetRecord, type NewCreatureRecord, type NewEncounterRecord } from "../src/store/libraryStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
 import type { RoomStore } from "../src/store/roomStore";
+import { UPLOAD_ALLOWANCE, UploadAllowanceError, type UploadAllowance } from "../src/store/libraryStore";
+import { backfillUploadSizes } from "../src/domain/uploadSizeBackfill";
+import { storeCases } from "./storeHarness";
 
 /**
  * One contract, two stores (ADR 0004). Postgres runs only when DATABASE_URL is set,
@@ -41,7 +44,7 @@ for (const [label, store] of stores) {
 
     it("saves terrain/grid atomically, fences concurrent editors and preserves omitted legacy terrain (ADR 0046)", async () => {
       const owner = await s().registerGm(randomUUID());
-      const map = asset(owner); await s().createAsset(map);
+      const map = asset(owner); await s().createAsset(map, UPLOAD_ALLOWANCE);
       const initial = (await s().findAssetPreparation(map.id, owner))!;
       const board = { walls: [], fog: [], terrain: [{ row: 1, start: 1, end: 3, kind: "difficult" as const }] };
       const change = { revision: initial.revision, grid: DEFAULT_GRID, board };
@@ -87,7 +90,7 @@ for (const [label, store] of stores) {
       const gmA = await s().registerGm(randomUUID());
       const gmB = await s().registerGm(randomUUID());
       const a = asset(gmA);
-      await s().createAsset(a);
+      await s().createAsset(a, UPLOAD_ALLOWANCE);
 
       expect((await s().listAssets(gmA)).map((x) => x.id)).toEqual([a.id]);
       expect(await s().listAssets(gmB)).toEqual([]);
@@ -100,7 +103,7 @@ for (const [label, store] of stores) {
     it("renames and re-grids an asset", async () => {
       const gm = await s().registerGm(randomUUID());
       const a = asset(gm);
-      await s().createAsset(a);
+      await s().createAsset(a, UPLOAD_ALLOWANCE);
       const grid = { ...DEFAULT_GRID, cellSize: 64 };
       const updated = await s().updateAsset(a.id, gm, { name: "Crypt", grid });
       expect(updated).toMatchObject({ name: "Crypt", grid });
@@ -111,7 +114,7 @@ for (const [label, store] of stores) {
       const board: NonNullable<LibraryAssetRecord["board"]> = { walls: [{ a: { x: 12.5, y: 25 }, b: { x: 62.5, y: 25 }, source: "objects_line_of_sight",
         uvttPortal: { position: { x: 20, y: 10 }, rotation: 0.8, closed: false, freestanding: true } }], fog: [] };
       const a = asset(gm, { grid: { ...DEFAULT_GRID, cellSize: 50, offsetX: 12.5, offsetY: 25 }, board });
-      await s().createAsset(a);
+      await s().createAsset(a, UPLOAD_ALLOWANCE);
       expect(await s().findAsset(a.id, gm)).toMatchObject({ grid: a.grid, board });
       expect(await s().findAssetBoard(a.id, gm)).toEqual(board);
     });
@@ -121,7 +124,7 @@ for (const [label, store] of stores) {
       const board: NonNullable<LibraryAssetRecord["board"]> = { walls: [{ a: { x: 15.000000000000002, y: 0.6000000000000001 }, b: { x: 70, y: 100 },
         uvttPortal: { position: { x: 32.50000000000001, y: 15.000000000000002 }, rotation: 1.2000000000000002, closed: false } }], fog: [] };
       const grid = { ...DEFAULT_GRID, offsetX: 15.000000000000002 };
-      const a = asset(gm, { grid, board }); await s().createAsset(a);
+      const a = asset(gm, { grid, board }); await s().createAsset(a, UPLOAD_ALLOWANCE);
       expect(await s().findAsset(a.id, gm)).toMatchObject({ grid, board });
       await s().setAssetBoard(a.id, gm, board);
       expect(await s().findAssetBoard(a.id, gm)).toEqual(board);
@@ -132,7 +135,7 @@ for (const [label, store] of stores) {
       const gmA = await s().registerGm(randomUUID());
       const gmB = await s().registerGm(randomUUID());
       const a = asset(gmA, { kind: "token", grid: null });
-      await s().createAsset(a);
+      await s().createAsset(a, UPLOAD_ALLOWANCE);
       const roomA = randomUUID();
       const roomB = randomUUID();
       await s().createRoom(roomA, randomUUID().slice(0, 10), { ownerGmId: gmA, name: "Cave" });
@@ -210,7 +213,7 @@ for (const [label, store] of stores) {
     it("links token art, reports it, and keeps the creature without it when the art is deleted", async () => {
       const gm = await s().registerGm(randomUUID());
       const art = asset(gm, { kind: "token", grid: null, url: "/uploads/goblin.webp" });
-      await s().createAsset(art);
+      await s().createAsset(art, UPLOAD_ALLOWANCE);
       const c = creature(gm, { imageAssetId: art.id });
       expect((await s().createCreature(c)).imageUrl).toBe("/uploads/goblin.webp");
       expect(await s().creaturesUsingImage(art.id, gm)).toEqual([{ id: c.id, name: "Goblin" }]);
@@ -245,7 +248,7 @@ for (const [label, store] of stores) {
     it("scopes every encounter template read and write to its owner (encounter-templates, FR-GM-13)", async () => {
       const [a, b] = [await s().registerGm(randomUUID()), await s().registerGm(randomUUID())];
       const map = asset(a);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const e = encounter(a, map.id);
       await s().createEncounter(e, 50);
       expect(await s().findEncounter(e.id, a)).toMatchObject({ id: e.id, mapName: map.name, mapUrl: map.url });
@@ -263,8 +266,8 @@ for (const [label, store] of stores) {
       const [gm, other] = [await s().registerGm(randomUUID()), await s().registerGm(randomUUID())];
       const map = asset(gm);
       const otherMap = asset(other);
-      await s().createAsset(map);
-      await s().createAsset(otherMap);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
+      await s().createAsset(otherMap, UPLOAD_ALLOWANCE);
       const results = await Promise.allSettled(["Ambush", " ambush ", "AMBUSH"].map((name) => s().createEncounter(encounter(gm, map.id, { name }), 50)));
       expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       for (const result of results) if (result.status === "rejected") expect(result.reason).toBeInstanceOf(EncounterNameConflictError);
@@ -281,7 +284,7 @@ for (const [label, store] of stores) {
     it("renames and deletes an encounter template, newest listed first", async () => {
       const gm = await s().registerGm(randomUUID());
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const older = encounter(gm, map.id, { name: "Older", createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" });
       const newer = encounter(gm, map.id, { name: "Newer", createdAt: "2026-10-02T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z" });
       await s().createEncounter(older, 50);
@@ -296,7 +299,7 @@ for (const [label, store] of stores) {
     it("updates a template's name and board in place, most recently saved first (ADR 0033)", async () => {
       const [gm, other] = [await s().registerGm(randomUUID()), await s().registerGm(randomUUID())];
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const first = encounter(gm, map.id, { name: "First", createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" });
       const second = encounter(gm, map.id, { name: "Second", createdAt: "2026-10-02T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z" });
       await s().createEncounter(first, 50);
@@ -317,7 +320,7 @@ for (const [label, store] of stores) {
     it("keeps temporary editing rooms private, off room lists and findable for the sweep (ADR 0033)", async () => {
       const [gm, other] = [await s().registerGm(randomUUID()), await s().registerGm(randomUUID())];
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const e = encounter(gm, map.id);
       await s().createEncounter(e, 50);
       const [normal, editing, fresh] = [randomUUID(), randomUUID(), randomUUID()];
@@ -353,7 +356,7 @@ for (const [label, store] of stores) {
     it("holds an owner to the template limit even when saves arrive together (encounter-templates, FR-GM-13)", async () => {
       const gm = await s().registerGm(randomUUID());
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       for (let i = 0; i < 2; i++) await s().createEncounter(encounter(gm, map.id, { name: `Existing ${i}` }), 3);
       const results = await Promise.allSettled([0, 1, 2, 3].map((i) => s().createEncounter(encounter(gm, map.id, { name: `Concurrent ${i}` }), 3)));
       expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -362,14 +365,14 @@ for (const [label, store] of stores) {
       // Another owner is not held to this owner's count.
       const other = await s().registerGm(randomUUID());
       const otherMap = asset(other);
-      await s().createAsset(otherMap);
+      await s().createAsset(otherMap, UPLOAD_ALLOWANCE);
       await expect(s().createEncounter(encounter(other, otherMap.id), 3)).resolves.toBeTruthy();
     });
 
     it("creates and links a temporary room's first template in one step (encounter-templates, FR-GM-13)", async () => {
       const [gm, other] = [await s().registerGm(randomUUID()), await s().registerGm(randomUUID())];
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const [room, normal] = [randomUUID(), randomUUID()];
       await s().createRoom(room, randomUUID().slice(0, 8), { ownerGmId: gm, name: "New", temporary: true });
       await s().createRoom(normal, randomUUID().slice(0, 8), { ownerGmId: gm, name: "Table" });
@@ -404,7 +407,7 @@ for (const [label, store] of stores) {
     it("keeps an encounter template without its map when the map is deleted, and refuses a map that does not exist", async () => {
       const gm = await s().registerGm(randomUUID());
       const map = asset(gm);
-      await s().createAsset(map);
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
       const e = encounter(gm, map.id);
       await s().createEncounter(e, 50);
       await s().deleteAsset(map.id, gm);
@@ -413,3 +416,188 @@ for (const [label, store] of stores) {
     });
   });
 }
+
+describe.each(storeCases)("upload allowance, %s store (FR-GM-02, upload-limits)", (_name, makeStore) => {
+  const s = makeStore();
+  const NO_LIMIT: UploadAllowance = { maxItems: 1_000_000, maxBytes: Number.MAX_SAFE_INTEGER };
+  const SMALL: UploadAllowance = { maxItems: 3, maxBytes: 1000 };
+  const newOwner = () => s.registerGm(randomUUID());
+  const item = (ownerGmId: string, byteSize?: number | null, overrides: Partial<LibraryAssetRecord> = {}): LibraryAssetRecord => ({
+    id: randomUUID(), ownerGmId, kind: "token", objectKey: `${randomUUID()}.png`, url: "/uploads/x.png", name: "Art",
+    width: 10, height: 10, byteSize, grid: null, createdAt: new Date().toISOString(), ...overrides,
+  });
+  const newRoom = async (ownerGmId?: string) => {
+    const id = randomUUID();
+    await s.createRoom(id, randomUUID().slice(0, 12), ownerGmId ? { ownerGmId } : {});
+    return id;
+  };
+  const newLook = async (ownerGmId: string) => {
+    const now = new Date().toISOString();
+    const look = { id: randomUUID(), ownerGmId, name: "Look", faces: {}, createdAt: now, updatedAt: now };
+    await s.createDiceLook(look);
+    return look.id;
+  };
+  const face = (bytes?: number) => ({ objectKey: `${randomUUID()}.png`, url: "/uploads/f.png", width: 10, height: 10, ...(bytes !== undefined && { bytes }) });
+  const now = () => new Date().toISOString();
+  const refused = (limit: "items" | "bytes") => expect.objectContaining({ name: "Error", limit });
+
+  it("adds up library art, room uploads and dice pictures", async () => {
+    const owner = await newOwner();
+    await s.createAsset(item(owner, 100), NO_LIMIT);
+    await s.recordRoomUpload(await newRoom(owner), "a.png", NO_LIMIT, { byteSize: 20 });
+    await s.setDiceLookFace(await newLook(owner), owner, "d6", face(3), now(), NO_LIMIT);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toEqual({ items: 1, bytes: 123 });
+  });
+
+  it("leaves out built-in maps, and counts an unrecorded size as zero but still as an item", async () => {
+    const owner = await newOwner();
+    await s.seedShippedMaps(owner, [item(owner, undefined, { kind: "map", objectKey: "shipped:demo" })]);
+    await s.createAsset(item(owner, null), NO_LIMIT);
+    await s.setDiceLookFace(await newLook(owner), owner, "d6", face(), now(), NO_LIMIT);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toEqual({ items: 1, bytes: 0 });
+  });
+
+  it("gives a room with no owner its own storage allowance", async () => {
+    const room = await newRoom();
+    await s.recordRoomUpload(room, "a.png", SMALL, { byteSize: 900 });
+    expect(await s.uploadUsage({ roomId: room })).toEqual({ items: 0, bytes: 900 });
+    await expect(s.recordRoomUpload(room, "b.png", SMALL, { byteSize: 200 })).rejects.toEqual(refused("bytes"));
+    expect(await s.hasRoomUpload(room, "b.png")).toBe(false);
+  });
+
+  it("stops at the item limit and adds nothing", async () => {
+    const owner = await newOwner();
+    for (let i = 0; i < SMALL.maxItems; i += 1) await s.createAsset(item(owner, 1), SMALL);
+    await expect(s.createAsset(item(owner, 1), SMALL)).rejects.toBeInstanceOf(UploadAllowanceError);
+    await expect(s.createAsset(item(owner, 1), SMALL)).rejects.toEqual(refused("items"));
+    expect((await s.listAssets(owner))).toHaveLength(SMALL.maxItems);
+  });
+
+  it("refuses what would cross the byte limit, and still takes what fits exactly", async () => {
+    const owner = await newOwner();
+    await s.createAsset(item(owner, 900), SMALL);
+    await expect(s.createAsset(item(owner, 200), SMALL)).rejects.toEqual(refused("bytes"));
+    await s.createAsset(item(owner, 100), SMALL);
+    await expect(s.createAsset(item(owner, 1), SMALL)).rejects.toEqual(refused("bytes"));
+  });
+
+  it("charges a room upload to the room's owner", async () => {
+    const owner = await newOwner();
+    const room = await newRoom(owner);
+    await s.createAsset(item(owner, 999), SMALL);
+    await expect(s.recordRoomUpload(room, "a.png", SMALL, { byteSize: 5 })).rejects.toEqual(refused("bytes"));
+    expect(await s.hasRoomUpload(room, "a.png")).toBe(false);
+  });
+
+  it("allows a die's replacement that doesn't grow the total, and refuses one that does", async () => {
+    const owner = await newOwner();
+    const look = await newLook(owner);
+    await s.setDiceLookFace(look, owner, "d6", face(100), now(), NO_LIMIT);
+    await s.createAsset(item(owner, 900), SMALL);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: SMALL.maxBytes });
+
+    await expect(s.setDiceLookFace(look, owner, "d8", face(1), now(), SMALL)).rejects.toEqual(refused("bytes"));
+    await expect(s.setDiceLookFace(look, owner, "d6", face(101), now(), SMALL)).rejects.toEqual(refused("bytes"));
+    expect((await s.findDiceLook(look, owner))!.faces.d6!.bytes).toBe(100);
+
+    expect((await s.setDiceLookFace(look, owner, "d6", face(100), now(), SMALL))).not.toBeNull();
+    expect((await s.setDiceLookFace(look, owner, "d6", face(40), now(), SMALL))).not.toBeNull();
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: 940 });
+    expect(await s.setDiceLookFace(look, owner, "d6", null, now(), SMALL)).not.toBeNull();
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: 900 });
+  });
+
+  it("lets exactly one of two concurrent uploads take the last of the storage", async () => {
+    const owner = await newOwner();
+    const room = await newRoom(owner);
+    const look = await newLook(owner);
+    await s.createAsset(item(owner, 900), SMALL);
+    const results = await Promise.allSettled([
+      s.createAsset(item(owner, 100), SMALL),
+      s.recordRoomUpload(room, "race.png", SMALL, { byteSize: 100 }),
+      s.setDiceLookFace(look, owner, "d6", face(100), now(), SMALL),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected" && r.reason instanceof UploadAllowanceError)).toHaveLength(2);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: SMALL.maxBytes });
+  });
+
+  it("lets exactly one of two concurrent uploads take the last library slot", async () => {
+    const owner = await newOwner();
+    const limit = { maxItems: 1, maxBytes: 1000 };
+    const results = await Promise.allSettled([s.createAsset(item(owner, 1), limit), s.createAsset(item(owner, 1), limit)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await s.listAssets(owner)).toHaveLength(1);
+  });
+
+  it("takes nothing away from an account over the limit, and frees its share when something is deleted", async () => {
+    const owner = await newOwner();
+    const kept = item(owner, 1500);
+    await s.createAsset(kept, NO_LIMIT);
+    await s.createAsset(item(owner, 100), NO_LIMIT);
+
+    expect(await s.listAssets(owner)).toHaveLength(2);
+    expect(await s.updateAsset(kept.id, owner, { name: "Renamed" })).toMatchObject({ name: "Renamed" });
+    await expect(s.createAsset(item(owner, 1), SMALL)).rejects.toEqual(refused("bytes"));
+
+    expect(await s.deleteAsset(kept.id, owner)).not.toBeNull();
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ items: 1, bytes: 100 });
+    await s.createAsset(item(owner, 1), SMALL);
+  });
+
+  it("frees a room's uploads when the room is deleted", async () => {
+    const owner = await newOwner();
+    const room = await newRoom(owner);
+    await s.recordRoomUpload(room, "a.png", NO_LIMIT, { byteSize: 500 });
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: 500 });
+    await s.deleteRoom(room);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toMatchObject({ bytes: 0 });
+  });
+
+  it("completes a device library's move even when it puts the account over the limit", async () => {
+    const device = await newOwner();
+    await s.createAsset(item(device, 5000), NO_LIMIT);
+    const account = await s.createUser({ id: randomUUID(), email: `${randomUUID()}@x.com`, displayName: "A", passwordHash: "x" });
+    expect(await s.claimDeviceOwner(device, account.ownerId)).toMatchObject({ assets: 1 });
+    expect(await s.uploadUsage({ ownerGmId: account.ownerId })).toEqual({ items: 1, bytes: 5000 });
+    await expect(s.createAsset(item(account.ownerId, 1), SMALL)).rejects.toEqual(refused("bytes"));
+  });
+
+  it("backfills missing sizes once, skips built-in maps, leaves missing objects unsized, and reports by owner id only", async () => {
+    const owner = await newOwner();
+    const asset = item(owner);
+    const lost = item(owner);
+    const room = await newRoom(owner);
+    await s.createAsset(asset, NO_LIMIT);
+    await s.createAsset(lost, NO_LIMIT);
+    await s.seedShippedMaps(owner, [item(owner, undefined, { kind: "map", objectKey: "shipped:demo" })]);
+    await s.recordRoomUpload(room, "room-object.png", NO_LIMIT);
+    const sizes = new Map([[asset.objectKey, 60_000_000], ["room-object.png", 7]]);
+    const sizeOf = vi.fn(async (key: string) => sizes.get(key) ?? null);
+
+    const first = await backfillUploadSizes(s, { sizeOf }, SMALL);
+    expect(first.recorded).toBe(2);
+    expect(first.overBytes).toBeGreaterThanOrEqual(1);
+    // A reused Postgres holds earlier runs' owners at this same size, so only the memory store can name the top one.
+    if (_name === "memory") expect(first.largest[0]).toEqual({ ownerGmId: owner, items: 2, bytes: 60_000_007 });
+    expect(first.largest.length).toBeLessThanOrEqual(10);
+    expect(first.largest.map((o) => o.bytes)).toEqual(first.largest.map((o) => o.bytes).sort((a, b) => b - a));
+    expect(await s.uploadUsageByOwner()).toContainEqual({ ownerGmId: owner, items: 2, bytes: 60_000_007 });
+    expect(sizeOf.mock.calls.map(([key]) => key)).not.toContain("shipped:demo");
+    expect(JSON.stringify(first)).not.toContain(asset.objectKey);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toEqual({ items: 2, bytes: 60_000_007 });
+    expect((await s.findAsset(lost.id, owner))!.byteSize ?? null).toBeNull();
+
+    const second = await backfillUploadSizes(s, { sizeOf }, SMALL);
+    expect(second.recorded).toBe(0);
+    expect(await s.uploadUsage({ ownerGmId: owner })).toEqual({ items: 2, bytes: 60_000_007 });
+  });
+
+  it("never overwrites a size already recorded", async () => {
+    const owner = await newOwner();
+    const asset = item(owner, 50);
+    await s.createAsset(asset, NO_LIMIT);
+    await s.setUploadSize({ table: "library", id: asset.id, objectKey: asset.objectKey }, 999);
+    expect((await s.findAsset(asset.id, owner))!.byteSize).toBe(50);
+  });
+});

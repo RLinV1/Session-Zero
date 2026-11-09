@@ -11,7 +11,7 @@ import type { Sessions } from "../identity/sessions";
 import { requireAccount } from "../identity/middleware";
 import { refused } from "../identity/routes";
 import type { AssetStore } from "../store/assetStore";
-import type { LibraryAssetRecord } from "../store/libraryStore";
+import { UPLOAD_ALLOWANCE, UploadAllowanceError, type LibraryAssetRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 import { exportUvttScene } from "../uvtt/exportScene";
 import type { UvttPreparations } from "../uvtt/preparations";
@@ -30,9 +30,12 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
   const base = "/api/rooms/:roomId/uvtt";
   const failure = (res: Response, error: unknown) => {
     if (error instanceof multer.MulterError) res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: "Use one UVTT file, at most 40 MiB, without additional fields." });
+    else if (error instanceof UploadAllowanceError) res.status(409).json({ error: error.message });
     else if (error instanceof UvttError) res.status(error.issues[0]?.code === "unsupported_file" ? 415 : error.issues[0]?.code === "revision_conflict" ? 409 : error.issues[0]?.code === "validation_busy" ? 503 : 422).json({ error: error.message, issues: error.issues });
     else res.status(500).json({ error: "Could not process this map. Try again." });
   };
+  const failureCode = (error: unknown) => error instanceof UvttError ? error.issues[0]?.code ?? "validation_failed"
+    : error instanceof multer.MulterError ? error.code : error instanceof UploadAllowanceError ? "upload_allowance" : "storage_failed";
   // The library saves immediately, like image uploads. There is no room or transient draft to publish.
   app.post("/api/library/uvtt/imports", (req, res) => {
     void (async () => {
@@ -53,7 +56,7 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
         code = "saved";
         res.status(201).json({ asset: toWire(asset), diagnostics: validated.diagnostics });
       } catch (error) {
-        code = error instanceof UvttError ? error.issues[0]?.code ?? "validation_failed" : error instanceof multer.MulterError ? error.code : "storage_failed";
+        code = failureCode(error);
         failure(res, error);
       } finally {
         console.info("[vtt] library uvtt validation", { code, durationMs: Math.max(0, deps.now() - started) });
@@ -113,7 +116,7 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
         } else {
           const image = await writeUvttImage(deps.assets, deps.uploadDir, validated);
           key = image.key; imagePath = image.imagePath; url = image.url;
-          await deps.store.recordRoomUpload(auth.roomId, key, "map", validated.width, validated.height);
+          await deps.store.recordRoomUpload(auth.roomId, key, UPLOAD_ALLOWANCE, { purpose: "map", width: validated.width, height: validated.height, byteSize: validated.image.length });
           // No analysis identity is recorded: the supplied UVTT grid is authoritative.
         }
         const preparation = deps.preparations.create(auth.roomId, auth.actorId, {
@@ -123,7 +126,7 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
         retained = true;
         res.status(201).json(preparation);
       } catch (error) {
-        validationCode = error instanceof UvttError ? error.issues[0]?.code ?? "validation_failed" : error instanceof multer.MulterError ? error.code : "storage_failed";
+        validationCode = failureCode(error);
         failure(res, error);
       } finally {
         if (!retained && libraryAsset) await deps.store.deleteAsset(libraryAsset.id, libraryAsset.ownerGmId).catch(() => {});

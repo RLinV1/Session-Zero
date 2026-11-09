@@ -13,8 +13,8 @@ import {
   type User,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import type { GridDetectionCandidate, RoomUploadPurpose } from "@vtt/shared";
-import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type UploadAnalysis, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
+import type { GridDetectionCandidate } from "@vtt/shared";
+import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
 import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
@@ -42,10 +42,15 @@ import {
   type NewCreatureRecord,
   type NewRoomOptions,
   shippedSlug,
+  type UnsizedUpload,
+  type UploadAllowance,
+  type UploadScope,
+  type UploadUsage,
 } from "./libraryStore";
+import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
 import type { RedisSeqSource } from "./redisSeq";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore } from "./roomStore";
+import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /** Postgres unique-violation code; Prisma surfaces it as P2002. */
 const PRISMA_UNIQUE_VIOLATION = "P2002";
@@ -224,17 +229,24 @@ export class PostgresRoomStore implements RoomStore {
     return !!(await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId, objectKey } }, select: { objectKey: true } }));
   }
 
-  async recordRoomUpload(roomId: string, objectKey: string, purpose: RoomUploadPurpose = "token", width?: number, height?: number, analysis?: UploadAnalysis) {
-    await this.prisma.roomUpload.upsert({
-      where: { roomId_objectKey: { roomId, objectKey } },
-      create: {
-        roomId, objectKey, purpose, width, height, sourceHash: analysis?.sourceHash,
-        ...(purpose === "map" && analysis?.sourceHash && {
-          detectionSourceHash: analysis.sourceHash, detectionVersion: analysis.detectionVersion, detectionError: analysis.detectionError,
-          detectionStatus: analysis.detectionError ? "error" : "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
-        }),
-      },
-      update: {},
+  async recordRoomUpload(roomId: string, objectKey: string, allowance: UploadAllowance, details: RoomUploadDetails = {}) {
+    const { purpose = "token", width, height, byteSize, analysis } = details;
+    await this.prisma.$transaction(async (tx) => {
+      const room = await tx.room.findUnique({ where: { id: roomId }, select: { ownerGmId: true } });
+      const scope: UploadScope = room?.ownerGmId ? { ownerGmId: room.ownerGmId } : { roomId };
+      await lockUploadAllowance(tx, scope);
+      assertFitsAllowance(await readUploadUsage(tx, scope), { items: 0, bytes: byteSize ?? 0 }, allowance);
+      await tx.roomUpload.upsert({
+        where: { roomId_objectKey: { roomId, objectKey } },
+        create: {
+          roomId, objectKey, purpose, width, height, byteSize, sourceHash: analysis?.sourceHash,
+          ...(purpose === "map" && analysis?.sourceHash && {
+            detectionSourceHash: analysis.sourceHash, detectionVersion: analysis.detectionVersion, detectionError: analysis.detectionError,
+            detectionStatus: analysis.detectionError ? "error" : "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
+          }),
+        },
+        update: {},
+      });
     });
   }
 
@@ -355,23 +367,65 @@ export class PostgresRoomStore implements RoomStore {
       .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   }
 
-  async createAsset(asset: LibraryAssetRecord) {
-    // As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043).
-    // Insert the complete map in one statement: readers can never see missing grid/geometry.
-    await this.prisma.$executeRaw`
-      INSERT INTO library_assets
-        (id, owner_gm_id, kind, object_key, url, name, width, height, grid, board,
-         source_hash, detection_source_hash, detection_version, detection_error,
-         detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
-      VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
-        ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height},
-        ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
-        ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
-        ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
-        ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
-        ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
-        ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
-    `;
+  async createAsset(asset: LibraryAssetRecord, allowance: UploadAllowance) {
+    await this.prisma.$transaction(async (tx) => {
+      const scope = { ownerGmId: asset.ownerGmId };
+      await lockUploadAllowance(tx, scope);
+      assertFitsAllowance(await readUploadUsage(tx, scope), { items: 1, bytes: asset.byteSize ?? 0 }, allowance);
+      // As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043).
+      // Insert the complete map in one statement: readers can never see missing grid/geometry.
+      await tx.$executeRaw`
+        INSERT INTO library_assets
+          (id, owner_gm_id, kind, object_key, url, name, width, height, byte_size, grid, board,
+           source_hash, detection_source_hash, detection_version, detection_error,
+           detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
+        VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
+          ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height}, ${asset.byteSize ?? null}::int,
+          ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
+          ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
+          ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
+          ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
+          ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
+          ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
+      `;
+    });
+  }
+
+  async uploadUsage(scope: UploadScope) {
+    return readUploadUsage(this.prisma, scope);
+  }
+
+  async uploadUsageByOwner() {
+    const rows = await this.prisma.$queryRaw<{ owner: string; items: bigint; bytes: bigint }[]>`
+      WITH usage AS (
+        SELECT owner_gm_id AS owner, 1 AS items, COALESCE(byte_size, 0)::bigint AS bytes
+          FROM library_assets WHERE object_key NOT LIKE 'shipped:%'
+        UNION ALL
+        SELECT r.owner_gm_id, 0, COALESCE(u.byte_size, 0)::bigint
+          FROM room_uploads u JOIN rooms r ON r.id = u.room_id WHERE r.owner_gm_id IS NOT NULL
+        UNION ALL
+        SELECT d.owner_gm_id, 0, COALESCE((f.value->>'bytes')::bigint, 0)
+          FROM dice_looks d, jsonb_each(d.faces) f
+      )
+      SELECT owner::text, SUM(items)::bigint AS items, SUM(bytes)::bigint AS bytes
+        FROM usage GROUP BY owner HAVING SUM(items) > 0 OR SUM(bytes) > 0 ORDER BY bytes DESC`;
+    return rows.map((row) => ({ ownerGmId: row.owner, items: Number(row.items), bytes: Number(row.bytes) }));
+  }
+
+  async listUnsizedUploads() {
+    const [assets, uploads] = await Promise.all([
+      this.prisma.libraryAsset.findMany({ where: { byteSize: null, NOT: { objectKey: { startsWith: "shipped:" } } }, select: { id: true, objectKey: true } }),
+      this.prisma.roomUpload.findMany({ where: { byteSize: null }, select: { roomId: true, objectKey: true } }),
+    ]);
+    return [
+      ...assets.map((a): UnsizedUpload => ({ table: "library", id: a.id, objectKey: a.objectKey })),
+      ...uploads.map((u): UnsizedUpload => ({ table: "room", roomId: u.roomId, objectKey: u.objectKey })),
+    ];
+  }
+
+  async setUploadSize(upload: UnsizedUpload, bytes: number) {
+    if (upload.table === "library") await this.prisma.libraryAsset.updateMany({ where: { id: upload.id, byteSize: null }, data: { byteSize: bytes } });
+    else await this.prisma.roomUpload.updateMany({ where: { roomId: upload.roomId, objectKey: upload.objectKey, byteSize: null }, data: { byteSize: bytes } });
   }
 
   async seedShippedMaps(ownerGmId: string, rows: LibraryAssetRecord[]) {
@@ -1012,14 +1066,17 @@ export class PostgresRoomStore implements RoomStore {
   }
 
   /** Read-modify-write under a row lock, so two face uploads to one look can't lose each other. */
-  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string) {
+  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string, allowance: UploadAllowance) {
     if (!UUID.test(id)) return null;
     return this.prisma.$transaction(async (tx) => {
+      // The allowance lock first, always, so this cannot deadlock against another upload.
+      await lockUploadAllowance(tx, { ownerGmId });
       const locked = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM dice_looks WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
       if (locked.length === 0) return null;
       const row = await tx.diceLook.findUniqueOrThrow({ where: { id } });
       const faces = { ...(row.faces as unknown as DiceLookRecord["faces"]) };
+      if (face) assertFitsAllowance(await readUploadUsage(tx, { ownerGmId }), { items: 0, bytes: (face.bytes ?? 0) - (faces[die]?.bytes ?? 0) }, allowance);
       const replacedKey = faces[die]?.objectKey ?? null;
       if (face) faces[die] = face;
       else delete faces[die];
@@ -1045,6 +1102,29 @@ export class PostgresRoomStore implements RoomStore {
   async close() {
     await this.prisma.$disconnect();
   }
+}
+
+type SqlReader = Pick<Prisma.TransactionClient, "$queryRaw">;
+
+/** One lock per allowance, so concurrent uploads cannot pass the limit together. Held until the transaction ends. */
+async function lockUploadAllowance(tx: Prisma.TransactionClient, scope: UploadScope) {
+  const holder = "ownerGmId" in scope ? scope.ownerGmId : scope.roomId;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`upload_allowance:${holder}`}))`;
+}
+
+/** Summed from the rows on every call, so deleting anything frees its share with nothing to keep in step. */
+async function readUploadUsage(db: SqlReader, scope: UploadScope): Promise<UploadUsage> {
+  const rows = "ownerGmId" in scope
+    ? await db.$queryRaw<{ items: bigint; bytes: bigint }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM library_assets WHERE owner_gm_id = ${scope.ownerGmId}::uuid AND object_key NOT LIKE 'shipped:%')::bigint AS items,
+        ((SELECT COALESCE(SUM(byte_size), 0) FROM library_assets WHERE owner_gm_id = ${scope.ownerGmId}::uuid AND object_key NOT LIKE 'shipped:%')
+          + (SELECT COALESCE(SUM(u.byte_size), 0) FROM room_uploads u JOIN rooms r ON r.id = u.room_id WHERE r.owner_gm_id = ${scope.ownerGmId}::uuid)
+          + (SELECT COALESCE(SUM((f.value->>'bytes')::bigint), 0) FROM dice_looks d, jsonb_each(d.faces) f WHERE d.owner_gm_id = ${scope.ownerGmId}::uuid)
+        )::bigint AS bytes`
+    : await db.$queryRaw<{ items: bigint; bytes: bigint }[]>`
+      SELECT 0::bigint AS items, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM room_uploads WHERE room_id = ${scope.roomId}::uuid`;
+  return { items: Number(rows[0]!.items), bytes: Number(rows[0]!.bytes) };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -1139,6 +1219,7 @@ function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
     name: row.name,
     width: row.width,
     height: row.height,
+    byteSize: row.byteSize,
     grid: (row.grid as unknown as GridSpec | null) ?? null,
     board: (row.board as unknown as LibraryMapBoard | null) ?? null,
     sourceHash: row.sourceHash, detectionSourceHash: row.detectionSourceHash, detectionVersion: row.detectionVersion,

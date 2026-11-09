@@ -6,6 +6,7 @@ import { DETECTION_VERSION, DETECTION_STALE_MS, detectionJob, type DetectionJob 
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
 import type { RoomStore } from "../src/store/roomStore";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 const postgres = process.env.DATABASE_URL ? await PostgresRoomStore.connect(process.env.DATABASE_URL) : null;
 afterAll(async () => { await postgres?.close(); });
@@ -20,7 +21,7 @@ for (const [name, store] of [["memory", new MemoryRoomStore()], ["postgres", pos
       const id = randomUUID();
       await s().createAsset({ id, ownerGmId, kind: "map", objectKey: `${id}.png`, url: `/uploads/${id}.png`,
         name: "Map", width: 768, height: 648, grid: DEFAULT_GRID, createdAt: new Date().toISOString(),
-        detectionStatus: "queued", detectionAttempt: 1, ...identity, ...overrides });
+        detectionStatus: "queued", detectionAttempt: 1, ...identity, ...overrides }, UPLOAD_ALLOWANCE);
       return { ownerGmId, id, target: { scope: "library" as const, id } };
     };
     const job = async (target: DetectionJob["target"]) => detectionJob((await s().findDetection(target))!);
@@ -111,14 +112,14 @@ for (const [name, store] of [["memory", new MemoryRoomStore()], ["postgres", pos
       await s().createRoom(roomId, randomUUID().slice(0,10));
       const objectKey = `${randomUUID()}.png`;
       const target = { scope: "room" as const, roomId, objectKey };
-      await s().recordRoomUpload(roomId, objectKey, "map", 768, 648, identity);
+      await s().recordRoomUpload(roomId, objectKey, UPLOAD_ALLOWANCE, { purpose: "map", width: 768, height: 648, analysis: identity });
       const current = await job(target);
       await s().markDetectionRunning(current);
       await s().finishDetection(current, { status: "no_grid" });
       expect((await s().findDetection(target))?.status).toBe("no_grid");
       for (const purpose of ["token", "map"] as const) {
         const key = `${randomUUID()}.png`;
-        await s().recordRoomUpload(roomId, key, purpose, 768, 648);
+        await s().recordRoomUpload(roomId, key, UPLOAD_ALLOWANCE, { purpose, width: 768, height: 648 });
         expect(await s().findDetection({ scope: "room", roomId, objectKey: key })).toBeNull();
       }
       await s().deleteRoom(roomId);
@@ -138,7 +139,7 @@ describe.skipIf(!postgres)("persistent grid cache across store restart (FR-GM-03
       await postgres!.createAsset({ id, ownerGmId, kind: "map", objectKey: `${id}.png`, url: `/uploads/${id}.png`,
         name: status, width: 768, height: 648, grid: null, createdAt: new Date().toISOString(),
         ...identity, detectionStatus: status, detectionAttempt: 1,
-        detectionResult: status === "suggested" ? { cellSize: 64.25, offsetX: 7.125, offsetY: 12.875 } : null });
+        detectionResult: status === "suggested" ? { cellSize: 64.25, offsetX: 7.125, offsetY: 12.875 } : null }, UPLOAD_ALLOWANCE);
     }
     const reopened = await PostgresRoomStore.connect(process.env.DATABASE_URL!);
     try {

@@ -10,6 +10,7 @@ import { exportUvttScene, type CapturedScene } from "../src/uvtt/exportScene";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { animatedPng, animatedWebp } from "./uvttImageFixtures";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 let dir: string; let store: MemoryRoomStore; let assets: LocalDiskAssetStore;
 beforeEach(async () => {
@@ -29,7 +30,7 @@ async function image(format: "png" | "jpeg" | "webp") {
 describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
   it.each(["png", "webp", "jpeg"] as const)("exports owned %s room assets with exact geometry and decoded pixels", async (format) => {
     const key = `${randomUUID()}.${format}`; const original = await image(format); await writeFile(path.join(dir, key), original);
-    await store.recordRoomUpload("room", key);
+    await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     const scene = snapshot(`/uploads/${key}`);
     const output = await exportUvttScene(scene, "room", store, assets, null);
     const bytes = Buffer.from(output.image, "base64");
@@ -49,7 +50,7 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
   });
   it("reads only owned library records, including legacy references without assetId", async () => {
     const key = `${randomUUID()}.png`; const bytes = await image("png"); await writeFile(path.join(dir, key), bytes);
-    await store.createAsset({ id: "art", ownerGmId: "owner", kind: "map", objectKey: key, url: `/uploads/${key}`, name: "Secret filename", width: 400, height: 300, grid: null, createdAt: new Date().toISOString() });
+    await store.createAsset({ id: "art", ownerGmId: "owner", kind: "map", objectKey: key, url: `/uploads/${key}`, name: "Secret filename", width: 400, height: 300, grid: null, createdAt: new Date().toISOString() }, UPLOAD_ALLOWANCE);
     expect((await exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).image).toBe(bytes.toString("base64"));
     const noOwnership = snapshot(`/uploads/${key}`);
     noOwnership.map = { ...noOwnership.map!, assetId: "another-owner" };
@@ -64,25 +65,25 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
   });
   it("rejects external URLs, foreign room uploads, fractional grids and changed image dimensions", async () => {
     const key = `${randomUUID()}.png`; await writeFile(path.join(dir, key), await image("png"));
-    await store.createRoom("other", "invite2"); await store.recordRoomUpload("other", key);
+    await store.createRoom("other", "invite2"); await store.recordRoomUpload("other", key, UPLOAD_ALLOWANCE);
     await expect(exportUvttScene(snapshot(`https://example.com/map.png`), "room", store, assets, null)).rejects.toThrow(/External/);
     await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/Upload/);
     await expect(exportUvttScene(snapshot(`/uploads/${key}`, { ...grid, cellSize: 50.2 }), "room", store, assets, null)).rejects.toThrow(/integer/);
-    await store.recordRoomUpload("room", key);
+    await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     const wrong = snapshot(`/uploads/${key}`); wrong.map = { ...wrong.map!, width: 399 };
     await expect(exportUvttScene(wrong, "room", store, assets, null)).rejects.toThrow(/dimensions/);
   });
   it("refuses animated and missing stored images with bounded guidance", async () => {
-    const key = `${randomUUID()}.png`; await store.recordRoomUpload("room", key);
+    const key = `${randomUUID()}.png`; await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/unavailable/);
     for (const bytes of [await animatedPng(), await animatedWebp()]) {
       await writeFile(path.join(dir, key), bytes);
       await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/single-frame|animated/);
     }
-    await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, { ...assets, put: assets.put.bind(assets), delete: assets.delete.bind(assets), readPrivate: async () => { throw new Error("Secret object path"); } }, null)).rejects.toThrow(/25 MiB/);
+    await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, { ...assets, put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { throw new Error("Secret object path"); } }, null)).rejects.toThrow(/25 MiB/);
   });
   it("reads an immutable captured scene while later room activity proceeds", async () => {
-    const key = `${randomUUID()}.png`; const bytes = await image("png"); await writeFile(path.join(dir, key), bytes); await store.recordRoomUpload("room", key);
+    const key = `${randomUUID()}.png`; const bytes = await image("png"); await writeFile(path.join(dir, key), bytes); await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     const scene = snapshot(`/uploads/${key}`);
     await store.append("room", 0, [
       { actorId: null, event: { type: "RoomCreated", name: "Captured scene" } },
@@ -98,7 +99,7 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
     let release!: () => void, started!: () => void;
     const reading = new Promise<void>((resolve) => { started = resolve; });
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const exporting = exportUvttScene(captured, "room", store, { put: assets.put.bind(assets), delete: assets.delete.bind(assets), readPrivate: async () => { started(); await gate; return bytes; } }, null);
+    const exporting = exportUvttScene(captured, "room", store, { put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { started(); await gate; return bytes; } }, null);
     try {
       await reading;
       expect((await room.submit("gm", Command.parse({ type: "scene.setGrid", grid: { ...grid, cellSize: 70 }, resetTerrain: true }))).ok).toBe(true);

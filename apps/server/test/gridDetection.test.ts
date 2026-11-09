@@ -106,7 +106,7 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     expect(run.mock.calls.at(-1)?.[1]).toEqual({ width: 240, height: 432 });
   });
 
-  it("records oversized images as terminal errors on both paths and leaves invalid images for manual fallback", async () => {
+  it("records oversized images as terminal errors on both paths and refuses a map that is not an image", async () => {
     const run = vi.fn(detector);
     server = await startServer(new MemoryRoomStore(), { detector: run });
     const cookie = await newGm();
@@ -125,8 +125,7 @@ describe("automatic map grid detection (FR-GM-03)", () => {
     }
     const invalid = await fetch(`${server.base}/api/library`, { method: "POST", headers: { cookie },
       body: imageForm({ kind: "map", name: "Invalid", width: "700", height: "800" }, Buffer.from("invalid")) });
-    expect(invalid.status).toBe(201);
-    expect((await gmStatus(cookie, (await invalid.json() as LibraryAsset).id)).body.status).toBe("error");
+    expect(invalid.status).toBe(415);
     expect(run).not.toHaveBeenCalled();
   });
 

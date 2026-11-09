@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { accountStore, type AccountState } from "../account/accountStore";
+import { ApiError } from "../net/api";
 import type { BodyName } from "./diceGeometry";
 import { keptSize, MAX_SKIN_FILE_BYTES, SHEET, SKIN_FILE_TYPES, skinLayoutFor, templateSvg, type DiceSkin, type DiceSkinImage } from "./diceSkin";
 import { accountBackend, copyLooks, localBackend, readActiveId, type CopyResult, type DiceLookBackend } from "./diceLookBackends";
@@ -100,6 +101,11 @@ export async function createDiceLook(): Promise<string> {
   return look.id;
 }
 
+/** A refusal for being over the upload allowance says what to do; retrying would not help (upload-limits). */
+export function diceLookSaveFailure(err: unknown) {
+  return err instanceof ApiError && err.status === 409 ? err.message : "Your dice look could not be saved. Try again.";
+}
+
 /** Shows the change at once, then stores it; the stored copy (with the server's picture addresses) replaces it. */
 export async function saveDiceLook(look: DiceSkin) {
   const prev = state.looks.find((l) => l.id === look.id) ?? null;
@@ -108,10 +114,10 @@ export async function saveDiceLook(look: DiceSkin) {
   try {
     const stored = await backend.save(prev, next);
     set({ looks: state.looks.map((l) => (l.id === stored.id ? stored : l)) });
-  } catch {
+  } catch (err) {
     // Not stored: put back what is, so the screen doesn't promise a save that didn't happen.
     void reload();
-    throw new Error("Your dice look could not be saved. Try again.");
+    throw new Error(diceLookSaveFailure(err));
   }
   announce();
 }

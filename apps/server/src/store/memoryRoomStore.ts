@@ -1,9 +1,8 @@
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
-import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
+import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
-import type { RoomUploadPurpose } from "@vtt/shared";
-import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type UploadAnalysis } from "./gridDetectionStore";
+import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget } from "./gridDetectionStore";
 import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   EmailTakenError,
@@ -31,9 +30,14 @@ import {
   type NewCreatureRecord,
   type NewRoomOptions,
   shippedSlug,
+  type UnsizedUpload,
+  type UploadAllowance,
+  type UploadScope,
+  type UploadUsage,
 } from "./libraryStore";
+import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore } from "./roomStore";
+import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /** Dev/test store. Loses everything on restart. */
 export class MemoryRoomStore implements RoomStore {
@@ -50,7 +54,8 @@ export class MemoryRoomStore implements RoomStore {
   /** roomId -> asset ids its current state references. */
   private refs = new Map<string, Set<string>>();
   /** roomId -> object keys uploaded from inside it (ADR 0009). */
-  private uploads = new Map<string, Set<string>>();
+  /** Room id to its uploads: object key to byte length, null until recorded. */
+  private uploads = new Map<string, Map<string, number | null>>();
   private roomDetections = new Map<string, DetectionRecord>();
   private roomDetectionUpdatedAt = new Map<string, number>();
   /** Only unfinished, current-version uploads need the frequent recovery scan. */
@@ -159,10 +164,13 @@ export class MemoryRoomStore implements RoomStore {
 
   async hasRoomUpload(roomId: string, objectKey: string) { return this.uploads.get(roomId)?.has(objectKey) ?? false; }
 
-  async recordRoomUpload(roomId: string, objectKey: string, purpose: RoomUploadPurpose = "token", width?: number, height?: number, analysis?: UploadAnalysis) {
+  async recordRoomUpload(roomId: string, objectKey: string, allowance: UploadAllowance, details: RoomUploadDetails = {}) {
+    const { purpose = "token", width, height, byteSize, analysis } = details;
     if (!this.events.has(roomId)) throw new Error(`No room ${roomId}`);
-    const keys = this.uploads.get(roomId) ?? new Set<string>();
-    keys.add(objectKey);
+    const owner = this.rooms.get(roomId)?.ownerGmId;
+    assertFitsAllowance(this.usageNow(owner ? { ownerGmId: owner } : { roomId }), { items: 0, bytes: byteSize ?? 0 }, allowance);
+    const keys = this.uploads.get(roomId) ?? new Map<string, number | null>();
+    keys.set(objectKey, byteSize ?? null);
     this.uploads.set(roomId, keys);
     if (purpose === "map" && width && height && analysis?.sourceHash && analysis.detectionVersion === DETECTION_VERSION) {
       const target = { scope: "room" as const, roomId, objectKey };
@@ -177,7 +185,7 @@ export class MemoryRoomStore implements RoomStore {
   /** Drops every map entry for the room. Nothing here can fail halfway, so it is atomic. */
   async deleteRoom(roomId: string) {
     if (!this.events.has(roomId)) return null;
-    const uploadKeys = [...(this.uploads.get(roomId) ?? [])];
+    const uploadKeys = [...(this.uploads.get(roomId)?.keys() ?? [])];
     this.events.delete(roomId);
     this.rooms.delete(roomId);
     this.refs.delete(roomId);
@@ -252,13 +260,66 @@ export class MemoryRoomStore implements RoomStore {
       .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   }
 
-  async createAsset(asset: LibraryAssetRecord) {
+  async createAsset(asset: LibraryAssetRecord, allowance: UploadAllowance) {
+    assertFitsAllowance(this.usageNow({ ownerGmId: asset.ownerGmId }), { items: 1, bytes: asset.byteSize ?? 0 }, allowance);
     this.assets.set(asset.id, structuredClone({
       ...asset,
       ...(asset.detectionStatus && !asset.detectionUpdatedAt && { detectionUpdatedAt: new Date().toISOString() }),
     }));
     const target = { scope: "library" as const, id: asset.id };
     this.trackDetection(target, this.readDetection(target)?.status);
+  }
+
+  /** Synchronous, so a check and the write after it are one step. */
+  private usageNow(scope: UploadScope): UploadUsage {
+    const sum = (sizes: Iterable<number | null | undefined>) => [...sizes].reduce<number>((total, size) => total + (size ?? 0), 0);
+    if ("roomId" in scope) return { items: 0, bytes: sum(this.uploads.get(scope.roomId)?.values() ?? []) };
+    const assets = [...this.assets.values()].filter((a) => a.ownerGmId === scope.ownerGmId && !isShippedKey(a.objectKey));
+    const rooms = [...this.rooms.entries()].filter(([, room]) => room.ownerGmId === scope.ownerGmId);
+    const looks = [...this.diceLooks.values()].filter((look) => look.ownerGmId === scope.ownerGmId);
+    return {
+      items: assets.length,
+      bytes: sum(assets.map((a) => a.byteSize))
+        + sum(rooms.flatMap(([roomId]) => [...(this.uploads.get(roomId)?.values() ?? [])]))
+        + sum(looks.flatMap((look) => Object.values(look.faces).map((face) => face.bytes))),
+    };
+  }
+
+  async uploadUsage(scope: UploadScope) {
+    return this.usageNow(scope);
+  }
+
+  async uploadUsageByOwner() {
+    const owners = new Set([
+      ...[...this.assets.values()].map((a) => a.ownerGmId),
+      ...[...this.rooms.values()].flatMap((room) => (room.ownerGmId ? [room.ownerGmId] : [])),
+      ...[...this.diceLooks.values()].map((look) => look.ownerGmId),
+    ]);
+    return [...owners]
+      .map((ownerGmId) => ({ ownerGmId, ...this.usageNow({ ownerGmId }) }))
+      .filter((usage) => usage.items > 0 || usage.bytes > 0)
+      .sort((a, b) => b.bytes - a.bytes);
+  }
+
+  async listUnsizedUploads() {
+    const unsized: UnsizedUpload[] = [];
+    for (const asset of this.assets.values()) {
+      if (asset.byteSize == null && !isShippedKey(asset.objectKey)) unsized.push({ table: "library", id: asset.id, objectKey: asset.objectKey });
+    }
+    for (const [roomId, keys] of this.uploads) {
+      for (const [objectKey, size] of keys) if (size === null) unsized.push({ table: "room", roomId, objectKey });
+    }
+    return unsized;
+  }
+
+  async setUploadSize(upload: UnsizedUpload, bytes: number) {
+    if (upload.table === "library") {
+      const asset = this.assets.get(upload.id);
+      if (asset && asset.byteSize == null) asset.byteSize = bytes;
+      return;
+    }
+    const keys = this.uploads.get(upload.roomId);
+    if (keys?.get(upload.objectKey) === null) keys.set(upload.objectKey, bytes);
   }
 
   private seededSlugs = new Map<string, Set<string>>();
@@ -561,7 +622,7 @@ export class MemoryRoomStore implements RoomStore {
     for (const [id] of owned(this.encounters)) this.encounters.delete(id);
     for (const [id] of owned(this.creatures)) this.creatures.delete(id);
     for (const [id, asset] of owned(this.assets)) {
-      if (!asset.objectKey.startsWith("shipped:")) objectKeys.push(asset.objectKey);
+      if (!isShippedKey(asset.objectKey)) objectKeys.push(asset.objectKey);
       this.assets.delete(id);
       this.trackDetection({ scope: "library", id });
       for (const ids of this.refs.values()) ids.delete(id);
@@ -736,9 +797,10 @@ export class MemoryRoomStore implements RoomStore {
     return structuredClone(look);
   }
 
-  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string) {
+  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string, allowance: UploadAllowance) {
     const look = this.diceLooks.get(id);
     if (!look || look.ownerGmId !== ownerGmId) return null;
+    if (face) assertFitsAllowance(this.usageNow({ ownerGmId }), { items: 0, bytes: (face.bytes ?? 0) - (look.faces[die]?.bytes ?? 0) }, allowance);
     const replacedKey = look.faces[die]?.objectKey ?? null;
     if (face) look.faces[die] = { ...face };
     else delete look.faces[die];

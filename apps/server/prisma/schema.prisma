@@ -132,7 +132,7 @@ model DiceLook {
   id        String   @id @db.Uuid
   ownerGmId String   @map("owner_gm_id") @db.Uuid
   name      String
-  /// { "d20": { "objectKey", "url", "width", "height" }, ... }; object keys never leave the server.
+  /// { "d20": { "objectKey", "url", "width", "height", "bytes"? }, ... }; object keys never leave the server.
   faces     Json
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -169,6 +169,8 @@ model LibraryAsset {
   name      String
   width     Int
   height    Int
+  /// The stored file's length (upload-limits). Null until recorded, which counts as zero.
+  byteSize  Int?     @map("byte_size")
   grid      Json?
   /// Walls and fog prepared on the map (ADR 0037): a LibraryMapBoard, or null for none.
   board     Json?
@@ -264,6 +266,8 @@ model RoomUpload {
   purpose String @default("token")
   width Int?
   height Int?
+  /// The stored file's length (upload-limits). Null until recorded, which counts as zero.
+  byteSize Int? @map("byte_size")
   sourceHash String? @map("source_hash")
   detectionSourceHash String? @map("detection_source_hash")
   detectionVersion String? @map("detection_version")
