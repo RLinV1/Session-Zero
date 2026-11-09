@@ -19,6 +19,79 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A private draft an AI fills and its owner reviews and publishes (FR-GM-26, ADR 0053).
+model Build {
+  id            String    @id @db.Uuid
+  ownerGmId     String    @map("owner_gm_id") @db.Uuid
+  name          String
+  status        String    @default("open")
+  gameProfile   Json?     @map("game_profile")
+  /// SHA-256 of the build pass. Null when there is no live pass; the pass itself is never stored.
+  passHash      String?   @unique @map("pass_hash")
+  passExpiresAt DateTime? @map("pass_expires_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  owner GmIdentity  @relation(fields: [ownerGmId], references: [id])
+  files BuildFile[]
+  items BuildItem[]
+
+  @@index([ownerGmId, status])
+  @@index([status, updatedAt])
+  @@map("builds")
+}
+
+/// A map or token image in a build. Its object stays put when published (FR-GM-27).
+model BuildFile {
+  id                  String    @id @db.Uuid
+  buildId             String    @map("build_id") @db.Uuid
+  kind                String
+  objectKey           String    @map("object_key")
+  url                 String
+  originalName        String    @map("original_name")
+  width               Int
+  height              Int
+  sizeBytes           Int       @map("size_bytes")
+  /// Set only by a UVTT file, which is exact.
+  grid                Json?
+  board               Json?
+  sourceHash          String?   @map("source_hash")
+  detectionSourceHash String?   @map("detection_source_hash")
+  detectionVersion    String?   @map("detection_version")
+  detectionError      String?   @map("detection_error")
+  detectionStatus     String?   @map("detection_status")
+  detectionAttempt    Int       @default(0) @map("detection_attempt")
+  detectionResult     Json?     @map("detection_result")
+  detectionUpdatedAt  DateTime? @map("detection_updated_at") @db.Timestamptz(6)
+  publishedAssetId    String?   @map("published_asset_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  build Build @relation(fields: [buildId], references: [id])
+
+  @@index([buildId, kind])
+  @@index([detectionStatus])
+  @@map("build_files")
+}
+
+/// A draft creature, map or encounter, saved by the key the AI chose.
+model BuildItem {
+  id             String   @id @db.Uuid
+  buildId        String   @map("build_id") @db.Uuid
+  kind           String
+  key            String
+  data           Json
+  flags          Json     @default("[]")
+  notCarriedOver String   @default("") @map("not_carried_over")
+  editedByUser   Boolean  @default(false) @map("edited_by_user")
+  publishedId    String?  @map("published_id") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  build Build @relation(fields: [buildId], references: [id])
+
+  @@unique([buildId, kind, key])
+  @@map("build_items")
+}
+
 model Room {
   id         String   @id @db.Uuid
   inviteCode String   @unique @map("invite_code")
@@ -67,6 +140,7 @@ model GmIdentity {
   diceLooks DiceLook[]
   animations LibraryAnimation[]
   encounters EncounterTemplate[]
+  builds    Build[]
   user      User?
 
   @@map("gm_identities")

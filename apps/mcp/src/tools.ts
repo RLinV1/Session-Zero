@@ -36,11 +36,11 @@ const squareArgs = {
 };
 const tokenArg = z.string().min(1).max(64).describe("The token's id from get_view.");
 
-const success = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
+export const success = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
 const failure = (message: string): CallToolResult => ({ isError: true, content: [{ type: "text", text: message }] });
 
 /** Expected failures read as the tool's error. Anything else is logged with credentials blanked. */
-async function guarded(name: string, fn: () => Promise<CallToolResult>): Promise<CallToolResult> {
+export async function guarded(name: string, fn: () => Promise<CallToolResult>): Promise<CallToolResult> {
   try {
     return await fn();
   } catch (err) {

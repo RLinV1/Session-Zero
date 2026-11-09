@@ -12,6 +12,7 @@ import { roomLifecycle } from "./domain/roomLifecycle";
 import { RoomRegistry } from "./domain/roomRegistry";
 import { createGridDetectionDispatcher, type Detector, type GridDetectionDispatcher } from "./domain/gridDetection";
 import { bullmqWallQueue, WallDetections, type WallJobQueue } from "./domain/wallDetection";
+import { registerBuildRoutes } from "./http/build";
 import { registerRoutes } from "./http/routes";
 import { attachAccount, requireSameOrigin } from "./identity/middleware";
 import { accountLimits, registerIdentityRoutes, type AccountLimits } from "./identity/routes";
@@ -183,6 +184,7 @@ export async function buildApp({
   });
   registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
+  registerBuildRoutes(app, { store, assets: assetStore, uploadDir, limits, detection, pool, sessions, now });
   registerSocket(io, { store, registry, sessions, logger });
 
   return {

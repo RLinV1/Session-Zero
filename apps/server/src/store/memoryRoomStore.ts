@@ -3,7 +3,21 @@ import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget } from "./gridDetectionStore";
-import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import {
+  BuildClosedError,
+  BuildItemLockedError,
+  BuildLimitError,
+  assertBuildFileFits,
+  type BuildFileLimits,
+  type BuildFileRecord,
+  type BuildFileUsage,
+  type BuildItemKind,
+  type BuildItemRecord,
+  type BuildRecord,
+  type NewBuildItem,
+  type NewBuildRecord,
+} from "./buildStore";
 import {
   EmailTakenError,
   type DeletedUser,
@@ -66,6 +80,10 @@ export class MemoryRoomStore implements RoomStore {
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
   private animations = new Map<string, LibraryAnimationRecord>();
+  private builds = new Map<string, BuildRecord>();
+  private buildFiles = new Map<string, BuildFileRecord>();
+  /** `${buildId}/${kind}/${key}`, so a key an AI chose can't collide with a property name. */
+  private buildItems = new Map<string, BuildItemRecord>();
 
   async createRoom(roomId: string, inviteCode: string, options: NewRoomOptions = {}) {
     if (this.events.has(roomId)) throw new Error(`Room ${roomId} already exists`);
@@ -358,7 +376,7 @@ export class MemoryRoomStore implements RoomStore {
       const row = this.roomDetections.get(`${target.roomId}:${target.objectKey}`);
       return row?.configVersion === DETECTION_VERSION ? structuredClone(row) : null;
     }
-    const asset = this.assets.get(target.id);
+    const asset = target.scope === "build" ? this.buildFiles.get(target.fileId) : this.assets.get(target.id);
     if (!asset || asset.kind !== "map" || !asset.detectionStatus || !asset.sourceHash
       || asset.sourceHash !== asset.detectionSourceHash || asset.detectionVersion !== DETECTION_VERSION) return null;
     return {
@@ -416,7 +434,7 @@ export class MemoryRoomStore implements RoomStore {
       if (row.status === "running") {
         const updatedAt = target.scope === "room"
           ? this.roomDetectionUpdatedAt.get(`${target.roomId}:${target.objectKey}`)
-          : Date.parse(this.assets.get(target.id)?.detectionUpdatedAt ?? "");
+          : Date.parse((target.scope === "build" ? this.buildFiles.get(target.fileId) : this.assets.get(target.id))?.detectionUpdatedAt ?? "");
         if (updatedAt !== undefined && updatedAt >= Date.now() - DETECTION_STALE_MS) continue;
         await this.deferDetection(detectionJob(row), true);
         const next = this.readDetection(target);
@@ -431,6 +449,13 @@ export class MemoryRoomStore implements RoomStore {
       const key = `${target.roomId}:${target.objectKey}`;
       this.roomDetections.set(key, structuredClone(row));
       this.roomDetectionUpdatedAt.set(key, Date.now());
+    } else if (target.scope === "build") {
+      const file = this.buildFiles.get(target.fileId);
+      if (!file) return;
+      this.buildFiles.set(target.fileId, {
+        ...file, detectionStatus: row.status, detectionAttempt: row.attempt,
+        detectionResult: row.candidate, detectionError: row.error, detectionUpdatedAt: new Date().toISOString(),
+      });
     } else {
       const asset = this.assets.get(target.id);
       if (!asset) return;
@@ -444,9 +469,161 @@ export class MemoryRoomStore implements RoomStore {
 
   /** Keep recovery membership in step with creation, status changes, and deletion. */
   private trackDetection(target: DetectionTarget, status?: DetectionRecord["status"]) {
-    const key = JSON.stringify(target.scope === "room" ? [target.scope, target.roomId, target.objectKey] : [target.scope, target.id]);
+    const key = JSON.stringify(target.scope === "room" ? [target.scope, target.roomId, target.objectKey] : target.scope === "build" ? [target.scope, target.fileId] : [target.scope, target.id]);
     if (status === "queued" || status === "running") this.recoveryTargets.set(key, { ...target });
     else this.recoveryTargets.delete(key);
+  }
+
+  // ---------- AI game builds (ADR 0053) ----------
+
+  private openBuild(buildId: string): BuildRecord {
+    const build = this.builds.get(buildId);
+    if (!build || build.status !== "open") throw new BuildClosedError();
+    return build;
+  }
+
+  private touchBuild(build: BuildRecord) {
+    build.updatedAt = new Date().toISOString();
+  }
+
+  async createBuild(build: NewBuildRecord, maxOpen: number) {
+    const open = [...this.builds.values()].filter((b) => b.ownerGmId === build.ownerGmId && b.status === "open").length;
+    if (open >= maxOpen) throw new BuildLimitError(`You can have up to ${maxOpen} open builds. Finish or discard one first.`);
+    const at = new Date().toISOString();
+    const row: BuildRecord = { ...build, status: "open", gameProfile: null, passHash: null, passExpiresAt: null, createdAt: at, updatedAt: at };
+    this.builds.set(build.id, row);
+    return structuredClone(row);
+  }
+
+  async listBuilds(ownerGmId: string) {
+    return [...this.builds.values()]
+      .filter((b) => b.ownerGmId === ownerGmId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((b) => structuredClone(b));
+  }
+
+  async findBuild(id: string, ownerGmId: string) {
+    const build = this.builds.get(id);
+    return build && build.ownerGmId === ownerGmId ? structuredClone(build) : null;
+  }
+
+  async findBuildByPassHash(passHash: string) {
+    for (const build of this.builds.values()) if (build.passHash === passHash) return structuredClone(build);
+    return null;
+  }
+
+  async findBuildOwnerName(ownerGmId: string) {
+    for (const user of this.users.values()) if (user.ownerId === ownerGmId) return user.displayName;
+    return null;
+  }
+
+  async setBuildPass(id: string, ownerGmId: string, passHash: string, expiresAt: string) {
+    const build = this.builds.get(id);
+    if (!build || build.ownerGmId !== ownerGmId || build.status !== "open") return false;
+    build.passHash = passHash;
+    build.passExpiresAt = expiresAt;
+    return true;
+  }
+
+  async clearBuildPass(id: string, ownerGmId: string) {
+    const build = this.builds.get(id);
+    if (!build || build.ownerGmId !== ownerGmId) return false;
+    build.passHash = null;
+    build.passExpiresAt = null;
+    return true;
+  }
+
+  async endBuildPasses(ownerGmId: string) {
+    for (const build of this.builds.values()) {
+      if (build.ownerGmId === ownerGmId) {
+        build.passHash = null;
+        build.passExpiresAt = null;
+      }
+    }
+  }
+
+  async saveGameProfile(buildId: string, profile: GameProfile) {
+    const build = this.openBuild(buildId);
+    build.gameProfile = structuredClone(profile);
+    this.touchBuild(build);
+  }
+
+  /** Synchronous, so a check and the insert after it can't interleave with another upload. */
+  private readBuildFileUsage(buildId: string): BuildFileUsage {
+    const files = [...this.buildFiles.values()].filter((f) => f.buildId === buildId);
+    return { files: files.length, maps: files.filter((f) => f.kind === "map").length, bytes: files.reduce((sum, f) => sum + f.sizeBytes, 0) };
+  }
+
+  async buildFileUsage(buildId: string) {
+    return this.readBuildFileUsage(buildId);
+  }
+
+  async addBuildFile(file: BuildFileRecord, limits: BuildFileLimits) {
+    const build = this.openBuild(file.buildId);
+    assertBuildFileFits(this.readBuildFileUsage(file.buildId), file, limits);
+    this.buildFiles.set(file.id, structuredClone(file));
+    this.touchBuild(build);
+    const target = { scope: "build" as const, fileId: file.id };
+    this.trackDetection(target, this.readDetection(target)?.status);
+  }
+
+  async listBuildFiles(buildId: string) {
+    return [...this.buildFiles.values()]
+      .filter((f) => f.buildId === buildId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((f) => structuredClone(f));
+  }
+
+  async findBuildFile(buildId: string, fileId: string) {
+    const file = this.buildFiles.get(fileId);
+    return file && file.buildId === buildId ? structuredClone(file) : null;
+  }
+
+  async saveBuildItem(item: NewBuildItem, maxForKind: number | null) {
+    const build = this.openBuild(item.buildId);
+    const id = `${item.buildId}/${item.kind}/${item.key}`;
+    const existing = this.buildItems.get(id);
+    if (existing?.publishedId) throw new BuildItemLockedError("published");
+    if (existing?.editedByUser) throw new BuildItemLockedError("edited");
+    if (!existing && maxForKind !== null) {
+      const count = [...this.buildItems.values()].filter((i) => i.buildId === item.buildId && i.kind === item.kind).length;
+      if (count >= maxForKind) throw new BuildLimitError(`A build can hold up to ${maxForKind} of these.`);
+    }
+    const row: BuildItemRecord = { ...structuredClone(item), editedByUser: false, publishedId: null, updatedAt: new Date().toISOString() };
+    this.buildItems.set(id, row);
+    this.touchBuild(build);
+    return structuredClone(row);
+  }
+
+  async listBuildItems(buildId: string) {
+    return [...this.buildItems.values()]
+      .filter((i) => i.buildId === buildId)
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((i) => structuredClone(i));
+  }
+
+  async findBuildItem(buildId: string, kind: BuildItemKind, key: string) {
+    const item = this.buildItems.get(`${buildId}/${kind}/${key}`);
+    return item ? structuredClone(item) : null;
+  }
+
+  async removeBuildItem(buildId: string, kind: BuildItemKind, key: string) {
+    const build = this.openBuild(buildId);
+    const id = `${buildId}/${kind}/${key}`;
+    const existing = this.buildItems.get(id);
+    if (!existing) return false;
+    if (existing.publishedId) throw new BuildItemLockedError("published");
+    if (existing.editedByUser) throw new BuildItemLockedError("edited");
+    this.buildItems.delete(id);
+    this.touchBuild(build);
+    return true;
+  }
+
+  async markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }) {
+    const item = this.buildItems.get(`${buildId}/${kind}/${key}`);
+    if (!item) return false;
+    Object.assign(item, state);
+    return true;
   }
 
   async listAssets(ownerGmId: string) {
@@ -617,6 +794,17 @@ export class MemoryRoomStore implements RoomStore {
     for (const [id, look] of owned(this.diceLooks)) {
       objectKeys.push(...Object.values(look.faces).map((f) => f.objectKey));
       this.diceLooks.delete(id);
+    }
+    for (const [buildId] of owned(this.builds)) {
+      for (const [id, file] of this.buildFiles) {
+        if (file.buildId !== buildId) continue;
+        // A published file's object belongs to its library row, which is collected below.
+        if (!file.publishedAssetId) objectKeys.push(file.objectKey);
+        this.buildFiles.delete(id);
+        this.trackDetection({ scope: "build", fileId: id });
+      }
+      for (const [id, item] of this.buildItems) if (item.buildId === buildId) this.buildItems.delete(id);
+      this.builds.delete(buildId);
     }
     for (const [id] of owned(this.animations)) this.animations.delete(id);
     for (const [id] of owned(this.encounters)) this.encounters.delete(id);

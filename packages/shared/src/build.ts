@@ -210,14 +210,102 @@ export type DraftEncounterResult =
 /** Allows for float noise when a footprint ends exactly on the map's edge. */
 const EDGE_TOLERANCE = 1e-6;
 
-/** Whether a token whose top-left square is `square` lies wholly on the map, and where its center is if so. */
-function footprintCenter(square: DraftSquare, size: number, grid: GridSpec, map: DraftEncounterSource["map"]): Point | null {
+/** Where a token whose top-left square is `square` has its center, or null unless it lies wholly on the map. */
+export function footprintCenter(square: DraftSquare, size: number, grid: Pick<GridSpec, "cellSize" | "offsetX" | "offsetY">, map: { width: number; height: number }): Point | null {
   const span = size * grid.cellSize;
   const left = grid.offsetX + square.column * grid.cellSize;
   const top = grid.offsetY + square.row * grid.cellSize;
   if (left < -EDGE_TOLERANCE || top < -EDGE_TOLERANCE) return null;
   if (left + span > map.width + EDGE_TOLERANCE || top + span > map.height + EDGE_TOLERANCE) return null;
-  return snapTokenCenter({ x: left + span / 2, y: top + span / 2 }, size, grid);
+  return snapTokenCenter({ x: left + span / 2, y: top + span / 2 }, size, grid as GridSpec);
+}
+
+/** A saved draft map: what the AI gave, and where its grid stands. Only the server sets the last two. */
+export interface DraftMapState {
+  name: string;
+  fileId: string;
+  proposedGrid: DraftProposedGrid | null;
+  gridStatus: BuildGridStatus;
+  /** The confirmed grid: a UVTT file's, or the one a person confirmed. */
+  grid: GridSpec | null;
+}
+
+export type DraftCreatureState = Omit<DraftCreature, "key" | "flags" | "notCarriedOver">;
+export type DraftEncounterState = Omit<DraftEncounter, "key" | "flags" | "notCarriedOver">;
+
+export interface BuildCheckIssue {
+  /** A `flag` is something the AI marked for the GM. A `problem` still needs work. */
+  type: "problem" | "flag";
+  /** What it is about, such as `creature goblin`. */
+  item: string;
+  message: string;
+}
+
+/** Whether a blank value is a problem: only on a player character, for a field the game uses, with no flag. */
+export function creatureProblems(creature: Pick<DraftCreature, "isPlayerCharacter" | "hp" | "maxHp" | "ac">, flags: readonly BuildFlag[], features: GameProfile["features"]): string[] {
+  if (!creature.isPlayerCharacter) return [];
+  const flagged = new Set(flags.map((f) => f.field.toLowerCase()));
+  const wanted: [boolean, "hp" | "maxHp" | "ac", string][] = [
+    [features.hitPoints, "hp", "HP"], [features.hitPoints, "maxHp", "Max HP"], [features.armorClass, "ac", "AC"],
+  ];
+  return wanted
+    .filter(([used, field]) => used && creature[field] === null && !flagged.has(field.toLowerCase()))
+    .map(([, , label]) => `${label} is blank with no flag. Give a value, or flag it and say why.`);
+}
+
+export interface BuildCheckInput {
+  profile: GameProfile | null;
+  files: readonly { id: string; width: number; height: number }[];
+  creatures: readonly { key: string; data: DraftCreatureState; flags: readonly BuildFlag[] }[];
+  maps: readonly { key: string; data: DraftMapState; flags: readonly BuildFlag[] }[];
+  encounters: readonly { key: string; data: DraftEncounterState; flags: readonly BuildFlag[] }[];
+}
+
+/** Every problem and flag in a draft, in plain words. Reads only: it changes and publishes nothing. */
+export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
+  const issues: BuildCheckIssue[] = [];
+  const add = (type: BuildCheckIssue["type"], item: string, message: string) => void issues.push({ type, item, message });
+  const addFlags = (item: string, flags: readonly BuildFlag[]) => flags.forEach((f) => add("flag", item, `${f.field}: ${f.message}`));
+  const features = input.profile?.features ?? ALL_FEATURES;
+
+  if (input.profile) addFlags("game profile", input.profile.flags);
+  else add("problem", "game profile", "No game profile yet. Save one so the GM knows which fields this game uses.");
+
+  const creatures = new Map(input.creatures.map((c) => [c.key, c]));
+  const maps = new Map(input.maps.map((m) => [m.key, m]));
+  const files = new Map(input.files.map((f) => [f.id, f]));
+
+  for (const { key, data, flags } of input.creatures) {
+    const item = `creature ${key}`;
+    addFlags(item, flags);
+    for (const message of creatureProblems(data, flags, features)) add("problem", item, message);
+    if (data.imageFileId !== null && !files.has(data.imageFileId)) add("problem", item, "Its art isn't in this build any more.");
+  }
+
+  for (const { key, data, flags } of input.maps) {
+    const item = `map ${key}`;
+    addFlags(item, flags);
+    if (data.gridStatus === "none") add("problem", item, "It needs a grid. Propose one, or ask the user for the square size.");
+    if (data.gridStatus === "proposed") add("problem", item, "Its grid is waiting for the user to confirm it on the build page.");
+    if (!files.has(data.fileId)) add("problem", item, "Its file isn't in this build any more.");
+  }
+
+  for (const { key, data, flags } of input.encounters) {
+    const item = `encounter ${key}`;
+    addFlags(item, flags);
+    const map = maps.get(data.mapKey);
+    if (!map) add("problem", item, `It names map "${data.mapKey}", which isn't in this build.`);
+    const file = map ? files.get(map.data.fileId) : undefined;
+    const grid = map?.data.grid ?? map?.data.proposedGrid ?? null;
+    data.tokens.forEach((token, index) => {
+      const creature = creatures.get(token.creatureKey);
+      const label = token.name ?? creature?.data.name ?? token.creatureKey;
+      if (!creature) add("problem", item, `Token ${index + 1} names creature "${token.creatureKey}", which isn't in this build.`);
+      if (!token.square) add("problem", item, `${label} has no square yet.`);
+      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", item, `${label} is off the map.`);
+    });
+  }
+  return issues;
 }
 
 /**

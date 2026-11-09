@@ -1,4 +1,5 @@
 import type { CommittedEvent, DomainEvent } from "@vtt/shared";
+import type { BuildStore } from "./buildStore";
 import type { IdentityStore } from "./identityStore";
 import type { EncounterRecord, LibraryStore, NewEncounterRecord, NewRoomOptions, UploadAllowance } from "./libraryStore";
 import type { GridDetectionStore, UploadAnalysis } from "./gridDetectionStore";
@@ -46,7 +47,7 @@ export class SeqConflictError extends Error {
  *  - events are never updated or deleted, except that `deleteRoom` erases a whole room's
  *    log together with the room (ADR 0009).
  */
-export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore {
+export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;

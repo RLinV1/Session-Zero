@@ -13,14 +13,6 @@ describe("the build address (FR-GM-26)", () => {
   });
   afterAll(() => mcp.close());
 
-  it("connects with no sign-in and passes the pass through as an argument", async () => {
-    const ai = await AiClient.connect(buildUrl);
-    const result = await ai.call("get_build", { pass: "x".repeat(47) });
-    expect(result.isError).toBe(false);
-    expect(result.json).toEqual({ stub: true, passCharacters: 47 });
-    await ai.close();
-  });
-
   it("offers build tools only at the build address", async () => {
     const build = await AiClient.connect(buildUrl);
     const player = await AiClient.connect(mcp.url);

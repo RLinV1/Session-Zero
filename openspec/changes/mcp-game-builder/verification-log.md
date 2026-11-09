@@ -97,3 +97,47 @@ No existing schema changed. `build.ts` reads existing schemas through `.shape`.
 ### Whole project
 
 `npm run lint && npm run typecheck && npm test` passes: shared 1,077, MCP 207, server 628 with 53 Postgres-only skipped, web 1,329, latency bench 2 (p95 115 ms).
+
+## 2026-11-09, later: server, files, drafts and tools (groups 3 to 5)
+
+The user chose to go on before the Real-Time Architecture owner's sign-off. Task 1.2 stays open, and this branch must not merge until that review is done.
+
+### Environment touched
+
+- The upload checks branch (`claude/ecstatic-cray-753671`) merged in, because group 4 reuses its byte check.
+- A throwaway Postgres, `build-check-pg` on port 55492, removed afterwards. Migrations were applied there, and `prisma migrate diff` against the schema is empty.
+- One slip: a `prisma migrate deploy` was first sent with no `DATABASE_URL`, so it could have reached the dev database. The permission check refused it and it never ran. It was then sent with the throwaway address spelled out.
+- Ports 3001, 5173 and 3002, the dev database and production were not touched.
+
+### Results
+
+| Task | How it was checked | Result |
+|---|---|---|
+| 3.1 Store and migration | The same 24 tests on memory and on Postgres | Pass. The test for uploads at the same moment found a real bug in the memory store: an `await` between its check and its insert let parallel uploads past the limit. Fixed |
+| 3.2 Owner routes | Integration tests | 401 signed out, 404 for another user, limit of 3, pass shown once and stored as a hash |
+| 3.3 Pass check | 14 existing routes compared with a request with no credential, status and body; a socket handshake; expiry, replacement and cancelling | Every one answered exactly as with no credential. 120 a minute per pass, and 60 failures per address per 15 minutes |
+| 3.4 Ending passes | Integration tests | A password change ends every pass. Deleting the account removes builds and their stored files |
+| 4.1 Uploads | PDF, SVG and HTML named `.png`, 30 MiB, a false size, a broken UVTT and each limit | Refused with nothing left in the upload folder. Real size recorded |
+| 4.2 Detection | A stand-in detector | The AI reads the suggestion on the draft map's file |
+| 4.3 Small copy | A 3000×1500 map; a file from another build | 1500×750; reported as missing |
+| 5.1 Draft items | Integration tests | Each creature stands alone. An item the user edited or that was published can't be changed. Off-map squares and unknown references are refused |
+| 5.2 Tools | The MCP SDK's client over real HTTP against a real room server | Exactly 8 tools, none at `/mcp`. A seat value is refused. A pass never reaches a log |
+| 5.3 Field guide | A test reading it from the tool result | All 12 conditions, the size table, what has no field, what is optional |
+
+### Decisions made while building
+
+- Owner routes are `/api/builds/*` and pass routes `/api/build/*`. In a pass route, the build id can be `current`, and any other build reads as missing.
+- An upload says what it is with `?kind=map`, `token` or `uvtt`, because the UVTT path allows no other fields.
+- `save_creatures` has a loose schema at the tool level. A strict one would fail the whole call on one bad creature.
+- At most 2 small copies are made at once, with a 503 and `Retry-After` beyond that, since shrinking a very large map is the heaviest thing a pass can ask for.
+- Draft files count only toward the build's own limits (500 MiB, 100 files). The account's 2 GB allowance applies at publish, which is task 6.1.
+
+### Not covered
+
+- A real AI using the finished tools (8.3 and 8.4), and the Claude app and ChatGPT at all.
+- Object storage. These ran on local disk.
+- The audits and the deliberate breaking of protections (8.1 and 8.2).
+
+### Whole project
+
+`npm run lint && npm run typecheck && npm test`, with `DATABASE_URL` on the throwaway database, passes: shared 1,087, MCP 227, server 884 with 4 skipped, web 1,331, latency bench 2 (p95 115 ms).

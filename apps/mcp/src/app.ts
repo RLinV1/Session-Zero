@@ -17,6 +17,8 @@ export interface McpAppOptions {
   roomServerUrl: string;
   /** Browser origins allowed to call the endpoint. A request with no `Origin` is an AI app's server (design D13). */
   allowedOrigins: readonly string[];
+  /** Where an AI's upload command should send files. Defaults to the first allowed origin. */
+  publicOrigin?: string;
   /** Proxy hops in front of this server, as the room server's TRUST_PROXY. */
   trustProxy?: number;
   /** Where built-in maps are read from, by file name. */
@@ -74,7 +76,11 @@ export function buildMcpApp(options: McpAppOptions) {
   })));
 
   // Kept off /mcp, so an AI reading strangers' chat at a table doesn't hold the build tools (ADR 0053).
-  app.post("/mcp/build", jsonBody, serve(() => createBuildMcpServer()));
+  app.post("/mcp/build", jsonBody, serve((req) => createBuildMcpServer({
+    roomServerUrl: options.roomServerUrl,
+    clientAddress: req.ip ?? "unknown",
+    publicOrigin: options.publicOrigin ?? options.allowedOrigins[0] ?? options.roomServerUrl,
+  })));
 
   // Stateless: there is no session to stream from or delete.
   app.all(["/mcp", "/mcp/build"], (_req, res) => void rpcError(res, 405, -32000, "Method not allowed."));

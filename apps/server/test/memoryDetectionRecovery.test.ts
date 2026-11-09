@@ -17,7 +17,7 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function upload(scope: DetectionTarget["scope"]) {
+async function upload(scope: "library" | "room") {
   const id = randomUUID();
   let target: DetectionTarget;
   if (scope === "library") {

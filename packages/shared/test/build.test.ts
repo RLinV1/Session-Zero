@@ -10,6 +10,8 @@ import {
   DraftMap,
   EncounterTemplateData,
   GameProfile,
+  checkBuild,
+  creatureProblems,
   draftEncounterToTemplate,
   type BuildCreatureValues,
   type DraftEncounterSource,
@@ -211,6 +213,70 @@ describe("a game profile describes the game, not a preset (FR-GM-26)", () => {
 
   it("can't name a preset", () => {
     expect(GameProfile.safeParse(profile({ preset: "dnd5e" })).success).toBe(false);
+  });
+});
+
+describe("checking a draft (FR-GM-26)", () => {
+  const features = { hitPoints: true, armorClass: true, attacks: true, conditions: true };
+  const pc = { isPlayerCharacter: true, hp: 1, maxHp: 1, ac: 10 };
+
+  it("is happy with a complete character", () => {
+    expect(creatureProblems(pc, [], features)).toEqual([]);
+  });
+
+  it("reports each blank with no flag, on a player character only", () => {
+    expect(creatureProblems({ ...pc, hp: null, ac: null }, [], features)).toHaveLength(2);
+    expect(creatureProblems({ ...pc, isPlayerCharacter: false, ac: null }, [], features)).toEqual([]);
+  });
+
+  it("accepts a flag on the field, in any case", () => {
+    expect(creatureProblems({ ...pc, maxHp: null }, [{ field: "MaxHP", message: "not given" }], features)).toEqual([]);
+  });
+
+  it("ignores a field the game doesn't use", () => {
+    expect(creatureProblems({ ...pc, ac: null }, [], { ...features, armorClass: false })).toEqual([]);
+  });
+
+  const data = DraftCreature.parse(creature({ hp: 1, maxHp: 1, ac: 10 }));
+  const file = { id: "11111111-1111-4111-8111-111111111111", width: 700, height: 700 };
+  const map = (over = {}) => ({ name: "Cave", fileId: file.id, proposedGrid: null, gridStatus: "none" as const, grid: null, ...over });
+  const empty = { profile: GameProfile.parse({ name: "G" }), files: [file], creatures: [], maps: [], encounters: [] };
+  const tokens = (square: { column: number; row: number } | null, creatureKey = "goblin") => [{ creatureKey, square, hidden: false }];
+  const encounterOn = (mapKey: string, list: ReturnType<typeof tokens>) => ({ key: "e", data: { name: "E", mapKey, tokens: list }, flags: [] });
+
+  it("asks for a profile when there is none", () => {
+    expect(checkBuild({ ...empty, profile: null })).toEqual([{ type: "problem", item: "game profile", message: expect.stringContaining("No game profile") }]);
+  });
+
+  it("reports a grid that's missing or waiting", () => {
+    expect(checkBuild({ ...empty, maps: [{ key: "m", data: map(), flags: [] }] })[0]?.message).toContain("needs a grid");
+    expect(checkBuild({ ...empty, maps: [{ key: "m", data: map({ gridStatus: "proposed" }), flags: [] }] })[0]?.message).toContain("confirm");
+  });
+
+  it("is quiet about a confirmed grid", () => {
+    expect(checkBuild({ ...empty, maps: [{ key: "m", data: map({ gridStatus: "confirmed" }), flags: [] }] })).toEqual([]);
+  });
+
+  it("reports what an encounter names that's gone, and what isn't placed or fits", () => {
+    const creatures = [{ key: "goblin", data, flags: [] }];
+    const grid = { cellSize: 70, offsetX: 0, offsetY: 0 };
+    const maps = [{ key: "m", data: map({ gridStatus: "confirmed", grid }), flags: [] }];
+    const messages = (list: ReturnType<typeof tokens>, mapKey = "m") =>
+      checkBuild({ ...empty, creatures, maps, encounters: [encounterOn(mapKey, list)] }).map((i) => i.message).join(" | ");
+    expect(messages(tokens({ column: 0, row: 0 }))).toBe("");
+    expect(messages(tokens(null))).toContain("no square");
+    expect(messages(tokens({ column: 50, row: 0 }))).toContain("off the map");
+    expect(messages(tokens({ column: 0, row: 0 }, "dragon"))).toContain('"dragon"');
+    expect(messages(tokens({ column: 0, row: 0 }), "gone")).toContain('"gone"');
+  });
+
+  it("reports a file that has gone", () => {
+    expect(checkBuild({ ...empty, files: [], maps: [{ key: "m", data: map({ gridStatus: "confirmed" }), flags: [] }] })[0]?.message).toContain("file");
+  });
+
+  it("lists flags as flags", () => {
+    const issues = checkBuild({ ...empty, creatures: [{ key: "goblin", data, flags: [{ field: "ac", message: "around 14 maybe" }] }] });
+    expect(issues).toEqual([{ type: "flag", item: "creature goblin", message: "ac: around 14 maybe" }]);
   });
 });
 

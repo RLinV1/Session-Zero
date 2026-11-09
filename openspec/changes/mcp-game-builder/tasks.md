@@ -1,6 +1,6 @@
 # Tasks
 
-The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **The user chose on 2026-11-09 not to wait for `mcp-ai-players` to land.** This work is on `feat/mcp-game-builder`, which holds a copy of that uncommitted work as its own commit. This branch can't merge until `mcp-ai-players` has.
+The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **The user chose on 2026-11-09 not to wait for `mcp-ai-players` to land.** This work is on `feat/mcp-game-builder`, which holds a copy of that uncommitted work as its own commit. This branch can't merge until `mcp-ai-players` has. **The user also chose on 2026-11-09 to start group 3 before the Real-Time Architecture owner's sign-off.** Task 1.2 stays open, and this branch must not merge until that review is done. If it changes the pass design, groups 3 to 5 will need rework.
 
 ## 1. Groundwork
 
@@ -15,22 +15,22 @@ The user answered the five review questions on 2026-11-08, and the answers are i
 
 ## 3. Build store and pass
 
-- [ ] 3.1 Add the additive migration and `BuildStore` with memory and Postgres versions. Verify with the same store tests against both
-- [ ] 3.2 Add the signed-in routes to start, list and read a build, and make and cancel a pass. Verify with integration tests: 401 signed out, 404 for another user, limit of 3 open builds, pass shown once and stored as a hash
-- [ ] 3.3 Add the pass check for `/api/build/*`, with per-pass and per-address limits. Verify with tests that every existing library, room and account route and the socket treat a pass as no credential, and that expired or cancelled passes are refused
-- [ ] 3.4 End passes on password change, and add builds and their stored files to account deletion (ADR 0050). Verify with integration tests
+- [x] 3.1 Add the additive migration and `BuildStore` with memory and Postgres versions. Verify with the same store tests against both
+- [x] 3.2 Add the signed-in routes to start, list and read a build, and make and cancel a pass. Verify with integration tests: 401 signed out, 404 for another user, limit of 3 open builds, pass shown once and stored as a hash
+- [x] 3.3 Add the pass check for `/api/build/*`, with per-pass and per-address limits. Verify with tests that every existing library, room and account route and the socket treat a pass as no credential, and that expired or cancelled passes are refused
+- [x] 3.4 End passes on password change, and add builds and their stored files to account deletion (ADR 0050). Verify with integration tests
 
 ## 4. Files
 
-- [ ] 4.1 Add pass and browser upload routes reusing `imageUploader`, `receiveUvtt` and the shared upload budget, with a real check of each file's contents. Verify with tests for a PDF, an SVG named `.png`, oversize, a false size, a bad UVTT and each build limit
-- [ ] 4.2 Add the `build` scope to `DetectionTarget` and queue detection on upload. Verify the result can be read for a draft map, with a stand-in detector
-- [ ] 4.3 Add the small-copy route for `view_file`. Verify it returns only this build's files and is no more than 1500 pixels on a side
+- [x] 4.1 Add pass and browser upload routes reusing `imageUploader`, `receiveUvtt` and the shared upload budget, with a real check of each file's contents. Verify with tests for a PDF, an SVG named `.png`, oversize, a false size, a bad UVTT and each build limit
+- [x] 4.2 Add the `build` scope to `DetectionTarget` and queue detection on upload. Verify the result can be read for a draft map, with a stand-in detector
+- [x] 4.3 Add the small-copy route for `view_file`. Verify it returns only this build's files and is no more than 1500 pixels on a side
 
 ## 5. Drafts and MCP tools
 
-- [ ] 5.1 Add the draft item routes (save by key, remove, check), including "the user edited this" and "already published" refusals. Verify with integration tests
-- [ ] 5.2 Add `/mcp/build` and the 8 tools, forwarding the client address and scrubbing `pass` from logs. Verify over real HTTP with the MCP SDK's client, including that a seat is refused and that `/mcp` doesn't list these tools
-- [ ] 5.3 Write the field guide returned by `get_build`, including the size table, what is optional and what has no field, and whose build it is. Verify a test reads it from the tool result
+- [x] 5.1 Add the draft item routes (save by key, remove, check), including "the user edited this" and "already published" refusals. Verify with integration tests
+- [x] 5.2 Add `/mcp/build` and the 8 tools, forwarding the client address and scrubbing `pass` from logs. Verify over real HTTP with the MCP SDK's client, including that a seat is refused and that `/mcp` doesn't list these tools
+- [x] 5.3 Write the field guide returned by `get_build`, including the size table, what is optional and what has no field, and whose build it is. Verify a test reads it from the tool result
 
 ## 6. Review and publish
 

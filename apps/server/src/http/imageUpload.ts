@@ -36,6 +36,8 @@ export interface ReceivedImage extends ImageFacts {
   /** Random, and carries nothing of the uploader's filename (asset-library: object name reveals nothing). */
   key: string;
   bytes: number;
+  /** What the uploader called it. Only for showing back to them. */
+  originalName: string;
 }
 
 export type ImageCheck = ({ ok: true } & ImageFacts) | { ok: false; status: 413 | 415; error: string };
@@ -71,7 +73,7 @@ async function checkReceivedFile(file: Express.Multer.File): Promise<ImageUpload
   const { ok: _ok, ...facts } = check;
   const realPath = `${file.path.slice(0, -path.extname(file.path).length)}${IMAGE_TYPES[facts.contentType]}`;
   if (realPath !== file.path) await rename(file.path, realPath);
-  return { ok: true, image: { ...facts, path: realPath, key: path.basename(realPath), bytes: file.size } };
+  return { ok: true, image: { ...facts, path: realPath, key: path.basename(realPath), bytes: file.size, originalName: file.originalname } };
 }
 
 /**
