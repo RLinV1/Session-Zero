@@ -1152,7 +1152,7 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   /* The header was eating the panel before the tabs came into view. One line each. */
   .panel-header { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; padding-bottom: 0; }
   .panel-header h1 { font-size: 1.05rem; }
-  .panel-header .whoami { width: 100%; }
+  .panel-header .whoami-row { width: 100%; }
   .condition-picker { grid-template-columns: 1fr; }
 
   /* Touch targets: WCAG 2.2 AA (2.5.8) asks for 24px minimum; 44px is the comfortable
@@ -2330,9 +2330,13 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 
 /* ---------- Leave table and departures (KAN-58, ADR 0006) ---------- */
 
-/* Quiet on purpose: never the panel's primary control. */
-button.link.leave-table { display: inline; padding: 0; font-size: inherit; color: var(--muted); text-decoration-color: var(--border-strong); }
-button.link.leave-table:hover { color: var(--danger); text-decoration-color: var(--danger); }
+/* Has its own place on the identity row, so a long name wraps or truncates and never pushes it
+   out of view. Neutral at rest, like every other button, so it is not the panel's primary
+   control; red appears only once the pointer is on it (leave-table). */
+.whoami-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.whoami-row .whoami { min-width: 0; }
+button.leave-table { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 .leave-confirm, .resolve-departure { display: flex; flex-direction: column; gap: var(--space-3); }
 .leave-confirm p, .resolve-departure p { margin: 0; }
 .leave-losses { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: var(--space-1); }
@@ -3705,7 +3709,8 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .panel-header { flex-wrap: nowrap; align-items: center; gap: var(--space-2); }
   .panel-header .status { flex: none; font-size: 0; line-height: 1; }
   .panel-header .status::before { font-size: var(--fs-sm); }
-  .panel-header .whoami { width: auto; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-header .whoami-row { width: auto; flex: 1 1 auto; min-width: 0; }
+  .panel-header .whoami { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* The chat button rests on the board's top-right corner, so it never covers the panel below. */
   .room { position: relative; }
