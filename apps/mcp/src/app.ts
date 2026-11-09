@@ -1,7 +1,9 @@
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createBuildMcpServer } from "./buildTools";
 import { scrubbed } from "./errors";
 import { Limits } from "./limits";
 import { SeatPool } from "./seatPool";
@@ -46,16 +48,11 @@ export function buildMcpApp(options: McpAppOptions) {
   });
 
   // Every type, so no Content-Type can carry a body past this limit to the transport's own parser.
-  app.post("/mcp", express.json({ limit: "64kb", type: () => true }), (req, res, next) => {
+  const jsonBody = express.json({ limit: "64kb", type: () => true });
+
+  const serve = (makeServer: (req: Request) => McpServer) => (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
-      const server = createMcpServer({
-        pool,
-        limits,
-        roomServerUrl: options.roomServerUrl,
-        clientAddress: req.ip ?? "unknown",
-        waitLimitMs: options.waitLimitMs ?? WAIT_LIMIT_MS,
-        maps: { roomServerUrl: options.roomServerUrl, builtinMapDir },
-      });
+      const server = makeServer(req);
       // Stateless, with a plain JSON reply: nothing is streamed, and a proxy has nothing to buffer (design D5).
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => {
@@ -65,10 +62,22 @@ export function buildMcpApp(options: McpAppOptions) {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     })().catch(next);
-  });
+  };
+
+  app.post("/mcp", jsonBody, serve((req) => createMcpServer({
+    pool,
+    limits,
+    roomServerUrl: options.roomServerUrl,
+    clientAddress: req.ip ?? "unknown",
+    waitLimitMs: options.waitLimitMs ?? WAIT_LIMIT_MS,
+    maps: { roomServerUrl: options.roomServerUrl, builtinMapDir },
+  })));
+
+  // Kept off /mcp, so an AI reading strangers' chat at a table doesn't hold the build tools (ADR 0053).
+  app.post("/mcp/build", jsonBody, serve(() => createBuildMcpServer()));
 
   // Stateless: there is no session to stream from or delete.
-  app.all("/mcp", (_req, res) => void rpcError(res, 405, -32000, "Method not allowed."));
+  app.all(["/mcp", "/mcp/build"], (_req, res) => void rpcError(res, 405, -32000, "Method not allowed."));
 
   // Express's default handler logs and echoes the error, and a JSON parse error quotes the body,
   // which could hold a seat.

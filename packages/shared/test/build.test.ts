@@ -1,0 +1,368 @@
+import { describe, expect, it } from "vitest";
+import {
+  AttackDice,
+  BUILD_DIE_SIDES,
+  BUILD_LIMITS,
+  BuildFlag,
+  BuildPass,
+  DraftCreature,
+  DraftEncounter,
+  DraftMap,
+  EncounterTemplateData,
+  GameProfile,
+  draftEncounterToTemplate,
+  type BuildCreatureValues,
+  type DraftEncounterSource,
+  type GridSpec,
+} from "../src";
+
+const creature = (over: Record<string, unknown> = {}) => ({ key: "goblin", name: "Goblin", isPlayerCharacter: false, ...over });
+const attack = (over: Record<string, unknown> = {}) => ({
+  name: "Bite",
+  toHit: { count: 1, sides: 20, modifier: 4 },
+  damage: { count: 1, sides: 6, modifier: 2 },
+  ...over,
+});
+const messages = (result: { success: boolean; error?: { issues: { message: string }[] } }) =>
+  (result.error?.issues ?? []).map((i) => i.message).join(" | ");
+
+describe("the build pass and limits (FR-GM-26)", () => {
+  const pass = `szb_${"a".repeat(43)}`;
+
+  it("accepts a pass in the issued format", () => {
+    expect(BuildPass.safeParse(pass).success).toBe(true);
+  });
+
+  it("refuses a seat value, so a player's seat can't be given to a build tool", () => {
+    expect(BuildPass.safeParse(`d290f1ee-6c54-4b01-90e6-d701748f0851.${"a".repeat(40)}`).success).toBe(false);
+  });
+
+  it("refuses a pass with too little randomness", () => {
+    expect(BuildPass.safeParse("szb_short").success).toBe(false);
+  });
+
+  it("states the limits the user accepted", () => {
+    expect(BUILD_LIMITS).toMatchObject({
+      openBuildsPerAccount: 3,
+      passLifetimeMs: 24 * 60 * 60 * 1000,
+      filesPerBuild: 100,
+      mapsPerBuild: 20,
+      storageBytesPerBuild: 500 * 1024 ** 2,
+      requestsPerPassPerMinute: 120,
+      creaturesPerBuild: 200,
+      creaturesPerCall: 20,
+      encountersPerBuild: 20,
+      tokensPerEncounter: 500,
+      flagCharacters: 200,
+      notCarriedOverCharacters: 2000,
+      gameNotesCharacters: 8000,
+      abandonedAfterDays: 14,
+    });
+  });
+});
+
+describe("a draft creature holds only real token fields (FR-GM-26)", () => {
+  it("keeps the values it is given", () => {
+    const parsed = DraftCreature.parse(creature({ hp: 24, maxHp: 24, ac: 15, size: 2, attacks: [attack(), attack({ name: "Claw" })] }));
+    expect(parsed).toMatchObject({ hp: 24, maxHp: 24, ac: 15, size: 2 });
+    expect(parsed.attacks).toHaveLength(2);
+  });
+
+  it("leaves what wasn't given blank, without inventing a value", () => {
+    expect(DraftCreature.parse(creature())).toMatchObject({
+      hp: null, maxHp: null, ac: null, size: 1, attacks: [], conditions: [], imageFileId: null, flags: [], notCarriedOver: "",
+    });
+  });
+
+  it("must say whether it is a player character", () => {
+    const { isPlayerCharacter: _omitted, ...without } = creature();
+    expect(DraftCreature.safeParse(without).success).toBe(false);
+  });
+
+  it("names the die when it is a d3", () => {
+    const result = DraftCreature.safeParse(creature({ attacks: [attack({ damage: { count: 1, sides: 3, modifier: 0 } })] }));
+    expect(result.success).toBe(false);
+    expect(messages(result)).toContain("d3");
+  });
+
+  it("names the die when it is a d7", () => {
+    expect(messages(DraftCreature.safeParse(creature({ attacks: [attack({ toHit: { count: 1, sides: 7, modifier: 0 } })] })))).toContain("d7");
+  });
+
+  it("uses exactly the dice an attack can roll", () => {
+    for (const sides of BUILD_DIE_SIDES) expect(AttackDice.safeParse({ count: 1, sides, modifier: 0 }).success).toBe(true);
+    for (const sides of [2, 3, 5, 7, 16]) expect(AttackDice.safeParse({ count: 1, sides, modifier: 0 }).success).toBe(false);
+  });
+
+  it("allows a roll left blank for a flag", () => {
+    expect(DraftCreature.safeParse(creature({ attacks: [attack({ damage: null })] })).success).toBe(true);
+  });
+
+  it("refuses a Max HP over the limit, naming the field", () => {
+    const result = DraftCreature.safeParse(creature({ maxHp: 20000 }));
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["maxHp"]);
+  });
+
+  it("refuses HP above Max HP, as placing the token would", () => {
+    expect(DraftCreature.safeParse(creature({ hp: 30, maxHp: 20 })).success).toBe(false);
+  });
+
+  it("refuses over-long text", () => {
+    expect(DraftCreature.safeParse(creature({ name: "x".repeat(61) })).success).toBe(false);
+    expect(DraftCreature.safeParse(creature({ notCarriedOver: "x".repeat(2001) })).success).toBe(false);
+    expect(BuildFlag.safeParse({ field: "hp", message: "x".repeat(201) }).success).toBe(false);
+    expect(BuildFlag.safeParse({ field: "hp", message: "x".repeat(200) }).success).toBe(true);
+  });
+
+  it("refuses a condition the app doesn't have", () => {
+    expect(DraftCreature.safeParse(creature({ conditions: ["bleeding"] })).success).toBe(false);
+  });
+
+  it("refuses more than 8 attacks", () => {
+    const attacks = Array.from({ length: 9 }, (_, i) => attack({ name: `Attack ${i}` }));
+    expect(DraftCreature.safeParse(creature({ attacks })).success).toBe(false);
+  });
+
+  it("refuses two attacks with one name", () => {
+    expect(DraftCreature.safeParse(creature({ attacks: [attack(), attack()] })).success).toBe(false);
+  });
+
+  it("refuses a field the app doesn't have on a draft, such as owners or an animation", () => {
+    expect(DraftCreature.safeParse(creature({ ownerIds: ["someone"] })).success).toBe(false);
+    expect(DraftCreature.safeParse(creature({ imageUrl: "https://example.com/a.png" })).success).toBe(false);
+    expect(DraftCreature.safeParse(creature({ attacks: [attack({ animation: { style: "x" } })] })).success).toBe(false);
+  });
+
+  it("takes a key that can only be a plain name", () => {
+    expect(DraftCreature.safeParse(creature({ key: "goblin-2_b" })).success).toBe(true);
+    expect(DraftCreature.safeParse(creature({ key: "../etc" })).success).toBe(false);
+    expect(DraftCreature.safeParse(creature({ key: "x".repeat(65) })).success).toBe(false);
+  });
+});
+
+describe("a draft map only proposes a grid (FR-GM-26)", () => {
+  const map = (over: Record<string, unknown> = {}) => ({ key: "bridge", name: "Bridge", fileId: "11111111-1111-4111-8111-111111111111", ...over });
+
+  it("starts with no proposal", () => {
+    expect(DraftMap.parse(map()).proposedGrid).toBeNull();
+  });
+
+  it("keeps a proposal in pixels", () => {
+    expect(DraftMap.parse(map({ proposedGrid: { cellSize: 70, offsetX: 5, offsetY: 0 } })).proposedGrid?.cellSize).toBe(70);
+  });
+
+  it("refuses an offset as large as a square", () => {
+    expect(DraftMap.safeParse(map({ proposedGrid: { cellSize: 70, offsetX: 70, offsetY: 0 } })).success).toBe(false);
+  });
+
+  it("can't claim its grid is confirmed, or carry walls", () => {
+    expect(DraftMap.safeParse(map({ gridStatus: "confirmed" })).success).toBe(false);
+    expect(DraftMap.safeParse(map({ walls: [] })).success).toBe(false);
+  });
+});
+
+describe("a draft encounter places creatures by square (FR-GM-26)", () => {
+  const token = (over: Record<string, unknown> = {}) => ({ creatureKey: "goblin", square: { column: 1, row: 2 }, hidden: true, ...over });
+  const encounter = (over: Record<string, unknown> = {}) => ({ key: "ambush", name: "Bridge ambush", mapKey: "bridge", tokens: [token()], ...over });
+
+  it("keeps tokens by square", () => {
+    expect(DraftEncounter.parse(encounter()).tokens[0]).toMatchObject({ square: { column: 1, row: 2 }, hidden: true });
+  });
+
+  it("accepts a token with no square", () => {
+    expect(DraftEncounter.safeParse(encounter({ tokens: [token({ square: null })] })).success).toBe(true);
+  });
+
+  it("must state hidden for every token", () => {
+    const { hidden: _omitted, ...without } = token();
+    expect(DraftEncounter.safeParse(encounter({ tokens: [without] })).success).toBe(false);
+  });
+
+  it("refuses board coordinates and owners", () => {
+    expect(DraftEncounter.safeParse(encounter({ tokens: [token({ position: { x: 1, y: 1 } })] })).success).toBe(false);
+    expect(DraftEncounter.safeParse(encounter({ tokens: [token({ ownerIds: [] })] })).success).toBe(false);
+  });
+
+  it("refuses more tokens than a template holds", () => {
+    expect(DraftEncounter.safeParse(encounter({ tokens: Array.from({ length: 501 }, () => token()) })).success).toBe(false);
+  });
+});
+
+describe("a game profile describes the game, not a preset (FR-GM-26)", () => {
+  const profile = (over: Record<string, unknown> = {}) => ({ name: "Lanternfall", ...over });
+
+  it("defaults to every feature and 5 ft squares", () => {
+    expect(GameProfile.parse(profile())).toMatchObject({
+      features: { hitPoints: true, armorClass: true, attacks: true, conditions: true }, unitsPerCell: 5, unitLabel: "ft", notes: "", flags: [],
+    });
+  });
+
+  it("records a game with no armour class and metre squares", () => {
+    const parsed = GameProfile.parse(profile({ features: { hitPoints: true, armorClass: false, attacks: true, conditions: true }, unitsPerCell: 2, unitLabel: "m" }));
+    expect(parsed.features.armorClass).toBe(false);
+    expect(parsed).toMatchObject({ unitsPerCell: 2, unitLabel: "m" });
+  });
+
+  it("limits the notes", () => {
+    expect(GameProfile.safeParse(profile({ notes: "x".repeat(8000) })).success).toBe(true);
+    expect(GameProfile.safeParse(profile({ notes: "x".repeat(8001) })).success).toBe(false);
+  });
+
+  it("can't name a preset", () => {
+    expect(GameProfile.safeParse(profile({ preset: "dnd5e" })).success).toBe(false);
+  });
+});
+
+describe("turning a draft encounter into a template (FR-GM-27)", () => {
+  const grid: GridSpec = { cellSize: 70, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" };
+  const goblin: BuildCreatureValues = {
+    name: "Goblin", size: 1, hp: 7, maxHp: 7, ac: 13, color: "#336699", conditions: [], attacks: [],
+    imageUrl: "/uploads/goblin.webp", assetId: "22222222-2222-4222-8222-222222222222",
+  };
+  const source = (over: Partial<DraftEncounterSource> = {}): DraftEncounterSource => ({
+    map: { assetId: "33333333-3333-4333-8333-333333333333", width: 700, height: 700 },
+    grid,
+    board: { walls: [], fog: [] },
+    creatures: new Map([["goblin", goblin]]),
+    tokens: [{ creatureKey: "goblin", square: { column: 2, row: 3 }, hidden: false }],
+    ...over,
+  });
+  const onlyToken = (result: ReturnType<typeof draftEncounterToTemplate>) => {
+    if (!result.ok) throw new Error(JSON.stringify(result.problems));
+    return result.data.tokens[0]!;
+  };
+
+  it.each([[1, 175, 245], [2, 210, 280], [3, 245, 315], [4, 280, 350]])("puts a size %i token's top-left on the square", (size, x, y) => {
+    const result = draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, size }]]) }));
+    expect(onlyToken(result).position).toEqual({ x, y });
+  });
+
+  it.each([[1, 138, 182], [2, 163, 207], [3, 188, 232], [4, 213, 257]])("honours an offset grid at size %i", (size, x, y) => {
+    const offset = { ...grid, cellSize: 50, offsetX: 13, offsetY: 7 };
+    const result = draftEncounterToTemplate(source({ grid: offset, creatures: new Map([["goblin", { ...goblin, size }]]) }));
+    expect(onlyToken(result).position).toEqual({ x, y });
+  });
+
+  it("follows a corrected grid, because tokens are stored by square", () => {
+    const before = onlyToken(draftEncounterToTemplate(source()));
+    const after = onlyToken(draftEncounterToTemplate(source({ grid: { ...grid, cellSize: 50, offsetX: 10 } })));
+    expect(before.position).toEqual({ x: 175, y: 245 });
+    expect(after.position).toEqual({ x: 135, y: 175 });
+  });
+
+  it("copies the creature's values, with no owners and no initiative", () => {
+    const token = onlyToken(draftEncounterToTemplate(source()));
+    expect(token).toMatchObject({ name: "Goblin", size: 1, rotation: 0, color: "#336699", hidden: false, stats: { hp: 7, maxHp: 7, ac: 13 } });
+    expect(token.imageUrl).toBe("/uploads/goblin.webp");
+    expect(token.assetId).toBe(goblin.assetId);
+    expect(token).not.toHaveProperty("ownerIds");
+    expect(token).not.toHaveProperty("initiative");
+  });
+
+  it("keeps a hidden token hidden and uses a token's own label", () => {
+    const token = onlyToken(draftEncounterToTemplate(source({ tokens: [{ creatureKey: "goblin", name: "Goblin 2", square: { column: 0, row: 0 }, hidden: true }] })));
+    expect(token).toMatchObject({ name: "Goblin 2", hidden: true });
+  });
+
+  it("starts a creature with blank HP at full health, as placing one does", () => {
+    const token = onlyToken(draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, hp: null, maxHp: 9 }]]) })));
+    expect(token.stats).toMatchObject({ hp: 9, maxHp: 9 });
+  });
+
+  it("carries a creature with no art as a colour disc", () => {
+    const token = onlyToken(draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, imageUrl: null, assetId: null }]]) })));
+    expect(token.imageUrl).toBeNull();
+    expect(token).not.toHaveProperty("assetId");
+  });
+
+  it("takes walls, doors and fog from the map, and gives a valid template", () => {
+    const wall = { a: { x: 0, y: 700 }, b: { x: 700, y: 700 } };
+    const door = { a: { x: 0, y: 0 }, b: { x: 0, y: 70 }, portal: { kind: "door" as const, state: "closed" as const } };
+    const fog = { shape: "rect" as const, points: [{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 70 }] };
+    const result = draftEncounterToTemplate(source({ board: { walls: [wall, door], fog: [fog] } }));
+    if (!result.ok) throw new Error(JSON.stringify(result.problems));
+    expect(result.data.walls).toEqual([wall, door]);
+    expect(result.data.fog).toEqual([fog]);
+    expect(result.data.grid).toEqual(grid);
+    expect(EncounterTemplateData.safeParse(result.data).success).toBe(true);
+  });
+
+  it("accepts a token exactly against the map's edge", () => {
+    expect(draftEncounterToTemplate(source({ tokens: [{ creatureKey: "goblin", square: { column: 9, row: 9 }, hidden: false }] })).ok).toBe(true);
+  });
+
+  it.each([
+    ["past the right edge", { column: 10, row: 0 }, 1],
+    ["past the bottom edge", { column: 0, row: 10 }, 1],
+    ["before the left edge", { column: -1, row: 0 }, 1],
+    ["above the top edge", { column: 0, row: -1 }, 1],
+    ["hanging over the edge", { column: 9, row: 0 }, 2],
+  ])("refuses a token %s, naming it", (_label, square, size) => {
+    const result = draftEncounterToTemplate(source({
+      creatures: new Map([["goblin", { ...goblin, size }]]),
+      tokens: [{ creatureKey: "goblin", name: "Scout", square, hidden: false }],
+    }));
+    expect(result).toEqual({ ok: false, problems: [{ token: "Scout", message: expect.stringContaining("map") }] });
+  });
+
+  it("refuses the partial column an offset grid leaves before its first line", () => {
+    const result = draftEncounterToTemplate(source({
+      grid: { ...grid, offsetX: 30 },
+      tokens: [{ creatureKey: "goblin", square: { column: -1, row: 0 }, hidden: false }],
+    }));
+    expect(result.ok).toBe(false);
+  });
+
+  const across = { a: { x: 175, y: 0 }, b: { x: 175, y: 700 } };
+
+  it("refuses a footprint across a wall", () => {
+    const result = draftEncounterToTemplate(source({ board: { walls: [across], fog: [] } }));
+    expect(result).toEqual({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("wall") }] });
+  });
+
+  it("refuses a footprint across a closed door", () => {
+    const door = { ...across, portal: { kind: "door" as const, state: "closed" as const } };
+    expect(draftEncounterToTemplate(source({ board: { walls: [door], fog: [] } })).ok).toBe(false);
+  });
+
+  it("allows a footprint across an open door", () => {
+    const door = { ...across, portal: { kind: "door" as const, state: "open" as const } };
+    expect(draftEncounterToTemplate(source({ board: { walls: [door], fog: [] } })).ok).toBe(true);
+  });
+
+  it("allows a token beside a wall on its square's edge", () => {
+    const edge = { a: { x: 140, y: 0 }, b: { x: 140, y: 700 } };
+    expect(draftEncounterToTemplate(source({ board: { walls: [edge], fog: [] } })).ok).toBe(true);
+  });
+
+  it("reports a token with no square rather than dropping it", () => {
+    const result = draftEncounterToTemplate(source({ tokens: [{ creatureKey: "goblin", square: null, hidden: false }] }));
+    expect(result).toEqual({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("square") }] });
+  });
+
+  it("reports an unknown creature, even one named like an object's built-in property", () => {
+    const result = draftEncounterToTemplate(source({ tokens: [{ creatureKey: "__proto__", square: { column: 0, row: 0 }, hidden: false }] }));
+    expect(result).toEqual({ ok: false, problems: [{ token: "__proto__", message: expect.stringContaining("creature") }] });
+  });
+
+  it("refuses HP above Max HP if library values changed since the draft", () => {
+    const result = draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, hp: 9, maxHp: 7 }]]) }));
+    expect(result.ok).toBe(false);
+  });
+
+  it("reports every problem at once", () => {
+    const result = draftEncounterToTemplate(source({ tokens: [
+      { creatureKey: "goblin", name: "A", square: null, hidden: false },
+      { creatureKey: "goblin", name: "B", square: { column: 99, row: 0 }, hidden: false },
+      { creatureKey: "goblin", name: "C", square: { column: 0, row: 0 }, hidden: false },
+    ] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.map((p) => p.token)).toEqual(["A", "B"]);
+  });
+
+  it("names the failure if the assembled template breaks the shared schema", () => {
+    const result = draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, color: "not a colour" }]]) }));
+    expect(result.ok).toBe(false);
+  });
+});

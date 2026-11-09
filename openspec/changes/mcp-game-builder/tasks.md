@@ -1,17 +1,17 @@
 # Tasks
 
-The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **Nothing here starts until `mcp-ai-players` has landed.**
+The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **The user chose on 2026-11-09 not to wait for `mcp-ai-players` to land.** This work is on `feat/mcp-game-builder`, which holds a copy of that uncommitted work as its own commit. This branch can't merge until `mcp-ai-players` has.
 
 ## 1. Groundwork
 
-- [ ] 1.1 Confirm `mcp-ai-players` is merged, merge `origin/main` into this branch, and check that `apps/mcp` builds and its tests pass
+- [x] 1.1 Copy the `mcp-ai-players` work onto this branch, merge `origin/main`, and check that `apps/mcp` builds and its tests pass
 - [ ] 1.2 Check the next free ADR number on `origin/main`, write ADR 0053 (new pass credential, the exception to ADR 0024 and 0033) and get the Real-Time Architecture owner's review before group 3. Verify by the owner's sign-off recorded in the ADR
 - [ ] 1.3 Test the riskiest assumption first: put a stub tool at `/mcp/build` and try it from Claude Code, the Claude app and ChatGPT. Record in the verification log whether each connects with no sign-in and passes the `pass` argument. If a chat app refuses, stop and bring it back to the user
 
 ## 2. Shared contract
 
-- [ ] 2.1 Add `packages/shared/src/build.ts` (pass, profile, draft creature, draft map, draft encounter, flags, limits), reusing `CreatureFields`, `AttackPreset` and `GridSpec`. Verify with unit tests named for FR-GM-26, including a d3, a Max HP over the limit and over-long text
-- [ ] 2.2 Add a pure function that turns a draft encounter into `EncounterTemplateData`, converting squares to board coordinates, and refusing off-map squares and footprints across walls. Verify with unit tests at sizes 1 to 4, on offset grids, and after a grid correction
+- [x] 2.1 Add `packages/shared/src/build.ts` (pass, profile, draft creature, draft map, draft encounter, flags, limits), reusing `CreatureFields`, `AttackPreset` and `GridSpec`. Verify with unit tests named for FR-GM-26, including a d3, a Max HP over the limit and over-long text
+- [x] 2.2 Add a pure function that turns a draft encounter into `EncounterTemplateData`, converting squares to board coordinates, and refusing off-map squares and footprints across walls. Verify with unit tests at sizes 1 to 4, on offset grids, and after a grid correction
 
 ## 3. Build store and pass
 

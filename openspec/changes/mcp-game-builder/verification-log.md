@@ -49,3 +49,51 @@ The fitted rates in the earlier log (cached read $0.10, cache write $4, output $
 ### Validation
 
 `openspec validate mcp-game-builder` passes.
+
+## 2026-11-09: groundwork and the shared contract
+
+The user chose to build on the player server without waiting for it to land.
+
+### Environment touched
+
+- New branch `feat/mcp-game-builder`, in the worktree `.claude/worktrees/mcp-game-builder-stack`. The branch `claude/mcp-game-builder-76065c` is unchanged.
+- The `mcp-ai-players` worktree was only read. Its `git status` was the same before and after, and the copy's `apps/mcp` and all 19 changed tracked files match it byte for byte.
+- A stub MCP server in a throwaway process on a free port, stopped afterwards. Ports 3001, 5173 and 3002, the dev database and production were not touched.
+- Three `claude -p` runs on the user's plan, on Haiku, in a scratch folder with `--strict-mcp-config`. Together about $0.01.
+
+### Task 1.1
+
+| Step | Result |
+|---|---|
+| Copy the player server as its own commit | `b5b886a`, 55 files |
+| Merge `origin/main` at `cb3be30` | 3 conflicts, in `ci.yml`, `DEPLOYMENT.md` and `DESIGN.md`. Each was two additions side by side, and both are kept |
+| Review what merged cleanly | Main's Caddy rule sends exactly one `X-Forwarded-For` entry to the app server, and `/mcp` didn't. Without it, per-address limits would see the wrong address behind Cloudflare, so the merge adds it |
+| `apps/mcp` on the merged code | Typecheck passes, 204 tests pass |
+
+### Task 1.2, not finished
+
+ADR 0053 is written and marked Proposed. The task's check is the Real-Time Architecture owner's sign-off, which hasn't happened. Group 3 waits for it.
+
+### Task 1.3, half finished
+
+| App | Result |
+|---|---|
+| Claude Code | Connected with no sign-in, listed `get_build` and sent the 47-character pass unchanged as an argument. $0.004, 3 turns |
+| Claude app | **Not tried.** It needs an address it can reach from the internet |
+| ChatGPT | **Not tried**, for the same reason |
+
+The first two runs failed because of the test script, not the server: `spawnSync` blocked the process hosting the server, so the connection timed out (`CONNECT_TIMEOUT`).
+
+Claude Code deferred the tool behind `ToolSearch`, so it took one extra turn to load. The same will apply to the real tools.
+
+### Tasks 2.1 and 2.2
+
+`packages/shared/test/build.test.ts`: 62 tests, which failed before `build.ts` existed. They include a d3 and d7 refused by name, Max HP 20000, over-long text, sizes 1 to 4, offset grids, a corrected grid, off-map squares, footprints across walls and closed doors, and a creature key of `__proto__`.
+
+Two decisions made while building, recorded in design D7: a token's square is the top-left square it covers, and a token with no square must be placed or removed before publishing.
+
+No existing schema changed. `build.ts` reads existing schemas through `.shape`.
+
+### Whole project
+
+`npm run lint && npm run typecheck && npm test` passes: shared 1,077, MCP 207, server 628 with 53 Postgres-only skipped, web 1,329, latency bench 2 (p95 115 ms).
