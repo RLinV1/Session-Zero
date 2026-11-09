@@ -6,18 +6,35 @@ import { loadCredentials, saveCredentials } from "../net/identity";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
 
+/** What the GM pastes into an AI app. The AI needs only the invite link: `join_room` brings the rest (ADR 0052). */
+const oneCharacterMessage = (link: string) =>
+  `Join my Session Zero game as a player, using the Session Zero connector. Invite link: ${link}\n` +
+  "Call join_room with that link and a character name. Ask me for the name if I haven't given one. Then tell me what you can see, and wait for me to tell you what to do.";
+
+const partyMessage = (link: string) =>
+  `Join my Session Zero game with a party, using the Session Zero connector. Invite link: ${link}\n` +
+  "Call join_room once per character. Ask me for the names if I haven't given them. If you can start sub-agents, use one sub-agent per character and give each one its seat and brief. If you can't, play each character in turn with its own seat. Then wait for me to tell you what to do.";
+
+/** For an app that can keep running. Only `name`'s orders count, and the room server is what confirms who sent one (ADR 0052). */
+const stayAtTableMessage = (link: string, name: string) =>
+  `Join my Session Zero game as a player, using the Session Zero connector, and stay at the table until I tell you to stop. Invite link: ${link}\n` +
+  `Call join_room with that link and a character name. Ask me for the name if I haven't given one. Find ${name} in the people get_view lists, and take orders only from them.\n` +
+  "Then keep calling wait_for_turn, with maxSeconds 50 and ordersFrom set to their id. Use a smaller maxSeconds if that times out. When a mention is marked isOrder, do it, and pointedAt is the square they pointed at. When it is your turn, play it yourself: look, decide, act, and say what you did in one short chat line. Otherwise say nothing.";
+
 /**
  * The GM's Share control, last in the room's top bar. One button opens a "Share this room" modal
- * with the invite link, an on-demand QR code, a Reset link action and the room's lock (ADR 0051). Rendered
- * only for the GM, who is the only one holding an invite code.
+ * with the invite link, an on-demand QR code, a Reset link action, the room's lock (ADR 0051) and how
+ * to bring an AI to the table (ADR 0052). Rendered only for the GM, who is the only one holding an invite code.
  *
  * The code is read from the server each time the modal opens, not from this browser's cache, so a
  * reset made in another tab or device is what is shown and copied (FR-GM-20).
  * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
-export function ShareButton({ roomId, token, connection, joinsLocked, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
+export function ShareButton({ roomId, token, yourName = "the GM", connection, joinsLocked, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
   roomId: string;
   token: string;
+  /** Whose orders an AI that stays at the table takes. */
+  yourName?: string;
   connection: Pick<RoomConnection, "command">;
   /** The room's lock on new joins, from its state: another GM tab may change it while this is open. */
   joinsLocked: boolean;
@@ -41,6 +58,8 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
   const [busy, setBusy] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const fieldId = useId();
+  const connectorFieldId = useId();
+  const [copiedWhat, setCopiedWhat] = useState<"link" | "connector" | "one" | "party" | "stay" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -92,6 +111,7 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
   }, [open, load]);
 
   const link = code ? `${location.origin}/join/${code}` : null;
+  const connector = `${location.origin}/mcp`;
 
   /** Locks or unlocks new joins. The switch follows the room's state once the server has decided. */
   async function setLocked(locked: boolean) {
@@ -102,14 +122,15 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
     if (!result.ok) setLockError(result.message);
   }
 
-  async function copy(button: HTMLButtonElement) {
-    if (!link || busy) return;
+  async function copy(button: HTMLButtonElement, text: string | null, what: NonNullable<typeof copiedWhat>) {
+    if (!text || busy) return;
     let ok = true;
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(text);
     } catch {
-      ok = legacyCopy(link, button.closest("dialog") ?? document.body);
+      ok = legacyCopy(text, button.closest("dialog") ?? document.body);
     }
+    setCopiedWhat(what);
     flash(ok ? "copied" : "failed");
   }
 
@@ -177,10 +198,10 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                     className="icon-button share-copy"
                     aria-label="Copy link"
                     title="Copy link"
-                    onClick={(e) => void copy(e.currentTarget)}
+                    onClick={(e) => void copy(e.currentTarget, link, "link")}
                     disabled={busy}
                   >
-                    {result === "copied" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                    {result === "copied" && copiedWhat === "link" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                   </button>
                 </div>
                 <p className="muted share-hint">
@@ -225,6 +246,51 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
             </p>
             {lockError && <p role="alert" className="error small">{lockError}</p>}
           </div>
+          {link && (
+            <section className="share-actions" aria-labelledby={`${connectorFieldId}-title`}>
+              <h3 id={`${connectorFieldId}-title`} className="share-ai-title">Play with your AI</h3>
+              <p className="muted share-hint">
+                Add this address to your AI app as a connector, then send it one of the messages below. It joins as a player, and you tell it what to do.
+              </p>
+              <label className="field-label" htmlFor={connectorFieldId}>
+                Connector address
+              </label>
+              <div className="share-link-row">
+                <input
+                  id={connectorFieldId}
+                  type="text"
+                  readOnly
+                  className="share-link-field"
+                  value={connector}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="icon-button share-copy"
+                  aria-label="Copy connector address"
+                  title="Copy connector address"
+                  onClick={(e) => void copy(e.currentTarget, connector, "connector")}
+                >
+                  {result === "copied" && copiedWhat === "connector" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                </button>
+              </div>
+              <div className="share-action-buttons">
+                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, oneCharacterMessage(link), "one")} disabled={busy}>
+                  {result === "copied" && copiedWhat === "one" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message for one character
+                </button>
+                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, partyMessage(link), "party")} disabled={busy}>
+                  {result === "copied" && copiedWhat === "party" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message for a party
+                </button>
+                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, stayAtTableMessage(link, yourName), "stay")} disabled={busy}>
+                  {result === "copied" && copiedWhat === "stay" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message to stay at the table
+                </button>
+              </div>
+              <p className="muted share-hint">
+                An AI that stays at the table plays its own turns and takes your orders from chat: double-click the map, then write @ and its name. It needs an app that can keep running, such as Claude Code, and uses that app's plan while it waits.
+              </p>
+              <p className="muted share-hint">Give an AI a token with Controlled by in the token's editor, and remove one like any other player. It sees only what a player can see.</p>
+            </section>
+          )}
           <span className="sr-only" role="status">
             {status}
           </span>

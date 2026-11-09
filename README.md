@@ -323,6 +323,8 @@ A player needs to enter a session with minimal friction and remain associated wi
 | FR-PL-05 | Player | **Automatic reconnection** | Reconnects after transient connection failure without requiring a manual page refresh. |
 | FR-PL-06 | Both | **Full-state resynchronization** | Gives reconnecting or newly joined clients the current authoritative room state so they can resume play without reconstructing what happened manually. |
 | FR-PL-07 | Player | **Encounter replay for late joiners** | Replays the action log from a chosen checkpoint so a late-arriving player can review encounter progression. |
+| FR-PL-08 | Player | **Connect your own AI** | Lets a user's own AI app join a room as an ordinary, labelled player through MCP, under the same visibility and permission rules as a browser, with no account and no model on our side. |
+| FR-PL-09 | Player | **Several AI seats at one table** | Lets one AI or several people's AIs each hold their own seat in a room, including one seat per sub-agent, with each seat seeing and acting only for itself. |
 
 ### 5.4 Player and GM Need — Interact with the Tactical Board Clearly
 
@@ -502,6 +504,8 @@ Priority reflects what the encounter loop needs to function end-to-end (**Must**
 | FR-GM-12 | UVTT export | Stretch | Low |
 | FR-GM-13 | Reusable encounter templates | Stretch | Medium |
 | FR-PL-07 | Encounter replay for late joiners | Stretch | Medium |
+| FR-PL-08 | Connect your own AI | Stretch | High |
+| FR-PL-09 | Several AI seats at one table | Stretch | Medium |
 | FR-GM-20 | Guest revocation and invite regeneration | Stretch | Low |
 | FR-GM-24 | Focusable token roster | Stretch | Low |
 

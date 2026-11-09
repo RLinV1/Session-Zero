@@ -10,6 +10,7 @@ The team plans changes with OpenSpec (`/opsx:propose`, `openspec/`).
 - `packages/shared` — THE CONTRACT: zod schemas for state/commands/events/protocol, `decide`, `reduce`, visibility filters. Pure TS, no I/O.
 - `apps/server` — Express + Socket.IO. `domain/liveRoom.ts` is the command pipeline. `store/` is persistence (memory, Postgres via Prisma, Redis seq, S3 assets).
 - `apps/web` — React panels + PixiJS board (`board/boardView.ts`). `net/roomConnection.ts` is the sync client.
+- `apps/mcp` — lets users' own AI apps hold player seats over MCP. An ordinary client of the room server: REST and Socket.IO only, never `apps/server` code (ADR 0052).
 - `services/vision` — (planned) Python/OpenCV grid detection and wall parsing.
 
 ## Commands
@@ -17,6 +18,7 @@ The team plans changes with OpenSpec (`/opsx:propose`, `openspec/`).
 npm install
 npm run dev         # server :3001 + web :5173 (proxies /api, /socket.io, /uploads)
 npm run dev:db      # same, on docker compose Postgres + Redis (migrates first; survives restarts)
+npm run dev:mcp     # the AI seat server on :3002, for a room server on :3001 (not part of npm run dev)
 npm test            # vitest: shared unit tests + server multi-client integration tests
 npm run typecheck
 npm run lint

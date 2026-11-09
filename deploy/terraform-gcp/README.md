@@ -17,4 +17,4 @@ Progress on the VM: `gcloud compute ssh vtt --zone us-east1-b`, then `sudo tail 
 
 State holds the generated passwords in plain text (`terraform.tfstate`, git-ignored). Keep it private.
 The repo at `repo_url`/`repo_ref` must be public and already contain `docker-compose.prod.yml`, `Dockerfile.server`,
-`Dockerfile.web` and `deploy/Caddyfile`.
+`Dockerfile.web`, `Dockerfile.mcp` and `deploy/Caddyfile`.

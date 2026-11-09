@@ -17,6 +17,7 @@
     "dev:db": "node scripts/dev-db.mjs",
     "dev:server": "npm run dev --workspace=@vtt/server",
     "dev:web": "npm run dev --workspace=@vtt/web",
+    "dev:mcp": "npm run dev --workspace=@vtt/mcp",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.browser.json",

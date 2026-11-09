@@ -23,6 +23,7 @@ summarizes them and links out rather than repeating them.
 | [`WALL-DETECTION.md`](WALL-DETECTION.md) | How automatic wall detection flows (FR-GM-11) |
 | [`GAME_PRESETS.md`](GAME_PRESETS.md) | Game presets (ADR 0027) |
 | [`DICE-SKINS.md`](DICE-SKINS.md) | Dice looks and image skins |
+| [`AI-PLAYERS.md`](AI-PLAYERS.md) | User guide: connecting your own AI app to a room (FR-PL-08, FR-PL-09) |
 | [`adr/`](adr/) | Architecture decision records — index in §8 |
 | [`../openspec/`](../openspec/) | Change proposals (`changes/`) and the accepted capability specs (`specs/`) |
 
@@ -290,14 +291,15 @@ The app is deployed as the one-VM production stack described in
 | --- | --- |
 | `docker-compose.prod.yml` | `postgres`, `redis`, `s3` (SeaweedFS), `vision`, a one-shot `migrate` (`prisma migrate deploy`), `server` and `web`. `vision-walls` sits behind the `walls` profile and is **off by default**. |
 | `Dockerfile.server` | Production server image: runs the TypeScript with `tsx` (no build step, no watch), with a `/health` container health check. |
+| `Dockerfile.mcp` | The AI seat server (`apps/mcp`, ADR 0052), limited to 768 MB. Caddy proxies `/mcp` to it. Nothing depends on it, so if it stops, browser play carries on. |
 | `Dockerfile.web` | Vite build served by Caddy (`deploy/Caddyfile`): static files with an SPA fallback, `/api`, `/socket.io`, `/uploads` and `/health` proxied to `server:3001`. |
 | `deploy/env.production.example` | Every required variable. Compose refuses to start, naming the variable, without `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` or `CLIENT_ORIGIN`. |
 | `deploy/terraform/`, `deploy/terraform-gcp/` | One VM on AWS or Google Cloud: firewall (22 from one CIDR, 80, 443), static IP, generated secrets, Docker install, clone and `up -d --build`. The host defaults to `<ip>.sslip.io` so Caddy can issue a certificate without a domain. |
 
-Only ports 80 and 443 are published; Postgres, Redis, S3 and vision stay on the compose
+Only ports 80 and 443 are published; Postgres, Redis, S3, vision and the MCP server stay on the compose
 network. Production runs with `NODE_ENV=production`, `COOKIE_SECURE=1`, `TRUST_PROXY` and no
 `SEED_DEV_ACCOUNT`, and the server refuses to start without real S3 credentials. CI builds
-all three images on every push so a broken Dockerfile fails before deploy.
+all the images on every push so a broken Dockerfile fails before deploy.
 
 Releases are `git pull` and the same `up -d --build`: `migrate` runs first, then the server
 restarts. Data lives on the `pgdata`, `s3data` and `redisdata` volumes of that one VM, so
@@ -333,6 +335,8 @@ apps/server        Express + Socket.IO.
   store/             memory and Postgres room stores, Redis seq, S3 assets, library,
                      identity and membership stores
   ws/socket.ts       the Socket.IO gateway
+apps/mcp           MCP server: users' own AI apps hold player seats. An ordinary client of
+                   apps/server, over REST and Socket.IO only (ADR 0052).
 apps/web           React panels + PixiJS board.
   board/             boardView.ts and everything Pixi: tools, fog, sight mask, movement
                      ruler, effects and sound, dice throws
@@ -568,6 +572,8 @@ checkpoint previews are built through the same filters.
 | FR-PL-05 | Automatic reconnection | Handshake replay | B |
 | FR-PL-06 | Full-state resynchronization | `welcome` + `resync` | B |
 | FR-PL-07 | Replay for late joiners | `/api/rooms/:id/replay`, `ReplayBar` (ADR 0025) | B |
+| FR-PL-08 | Connect your own AI | `apps/mcp`, Share dialog, [`AI-PLAYERS.md`](AI-PLAYERS.md) (ADR 0052) | B |
+| FR-PL-09 | Several AI seats at one table | `apps/mcp`: one seat per `join_room`, `seat` on every tool (ADR 0052) | B |
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
 | FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
 | FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |
@@ -679,6 +685,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0048](adr/0048-map-isometric-flag.md) | 2.5D map style flag | Proposed |
 | [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
 | [0051](adr/0051-seat-limits-and-room-lock.md) | Seat limits and locking a room | Proposed |
+| [0052](adr/0052-mcp-player-seats.md) | AI player seats over MCP | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

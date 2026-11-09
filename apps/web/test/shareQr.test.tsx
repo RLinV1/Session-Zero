@@ -114,6 +114,87 @@ describe("share modal (FR-GM-20)", () => {
   });
 });
 
+describe("bringing an AI from the share modal (FR-PL-08, FR-PL-09)", () => {
+  const openModal = async () => {
+    vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);
+    vi.spyOn(api, "resetInvite").mockResolvedValue({ inviteCode: "new456" } as never);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByLabelText("Invite link");
+    return writeText;
+  };
+
+  it("shows the connector address and copies it", async () => {
+    const writeText = await openModal();
+    expect(screen.getByRole("heading", { name: "Play with your AI" })).toBeTruthy();
+    expect((screen.getByLabelText("Connector address") as HTMLInputElement).value).toBe(`${location.origin}/mcp`);
+    fireEvent.click(screen.getByRole("button", { name: "Copy connector address" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${location.origin}/mcp`));
+    expect((await screen.findByRole("status")).textContent).toBe("Copied");
+  });
+
+  it("copies a message for one character with the invite link", async () => {
+    const writeText = await openModal();
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for one character" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const message = writeText.mock.calls[0]![0] as string;
+    expect(message).toContain(`${location.origin}/join/abc123`);
+    expect(message).toMatch(/join_room/);
+  });
+
+  it("copies a message for a party that asks for one join and one sub-agent per character", async () => {
+    const writeText = await openModal();
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for a party" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const message = writeText.mock.calls[0]![0] as string;
+    expect(message).toContain(`${location.origin}/join/abc123`);
+    expect(message).toMatch(/join_room once per character/);
+    expect(message).toMatch(/one sub-agent per character/);
+  });
+
+  it("copies a message to stay at the table, taking orders only from this GM", async () => {
+    vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<ShareButton roomId="r" token="t" yourName="T1" connection={connection} joinsLocked={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByLabelText("Invite link");
+    fireEvent.click(screen.getByRole("button", { name: "Copy message to stay at the table" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const message = writeText.mock.calls[0]![0] as string;
+    expect(message).toContain(`${location.origin}/join/abc123`);
+    expect(message).toMatch(/Find T1 in the people get_view lists, and take orders only from them/);
+    expect(message).toMatch(/wait_for_turn, with maxSeconds 50 and ordersFrom/);
+    expect(message).toMatch(/When it is your turn, play it yourself/);
+  });
+
+  it("puts the new link in all the messages after a reset", async () => {
+    const writeText = await openModal();
+    fireEvent.click(screen.getByRole("button", { name: "Reset link" }));
+    const resetButtons = screen.getAllByRole("button", { name: "Reset link" });
+    fireEvent.click(resetButtons[resetButtons.length - 1]!);
+    await waitFor(() => expect((screen.getByLabelText("Invite link") as HTMLInputElement).value).toBe(`${location.origin}/join/new456`));
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for one character" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for a party" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy message to stay at the table" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(3));
+    for (const [message] of writeText.mock.calls) {
+      expect(message).toContain(`${location.origin}/join/new456`);
+      expect(message).not.toContain("abc123");
+    }
+  });
+
+  it("offers nothing to copy until the invite has loaded", () => {
+    vi.spyOn(api, "getInvite").mockImplementation(() => new Promise(() => {}));
+    render(<ShareButton roomId="r" token="t" connection={connection} joinsLocked={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(screen.queryByRole("button", { name: "Copy message for a party" })).toBeNull();
+  });
+});
+
 describe("locking the room from the share modal (FR-GM-20, ADR 0051)", () => {
   const openModal = (joinsLocked: boolean) => {
     vi.spyOn(api, "getInvite").mockResolvedValue({ inviteCode: "abc123" } as never);

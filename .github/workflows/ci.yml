@@ -70,5 +70,7 @@ jobs:
         run: docker build -f Dockerfile.server -t vtt-server .
       - name: Build web image
         run: docker build -f Dockerfile.web -t vtt-web .
+      - name: Build MCP image
+        run: docker build -f Dockerfile.mcp -t vtt-mcp .
       - name: Build vision image
         run: docker build -t vtt-vision services/vision

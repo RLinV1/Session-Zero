@@ -3610,6 +3610,7 @@ dialog.modal.create-room-modal { width: min(27rem, calc(100vw - 2rem)); }
 .share-copy { flex: none; width: 2.5rem; height: auto; min-height: 2.5rem; }
 .share-copy:disabled { opacity: 0.5; }
 .share-hint { margin: 0; font-size: var(--fs-sm); }
+.share-ai-title { margin: 0; font-size: var(--fs-md, 1rem); }
 .share-actions { display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); padding-top: var(--space-4); }
 .share-action-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .share-qr-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.4rem; }
