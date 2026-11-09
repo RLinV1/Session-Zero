@@ -251,7 +251,9 @@ ADR 0050 removes account data with an explicit list and no cascades, so builds a
 
 ## Cost
 
-Using the method in `mcp-ai-players/verification-log.md`: real `claude -p` runs, with cost from the CLI's own `total_cost_usd`. The full record is in `verification-log.md`. **No building tools exist yet**, so the read-and-map part is measured, and the tool-call part is a projection from measured rates.
+Using the method in `mcp-ai-players/verification-log.md`: real `claude -p` runs, with cost from the CLI's own `total_cost_usd`. The full record is in `verification-log.md`.
+
+**Measured with the finished tools (task 8.3):** Claude Code on Sonnet built all of Lanternfall (58 KB of rules and adventure, 4 maps, 22 tokens, 17 creatures, 4 encounters) for **$1.01** in 76 turns and 348 seconds. That replaces the projection below, which was made before the tools existed. It's one run, one model and one game, and it spent 56 of its tool calls on uploads because that test's shell permissions forced one command per file.
 
 **Measured: reading a 30-page rulebook and 6 messy sheets, and mapping them to fields:**
 

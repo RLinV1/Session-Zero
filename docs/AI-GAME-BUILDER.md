@@ -106,12 +106,12 @@ Only upload art and maps you have the right to use. Rooms share them with the pe
 
 ## Cost
 
-Reading a 30-page rulebook and six character sheets, then filling a draft, is estimated at about $0.75 of your AI app's usage on a mid-sized model. On a subscription, it counts toward your usage limits. Long rulebooks cost more, so give your AI only the pages it needs.
+A full build of a one-session game took Claude Code on Sonnet about 6 minutes and $1 of usage: 58 KB of rules and adventure, 4 maps, 22 tokens, 17 creatures and 4 encounters. On a subscription, it counts toward your usage limits. Long rulebooks cost more, so give your AI only the pages it needs.
 
 ## Which apps have been tried
 
 | App | Connects with no sign-in | Sends the pass | Full build |
 |---|---|---|---|
-| Claude Code | Yes | Yes | Not yet tried |
+| Claude Code | Yes | Yes | Yes |
 | The Claude app | Not yet tried | Not yet tried | Not yet tried |
 | ChatGPT | Not yet tried | Not yet tried | Not yet tried |

@@ -41,19 +41,19 @@ The user answered the five review questions on 2026-11-08, and the answers are i
 
 ## 7. Docs
 
-- [ ] 7.1 Add FR-GM-26 and FR-GM-27 to the README, the service and routes to `CLAUDE.md` and `docs/DESIGN.md`, and the terms line. Verify with a repo search for the new IDs
-- [ ] 7.2 Write `docs/AI-GAME-BUILDER.md`: connecting, the path for each AI app, what can't be stored, `poppler` for PDFs, not connecting beside private tools, cost and limits. Verify by following it from a fresh account
+- [x] 7.1 Add FR-GM-26 and FR-GM-27 to the README, the service and routes to `CLAUDE.md` and `docs/DESIGN.md`, and the terms line. Verify with a repo search for the new IDs
+- [x] 7.2 Write `docs/AI-GAME-BUILDER.md`: connecting, the path for each AI app, what can't be stored, `poppler` for PDFs, not connecting beside private tools, cost and limits. Verify by following it from a fresh account
 
 ## 8. Whole-feature checks
 
-- [ ] 8.1 Run `visibility-auditor` and `sync-reviewer` on the diff and fix their findings, each with a test that failed first
-- [ ] 8.2 Break the important protections one at a time and confirm a test fails each time: pass scope, publish refused for a pass, file content check, user-edit refusal, adds-only publish, ownership of drafts
-- [ ] 8.3 Run a real build from a local folder with Claude Code and measure it as `mcp-ai-players` did. Replace the projection in `design.md` with the measured number
+- [x] 8.1 Run `visibility-auditor` and `sync-reviewer` on the diff and fix their findings, each with a test that failed first
+- [x] 8.2 Break the important protections one at a time and confirm a test fails each time: pass scope, publish refused for a pass, file content check, user-edit refusal, adds-only publish, ownership of drafts
+- [x] 8.3 Run a real build from a local folder with Claude Code and measure it as `mcp-ai-players` did. Replace the projection in `design.md` with the measured number
 - [ ] 8.4 Run a real build from the Claude app and ChatGPT using the browser drop, and fill in the guide's support table from the results
-- [ ] 8.5 Start a room from a published build with a browser player and an AI player, and confirm hidden tokens are withheld from both
-- [ ] 8.6 Plant instructions in the materials for a real AI, and confirm nothing outside the draft changes
-- [ ] 8.7 Check the production stack in Docker under its own project name with real Postgres and object storage, and leave the dev containers alone
-- [ ] 8.8 Run `npm run lint && npm run typecheck && npm test` and log the results
+- [x] 8.5 Start a room from a published build with a browser player and an AI player, and confirm hidden tokens are withheld from both
+- [x] 8.6 Plant instructions in the materials for a real AI, and confirm nothing outside the draft changes
+- [x] 8.7 Check the production stack in Docker under its own project name with real Postgres and object storage, and leave the dev containers alone
+- [x] 8.8 Run `npm run lint && npm run typecheck && npm test` and log the results
 
 ## Workflow follow-up
 
