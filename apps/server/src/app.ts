@@ -91,6 +91,8 @@ export async function buildApp({
   now = Date.now,
 }: AppOptions): Promise<App> {
   const app = express();
+  // Don't advertise Express (and its version range) on every response (security-hardening F-02).
+  app.disable("x-powered-by");
   // Behind Caddy (deploy/Caddyfile), so `req.ip` (rate limits) and `req.secure` see the client (ADR 0017 I1).
   const trustProxy = trustProxyFromEnv();
   if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
@@ -137,6 +139,16 @@ export async function buildApp({
   const stopTemporaryRoomSweep = setInterval(() => void sweepTemporaryRooms(), 60 * 60_000);
   stopTemporaryRoomSweep.unref();
 
+  // Every /api response carries room or account data, so keep it out of shared caches, stop the
+  // browser from MIME-sniffing a JSON body into something executable, and never leak the room URL
+  // as a Referer to a third-party resource (security-hardening F-02). Set first, so even an
+  // early rejection (same-origin, auth) is covered; a handler may still override Cache-Control.
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  });
   app.use(attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
   registerRoomPreparation(app, { store, registry, sessions });
@@ -220,6 +232,17 @@ export async function buildApp({
 function cookieSecureFromEnv(): boolean {
   const value = process.env.COOKIE_SECURE;
   if (value === undefined || value === "") return process.env.NODE_ENV === "production";
+  return value === "1" || value.toLowerCase() === "true";
+}
+
+/**
+ * Whether to log every request's method and URL. The log records room and asset URLs and floods a
+ * production log, so it is on by default only outside production (security-hardening F-02).
+ * `HTTP_LOG=0` silences it in dev, and `HTTP_LOG=1` turns it back on in production when debugging.
+ */
+export function httpLogFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.HTTP_LOG;
+  if (value === undefined || value === "") return env.NODE_ENV !== "production";
   return value === "1" || value.toLowerCase() === "true";
 }
 
