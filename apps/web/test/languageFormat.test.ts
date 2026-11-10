@@ -6,6 +6,8 @@ import { formatClock, formatDate, formatRelative, formatStamp } from "../src/ui/
 const NOW = new Date(2026, 10, 9, 15, 5, 9).getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 const MIN = 60_000;
+/** ICU picks the space between parts, and it changes between versions (U+2009 before a zh-TW time, U+202F before "PM"). */
+const spaced = (text: string) => text.replace(/\s/gu, " ");
 
 beforeEach(async () => {
   localStorage.clear();
@@ -35,13 +37,13 @@ describe("dates and times follow the language (localization)", () => {
 
   it("formats clock times, dates and log stamps in each language", async () => {
     const at = new Date(NOW).toISOString();
-    expect(formatClock(at)).toBe("3:05 PM");
+    expect(spaced(formatClock(at))).toBe("3:05 PM");
     expect(formatDate(at)).toBe("11/9/2026");
-    expect(formatStamp(at)).toBe("11/9/2026, 3:05:09 PM");
+    expect(spaced(formatStamp(at))).toBe("11/9/2026, 3:05:09 PM");
     await chooseLocale("zh-TW");
     expect(formatClock(at)).toBe("下午3:05");
     expect(formatDate(at)).toBe("2026/11/9");
-    expect(formatStamp(at)).toBe("2026/11/9 下午3:05:09");
+    expect(spaced(formatStamp(at))).toBe("2026/11/9 下午3:05:09");
   });
 
   it("returns nothing for a timestamp that isn't one", () => {

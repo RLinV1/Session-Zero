@@ -129,7 +129,8 @@ describe("Intl formatting (localization)", () => {
   const at = new Date(2026, 10, 9, 15, 5);
 
   it("formats clock times in each language", () => {
-    expect(formatTime("en", at)).toBe("3:05 PM");
+    // ICU picks the space before "PM" (U+0020 or U+202F) and it changes between versions.
+    expect(formatTime("en", at).replace(/\s/gu, " ")).toBe("3:05 PM");
     expect(formatTime("zh-TW", at)).toBe("下午3:05");
   });
 
