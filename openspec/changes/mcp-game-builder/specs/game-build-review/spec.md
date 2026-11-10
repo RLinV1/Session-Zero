@@ -28,16 +28,38 @@ The owner SHALL be able to change any field of a draft item, or remove it, under
 - **WHEN** the owner types HP 18 on a flagged creature
 - **THEN** the value is saved and the flag is cleared
 
-### Requirement: The owner confirms each plain map's grid
-The page SHALL show each plain map with its proposed grid drawn over it, with fields to change it and a control to confirm it. An encounter's map SHALL have a confirmed grid before that encounter can be published.
+### Requirement: The owner confirms each plain map's grid unless detection and the AI agreed
+The page SHALL show each plain map with its grid drawn over it, with fields to change it and a control to confirm it. A grid confirmed because detection and the AI agreed SHALL be marked so. The owner SHALL be able to change it, after which it counts as the owner's. An encounter's map SHALL have a confirmed grid before that encounter can be published.
 
 #### Scenario: Confirm a grid
 - **WHEN** the owner corrects the cell size and confirms
-- **THEN** the map counts as confirmed, and its tokens' squares are worked out from the corrected grid at publish
+- **THEN** the map counts as confirmed, and its tokens' squares and the AI's walls are worked out from the corrected grid at publish
+
+#### Scenario: Set by agreement
+- **WHEN** detection and the AI agreed on a map's grid
+- **THEN** the page says so, and no confirmation is needed
 
 #### Scenario: No grid yet
 - **WHEN** an encounter's map has no confirmed grid
 - **THEN** that encounter can't be published, and the page says why
+
+### Requirement: The owner sees every wall before publishing
+The page SHALL draw each draft map's walls, doors, windows and openings over it, marking which ones the AI set. It SHALL list the openings left for the user and the places the AI marked, with their reasons.
+
+#### Scenario: Review the doors
+- **WHEN** the owner opens a map where the AI set 13 doors and 4 windows
+- **THEN** all of them are drawn, and the AI's are marked
+
+### Requirement: The owner can fix the AI's walls
+The owner SHALL be able to change any opening's kind and state, remove any line the AI drew, or remove everything the AI set on a map at once. Each change SHALL mark the map as edited. Moving or drawing walls is done in the map editor after publishing.
+
+#### Scenario: Fix one
+- **WHEN** the owner changes a locked door to closed
+- **THEN** it is saved, and the AI can no longer change that map
+
+#### Scenario: Remove all of the AI's walls
+- **WHEN** the owner removes everything the AI set on a map
+- **THEN** the map is back to what its file had
 
 ### Requirement: Only the owner's browser can publish
 Publishing SHALL need the owner's signed-in session from the app itself. It MUST NOT be possible with a pass.
@@ -61,12 +83,16 @@ The owner SHALL be able to publish all or some items, more than once from the sa
 - **WHEN** the owner publishes an item that still has flags
 - **THEN** the page asks them to confirm first, and blank values stay blank
 
+#### Scenario: Openings left for the owner
+- **WHEN** the owner publishes a map with openings left for them or marked places
+- **THEN** the page asks them to confirm first, and those openings publish as imported
+
 ### Requirement: Published items are ordinary library items
 Published maps, art, creatures and encounters SHALL be normal library items with the same access rules, editors and limits as any other. An encounter template SHALL be limited to the same 50 per account.
 
 #### Scenario: Edit after publishing
 - **WHEN** the owner opens a published map
-- **THEN** it opens in the usual map editor, where wall detection is available
+- **THEN** it opens in the usual map editor, where walls, doors and windows can be changed and wall detection is available
 
 #### Scenario: Template limit
 - **WHEN** a publish would take the account past 50 templates
@@ -78,6 +104,10 @@ Publishing MUST only add. An encounter whose name is already used in the library
 #### Scenario: Same name
 - **WHEN** an encounter named "Crypt guards" is published and the library already has one
 - **THEN** the old one is unchanged, and the new one is "Crypt guards (2)"
+
+#### Scenario: Doors for a map published earlier
+- **WHEN** a map was published without doors, and the user wants their AI to set them
+- **THEN** a new build of the same files publishes new maps and encounters, and the earlier ones are changed only by the user, in the library or by removing them
 
 ### Requirement: A room starts from a published encounter
 The page SHALL offer to start a room from a published encounter, using the existing room-creation path and a preset already in the app, as the signed-in owner. The GM seat SHALL be the owner's browser, and no credential for it SHALL go to the AI.

@@ -7,7 +7,7 @@ Lets a user's AI turn game materials into draft creatures, maps and encounters, 
 ## ADDED Requirements
 
 ### Requirement: The AI is told what the app can store
-The tool that reads a build SHALL return the fields a creature can hold, their limits, the 12 conditions, what has no field, and the rule that values are never invented.
+The tool that reads a build SHALL return the fields a creature can hold, their limits, the 12 conditions, what has no field, the build's two choices and what each allows, and the rule that values are never invented.
 
 #### Scenario: First look at a build
 - **WHEN** an AI reads its build
@@ -82,29 +82,149 @@ A build SHALL hold a short game profile: the game's name, which features it uses
 - **THEN** the profile records that reading with a flag, and the build page shows it before anything else
 
 ### Requirement: A UVTT map brings its own setup
-A valid UVTT file SHALL give a draft map with the file's grid, walls and doors, already counted as confirmed.
+A valid UVTT file SHALL give a draft map with the file's grid, walls and doors, already counted as confirmed. Its imported openings SHALL stay as imported until the AI (when allowed) or the user sets them.
 
 #### Scenario: Map with walls
 - **WHEN** a valid UVTT file with walls and doors is uploaded
 - **THEN** the draft map shows its grid and its walls and doors, and its diagnostics are listed
 
-### Requirement: A plain image's grid is only a suggestion
-A plain map image SHALL be analysed by the existing grid detection, and the result SHALL be a suggestion. The AI MAY propose a grid from the suggestion or from what the user told it. A proposal MUST NOT count as confirmed until the user confirms it.
+#### Scenario: Openings left alone
+- **WHEN** a UVTT map is saved and nobody sets its openings
+- **THEN** they publish as imported openings, as the library does today
 
-#### Scenario: Detection finds a grid
-- **WHEN** detection suggests 70-pixel squares
-- **THEN** the AI can read the suggestion and propose it, and the map still shows as waiting for the user
+### Requirement: A plain image's grid needs the user unless detection and the AI agree
+A plain map image SHALL be analysed by the existing grid detection. The AI MAY propose a grid from the suggestion, from the picture, or from what the user told it. A proposal SHALL count as confirmed without the user only when all of these hold:
+- the build allows the AI to set grids;
+- detection suggested a grid;
+- the proposal matches the suggestion.
+
+Otherwise it MUST wait for the user.
+
+#### Scenario: Detection and the AI agree
+- **WHEN** grids are allowed, detection suggests 70-pixel squares at offset (0, 0), and the AI proposes the same
+- **THEN** the map counts as confirmed, marked as set by detection and the AI
+
+#### Scenario: They disagree
+- **WHEN** grids are allowed, detection suggests 70 and the AI proposes 72
+- **THEN** the map waits for the user, and the build check says the two differ
+
+#### Scenario: Grids not allowed
+- **WHEN** grids are not allowed and the AI proposes the grid detection suggested
+- **THEN** the map still waits for the user
 
 #### Scenario: No grid found
 - **WHEN** detection finds no grid and the user gave no number
 - **THEN** the map has no proposed grid and is flagged as needing one
 
-### Requirement: The AI does not draw on maps
-Build tools MUST NOT offer a way to add walls, doors, fog or terrain.
+### Requirement: A grid matches detection within a pixel
+A proposal SHALL match detection's suggestion when the cell sizes differ by at most half a pixel and each offset differs by at most one pixel, with offsets compared across the cell.
 
-#### Scenario: Asking for walls
-- **WHEN** a user asks their AI to draw the walls on a plain map
-- **THEN** no tool can do it, and the guide points to the map editor's wall detection after publishing
+#### Scenario: Just inside
+- **WHEN** detection suggests a 70-pixel cell and the AI proposes 70.4 with the same offsets
+- **THEN** they match
+
+#### Scenario: Just outside
+- **WHEN** detection suggests a 70-pixel cell and the AI proposes 70.6
+- **THEN** they don't match
+
+#### Scenario: Across the cell
+- **WHEN** detection suggests a 70-pixel cell at offset 0 and the AI proposes offset 69.5
+- **THEN** the offsets match, because they are half a pixel apart across the cell
+
+### Requirement: A grid's status follows the choice and detection
+A grid's status SHALL be worked out each time it is read, so a matching suggestion that arrives later counts, and turning the choice off makes such grids wait for the user again.
+
+#### Scenario: Detection still running
+- **WHEN** grids are allowed and the AI proposes a grid before detection finishes
+- **THEN** the map waits, and counts as confirmed once a matching suggestion arrives
+
+#### Scenario: Choice turned off
+- **WHEN** the owner turns grids off after detection and the AI agreed on a map
+- **THEN** that map waits for the user again
+
+### Requirement: Walls, doors and windows only when the user allows it
+Build tools SHALL let the AI set a map's walls, doors and windows only when the build allows it. They MUST NOT offer a way to add fog or terrain. Turning the choice off SHALL stop further changes, and SHALL keep what the AI already set in the draft for the owner to keep or remove.
+
+#### Scenario: Not allowed
+- **WHEN** walls are not allowed and the AI tries to set a door
+- **THEN** the call is refused with a message saying where the user can turn walls on, and the map is unchanged
+
+#### Scenario: Asking for fog
+- **WHEN** a user asks their AI to fog a room
+- **THEN** no tool can do it, and the guide points to the map editor and the room after publishing
+
+#### Scenario: Turned off part-way
+- **WHEN** the owner turns walls off after the AI set some doors
+- **THEN** the AI can't set more, and the doors stay in the draft until the owner removes them
+
+### Requirement: The AI can see where walls and openings are
+A tool SHALL list a draft map's openings, numbered, each with the square at its middle, its direction, its width in squares and what it is now. A picture of the map SHALL be available with the grid, the column and row numbers, the walls and the numbered openings drawn on it, either whole or as a region of squares, at most 1500 pixels on a side. Reading these SHALL be allowed whatever the choices are.
+
+#### Scenario: A UVTT map's openings
+- **WHEN** an AI reads the setup of a UVTT map with 14 imported openings
+- **THEN** it gets 14 numbered openings with their squares, and the picture shows the same numbers
+
+#### Scenario: A closer look
+- **WHEN** the AI asks for columns 20 to 29 and rows 0 to 9
+- **THEN** it gets that region with the grid and its numbers drawn
+
+### Requirement: Imported openings can become doors and windows
+When walls are allowed, the AI SHALL be able to set each of a UVTT map's imported openings as a door or a window, open, closed or locked. It SHALL also be able to leave an opening for the user with a reason of at most 200 characters. An opening the AI doesn't set SHALL stay as imported.
+
+#### Scenario: A locked door
+- **WHEN** the materials say the office door at (21, 3) is locked, and the AI sets the opening there as a locked door
+- **THEN** the draft map shows that opening as a locked door
+
+#### Scenario: A window
+- **WHEN** the AI sets an opening as a closed window
+- **THEN** the draft map shows it as a closed window
+
+#### Scenario: Can't tell
+- **WHEN** an opening might be an archway or a door, and the AI leaves it with a reason
+- **THEN** the build page lists it for the user with that reason
+
+### Requirement: The AI draws walls by grid corners
+When walls are allowed and a map has a proposed or confirmed grid, the AI SHALL be able to save walls, doors and windows on it as straight lines between grid corners, in steps of half a square, up to 500 per map. Saving SHALL replace the lines the AI drew on that map before, and MUST NOT remove walls that came from a UVTT file.
+
+#### Scenario: Draw a room
+- **WHEN** the AI saves four walls around columns 2 to 6 and rows 3 to 7, with a door on the south side
+- **THEN** the draft map holds them, and the build page draws them
+
+#### Scenario: No grid
+- **WHEN** a map has no grid and the AI draws walls
+- **THEN** the call is refused, saying a grid is needed first
+
+#### Scenario: Off the map
+- **WHEN** a corner is outside the map
+- **THEN** the call is refused naming that line, and the map is unchanged
+
+#### Scenario: Saved again
+- **WHEN** the AI saves walls for the same map twice
+- **THEN** the map holds only the second set
+
+### Requirement: Drawn lines follow the confirmed grid
+Lines the AI drew SHALL be turned into map pixels with the confirmed grid at publish, so a corrected grid moves them with it. A map with drawn lines SHALL need a confirmed grid before it can be published.
+
+#### Scenario: The grid is corrected
+- **WHEN** the owner changes the cell size from 70 to 72 after the AI drew walls
+- **THEN** at publish the walls are placed using 72
+
+### Requirement: A drawn door cuts the wall under it
+A door or window the AI drew along a wall SHALL cut that wall where it lies.
+
+#### Scenario: A door on a UVTT wall
+- **WHEN** a UVTT file has a solid wall where the materials put a gate, and the AI draws a door there
+- **THEN** at publish the door replaces that stretch of wall
+
+### Requirement: Hard cases go to the user
+The AI SHALL be able to mark places on a map it couldn't work out, each with a square and a reason of at most 200 characters, up to 50 per map. The guide SHALL tell the AI to mark a place instead of guessing for:
+- curved or broken walls;
+- openings it can't classify;
+- anything where the materials and the picture disagree.
+
+#### Scenario: A cave edge
+- **WHEN** a cave's edge is too irregular to follow by grid corners
+- **THEN** the AI marks it, and the build page shows the mark and the reason
 
 ### Requirement: Draft encounters place creatures by square
 A draft encounter SHALL name a draft map and a list of draft creatures, each with a square or no square, and whether it is hidden. Hidden SHALL be stated for every token. The AI MUST NOT give board coordinates or assign owners.
@@ -136,8 +256,17 @@ A pass SHALL change only items in its own build that are still drafts and that t
 - **WHEN** the AI tries to change or remove an item already published
 - **THEN** the call is refused and the library is unchanged
 
+#### Scenario: The user changed a map's walls
+- **WHEN** the owner has changed a door on the build page and the AI then sets that map's walls
+- **THEN** the call is refused and says the user changed this map
+
 ### Requirement: The AI can ask what still needs work
-A tool SHALL run the server's checks on the draft and return every problem and flag, each with a plain message. It MUST NOT publish anything or change state beyond the report.
+A tool SHALL run the server's checks on the draft and return every problem and flag, each with a plain message. It MUST NOT publish anything or change state beyond the report. Among the problems it SHALL report:
+- grids waiting for the user;
+- grids where detection and the AI differ;
+- openings left for the user;
+- marked places;
+- doors or windows drawn across a wall they don't cut.
 
 #### Scenario: Checking the build
 - **WHEN** an AI runs the check on a build with one unplaced token and one unconfirmed grid

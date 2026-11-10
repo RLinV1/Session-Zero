@@ -14,6 +14,10 @@ See `proposal.md` for why and the specs for the required behavior. These facts c
 - **A preset is code.** `GAME_PRESETS` has one entry, Free Mode, and a room stores its id. There is no user-defined preset.
 - **Grid detection only suggests.** The upload never sets a grid (KAN-09). Library uploads queue detection, and the GM saves the grid in the editor.
 - **Wall detection needs a room.** Its routes require a room's GM credential and that room's current map, and only 4 jobs can run at once on the whole server. The library map editor reaches it through a temporary room.
+- **A wall is a segment with an optional portal.** `Wall` holds two board points and, for a door or window, a `Portal` that is open, closed or locked (ADR 0030).
+  - A UVTT file's portals import as GM-only openings (`uvttPortal` with no `portal`) until someone makes them doors (ADR 0041).
+  - The map editor can make every opening a door at once, but nothing tells a door from a window or finds the locked ones.
+  - Encounter templates keep their own copy of the walls.
 - **UVTT is exact.** `POST /api/library/uvtt/imports` validates the file in a bounded worker and writes the image, grid and walls in one row.
 - **Upload checks trust the browser.** `imageUploader` filters on the declared type. Only maps get their real size read. There is a shared budget of 300 uploads per 15 minutes per account, but no limit on how many assets an account holds.
 - **What real AI apps support today:** see the table in D2.
@@ -23,7 +27,7 @@ See `proposal.md` for why and the specs for the required behavior. These facts c
 **Goals:**
 - The worst that a leaked pass or a hostile rulebook can do is put wrong data in one draft that a person then reviews.
 - `Command`, `DomainEvent`, `RoomState`, `decide`, `reduce` and `visibility.ts` don't change. No AI ever holds a GM seat.
-- Reuse what exists: the library, the map editor, UVTT import, grid detection, room creation, the file budget.
+- Reuse what exists: the library, the map editor, UVTT import, grid detection, room creation, the file budget, the wall and portal model, and the UVTT importer's rule that a portal cuts the wall under it.
 - The MCP server stays stateless: a restart loses nothing, and it stores no secrets.
 
 **Non-Goals:** see the proposal. In addition, this runs as one instance like the rest of the app, so its limits stay in process memory.
@@ -38,6 +42,7 @@ See `proposal.md` for why and the specs for the required behavior. These facts c
  Drop art (any app)  ─────────────────────────────────────────────▶  draft files
                            curl art (if it has a shell) ──────────▶  draft files
                            save creatures, maps, encounters ──────▶  draft items
+                           set doors, windows, walls (if allowed) ▶  draft maps
  Review, fix, confirm grids ──────────────────────────────────────▶  draft items
  Publish ─────────────────────────────────────────────────────────▶  library items
  Start room ──────────────────────────────────────────────────────▶  normal room
@@ -166,14 +171,64 @@ Blank means blank: the server refuses nothing for being blank, the review page s
 
 | Input | What happens | Grid status |
 |---|---|---|
-| **UVTT file** | Existing validator gives the image, grid, walls and doors | Confirmed, because the file is exact |
-| **Plain image, grid detection works** | Existing detection runs on upload, via a third `DetectionTarget` scope (`build`). The AI can read the suggestion and propose it | Waiting for the user |
+| **UVTT file** | Existing validator gives the image, grid, walls and openings | Confirmed, because the file is exact |
+| **Plain image, grid detection works** | Existing detection runs on upload, via a third `DetectionTarget` scope (`build`). The AI can read the suggestion and propose a grid | Waiting for the user, or confirmed if grids are allowed and the AI's proposal matches detection |
 | **Plain image, user gives the size** | The AI proposes it | Waiting for the user |
 | **Plain image, nothing known** | Flagged as needing a grid | No grid |
 
-The build page draws the proposed grid over the map with number fields and a confirm control. Detection is shared by every user, so a build is limited to 20 maps. A correct grid can't be assumed: KAN-09 requires that a person accepts it.
+The build page draws the grid over the map with number fields and a confirm control. Detection is shared by every user, so a build is limited to 20 maps.
 
-**Walls.** A UVTT file brings them. For a plain image, this change runs no wall detection: it needs a room, holds one of only 4 server-wide job slots, and a build could take them all. After publishing, the GM uses wall detection in the existing map editor. The AI can't draw walls: a model's sense of pixel positions isn't good enough, and a wrong wall changes what players can see.
+**Two choices, made per build.** Starting a build shows two tick boxes, both off: "Let my AI set grids" and "Let my AI set walls, doors and windows". They're stored on the build, shown on the build page where the owner can change them, and reported by `get_build`. Only the owner's cookie routes change them. With both off, the builder works exactly as before.
+
+| Option | Verdict |
+|---|---|
+| **Per build, at start, changeable** | **Chosen** by the user on 2026-11-10. The user decides for this game's maps and can change their mind before publishing. |
+| One account setting | Fewer clicks, but a choice made once applies to builds the user hasn't thought about. |
+| Always on | Walls change what players see and where tokens move, so the user should opt in. |
+
+**Grids: the AI's grid needs detection to agree.** With grids allowed, a proposal counts as confirmed only when detection suggested a grid and the two match:
+- cell size within 0.5 pixels;
+- offsets within 1 pixel, compared across the cell.
+
+The status is worked out when read. The check is weaker when the AI copies the suggestion, so the guide tells it to look at the picture with the grid drawn before comparing. KAN-09's "a person accepts the grid" is met because the person ticks the choice and publishes from a page that draws the grid.
+
+| Option | Verdict |
+|---|---|
+| The AI's grid alone | Convenient, but a few pixels' error drifts tokens and walls across a large map. |
+| **The AI and detection agree** | **Chosen** (recommended, accepted 2026-11-10 pending review). Two methods must land on the same numbers, and anything else waits for the user. |
+| Always the user | Safest. It costs one click per map, which is what the choice saves. |
+
+**Walls: the user's AI does the looking.** With walls allowed:
+
+- **Imported openings.**
+  - `get_map_setup` lists a map's openings, numbered in the file's order, which never changes after upload, with the square at the middle, the direction and the width.
+  - `view_file` with `overlay` draws the grid with column and row numbers, the walls and the numbered openings.
+  - The AI matches these against the materials, such as "the office door at (21, 3) is locked". It sets each opening as a door or window, open, closed or locked, or leaves it with a reason.
+- **Drawn lines.**
+  - On any map with a grid, the AI saves walls, doors and windows as lines between grid corners, in half-square steps. It reads the corners off the numbered grid instead of guessing pixels, and `region` lets it look closer.
+  - Lines are stored in grid units and turned into pixels at publish with the confirmed grid, the same as tokens (D7).
+  - A door or window cuts the wall it lies on, using the UVTT importer's `removePortalOverlaps`. This also covers a gate the file drew as a solid wall.
+- **Hard cases go to the user.** These are marked with a square and a reason, and the user finishes them in the map editor after publishing:
+  - curved or broken walls;
+  - openings that might be archways;
+  - places where the materials and the picture disagree.
+- **Turning walls off** stops further changes. What the AI set stays in the draft, and the page offers to remove all of it.
+
+| Option | Verdict |
+|---|---|
+| Pixel positions | Models misjudge positions, which was the earlier reason for not letting the AI draw. Walls would land beside the drawn ones. |
+| **Grid corners in half steps** | **Chosen.** Read off a labelled picture, and moved with a grid correction. Curves become a hard case for the user. |
+| Server wall detection, with the AI choosing | Uses the server-side model the user wants to avoid, and the 4 shared job slots. |
+
+**Server wall detection stays out of builds.** It needs a room and holds one of only 4 server-wide job slots, so a build could take them all. The user's AI already reads the materials, which say where the doors are. Server wall detection stays in the map editor.
+
+**The review page draws every wall.**
+- Plain walls are one colour, and doors and windows the AI set are another.
+- Openings left for the user and marked places are numbered and listed.
+- The owner can change an opening's kind and state, remove a line the AI drew, or remove everything the AI set on that map. Any of these marks the map edited.
+- Drawing and moving walls by hand stays in the map editor, which already does it well.
+
+**Fog and terrain stay out.** Fog depends on the scene and the session, and terrain is rarely in the materials.
 
 ### D10. Safety
 
@@ -215,15 +270,17 @@ The user accepted these values on 2026-11-08. They are estimates, not measuremen
 
 ### D11. MCP tools
 
-Eight tools at `/mcp/build`, each taking `pass`:
+Ten tools at `/mcp/build`, each taking `pass`:
 
 | Tool | Purpose |
 |---|---|
-| `get_build` | Whose build, field guide, files, drafts, limits, the upload command |
-| `view_file` | A small copy of one of its files |
+| `get_build` | Whose build, its two choices, field guide, files, drafts, limits, the upload command |
+| `view_file` | A small copy of one of its files. For a map, `overlay` draws the grid with column and row numbers, the walls and the numbered openings, and `region` picks a range of columns and rows |
 | `save_game_profile` | Game name, features, square size, notes |
 | `save_creatures` | Up to 20 per call; each succeeds or fails alone; upsert by key |
 | `save_map` | Turn an uploaded file into a draft map, optionally proposing a grid |
+| `get_map_setup` | A map's numbered openings, the lines the AI drew, its marks, and whether grids and walls are allowed. Always allowed |
+| `save_map_setup` | Openings' kinds and states, the drawn lines (replacing earlier ones) and marks. Refused unless walls are allowed and the map is unedited and unpublished |
 | `save_encounter` | Name, map, tokens by square with hidden stated |
 | `remove_draft_item` | Removes an unedited draft item |
 | `check_build` | Every problem and flag, in plain words |
@@ -232,7 +289,7 @@ Tools are named `save_*` and take a key so that a retry is harmless, as the `mcp
 
 ### D12. Data model
 
-One additive migration. Stores come in pairs, so `BuildStore` gets memory and Postgres versions.
+Two additive migrations. Stores come in pairs, so `BuildStore` gets memory and Postgres versions.
 
 ```
 builds(id, owner_gm_id, name, status open|closed, game_profile jsonb,
@@ -248,6 +305,22 @@ build_items(id, build_id, kind creature|map|encounter, key, data jsonb, flags js
 `/uploads/<key>` is public to anyone with the random key, as for all uploads today. Draft file addresses appear only on the owner's build page, and `view_file` returns pictures, never addresses.
 
 ADR 0050 removes account data with an explicit list and no cascades, so builds and their object keys must join that list.
+
+**The two choices and the map setup:**
+- `builds` gains `ai_grid boolean not null default false` and `ai_walls boolean not null default false`, in a **second additive migration**. The first has been applied to a dev database, so it isn't edited.
+- The draft map's `data` gains these fields, so no new table:
+  - `openings`: number to door or window, or left for the user with a reason;
+  - `lines`: grid-corner lines, each a wall, door or window;
+  - `marks`.
+- `planPublish` builds the library map's board from the file's walls plus the map's setup, and the map's encounters use that board.
+
+### D13. Maps published before this existed
+
+Publishing only adds, and a build never changes library items. Lanternfall was published on 2026-11-10 with its openings as imported. There are two ways to get its doors in:
+1. **A new build**, recommended. Start it with walls allowed, from the same folder. The AI sets the doors, locks and windows, and the user reviews them. On the first build's page, the user removes what it published, then publishes the new build, so the names don't get "(2)". This also fixes Ysolde Crane's art, and it's the real test of this work (task 9.9).
+2. **By hand.**
+   - In the map editor, use "Make all imported openings doors", then set windows and locks one at a time.
+   - The templates keep their own copy of the walls. Either apply them with "Keep this map's setup" after placing the edited map, or save them again from a room.
 
 ## Cost
 
@@ -278,18 +351,20 @@ The fitted rates from the earlier log (cached read $0.10, cache write $4 and out
 
 On Haiku, about $0.10, going by the 10-to-1 ratio measured earlier. Quality is less sure: Haiku tried to store a d3, which the server would refuse and cost a retry.
 
+**Estimated: setting walls.** One overlay picture per map plus 2 to 4 closer looks on busy maps, at about 3,200 tokens each, plus the setup lists. That is about $0.10 to $0.30 more per build on Sonnet. Task 9.9 measures it.
+
 A 200-page rulebook would come to about $2 on Sonnet, mostly from re-reading it each turn. The guide should suggest giving the AI only the pages it needs. Dollars are what the same use costs on the API, and on a subscription it counts toward usage limits. A real measurement with the finished tools is a task.
 
 ## What changes where
 
 | Area | Change | ADR or review? |
 |---|---|---|
-| `apps/mcp` | New `/mcp/build`, 8 tools, `view_file` image work | Covered by 0053 |
-| `apps/server` | **Must change.** New `build/` routes and store, migration, sweep, `DetectionTarget` scope, pass ended on password change, builds in account deletion | 0053 |
+| `apps/mcp` | New `/mcp/build`, 10 tools, `view_file` image and overlay work | Covered by 0053 |
+| `apps/server` | **Must change.** New `build/` routes and store, two migrations, sweep, `DetectionTarget` scope, pass ended on password change, builds in account deletion, the map setup routes and choice-aware grid status | 0053 |
 | `packages/shared` | New `build.ts` only | No existing schema changes |
 | `apps/web` | Build page, library entry, copy message | |
 | `Command`, `DomainEvent`, `RoomState`, `decide`, `reduce`, `visibility.ts` | **None** | |
-| Existing rule changed | ADR 0024 and 0033's "only from a live room" gains the exception in D7. ADR 0017 gains a new credential | **ADR 0053, reviewed by the Real-Time Architecture owner (Raymond)** |
+| Existing rule changed | ADR 0024 and 0033's "only from a live room" gains the exception in D7. ADR 0017 gains a new credential. KAN-09's person-accepted grid, and the map editor as the only way walls are set, gain the per-build choice in D9 | **ADR 0053, reviewed by the Real-Time Architecture owner (Raymond)** |
 
 ADR 0053 is the next free number: `origin/main` stops at 0051, and `mcp-ai-players` holds 0052. Recheck before pushing, because numbers have collided before.
 
@@ -304,11 +379,15 @@ ADR 0053 is the next free number: `origin/main` stops at 0051, and `mcp-ai-playe
 - [Storage growth] → Build limits, plus the 14-day close. Published items are not capped today.
 - [Grid detection load] → 20 maps per build. It's shared by everyone, so a large build can slow others briefly.
 - [One model tested] → Only Claude models were run, on made-up materials. Real rulebooks and other AI apps are untested.
+- [Wrong walls change what players see and where tokens move] → Off unless ticked. Every wall is drawn in review, hard cases go to the user, and the map editor fixes anything after publishing.
+- [The AI copies detection's grid instead of checking it] → The guide says to check the picture first, the review page marks such grids, and the user can leave the choice off.
+- [More pictures cost more] → Estimated at $0.10 to $0.30 per build on Sonnet, to be measured.
+- [A door drawn slightly off a UVTT wall doesn't cut it] → The review page draws both, and the build check reports a door lying across a wall it doesn't cut.
 
 ## Migration Plan
 
 1. `mcp-ai-players` merges first.
-2. Additive migration: the old code ignores the new tables.
+2. Additive migrations: the old code ignores the new tables and the two new columns.
 3. Server, then web and MCP, in one deploy, as usual.
 4. Test with real AI apps before writing the support table in the guide.
 

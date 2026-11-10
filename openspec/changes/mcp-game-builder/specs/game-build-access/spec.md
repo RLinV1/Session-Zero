@@ -56,14 +56,14 @@ A build pass SHALL be accepted only by the build routes for its own build. Every
 - **THEN** it is refused, and the response reveals nothing about that build
 
 ### Requirement: What a pass may do
-A pass SHALL allow only: reading its own build, adding files to it, viewing those files, and adding, changing or removing draft items in it.
+A pass SHALL allow only: reading its own build, adding files to it, viewing those files, adding, changing or removing draft items in it, and, when the owner allows it, setting its draft maps' grids, walls, doors and windows.
 
 #### Scenario: Allowed work
 - **WHEN** an AI with a live pass adds a creature to its build
 - **THEN** the draft holds the creature
 
 ### Requirement: What a pass may not do
-A pass MUST NOT allow reading or changing the library, reading other builds, listing or entering rooms, holding a seat, publishing, deleting anything outside its draft, changing the account, making another pass or extending its own life. No tool SHALL exist for any of these.
+A pass MUST NOT allow reading or changing the library, reading other builds, listing or entering rooms, holding a seat, publishing, deleting anything outside its draft, changing the account, changing the build's choices, making another pass or extending its own life. No tool SHALL exist for any of these.
 
 #### Scenario: No way to publish
 - **WHEN** an AI, however instructed, tries to publish a build with its pass
@@ -72,6 +72,21 @@ A pass MUST NOT allow reading or changing the library, reading other builds, lis
 #### Scenario: Script calling routes directly
 - **WHEN** a script holding a pass calls the server directly, without the MCP server
 - **THEN** the same limits on what the pass may do apply
+
+### Requirement: The user chooses what the AI may set up on maps
+Starting a build SHALL offer two choices, both off by default: letting the AI set grids, and letting the AI set walls, doors and windows. The build SHALL store them. The owner SHALL be able to change them on the build page at any time, and the first build tool result SHALL report them to the AI. A pass MUST NOT be able to change them.
+
+#### Scenario: Start with walls on
+- **WHEN** a user ticks "Let my AI set walls, doors and windows" when starting a build
+- **THEN** the build records it, and the AI's first read of the build says it may set walls
+
+#### Scenario: Both left off
+- **WHEN** a user starts a build without ticking either choice
+- **THEN** the AI's grid waits for the user, and any attempt to set walls is refused, as before this change
+
+#### Scenario: The AI tries to turn a choice on
+- **WHEN** a request carrying only a pass tries to change either choice
+- **THEN** it is refused, and the choices are unchanged
 
 ### Requirement: The user can end a pass at any time
 The build page SHALL offer a way to cancel the pass at once. Changing the account password, discarding the build and deleting the account MUST also end it.

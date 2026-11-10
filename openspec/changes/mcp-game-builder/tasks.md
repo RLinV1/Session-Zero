@@ -1,11 +1,11 @@
 # Tasks
 
-The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **The user chose on 2026-11-09 not to wait for `mcp-ai-players` to land.** This work is on `feat/mcp-game-builder`, which holds a copy of that uncommitted work as its own commit. This branch can't merge until `mcp-ai-players` has. **The user also chose on 2026-11-09 to start group 3 before the Real-Time Architecture owner's sign-off.** Task 1.2 stays open, and this branch must not merge until that review is done. If it changes the pass design, groups 3 to 5 will need rework.
+The user answered the five review questions on 2026-11-08, and the answers are in `design.md`. **The user chose on 2026-11-09 not to wait for `mcp-ai-players` to land.** This work is on `feat/mcp-game-builder`, which holds a copy of that uncommitted work as its own commit. This branch can't merge until `mcp-ai-players` has. **The user also chose on 2026-11-09 to start group 3 before the Real-Time Architecture owner's sign-off.** Task 1.2 stays open, and this branch must not merge until that review is done. If it changes the pass design, groups 3 to 5 will need rework. **On 2026-11-10 the user added AI-set grids and walls as per-build choices (group 9).** This reverses the earlier rule that the AI doesn't draw on maps, so ADR 0053 gains a section and task 1.2's review covers it.
 
 ## 1. Groundwork
 
 - [x] 1.1 Copy the `mcp-ai-players` work onto this branch, merge `origin/main`, and check that `apps/mcp` builds and its tests pass
-- [ ] 1.2 Check the next free ADR number on `origin/main`, write ADR 0053 (new pass credential, the exception to ADR 0024 and 0033) and get the Real-Time Architecture owner's review before group 3. Verify by the owner's sign-off recorded in the ADR
+- [ ] 1.2 Check the next free ADR number on `origin/main`, write ADR 0053 (new pass credential, the exception to ADR 0024 and 0033, and AI-set grids and walls by choice) and get the Real-Time Architecture owner's review before group 3. Verify by the owner's sign-off recorded in the ADR
 - [ ] 1.3 Test the riskiest assumption first: put a stub tool at `/mcp/build` and try it from Claude Code, the Claude app and ChatGPT. Record in the verification log whether each connects with no sign-in and passes the `pass` argument. If a chat app refuses, stop and bring it back to the user
 
 ## 2. Shared contract
@@ -55,7 +55,20 @@ The user answered the five review questions on 2026-11-08, and the answers are i
 - [x] 8.7 Check the production stack in Docker under its own project name with real Postgres and object storage, and leave the dev containers alone
 - [x] 8.8 Run `npm run lint && npm run typecheck && npm test` and log the results
 
+## 9. AI-set grids and walls (by choice)
+
+- [ ] 9.1 Amend ADR 0053 with AI-set grids and walls by per-build choice, and why (KAN-09, ADR 0029, 0030, 0041). Verify that it's part of the review in 1.2
+- [ ] 9.2 In `build.ts`, add the choices and the draft map setup (openings, grid-corner lines, marks) with limits. Add the grid agreement check, and a pure function that turns a map's setup into a `LibraryMapBoard` with the confirmed grid, cutting walls under doors. Verify with unit tests for FR-GM-26: half steps, off-map corners, a corrected grid, 501 lines, tolerances just inside and just outside, offsets compared across a cell, and a door on a solid wall
+- [ ] 9.3 Server: the second migration, the choices on both stores, setting them at start and from the owner's page, the setup read and save routes for a pass, grid status worked out from the choice and detection, and publish using the map's resulting board for the library map and its encounters. Verify with integration tests on both stores: a pass can't change the choices, a save is refused when walls are off, after a user edit or after publishing, and published walls are in the library map and the template
+- [ ] 9.4 The overlay picture: `view_file` with `overlay` and `region`, drawn on the server with a numbered grid, walls and numbered openings, at most 1500 pixels on a side. Verify that a region's corner carries the right numbers, and that openings are numbered as `get_map_setup` lists them
+- [ ] 9.5 MCP: `get_map_setup`, `save_map_setup` and the `view_file` options, plus guide text on the choices, checking the grid and hard cases. Verify over real HTTP with the SDK client, including the refusals when off
+- [ ] 9.6 Web: the two choices at start and on the build page. Walls, doors, windows, openings and marks drawn in review, with kind and state changes, removing one line or all, and publish asking first when openings are left. Verify with component tests, then in a browser at desktop and phone width
+- [ ] 9.7 Docs: README FR-GM-26 and FR-GM-27, `docs/AI-GAME-BUILDER.md` (the choices, what counts as a hard case, design D13's two ways), and `docs/DESIGN.md`. Verify by searching the repo
+- [ ] 9.8 Break the new protections one at a time and confirm a test fails each time: choice off, a pass changing choices, an edited map, the grid tolerance, publish using the drawn lines. Run `visibility-auditor` and `sync-reviewer` on the diff
+- [ ] 9.9 Real run: a new Lanternfall build with both choices on, from the user's folder, with Claude Code. Compare the doors, locks and windows with `adventure.md`: the Ward Gate at (23, 8) and (23, 9); 13 Chandlery doors, with the office at (21, 3) locked; windows at (4, 0), (25, 0), (0, 6) and (29, 11); the sluice gate at (24, 10), locked. Measure the cost and replace the estimate in `design.md`. Then, only with the user's go-ahead, remove the first Lanternfall build's published items and publish the new one
+- [ ] 9.10 Run `npm run lint && npm run typecheck && npm test` and log the results
+
 ## Workflow follow-up
 
 - Archive this change after review and merge.
-- Possible later changes: OAuth at `/mcp/build`; ChatGPT's `openai/fileParams`; a "claim your character" link; a bulk "hand out characters" panel; an account-wide storage cap; user-defined presets.
+- Possible later changes: OAuth at `/mcp/build`; ChatGPT's `openai/fileParams`; a "claim your character" link; a bulk "hand out characters" panel; an account-wide storage cap; user-defined presets; drawing walls on the build page.
