@@ -21,7 +21,7 @@ import { LibraryPicker } from "./LibraryPicker";import { startEncounterEdit } fr
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
 import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
-import { BuildsTab } from "./build/LibraryBuilds";
+import { BUILD_LIMIT_REASON_ID, BuildsTab } from "./build/LibraryBuilds";
 
 /**
  * Maps and token art are uploaded assets; creatures are reusable token setups (library-creatures);
@@ -139,6 +139,9 @@ function Library() {
   /** The map a new encounter waits on while its grid is set up first. */
   const [encounterMapAwaitingGrid, setEncounterMapAwaitingGrid] = useState<string | null>(null);
   const [startingEncounter, setStartingEncounter] = useState(false);
+  /** New build's dialog, and whether the open-build limit turns its button off (FR-GM-26). */
+  const [creatingBuild, setCreatingBuild] = useState(false);
+  const [buildsFull, setBuildsFull] = useState(false);
 
   /** Opens a new encounter on one of the GM's maps in a temporary room; a map with no grid gets one first. */
   async function newEncounterOn(map: LibraryAsset) {
@@ -260,7 +263,11 @@ function Library() {
           <button type="button" className="primary" disabled={startingEncounter} onClick={() => setPickingEncounterMap(true)}>
             {startingEncounter ? "Opening…" : "New encounter"}
           </button>
-        ) : tab === "animation" || tab === "build" ? null : (
+        ) : tab === "build" ? (
+          <button type="button" className="primary" disabled={buildsFull} aria-describedby={buildsFull ? BUILD_LIMIT_REASON_ID : undefined} onClick={() => setCreatingBuild(true)}>
+            New build
+          </button>
+        ) : tab === "animation" ? null : (
           <UploadButton
             kind={kind}
             onUploaded={(a, diagnostics) => {
@@ -276,7 +283,7 @@ function Library() {
       {tab === "map" && <p className="muted">Upload PNG, JPEG or WebP images (up to 25 MiB), or UVTT, DD2VTT and DF2VTT maps (up to 40 MiB). UVTT imports include their grid, walls and doors.</p>}
 
       {tab === "build" ? (
-        <BuildsTab query={query} onError={setError} />
+        <BuildsTab query={query} onError={setError} creating={creatingBuild} onCreatingChange={setCreatingBuild} onFullChange={setBuildsFull} />
       ) : tab === "dice" ? (
         <>
           <SaveBrowserLooksOffer />

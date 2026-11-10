@@ -15,7 +15,6 @@ vi.mock("../src/account/AccountPages", () => ({ AccountMenu: () => null }));
 vi.mock("../src/ui/SiteHeader", () => ({ SiteHeader: () => null, HubNav: () => null }));
 
 import { RemoveDialog, BuildPage, GridOverlay } from "../src/pages/build/BuildPage";
-import { BuildsTab } from "../src/pages/build/LibraryBuilds";
 import { PassPanel } from "../src/pages/build/PassPanel";
 import { DraftCreatureEditor } from "../src/pages/build/DraftEditors";
 import { buildMessage, uploadKindFor, RIGHTS_NOTICE } from "../src/pages/build/buildCopy";
@@ -103,56 +102,6 @@ describe("what kind a dropped file is (FR-GM-26)", () => {
   it("otherwise goes by where it was dropped", () => {
     expect(uploadKindFor("goblin.png", "token")).toBe("token");
     expect(uploadKindFor("cave.png", "map")).toBe("map");
-  });
-});
-
-describe("the AI builds tab (FR-GM-26)", () => {
-  it("shows the rights notice before any pass exists", async () => {
-    builds.list.mockResolvedValue([]);
-    await render(<BuildsTab query="" onError={() => {}} />);
-    expect(text()).toContain(RIGHTS_NOTICE);
-    expect(host.querySelector("textarea")).toBeNull();
-  });
-
-  it("starts a build and shows its pass with the message", async () => {
-    builds.list.mockResolvedValue([]);
-    builds.start.mockResolvedValue({ build: detail().build, pass: "szb_new", expiresAt: "2099-01-01T00:00:00Z" });
-    await render(<BuildsTab query="" onError={() => {}} />);
-    const input = host.querySelector("form input") as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Hollow Coast");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    await act(async () => { await Promise.resolve(); });
-    expect(builds.start).toHaveBeenCalledWith("Hollow Coast", { aiGrid: false, aiWalls: false });
-    expect(host.querySelector("textarea")?.value).toContain("szb_new");
-  });
-
-  it("offers both choices for maps, off unless ticked, and sends what was ticked (ADR 0053)", async () => {
-    builds.list.mockResolvedValue([]);
-    builds.start.mockResolvedValue({ build: detail().build, pass: "szb_new", expiresAt: "2099-01-01T00:00:00Z" });
-    await render(<BuildsTab query="" onError={() => {}} />);
-    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-choices input[type=checkbox]")];
-    expect(boxes.map((b) => b.checked)).toEqual([false, false]);
-    expect(text()).toContain("Let my AI set grids");
-    expect(text()).toContain("Let my AI set walls, doors and windows");
-    await click(boxes[1]);
-    const input = host.querySelector("form input:not([type=checkbox])") as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Lanternfall");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    expect(builds.start).toHaveBeenCalledWith("Lanternfall", { aiGrid: false, aiWalls: true });
-  });
-
-  it("lists builds and filters by name", async () => {
-    builds.list.mockResolvedValue([detail().build, { ...detail().build, id: "b2", name: "Other" }]);
-    await render(<BuildsTab query="holl" onError={() => {}} />);
-    const listed = host.querySelector(".build-published")?.textContent ?? "";
-    expect(listed).toContain("Hollow Coast");
-    expect(listed).not.toContain("Other");
   });
 });
 

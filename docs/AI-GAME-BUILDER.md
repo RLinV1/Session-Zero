@@ -14,8 +14,8 @@ Session Zero never calls a model and never receives your rulebook. Your AI app's
 
 ## Connecting
 
-1. Open **Library → AI builds** and name your build. Tick what your AI may set up on maps (see [Maps](#maps)), then choose **Start a build**.
-2. Copy the message it shows you. **The pass is shown only once.** You can make a new one on the build page, which ends the old one.
+1. Open **Library → AI builds** and choose **New build**. Name it, choose how much map setup your AI does (see [Maps](#maps)), then choose **Start build**. Up to 3 builds can be open at once.
+2. Copy the message it shows you. **The pass is shown only once.** You can make a new one on the build page, which ends the old one. When a pass has ended, the build's card under AI builds offers **Make a new pass** too.
 3. Add the build address as a connector in your AI app, with no sign-in:
 
    ```
@@ -59,7 +59,7 @@ Your AI is told never to invent a value. Anything the source doesn't clearly giv
 - **A plain image** gets a suggested grid from automatic detection, or a size you told your AI.
 - An encounter can't be published until its map's grid is confirmed.
 
-Two choices let your AI do more. Both are off unless you tick them when you start a build, and you can change them on the build page at any time. Your AI can't change them.
+Two choices let your AI do more. Both are off unless you turn them on when you start a build, and you can change them on the build page at any time. Your AI can't change them. New build offers the usual combinations as one choice: **You set up maps** (both off), **Your AI sets grids**, or **Your AI sets grids, walls, doors and windows**. **Choose each one separately** has the two on their own.
 
 - **Let my AI set grids.** Your AI's grid counts as confirmed only when automatic detection agrees with it: the square size within half a pixel, and the grid's position within one pixel. The map then uses the detected grid, which is measured across the whole map. Otherwise you confirm it, as before.
 - **Let my AI set walls, doors and windows.** Your AI reads your materials and the map, then:

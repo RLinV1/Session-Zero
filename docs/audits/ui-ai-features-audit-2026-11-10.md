@@ -46,6 +46,25 @@ The evidence came from this live run. The user's own run earlier the same day ha
 
 **MCP tools.** The tools are named verb-first and their titles say what they do. They have no finding beyond #1, which also affected what the AI is told: its words stay as they were.
 
+## Follow-up: the AI builds tab (same day)
+
+The user asked for the tab to be rethought as a workflow, keeping the look: no change to fonts, colours, borders or button styles, and no backend change. A preview built from the app's own stylesheet was approved before any code, as phase 1 of three.
+
+**Measured before.** At 375 by 812 pixels the first existing build started 796 pixels down, behind an always-open start form. Each build showed only its name and "In progress" or "Closed", though the list already holds each pass's expiry, the last change, the closing date and the map choices.
+
+| Before | After |
+| --- | --- |
+| A start form always open on the tab | **New build** in the toolbar, where every other tab has its action, opens a dialog. It focuses the name, and keeps its errors and the rights notice beside Start |
+| Two map checkboxes | One choice: *You set up maps*, *Your AI sets grids*, or *Your AI sets grids, walls, doors and windows*, each saying what you still check. *Choose each one separately* has the two checkboxes, so walls without grids stays possible. Still off by default (ADR 0053) |
+| Name and status rows, open and closed mixed | Open builds as cards. Each has chips for its pass (works, ended or none) and map setup, plus "Closes …" in the last 3 days. One next step: **Open**, or **Make a new pass** once the pass has ended. Closed builds are folded under *Closed builds (n)*, and a search that finds one opens it |
+| The 3-open-build limit only as an error | "n of 3 open" beside the heading. At 3, New build is off and the reason sits under the toolbar, tied to it with `aria-describedby` |
+| A 39-word intro | One line, then *How AI builds work*: three numbered steps and the safety facts. It opens by itself on a first visit |
+| The pass dialog ended at a link | Three steps say what happens next, including that the build waits under AI builds |
+
+**Found while checking it live.** The start route sends the build's summary from before its first pass exists, so a new card read "No pass". The tab now takes the expiry that comes with the pass. On touch screens, the 44-pixel rule made summaries flex boxes, which hid their open and closed marker. That affected the build page's walls summary too, and both now use padding instead.
+
+**Still to come.** Phase 2, still frontend only, adds what each draft holds (maps, creatures, encounters, published, to fix) from one read per open build. The next step becomes "Fix 2 things" or "Review and publish 5". Phase 3 needs the server: whether the AI is working now, and what is new since you last looked.
+
 ## Not done
 
 - **Content-shaped skeletons for initial loading (P16).** The build page still says "Loading…", as other hub pages do, and it exposes `aria-busy`.
@@ -73,3 +92,21 @@ The evidence came from this live run. The user's own run earlier the same day ha
   - the publish bar stays in view;
   - the tab list fades, and keeps AI builds in view;
   - the Share dialog's numbered steps and its copy fallback, on plain http in the built-in browser.
+
+**The AI builds tab follow-up.**
+- **Component tests** (`libraryBuildsTab.test.tsx`, 15) cover:
+  - New build in the toolbar, focusing the name;
+  - each choice sending its two settings, and the two still set separately;
+  - the pass and its steps after Start, and the new card's working pass;
+  - a failed start kept in the dialog;
+  - the limit and its reason;
+  - the pass, map setup and closing chips;
+  - the one next step, and a new pass from a card;
+  - closed builds folded away, and opened by a search;
+  - the first visit's open explainer.
+- **Deliberate breaks.** The tab was broken 11 ways, one at a time, and each made a test fail.
+- **Browser**, on an in-memory server with the seeded test account at `localhost:5593`, not the user's database:
+  - started a build through the dialog, and made a new pass from a card. Focus went back to the button that opened each dialog;
+  - filled the limit, and searched for a closed build;
+  - at 375 px: no sideways scroll, no control under 44 px, and the New build dialog fits without scrolling. The first card starts at 579 px, below the limit's reason;
+  - light and dark.
