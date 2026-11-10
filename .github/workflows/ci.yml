@@ -60,6 +60,19 @@ jobs:
           echo "server did not become healthy in time"
           exit 1
 
+  # Fails on a new high/critical advisory in a production dependency (security-hardening). Reads the
+  # committed lockfile, so it needs no install; known advisories are allowlisted in the script.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Audit production dependencies
+        run: npm run audit
+
   # Build only (no push): catches a broken production Dockerfile before it reaches a VM.
   images:
     runs-on: ubuntu-latest

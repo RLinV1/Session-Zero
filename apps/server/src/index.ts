@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildApp } from "./app";
+import { buildApp, httpLogFromEnv } from "./app";
 import { seedDevAccount } from "./identity/devAccount";
 import { createAssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
@@ -42,7 +42,7 @@ const app = await buildApp({
   store,
   assets: await createAssetStore(uploadDir),
   uploadDir,
-  logger: true,
+  logger: httpLogFromEnv(),
 });
 await app.listen({ port, host: "0.0.0.0" });
 console.log(`[vtt] server on http://localhost:${port} (health: /health)`);
