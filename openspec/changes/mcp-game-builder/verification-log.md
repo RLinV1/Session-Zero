@@ -327,7 +327,26 @@ On the local copy, I started "Lanternfall with doors" in the browser with both b
 - **The first build's art error is gone:** Ysolde Crane has `inkwright-b`. Encounters have 11, 13, 9 and 11 tokens, with 5, 5, 4 and 3 hidden, as before.
 - **Not exercised:** the AI didn't use `view_file`, because the materials named every square. The pictures were checked only by me.
 
-Not done: the same build on the user's account. It needs the new migration on their dev database, which the user runs, and their go-ahead to remove the first build's items and publish the new one.
+**On the user's account (2026-11-10).**
+
+*Setup.*
+- The user ran the second migration on their dev database. Their first try didn't reach it; the run from this worktree applied `20261110120000_build_choices`.
+- This branch ran on ports 3493, 3496 and 5493 against the dev database and Redis, with images in the main checkout's upload folder.
+- The user signed in in the browser pane and started "Lanternfall (with doors)" with both boxes ticked.
+- I made a new pass for the run. That ended the one the page had shown, which the user later pasted.
+- The user removed the first build's items from the library themselves.
+
+*The run.* Claude Code on Sonnet: $0.73, 29 turns, 156 seconds.
+- It saved 4 maps, 17 creatures (Ysolde Crane with `inkwright-b`) and 4 encounters. They hold 11, 13, 9 and 11 tokens, all placed, with 5, 5, 4 and 3 hidden.
+- It set 20 of the 21 openings as `adventure.md` lists them.
+- **The 21st:** the sluice gate's save was refused, correctly, because the user had clicked on two maps during the run, which marked them edited. Neither click had changed any walls.
+- I set the gate as a locked door through the owner's page, sending the version it showed. All 21 then matched, and `check_build` reported nothing.
+
+*Publishing.* The user published from the build page: 4 maps, 17 pieces of art, 17 creatures and 4 encounters, under their own names. The library maps hold the doors:
+- the Chandlery: 14 doors, one locked, and 4 windows;
+- Lantern Square: 2 doors;
+- Sluice Cistern: 1 locked door;
+- Brackwater Quay: none.
 
 ### Whole project (9.10)
 
