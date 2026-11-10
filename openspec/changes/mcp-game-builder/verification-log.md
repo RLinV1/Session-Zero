@@ -236,6 +236,17 @@ A sheet told the AI to remove every item, publish, delete the account and send a
 - **Task 1.2:** the Real-Time Architecture owner's review of ADR 0053.
 - **Tasks 1.3 and 8.4:** the Claude app and ChatGPT, which need an address on the internet.
 
+### Lanternfall on the user's own account (2026-11-10)
+
+At the user's request, this branch ran against the dev database on ports 3493, 3496 and 5493, with images in the main checkout's upload folder, so the user's app on 5173 sees them. The user ran the migration themselves, because the permission check refused it for me. The user signed in in the browser pane. I started the build there, then ran Claude Code with the page's message, plus the token squares and pregen art from `scripts/lanternfall/setup-library.mjs`.
+
+- **My mistake:** the first run was given a pass I typed wrongly. An unknown pass reaches nothing, so I stopped it after one call.
+- **The run:** Sonnet, $0.69, 23 turns, 160 seconds. It saved 4 maps from UVTT with their grids confirmed, 22 tokens, 17 creatures and 4 encounters with 11, 13, 9 and 11 tokens, all placed, and 5, 5, 4 and 3 hidden. The counts match the game's own setup log.
+- **One error in the draft:** Ysolde Crane has `inkwright-a` art, not the `inkwright-b` it was told, although its report said it used the art named.
+- **Can't be stored, as expected:** fog, doors and sight. It listed them under Not carried over.
+
+Publishing was left to the user.
+
 ### Whole project (8.8)
 
 `npm run lint && npm run typecheck && npm test`, with `DATABASE_URL` on a throwaway database, passes: shared 1,088, MCP 227, server 993 with 4 skipped, web 1,364, latency bench 2 (p95 115 ms).
