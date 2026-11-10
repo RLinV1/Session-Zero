@@ -587,14 +587,14 @@ describe("draft items (FR-GM-26)", () => {
     const { pass } = await start();
     await withMap(pass);
     expect((await items(pass)).find((i) => i.kind === "map")?.data).toMatchObject({ gridStatus: "proposed", grid: null });
-    expect(await check(pass)).toContainEqual({ type: "problem", item: "map cave", message: expect.stringContaining("confirm") });
+    expect(await check(pass)).toContainEqual(expect.objectContaining({ type: "problem", item: "map cave", message: expect.stringContaining("confirm") }));
   });
 
   it("a plain map with no proposal needs a grid", async () => {
     const { pass } = await start();
     await withMap(pass, null);
     expect((await items(pass)).find((i) => i.kind === "map")?.data).toMatchObject({ gridStatus: "none" });
-    expect(await check(pass)).toContainEqual({ type: "problem", item: "map cave", message: expect.stringContaining("needs a grid") });
+    expect(await check(pass)).toContainEqual(expect.objectContaining({ type: "problem", item: "map cave", message: expect.stringContaining("needs a grid") }));
   });
 
   it("a UVTT map arrives with its grid confirmed, and a proposal can't replace it", async () => {
@@ -635,7 +635,7 @@ describe("draft items (FR-GM-26)", () => {
     const { pass } = await start();
     await withMap(pass);
     expect((await saveEncounter(pass, encounter([token({ square: null })]))).status).toBe(200);
-    expect(await check(pass)).toContainEqual({ type: "problem", item: "encounter ambush", message: expect.stringContaining("no square") });
+    expect(await check(pass)).toContainEqual(expect.objectContaining({ type: "problem", item: "encounter ambush", message: expect.stringContaining("no square") }));
   });
 
   it("refuses an encounter naming a creature or map that isn't there", async () => {
@@ -684,8 +684,8 @@ describe("draft items (FR-GM-26)", () => {
     await save(pass, [goblin({ hp: null, flags: [{ field: "hp", message: "HP ??" }] })]);
     const before = await items(pass);
     const issues = await check(pass);
-    expect(issues).toContainEqual({ type: "flag", item: "game profile", message: expect.stringContaining("d20") });
-    expect(issues).toContainEqual({ type: "flag", item: "creature goblin", message: "hp: HP ??" });
+    expect(issues).toContainEqual(expect.objectContaining({ type: "flag", item: "game profile", message: expect.stringContaining("d20") }));
+    expect(issues).toContainEqual(expect.objectContaining({ type: "flag", item: "creature goblin", message: "hp: HP ??" }));
     expect(await items(pass)).toEqual(before);
     const library = await account.json<{ kind: string }[]>("GET", "/api/library/creatures");
     expect(library).toEqual([]);

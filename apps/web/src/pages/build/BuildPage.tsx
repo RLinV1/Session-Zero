@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
   EMPTY_MAP_SETUP,
   checkBuild,
@@ -6,6 +6,7 @@ import {
   draftMapBoard,
   listOpenings,
   squareSizeOf,
+  type BuildCheckIssue,
   type BuildDetail,
   type BuildFileView,
   type BuildItemView,
@@ -45,6 +46,39 @@ const mapOf = (item: BuildItemView) => item.data as unknown as DraftMapState;
 const encounterOf = (item: BuildItemView) => item.data as unknown as DraftEncounterState;
 /** Items with flags come first, so what needs a person is what they see first. */
 const flaggedFirst = (a: BuildItemView, b: BuildItemView) => Number(b.flags.length > 0) - Number(a.flags.length > 0);
+/** Where an item's card is on the page, so the issue list and the changed list can link to it. Keys are safe in ids. */
+const cardId = (item: Pick<BuildItemView, "kind" | "key">) => `build-${item.kind}-${item.key}`;
+/** An item's own name, as the person knows it. */
+const nameOf = (item: BuildItemView) => String((item.data as { name?: unknown }).name ?? item.key);
+const KIND_WORD: Record<BuildItemView["kind"], string> = { creature: "creature", map: "map", encounter: "encounter" };
+/** "1 map, 2 creatures and 1 encounter". */
+function counted(items: readonly BuildItemView[]): string {
+  const parts = (["map", "creature", "encounter"] as const).map((kind) => {
+    const n = items.filter((i) => i.kind === kind).length;
+    return n === 0 ? null : `${n} ${KIND_WORD[kind]}${n === 1 ? "" : "s"}`;
+  }).filter((p): p is string => p !== null);
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+/** One group of issues, each naming its item and linking to it. */
+function IssueList({ title, className, issues }: { title: string; className: string; issues: readonly BuildCheckIssue[] }) {
+  return (
+    <>
+      <h3 className="build-issues-title">{title} ({issues.length})</h3>
+      <ul className="plain build-issues">
+        {issues.map((issue, i) => (
+          <li key={i} className={className}>
+            {issue.target
+              ? <a className="build-issue-item" href={`#${cardId(issue.target)}`}>{issue.label}</a>
+              : <span className="build-issue-item">{issue.label}</span>}{" "}
+            {issue.message}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /** Whether the AI left openings or places on a map for the person to finish. */
 const leftForYou = (item: BuildItemView) => {
   const setup = mapOf(item).setup;
@@ -70,7 +104,14 @@ function Build({ id }: { id: string }) {
   const [justPublished, setJustPublished] = useState<BuildPublished | null>(null);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const [confirmingNewPass, setConfirmingNewPass] = useState(false);
+  /** Whether the pass now shown replaced one the AI may still be using. */
+  const [passReplaced, setPassReplaced] = useState(false);
   const [removing, setRemoving] = useState<PublishedBuildItem[] | null>(null);
+  const [removingDraft, setRemovingDraft] = useState<BuildItemView | null>(null);
+  /** The action in flight, named as its button says it, so nothing is sent twice. */
+  const [pending, setPending] = useState<string | null>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   /** The version of each item as this person last saw it. What the AI changes after that needs another look. */
   const [reviewed, setReviewed] = useState<Record<string, string>>({});
@@ -104,15 +145,26 @@ function Build({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [open, refresh]);
 
-  const run = useCallback(async (action: () => Promise<unknown>, failure: string) => {
+  const run = useCallback(async (action: () => Promise<unknown>, failure: string, doing = "Saving…") => {
     setError(null);
+    setPending(doing);
     try {
       await action();
       await refresh();
     } catch (err) {
       setError(message(err, failure));
+    } finally {
+      setPending(null);
     }
   }, [refresh]);
+
+  // The page is long, so an error raised by a button far down must come into view, and be focused,
+  // rather than appear at the top where nobody is looking.
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    errorRef.current.scrollIntoView?.({ block: "center" });
+    errorRef.current.focus();
+  }, [error]);
 
   const items = useMemo(() => detail?.items ?? [], [detail]);
   const files = useMemo(() => detail?.files ?? [], [detail]);
@@ -121,6 +173,7 @@ function Build({ id }: { id: string }) {
   const encounters = useMemo(() => items.filter((i) => i.kind === "encounter").sort(flaggedFirst), [items]);
   const issues = useMemo(() => (detail ? checkBuild({
     profile: detail.profile,
+    audience: "owner",
     aiWalls: detail.build.choices.aiWalls,
     files,
     creatures: creatures.map((i) => ({ key: i.key, data: creatureOf(i), flags: i.flags })),
@@ -156,13 +209,23 @@ function Build({ id }: { id: string }) {
       const { published: done } = await api.builds.publish(id, { creatures: keys("creature"), maps: keys("map"), encounters: keys("encounter"), reviewed });
       setJustPublished(done);
       setSelected(new Set());
-    }, "Couldn't publish.");
+    }, "Couldn't publish.", "Publishing…");
   }
 
   const checkbox = (item: BuildItemView) => (open && !item.published
     ? <label className="build-check"><input type="checkbox" checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />Publish</label>
     : null);
-  const remove = (item: BuildItemView) => run(() => api.builds.removeItem(id, item.kind, item.key), "Couldn't remove this.");
+  // Asks first: a removed draft is gone unless the AI saves it again.
+  const remove = (item: BuildItemView) => setRemovingDraft(item);
+  const busy = pending !== null;
+  const problems = issues.filter((i) => i.type === "problem");
+  const notes = issues.filter((i) => i.type === "flag");
+  const publishLabel = pending === "Publishing…" ? "Publishing…" : `Publish selected (${chosen.length})`;
+  const passLive = detail?.build.passExpiresAt ? Date.parse(detail.build.passExpiresAt) > Date.now() : false;
+  const makePass = () => {
+    setConfirmingNewPass(false);
+    void run(async () => { setPassReplaced(passLive); setPass((await api.builds.newPass(id)).pass); }, "Couldn't make a new pass.", "Making a pass…");
+  };
 
   return (
     <>
@@ -170,32 +233,43 @@ function Build({ id }: { id: string }) {
         <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} />
       </div>
       <main className="page-shell home gm-page build-page">
-        <p className="small-print"><a href="/library">Asset library</a></p>
+        <p className="small-print"><a href="/library?tab=builds" onClick={(e) => { e.preventDefault(); navigate("/library?tab=builds"); }}>AI builds</a></p>
         <h1>{detail?.build.name ?? "AI build"}</h1>
-        {error && <p role="alert" className="error build-error">{error}</p>}
+        {error && <p ref={errorRef} tabIndex={-1} role="alert" className="error build-error">{error}</p>}
         {!detail && !error && <p className="muted" aria-busy="true">Loading…</p>}
+
+        {detail && open && (
+          <p className="build-summary">
+            {draftItems.length === 0
+              ? "Nothing in the draft yet. Your AI's work appears here as it saves it."
+              : `Your AI has saved ${counted(draftItems)}. ${problems.length === 0 ? "Nothing needs fixing" : `${problems.length} ${problems.length === 1 ? "thing needs" : "things need"} fixing`}${notes.length > 0 ? `, and it left ${notes.length} ${notes.length === 1 ? "note" : "notes"} for you` : ""}. Check each item, then `}
+            {draftItems.length > 0 && <a href="#build-publish">publish what you choose</a>}
+            {draftItems.length > 0 && "."}
+          </p>
+        )}
 
         {detail && (
           <>
             {open ? (
-              <section className="build-section" aria-label="Access">
+              <section className="build-section" aria-labelledby="build-access">
+                <h2 id="build-access">Your AI's access</h2>
                 <p className="muted">
-                  {detail.build.passExpiresAt && Date.parse(detail.build.passExpiresAt) > Date.now()
+                  {passLive && detail.build.passExpiresAt
                     ? `Your AI's pass works until ${new Date(detail.build.passExpiresAt).toLocaleString()}. `
                     : "There is no working pass. "}
                   If nothing changes, this build closes on {when(detail.build.closesAt)}.
                 </p>
                 <div className="row">
-                  <button type="button" onClick={() => void run(async () => setPass((await api.builds.newPass(id)).pass), "Couldn't make a new pass.")}>New pass</button>
-                  {detail.build.passExpiresAt && <button type="button" onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.")}>Cancel pass</button>}
+                  <button type="button" disabled={busy} onClick={() => (passLive ? setConfirmingNewPass(true) : makePass())}>{pending === "Making a pass…" ? "Making a pass…" : "New pass"}</button>
+                  {detail.build.passExpiresAt && <button type="button" disabled={busy} onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.", "Cancelling…")}>{pending === "Cancelling…" ? "Cancelling…" : "Cancel pass"}</button>}
                 </div>
-                <BuildChoiceFields choices={detail.build.choices} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
+                <BuildChoiceFields choices={detail.build.choices} disabled={busy} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
                 <p className="muted small-print">Turning walls off stops your AI making more changes. What it already set stays below, where you can remove it.</p>
               </section>
             ) : (
               <p className="notice"><span>This build is closed. Its draft is gone, and what it published is listed below.</span></p>
             )}
-            <PassPanel pass={pass} onClose={() => setPass(null)} />
+            <PassPanel pass={pass} replaced={passReplaced} onClose={() => setPass(null)} />
 
             {open && (changed.length > 0 || profileChanged) && (
               <section className="build-section" aria-labelledby="build-changed">
@@ -204,13 +278,13 @@ function Build({ id }: { id: string }) {
                 <ul className="plain build-published">
                   {profileChanged && (
                     <li>
-                      <span>game profile: one square is now {squareSize}</span>
+                      <span>Game profile: one square is now {squareSize}</span>
                       <button type="button" onClick={() => setReviewed((all) => ({ ...all, [PROFILE_REVIEWED]: squareSize }))}>I've checked it</button>
                     </li>
                   )}
                   {changed.map((item) => (
                     <li key={itemId(item)}>
-                      <span>{item.kind} {item.key}</span>
+                      <span><a href={`#${cardId(item)}`}>{nameOf(item)}</a> <span className="muted">{KIND_WORD[item.kind]}</span></span>
                       <button type="button" onClick={() => markReviewed(item)}>I've checked it</button>
                     </li>
                   ))}
@@ -221,13 +295,9 @@ function Build({ id }: { id: string }) {
             {open && issues.length > 0 && (
               <section className="build-section" aria-labelledby="build-issues">
                 <h2 id="build-issues">Needs your attention</h2>
-                <ul className="plain build-issues">
-                  {issues.map((issue, i) => (
-                    <li key={i} className={issue.type === "flag" ? "build-flag" : "build-problem"}>
-                      <span className="build-issue-item">{issue.item}</span> {issue.message}
-                    </li>
-                  ))}
-                </ul>
+                {/* Grouped under words, not only told apart by colour. */}
+                {problems.length > 0 && <IssueList title="To fix" className="build-problem" issues={problems} />}
+                {notes.length > 0 && <IssueList title="Notes from your AI" className="build-flag" issues={notes} />}
               </section>
             )}
 
@@ -246,11 +316,11 @@ function Build({ id }: { id: string }) {
                 <h2 id="build-maps">Maps</h2>
                 <ul className="plain build-list build-list-maps">
                   {maps.map((item) => (
-                    <li key={item.key}>
-                      <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)}
+                    <li key={item.key} id={cardId(item)}>
+                      <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)} busy={busy}
                         onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
                         onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change these walls.")}
-                        onRemove={() => void remove(item)} />
+                        onRemove={() => remove(item)} />
                     </li>
                   ))}
                 </ul>
@@ -262,10 +332,10 @@ function Build({ id }: { id: string }) {
                 <h2 id="build-creatures">Creatures and characters</h2>
                 <ul className="plain build-list">
                   {creatures.map((item) => (
-                    <li key={item.key}>
-                      <CreatureCard item={item} files={files} checkbox={checkbox(item)}
+                    <li key={item.key} id={cardId(item)}>
+                      <CreatureCard item={item} files={files} checkbox={checkbox(item)} busy={busy}
                         onSave={async (patch) => { markReviewed((await api.builds.editCreature(id, item.key, patch)).item); await refresh(); }}
-                        onRemove={() => void remove(item)} />
+                        onRemove={() => remove(item)} />
                     </li>
                   ))}
                 </ul>
@@ -277,10 +347,10 @@ function Build({ id }: { id: string }) {
                 <h2 id="build-encounters">Encounters</h2>
                 <ul className="plain build-list">
                   {encounters.map((item) => (
-                    <li key={item.key}>
-                      <EncounterCard item={item} creatures={creatures} maps={maps} checkbox={checkbox(item)}
+                    <li key={item.key} id={cardId(item)}>
+                      <EncounterCard item={item} creatures={creatures} maps={maps} checkbox={checkbox(item)} busy={busy}
                         onSave={async (patch) => { markReviewed((await api.builds.editEncounter(id, item.key, patch)).item); await refresh(); }}
-                        onRemove={() => void remove(item)} />
+                        onRemove={() => remove(item)} />
                     </li>
                   ))}
                 </ul>
@@ -288,17 +358,27 @@ function Build({ id }: { id: string }) {
             )}
 
             {open && draftItems.length > 0 && (
-              <section className="build-section" aria-labelledby="build-publish">
-                <h2 id="build-publish">Publish</h2>
+              <section className="build-section" aria-labelledby="build-publish-title" id="build-publish">
+                <h2 id="build-publish-title">Publish</h2>
                 <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
                 <div className="row">
-                  <button type="button" onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Select all</button>
-                  <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged}
+                  <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Select all</button>
+                  <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged || busy}
                     onClick={() => { if (flaggedChosen > 0) setConfirmingPublish(true); else void doPublish(); }}>
-                    Publish selected ({chosen.length})
+                    {publishLabel}
                   </button>
                 </div>
+                {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed, above, before publishing.</p>}
+                {chosen.length === 0 && <p className="muted small-print">Tick Publish on the items you want, or choose Select all.</p>}
               </section>
+            )}
+
+            {/* Keeps the choice in view while ticking items far up the page. */}
+            {open && chosen.length > 0 && (
+              <div className="build-publish-bar" role="region" aria-label="Selected to publish">
+                <span>{chosen.length} selected</span>
+                <a href="#build-publish">Review and publish</a>
+              </div>
             )}
 
             {justPublished && justPublished.encounters.length > 0 && <StartRoom published={justPublished} onError={setError} />}
@@ -321,7 +401,7 @@ function Build({ id }: { id: string }) {
 
             {open && (
               <section className="build-section">
-                <button type="button" className="danger" onClick={() => setConfirmingDiscard(true)}>Discard this build</button>
+                <button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDiscard(true)}>Discard this build</button>
               </section>
             )}
           </>
@@ -337,12 +417,38 @@ function Build({ id }: { id: string }) {
           </div>
         </Modal>
 
-        <Modal open={confirmingDiscard} title="Discard this build?" onClose={() => setConfirmingDiscard(false)}>
+        <Modal open={confirmingNewPass} title="Make a new pass?" onClose={() => setConfirmingNewPass(false)}>
+          <div className="confirm">
+            <p>The pass your AI has now stops working at once. If it's still building, it stops, and you send it the new message to carry on.</p>
+            <div className="row">
+              <button type="button" onClick={() => setConfirmingNewPass(false)}>Keep the current pass</button>
+              <button type="button" className="primary" onClick={makePass}>Make a new pass</button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal open={removingDraft !== null} title={removingDraft ? `Remove ${nameOf(removingDraft)} from this draft?` : "Remove from this draft?"} onClose={() => setRemovingDraft(null)}>
+          {removingDraft && (
+            <div className="confirm">
+              <p>{removingDraft.kind === "map" ? "Encounters on this map can't be published without it. " : ""}Your library doesn't change. Your AI can save it again if you ask it to.</p>
+              <div className="row">
+                <button type="button" onClick={() => setRemovingDraft(null)}>Keep it</button>
+                <button type="button" className="danger" onClick={() => {
+                  const item = removingDraft;
+                  setRemovingDraft(null);
+                  void run(() => api.builds.removeItem(id, item.kind, item.key), "Couldn't remove this.", "Removing…");
+                }}>Remove</button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal open={confirmingDiscard} title={`Discard ${detail?.build.name ?? "this build"}?`} onClose={() => setConfirmingDiscard(false)}>
           <div className="confirm">
             <p>This deletes its draft and every file that wasn't published, and ends its pass. Anything already published stays in your library.</p>
             <div className="row">
               <button type="button" onClick={() => setConfirmingDiscard(false)}>Keep it</button>
-              <button type="button" className="danger" onClick={() => { setConfirmingDiscard(false); void run(() => api.builds.discard(id), "Couldn't discard this build."); }}>Discard</button>
+              <button type="button" className="danger" onClick={() => { setConfirmingDiscard(false); void run(() => api.builds.discard(id), "Couldn't discard this build.", "Discarding…"); }}>Discard</button>
             </div>
           </div>
         </Modal>
@@ -436,7 +542,7 @@ const badges = (item: BuildItemView, extra?: ReactNode) => (
   </span>
 );
 
-function CreatureCard({ item, files, checkbox, onSave, onRemove }: { item: BuildItemView; files: readonly BuildFileView[]; checkbox: ReactNode; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
+function CreatureCard({ item, files, checkbox, busy = false, onSave, onRemove }: { item: BuildItemView; files: readonly BuildFileView[]; checkbox: ReactNode; busy?: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
   const [editing, setEditing] = useState(false);
   const data = creatureOf(item);
   const art = files.find((f) => f.id === data.imageFileId);
@@ -456,8 +562,8 @@ function CreatureCard({ item, files, checkbox, onSave, onRemove }: { item: Build
       <Flags item={item} />
       {!item.published && (
         <div className="row">
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" onClick={onRemove}>Remove</button>
+          <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
         </div>
       )}
       <Modal open={editing} title={`Edit ${data.name}`} onClose={() => setEditing(false)}>
@@ -565,6 +671,7 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
     <details className="build-walls" open={setup.marks.length > 0 || setup.openings.some((o) => o.kind === "leave")}>
       <summary>Walls, doors and windows: {openings.length} {openings.length === 1 ? "opening" : "openings"}, {setup.lines.length} drawn by {editedByUser ? "your AI or you" : "your AI"}</summary>
       <p className="muted small-print">Yellow is a door, blue a window, dashed orange an opening as the file has it, red a wall. What was set here has a white edge. To draw or move walls, publish and use the map editor.</p>
+      {editable && !editedByUser && <p className="muted small-print">Any change you make here stops your AI changing this map.</p>}
       {openings.length > 0 && (
         <ul className="plain build-wall-list">
           {openings.map((o) => {
@@ -607,7 +714,7 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
             <li key={i}>
               <span>Left for you at column {mark.square.column}, row {mark.square.row}</span>
               <span className="build-flag-reason">{mark.reason}</span>
-              {editable && <button type="button" onClick={() => removeMark(i)}>Done</button>}
+              {editable && <button type="button" onClick={() => removeMark(i)}>Clear mark</button>}
             </li>
           ))}
         </ul>
@@ -617,8 +724,10 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
   );
 }
 
-function MapCard({ item, file, checkbox, onConfirm, onSaveSetup, onRemove }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void>; onRemove: () => void }) {
+function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup, onRemove }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void>; onRemove: () => void }) {
   const data = mapOf(item);
+  // A UVTT file's grid is exact: offering to "confirm" it would only lock the map against the AI.
+  const fromFile = data.gridBy === "file";
   const suggestion = file?.detection?.suggestion ?? null;
   // What publishing would use now: the confirmed grid, or the AI's latest proposal.
   const saved = data.grid ?? data.proposedGrid;
@@ -670,14 +779,15 @@ function MapCard({ item, file, checkbox, onConfirm, onSaveSetup, onRemove }: { i
       {file ? <GridOverlay file={file} grid={preview} drawing={drawing} /> : <p className="error">This map's file isn't in the build any more.</p>}
       {file?.fromUvtt && <p className="muted small-print">From a UVTT file, with {file.walls} walls.</p>}
       {file && drawing && <MapWalls data={data} openings={drawing.openings} editable={!item.published} editedByUser={item.editedByUser} onSave={onSaveSetup} />}
-      {!item.published && file && (
+      {fromFile && data.grid && <p className="muted small-print">Grid from the UVTT file: {data.grid.cellSize}-pixel squares. It's exact, so there's nothing to confirm.</p>}
+      {!item.published && file && !fromFile && (
         <div className="build-fields">
           <label>Square size (px)<input inputMode="decimal" value={cell} onChange={type(setCell)} /></label>
           <label>Offset X<input inputMode="decimal" value={x} onChange={type(setX)} /></label>
           <label>Offset Y<input inputMode="decimal" value={y} onChange={type(setY)} /></label>
         </div>
       )}
-      {!item.published && unsaved && (
+      {!item.published && !fromFile && unsaved && (
         <p className="build-blocked" role="status">
           The grid in the fields isn't saved. Publishing uses {saved ? `${saved.cellSize}-pixel squares at offset (${saved.offsetX}, ${saved.offsetY})` : "no grid"} until you confirm yours.{" "}
           <button type="button" onClick={() => { setTyped(false); fill(start); }}>Put the saved grid back</button>
@@ -686,16 +796,22 @@ function MapCard({ item, file, checkbox, onConfirm, onSaveSetup, onRemove }: { i
       <Flags item={item} />
       {!item.published && (
         <div className="row">
-          {file && <button type="button" className="primary" disabled={!preview} onClick={() => { if (preview) void onConfirm(preview).then(() => setTyped(false)); }}>Confirm grid</button>}
-          {suggestion && <button type="button" onClick={useSuggestion}>Use the detected grid</button>}
-          <button type="button" onClick={onRemove}>Remove</button>
+          {file && !fromFile && (
+            <button type="button" className="primary" disabled={!preview || busy || (data.gridStatus === "confirmed" && !unsaved)}
+              onClick={() => { if (preview) void onConfirm(preview).then(() => setTyped(false)); }}>
+              {data.gridStatus === "confirmed" ? "Save grid" : "Confirm grid"}
+            </button>
+          )}
+          {suggestion && !fromFile && <button type="button" disabled={busy} onClick={useSuggestion}>Use the detected grid</button>}
+          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
         </div>
       )}
+      {!item.published && !fromFile && data.gridStatus === "confirmed" && !unsaved && <p className="muted small-print">The grid is confirmed. Change the numbers to save a different one.</p>}
     </article>
   );
 }
 
-function EncounterCard({ item, creatures, maps, checkbox, onSave, onRemove }: { item: BuildItemView; creatures: readonly BuildItemView[]; maps: readonly BuildItemView[]; checkbox: ReactNode; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
+function EncounterCard({ item, creatures, maps, checkbox, busy = false, onSave, onRemove }: { item: BuildItemView; creatures: readonly BuildItemView[]; maps: readonly BuildItemView[]; checkbox: ReactNode; busy?: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
   const [editing, setEditing] = useState(false);
   const data = encounterOf(item);
   const creatureName = (key: string) => {
@@ -727,8 +843,8 @@ function EncounterCard({ item, creatures, maps, checkbox, onSave, onRemove }: { 
       <Flags item={item} />
       {!item.published && (
         <div className="row">
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" onClick={onRemove}>Remove</button>
+          <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
         </div>
       )}
       <Modal open={editing} title={`Edit ${data.name}`} onClose={() => setEditing(false)}>

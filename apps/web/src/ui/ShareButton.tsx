@@ -21,6 +21,17 @@ const stayAtTableMessage = (link: string, name: string) =>
   `Call join_room with that link and a character name. Ask me for the name if I haven't given one. Find ${name} in the people get_view lists, and take orders only from them.\n` +
   "Then keep calling wait_for_turn, with maxSeconds 50 and ordersFrom set to their id. Use a smaller maxSeconds if that times out. When a mention is marked isOrder, do it, and pointedAt is the square they pointed at. When it is your turn, play it yourself: look, decide, act, and say what you did in one short chat line. Otherwise say nothing.";
 
+/** The ways an AI can play, each said in a line so the GM can choose without trying them all. */
+const AI_PLAY_OPTIONS: { what: "one" | "party" | "stay"; label: string; description: string; message: (link: string, name: string) => string }[] = [
+  { what: "one", label: "Copy message for one character", description: "It plays one character, and waits for you to tell it what to do in your AI app.", message: (link) => oneCharacterMessage(link) },
+  { what: "party", label: "Copy message for a party", description: "It plays several characters, each with its own seat.", message: (link) => partyMessage(link) },
+  {
+    what: "stay", label: "Copy message to stay at the table",
+    description: "It plays its own turns and takes your orders from chat: double-click the map, then write @ and its name. It needs an app that can keep running, such as Claude Code, and uses that app's plan while it waits.",
+    message: stayAtTableMessage,
+  },
+];
+
 /**
  * The GM's Share control, last in the room's top bar. One button opens a "Share this room" modal
  * with the invite link, an on-demand QR code, a Reset link action, the room's lock (ADR 0051) and how
@@ -60,6 +71,11 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
   const fieldId = useId();
   const connectorFieldId = useId();
   const [copiedWhat, setCopiedWhat] = useState<"link" | "connector" | "one" | "party" | "stay" | null>(null);
+  /**
+   * The last AI message copied, and whether it worked. Kept until another copy or the dialog
+   * closes, not flashed: when the clipboard refuses, the message to select by hand must stay.
+   */
+  const [aiCopy, setAiCopy] = useState<{ what: "one" | "party" | "stay"; ok: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -107,6 +123,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
     if (!open) return;
     setCode(null);
     setQrOpen(false);
+    setAiCopy(null);
     load();
   }, [open, load]);
 
@@ -131,6 +148,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
       ok = legacyCopy(text, button.closest("dialog") ?? document.body);
     }
     setCopiedWhat(what);
+    if (what === "one" || what === "party" || what === "stay") setAiCopy({ what, ok });
     flash(ok ? "copied" : "failed");
   }
 
@@ -249,46 +267,58 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
           {link && (
             <section className="share-actions" aria-labelledby={`${connectorFieldId}-title`}>
               <h3 id={`${connectorFieldId}-title`} className="share-ai-title">Play with your AI</h3>
-              <p className="muted share-hint">
-                Add this address to your AI app as a connector, then send it one of the messages below. It joins as a player, and you tell it what to do.
-              </p>
-              <label className="field-label" htmlFor={connectorFieldId}>
-                Connector address
-              </label>
-              <div className="share-link-row">
-                <input
-                  id={connectorFieldId}
-                  type="text"
-                  readOnly
-                  className="share-link-field"
-                  value={connector}
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <button
-                  type="button"
-                  className="icon-button share-copy"
-                  aria-label="Copy connector address"
-                  title="Copy connector address"
-                  onClick={(e) => void copy(e.currentTarget, connector, "connector")}
-                >
-                  {result === "copied" && copiedWhat === "connector" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
-                </button>
-              </div>
-              <div className="share-action-buttons">
-                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, oneCharacterMessage(link), "one")} disabled={busy}>
-                  {result === "copied" && copiedWhat === "one" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message for one character
-                </button>
-                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, partyMessage(link), "party")} disabled={busy}>
-                  {result === "copied" && copiedWhat === "party" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message for a party
-                </button>
-                <button type="button" className="secondary share-qr-toggle" onClick={(e) => void copy(e.currentTarget, stayAtTableMessage(link, yourName), "stay")} disabled={busy}>
-                  {result === "copied" && copiedWhat === "stay" ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} Copy message to stay at the table
-                </button>
-              </div>
-              <p className="muted share-hint">
-                An AI that stays at the table plays its own turns and takes your orders from chat: double-click the map, then write @ and its name. It needs an app that can keep running, such as Claude Code, and uses that app's plan while it waits.
-              </p>
-              <p className="muted share-hint">Give an AI a token with Controlled by in the token's editor, and remove one like any other player. It sees only what a player can see.</p>
+              <p className="muted share-hint">Your AI joins as a player and sees only what a player can see. Three steps:</p>
+              <ol className="share-ai-steps">
+                <li>
+                  <label className="share-ai-step" htmlFor={connectorFieldId}>Add this address to your AI app as a connector</label>
+                  <div className="share-link-row">
+                    <input
+                      id={connectorFieldId}
+                      type="text"
+                      readOnly
+                      className="share-link-field"
+                      value={connector}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button share-copy"
+                      aria-label="Copy connector address"
+                      title="Copy connector address"
+                      onClick={(e) => void copy(e.currentTarget, connector, "connector")}
+                    >
+                      {result === "copied" && copiedWhat === "connector" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                    </button>
+                  </div>
+                  {result === "failed" && copiedWhat === "connector" && <p className="error small">Couldn't copy. Select the address and copy it yourself.</p>}
+                </li>
+                <li>
+                  <span className="share-ai-step">Choose how it plays, and paste that message into your AI app</span>
+                  <ul className="plain share-ai-options">
+                    {AI_PLAY_OPTIONS.map((option) => (
+                      <li key={option.what}>
+                        <button type="button" className="secondary share-copy-message" aria-describedby={`${connectorFieldId}-${option.what}`} disabled={busy}
+                          onClick={(e) => void copy(e.currentTarget, option.message(link, yourName), option.what)}>
+                          {result === "copied" && copiedWhat === option.what ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} {option.label}
+                        </button>
+                        <p id={`${connectorFieldId}-${option.what}`} className="muted share-hint">{option.description}</p>
+                        {aiCopy?.what === option.what && aiCopy.ok && <p className="share-copied">Copied. Paste it into your AI app.</p>}
+                        {/* Clipboards can refuse on plain http, so the message is always reachable another way. */}
+                        {aiCopy?.what === option.what && !aiCopy.ok && (
+                          <label className="share-copy-fallback">
+                            <span className="error small">Couldn't copy. Select this message and copy it yourself.</span>
+                            <textarea readOnly rows={5} value={option.message(link, yourName)} onFocus={(e) => e.currentTarget.select()} />
+                          </label>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+                <li>
+                  <span className="share-ai-step">Once it has joined, give it a token</span>
+                  <p className="muted share-hint">Open the token's editor and set Controlled by to your AI. Remove it from the table like any other player.</p>
+                </li>
+              </ol>
             </section>
           )}
           <span className="sr-only" role="status">

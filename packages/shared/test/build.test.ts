@@ -255,7 +255,7 @@ describe("checking a draft (FR-GM-26)", () => {
   const encounterOn = (mapKey: string, list: ReturnType<typeof tokens>) => ({ key: "e", data: { name: "E", mapKey, tokens: list }, flags: [] });
 
   it("asks for a profile when there is none", () => {
-    expect(checkBuild({ ...empty, profile: null })).toEqual([{ type: "problem", item: "game profile", message: expect.stringContaining("No game profile") }]);
+    expect(checkBuild({ ...empty, profile: null })).toEqual([{ type: "problem", item: "game profile", label: "Game profile", target: null, message: expect.stringContaining("No game profile") }]);
   });
 
   it("reports a grid that's missing or waiting", () => {
@@ -286,7 +286,24 @@ describe("checking a draft (FR-GM-26)", () => {
 
   it("lists flags as flags", () => {
     const issues = checkBuild({ ...empty, creatures: [{ key: "goblin", data, flags: [{ field: "ac", message: "around 14 maybe" }] }] });
-    expect(issues).toEqual([{ type: "flag", item: "creature goblin", message: "ac: around 14 maybe" }]);
+    expect(issues).toEqual([{ type: "flag", item: "creature goblin", label: "Goblin", target: { kind: "creature", key: "goblin" }, message: "ac: around 14 maybe" }]);
+  });
+
+  it("speaks to the owner about the page, by each item's name, not to the AI about its tools", () => {
+    const owner = checkBuild({
+      ...empty, audience: "owner", profile: null,
+      creatures: [{ key: "goblin", data: DraftCreature.parse(creature({ isPlayerCharacter: true, hp: null, maxHp: 7, ac: 10 })), flags: [{ field: "maxHp", message: "two numbers on the sheet" }] }],
+      maps: [{ key: "m", data: map({ gridStatus: "proposed" }), flags: [] }],
+    });
+    expect(owner.map((i) => [i.label, i.message])).toEqual([
+      ["Game profile", "Your AI hasn't saved a game profile, so every field counts as in use. Ask it to save one if that's wrong."],
+      ["Goblin", "Max HP: two numbers on the sheet"],
+      ["Goblin", "HP is blank, and your AI didn't say why. Fill it in, or publish it blank."],
+      ["Cave", "Its grid is waiting for you. Check it on the map below, then confirm it."],
+    ]);
+    expect(owner.map((i) => i.target)).toEqual([null, { kind: "creature", key: "goblin" }, { kind: "creature", key: "goblin" }, { kind: "map", key: "m" }]);
+    // The AI still reads what to do with its own tools.
+    expect(checkBuild({ ...empty, profile: null })[0]?.message).toMatch(/Save one so the GM knows/);
   });
 });
 
@@ -645,14 +662,14 @@ describe("AI-set grids and walls, by the owner's choice (FR-GM-26)", () => {
 
     it("lists openings left for the user and marked places, with reasons", () => {
       const s = setup({ openings: [{ number: 1, kind: "door", state: "closed" }, { number: 2, kind: "leave", reason: "Could be an archway." }], marks: [{ square: { column: 3, row: 4 }, reason: "Curved cave wall." }] });
-      expect(check(map({ setup: s }), true)).toEqual([
-        { type: "flag", item: "map shop", message: "Opening 2 is left for the user: Could be an archway." },
+      expect(check(map({ setup: s }), true)).toMatchObject([
+        { type: "flag", item: "map shop", label: "Chandlery", target: { kind: "map", key: "shop" }, message: "Opening 2 is left for the user: Could be an archway." },
         { type: "flag", item: "map shop", message: "Marked at column 3, row 4: Curved cave wall." },
       ]);
     });
 
     it("asks about openings still as imported only when the AI may set walls", () => {
-      expect(check(map(), true)).toEqual([{ type: "problem", item: "map shop", message: "Openings still as imported: 1, 2. Set each as a door or window, or leave it for the user with a reason." }]);
+      expect(check(map(), true)).toMatchObject([{ type: "problem", item: "map shop", message: "Openings still as imported: 1, 2. Set each as a door or window, or leave it for the user with a reason." }]);
       expect(check(map(), false)).toEqual([]);
     });
 

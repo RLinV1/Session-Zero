@@ -1,6 +1,6 @@
 import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
 import { IconAction } from "../ui/IconAction";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
 import { api } from "../net/api";
 import { builtinsMatching } from "../net/builtinAssets";
@@ -41,6 +41,39 @@ const TABS: { tab: Tab; label: string }[] = [
 
 /** `/library?tab=dice` opens on the Dice tab: the room's Dice panel links there. */
 const wantsDice = () => new URLSearchParams(location.search).get("tab") === "dice";
+/** `/library?tab=builds` opens on AI builds, so a build page's way back lands where it started. */
+const wantsBuilds = () => new URLSearchParams(location.search).get("tab") === "builds";
+/** The address each tab keeps, so reloading or sharing lands back on it. */
+const tabAddress = (tab: Tab) => (tab === "dice" ? "/library?tab=dice" : tab === "build" ? "/library?tab=builds" : "/library");
+
+/**
+ * Whether a scrolling tab list has tabs hidden past either edge, so it can show a fade there: on a
+ * phone, the last tabs are otherwise invisible with nothing to say they exist.
+ */
+function useHiddenTabs(selected: Tab) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState({ start: false, end: false });
+  useEffect(() => {
+    const list = ref.current;
+    if (!list) return;
+    const update = () => {
+      const next = { start: list.scrollLeft > 1, end: list.scrollLeft + list.clientWidth < list.scrollWidth - 1 };
+      setHidden((was) => (was.start === next.start && was.end === next.end ? was : next));
+    };
+    update();
+    list.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      list.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  // The chosen tab is always in view, including one opened from its address.
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [selected]);
+  return { ref, hidden };
+}
 
 /**
  * The signed-in person's library, whether they host or only play (asset-library). It follows the
@@ -88,7 +121,8 @@ function Library() {
   const [assets, setAssets] = useState<LibraryAsset[] | null>(null);
   const [creatures, setCreatures] = useState<LibraryCreature[] | null>(null);
   const [encounters, setEncounters] = useState<EncounterSummary[] | null>(null);
-  const [tab, setTab] = useState<Tab>(() => (wantsDice() ? "dice" : "map"));
+  const [tab, setTab] = useState<Tab>(() => (wantsDice() ? "dice" : wantsBuilds() ? "build" : "map"));
+  const tabList = useHiddenTabs(tab);
   const kind: AssetKind = tab === "map" ? "map" : "token";
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +226,8 @@ function Library() {
       {error && <p role="alert" className="error">{error}</p>}
 
       <div className="library-toolbar">
-        <div role="tablist" aria-label="Asset type" className="tabs">
+        <div role="tablist" aria-label="Asset type" className="tabs" ref={tabList.ref}
+          data-hidden-start={tabList.hidden.start || undefined} data-hidden-end={tabList.hidden.end || undefined}>
           {TABS.map((t) => (
             <button
               key={t.tab}
@@ -202,8 +237,8 @@ function Library() {
               className={tab === t.tab ? "tab active" : "tab"}
               onClick={() => {
                 setTab(t.tab);
-                // Keep the Dice tab in the address, so reloading or sharing lands back on it.
-                history.replaceState(null, "", t.tab === "dice" ? "/library?tab=dice" : "/library");
+                // Keep the Dice and AI builds tabs in the address, so reloading or sharing lands back on them.
+                history.replaceState(null, "", tabAddress(t.tab));
               }}
             >
               {t.label}

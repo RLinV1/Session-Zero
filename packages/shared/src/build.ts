@@ -583,11 +583,21 @@ export interface BuildCheckIssue {
   type: "problem" | "flag";
   /** What it is about, such as `creature goblin`. */
   item: string;
+  /** The item's own name for people, such as "Goblin", or "Game profile". */
+  label: string;
+  /** The draft item it is about, so a page can link to it. Null for the game profile. */
+  target: { kind: "creature" | "map" | "encounter"; key: string } | null;
   message: string;
 }
 
+/**
+ * Who reads the check. The AI is told what to do with its tools; the owner is told what to do on
+ * the build page, because the same words would ask a person to call a tool they don't have.
+ */
+export type BuildCheckAudience = "ai" | "owner";
+
 /** Whether a blank value is a problem: only on a player character, for a field the game uses, with no flag. */
-export function creatureProblems(creature: Pick<DraftCreature, "isPlayerCharacter" | "hp" | "maxHp" | "ac">, flags: readonly BuildFlag[], features: GameProfile["features"]): string[] {
+export function creatureProblems(creature: Pick<DraftCreature, "isPlayerCharacter" | "hp" | "maxHp" | "ac">, flags: readonly BuildFlag[], features: GameProfile["features"], audience: BuildCheckAudience = "ai"): string[] {
   if (!creature.isPlayerCharacter) return [];
   const flagged = new Set(flags.map((f) => f.field.toLowerCase()));
   const wanted: [boolean, "hp" | "maxHp" | "ac", string][] = [
@@ -595,11 +605,23 @@ export function creatureProblems(creature: Pick<DraftCreature, "isPlayerCharacte
   ];
   return wanted
     .filter(([used, field]) => used && creature[field] === null && !flagged.has(field.toLowerCase()))
-    .map(([, , label]) => `${label} is blank with no flag. Give a value, or flag it and say why.`);
+    .map(([, , label]) => (audience === "owner"
+      ? `${label} is blank, and your AI didn't say why. Fill it in, or publish it blank.`
+      : `${label} is blank with no flag. Give a value, or flag it and say why.`));
 }
+
+/** How a flagged field reads to a person: the field names the AI uses are code. */
+const FIELD_LABELS: Record<string, string> = {
+  hp: "HP", maxhp: "Max HP", ac: "AC", attacks: "Attacks", conditions: "Conditions", size: "Size", name: "Name",
+  color: "Colour", imagefileid: "Art", grid: "Grid", proposedgrid: "Grid", square: "Square", tokens: "Tokens",
+  unitspercell: "Square size", unitlabel: "Square size", features: "Features", notes: "Notes",
+};
+export const buildFieldLabel = (field: string) => FIELD_LABELS[field.toLowerCase()] ?? field;
 
 export interface BuildCheckInput {
   profile: GameProfile | null;
+  /** Who reads it. Defaults to the AI, which `check_build` returns to. */
+  audience?: BuildCheckAudience;
   /** Whether the owner lets the AI set walls, doors and windows. */
   aiWalls?: boolean;
   files: readonly { id: string; width: number; height: number; board?: LibraryMapBoard | null }[];
@@ -610,82 +632,108 @@ export interface BuildCheckInput {
 
 const gridWords = (g: GridNumbers) => `${g.cellSize}-pixel squares at offset (${g.offsetX}, ${g.offsetY})`;
 
+type AddIssue = (type: BuildCheckIssue["type"], message: string) => void;
+/** The AI's words, or the owner's, for the same issue. */
+type Say = (ai: string, owner: string) => string;
+
 /** What still needs work on one map's walls, doors and windows, and what the AI left for the user. */
-function mapSetupIssues(item: string, data: DraftMapState, file: BuildCheckInput["files"][number] | undefined, aiWalls: boolean, add: (type: BuildCheckIssue["type"], item: string, message: string) => void) {
+function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][number] | undefined, aiWalls: boolean, add: AddIssue, say: Say) {
   const setup = data.setup;
   const board = file?.board ?? null;
   const grid = data.grid ?? data.proposedGrid;
   for (const opening of listOpenings(board, setup, grid)) {
-    if (opening.now.kind === "left") add("flag", item, `Opening ${opening.number} is left for the user: ${opening.now.reason}`);
+    if (opening.now.kind === "left") add("flag", say(`Opening ${opening.number} is left for the user: ${opening.now.reason}`, `Opening ${opening.number} is left for you: ${opening.now.reason}`));
   }
-  for (const mark of setup?.marks ?? []) add("flag", item, `Marked at column ${mark.square.column}, row ${mark.square.row}: ${mark.reason}`);
+  for (const mark of setup?.marks ?? []) {
+    add("flag", say(`Marked at column ${mark.square.column}, row ${mark.square.row}: ${mark.reason}`, `Left for you at column ${mark.square.column}, row ${mark.square.row}: ${mark.reason}`));
+  }
   // Reported only while the AI may set them, so a build without the choice raises nothing new.
   if (aiWalls) {
     const untouched = listOpenings(board, setup, grid).filter((o) => !o.set).map((o) => o.number);
     if (untouched.length > 0) {
-      add("problem", item, `Openings still as imported: ${untouched.join(", ")}. Set each as a door or window, or leave it for the user with a reason.`);
+      add("problem", say(
+        `Openings still as imported: ${untouched.join(", ")}. Set each as a door or window, or leave it for the user with a reason.`,
+        `Openings still as the file has them: ${untouched.join(", ")}. Set them on the map below, or leave them hidden from players.`,
+      ));
     }
   }
   if (!setup || !file) return;
   const result = draftMapBoard(board, setup, grid, file);
   if (!result.ok) {
-    for (const message of result.problems) add("problem", item, message);
+    // The board's own messages are written for the AI's tools; the owner sets a grid on the page.
+    for (const message of result.problems) add("problem", say(message, message.replace(/ Propose one with save_map\.$/, " Set the map's grid first.")));
     return;
   }
   for (const index of result.blockedLines) {
     const line = setup.lines[index]!;
-    add("problem", item, `${describeDraftLine(line, index)} sits on a wall it doesn't cut, so the wall still blocks it. Draw it along the wall's line, or mark the place for the user.`);
+    add("problem", say(
+      `${describeDraftLine(line, index)} sits on a wall it doesn't cut, so the wall still blocks it. Draw it along the wall's line, or mark the place for the user.`,
+      `${describeDraftLine(line, index)} sits on a wall it doesn't cut, so the wall still blocks it. Remove the line below, or fix it in the map editor after publishing.`,
+    ));
   }
 }
 
 /** Every problem and flag in a draft, in plain words. Reads only: it changes and publishes nothing. */
 export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
   const issues: BuildCheckIssue[] = [];
-  const add = (type: BuildCheckIssue["type"], item: string, message: string) => void issues.push({ type, item, message });
-  const addFlags = (item: string, flags: readonly BuildFlag[]) => flags.forEach((f) => add("flag", item, `${f.field}: ${f.message}`));
+  const audience = input.audience ?? "ai";
+  const say: Say = (ai, owner) => (audience === "owner" ? owner : ai);
+  const about = (item: string, label: string, target: BuildCheckIssue["target"]): AddIssue =>
+    (type, message) => void issues.push({ type, item, label, target, message });
+  const addFlags = (add: AddIssue, flags: readonly BuildFlag[]) =>
+    flags.forEach((f) => add("flag", `${audience === "owner" ? buildFieldLabel(f.field) : f.field}: ${f.message}`));
   const features = input.profile?.features ?? ALL_FEATURES;
 
-  if (input.profile) addFlags("game profile", input.profile.flags);
-  else add("problem", "game profile", "No game profile yet. Save one so the GM knows which fields this game uses.");
+  const profile = about("game profile", "Game profile", null);
+  if (input.profile) addFlags(profile, input.profile.flags);
+  else {
+    profile("problem", say(
+      "No game profile yet. Save one so the GM knows which fields this game uses.",
+      "Your AI hasn't saved a game profile, so every field counts as in use. Ask it to save one if that's wrong.",
+    ));
+  }
 
   const creatures = new Map(input.creatures.map((c) => [c.key, c]));
   const maps = new Map(input.maps.map((m) => [m.key, m]));
   const files = new Map(input.files.map((f) => [f.id, f]));
 
   for (const { key, data, flags } of input.creatures) {
-    const item = `creature ${key}`;
-    addFlags(item, flags);
-    for (const message of creatureProblems(data, flags, features)) add("problem", item, message);
-    if (data.imageFileId !== null && !files.has(data.imageFileId)) add("problem", item, "Its art isn't in this build any more.");
+    const add = about(`creature ${key}`, data.name, { kind: "creature", key });
+    addFlags(add, flags);
+    for (const message of creatureProblems(data, flags, features, audience)) add("problem", message);
+    if (data.imageFileId !== null && !files.has(data.imageFileId)) add("problem", "Its art isn't in this build any more.");
   }
 
   for (const { key, data, flags } of input.maps) {
-    const item = `map ${key}`;
-    addFlags(item, flags);
-    if (data.gridStatus === "none") add("problem", item, "It needs a grid. Propose one, or ask the user for the square size.");
+    const add = about(`map ${key}`, data.name, { kind: "map", key });
+    addFlags(add, flags);
+    if (data.gridStatus === "none") add("problem", say("It needs a grid. Propose one, or ask the user for the square size.", "It has no grid yet. Set the square size on the map below, then confirm it."));
     if (data.gridStatus === "proposed" && data.gridDiffers && data.proposedGrid) {
-      add("problem", item, `Your grid (${gridWords(data.proposedGrid)}) differs from grid detection's (${gridWords(data.gridDiffers)}), so it waits for the user. Look at the map with the grid drawn, then propose again.`);
+      add("problem", say(
+        `Your grid (${gridWords(data.proposedGrid)}) differs from grid detection's (${gridWords(data.gridDiffers)}), so it waits for the user. Look at the map with the grid drawn, then propose again.`,
+        `Your AI's grid (${gridWords(data.proposedGrid)}) differs from grid detection's (${gridWords(data.gridDiffers)}). Check the map below and confirm the right one.`,
+      ));
     } else if (data.gridStatus === "proposed") {
-      add("problem", item, "Its grid is waiting for the user to confirm it on the build page.");
+      add("problem", say("Its grid is waiting for the user to confirm it on the build page.", "Its grid is waiting for you. Check it on the map below, then confirm it."));
     }
     const file = files.get(data.fileId);
-    if (!file) add("problem", item, "Its file isn't in this build any more.");
-    mapSetupIssues(item, data, file, input.aiWalls ?? false, add);
+    if (!file) add("problem", "Its file isn't in this build any more.");
+    mapSetupIssues(data, file, input.aiWalls ?? false, add, say);
   }
 
   for (const { key, data, flags } of input.encounters) {
-    const item = `encounter ${key}`;
-    addFlags(item, flags);
+    const add = about(`encounter ${key}`, data.name, { kind: "encounter", key });
+    addFlags(add, flags);
     const map = maps.get(data.mapKey);
-    if (!map) add("problem", item, `It names map "${data.mapKey}", which isn't in this build.`);
+    if (!map) add("problem", `It names map "${data.mapKey}", which isn't in this build.`);
     const file = map ? files.get(map.data.fileId) : undefined;
     const grid = map?.data.grid ?? map?.data.proposedGrid ?? null;
     data.tokens.forEach((token, index) => {
       const creature = creatures.get(token.creatureKey);
       const label = token.name ?? creature?.data.name ?? token.creatureKey;
-      if (!creature) add("problem", item, `Token ${index + 1} names creature "${token.creatureKey}", which isn't in this build.`);
-      if (!token.square) add("problem", item, `${label} has no square yet.`);
-      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", item, `${label} is off the map.`);
+      if (!creature) add("problem", `Token ${index + 1} names creature "${token.creatureKey}", which isn't in this build.`);
+      if (!token.square) add("problem", say(`${label} has no square yet.`, `${label} has no square yet. Place it in the encounter's editor, or remove it.`));
+      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", `${label} is off the map.`);
     });
   }
   return issues;

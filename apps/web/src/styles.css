@@ -1493,6 +1493,22 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-token-row { display: grid; grid-template-columns: 1fr 1.2fr 3.5rem 3.5rem auto auto; gap: var(--space-1); align-items: center; }
 .build-token-of { font-size: 0.85rem; min-width: 0; }
 .build-start .build-choices { flex: 1 1 100%; }
+/* A tab list that scrolls fades out at an edge with tabs past it, so they're seen to exist. The
+   padding keeps a tab scrolled into view clear of the fade. */
+.library-toolbar .tabs { scroll-padding-inline: 40px; }
+.library-toolbar .tabs[data-hidden-end] { mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.library-toolbar .tabs[data-hidden-start] { mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.library-toolbar .tabs[data-hidden-start][data-hidden-end] { mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.build-summary { margin: 0; font-size: 1rem; }
+.build-issues-title { margin: var(--space-1) 0 0; font-size: 0.95rem; }
+a.build-issue-item { font-weight: 600; }
+/* The selection stays in view while ticking items far up the page. */
+.build-publish-bar { position: sticky; bottom: var(--space-2); z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface); box-shadow: 0 16px 48px rgb(15 20 24 / 45%); }
+@media (pointer: coarse) {
+  .build-check, .build-walls summary { min-height: 44px; }
+  .build-check { padding-block: var(--space-1); }
+  .build-walls summary { display: flex; align-items: center; }
+}
 /* Walls, doors and windows are reviewed on the map itself, so a map gets the page's width. */
 .build-list-maps { grid-template-columns: minmax(0, 1fr); }
 .build-list-maps .build-map { max-width: 60rem; }
@@ -1505,7 +1521,7 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-walls summary { cursor: pointer; font-weight: 600; }
 .build-wall-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
 .build-wall-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem var(--space-2); min-width: 0; }
-.build-wall-list select { width: auto; min-height: 0; }
+.build-wall-list select { width: auto; }
 .build-wall-list .chip { cursor: default; font-size: 0.75rem; padding: 0.05rem 0.4rem; min-height: 0; }
 .build-flag-reason { flex-basis: 100%; border-left: 3px solid var(--warn); padding-left: var(--space-2); }
 .build-wall-label { fill: #fff; stroke: #000; paint-order: stroke; font-weight: 700; font-family: var(--font-sans, sans-serif); }
@@ -3735,6 +3751,20 @@ dialog.modal.create-room-modal { width: min(27rem, calc(100vw - 2rem)); }
 .share-actions { display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); padding-top: var(--space-4); }
 .share-action-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .share-qr-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.4rem; }
+/* Numbered by a counter: a flex list item has no list marker of its own. */
+.share-ai-steps { margin: 0; padding: 0; list-style: none; counter-reset: ai-step; display: flex; flex-direction: column; gap: var(--space-3); }
+.share-ai-steps > li { counter-increment: ai-step; position: relative; padding-left: 2rem; display: flex; flex-direction: column; gap: var(--space-1); }
+.share-ai-steps > li::before {
+  content: counter(ai-step); position: absolute; left: 0; top: 0; width: 1.4rem; height: 1.4rem; border-radius: 50%;
+  border: 1px solid var(--border-strong); display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.share-ai-steps .share-ai-step { font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.4rem; }
+.share-ai-options { display: flex; flex-direction: column; gap: var(--space-2); }
+.share-ai-options > li { display: flex; flex-direction: column; gap: var(--space-1); }
+.share-copy-message { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.4rem; }
+.share-copied { margin: 0; font-size: var(--fs-sm); }
+.share-copy-fallback { display: flex; flex-direction: column; gap: var(--space-1); }
+.share-copy-fallback textarea { width: 100%; resize: vertical; font-family: var(--font-mono, monospace); font-size: 0.8rem; }
 .share-reset { display: inline-flex; align-items: center; gap: 0.4rem; flex: none; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .share-qr-modal { width: min(19rem, calc(100vw - 2rem)); }

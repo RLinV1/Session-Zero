@@ -129,7 +129,7 @@ describe("bringing an AI from the share modal (FR-PL-08, FR-PL-09)", () => {
   it("shows the connector address and copies it", async () => {
     const writeText = await openModal();
     expect(screen.getByRole("heading", { name: "Play with your AI" })).toBeTruthy();
-    expect((screen.getByLabelText("Connector address") as HTMLInputElement).value).toBe(`${location.origin}/mcp`);
+    expect((screen.getByLabelText("Add this address to your AI app as a connector") as HTMLInputElement).value).toBe(`${location.origin}/mcp`);
     fireEvent.click(screen.getByRole("button", { name: "Copy connector address" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${location.origin}/mcp`));
     expect((await screen.findByRole("status")).textContent).toBe("Copied");
@@ -185,6 +185,40 @@ describe("bringing an AI from the share modal (FR-PL-08, FR-PL-09)", () => {
       expect(message).toContain(`${location.origin}/join/new456`);
       expect(message).not.toContain("abc123");
     }
+  });
+
+  it("lays the AI's setup out as numbered steps, and says what each way of playing does", async () => {
+    await openModal();
+    const steps = [...document.querySelectorAll(".share-ai-steps > li")].map((li) => li.querySelector(".share-ai-step")?.textContent);
+    expect(steps).toEqual(["Add this address to your AI app as a connector", "Choose how it plays, and paste that message into your AI app", "Once it has joined, give it a token"]);
+    const described = (name: string) => {
+      const id = screen.getByRole("button", { name }).getAttribute("aria-describedby")!;
+      return document.getElementById(id)?.textContent;
+    };
+    expect(described("Copy message for one character")).toMatch(/plays one character/);
+    expect(described("Copy message for a party")).toMatch(/several characters, each with its own seat/);
+    expect(described("Copy message to stay at the table")).toMatch(/plays its own turns/);
+  });
+
+  it("says a message was copied beside the button, where the GM is looking", async () => {
+    await openModal();
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for a party" }));
+    expect(await screen.findByText("Copied. Paste it into your AI app.")).toBeTruthy();
+  });
+
+  it("shows the message to copy by hand when the clipboard refuses", async () => {
+    const writeText = await openModal();
+    writeText.mockRejectedValue(new Error("not allowed"));
+    // The old copy command is the fallback; a browser that refuses both leaves only the text.
+    Object.defineProperty(document, "execCommand", { value: vi.fn(() => false), configurable: true });
+    fireEvent.click(screen.getByRole("button", { name: "Copy message for one character" }));
+    expect(await screen.findByText("Couldn't copy. Select this message and copy it yourself.")).toBeTruthy();
+    const fallback = document.querySelector<HTMLTextAreaElement>(".share-copy-fallback textarea");
+    expect(fallback?.value).toContain(`${location.origin}/join/abc123`);
+    expect(fallback?.value).toMatch(/join_room/);
+    // It stays after the 1.5-second "Copied" flash, which is what the person needs time for.
+    await new Promise((resolve) => setTimeout(resolve, 1700));
+    expect(document.querySelector(".share-copy-fallback textarea")).toBeTruthy();
   });
 
   it("offers nothing to copy until the invite has loaded", () => {

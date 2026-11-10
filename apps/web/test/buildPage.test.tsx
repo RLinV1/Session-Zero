@@ -257,7 +257,7 @@ describe("reviewing a build (FR-GM-27)", () => {
 
   it("publishing repeats the rights notice", async () => {
     await open(detail({ items: [goblin()] }));
-    const section = host.querySelector("[aria-labelledby=build-publish]");
+    const section = host.querySelector("#build-publish");
     expect(section?.textContent).toContain(RIGHTS_NOTICE);
   });
 
@@ -287,11 +287,23 @@ describe("reviewing a build (FR-GM-27)", () => {
     expect(writeText).toHaveBeenCalledWith("Spells: Light");
   });
 
-  it("makes a new pass and shows it", async () => {
+  it("asks before a new pass ends the live one, then says the old one stopped", async () => {
     builds.newPass.mockResolvedValue({ pass: "szb_second", expiresAt: "2099-01-01T00:00:00Z" });
     await open(detail());
     await click(button("New pass"));
+    expect(builds.newPass).not.toHaveBeenCalled();
+    expect(document.querySelector("dialog[open]")?.textContent).toContain("The pass your AI has now stops working at once.");
+    await click(button("Make a new pass"));
     expect(host.querySelector("textarea")?.value).toContain("szb_second");
+    expect(text()).toContain("Your earlier pass has stopped working.");
+  });
+
+  it("makes a pass straight away when there is no live one", async () => {
+    builds.newPass.mockResolvedValue({ pass: "szb_first", expiresAt: "2099-01-01T00:00:00Z" });
+    await open(detail({ build: { ...detail().build, passExpiresAt: null } }));
+    await click(button("New pass"));
+    expect(builds.newPass).toHaveBeenCalled();
+    expect(text()).not.toContain("Your earlier pass has stopped working.");
   });
 
   it("cancels the pass", async () => {
@@ -311,6 +323,7 @@ describe("reviewing a build (FR-GM-27)", () => {
     await open(detail());
     await click(button("Discard this build"));
     expect(builds.discard).not.toHaveBeenCalled();
+    expect(document.querySelector("dialog[open] h2")?.textContent).toBe("Discard Hollow Coast?");
     await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Discard"));
     expect(builds.discard).toHaveBeenCalledWith("b1");
   });
@@ -446,10 +459,11 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   const cavePattern = () => host.querySelector(".build-map pattern")?.getAttribute("width");
+  // Any action reloads the build; cancelling the pass is the plainest one.
   const refreshWith = async (d: BuildDetail) => {
     builds.get.mockResolvedValue(d);
-    builds.newPass.mockResolvedValue({ pass: `szb_${"a".repeat(43)}`, expiresAt: "2099-01-01T00:00:00Z" });
-    await click(button("New pass"));
+    builds.cancelPass.mockResolvedValue(undefined);
+    await click(button("Cancel pass"));
   };
 
   it("redraws the grid when the AI changes it, so what's drawn is what publishes", async () => {
@@ -480,7 +494,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     await open(detail({ items: [cave] }));
     const profile = { ...detail().profile!, unitsPerCell: 10 };
     await refreshWith(detail({ items: [cave], profile }));
-    expect(text()).toContain("game profile: one square is now 10 ft");
+    expect(text()).toContain("Game profile: one square is now 10 ft");
     await click(host.querySelector(".build-check input") ?? undefined);
     expect(button("Publish selected")?.hasAttribute("disabled")).toBe(true);
     await click(button("I've checked it"));
@@ -509,5 +523,77 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     expect(text()).toContain("openings left for you publish as the file had them");
     await click(button("Publish anyway"));
     expect(builds.publish).toHaveBeenCalled();
+  });
+});
+
+describe("the build page reads as the owner's, not the AI's (FR-GM-27, design review 2026-11-10)", () => {
+  it("says what's in the draft and what's left, with a way to Publish", async () => {
+    await open(detail({ items: [goblin({ flags: [{ field: "hp", message: "unclear" }] }), map()] }));
+    const summary = host.querySelector(".build-summary");
+    expect(summary?.textContent).toBe("Your AI has saved 1 map and 1 creature. 1 thing needs fixing, and it left 1 note for you. Check each item, then publish what you choose.");
+    expect(summary?.querySelector("a")?.getAttribute("href")).toBe("#build-publish");
+  });
+
+  it("groups issues under words, names each item and links to its card, in the owner's words", async () => {
+    await open(detail({ items: [goblin({ flags: [{ field: "maxHp", message: "two numbers on the sheet" }] }), map()] }));
+    const titles = [...host.querySelectorAll(".build-issues-title")].map((h) => h.textContent);
+    expect(titles).toEqual(["To fix (1)", "Notes from your AI (1)"]);
+    const links = [...host.querySelectorAll<HTMLAnchorElement>("a.build-issue-item")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([["Cave", "#build-map-cave"], ["Goblin", "#build-creature-goblin"]]);
+    expect(host.querySelector("#build-map-cave")).toBeTruthy();
+    expect(text()).toContain("Max HP: two numbers on the sheet");
+    expect(text()).toContain("Its grid is waiting for you. Check it on the map below, then confirm it.");
+    expect(text()).not.toMatch(/the GM|save_map|left for the user/);
+  });
+
+  it("asks before removing a draft item, naming it", async () => {
+    builds.removeItem.mockResolvedValue(undefined);
+    await open(detail({ items: [goblin()] }));
+    await click(button("Remove"));
+    expect(builds.removeItem).not.toHaveBeenCalled();
+    expect(document.querySelector("dialog[open] h2")?.textContent).toBe("Remove Goblin from this draft?");
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Remove"));
+    expect(builds.removeItem).toHaveBeenCalledWith("b1", "creature", "goblin");
+  });
+
+  it("shows a publish in progress, and sends nothing twice", async () => {
+    let finish: (value: unknown) => void = () => {};
+    builds.publish.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await open(detail({ items: [goblin()] }));
+    await click(button("Select all"));
+    await click(button("Publish selected"));
+    expect(button("Publishing…")?.hasAttribute("disabled")).toBe(true);
+    expect(button("Remove")?.hasAttribute("disabled")).toBe(true);
+    await act(async () => { finish({ published: { assets: 0, creatures: [], maps: [], encounters: [] } }); });
+    expect(builds.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("brings an error into view and focuses it", async () => {
+    builds.publish.mockRejectedValue(new Error("Something changed since you looked at it."));
+    await open(detail({ items: [goblin()] }));
+    await click(button("Select all"));
+    await click(button("Publish selected"));
+    expect(document.activeElement?.getAttribute("role")).toBe("alert");
+    expect(document.activeElement?.textContent).toBe("Something changed since you looked at it.");
+  });
+
+  it("keeps the selection in view while ticking items", async () => {
+    await open(detail({ items: [goblin()] }));
+    expect(host.querySelector(".build-publish-bar")).toBeNull();
+    await click(host.querySelector(".build-check input") ?? undefined);
+    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("1 selectedReview and publish");
+  });
+
+  it("offers no grid to confirm on a UVTT map, whose grid is exact", async () => {
+    const uvtt = file({ fromUvtt: true, grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } });
+    await open(detail({ files: [uvtt], items: [map({ gridStatus: "confirmed", gridBy: "file", grid: uvtt.grid, proposedGrid: null })] }));
+    expect(text()).toContain("Grid from the UVTT file: 50-pixel squares.");
+    expect(button("Confirm grid")).toBeUndefined();
+    expect(host.querySelector(".build-fields")).toBeNull();
+  });
+
+  it("goes back to AI builds, not the first library tab", async () => {
+    await open(detail());
+    expect(host.querySelector(".small-print a")?.getAttribute("href")).toBe("/library?tab=builds");
   });
 });
