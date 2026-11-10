@@ -1492,6 +1492,23 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-conditions { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--space-1); }
 .build-token-row { display: grid; grid-template-columns: 1fr 1.2fr 3.5rem 3.5rem auto auto; gap: var(--space-1); align-items: center; }
 .build-token-of { font-size: 0.85rem; min-width: 0; }
+.build-start .build-choices { flex: 1 1 100%; }
+/* Walls, doors and windows are reviewed on the map itself, so a map gets the page's width. */
+.build-list-maps { grid-template-columns: minmax(0, 1fr); }
+.build-list-maps .build-map { max-width: 60rem; }
+.build-choices { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-2); min-width: 0; }
+.build-choices legend { font-size: 0.85rem; font-weight: 600; padding: 0 var(--space-1); }
+.build-choices .build-choice { flex: none; display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-2); font-size: 0.9rem; }
+.build-choices .build-choice input { flex: none; width: auto; min-height: 0; margin-top: 0.2rem; }
+.build-choice .small-print { display: block; }
+.build-walls { display: flex; flex-direction: column; gap: var(--space-2); font-size: 0.85rem; }
+.build-walls summary { cursor: pointer; font-weight: 600; }
+.build-wall-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
+.build-wall-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem var(--space-2); min-width: 0; }
+.build-wall-list select { width: auto; min-height: 0; }
+.build-wall-list .chip { cursor: default; font-size: 0.75rem; padding: 0.05rem 0.4rem; min-height: 0; }
+.build-flag-reason { flex-basis: 100%; border-left: 3px solid var(--warn); padding-left: var(--space-2); }
+.build-wall-label { fill: #fff; stroke: #000; paint-order: stroke; font-weight: 700; font-family: var(--font-sans, sans-serif); }
 @media (max-width: 640px) {
   .build-attack { grid-template-columns: 1fr 1fr; }
   .build-attack input:first-child { grid-column: 1 / -1; }

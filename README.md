@@ -309,8 +309,8 @@ A GM needs authority over what players can see and change while retaining contro
 | FR-GM-23 | Player | **Player-safe state filtering** | Filters hidden tokens, unrevealed fog regions, GM-only rolls, and private metadata on the server before state is sent to player clients. |
 | FR-GM-24 | Both | **Focusable token roster** | Provides an alternative to direct canvas selection for finding and selecting tokens. |
 | FR-GM-25 | GM | **Scene switching** | Switches between named live scenes from the room header, automatically preserving each scene's map, tokens, HP, fog, walls, and initiative. Checkpoints and encounter templates remain available. |
-| FR-GM-26 | GM | **AI game builder** | Lets a GM's own AI app turn rules, sheets and art into a private draft through MCP, with a short-lived pass that reaches only that draft. Values the source doesn't give are left blank and flagged. |
-| FR-GM-27 | GM | **Review and publish a build** | Lets the GM check and fix a draft in the browser, confirm its map grids, and publish what they choose as ordinary library items. Only the GM's own signed-in session can publish, and everything published can be removed. |
+| FR-GM-26 | GM | **AI game builder** | Lets a GM's own AI app turn rules, sheets and art into a private draft through MCP, with a short-lived pass that reaches only that draft. Values the source doesn't give are left blank and flagged. If the GM allows it for that build, the AI can also set map grids (counted only when grid detection agrees) and walls, doors and windows, leaving hard cases to the GM. |
+| FR-GM-27 | GM | **Review and publish a build** | Lets the GM check and fix a draft in the browser, confirm its map grids, review every wall, door and window drawn on its maps, and publish what they choose as ordinary library items. Only the GM's own signed-in session can publish, and everything published can be removed. |
 
 ### 5.3 Player Need — Join Easily and Retain Control of Their Character
 

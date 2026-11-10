@@ -14,7 +14,7 @@ Session Zero never calls a model and never receives your rulebook. Your AI app's
 
 ## Connecting
 
-1. Open **Library → AI builds**, name your build and choose **Start a build**.
+1. Open **Library → AI builds** and name your build. Tick what your AI may set up on maps (see [Maps](#maps)), then choose **Start a build**.
 2. Copy the message it shows you. **The pass is shown only once.** You can make a new one on the build page, which ends the old one.
 3. Add the build address as a connector in your AI app, with no sign-in:
 
@@ -55,10 +55,26 @@ Your AI is told never to invent a value. Anything the source doesn't clearly giv
 
 ## Maps
 
-- **A UVTT file** brings its own grid, walls and doors.
-- **A plain image** gets a suggested grid from automatic detection, or a size you told your AI. It only counts once you confirm it on the build page.
+- **A UVTT file** brings its own grid and walls. Its doors and windows arrive as plain openings, hidden from players until someone decides what each one is.
+- **A plain image** gets a suggested grid from automatic detection, or a size you told your AI.
 - An encounter can't be published until its map's grid is confirmed.
-- An AI can't draw walls, doors or fog. After publishing, use wall detection in the map editor.
+
+Two choices let your AI do more. Both are off unless you tick them when you start a build, and you can change them on the build page at any time. Your AI can't change them.
+
+- **Let my AI set grids.** Your AI's grid counts as confirmed only when automatic detection agrees with it: the square size within half a pixel, and the grid's position within one pixel. Otherwise you confirm it, as before.
+- **Let my AI set walls, doors and windows.** Your AI reads your materials and the map, then:
+  - turns a UVTT file's openings into doors, locked doors and windows;
+  - draws walls, doors and windows on a map with a grid, from grid corner to grid corner;
+  - leaves anything it can't work out for you, with a reason. That covers curved walls, cave edges, an opening that might be an archway, and anywhere your materials and the map disagree.
+
+Your AI reads positions off a picture of the map with numbered columns, rows and openings, so it never guesses pixels. Its walls are stored in squares, so if you correct a grid, they move with it.
+
+Nothing your AI sets is used until you publish, and you see every wall, door and window first. Your AI can't add fog or terrain. To draw or move walls yourself, publish and use the map editor.
+
+**Maps you published before these choices existed** keep their openings as they were, because a build only adds to your library. To get doors on them, either:
+
+- start a new build of the same files with walls ticked, remove what the first build published, then publish the new one; or
+- in the map editor, use **Make all imported openings doors**, then set windows and locks one at a time. Encounters keep their own copy of the walls, so apply them with **Keep this map's setup** after placing the edited map.
 
 ## Reviewing and publishing
 
@@ -66,6 +82,7 @@ The build page shows flags first. There you can:
 
 - change any value, which also stops your AI from overwriting that item;
 - confirm or correct each map's grid;
+- see every wall, door and window drawn on each map, change any door or window, and remove anything your AI drew. That also stops your AI from changing that map;
 - check which token names players will see, and which tokens are hidden;
 - choose what to publish. An encounter brings its map, creatures and art with it.
 
@@ -92,6 +109,8 @@ Characters arrive with no owner. Once a player has joined, open the token and se
 | Storage per build | 500 MiB |
 | Creatures per build | 200 |
 | Encounters per build | 20 |
+| Walls, doors and windows your AI draws | 500 per map |
+| Places left for you | 50 per map |
 | Requests per pass | 120 a minute |
 
 ## Staying safe

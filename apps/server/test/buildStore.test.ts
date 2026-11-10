@@ -44,6 +44,23 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
     expect(await store.findBuild(build.id, build.ownerGmId)).toEqual(build);
   });
 
+  it("starts with both of the owner's choices off, unless they were ticked (ADR 0053)", async () => {
+    const store = makeStore();
+    expect(await newBuild(store)).toMatchObject({ aiGrid: false, aiWalls: false });
+    const ticked = await store.createBuild({ id: randomUUID(), ownerGmId: await newOwner(store), name: "Lanternfall", aiGrid: true, aiWalls: true }, 3);
+    expect(await store.findBuild(ticked.id, ticked.ownerGmId)).toMatchObject({ aiGrid: true, aiWalls: true });
+  });
+
+  it("changes the choices only for the owner of an open build", async () => {
+    const store = makeStore();
+    const build = await newBuild(store);
+    expect(await store.setBuildChoices(build.id, await newOwner(store), { aiGrid: true, aiWalls: true })).toBeNull();
+    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true })).toMatchObject({ aiGrid: false, aiWalls: true });
+    await store.closeBuild(build.id, build.ownerGmId);
+    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: true, aiWalls: true })).toBeNull();
+    expect(await store.findBuild(build.id, build.ownerGmId)).toMatchObject({ aiGrid: false, aiWalls: true });
+  });
+
   it("allows only so many open builds per owner", async () => {
     const store = makeStore();
     const owner = await newOwner(store);

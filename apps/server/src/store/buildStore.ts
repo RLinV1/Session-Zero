@@ -18,11 +18,15 @@ export interface BuildRecord {
   /** SHA-256 of the live pass. Never leaves the server. */
   passHash: string | null;
   passExpiresAt: string | null;
+  /** The owner's choice: the AI's grid counts as confirmed when grid detection agrees (ADR 0053). */
+  aiGrid: boolean;
+  /** The owner's choice: the AI may set walls, doors and windows on draft maps (ADR 0053). */
+  aiWalls: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export type NewBuildRecord = Pick<BuildRecord, "id" | "ownerGmId" | "name">;
+export type NewBuildRecord = Pick<BuildRecord, "id" | "ownerGmId" | "name"> & Partial<Pick<BuildRecord, "aiGrid" | "aiWalls">>;
 
 export type BuildFileKind = "map" | "token";
 
@@ -161,6 +165,8 @@ export interface BuildStore {
   endBuildPasses(ownerGmId: string): Promise<void>;
   /** Throws `BuildClosedError` when the build isn't open. */
   saveGameProfile(buildId: string, profile: GameProfile): Promise<void>;
+  /** The owner's choices. Null when the owner has no such open build. Only the owner's routes call this. */
+  setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }): Promise<BuildRecord | null>;
 
   buildFileUsage(buildId: string): Promise<BuildFileUsage>;
   /** The check and the insert are one step per build. Throws `BuildLimitError` or `BuildClosedError`. */

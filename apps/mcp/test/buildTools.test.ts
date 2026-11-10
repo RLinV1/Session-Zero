@@ -7,7 +7,7 @@ import { CONDITIONS } from "@vtt/shared";
 import { startMcpServer } from "../src/app";
 import { AiClient, startStack, type Stack } from "./helpers";
 
-const BUILD_TOOLS = ["check_build", "get_build", "remove_draft_item", "save_creatures", "save_encounter", "save_game_profile", "save_map", "view_file"];
+const BUILD_TOOLS = ["check_build", "get_build", "get_map_setup", "remove_draft_item", "save_creatures", "save_encounter", "save_game_profile", "save_map", "save_map_setup", "view_file"];
 
 let stack: Stack;
 let ai: AiClient;
@@ -40,7 +40,7 @@ const upload = async (pass: string, kind: string, name: string, width = 700, hei
 const creature = (over: Record<string, unknown> = {}) => ({ key: "goblin", name: "Goblin", isPlayerCharacter: false, hp: 7, maxHp: 7, ac: 13, ...over });
 
 describe("the build tools (FR-GM-26)", () => {
-  it("offers exactly the eight tools, and none can publish or reach outside the draft", async () => {
+  it("offers exactly the ten tools, and none can publish or reach outside the draft", async () => {
     const names = (await ai.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(BUILD_TOOLS);
   });
@@ -228,5 +228,77 @@ describe("the build tools (FR-GM-26)", () => {
     const { pass, account } = await startBuild();
     await ai.call("save_creatures", { pass, creatures: [creature()] });
     expect(await account.json<unknown[]>("GET", "/api/library/creatures")).toEqual([]);
+  });
+});
+
+describe("setting up maps, as far as the owner allows (FR-GM-26, ADR 0053)", () => {
+  async function startWith(choices: { aiGrid?: boolean; aiWalls?: boolean }) {
+    const account = await stack.room.signUp({ displayName: "Vincent" });
+    const { build, pass } = await account.json<{ build: { id: string }; pass: string }>("POST", "/api/builds", { name: "Lanternfall", ...choices });
+    return { account, id: build.id, pass };
+  }
+
+  /** A UVTT map of 8 by 6 squares of 50 pixels, with one closed opening, saved as draft map "shop". */
+  async function uvttMap(pass: string) {
+    const image = await sharp({ create: { width: 400, height: 300, channels: 3, background: "#884422" } }).png().toBuffer();
+    const uvtt = JSON.stringify({
+      format: 0.3, image: image.toString("base64"),
+      resolution: { pixels_per_grid: 50, map_size: { x: 8, y: 6 }, map_origin: { x: 0, y: 0 } },
+      line_of_sight: [[{ x: 0, y: 2 }, { x: 8, y: 2 }]],
+      portals: [{ bounds: [{ x: 3, y: 2 }, { x: 4, y: 2 }], position: { x: 3.5, y: 2 }, rotation: 0, closed: true, freestanding: false }],
+    });
+    const body = new FormData();
+    body.append("file", new Blob([uvtt], { type: "application/json" }), "chandlery.uvtt");
+    const res = await fetch(`${stack.room.base}/api/build/current/files?kind=uvtt`, { method: "POST", headers: { authorization: `Bearer ${pass}` }, body });
+    expect(res.status).toBe(201);
+    const fileId = (await res.json() as { file: { id: string } }).file.id;
+    expect((await ai.call("save_map", { pass, key: "shop", name: "Chandlery", fileId })).isError).toBe(false);
+    return fileId;
+  }
+
+  it("tells the AI what the owner allows, and how to read positions", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    const { json, text } = await ai.call("get_build", { pass });
+    expect(json.allowed).toEqual({ grids: false, walls: true });
+    expect(text).toMatch(/Corner \(c, r\) is the top-left corner of square \(c, r\)/);
+    expect(text).toMatch(/Don't guess/);
+    expect(ai.instructions).toMatch(/only as far as get_build's allowed/);
+  });
+
+  it("lists the numbered openings, and sets one as a locked door", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    expect((await ai.call("get_map_setup", { pass, mapKey: "shop" })).json).toMatchObject({
+      allowed: { walls: true }, openings: [{ number: 1, square: { column: 3, row: 2 }, now: { kind: "opening" } }],
+    });
+    const saved = await ai.call("save_map_setup", {
+      pass, mapKey: "shop",
+      openings: [{ number: 1, kind: "door", state: "locked" }],
+      marks: [{ square: { column: 6, row: 4 }, reason: "A gap in the wall that might be an archway." }],
+    });
+    expect(saved.isError).toBe(false);
+    expect(saved.json).toMatchObject({ openings: [{ number: 1, now: { kind: "door", state: "locked" }, set: true }], marks: [{ square: { column: 6, row: 4 } }] });
+  });
+
+  it("refuses walls when the owner hasn't allowed them, saying where to turn them on", async () => {
+    const { pass } = await startWith({});
+    await uvttMap(pass);
+    const refused = await ai.call("save_map_setup", { pass, mapKey: "shop", openings: [{ number: 1, kind: "door", state: "open" }] });
+    expect(refused).toMatchObject({ isError: true, text: expect.stringMatching(/Let my AI set walls, doors and windows/) });
+  });
+
+  it("passes on the room server's message naming a bad line", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    const refused = await ai.call("save_map_setup", { pass, mapKey: "shop", lines: [{ from: { column: 0, row: 1 }, to: { column: 0, row: 1 }, kind: "wall" }] });
+    expect(refused).toMatchObject({ isError: true, text: expect.stringMatching(/two different corners/) });
+  });
+
+  it("draws the grid and openings on a closer look at the map", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    const fileId = await uvttMap(pass);
+    const result = await ai.call("view_file", { pass, fileId, overlay: true, fromColumn: 2, toColumn: 4, fromRow: 1, toRow: 2 });
+    expect(result.isError).toBe(false);
+    expect(await sharp(Buffer.from(result.images[0]!.data, "base64")).metadata()).toMatchObject({ width: 600, height: 400 });
   });
 });

@@ -116,6 +116,7 @@ function toBuildRecord(row: Build): BuildRecord {
     id: row.id, ownerGmId: row.ownerGmId, name: row.name, status: row.status as BuildStatus,
     gameProfile: row.gameProfile as GameProfile | null,
     passHash: row.passHash, passExpiresAt: row.passExpiresAt?.toISOString() ?? null,
+    aiGrid: row.aiGrid, aiWalls: row.aiWalls,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -697,6 +698,13 @@ export class PostgresRoomStore implements RoomStore {
       where: { id: buildId, status: "open" }, data: { gameProfile: profile as Prisma.InputJsonValue, updatedAt: new Date() },
     });
     if (result.count !== 1) throw new BuildClosedError();
+  }
+
+  async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
+    const result = await this.prisma.build.updateMany({
+      where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, updatedAt: new Date() },
+    });
+    return result.count === 1 ? this.findBuild(id, ownerGmId) : null;
   }
 
   async buildFileUsage(buildId: string): Promise<BuildFileUsage> {

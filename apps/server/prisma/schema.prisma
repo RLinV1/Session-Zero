@@ -29,6 +29,9 @@ model Build {
   /// SHA-256 of the build pass. Null when there is no live pass; the pass itself is never stored.
   passHash      String?   @unique @map("pass_hash")
   passExpiresAt DateTime? @map("pass_expires_at") @db.Timestamptz(6)
+  /// The owner's choices (ADR 0053): let the AI's grid count when detection agrees, and let it set walls, doors and windows.
+  aiGrid        Boolean   @default(false) @map("ai_grid")
+  aiWalls       Boolean   @default(false) @map("ai_walls")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 

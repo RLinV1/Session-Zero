@@ -709,3 +709,148 @@ describe("draft items (FR-GM-26)", () => {
     }
   });
 });
+
+describe("the owner's choices for maps (FR-GM-26, ADR 0053)", () => {
+  // 8 by 6 squares of 50 pixels, with one closed opening in a wall along row line 2.
+  const uvttWithOpening = async () => JSON.stringify({
+    format: 0.3,
+    image: (await png(400, 300)).toString("base64"),
+    resolution: { pixels_per_grid: 50, map_size: { x: 8, y: 6 }, map_origin: { x: 0, y: 0 } },
+    line_of_sight: [[{ x: 0, y: 2 }, { x: 8, y: 2 }]],
+    portals: [{ bounds: [{ x: 3, y: 2 }, { x: 4, y: 2 }], position: { x: 3.5, y: 2 }, rotation: 0, closed: true, freestanding: false }],
+  });
+
+  async function startWith(choices: { aiGrid?: boolean; aiWalls?: boolean }) {
+    const account = await server.signUp({ displayName: "Vincent" });
+    const res = await account.request("POST", "/api/builds", { name: "Lanternfall", ...choices });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { build: { id: string; choices: unknown }; pass: string };
+    return { account, id: body.build.id, pass: body.pass, choices: body.build.choices };
+  }
+
+  async function uvttMap(pass: string) {
+    const res = await send(pass, "uvtt", form(await uvttWithOpening(), "chandlery.uvtt", "application/json"));
+    expect(res.status).toBe(201);
+    const { file } = await res.json() as { file: { id: string; openings: number } };
+    expect(file.openings).toBe(1);
+    expect((await withPass(pass, "POST", "/api/build/current/maps", { key: "shop", name: "Chandlery", fileId: file.id })).status).toBe(200);
+    return file.id;
+  }
+
+  const setDoor = (pass: string) => withPass(pass, "PUT", "/api/build/current/maps/shop/setup", { openings: [{ number: 1, kind: "door", state: "locked" }] });
+  const readSetup = async (pass: string) => (await withPass(pass, "GET", "/api/build/current/maps/shop/setup")).json() as Promise<Record<string, unknown>>;
+
+  it("starts with both off, and shows them to the owner and the AI", async () => {
+    const { account, id, pass } = await start();
+    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false });
+    expect((await (await withPass(pass, "GET", "/api/build/current")).json() as { allowed: unknown }).allowed).toEqual({ grids: false, walls: false });
+  });
+
+  it("takes the choices ticked at the start, and only the owner changes them", async () => {
+    const { account, id, choices } = await startWith({ aiGrid: true, aiWalls: true });
+    expect(choices).toEqual({ aiGrid: true, aiWalls: true });
+    const changed = await account.request("PUT", `/api/builds/${id}/choices`, { aiGrid: false, aiWalls: true });
+    expect(changed.status).toBe(200);
+    expect((await changed.json() as { build: { choices: unknown } }).build.choices).toEqual({ aiGrid: false, aiWalls: true });
+    const other = await server.signUp();
+    expect((await other.request("PUT", `/api/builds/${id}/choices`, { aiGrid: true, aiWalls: true })).status).toBe(404);
+  });
+
+  it("can't be changed with a pass", async () => {
+    const { account, id, pass } = await start();
+    expect((await withPass(pass, "PUT", `/api/builds/${id}/choices`, { aiGrid: true, aiWalls: true })).status).toBe(401);
+    expect((await withPass(pass, "PUT", "/api/build/current/choices", { aiGrid: true, aiWalls: true })).status).toBe(404);
+    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false });
+  });
+
+  it("refuses the AI's walls when the owner hasn't allowed them, but still lets it look", async () => {
+    const { pass } = await start();
+    await uvttMap(pass);
+    const refused = await setDoor(pass);
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toMatch(/Let my AI set walls, doors and windows/);
+    expect(await readSetup(pass)).toMatchObject({ allowed: { walls: false }, openings: [{ number: 1, set: false }] });
+  });
+
+  it("lists the numbered openings, with their squares and what they are", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    expect(await readSetup(pass)).toMatchObject({
+      map: "shop", grid: { cellSize: 50, status: "confirmed", by: "file" }, columns: 8, rows: 6, plainWalls: 2,
+      openings: [{ number: 1, square: { column: 3, row: 2 }, direction: "horizontal", lengthSquares: 1, now: { kind: "opening", state: "closed" }, set: false }],
+      lines: [], marks: [], problems: [],
+    });
+  });
+
+  it("sets an opening, and keeps it when the map is saved again", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    const fileId = await uvttMap(pass);
+    expect((await setDoor(pass)).status).toBe(200);
+    await withPass(pass, "POST", "/api/build/current/maps", { key: "shop", name: "The Guild Chandlery", fileId });
+    expect(await readSetup(pass)).toMatchObject({ openings: [{ number: 1, now: { kind: "door", state: "locked" }, set: true }] });
+  });
+
+  it("refuses a line off the map, naming it, and changes nothing", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    const res = await withPass(pass, "PUT", "/api/build/current/maps/shop/setup", { lines: [{ from: { column: 7, row: 1 }, to: { column: 9, row: 1 }, kind: "wall" }] });
+    expect(res.status).toBe(422);
+    expect(await res.text()).toMatch(/Line 1 \(a wall from column 7, row 1 to column 9, row 1\) has a corner off the map/);
+    expect(await readSetup(pass)).toMatchObject({ lines: [] });
+  });
+
+  it("refuses the AI once the owner has fixed the map", async () => {
+    const { account, id, pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    const fixed = await account.request("PUT", `/api/builds/${id}/maps/shop/setup`, { openings: [{ number: 1, kind: "door", state: "closed" }], lines: [], marks: [] });
+    expect(fixed.status).toBe(200);
+    expect((await fixed.json() as { item: { editedByUser: boolean } }).item.editedByUser).toBe(true);
+    const refused = await setDoor(pass);
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toMatch(/changed/i);
+  });
+
+  it("refuses the AI on a map already published", async () => {
+    const { account, id, pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    const reviewed = Object.fromEntries((await account.json<{ items: { kind: string; key: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.map((i) => [`${i.kind}/${i.key}`, i.updatedAt]));
+    expect((await account.request("POST", `/api/builds/${id}/publish`, { maps: ["shop"], reviewed })).status).toBe(200);
+    expect((await setDoor(pass)).status).toBe(409);
+  });
+
+  it("draws the grid, walls and numbered openings on a block of squares, enlarged", async () => {
+    const { pass } = await startWith({ aiWalls: true });
+    const fileId = await uvttMap(pass);
+    const res = await withPass(pass, "GET", `/api/build/current/files/${fileId}/preview?overlay=1&fromColumn=2&toColumn=4&fromRow=1&toRow=2`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/image\/webp/);
+    // 3 by 2 squares of 50 pixels, enlarged four times.
+    expect(await sharp(Buffer.from(await res.arrayBuffer())).metadata()).toMatchObject({ width: 600, height: 400 });
+    expect((await withPass(pass, "GET", `/api/build/current/files/${fileId}/preview?overlay=1&fromColumn=2`)).status).toBe(422);
+  });
+
+  it("asks about openings still as imported, only when the AI may set walls", async () => {
+    const asked = await startWith({ aiWalls: true });
+    await uvttMap(asked.pass);
+    const issues = async (pass: string) => ((await (await withPass(pass, "GET", "/api/build/current/check")).json()) as { issues: { item: string; message: string }[] }).issues.filter((i) => i.item === "map shop");
+    expect(await issues(asked.pass)).toEqual([expect.objectContaining({ message: expect.stringMatching(/Openings still as imported: 1\./) })]);
+    const quiet = await start();
+    await uvttMap(quiet.pass);
+    expect(await issues(quiet.pass)).toEqual([]);
+  });
+
+  it("counts the AI's grid when detection agrees and grids are allowed, and not once they're turned off", async () => {
+    const { account, id, pass } = await startWith({ aiGrid: true });
+    const file = await uploadMap(pass);
+    for (let i = 0; i < 100; i++) {
+      const read = await (await withPass(pass, "GET", "/api/build/current")).json() as { files: { detection: { status: string } | null }[] };
+      if (read.files[0]?.detection?.status === "suggested") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const saved = await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Cave", fileId: file.id, proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 } });
+    expect((await saved.json() as { item: { data: unknown } }).item.data).toMatchObject({ gridStatus: "confirmed", gridBy: "agreement", grid: { cellSize: 70, unitsPerCell: 5 } });
+    await account.request("PUT", `/api/builds/${id}/choices`, { aiGrid: false, aiWalls: false });
+    const { items } = await account.json<{ items: { key: string; data: unknown }[] }>("GET", `/api/builds/${id}`);
+    expect(items.find((i) => i.key === "cave")?.data).toMatchObject({ gridStatus: "proposed", grid: null });
+  });
+});

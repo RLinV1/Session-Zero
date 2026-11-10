@@ -12,6 +12,10 @@ Two existing rules stand in the way:
 - **The session cookie is the only account credential.** Nothing lets another program act for an account (ADR 0017).
 - **The server builds every template from live room state, and no board crosses the API** (ADR 0024, ADR 0033). A draft encounter has no room.
 
+A third rule was added to this ADR on 2026-11-10, when the user asked for the AI to set up maps as well:
+
+- **Only a person sets a map's grid and walls.** A detected grid is a suggestion until someone saves it (KAN-09, ADR 0028). Walls come from a UVTT file, or from detection a GM applies in the map editor (ADR 0029, 0037). Doors and windows are set by hand, and a UVTT file's openings stay GM-only until someone makes them doors (ADR 0030, 0041).
+
 No `Command`, `DomainEvent`, `RoomState`, `decide`, `reduce` or `visibility.ts` change is involved, and no existing schema in `packages/shared` changes. This ADR exists because both rules above are architecture, not schema.
 
 ## Decision
@@ -32,6 +36,16 @@ This is the exception to ADR 0024 and ADR 0033. Those rules exist so that a forg
 
 **The pass is a tool argument, on its own address.** The AI sends it on each tool call at `/mcp/build`, and the MCP server forwards it as a Bearer header, as ADR 0052 does for a seat. It is an argument because chat apps can't send custom headers on a no-sign-in connector. The build tools are kept off `/mcp`, so an AI reading strangers' chat at a table doesn't hold them. The MCP server stores nothing.
 
+### AI-set grids and walls, by the user's choice
+
+**Two choices per build, both off unless the owner ticks them:** letting the AI set grids, and letting it set walls, doors and windows. They are stored on the build and only the owner's cookie routes change them. A pass can read them and can't change them.
+
+**A grid counts as confirmed without the user only when two methods agree.** With grids allowed, the AI's proposed grid is confirmed when grid detection suggested one and the two match: cell size within half a pixel, and each offset within one pixel, compared across the cell. Anything else waits for the user. The status is worked out each time it is read, so turning the choice off sends such grids back to waiting. KAN-09's rule that a person accepts the grid is met in advance by the person ticking the choice, and again at publish, from a page that draws the grid.
+
+**With walls allowed, the AI changes only its draft map's setup.** It can set each imported UVTT opening as a door or window, open, closed or locked, or leave it for the user with a reason. It can draw walls, doors and windows as lines between grid corners, in half-square steps. It can also mark places it couldn't work out. Lines are stored in grid units and converted to board coordinates with the confirmed grid at publish, as tokens are (invariant 8). A drawn door cuts the wall under it with the UVTT importer's own overlap rule. The result is an ordinary `LibraryMapBoard`, validated with `libraryBoardProblem` like any other, and the map's encounters copy it as they copy a UVTT file's walls today.
+
+**Nothing changes about who sees what.** The draft is never in a room. A published board reaches players only through the existing filters, where plain walls stay GM-only and players get the portals they can see (ADR 0030). The review page draws every wall, door and window, and only the owner's browser publishes.
+
 ## Alternatives rejected
 
 - **Write straight to the library with an "AI made this" tag.** Unreviewed items would appear in the library, and every library query and delete rule would have to learn the tag.
@@ -40,6 +54,10 @@ This is the exception to ADR 0024 and ADR 0033. Those rules exist so that a forg
 - **A pass per account.** A leaked pass would reach everything the account has. One per build means a user can hand one build to one AI without trusting it with anything else.
 - **OAuth now.** It is the planned next step if a chat app refuses the pass or the connector is listed publicly, and it would replace only how the pass arrives. A model running `curl` from a local folder still needs something it can put in a command.
 - **The user's password or cookie.** Never.
+- **The AI's grid on its own.** A few pixels off drifts tokens and walls across a large map, and nothing would catch it before review.
+- **The AI placing walls by pixel.** Models misjudge pixel positions. Reading a corner off a grid with numbered columns and rows is something they do well, and most battle maps put walls on grid lines. Curved walls are left for the user.
+- **Server wall detection in builds.** It needs a room, holds one of 4 server-wide job slots, and runs the server-side model the user wanted to avoid. The user's AI already reads the materials, which say where the doors are.
+- **Letting a build change maps already in the library.** Publishing stays add-only. A map published before this existed gets doors from a new build of the same files, or in the map editor.
 
 ## Consequences
 
@@ -48,9 +66,11 @@ This is the exception to ADR 0024 and ADR 0033. Those rules exist so that a forg
 - Account deletion (ADR 0050) has to list builds and their stored files, because it removes data by an explicit list with no cascades.
 - A template can now come from two places. Anything that assumes a template began in a room must not assume that any more. Today nothing reads a template's origin.
 - Draft art is public to anyone with its random address, as all uploads are today.
+- With the walls choice on, a wrong wall can change what players see and where tokens can go. A person sees every wall before publishing, hard cases are marked for them, and the map editor can fix anything later.
+- A grid confirmed by agreement is only as independent as the AI's check. An AI can copy detection's suggestion without looking. The guide tells it to check the picture first, and the review page marks such grids.
 
 ## Review
 
-Sign-off is recorded here. Server work (group 3 of the change's tasks) waits for it.
+Sign-off is recorded here. Server work (group 3 of the change's tasks) waits for it. The section on AI-set grids and walls was added on 2026-11-10 and is part of the same review.
 
 - Real-Time Architecture owner: not yet reviewed.

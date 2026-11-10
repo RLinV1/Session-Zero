@@ -10,12 +10,22 @@ import {
   DraftMap,
   EncounterTemplateData,
   GameProfile,
+  DraftLine,
+  DraftMapSetup,
+  DraftMapSetupChange,
+  DraftOpening,
   checkBuild,
   creatureProblems,
   draftEncounterToTemplate,
+  draftMapBoard,
+  gridsAgree,
+  listOpenings,
+  readDraftMap,
   type BuildCreatureValues,
   type DraftEncounterSource,
+  type DraftMapState,
   type GridSpec,
+  type LibraryMapBoard,
 } from "../src";
 
 const creature = (over: Record<string, unknown> = {}) => ({ key: "goblin", name: "Goblin", isPlayerCharacter: false, ...over });
@@ -438,5 +448,218 @@ describe("turning a draft encounter into a template (FR-GM-27)", () => {
   it("names the failure if the assembled template breaks the shared schema", () => {
     const result = draftEncounterToTemplate(source({ creatures: new Map([["goblin", { ...goblin, color: "not a colour" }]]) }));
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("AI-set grids and walls, by the owner's choice (FR-GM-26)", () => {
+  const grid70 = { cellSize: 70, offsetX: 0, offsetY: 0 };
+  const units = { unitsPerCell: 5, unitLabel: "ft" };
+  const mapSize = { width: 700, height: 700 };
+  const segment = (ax: number, ay: number, bx: number, by: number) => ({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
+  // As a UVTT import leaves it: the opening already cut out of its wall.
+  const board: LibraryMapBoard = {
+    walls: [
+      segment(0, 140, 140, 140), { ...segment(140, 140, 210, 140), uvttPortal: { closed: true } }, segment(210, 140, 350, 140),
+      { ...segment(280, 0, 280, 70), uvttPortal: { closed: false } },
+      segment(0, 0, 0, 700),
+      segment(0, 425, 700, 425),
+    ],
+    fog: [],
+  };
+  const setup = (over: Partial<DraftMapSetup> = {}): DraftMapSetup => ({ openings: [], lines: [], marks: [], ...over });
+  const line = (from: [number, number], to: [number, number], kind: "wall" | "door" | "window" = "wall", state?: "open" | "closed" | "locked") =>
+    DraftLine.parse({ from: { column: from[0], row: from[1] }, to: { column: to[0], row: to[1] }, kind, ...(state ? { state } : {}) });
+  const built = (s: DraftMapSetup, grid: typeof grid70 | null = grid70) => {
+    const result = draftMapBoard(board, s, grid, mapSize);
+    if (!result.ok) throw new Error(result.problems.join("; "));
+    return result;
+  };
+
+  describe("the grid agreement", () => {
+    it("matches a cell size just inside half a pixel, and not just outside", () => {
+      expect(gridsAgree({ cellSize: 70.4, offsetX: 0, offsetY: 0 }, grid70)).toBe(true);
+      expect(gridsAgree({ cellSize: 70.6, offsetX: 0, offsetY: 0 }, grid70)).toBe(false);
+    });
+
+    it("matches offsets within one pixel, compared across the cell", () => {
+      expect(gridsAgree({ ...grid70, offsetX: 69.5 }, grid70)).toBe(true);
+      expect(gridsAgree({ ...grid70, offsetY: 1 }, grid70)).toBe(true);
+      expect(gridsAgree({ ...grid70, offsetY: 2.1 }, grid70)).toBe(false);
+    });
+  });
+
+  describe("reading a draft map's grid", () => {
+    const proposed: DraftMapState = { name: "Bridge", fileId: "f", proposedGrid: grid70, gridStatus: "proposed", grid: null };
+    const suggested = { grid: null, detectionStatus: "suggested", detectionResult: grid70 };
+
+    it("counts as confirmed when grids are allowed and detection agrees", () => {
+      const read = readDraftMap(proposed, suggested, true, units);
+      expect(read).toMatchObject({ gridStatus: "confirmed", gridBy: "agreement", grid: { ...grid70, ...units } });
+    });
+
+    it("waits for the user when grids aren't allowed", () => {
+      expect(readDraftMap(proposed, suggested, false, units)).toMatchObject({ gridStatus: "proposed", grid: null, gridDiffers: null });
+    });
+
+    it("waits, and names detection's numbers, when the two differ", () => {
+      const read = readDraftMap({ ...proposed, proposedGrid: { cellSize: 72, offsetX: 0, offsetY: 0 } }, suggested, true, units);
+      expect(read).toMatchObject({ gridStatus: "proposed", gridDiffers: grid70 });
+    });
+
+    it("waits while detection runs, and counts once a matching suggestion arrives", () => {
+      expect(readDraftMap(proposed, { grid: null, detectionStatus: "running", detectionResult: null }, true, units).gridStatus).toBe("proposed");
+      expect(readDraftMap(proposed, suggested, true, units).gridStatus).toBe("confirmed");
+    });
+
+    it("keeps a file's grid and the owner's grid, whatever the choice", () => {
+      const file = { ...grid70, ...units };
+      expect(readDraftMap({ ...proposed, grid: file }, { ...suggested, grid: file }, false, units)).toMatchObject({ gridStatus: "confirmed", gridBy: "file" });
+      expect(readDraftMap({ ...proposed, grid: file }, suggested, false, units)).toMatchObject({ gridStatus: "confirmed", gridBy: "owner" });
+    });
+
+    it("has no grid with no proposal", () => {
+      expect(readDraftMap({ ...proposed, proposedGrid: null }, suggested, true, units).gridStatus).toBe("none");
+    });
+  });
+
+  describe("what the AI may send", () => {
+    it("takes whole and half squares, and refuses anything finer", () => {
+      expect(DraftLine.safeParse({ from: { column: 3.5, row: 2 }, to: { column: 3.5, row: 4 }, kind: "wall" }).success).toBe(true);
+      expect(messages(DraftLine.safeParse({ from: { column: 3.25, row: 2 }, to: { column: 4, row: 2 }, kind: "wall" }))).toMatch(/half squares/);
+    });
+
+    it("needs a state on a door or window, and none on a wall", () => {
+      expect(DraftLine.safeParse({ from: { column: 0, row: 0 }, to: { column: 1, row: 0 }, kind: "door" }).success).toBe(false);
+      expect(DraftLine.safeParse({ from: { column: 0, row: 0 }, to: { column: 1, row: 0 }, kind: "wall", state: "open" }).success).toBe(false);
+      expect(DraftLine.safeParse({ from: { column: 0, row: 0 }, to: { column: 0, row: 0 }, kind: "wall" }).success).toBe(false);
+    });
+
+    it("needs a reason to leave an opening, and a state to make it a door", () => {
+      expect(DraftOpening.safeParse({ number: 1, kind: "leave" }).success).toBe(false);
+      expect(DraftOpening.safeParse({ number: 1, kind: "door" }).success).toBe(false);
+      expect(DraftOpening.safeParse({ number: 1, kind: "leave", reason: "Could be an archway." }).success).toBe(true);
+    });
+
+    it("holds at most 500 lines on a map, and each opening once", () => {
+      const wall = { from: { column: 0, row: 0 }, to: { column: 1, row: 0 }, kind: "wall" };
+      expect(DraftMapSetup.safeParse(setup({ lines: Array(BUILD_LIMITS.linesPerMap).fill(wall) })).success).toBe(true);
+      expect(DraftMapSetup.safeParse(setup({ lines: Array(BUILD_LIMITS.linesPerMap + 1).fill(wall) })).success).toBe(false);
+      const door = { number: 1, kind: "door", state: "closed" };
+      expect(DraftMapSetup.safeParse({ openings: [door, door], lines: [], marks: [] }).success).toBe(false);
+    });
+
+    it("needs at least one part in a change", () => {
+      expect(DraftMapSetupChange.safeParse({}).success).toBe(false);
+      expect(DraftMapSetupChange.safeParse({ marks: [] }).success).toBe(true);
+    });
+  });
+
+  describe("a map's openings", () => {
+    it("numbers them in the file's order, with where they are", () => {
+      const openings = listOpenings(board, undefined, grid70);
+      expect(openings.map((o) => [o.number, o.square, o.direction, o.lengthSquares, o.now])).toEqual([
+        [1, { column: 2, row: 2 }, "horizontal", 1, { kind: "opening", state: "closed" }],
+        [2, { column: 4, row: 0 }, "vertical", 1, { kind: "opening", state: "open" }],
+      ]);
+    });
+
+    it("has no squares before there is a grid", () => {
+      expect(listOpenings(board, undefined, null)[0]).toMatchObject({ square: null, lengthSquares: null });
+    });
+
+    it("shows what the setup made each one", () => {
+      const s = setup({ openings: [{ number: 1, kind: "door", state: "locked" }, { number: 2, kind: "leave", reason: "Could be an archway." }] });
+      expect(listOpenings(board, s, grid70).map((o) => [o.now, o.set])).toEqual([
+        [{ kind: "door", state: "locked" }, true],
+        [{ kind: "left", reason: "Could be an archway." }, true],
+      ]);
+    });
+
+    it("turns them into doors and windows on the board, keeping the file's own data", () => {
+      const s = setup({ openings: [{ number: 1, kind: "door", state: "locked" }, { number: 2, kind: "window", state: "closed" }] });
+      const walls = built(s).board.walls;
+      expect(walls).toContainEqual({ ...segment(140, 140, 210, 140), uvttPortal: { closed: true }, portal: { kind: "door", state: "locked" } });
+      expect(walls).toContainEqual({ ...segment(280, 0, 280, 70), uvttPortal: { closed: false }, portal: { kind: "window", state: "closed" } });
+    });
+
+    it("leaves an opening left for the user as the file had it", () => {
+      const walls = built(setup({ openings: [{ number: 1, kind: "leave", reason: "Unclear" }] })).board.walls;
+      expect(walls).toContainEqual({ ...segment(140, 140, 210, 140), uvttPortal: { closed: true } });
+    });
+
+    it("refuses a number the map doesn't have", () => {
+      const result = draftMapBoard(board, setup({ openings: [{ number: 3, kind: "door", state: "open" }] }), grid70, mapSize);
+      expect(result).toEqual({ ok: false, problems: ["Opening 3 isn't on this map. It has 2 openings."] });
+    });
+  });
+
+  describe("lines drawn by grid corners", () => {
+    it("places them by the grid, so a corrected grid moves them", () => {
+      const s = setup({ lines: [line([1, 1], [2, 1])] });
+      expect(built(s).board.walls).toContainEqual(segment(70, 70, 140, 70));
+      expect(built(s, { cellSize: 72, offsetX: 0, offsetY: 0 }).board.walls).toContainEqual(segment(72, 72, 144, 72));
+    });
+
+    it("refuses a corner off the map, naming the line", () => {
+      const result = draftMapBoard(board, setup({ lines: [line([1, 1], [2, 1]), line([9, 9], [11, 9])] }), grid70, mapSize);
+      expect(result).toEqual({ ok: false, problems: ["Line 2 (a wall from column 9, row 9 to column 11, row 9) has a corner off the map."] });
+    });
+
+    it("needs a grid", () => {
+      const result = draftMapBoard(null, setup({ lines: [line([1, 1], [2, 1])] }), null, mapSize);
+      expect(result.ok ? [] : result.problems).toEqual(["Drawing lines needs a grid first. Propose one with save_map."]);
+    });
+
+    it("cuts a solid wall where a door is drawn along it", () => {
+      const result = built(setup({ lines: [line([0, 2], [0, 3], "door", "closed")] }));
+      expect(result.board.walls).toContainEqual({ ...segment(0, 140, 0, 210), portal: { kind: "door", state: "closed" } });
+      expect(result.board.walls).toContainEqual(segment(0, 0, 0, 140));
+      expect(result.board.walls).toContainEqual(segment(0, 210, 0, 700));
+      expect(result.board.walls).not.toContainEqual(segment(0, 0, 0, 700));
+      expect(result.blockedLines).toEqual([]);
+    });
+
+    it("reports a door that sits on a wall it doesn't cut", () => {
+      // The file's wall is at y = 425, five pixels off the grid line the door is drawn on.
+      expect(built(setup({ lines: [line([3, 6], [4, 6], "door", "open")] })).blockedLines).toEqual([0]);
+    });
+
+    it("leaves the file's walls alone when nothing is drawn", () => {
+      expect(built(setup()).board.walls).toEqual(board.walls);
+    });
+  });
+
+  describe("what the check reports", () => {
+    const file = { id: "f", width: 700, height: 700, board };
+    const map = (over: Partial<DraftMapState> = {}): DraftMapState =>
+      ({ name: "Chandlery", fileId: "f", proposedGrid: null, gridStatus: "confirmed", grid: { ...grid70, ...units }, ...over });
+    const check = (data: DraftMapState, aiWalls: boolean) =>
+      checkBuild({ profile: null, aiWalls, files: [file], creatures: [], maps: [{ key: "shop", data, flags: [] }], encounters: [] })
+        .filter((i) => i.item === "map shop");
+
+    it("lists openings left for the user and marked places, with reasons", () => {
+      const s = setup({ openings: [{ number: 1, kind: "door", state: "closed" }, { number: 2, kind: "leave", reason: "Could be an archway." }], marks: [{ square: { column: 3, row: 4 }, reason: "Curved cave wall." }] });
+      expect(check(map({ setup: s }), true)).toEqual([
+        { type: "flag", item: "map shop", message: "Opening 2 is left for the user: Could be an archway." },
+        { type: "flag", item: "map shop", message: "Marked at column 3, row 4: Curved cave wall." },
+      ]);
+    });
+
+    it("asks about openings still as imported only when the AI may set walls", () => {
+      expect(check(map(), true)).toEqual([{ type: "problem", item: "map shop", message: "Openings still as imported: 1, 2. Set each as a door or window, or leave it for the user with a reason." }]);
+      expect(check(map(), false)).toEqual([]);
+    });
+
+    it("reports a blocked door", () => {
+      const s = setup({ openings: [{ number: 1, kind: "door", state: "closed" }, { number: 2, kind: "door", state: "open" }], lines: [line([3, 6], [4, 6], "door", "open")] });
+      expect(check(map({ setup: s }), true).map((i) => i.message)).toEqual([
+        "Line 1 (a door from column 3, row 6 to column 4, row 6) sits on a wall it doesn't cut, so the wall still blocks it. Draw it along the wall's line, or mark the place for the user.",
+      ]);
+    });
+
+    it("says when the AI's grid differs from detection's", () => {
+      const data = map({ grid: null, gridStatus: "proposed", proposedGrid: { cellSize: 72, offsetX: 0, offsetY: 0 }, gridDiffers: grid70 });
+      expect(check(data, false)[0]?.message).toBe("Your grid (72-pixel squares at offset (0, 0)) differs from grid detection's (70-pixel squares at offset (0, 0)), so it waits for the user. Look at the map with the grid drawn, then propose again.");
+    });
   });
 });

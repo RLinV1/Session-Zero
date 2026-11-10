@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
+  DEFAULT_GRID,
   ENCOUNTER_TEMPLATE_VERSION,
   EMPTY_LIBRARY_BOARD,
   draftEncounterToTemplate,
+  draftMapBoard,
+  readDraftMap,
   type BuildCreatureValues,
   type DraftCreatureState,
   type DraftEncounterState,
@@ -80,8 +83,8 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
   };
   const assetForFile = new Map<string, LibraryAssetRecord>();
 
-  /** The library row for a file: the one it already has, or a new one added to the plan. */
-  const assetOf = async (fileId: string, item: string, name: string, draft: Pick<DraftMapState, "grid"> | null): Promise<LibraryAssetRecord | null> => {
+  /** The library row for a file: the one it already has, or a new one added to the plan. A map brings its grid and board. */
+  const assetOf = async (fileId: string, item: string, name: string, draft: { grid: DraftMapState["grid"]; board: LibraryMapBoard | null } | null): Promise<LibraryAssetRecord | null> => {
     const planned = assetForFile.get(fileId);
     if (planned) return planned;
     const file = fileById.get(fileId);
@@ -95,7 +98,7 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     // The object stays where it is: the new row points at what the build already stored.
     const record: LibraryAssetRecord = {
       id: randomUUID(), ownerGmId: build.ownerGmId, kind: file.kind, objectKey: file.objectKey, url: file.url, name: name.slice(0, 80) || nameFromFile(file),
-      width: file.width, height: file.height, byteSize: file.sizeBytes, grid: draft?.grid ?? null, board: file.board,
+      width: file.width, height: file.height, byteSize: file.sizeBytes, grid: draft?.grid ?? null, board: draft ? draft.board : file.board,
       sourceHash: file.sourceHash, detectionSourceHash: file.detectionSourceHash, detectionVersion: file.detectionVersion, detectionError: file.detectionError,
       detectionStatus: file.detectionStatus, detectionAttempt: file.detectionAttempt, detectionResult: file.detectionResult, detectionUpdatedAt: file.detectionUpdatedAt,
       createdAt: now,
@@ -105,12 +108,25 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     return record;
   };
 
+  const units = { unitsPerCell: build.gameProfile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell, unitLabel: build.gameProfile?.unitLabel ?? DEFAULT_GRID.unitLabel };
+  /** A draft map as it reads now: its grid follows the owner's choice and detection (ADR 0053). */
+  const readMap = (data: DraftMapState) => readDraftMap(data, fileById.get(data.fileId) ?? null, build.aiGrid, units);
+
   const mapAssets = new Map<string, LibraryAssetRecord>();
   for (const key of mapKeys) {
     const item = find("map", key);
     if (!item) continue;
-    const data = item.data as unknown as DraftMapState;
-    const asset = await assetOf(data.fileId, `map ${key}`, data.name, data);
+    const data = readMap(item.data as unknown as DraftMapState);
+    let board: LibraryMapBoard | null = fileById.get(data.fileId)?.board ?? null;
+    if (!item.publishedId && data.setup) {
+      const file = fileById.get(data.fileId);
+      // Lines are in squares, so they need the grid that will be published with them.
+      if (data.setup.lines.length > 0 && data.gridStatus !== "confirmed") { problem(`map ${key}`, "Its drawn walls need a confirmed grid first."); continue; }
+      const built = file ? draftMapBoard(file.board, data.setup, data.grid, file) : null;
+      if (built && !built.ok) { for (const message of built.problems) problem(`map ${key}`, message); continue; }
+      if (built) board = built.board;
+    }
+    const asset = await assetOf(data.fileId, `map ${key}`, data.name, { grid: data.grid, board });
     if (!asset) continue;
     mapAssets.set(key, asset);
     if (!item.publishedId) plan.maps.push({ key, assetId: asset.id });
@@ -145,7 +161,7 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     const mapItem = itemByKey.get(`map/${data.mapKey}`);
     const asset = mapAssets.get(data.mapKey);
     if (!mapItem || !asset) continue;
-    const mapData = mapItem.data as unknown as DraftMapState;
+    const mapData = readMap(mapItem.data as unknown as DraftMapState);
     // Already published: the library's grid and walls, which the GM may since have changed.
     const grid = mapItem.publishedId ? asset.grid : mapData.gridStatus === "confirmed" ? mapData.grid : null;
     if (!grid) { problem(label, `Its map "${mapData.name}" needs a confirmed grid first.`); continue; }

@@ -585,8 +585,8 @@ checkpoint previews are built through the same filters.
 | FR-PL-07 | Replay for late joiners | `/api/rooms/:id/replay`, `ReplayBar` (ADR 0025) | B |
 | FR-PL-08 | Connect your own AI | `apps/mcp`, Share dialog, [`AI-PLAYERS.md`](AI-PLAYERS.md) (ADR 0052) | B |
 | FR-PL-09 | Several AI seats at one table | `apps/mcp`: one seat per `join_room`, `seat` on every tool (ADR 0052) | B |
-| FR-GM-26 | AI game builder | `/mcp/build`, pass routes `/api/build/*`, `BuildStore` (ADR 0053), [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | B |
-| FR-GM-27 | Review and publish a build | Owner routes `/api/builds/*`, `domain/buildPublish.ts`, `pages/build/` (ADR 0053) | B |
+| FR-GM-26 | AI game builder | `/mcp/build`, pass routes `/api/build/*`, `BuildStore`, the owner's per-build choices for AI-set grids and walls, `domain/mapOverlay.ts` (ADR 0053), [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | B |
+| FR-GM-27 | Review and publish a build | Owner routes `/api/builds/*`, `domain/buildPublish.ts`, `pages/build/` with walls drawn in review (ADR 0053) | B |
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
 | FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
 | FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |
@@ -699,7 +699,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
 | [0051](adr/0051-seat-limits-and-room-lock.md) | Seat limits and locking a room | Proposed |
 | [0052](adr/0052-mcp-player-seats.md) | AI player seats over MCP | Proposed |
-| [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes and templates from an approved draft | Proposed |
+| [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes, templates from an approved draft, and AI-set grids and walls by the owner's choice | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

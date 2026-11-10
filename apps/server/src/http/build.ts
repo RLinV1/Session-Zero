@@ -7,13 +7,17 @@ import { z } from "zod";
 import {
   BUILD_LIMITS,
   BUILD_PASS_PREFIX,
+  BuildChoices,
   BuildKey,
   BuildPass,
   DEFAULT_GRID,
   DraftCreature,
   DraftEncounter,
   DraftMap,
+  DraftMapSetup,
+  DraftMapSetupChange,
   DraftProposedGrid,
+  EMPTY_MAP_SETUP,
   GameProfile,
   LibraryUploadFields,
   MAX_ASSET_EDGE,
@@ -22,13 +26,20 @@ import {
   canRenderGrid,
   checkBuild,
   creatureProblems,
+  describeDraftLine,
+  draftMapBoard,
   footprintCenter,
+  listOpenings,
+  mapOpenings,
+  mapSetupProblems,
+  readDraftMap,
   type DraftCreatureState,
   type DraftEncounterState,
   type DraftMapState,
   type GridSpec,
 } from "@vtt/shared";
 import { planPublish } from "../domain/buildPublish";
+import { mapOverlay, type OverlayRegion } from "../domain/mapOverlay";
 import { hashToken } from "../domain/credentials";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import { inspectMapUpload } from "../domain/uploadAnalysis";
@@ -62,8 +73,10 @@ const NOT_A_PASS = "That build pass isn't valid. Ask the user to make a new one 
 const PASS_EXPIRED = "That build pass has expired. Ask the user to make a new one on the build page.";
 const WRONG_FILE_TYPE = "A build takes PNG, JPEG or WebP images and UVTT files. Rules and character sheets stay in your AI app.";
 const NOT_FOUND = "No such build.";
+const WALLS_NOT_ALLOWED = 'The owner hasn\'t let the AI set walls, doors and windows on this build. They can tick "Let my AI set walls, doors and windows" on the build page.';
 
-const StartBuild = z.strictObject({ name: z.string().trim().min(1).max(80) });
+/** Both choices are off unless the owner ticks them (ADR 0053). */
+const StartBuild = z.strictObject({ name: z.string().trim().min(1).max(80), aiGrid: z.boolean().default(false), aiWalls: z.boolean().default(false) });
 const UploadKind = z.enum(["map", "token", "uvtt"]);
 const ItemKind = z.enum(["creature", "map", "encounter"]);
 const FileId = z.uuid();
@@ -76,6 +89,14 @@ const PublishRequest = z.strictObject({
   reviewed: z.record(z.string().max(80), z.string().max(40)),
 }).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
 const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
+const Square = z.coerce.number().int().min(0).max(100_000);
+/** `view_file`'s options: the grid, walls and numbered openings drawn on a map, whole or a block of squares. */
+const PreviewQuery = z.object({
+  overlay: z.enum(["1", "true"]).optional(),
+  fromColumn: Square.optional(), toColumn: Square.optional(), fromRow: Square.optional(), toRow: Square.optional(),
+}).refine((q) => [q.fromColumn, q.toColumn, q.fromRow, q.toRow].every((v) => v === undefined) || [q.fromColumn, q.toColumn, q.fromRow, q.toRow].every((v) => v !== undefined), {
+  message: "Give all of fromColumn, toColumn, fromRow and toRow, or none.",
+});
 
 /** A pass, 256 random bits, shown once. Only its hash is ever stored (ADR 0002's approach, ADR 0053). */
 function newBuildPass(): string {
@@ -94,16 +115,34 @@ function fileForPass(file: BuildFileRecord) {
     fromUvtt: file.grid !== null,
     grid: file.grid,
     walls: file.board?.walls.length ?? 0,
+    /** Numbered from 1 in `get_map_setup` and in the picture. */
+    openings: mapOpenings(file.board).length,
     detection: file.detectionStatus ? { status: file.detectionStatus, suggestion: file.detectionResult } : null,
   };
 }
 
-/** The owner's own view also carries the address, to draw the picture on the build page. */
-const fileForOwner = (file: BuildFileRecord) => ({ ...fileForPass(file), url: file.url, published: file.publishedAssetId !== null });
+/** The owner's own view also carries the address and the file's walls, to draw them on the build page. */
+const fileForOwner = (file: BuildFileRecord) => ({ ...fileForPass(file), url: file.url, published: file.publishedAssetId !== null, board: file.board });
 
-function itemView(item: BuildItemRecord) {
+/** The units a grid confirmed for this build gets: the game profile's, or the app's default. */
+const unitsOf = (build: BuildRecord) => ({
+  unitsPerCell: build.gameProfile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell,
+  unitLabel: build.gameProfile?.unitLabel ?? DEFAULT_GRID.unitLabel,
+});
+
+/**
+ * A draft map as it reads now: its grid status follows the owner's choice and detection (ADR 0053).
+ * Only ever for reading and sending. What is stored stays as it was saved.
+ */
+const readMap = (build: BuildRecord, data: DraftMapState, file: BuildFileRecord | null | undefined) =>
+  readDraftMap(data, file ?? null, build.aiGrid, unitsOf(build));
+
+function itemView(item: BuildItemRecord, read?: { build: BuildRecord; files: ReadonlyMap<string, BuildFileRecord> }) {
+  const data = item.kind === "map" && read
+    ? readMap(read.build, item.data as unknown as DraftMapState, read.files.get((item.data as unknown as DraftMapState).fileId))
+    : item.data;
   return {
-    kind: item.kind, key: item.key, data: item.data, flags: item.flags, notCarriedOver: item.notCarriedOver,
+    kind: item.kind, key: item.key, data, flags: item.flags, notCarriedOver: item.notCarriedOver,
     editedByUser: item.editedByUser, published: item.publishedId !== null, updatedAt: item.updatedAt,
   };
 }
@@ -114,6 +153,29 @@ function buildSummary(build: BuildRecord) {
     passExpiresAt: build.passExpiresAt,
     /** When the 14-day sweep will close it, if nothing changes before then. */
     closesAt: new Date(Date.parse(build.updatedAt) + BUILD_LIMITS.abandonedAfterDays * 24 * 60 * 60_000).toISOString(),
+    choices: { aiGrid: build.aiGrid, aiWalls: build.aiWalls },
+  };
+}
+
+/** A map's walls, doors and windows as the AI sees them: numbered openings, its lines and marks, and what's allowed. */
+function setupView(build: BuildRecord, key: string, data: DraftMapState, file: BuildFileRecord | null) {
+  const read = readMap(build, data, file);
+  const grid = read.grid ?? read.proposedGrid;
+  const setup = data.setup ?? EMPTY_MAP_SETUP;
+  const board = file ? draftMapBoard(file.board, setup, grid, file) : null;
+  return {
+    map: key,
+    allowed: { grids: build.aiGrid, walls: build.aiWalls },
+    grid: grid ? { cellSize: grid.cellSize, offsetX: grid.offsetX, offsetY: grid.offsetY, status: read.gridStatus, by: read.gridBy ?? null } : null,
+    columns: grid && file ? Math.ceil((file.width - grid.offsetX) / grid.cellSize) : null,
+    rows: grid && file ? Math.ceil((file.height - grid.offsetY) / grid.cellSize) : null,
+    plainWalls: (file?.board?.walls.length ?? 0) - mapOpenings(file?.board ?? null).length,
+    openings: listOpenings(file?.board ?? null, setup, grid).map(({ a: _a, b: _b, ...opening }) => opening),
+    lines: setup.lines.map((line, index) => ({ line: index + 1, ...line })),
+    marks: setup.marks,
+    problems: !board ? [] : board.ok
+      ? board.blockedLines.map((i) => `${describeDraftLine(setup.lines[i]!, i)} sits on a wall it doesn't cut, so the wall still blocks it.`)
+      : board.problems,
   };
 }
 
@@ -166,7 +228,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (!body.success) return void res.status(400).json({ error: issueText(body.error) });
       let build: BuildRecord;
       try {
-        build = await store.createBuild({ id: randomUUID(), ownerGmId: account.user.ownerId, name: body.data.name }, BUILD_LIMITS.openBuildsPerAccount);
+        build = await store.createBuild({ id: randomUUID(), ownerGmId: account.user.ownerId, ...body.data }, BUILD_LIMITS.openBuildsPerAccount);
       } catch (err) {
         if (err instanceof BuildLimitError) return void res.status(409).json({ error: err.message });
         throw err;
@@ -203,12 +265,27 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const found = await ownerBuild(req, res);
       if (!found) return;
       const { build } = found;
+      const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+      const read = { build, files: new Map(files.map((f) => [f.id, f])) };
       res.json({
         build: buildSummary(build),
         profile: build.gameProfile,
-        files: (await store.listBuildFiles(build.id)).map(fileForOwner),
-        items: (await store.listBuildItems(build.id)).map(itemView),
+        files: files.map(fileForOwner),
+        items: items.map((item) => itemView(item, read)),
       });
+    })().catch(failed(res));
+  });
+
+  /** The owner's choices for what the AI may set up on maps. A pass can read them and never change them. */
+  app.put("/api/builds/:id/choices", (req, res) => {
+    void (async () => {
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const body = BuildChoices.safeParse(req.body);
+      if (!body.success) return void res.status(400).json({ error: issueText(body.error) });
+      const build = await store.setBuildChoices(found.build.id, found.build.ownerGmId, body.data);
+      if (!build) return void res.status(409).json({ error: "This build is closed." });
+      res.json({ build: buildSummary(build) });
     })().catch(failed(res));
   });
 
@@ -263,9 +340,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   };
 
   /** Writes the owner's change, or answers why it can't be written. */
-  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0]) {
+  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0], build?: BuildRecord) {
     try {
-      res.json({ item: itemView(await store.editBuildItem(item)) });
+      const saved = await store.editBuildItem(item);
+      const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
+      res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
       if (!(err instanceof BuildItemLockedError || err instanceof BuildClosedError)) throw err;
       res.status(409).json({ error: err.message });
@@ -295,7 +374,28 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const { build, item } = found;
       const body = RenameMap.safeParse(req.body);
       if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, name: body.data.name }, flags: item.flags, notCarriedOver: item.notCarriedOver });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, name: body.data.name }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build);
+    })().catch(failed(res));
+  });
+
+  /**
+   * The owner's fix to a map's walls, doors and windows: the whole setup, as the page now has it.
+   * Marks the map edited, so the AI can't change it again (ADR 0053).
+   */
+  app.put("/api/builds/:id/maps/:key/setup", (req, res) => {
+    void (async () => {
+      const found = await ownerItem(req, res, "map");
+      if (!found) return;
+      const { build, item } = found;
+      const body = DraftMapSetup.safeParse(req.body);
+      if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
+      const map = item.data as unknown as DraftMapState;
+      const file = await store.findBuildFile(build.id, map.fileId);
+      if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
+      const read = readMap(build, map, file);
+      const problems = mapSetupProblems(file.board, body.data, read.grid ?? read.proposedGrid, file);
+      if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup: body.data }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build);
     })().catch(failed(res));
   });
 
@@ -313,9 +413,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (!canRenderGrid(body.data.cellSize, file) || body.data.cellSize > Math.max(file.width, file.height)) {
         return void res.status(422).json({ error: "That square size doesn't fit this map." });
       }
-      const grid: GridSpec = { ...body.data, unitsPerCell: build.gameProfile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell, unitLabel: build.gameProfile?.unitLabel ?? DEFAULT_GRID.unitLabel };
+      const grid: GridSpec = { ...body.data, ...unitsOf(build) };
       const data: DraftMapState = { ...map, grid, gridStatus: "confirmed" };
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...data }, flags: item.flags.filter((f) => f.field.toLowerCase() !== "grid"), notCarriedOver: item.notCarriedOver });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...data }, flags: item.flags.filter((f) => f.field.toLowerCase() !== "grid"), notCarriedOver: item.notCarriedOver }, build);
     })().catch(failed(res));
   });
 
@@ -511,12 +611,16 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   app.get("/api/build/:buildId", passGuard, (_req, res) => {
     void (async () => {
       const build = passBuild(res);
+      const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+      const read = { build, files: new Map(files.map((f) => [f.id, f])) };
       res.json({
         build: { id: build.id, name: build.name, passExpiresAt: build.passExpiresAt },
         ownerName: await store.findBuildOwnerName(build.ownerGmId),
+        /** What the owner lets the AI set up on maps (ADR 0053). Only the owner can change these. */
+        allowed: { grids: build.aiGrid, walls: build.aiWalls },
         profile: build.gameProfile,
-        files: (await store.listBuildFiles(build.id)).map(fileForPass),
-        items: (await store.listBuildItems(build.id)).map(itemView),
+        files: files.map(fileForPass),
+        items: items.map((item) => itemView(item, read)),
         limits: BUILD_LIMITS,
       });
     })().catch(failed(res));
@@ -535,6 +639,12 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const fileId = FileId.safeParse(req.params.fileId);
       const file = fileId.success ? await store.findBuildFile(build.id, fileId.data) : null;
       if (!file) return void res.status(404).json({ error: "This build has no file with that id." });
+      const query = PreviewQuery.safeParse(req.query);
+      if (!query.success) return void res.status(422).json({ error: issueText(query.error) });
+      const { overlay: wantOverlay, fromColumn, toColumn, fromRow, toRow } = query.data;
+      const region = fromColumn !== undefined && toColumn !== undefined && fromRow !== undefined && toRow !== undefined ? { fromColumn, toColumn, fromRow, toRow } : null;
+      const layout = wantOverlay && file.kind === "map" ? await overlayFor(build, file, region) : null;
+      if (region && !layout?.gridShown) return void res.status(422).json({ error: "Looking at a block of squares needs a grid. Propose one with save_map first." });
       if (previewsRunning >= MAX_PREVIEWS_AT_ONCE) {
         res.setHeader("Retry-After", "2");
         return void res.status(503).json({ error: "Busy making other pictures. Try again in a moment." });
@@ -543,11 +653,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       try {
         const bytes = await assets.readPrivate(file.objectKey, MAX_IMAGE_BYTES * 2);
         if (!bytes) return void res.status(404).json({ error: "This file's picture isn't available." });
-        const small = await sharp(bytes, { sequentialRead: true, limitInputPixels: MAX_ASSET_EDGE ** 2 })
-          .rotate()
-          .resize(PREVIEW_EDGE, PREVIEW_EDGE, { fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
+        const image = sharp(bytes, { sequentialRead: true, limitInputPixels: MAX_ASSET_EDGE ** 2 }).rotate();
+        const small = layout
+          ? await image.extract(layout.layout.crop).resize(layout.layout.out.width, layout.layout.out.height, { fit: "fill" })
+            .composite([{ input: Buffer.from(layout.layout.svg), top: 0, left: 0 }]).webp({ quality: 80 }).toBuffer()
+          : await image.resize(PREVIEW_EDGE, PREVIEW_EDGE, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
         res.type("image/webp").send(small);
       } finally {
         previewsRunning--;
@@ -609,8 +719,66 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (proposed && (!canRenderGrid(proposed.cellSize, file) || proposed.cellSize > Math.max(file.width, file.height))) {
         return void res.status(422).json({ error: "proposedGrid: that square size doesn't fit this map." });
       }
-      const data: DraftMapState = { name: input.name, fileId: input.fileId, proposedGrid: proposed, gridStatus: file.grid ? "confirmed" : proposed ? "proposed" : "none", grid: file.grid };
-      await saveItem(res, { buildId: build.id, kind: "map", key, data: { ...data }, flags, notCarriedOver }, BUILD_LIMITS.mapsPerBuild);
+      // Saving the map again keeps its walls, doors and windows, unless it now uses another file,
+      // whose openings are numbered differently.
+      const earlier = (await store.findBuildItem(build.id, "map", key))?.data as unknown as DraftMapState | undefined;
+      const setup = earlier?.fileId === input.fileId ? earlier.setup : undefined;
+      const data: DraftMapState = {
+        name: input.name, fileId: input.fileId, proposedGrid: proposed, gridStatus: file.grid ? "confirmed" : proposed ? "proposed" : "none", grid: file.grid,
+        ...(setup ? { setup } : {}),
+      };
+      await saveItem(res, { buildId: build.id, kind: "map", key, data: { ...data }, flags, notCarriedOver }, BUILD_LIMITS.mapsPerBuild, build);
+    })().catch(failed(res));
+  });
+
+  /** A draft map with its file, or the response already sent. */
+  const passMap = async (res: Response, build: BuildRecord, key: string) => {
+    const item = BuildKey.safeParse(key).success ? await store.findBuildItem(build.id, "map", key) : null;
+    if (!item) {
+      res.status(404).json({ error: `This build has no map "${key.slice(0, 64)}".` });
+      return null;
+    }
+    const data = item.data as unknown as DraftMapState;
+    return { item, data, file: await store.findBuildFile(build.id, data.fileId) };
+  };
+
+  /** A map's numbered openings, the AI's lines and marks, and what the owner allows. Reading is always allowed. */
+  app.get("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
+    void (async () => {
+      const build = passBuild(res);
+      const found = await passMap(res, build, String(req.params.key));
+      if (!found) return;
+      res.json(setupView(build, found.item.key, found.data, found.file));
+    })().catch(failed(res));
+  });
+
+  /**
+   * Sets a map's openings, lines and marks, when the owner allows it (ADR 0053). Each part sent
+   * replaces that part. A map the owner edited, or one already published, is refused by the store.
+   * The owner turning walls off between the check and the write is covered by publish, which
+   * refuses anything changed since the owner last looked.
+   */
+  app.put("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
+    void (async () => {
+      const build = passBuild(res);
+      if (!build.aiWalls) return void res.status(403).json({ error: WALLS_NOT_ALLOWED });
+      const change = DraftMapSetupChange.safeParse(req.body);
+      if (!change.success) return void res.status(422).json({ error: issueText(change.error) });
+      const found = await passMap(res, build, String(req.params.key));
+      if (!found) return;
+      const { item, data, file } = found;
+      if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
+      const setup = { ...(data.setup ?? EMPTY_MAP_SETUP), ...change.data };
+      const read = readMap(build, data, file);
+      const problems = mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file);
+      if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
+      try {
+        await store.saveBuildItem({ buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, BUILD_LIMITS.mapsPerBuild);
+      } catch (err) {
+        if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
+        return void res.status(409).json({ error: err.message });
+      }
+      res.json(setupView(build, item.key, { ...data, setup }, file));
     })().catch(failed(res));
   });
 
@@ -647,18 +815,41 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     void (async () => {
       const build = passBuild(res);
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+      const fileById = new Map(files.map((f) => [f.id, f]));
       const ofKind = <T>(kind: BuildItemKind) => items.filter((i) => i.kind === kind).map((i) => ({ key: i.key, data: i.data as unknown as T, flags: i.flags }));
       res.json({
         issues: checkBuild({
           profile: build.gameProfile,
+          aiWalls: build.aiWalls,
           files,
           creatures: ofKind<DraftCreatureState>("creature"),
-          maps: ofKind<DraftMapState>("map"),
+          maps: ofKind<DraftMapState>("map").map((m) => ({ ...m, data: readMap(build, m.data, fileById.get(m.data.fileId)) })),
           encounters: ofKind<DraftEncounterState>("encounter"),
         }),
       });
     })().catch(failed(res));
   });
+
+  /**
+   * What `view_file` draws on a map (ADR 0053): the grid the map has now (or detection's suggestion,
+   * before the AI saves the map), the walls as they would publish, and the numbered openings.
+   */
+  async function overlayFor(build: BuildRecord, file: BuildFileRecord, region: OverlayRegion | null) {
+    const mapItem = (await store.listBuildItems(build.id)).find((i) => i.kind === "map" && (i.data as unknown as DraftMapState).fileId === file.id);
+    const data = mapItem?.data as unknown as DraftMapState | undefined;
+    const read = data ? readMap(build, data, file) : null;
+    const suggestion = file.detectionStatus === "suggested" ? file.detectionResult : null;
+    const grid = read ? read.grid ?? read.proposedGrid : file.grid ?? suggestion;
+    const setup = data?.setup;
+    const built = draftMapBoard(file.board, setup, grid, file);
+    const layout = mapOverlay({
+      width: file.width, height: file.height, grid, region, maxEdge: PREVIEW_EDGE,
+      walls: built.ok ? built.board.walls : file.board?.walls ?? [],
+      openings: listOpenings(file.board, setup, grid),
+      marks: grid ? setup?.marks ?? [] : [],
+    });
+    return { layout, gridShown: grid !== null };
+  }
 
   // ---------- Shared by both families ----------
 
@@ -693,9 +884,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     }
   }
 
-  async function saveItem(res: Response, item: Parameters<RoomStore["saveBuildItem"]>[0], max: number) {
+  async function saveItem(res: Response, item: Parameters<RoomStore["saveBuildItem"]>[0], max: number, build?: BuildRecord) {
     try {
-      res.json({ item: itemView(await store.saveBuildItem(item, max)) });
+      const saved = await store.saveBuildItem(item, max);
+      const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
+      res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
       if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
       res.status(409).json({ error: err.message });

@@ -614,4 +614,60 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
       expect(await storedFiles()).toBe(0);
     });
   });
+
+  describe("walls, doors and windows the AI set (FR-GM-27, ADR 0053)", () => {
+    // 8 by 6 squares of 50 pixels. One wall along row line 2, with a closed door-sized opening in it.
+    const uvttWithOpening = async () => JSON.stringify({
+      format: 0.3,
+      image: (await png(400, 300)).toString("base64"),
+      resolution: { pixels_per_grid: 50, map_size: { x: 8, y: 6 }, map_origin: { x: 0, y: 0 } },
+      line_of_sight: [[{ x: 0, y: 2 }, { x: 8, y: 2 }]],
+      portals: [{ bounds: [{ x: 3, y: 2 }, { x: 4, y: 2 }], position: { x: 3.5, y: 2 }, rotation: 0, closed: true, freestanding: false }],
+    });
+
+    async function wallsBuild(choices: { aiGrid?: boolean; aiWalls?: boolean }) {
+      const owner = await server.signUp();
+      const { build, pass } = await owner.json<{ build: { id: string }; pass: string }>("POST", "/api/builds", { name: "Lanternfall", ...choices });
+      return { account: owner, id: build.id, pass, ownerId: (await store.findUserById(owner.view!.id))!.ownerId };
+    }
+
+    it("puts them in the library map and in the encounter's template", async () => {
+      const { account, id, pass, ownerId } = await wallsBuild({ aiWalls: true });
+      const fileId = await upload(pass, "uvtt", "chandlery.uvtt", await uvttWithOpening());
+      await withPass(pass, "POST", "/api/build/current/maps", { key: "shop", name: "Chandlery", fileId });
+      const setup = await withPass(pass, "PUT", "/api/build/current/maps/shop/setup", {
+        openings: [{ number: 1, kind: "door", state: "locked" }],
+        lines: [{ from: { column: 5, row: 2 }, to: { column: 6, row: 2 }, kind: "window", state: "closed" }],
+      });
+      expect(setup.status).toBe(200);
+      await saveCreatures(pass, [goblin()]);
+      await saveEncounter(pass, { mapKey: "shop", tokens: [{ creatureKey: "goblin", square: { column: 1, row: 0 }, hidden: false }] });
+      expect((await publish(account, id, { encounters: ["ambush"] })).status).toBe(200);
+
+      const door = { a: { x: 150, y: 100 }, b: { x: 200, y: 100 }, portal: { kind: "door", state: "locked" } };
+      const window = { a: { x: 250, y: 100 }, b: { x: 300, y: 100 }, portal: { kind: "window", state: "closed" } };
+      const map = (await uploaded(account)).find((a) => a.kind === "map")!;
+      const board = await store.findAssetBoard(map.id, ownerId);
+      expect(board?.walls).toContainEqual(expect.objectContaining(door));
+      expect(board?.walls).toContainEqual(window);
+      // The window cut the wall under it, so only the pieces either side are left.
+      expect(board?.walls).toContainEqual(expect.objectContaining({ a: { x: 200, y: 100 }, b: { x: 250, y: 100 } }));
+      expect(board?.walls).toContainEqual(expect.objectContaining({ a: { x: 300, y: 100 }, b: { x: 400, y: 100 } }));
+      expect(board?.walls).not.toContainEqual(expect.objectContaining({ a: { x: 200, y: 100 }, b: { x: 400, y: 100 } }));
+      const template = (await store.listEncounters(ownerId))[0]!.data as EncounterTemplateData;
+      expect(template.walls).toEqual(board?.walls);
+    });
+
+    it("won't publish lines drawn on a grid nobody confirmed", async () => {
+      const { account, id, pass } = await wallsBuild({ aiWalls: true });
+      const fileId = await upload(pass, "map", "cave.png", await png(700, 700));
+      await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Cave", fileId, proposedGrid: GRID });
+      const drawn = await withPass(pass, "PUT", "/api/build/current/maps/cave/setup", { lines: [{ from: { column: 1, row: 1 }, to: { column: 4, row: 1 }, kind: "wall" }] });
+      expect(drawn.status).toBe(200);
+      const refused = await publish(account, id, { maps: ["cave"] });
+      expect(refused.status).toBe(422);
+      expect(await refused.text()).toMatch(/drawn walls need a confirmed grid/);
+      expect(await uploaded(account)).toEqual([]);
+    });
+  });
 });

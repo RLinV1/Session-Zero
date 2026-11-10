@@ -494,7 +494,7 @@ export class MemoryRoomStore implements RoomStore {
     const open = [...this.builds.values()].filter((b) => b.ownerGmId === build.ownerGmId && b.status === "open").length;
     if (open >= maxOpen) throw new BuildLimitError(`You can have up to ${maxOpen} open builds. Finish or discard one first.`);
     const at = new Date().toISOString();
-    const row: BuildRecord = { ...build, status: "open", gameProfile: null, passHash: null, passExpiresAt: null, createdAt: at, updatedAt: at };
+    const row: BuildRecord = { aiGrid: false, aiWalls: false, ...build, status: "open", gameProfile: null, passHash: null, passExpiresAt: null, createdAt: at, updatedAt: at };
     this.builds.set(build.id, row);
     return structuredClone(row);
   }
@@ -550,6 +550,15 @@ export class MemoryRoomStore implements RoomStore {
     const build = this.openBuild(buildId);
     build.gameProfile = structuredClone(profile);
     this.touchBuild(build);
+  }
+
+  async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
+    const build = this.builds.get(id);
+    if (!build || build.ownerGmId !== ownerGmId || build.status !== "open") return null;
+    build.aiGrid = choices.aiGrid;
+    build.aiWalls = choices.aiWalls;
+    this.touchBuild(build);
+    return structuredClone(build);
   }
 
   /** Synchronous, so a check and the insert after it can't interleave with another upload. */

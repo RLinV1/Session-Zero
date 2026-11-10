@@ -1,11 +1,13 @@
 import {
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
   GM_TOKEN_HEADER,
+  type BuildChoices,
   type BuildDetail,
   type BuildFileView,
   type BuildItemView,
   type BuildPublished,
   type BuildSummary,
+  type DraftMapSetup,
   type DraftProposedGrid,
   type PublishedBuildItem,
   CheckpointPreviewResponse,
@@ -400,8 +402,13 @@ export const api = {
   /** AI builds: private drafts the owner reviews and publishes (FR-GM-26, FR-GM-27, ADR 0053). */
   builds: {
     list: () => accountRequest<BuildSummary[]>("/api/builds"),
-    start: (name: string) => accountRequest<{ build: BuildSummary; pass: string; expiresAt: string }>("/api/builds", { method: "POST", ...jsonBody({ name }) }),
+    start: (name: string, choices: BuildChoices) => accountRequest<{ build: BuildSummary; pass: string; expiresAt: string }>("/api/builds", { method: "POST", ...jsonBody({ name, ...choices }) }),
     get: (id: string) => accountRequest<BuildDetail>(buildUrl(id)),
+    /** What the owner lets their AI set up on maps (ADR 0053). Only the owner's session can change these. */
+    setChoices: (id: string, choices: BuildChoices) => accountRequest<{ build: BuildSummary }>(`${buildUrl(id)}/choices`, { method: "PUT", ...jsonBody(choices) }),
+    /** The owner's fix to a map's walls, doors and windows: the whole setup as the page has it. */
+    saveMapSetup: (id: string, key: string, setup: DraftMapSetup) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/setup`, { method: "PUT", ...jsonBody(setup) }),
     newPass: (id: string) => accountRequest<{ pass: string; expiresAt: string }>(`${buildUrl(id)}/pass`, { method: "POST" }),
     cancelPass: (id: string) => accountRequest<void>(`${buildUrl(id)}/pass`, { method: "DELETE" }),
     upload(id: string, file: File, kind: "map" | "token" | "uvtt") {

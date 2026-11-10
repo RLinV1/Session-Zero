@@ -7,6 +7,7 @@ import type { BuildDetail, BuildFileView, BuildItemView, PublishedBuildItem } fr
 const builds = vi.hoisted(() => ({
   list: vi.fn(), start: vi.fn(), get: vi.fn(), newPass: vi.fn(), cancelPass: vi.fn(), upload: vi.fn(), editCreature: vi.fn(), renameMap: vi.fn(),
   confirmGrid: vi.fn(), editEncounter: vi.fn(), removeItem: vi.fn(), publish: vi.fn(), published: vi.fn(), removePublished: vi.fn(), discard: vi.fn(),
+  setChoices: vi.fn(), saveMapSetup: vi.fn(),
 }));
 vi.mock("../src/net/api", async (original) => ({ ...(await original<typeof import("../src/net/api")>()), api: { builds } }));
 vi.mock("../src/account/RequireAccount", () => ({ RequireAccount: ({ children }: { children: React.ReactNode }) => children }));
@@ -52,7 +53,7 @@ const click = async (el: Element | undefined) => {
 };
 
 const file = (over: Partial<BuildFileView> = {}): BuildFileView => ({
-  id: "f1", kind: "map", name: "cave.png", width: 700, height: 700, sizeBytes: 100, fromUvtt: false, grid: null, walls: 0, detection: null, url: "/uploads/cave.webp", published: false, ...over,
+  id: "f1", kind: "map", name: "cave.png", width: 700, height: 700, sizeBytes: 100, fromUvtt: false, grid: null, walls: 0, detection: null, url: "/uploads/cave.webp", published: false, board: null, ...over,
 });
 const item = (over: Partial<BuildItemView> & Pick<BuildItemView, "kind" | "key" | "data">): BuildItemView => ({
   flags: [], notCarriedOver: "", editedByUser: false, published: false, updatedAt: "2026-11-09T00:00:00Z", ...over,
@@ -63,7 +64,7 @@ const map = (over: Record<string, unknown> = {}) => item({ kind: "map", key: "ca
 const encounter = (tokens: unknown[] = [{ creatureKey: "goblin", square: { column: 1, row: 2 }, hidden: true }]) => item({ kind: "encounter", key: "ambush", data: { name: "Bridge ambush", mapKey: "cave", tokens } });
 
 const detail = (over: Partial<BuildDetail> = {}): BuildDetail => ({
-  build: { id: "b1", name: "Hollow Coast", status: "open", createdAt: "2026-11-09T00:00:00Z", updatedAt: "2026-11-09T00:00:00Z", passExpiresAt: "2099-01-01T00:00:00Z", closesAt: "2026-11-23T00:00:00Z" },
+  build: { id: "b1", name: "Hollow Coast", status: "open", createdAt: "2026-11-09T00:00:00Z", updatedAt: "2026-11-09T00:00:00Z", passExpiresAt: "2099-01-01T00:00:00Z", closesAt: "2026-11-23T00:00:00Z", choices: { aiGrid: false, aiWalls: false } },
   profile: { name: "Lanternfall", features: { hitPoints: true, armorClass: true, attacks: true, conditions: true }, unitsPerCell: 5, unitLabel: "ft", notes: "", flags: [] },
   files: [file()],
   items: [],
@@ -124,15 +125,34 @@ describe("the AI builds tab (FR-GM-26)", () => {
     });
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     await act(async () => { await Promise.resolve(); });
-    expect(builds.start).toHaveBeenCalledWith("Hollow Coast");
+    expect(builds.start).toHaveBeenCalledWith("Hollow Coast", { aiGrid: false, aiWalls: false });
     expect(host.querySelector("textarea")?.value).toContain("szb_new");
+  });
+
+  it("offers both choices for maps, off unless ticked, and sends what was ticked (ADR 0053)", async () => {
+    builds.list.mockResolvedValue([]);
+    builds.start.mockResolvedValue({ build: detail().build, pass: "szb_new", expiresAt: "2099-01-01T00:00:00Z" });
+    await render(<BuildsTab query="" onError={() => {}} />);
+    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-choices input[type=checkbox]")];
+    expect(boxes.map((b) => b.checked)).toEqual([false, false]);
+    expect(text()).toContain("Let my AI set grids");
+    expect(text()).toContain("Let my AI set walls, doors and windows");
+    await click(boxes[1]);
+    const input = host.querySelector("form input:not([type=checkbox])") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Lanternfall");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(builds.start).toHaveBeenCalledWith("Lanternfall", { aiGrid: false, aiWalls: true });
   });
 
   it("lists builds and filters by name", async () => {
     builds.list.mockResolvedValue([detail().build, { ...detail().build, id: "b2", name: "Other" }]);
     await render(<BuildsTab query="holl" onError={() => {}} />);
-    expect(text()).toContain("Hollow Coast");
-    expect(text()).not.toContain("Other");
+    const listed = host.querySelector(".build-published")?.textContent ?? "";
+    expect(listed).toContain("Hollow Coast");
+    expect(listed).not.toContain("Other");
   });
 });
 
@@ -349,5 +369,101 @@ describe("the small pieces of the build page (FR-GM-27)", () => {
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     expect(onSave).not.toHaveBeenCalled();
     expect(host.querySelector("[role=alert]")?.textContent).toContain("Bite");
+  });
+});
+
+describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
+  // A UVTT map of 10 by 10 squares of 70 pixels: one wall, one opening in it, and one more opening.
+  const board = {
+    walls: [
+      { a: { x: 0, y: 140 }, b: { x: 140, y: 140 } },
+      { a: { x: 140, y: 140 }, b: { x: 210, y: 140 }, uvttPortal: { closed: true } },
+      { a: { x: 280, y: 0 }, b: { x: 280, y: 70 }, uvttPortal: { closed: false } },
+    ],
+    fog: [],
+  };
+  const uvttFile = file({ fromUvtt: true, walls: 3, board, grid: { cellSize: 70, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } });
+  const setup = {
+    openings: [{ number: 1, kind: "door" as const, state: "locked" as const }, { number: 2, kind: "leave" as const, reason: "Could be an archway." }],
+    lines: [{ from: { column: 4, row: 2 }, to: { column: 6, row: 2 }, kind: "wall" as const }],
+    marks: [{ square: { column: 7, row: 7 }, reason: "Curved cave wall." }],
+  };
+  const shop = (over: Partial<BuildItemView> = {}) => item({
+    kind: "map", key: "shop",
+    data: { name: "Chandlery", fileId: "f1", proposedGrid: null, gridStatus: "confirmed", grid: uvttFile.grid, gridBy: "file", setup },
+    ...over,
+  });
+  const choose = async (select: HTMLSelectElement | null, value: string) => {
+    expect(select).toBeTruthy();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, value);
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  };
+
+  it("shows the two choices on the build page, and only the owner's page changes them", async () => {
+    builds.setChoices.mockResolvedValue({ build: detail().build });
+    await open(detail());
+    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-choices input[type=checkbox]")];
+    expect(boxes.map((b) => b.checked)).toEqual([false, false]);
+    await click(boxes[0]);
+    expect(builds.setChoices).toHaveBeenCalledWith("b1", { aiGrid: true, aiWalls: false });
+  });
+
+  it("draws every wall, door, window and opening, numbered, and marks what the AI set", async () => {
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    const kinds = [...host.querySelectorAll(".build-walls-drawn path[data-kind]")].map((p) => p.getAttribute("data-kind"));
+    // The drawn wall, the door the AI made, the opening left as the file has it, and the file's wall.
+    expect(kinds.sort()).toEqual(["door", "opening", "wall", "wall"]);
+    expect([...host.querySelectorAll(".build-walls-drawn text")].map((t) => t.textContent)).toEqual(["1", "2", "!"]);
+    expect(host.querySelector("[data-ai-set]")?.getAttribute("data-ai-set")).toBe("2");
+    expect(text()).toContain("Opening 1 at column 2, row 2");
+    expect(text()).toContain("Set by your AI");
+  });
+
+  it("lists what the AI left for the owner, with its reasons", async () => {
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    expect(text()).toContain("Could be an archway.");
+    expect(text()).toContain("Left for you at column 7, row 7");
+    expect(text()).toContain("Curved cave wall.");
+  });
+
+  it("changes an opening, sending the whole setup", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    await choose(host.querySelector("select[aria-label='Opening 1 state']"), "closed");
+    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "shop", { ...setup, openings: [{ number: 1, kind: "door", state: "closed" }, setup.openings[1]] });
+  });
+
+  it("removes one line, or everything the AI set", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    await click([...host.querySelectorAll(".build-wall-list button")].find((b) => b.textContent === "Remove"));
+    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] });
+    await click(button("Remove everything your AI set"));
+    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [] });
+  });
+
+  const plain = (data: Record<string, unknown>) => item({ kind: "map", key: "cave", data: { name: "Cave", fileId: "f1", proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 }, gridStatus: "confirmed", grid: { cellSize: 70, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" }, ...data } });
+
+  it("says when detection and the AI agreed on a grid", async () => {
+    await open(detail({ items: [plain({ gridBy: "agreement" })] }));
+    expect(text()).toContain("Grid set by detection and your AI");
+  });
+
+  it("says when the AI's grid differs from detection's", async () => {
+    await open(detail({ items: [plain({ gridStatus: "proposed", grid: null, gridDiffers: { cellSize: 72, offsetX: 0, offsetY: 0 } })] }));
+    expect(text()).toContain("Your AI's grid differs from detection");
+  });
+
+  it("asks first before publishing a map with openings or places left for the owner", async () => {
+    builds.publish.mockResolvedValue({ published: { assets: 1, creatures: [], maps: [{ key: "shop", id: "m1" }], encounters: [] } });
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    await click(host.querySelector(".build-check input") ?? undefined);
+    await click(button("Publish selected"));
+    expect(builds.publish).not.toHaveBeenCalled();
+    expect(text()).toContain("openings left for you publish as the file had them");
+    await click(button("Publish anyway"));
+    expect(builds.publish).toHaveBeenCalled();
   });
 });
