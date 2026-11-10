@@ -3,7 +3,7 @@ import { AttackDice, AttackPreset, MAX_TOKEN_ATTACKS } from "./attackPresets";
 import { DEFAULT_TOKEN_COLOR } from "./commands";
 import type { ConditionId } from "./conditions";
 import { EncounterTemplateData, MAX_ENCOUNTER_NAME, type TemplateToken } from "./encounters";
-import { GridSpec, footprintCrossesWall, snapTokenCenter, type Point, type Segment } from "./geometry";
+import { DEFAULT_GRID, GridSpec, footprintCrossesWall, snapTokenCenter, type Point, type Segment } from "./geometry";
 import { EMPTY_LIBRARY_BOARD, libraryBoardProblem, type LibraryMapBoard } from "./libraryBoard";
 import { blocksMovement } from "./portals";
 import { CreatureFields, LibraryUploadFields } from "./protocol";
@@ -404,10 +404,17 @@ export interface DraftMapFileGrid {
   detectionResult: GridNumbers | null;
 }
 
+/** The distance one square stands for, as the owner sees it, so publish can tell if the AI changed it since. */
+export const squareSizeOf = (profile: Pick<GameProfile, "unitsPerCell" | "unitLabel"> | null) =>
+  `${profile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell} ${profile?.unitLabel ?? DEFAULT_GRID.unitLabel}`;
+
 /**
  * A draft map as it reads now (ADR 0053). Worked out each time, never stored: with the owner's
  * AI-grid choice on, a proposal that matches detection's suggestion counts as confirmed, so a
  * suggestion that arrives later counts, and turning the choice off sends the map back to waiting.
+ *
+ * An agreed grid takes detection's numbers, which are fitted across the whole map, rather than the
+ * AI's: half a pixel per square would otherwise add up to squares of drift across a large map.
  */
 export function readDraftMap(map: DraftMapState, file: DraftMapFileGrid | null, aiGrid: boolean, units: Pick<GridSpec, "unitsPerCell" | "unitLabel">): DraftMapState {
   const base = { ...map, gridBy: null, gridDiffers: null };
@@ -417,7 +424,8 @@ export function readDraftMap(map: DraftMapState, file: DraftMapFileGrid | null, 
   const suggestion = file?.detectionStatus === "suggested" ? file.detectionResult : null;
   if (aiGrid && suggestion) {
     if (gridsAgree(map.proposedGrid, suggestion)) {
-      return { ...base, grid: { ...map.proposedGrid, ...units }, gridStatus: "confirmed", gridBy: "agreement" };
+      const grid = { cellSize: suggestion.cellSize, offsetX: suggestion.offsetX, offsetY: suggestion.offsetY, ...units };
+      return { ...base, grid, gridStatus: "confirmed", gridBy: "agreement" };
     }
     return { ...base, grid: null, gridStatus: "proposed", gridDiffers: { cellSize: suggestion.cellSize, offsetX: suggestion.offsetX, offsetY: suggestion.offsetY } };
   }

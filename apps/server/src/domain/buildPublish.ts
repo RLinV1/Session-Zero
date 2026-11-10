@@ -6,6 +6,7 @@ import {
   draftEncounterToTemplate,
   draftMapBoard,
   readDraftMap,
+  squareSizeOf,
   type BuildCreatureValues,
   type DraftCreatureState,
   type DraftEncounterState,
@@ -112,6 +113,16 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
   /** A draft map as it reads now: its grid follows the owner's choice and detection (ADR 0053). */
   const readMap = (data: DraftMapState) => readDraftMap(data, fileById.get(data.fileId) ?? null, build.aiGrid, units);
 
+  // A grid detection and the AI agreed on takes its square size from the game profile now, which
+  // the AI can change without touching any map. So it must still be the size the person saw.
+  const agreed = [...mapKeys].some((key) => {
+    const item = itemByKey.get(`map/${key}`);
+    return item && !item.publishedId && readMap(item.data as unknown as DraftMapState).gridBy === "agreement";
+  });
+  if (agreed && selection.reviewed.profile !== squareSizeOf(build.gameProfile)) {
+    throw new BuildPublishConflictError(`The game's square size changed since you looked: one square is now ${squareSizeOf(build.gameProfile)}. Check it, then publish again.`);
+  }
+
   const mapAssets = new Map<string, LibraryAssetRecord>();
   for (const key of mapKeys) {
     const item = find("map", key);
@@ -122,7 +133,8 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
       const file = fileById.get(data.fileId);
       // Lines are in squares, so they need the grid that will be published with them.
       if (data.setup.lines.length > 0 && data.gridStatus !== "confirmed") { problem(`map ${key}`, "Its drawn walls need a confirmed grid first."); continue; }
-      const built = file ? draftMapBoard(file.board, data.setup, data.grid, file) : null;
+      // Marks are notes for the person and never go on the board, so they don't hold a map back.
+      const built = file ? draftMapBoard(file.board, { ...data.setup, marks: [] }, data.grid, file) : null;
       if (built && !built.ok) { for (const message of built.problems) problem(`map ${key}`, message); continue; }
       if (built) board = built.board;
     }

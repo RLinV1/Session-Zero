@@ -64,9 +64,9 @@ The user answered the five review questions on 2026-11-08, and the answers are i
 - [x] 9.5 MCP: `get_map_setup`, `save_map_setup` and the `view_file` options, plus guide text on the choices, checking the grid and hard cases. Verify over real HTTP with the SDK client, including the refusals when off
 - [x] 9.6 Web: the two choices at start and on the build page. Walls, doors, windows, openings and marks drawn in review, with kind and state changes, removing one line or all, and publish asking first when openings are left. Verify with component tests, then in a browser at desktop and phone width
 - [x] 9.7 Docs: README FR-GM-26 and FR-GM-27, `docs/AI-GAME-BUILDER.md` (the choices, what counts as a hard case, design D13's two ways), and `docs/DESIGN.md`. Verify by searching the repo
-- [ ] 9.8 Break the new protections one at a time and confirm a test fails each time: choice off, a pass changing choices, an edited map, the grid tolerance, publish using the drawn lines. Run `visibility-auditor` and `sync-reviewer` on the diff
+- [x] 9.8 Break the new protections one at a time and confirm a test fails each time: choice off, a pass changing choices, an edited map, the grid tolerance, publish using the drawn lines. Run `visibility-auditor` and `sync-reviewer` on the diff
 - [ ] 9.9 Real run: a new Lanternfall build with both choices on, from the user's folder, with Claude Code. Compare the doors, locks and windows with `adventure.md`: the Ward Gate at (23, 8) and (23, 9); 13 Chandlery doors, with the office at (21, 3) locked; windows at (4, 0), (25, 0), (0, 6) and (29, 11); the sluice gate at (24, 10), locked. Measure the cost and replace the estimate in `design.md`. Then, only with the user's go-ahead, remove the first Lanternfall build's published items and publish the new one
-- [ ] 9.10 Run `npm run lint && npm run typecheck && npm test` and log the results
+- [x] 9.10 Run `npm run lint && npm run typecheck && npm test` and log the results
 
 ## Workflow follow-up
 

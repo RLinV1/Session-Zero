@@ -5,6 +5,7 @@ import {
   describeDraftLine,
   draftMapBoard,
   listOpenings,
+  squareSizeOf,
   type BuildDetail,
   type BuildFileView,
   type BuildItemView,
@@ -37,6 +38,8 @@ const POLL_MS = 5000;
 const message = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 const itemId = (item: Pick<BuildItemView, "kind" | "key">) => `${item.kind}/${item.key}`;
+/** The square size the person saw, sent with what they reviewed. Item ids always hold a slash, so this can't clash. */
+const PROFILE_REVIEWED = "profile";
 const creatureOf = (item: BuildItemView) => item.data as unknown as DraftCreatureState;
 const mapOf = (item: BuildItemView) => item.data as unknown as DraftMapState;
 const encounterOf = (item: BuildItemView) => item.data as unknown as DraftEncounterState;
@@ -80,6 +83,8 @@ function Build({ id }: { id: string }) {
       setReviewed((all) => {
         const next = { ...all };
         for (const item of latest.items) next[itemId(item)] ??= item.updatedAt;
+        // A grid detection and the AI agreed on takes the profile's square size, so a change needs a look too.
+        next[PROFILE_REVIEWED] ??= squareSizeOf(latest.profile);
         return next;
       });
       setPublished((await api.builds.published(id)).published);
@@ -140,7 +145,9 @@ function Build({ id }: { id: string }) {
     || (i.kind === "map" && mapsLeftForYou.has(i.key))
     || (i.kind === "encounter" && mapsLeftForYou.has(encounterOf(i).mapKey))).length;
   const changed = draftItems.filter((i) => reviewed[itemId(i)] !== undefined && reviewed[itemId(i)] !== i.updatedAt);
-  const chosenChanged = chosen.some((i) => changed.includes(i));
+  const squareSize = squareSizeOf(detail?.profile ?? null);
+  const profileChanged = reviewed[PROFILE_REVIEWED] !== undefined && reviewed[PROFILE_REVIEWED] !== squareSize;
+  const chosenChanged = profileChanged || chosen.some((i) => changed.includes(i));
 
   async function doPublish() {
     setConfirmingPublish(false);
@@ -190,11 +197,17 @@ function Build({ id }: { id: string }) {
             )}
             <PassPanel pass={pass} onClose={() => setPass(null)} />
 
-            {open && changed.length > 0 && (
+            {open && (changed.length > 0 || profileChanged) && (
               <section className="build-section" aria-labelledby="build-changed">
                 <h2 id="build-changed">Changed by your AI since you looked</h2>
                 <p className="muted small-print">These can't be published until you've checked them.</p>
                 <ul className="plain build-published">
+                  {profileChanged && (
+                    <li>
+                      <span>game profile: one square is now {squareSize}</span>
+                      <button type="button" onClick={() => setReviewed((all) => ({ ...all, [PROFILE_REVIEWED]: squareSize }))}>I've checked it</button>
+                    </li>
+                  )}
                   {changed.map((item) => (
                     <li key={itemId(item)}>
                       <span>{item.kind} {item.key}</span>
@@ -236,7 +249,7 @@ function Build({ id }: { id: string }) {
                     <li key={item.key}>
                       <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)}
                         onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
-                        onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup)).item), "Couldn't change these walls.")}
+                        onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change these walls.")}
                         onRemove={() => void remove(item)} />
                     </li>
                   ))}
@@ -607,16 +620,28 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
 function MapCard({ item, file, checkbox, onConfirm, onSaveSetup, onRemove }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void>; onRemove: () => void }) {
   const data = mapOf(item);
   const suggestion = file?.detection?.suggestion ?? null;
-  const start = data.grid ?? data.proposedGrid ?? suggestion;
+  // What publishing would use now: the confirmed grid, or the AI's latest proposal.
+  const saved = data.grid ?? data.proposedGrid;
+  const start = saved ?? suggestion;
+  const startKey = start ? `${start.cellSize}/${start.offsetX}/${start.offsetY}` : "";
   const [cell, setCell] = useState(start ? String(start.cellSize) : "");
   const [x, setX] = useState(start ? String(start.offsetX) : "0");
   const [y, setY] = useState(start ? String(start.offsetY) : "0");
+  // Until the person types numbers of their own, the fields, and so the picture, follow the AI's latest grid.
+  const [typed, setTyped] = useState(false);
+  const fill = (grid: DraftProposedGrid | null) => {
+    setCell(grid ? String(grid.cellSize) : "");
+    setX(grid ? String(grid.offsetX) : "0");
+    setY(grid ? String(grid.offsetY) : "0");
+  };
+  useEffect(() => { if (!typed) fill(start); }, [startKey]); // `start` is rebuilt every render; its numbers are in `startKey`
   const preview: DraftProposedGrid | null = Number(cell) > 0 ? { cellSize: Number(cell), offsetX: Number(x) || 0, offsetY: Number(y) || 0 } : null;
+  const unsaved = typed && preview !== null && (!saved || preview.cellSize !== saved.cellSize || preview.offsetX !== saved.offsetX || preview.offsetY !== saved.offsetY);
+  const type = (set: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => { setTyped(true); set(e.target.value); };
   const useSuggestion = () => {
     if (!suggestion) return;
-    setCell(String(suggestion.cellSize));
-    setX(String(suggestion.offsetX));
-    setY(String(suggestion.offsetY));
+    setTyped(true);
+    fill(suggestion);
   };
   // Drawn with the grid in the fields, so a correction shows where the AI's lines will land.
   const drawing = useMemo<MapDrawing | undefined>(() => {
@@ -647,15 +672,21 @@ function MapCard({ item, file, checkbox, onConfirm, onSaveSetup, onRemove }: { i
       {file && drawing && <MapWalls data={data} openings={drawing.openings} editable={!item.published} editedByUser={item.editedByUser} onSave={onSaveSetup} />}
       {!item.published && file && (
         <div className="build-fields">
-          <label>Square size (px)<input inputMode="decimal" value={cell} onChange={(e) => setCell(e.target.value)} /></label>
-          <label>Offset X<input inputMode="decimal" value={x} onChange={(e) => setX(e.target.value)} /></label>
-          <label>Offset Y<input inputMode="decimal" value={y} onChange={(e) => setY(e.target.value)} /></label>
+          <label>Square size (px)<input inputMode="decimal" value={cell} onChange={type(setCell)} /></label>
+          <label>Offset X<input inputMode="decimal" value={x} onChange={type(setX)} /></label>
+          <label>Offset Y<input inputMode="decimal" value={y} onChange={type(setY)} /></label>
         </div>
+      )}
+      {!item.published && unsaved && (
+        <p className="build-blocked" role="status">
+          The grid in the fields isn't saved. Publishing uses {saved ? `${saved.cellSize}-pixel squares at offset (${saved.offsetX}, ${saved.offsetY})` : "no grid"} until you confirm yours.{" "}
+          <button type="button" onClick={() => { setTyped(false); fill(start); }}>Put the saved grid back</button>
+        </p>
       )}
       <Flags item={item} />
       {!item.published && (
         <div className="row">
-          {file && <button type="button" className="primary" disabled={!preview} onClick={() => { if (preview) void onConfirm(preview); }}>Confirm grid</button>}
+          {file && <button type="button" className="primary" disabled={!preview} onClick={() => { if (preview) void onConfirm(preview).then(() => setTyped(false)); }}>Confirm grid</button>}
           {suggestion && <button type="button" onClick={useSuggestion}>Use the detected grid</button>}
           <button type="button" onClick={onRemove}>Remove</button>
         </div>

@@ -190,7 +190,9 @@ The build page draws the grid over the map with number fields and a confirm cont
 - cell size within 0.5 pixels;
 - offsets within 1 pixel, compared across the cell.
 
-The status is worked out when read. The check is weaker when the AI copies the suggestion, so the guide tells it to look at the picture with the grid drawn before comparing. KAN-09's "a person accepts the grid" is met because the person ticks the choice and publishes from a page that draws the grid.
+The status is worked out when read. The map then uses detection's numbers, which it fits across the whole map. The AI's proposal is a second opinion, so half a pixel per square can't add up to squares of drift across a large map (found in the sync review). The check is weaker when the AI copies the suggestion, so the guide tells it to look at the picture with the grid drawn before comparing.
+
+An agreed grid takes its square size from the game profile, which the AI can change without touching any map. So publishing sends the square size the person saw, and the page shows a change under "Changed by your AI since you looked". KAN-09's "a person accepts the grid" is met because the person ticks the choice and publishes from a page that draws the grid.
 
 | Option | Verdict |
 |---|---|
@@ -226,6 +228,9 @@ The status is worked out when read. The check is weaker when the AI copies the s
 - Plain walls are one colour, and doors and windows the AI set are another.
 - Openings left for the user and marked places are numbered and listed.
 - The owner can change an opening's kind and state, remove a line the AI drew, or remove everything the AI set on that map. Any of these marks the map edited.
+- The owner's change carries the version of the map the page showed, and is refused if the AI has changed it since, because openings are numbered for one file.
+- The grid fields follow the AI's latest grid until the owner types their own. A typed grid that isn't confirmed is called out, with what publishing would use instead.
+- The AI's saves are checked inside the store's write, for the walls choice and for the version they read, so turning walls off, or two saves at once, can't be undone by a write already in flight.
 - Drawing and moving walls by hand stays in the map editor, which already does it well.
 
 **Fog and terrain stay out.** Fog depends on the scene and the session, and terrain is rarely in the materials.
@@ -351,7 +356,7 @@ The fitted rates from the earlier log (cached read $0.10, cache write $4 and out
 
 On Haiku, about $0.10, going by the 10-to-1 ratio measured earlier. Quality is less sure: Haiku tried to store a d3, which the server would refuse and cost a retry.
 
-**Estimated: setting walls.** One overlay picture per map plus 2 to 4 closer looks on busy maps, at about 3,200 tokens each, plus the setup lists. That is about $0.10 to $0.30 more per build on Sonnet. Task 9.9 measures it.
+**Measured: setting walls (task 9.9).** Claude Code on Sonnet built all of Lanternfall with both choices on for **$0.80** in 51 turns and 227 seconds. The same materials without walls cost $0.69 in 23 turns. Setting the 21 openings took 6 tool calls, and most of the extra turns were 27 uploads sent one command at a time. So walls added less than the $0.10 to $0.30 estimated before. It didn't need the map pictures, because `adventure.md` names every door's square. A map whose materials don't would need `view_file` pictures at about 3,200 tokens each, which this run didn't measure.
 
 A 200-page rulebook would come to about $2 on Sonnet, mostly from re-reading it each turn. The guide should suggest giving the AI only the pages it needs. Dollars are what the same use costs on the API, and on a subscription it counts toward usage limits. A real measurement with the finished tools is a task.
 
@@ -381,7 +386,7 @@ ADR 0053 is the next free number: `origin/main` stops at 0051, and `mcp-ai-playe
 - [One model tested] → Only Claude models were run, on made-up materials. Real rulebooks and other AI apps are untested.
 - [Wrong walls change what players see and where tokens move] → Off unless ticked. Every wall is drawn in review, hard cases go to the user, and the map editor fixes anything after publishing.
 - [The AI copies detection's grid instead of checking it] → The guide says to check the picture first, the review page marks such grids, and the user can leave the choice off.
-- [More pictures cost more] → Estimated at $0.10 to $0.30 per build on Sonnet, to be measured.
+- [More pictures cost more] → Measured on Lanternfall at less than $0.11 more per build, with no pictures needed. Maps whose materials name no squares will cost more, unmeasured.
 - [A door drawn slightly off a UVTT wall doesn't cut it] → The review page draws both, and the build check reports a door lying across a wall it doesn't cut.
 
 ## Migration Plan

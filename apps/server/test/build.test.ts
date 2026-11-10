@@ -799,10 +799,24 @@ describe("the owner's choices for maps (FR-GM-26, ADR 0053)", () => {
     expect(await readSetup(pass)).toMatchObject({ lines: [] });
   });
 
+  const mapVersion = async (account: HttpAccount, id: string) =>
+    (await account.json<{ items: { kind: string; key: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.find((i) => i.kind === "map" && i.key === "shop")!.updatedAt;
+
+  it("refuses the owner's fix made on a version the AI has since changed", async () => {
+    const { account, id, pass } = await startWith({ aiWalls: true });
+    await uvttMap(pass);
+    const seen = await mapVersion(account, id);
+    expect((await setDoor(pass)).status).toBe(200);
+    const stale = await account.request("PUT", `/api/builds/${id}/maps/shop/setup`, { setup: { openings: [{ number: 1, kind: "window", state: "open" }], lines: [], marks: [] }, updatedAt: seen });
+    expect(stale.status).toBe(409);
+    expect(await stale.text()).toMatch(/Your AI changed this map since you looked/);
+    expect(await readSetup(pass)).toMatchObject({ openings: [{ now: { kind: "door", state: "locked" } }] });
+  });
+
   it("refuses the AI once the owner has fixed the map", async () => {
     const { account, id, pass } = await startWith({ aiWalls: true });
     await uvttMap(pass);
-    const fixed = await account.request("PUT", `/api/builds/${id}/maps/shop/setup`, { openings: [{ number: 1, kind: "door", state: "closed" }], lines: [], marks: [] });
+    const fixed = await account.request("PUT", `/api/builds/${id}/maps/shop/setup`, { setup: { openings: [{ number: 1, kind: "door", state: "closed" }], lines: [], marks: [] }, updatedAt: await mapVersion(account, id) });
     expect(fixed.status).toBe(200);
     expect((await fixed.json() as { item: { editedByUser: boolean } }).item.editedByUser).toBe(true);
     const refused = await setDoor(pass);
@@ -852,5 +866,34 @@ describe("the owner's choices for maps (FR-GM-26, ADR 0053)", () => {
     await account.request("PUT", `/api/builds/${id}/choices`, { aiGrid: false, aiWalls: false });
     const { items } = await account.json<{ items: { key: string; data: unknown }[] }>("GET", `/api/builds/${id}`);
     expect(items.find((i) => i.key === "cave")?.data).toMatchObject({ gridStatus: "proposed", grid: null });
+  });
+
+  it("won't publish an agreed grid if the square size changed since the owner looked", async () => {
+    const { account, id, pass } = await startWith({ aiGrid: true });
+    const file = await uploadMap(pass);
+    for (let i = 0; i < 100; i++) {
+      const read = await (await withPass(pass, "GET", "/api/build/current")).json() as { files: { detection: { status: string } | null }[] };
+      if (read.files[0]?.detection?.status === "suggested") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Cave", fileId: file.id, proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 } });
+    const reviewed = async () => Object.fromEntries((await account.json<{ items: { kind: string; key: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.map((i) => [`${i.kind}/${i.key}`, i.updatedAt]));
+    // The owner looked at 5 ft squares; the AI then made them 10 ft.
+    const seen = { ...await reviewed(), profile: "5 ft" };
+    await withPass(pass, "PUT", "/api/build/current/profile", { name: "Lanternfall", unitsPerCell: 10, unitLabel: "ft" });
+    const refused = await account.request("POST", `/api/builds/${id}/publish`, { maps: ["cave"], reviewed: seen });
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toMatch(/square size changed since you looked: one square is now 10 ft/);
+    const published = await account.request("POST", `/api/builds/${id}/publish`, { maps: ["cave"], reviewed: { ...seen, profile: "10 ft" } });
+    expect(published.status).toBe(200);
+  });
+
+  it("publishes a map with places left for the owner, though its grid is only proposed", async () => {
+    const { account, id, pass } = await startWith({ aiWalls: true });
+    const file = await uploadMap(pass);
+    await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Cave", fileId: file.id, proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 } });
+    expect((await withPass(pass, "PUT", "/api/build/current/maps/cave/setup", { marks: [{ square: { column: 2, row: 2 }, reason: "A curved cave edge." }] })).status).toBe(200);
+    const reviewed = Object.fromEntries((await account.json<{ items: { kind: string; key: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.map((i) => [`${i.kind}/${i.key}`, i.updatedAt]));
+    expect((await account.request("POST", `/api/builds/${id}/publish`, { maps: ["cave"], reviewed })).status).toBe(200);
   });
 });

@@ -219,7 +219,7 @@ describe("reviewing a build (FR-GM-27)", () => {
     const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-list input[type=checkbox]")];
     await click(boxes[0]);
     await click(button("Publish selected"));
-    expect(builds.publish).toHaveBeenCalledWith("b1", { creatures: ["a"], maps: [], encounters: [], reviewed: { "creature/a": "2026-11-09T00:00:00Z", "creature/b": "2026-11-09T00:00:00Z" } });
+    expect(builds.publish).toHaveBeenCalledWith("b1", { creatures: ["a"], maps: [], encounters: [], reviewed: { "creature/a": "2026-11-09T00:00:00Z", "creature/b": "2026-11-09T00:00:00Z", profile: "5 ft" } });
   });
 
   it("says what the AI changed since the person looked, and won't publish it until they've checked it", async () => {
@@ -234,7 +234,7 @@ describe("reviewing a build (FR-GM-27)", () => {
     await click(button("I've checked it"));
     expect(text()).not.toContain("Changed by your AI since you looked");
     await click(button("Publish selected"));
-    expect(builds.publish).toHaveBeenCalledWith("b1", expect.objectContaining({ reviewed: { "creature/goblin": "2026-11-09T00:05:00Z" } }));
+    expect(builds.publish).toHaveBeenCalledWith("b1", expect.objectContaining({ reviewed: { "creature/goblin": "2026-11-09T00:05:00Z", profile: "5 ft" } }));
   });
 
   it("doesn't call the person's own edit a change by the AI", async () => {
@@ -432,16 +432,60 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
     await open(detail({ files: [uvttFile], items: [shop()] }));
     await choose(host.querySelector("select[aria-label='Opening 1 state']"), "closed");
-    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "shop", { ...setup, openings: [{ number: 1, kind: "door", state: "closed" }, setup.openings[1]] });
+    // With the version the page showed, so a change made since is refused rather than overwritten.
+    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "shop", { ...setup, openings: [{ number: 1, kind: "door", state: "closed" }, setup.openings[1]] }, "2026-11-09T00:00:00Z");
   });
 
   it("removes one line, or everything the AI set", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
     await open(detail({ files: [uvttFile], items: [shop()] }));
     await click([...host.querySelectorAll(".build-wall-list button")].find((b) => b.textContent === "Remove"));
-    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] });
+    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] }, "2026-11-09T00:00:00Z");
     await click(button("Remove everything your AI set"));
-    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [] });
+    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [] }, "2026-11-09T00:00:00Z");
+  });
+
+  const cavePattern = () => host.querySelector(".build-map pattern")?.getAttribute("width");
+  const refreshWith = async (d: BuildDetail) => {
+    builds.get.mockResolvedValue(d);
+    builds.newPass.mockResolvedValue({ pass: `szb_${"a".repeat(43)}`, expiresAt: "2099-01-01T00:00:00Z" });
+    await click(button("New pass"));
+  };
+
+  it("redraws the grid when the AI changes it, so what's drawn is what publishes", async () => {
+    await open(detail({ items: [plain({ gridStatus: "proposed", grid: null })] }));
+    expect(cavePattern()).toBe("70");
+    await refreshWith(detail({ items: [plain({ gridStatus: "confirmed", gridBy: "agreement", proposedGrid: { cellSize: 72, offsetX: 0, offsetY: 0 }, grid: { cellSize: 72, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } })] }));
+    expect(cavePattern()).toBe("72");
+    expect((host.querySelector(".build-fields input") as HTMLInputElement).value).toBe("72");
+  });
+
+  it("keeps the owner's typed grid, and says it isn't saved", async () => {
+    await open(detail({ items: [plain({ gridStatus: "proposed", grid: null })] }));
+    const field = host.querySelector(".build-fields input") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "75");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await refreshWith(detail({ items: [plain({ gridStatus: "proposed", grid: null, proposedGrid: { cellSize: 72, offsetX: 0, offsetY: 0 } })] }));
+    expect(cavePattern()).toBe("75");
+    expect(text()).toContain("The grid in the fields isn't saved. Publishing uses 72-pixel squares at offset (0, 0)");
+    await click(button("Put the saved grid back"));
+    expect(cavePattern()).toBe("72");
+  });
+
+  it("holds publishing back when the AI changed the square size, until the owner has looked", async () => {
+    builds.publish.mockResolvedValue({ published: { assets: 1, creatures: [], maps: [{ key: "cave", id: "m1" }], encounters: [] } });
+    const cave = plain({ gridBy: "agreement" });
+    await open(detail({ items: [cave] }));
+    const profile = { ...detail().profile!, unitsPerCell: 10 };
+    await refreshWith(detail({ items: [cave], profile }));
+    expect(text()).toContain("game profile: one square is now 10 ft");
+    await click(host.querySelector(".build-check input") ?? undefined);
+    expect(button("Publish selected")?.hasAttribute("disabled")).toBe(true);
+    await click(button("I've checked it"));
+    await click(button("Publish selected"));
+    expect(builds.publish).toHaveBeenCalledWith("b1", expect.objectContaining({ reviewed: expect.objectContaining({ profile: "10 ft" }) }));
   });
 
   const plain = (data: Record<string, unknown>) => item({ kind: "map", key: "cave", data: { name: "Cave", fileId: "f1", proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 }, gridStatus: "confirmed", grid: { cellSize: 70, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" }, ...data } });

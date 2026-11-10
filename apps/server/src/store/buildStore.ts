@@ -103,6 +103,30 @@ export class BuildItemLockedError extends Error {
   }
 }
 
+/** A write named the version it read, and the item has changed since. Nothing was written. */
+export class BuildItemChangedError extends Error {
+  constructor() {
+    super("This item changed since it was read. Read it again, then try again.");
+  }
+}
+
+/** The AI's write needs a choice the owner has turned off. Nothing was written. */
+export class BuildChoiceOffError extends Error {
+  constructor() {
+    super("The owner doesn't allow this on this build.");
+  }
+}
+
+/**
+ * Checked inside the write, so a change between reading and writing can't slip through (ADR 0053).
+ * `expectedUpdatedAt`: the item's version when it was read; null means it didn't exist yet.
+ * `requireAiWalls`: the owner must still let the AI set walls, doors and windows.
+ */
+export interface BuildWriteGuard {
+  expectedUpdatedAt?: string | null;
+  requireAiWalls?: boolean;
+}
+
 /** Something a publish relied on changed underneath it. Nothing was published. */
 export class BuildPublishConflictError extends Error {
   constructor(message = "This build changed while publishing. Reload the page and try again.") {
@@ -177,9 +201,10 @@ export interface BuildStore {
 
   /**
    * Saves by key: a repeat updates the item. The checks and the write are one step per build.
-   * `maxForKind` caps new items only. Throws `BuildItemLockedError`, `BuildLimitError` or `BuildClosedError`.
+   * `maxForKind` caps new items only. Throws `BuildItemLockedError`, `BuildLimitError` or `BuildClosedError`,
+   * and for a `guard`, `BuildItemChangedError` or `BuildChoiceOffError`.
    */
-  saveBuildItem(item: NewBuildItem, maxForKind: number | null): Promise<BuildItemRecord>;
+  saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard?: BuildWriteGuard): Promise<BuildItemRecord>;
   listBuildItems(buildId: string): Promise<BuildItemRecord[]>;
   findBuildItem(buildId: string, kind: BuildItemKind, key: string): Promise<BuildItemRecord | null>;
   /**
@@ -190,7 +215,7 @@ export interface BuildStore {
   /** Marks an item as changed by its owner, or as published. */
   markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }): Promise<boolean>;
   /** The owner's change: marks the item edited, so the AI can't overwrite it. Refuses what was published. */
-  editBuildItem(item: NewBuildItem): Promise<BuildItemRecord>;
+  editBuildItem(item: NewBuildItem, guard?: Pick<BuildWriteGuard, "expectedUpdatedAt">): Promise<BuildItemRecord>;
 
   /**
    * Adds everything in the plan, or nothing. Throws `UploadAllowanceError`, `EncounterLimitError`,

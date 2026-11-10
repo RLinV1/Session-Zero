@@ -616,13 +616,17 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
   });
 
   describe("walls, doors and windows the AI set (FR-GM-27, ADR 0053)", () => {
-    // 8 by 6 squares of 50 pixels. One wall along row line 2, with a closed door-sized opening in it.
+    // 8 by 6 squares of 50 pixels. One wall along row line 2 with a closed door-sized opening in it,
+    // and a second opening standing alone at x = 300.
     const uvttWithOpening = async () => JSON.stringify({
       format: 0.3,
       image: (await png(400, 300)).toString("base64"),
       resolution: { pixels_per_grid: 50, map_size: { x: 8, y: 6 }, map_origin: { x: 0, y: 0 } },
       line_of_sight: [[{ x: 0, y: 2 }, { x: 8, y: 2 }]],
-      portals: [{ bounds: [{ x: 3, y: 2 }, { x: 4, y: 2 }], position: { x: 3.5, y: 2 }, rotation: 0, closed: true, freestanding: false }],
+      portals: [
+        { bounds: [{ x: 3, y: 2 }, { x: 4, y: 2 }], position: { x: 3.5, y: 2 }, rotation: 0, closed: true, freestanding: false },
+        { bounds: [{ x: 6, y: 4 }, { x: 6, y: 5 }], position: { x: 6, y: 4.5 }, rotation: 0, closed: true, freestanding: true },
+      ],
     });
 
     async function wallsBuild(choices: { aiGrid?: boolean; aiWalls?: boolean }) {
@@ -656,6 +660,36 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
       expect(board?.walls).not.toContainEqual(expect.objectContaining({ a: { x: 200, y: 100 }, b: { x: 400, y: 100 } }));
       const template = (await store.listEncounters(ownerId))[0]!.data as EncounterTemplateData;
       expect(template.walls).toEqual(board?.walls);
+    });
+
+    it("gives a player only the AI's door when the map is placed in a room, nothing GM-only", async () => {
+      const { account, id, pass } = await wallsBuild({ aiWalls: true });
+      const fileId = await upload(pass, "uvtt", "chandlery.uvtt", await uvttWithOpening());
+      await withPass(pass, "POST", "/api/build/current/maps", { key: "shop", name: "Chandlery", fileId });
+      const setup = await withPass(pass, "PUT", "/api/build/current/maps/shop/setup", {
+        openings: [{ number: 1, kind: "door", state: "closed" }, { number: 2, kind: "leave", reason: "Could be an archway." }],
+      });
+      expect(setup.status).toBe(200);
+      expect((await publish(account, id, { maps: ["shop"] })).status).toBe(200);
+      const asset = (await uploaded(account)).find((a) => a.kind === "map")!;
+
+      const creds = await server.createRoom("GM", { cookie: account.cookie });
+      const gm = await server.connect(creds);
+      const player = await server.connect(await server.join(creds.inviteCode, "Alice"));
+      try {
+        const offset = player.rawLog.length;
+        const placed = await gm.command({ type: "scene.setMap", map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: asset.grid!, includeLibraryBoard: true });
+        expect(placed.type).toBe("ack");
+        expect(Object.values(gm.state.walls ?? {})).toHaveLength(4);
+        await player.waitForSeq(gm.seq);
+        // The plain walls and the opening left for the GM stay with the GM.
+        expect(Object.values(player.state.walls ?? {})).toEqual([expect.objectContaining({ a: { x: 150, y: 100 }, b: { x: 200, y: 100 }, portal: { kind: "door", state: "closed" } })]);
+        const messages = player.rawLog.slice(offset).join("\n");
+        for (const secret of ["uvttPortal", "line_of_sight", "archway", '"x":300']) expect(messages).not.toContain(secret);
+      } finally {
+        gm.close();
+        player.close();
+      }
     });
 
     it("won't publish lines drawn on a grid nobody confirmed", async () => {

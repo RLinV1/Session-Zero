@@ -117,7 +117,11 @@ Otherwise it MUST wait for the user.
 - **THEN** the map has no proposed grid and is flagged as needing one
 
 ### Requirement: A grid matches detection within a pixel
-A proposal SHALL match detection's suggestion when the cell sizes differ by at most half a pixel and each offset differs by at most one pixel, with offsets compared across the cell.
+A proposal SHALL match detection's suggestion when the cell sizes differ by at most half a pixel and each offset differs by at most one pixel, with offsets compared across the cell. A map whose grid is confirmed this way SHALL use detection's numbers, which are fitted across the whole map, so the allowed difference can't add up across a large map.
+
+#### Scenario: Close, but not the same
+- **WHEN** grids are allowed, detection suggests 70.02-pixel squares, and the AI proposes 70.4
+- **THEN** the map counts as confirmed with 70.02-pixel squares
 
 #### Scenario: Just inside
 - **WHEN** detection suggests a 70-pixel cell and the AI proposes 70.4 with the same offsets

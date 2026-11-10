@@ -61,7 +61,7 @@ Your AI is told never to invent a value. Anything the source doesn't clearly giv
 
 Two choices let your AI do more. Both are off unless you tick them when you start a build, and you can change them on the build page at any time. Your AI can't change them.
 
-- **Let my AI set grids.** Your AI's grid counts as confirmed only when automatic detection agrees with it: the square size within half a pixel, and the grid's position within one pixel. Otherwise you confirm it, as before.
+- **Let my AI set grids.** Your AI's grid counts as confirmed only when automatic detection agrees with it: the square size within half a pixel, and the grid's position within one pixel. The map then uses the detected grid, which is measured across the whole map. Otherwise you confirm it, as before.
 - **Let my AI set walls, doors and windows.** Your AI reads your materials and the map, then:
   - turns a UVTT file's openings into doors, locked doors and windows;
   - draws walls, doors and windows on a map with a grid, from grid corner to grid corner;
@@ -125,7 +125,7 @@ Only upload art and maps you have the right to use. Rooms share them with the pe
 
 ## Cost
 
-A full build of a one-session game took Claude Code on Sonnet about 6 minutes and $1 of usage: 58 KB of rules and adventure, 4 maps, 22 tokens, 17 creatures and 4 encounters. On a subscription, it counts toward your usage limits. Long rulebooks cost more, so give your AI only the pages it needs.
+A full build of a one-session game took Claude Code on Sonnet about 6 minutes and $1 of usage: 58 KB of rules and adventure, 4 maps, 22 tokens, 17 creatures and 4 encounters. With walls, doors and windows ticked, the same game came to $0.80, because its adventure says where every door is. On a subscription, it counts toward your usage limits. Long rulebooks cost more, so give your AI only the pages it needs.
 
 ## Which apps have been tried
 

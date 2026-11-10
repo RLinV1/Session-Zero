@@ -21,7 +21,10 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
+  BuildChoiceOffError,
+  BuildItemChangedError,
   BuildItemLockedError,
+  type BuildWriteGuard,
   BuildLimitError,
   BuildPublishConflictError,
   assertBuildFileFits,
@@ -99,8 +102,15 @@ async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetR
 /** One writer per build at a time, and only while it's open, so checks and writes are one step. */
 async function lockOpenBuild(tx: Prisma.TransactionClient, buildId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
-  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true } });
+  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true, aiWalls: true } });
   if (build?.status !== "open") throw new BuildClosedError();
+  return build;
+}
+
+/** A write's guard, checked under the build's lock (ADR 0053). */
+function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean }, existing: { updatedAt: Date } | null) {
+  if (guard.requireAiWalls && !build.aiWalls) throw new BuildChoiceOffError();
+  if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt.toISOString() ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
 }
 
 async function readBuildFileUsage(client: Pick<Prisma.TransactionClient, "buildFile">, buildId: string): Promise<BuildFileUsage> {
@@ -701,10 +711,15 @@ export class PostgresRoomStore implements RoomStore {
   }
 
   async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
-    const result = await this.prisma.build.updateMany({
-      where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, updatedAt: new Date() },
+    // Under the same lock as the AI's writes, so a write that saw walls allowed finishes first.
+    const changed = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
+      const result = await tx.build.updateMany({
+        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, updatedAt: new Date() },
+      });
+      return result.count === 1;
     });
-    return result.count === 1 ? this.findBuild(id, ownerGmId) : null;
+    return changed ? this.findBuild(id, ownerGmId) : null;
   }
 
   async buildFileUsage(buildId: string): Promise<BuildFileUsage> {
@@ -738,13 +753,14 @@ export class PostgresRoomStore implements RoomStore {
     return row ? toBuildFileRecord(row) : null;
   }
 
-  async saveBuildItem(item: NewBuildItem, maxForKind: number | null) {
+  async saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard: BuildWriteGuard = {}) {
     return this.prisma.$transaction(async (tx) => {
-      await lockOpenBuild(tx, item.buildId);
+      const build = await lockOpenBuild(tx, item.buildId);
       const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
       const existing = await tx.buildItem.findUnique({ where });
       if (existing?.publishedId) throw new BuildItemLockedError("published");
       if (existing?.editedByUser) throw new BuildItemLockedError("edited");
+      checkGuard(guard, build, existing);
       if (!existing && maxForKind !== null && await tx.buildItem.count({ where: { buildId: item.buildId, kind: item.kind } }) >= maxForKind) {
         throw new BuildLimitError(`A build can hold up to ${maxForKind} of these.`);
       }
@@ -780,12 +796,13 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
-  async editBuildItem(item: NewBuildItem) {
+  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt"> = {}) {
     return this.prisma.$transaction(async (tx) => {
-      await lockOpenBuild(tx, item.buildId);
+      const build = await lockOpenBuild(tx, item.buildId);
       const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
       const existing = await tx.buildItem.findUnique({ where });
       if (existing?.publishedId) throw new BuildItemLockedError("published");
+      checkGuard(guard, build, existing);
       const values = {
         data: item.data as Prisma.InputJsonValue, flags: item.flags as Prisma.InputJsonValue, notCarriedOver: item.notCarriedOver, editedByUser: true, updatedAt: new Date(),
       };

@@ -497,6 +497,12 @@ describe("AI-set grids and walls, by the owner's choice (FR-GM-26)", () => {
       expect(read).toMatchObject({ gridStatus: "confirmed", gridBy: "agreement", grid: { ...grid70, ...units } });
     });
 
+    it("uses detection's numbers once they agree, so small differences can't add up across the map", () => {
+      const close = { ...proposed, proposedGrid: { cellSize: 70.4, offsetX: 0.8, offsetY: 0 } };
+      const fitted = { grid: null, detectionStatus: "suggested", detectionResult: { cellSize: 70.02, offsetX: 0.1, offsetY: 0 } };
+      expect(readDraftMap(close, fitted, true, units).grid).toEqual({ cellSize: 70.02, offsetX: 0.1, offsetY: 0, ...units });
+    });
+
     it("waits for the user when grids aren't allowed", () => {
       expect(readDraftMap(proposed, suggested, false, units)).toMatchObject({ gridStatus: "proposed", grid: null, gridDiffers: null });
     });

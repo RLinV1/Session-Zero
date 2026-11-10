@@ -6,7 +6,10 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
+  BuildChoiceOffError,
+  BuildItemChangedError,
   BuildItemLockedError,
+  type BuildWriteGuard,
   BuildLimitError,
   BuildPublishConflictError,
   assertBuildFileFits,
@@ -592,12 +595,14 @@ export class MemoryRoomStore implements RoomStore {
     return file && file.buildId === buildId ? structuredClone(file) : null;
   }
 
-  async saveBuildItem(item: NewBuildItem, maxForKind: number | null) {
+  async saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard: BuildWriteGuard = {}) {
     const build = this.openBuild(item.buildId);
     const id = `${item.buildId}/${item.kind}/${item.key}`;
     const existing = this.buildItems.get(id);
     if (existing?.publishedId) throw new BuildItemLockedError("published");
     if (existing?.editedByUser) throw new BuildItemLockedError("edited");
+    if (guard.requireAiWalls && !build.aiWalls) throw new BuildChoiceOffError();
+    if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
     if (!existing && maxForKind !== null) {
       const count = [...this.buildItems.values()].filter((i) => i.buildId === item.buildId && i.kind === item.kind).length;
       if (count >= maxForKind) throw new BuildLimitError(`A build can hold up to ${maxForKind} of these.`);
@@ -632,11 +637,12 @@ export class MemoryRoomStore implements RoomStore {
     return true;
   }
 
-  async editBuildItem(item: NewBuildItem) {
+  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt"> = {}) {
     const build = this.openBuild(item.buildId);
     const id = `${item.buildId}/${item.kind}/${item.key}`;
     const existing = this.buildItems.get(id);
     if (existing?.publishedId) throw new BuildItemLockedError("published");
+    if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
     const row: BuildItemRecord = { ...structuredClone(item), editedByUser: true, publishedId: null, updatedAt: new Date().toISOString() };
     this.buildItems.set(id, row);
     this.touchBuild(build);

@@ -250,3 +250,93 @@ Publishing was left to the user.
 ### Whole project (8.8)
 
 `npm run lint && npm run typecheck && npm test`, with `DATABASE_URL` on a throwaway database, passes: shared 1,088, MCP 227, server 993 with 4 skipped, web 1,364, latency bench 2 (p95 115 ms).
+
+## 2026-11-10, AI-set grids and walls (group 9)
+
+The user asked for the AI to set grids, walls, doors and windows through MCP, as choices made per build, with hard cases left to them. The plan was revised first and committed as `fc5dde3`, and the build as `8b27d4e`.
+
+### Environment touched
+
+- The throwaway Postgres `lanternfall-check-pg` on port 55491, for the Postgres store tests. Both migrations applied there.
+- This branch on ports 3493, 3496 and 5493, on the in-memory store, with uploads in the session scratchpad, stopped afterwards. It was signed in with the seeded test account.
+- One real `claude -p` run on Sonnet, on the user's plan.
+- The user's dev database was not touched, and doesn't have the new columns yet. Ports 3001, 5173 and 3002 and production weren't touched.
+
+### Results
+
+| Task | How it was checked | Result |
+|---|---|---|
+| 9.1 ADR 0053 | Read against KAN-09 (ADR 0028), ADR 0029, 0030 and 0041 | New section, alternatives and consequences. The review note covers it, still unreviewed |
+| 9.2 Shared contract | 29 unit tests for FR-GM-26: half steps, off-map corners, a corrected grid, 501 lines, tolerances either side, offsets across a cell, a door on a solid wall, a door beside a wall it doesn't cut | Pass |
+| 9.3 Server | Store tests on memory and Postgres; HTTP tests for the choices, the setup routes, refusals when off, after the owner's edit and after publishing, and grid agreement turned on and off | 251 build tests pass on both stores |
+| 9.4 The map picture | Layout unit tests; an HTTP test of a region's size; the Chandlery rendered and looked at | Numbers readable at full size and closer. Edge numbers moved inside the column and row numbers after the first look showed them overlapping |
+| 9.5 MCP tools | The SDK client over real HTTP: 10 tools, the choices in `get_build`, numbered openings, a locked door, a refusal when off, a bad line's message, a closer picture | 26 pass |
+| 9.6 Web | 42 component tests; in the browser at 1024 and 375 pixels wide | See below |
+| 9.7 Docs | Repo search for claims that the AI can't draw walls | Only task 5.2, which is history, still says 8 tools |
+
+### In the browser
+
+- **The choices:** at first the start form's own label style stretched each box into a tall column. That was fixed by a more specific selector and checked again.
+- **The review page:** it drew walls in red, doors in yellow and windows in blue, with the numbered openings, the mark and white edges on what the AI set.
+- **Map size:** a map at card width was about 230 pixels across, too small to check doors. Maps now take the page's width, up to 60rem.
+- **Phone width:** at 375 pixels there was no sideways scrolling.
+- **A fix by the owner:** I made the opening left for the user a door. It saved, the page said "Edited by you", and the AI's next save was refused with "The user changed this item". After the edit, every opening's badge read "Changed", which wrongly suggested the owner had changed all 18. Once a map is edited the page can't tell who set what, so the badge now reads "Set".
+
+### 9.8 Breaking protections, and the audits
+
+13 new protections were broken one at a time, and each was caught by a named test that ran and failed. A control with nothing broken passed: server 171, shared 102, MCP 26. They cover:
+
+- walls set when not allowed;
+- a pass changing the choices;
+- the AI overwriting the owner's fix, and the owner's fix not locking the map;
+- saving a map again wiping its walls;
+- publish ignoring the AI's walls, or publishing lines on an unconfirmed grid;
+- a widened grid tolerance, and agreement counting without the choice;
+- a door not cutting its wall;
+- an opening number past the map, and a line off the map;
+- the tool hiding the server's refusal.
+
+`visibility-auditor` found no leak. A published board reaches a room only through `scene.setMap` with the library board, and players get the filtered snapshot. An AI-made door keeps both `portal` and `uvttPortal`, and players receive only `portal`. Openings left for the user stay GM-only, and marks and reasons are never written to the board. At its suggestion, I added a direct guard on both stores: an AI door, an opening left for the user and a plain wall, placed in a room. The player received only the door, with no `uvttPortal`, plain wall or left opening.
+
+`sync-reviewer` found no change to the event pipeline. Lint, typecheck and tests passed on an exact copy of the commit. It found seven ordering and review problems. Each is fixed with a test, and each test was shown to catch its fix being undone:
+
+| Finding | Fix |
+|---|---|
+| **Medium:** the grid fields were filled once, so the page could draw the AI's first grid while publish used its second | The fields follow the server's grid until the owner types. A typed grid that isn't confirmed is called out, with what publishing would use |
+| Low-medium: the owner's wall fix wasn't tied to the version shown. A map the AI had moved to another file could get the wrong doors | The page sends the version it showed, and the server and the store refuse a stale one |
+| Low-medium: an agreed grid took its square size at publish, and the AI could change the profile without touching a map | Publishing sends the square size the person saw, and the page lists a change for them to check |
+| Low: turning walls off was checked before the AI's write, not in it | The store checks it inside the write. On Postgres, changing the choices takes the same lock |
+| Low: two AI saves at once could silently undo each other | Setup saves, and map saves that carry a setup over, name the version they read. The store refuses a stale one |
+| Low: half a pixel per square could add up to squares of drift across a large map | An agreed grid uses detection's numbers, fitted across the whole map. The spec, design, ADR and guide say so |
+| Low: a mark held a map back at publish, with a message meant for the AI | Marks, which never go on the board, are left out of the publish check |
+
+It also noted that ADR 0053 says no existing schema changes. That still holds against `origin/main`, because the interfaces it named are new in this change.
+
+### 9.9 A real build with walls
+
+On the local copy, I started "Lanternfall with doors" in the browser with both boxes ticked. Claude Code on Sonnet got the page's message and the first run's setup details, with nothing about doors. It was told only to set them as the materials describe and to leave anything it couldn't tell.
+
+- **The run:** $0.80, 51 turns, 227 seconds. Without walls, the same materials cost $0.69 in 23 turns. Most of the extra turns were 27 single-file uploads. Setting the openings took 3 `get_map_setup` and 3 `save_map_setup` calls.
+- **Against `adventure.md`'s table:** all 21 openings match.
+  - The Ward Gate: 2 closed doors.
+  - The Chandlery: 13 closed doors, the office locked and 4 windows.
+  - The sluice gate: locked.
+  - Brackwater Quay: none.
+- **Nothing extra:** it drew no lines and left no marks, and `check_build` reported nothing on the maps.
+- **Left to the user's judgement:** it mentioned that the Chandlery's front and loading doors are described as nailed shut and barred, which the table calls closed, and left them closed.
+- **The first build's art error is gone:** Ysolde Crane has `inkwright-b`. Encounters have 11, 13, 9 and 11 tokens, with 5, 5, 4 and 3 hidden, as before.
+- **Not exercised:** the AI didn't use `view_file`, because the materials named every square. The pictures were checked only by me.
+
+Not done: the same build on the user's account. It needs the new migration on their dev database, which the user runs, and their go-ahead to remove the first build's items and publish the new one.
+
+### Whole project (9.10)
+
+`npm run lint && npm run typecheck && npm test` with `DATABASE_URL` on the throwaway database. `openspec validate --strict` passes too.
+
+- **Passed:** lint, typecheck, shared 1,118, MCP 232, web 1,376, the latency bench, and server 1,024 with 4 skipped.
+- **One failure, not from this change:** `libraryStore.test.ts`'s "most recently active first" on Postgres.
+  - It passed in the run before the review fixes, and fails every time now.
+  - The container's clock had drifted to 38 ms behind the Mac's, measured with `clock_timestamp()`.
+  - Rooms are created through Prisma, but events are inserted with raw SQL and take the database's `now()`. So an event added 5 ms after a room reads as older than it.
+  - Nothing in group 9 touches room listing. Listed as a follow-up.
+- **The server suite on the memory store** passes: 864, with 53 Postgres-only tests skipped.

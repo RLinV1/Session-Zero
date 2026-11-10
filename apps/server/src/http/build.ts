@@ -48,8 +48,11 @@ import { refused, type AccountLimits } from "../identity/routes";
 import type { Sessions } from "../identity/sessions";
 import type { AssetStore } from "../store/assetStore";
 import {
+  BuildChoiceOffError,
   BuildClosedError,
+  BuildItemChangedError,
   BuildItemLockedError,
+  type BuildWriteGuard,
   BuildLimitError,
   BuildPublishConflictError,
   type BuildFileKind,
@@ -74,6 +77,8 @@ const PASS_EXPIRED = "That build pass has expired. Ask the user to make a new on
 const WRONG_FILE_TYPE = "A build takes PNG, JPEG or WebP images and UVTT files. Rules and character sheets stay in your AI app.";
 const NOT_FOUND = "No such build.";
 const WALLS_NOT_ALLOWED = 'The owner hasn\'t let the AI set walls, doors and windows on this build. They can tick "Let my AI set walls, doors and windows" on the build page.';
+const AI_READ_OLD_VERSION = "This map changed while you were saving, perhaps by another save at the same moment. Read it again with get_map_setup, then save once more.";
+const OWNER_SAW_OLD_VERSION = "Your AI changed this map since you looked. Check it again, then make your change.";
 
 /** Both choices are off unless the owner ticks them (ADR 0053). */
 const StartBuild = z.strictObject({ name: z.string().trim().min(1).max(80), aiGrid: z.boolean().default(false), aiWalls: z.boolean().default(false) });
@@ -89,6 +94,8 @@ const PublishRequest = z.strictObject({
   reviewed: z.record(z.string().max(80), z.string().max(40)),
 }).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
 const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
+/** The owner's whole setup for a map, and the version of the map the page showed. */
+const OwnerSetupSave = z.strictObject({ setup: DraftMapSetup, updatedAt: z.string().max(40) });
 const Square = z.coerce.number().int().min(0).max(100_000);
 /** `view_file`'s options: the grid, walls and numbered openings drawn on a map, whole or a block of squares. */
 const PreviewQuery = z.object({
@@ -340,12 +347,13 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   };
 
   /** Writes the owner's change, or answers why it can't be written. */
-  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0], build?: BuildRecord) {
+  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0], build?: BuildRecord, guard?: BuildWriteGuard) {
     try {
-      const saved = await store.editBuildItem(item);
+      const saved = await store.editBuildItem(item, guard);
       const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
       res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
+      if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: OWNER_SAW_OLD_VERSION });
       if (!(err instanceof BuildItemLockedError || err instanceof BuildClosedError)) throw err;
       res.status(409).json({ error: err.message });
     }
@@ -379,7 +387,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   });
 
   /**
-   * The owner's fix to a map's walls, doors and windows: the whole setup, as the page now has it.
+   * The owner's fix to a map's walls, doors and windows: the whole setup, as the page now has it,
+   * with the version of the map the page showed. Openings are numbered for one file, so a change
+   * made against an older version, such as the AI having moved the map to another file, is refused.
    * Marks the map edited, so the AI can't change it again (ADR 0053).
    */
   app.put("/api/builds/:id/maps/:key/setup", (req, res) => {
@@ -387,15 +397,16 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const found = await ownerItem(req, res, "map");
       if (!found) return;
       const { build, item } = found;
-      const body = DraftMapSetup.safeParse(req.body);
+      const body = OwnerSetupSave.safeParse(req.body);
       if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
+      if (body.data.updatedAt !== item.updatedAt) return void res.status(409).json({ error: OWNER_SAW_OLD_VERSION });
       const map = item.data as unknown as DraftMapState;
       const file = await store.findBuildFile(build.id, map.fileId);
       if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
       const read = readMap(build, map, file);
-      const problems = mapSetupProblems(file.board, body.data, read.grid ?? read.proposedGrid, file);
+      const problems = mapSetupProblems(file.board, body.data.setup, read.grid ?? read.proposedGrid, file);
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup: body.data }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build);
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup: body.data.setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
     })().catch(failed(res));
   });
 
@@ -720,14 +731,17 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         return void res.status(422).json({ error: "proposedGrid: that square size doesn't fit this map." });
       }
       // Saving the map again keeps its walls, doors and windows, unless it now uses another file,
-      // whose openings are numbered differently.
-      const earlier = (await store.findBuildItem(build.id, "map", key))?.data as unknown as DraftMapState | undefined;
+      // whose openings are numbered differently. The setup carried over must still be the latest,
+      // so a setup saved at the same moment isn't silently undone.
+      const earlierItem = await store.findBuildItem(build.id, "map", key);
+      const earlier = earlierItem?.data as unknown as DraftMapState | undefined;
       const setup = earlier?.fileId === input.fileId ? earlier.setup : undefined;
       const data: DraftMapState = {
         name: input.name, fileId: input.fileId, proposedGrid: proposed, gridStatus: file.grid ? "confirmed" : proposed ? "proposed" : "none", grid: file.grid,
         ...(setup ? { setup } : {}),
       };
-      await saveItem(res, { buildId: build.id, kind: "map", key, data: { ...data }, flags, notCarriedOver }, BUILD_LIMITS.mapsPerBuild, build);
+      await saveItem(res, { buildId: build.id, kind: "map", key, data: { ...data }, flags, notCarriedOver }, BUILD_LIMITS.mapsPerBuild, build,
+        setup && earlierItem ? { expectedUpdatedAt: earlierItem.updatedAt } : undefined);
     })().catch(failed(res));
   });
 
@@ -755,8 +769,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   /**
    * Sets a map's openings, lines and marks, when the owner allows it (ADR 0053). Each part sent
    * replaces that part. A map the owner edited, or one already published, is refused by the store.
-   * The owner turning walls off between the check and the write is covered by publish, which
-   * refuses anything changed since the owner last looked.
+   * The store checks again, in the write, that walls are still allowed and that the map is still the
+   * version read here, so the owner turning walls off, or another save at the same moment, wins.
    */
   app.put("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
     void (async () => {
@@ -773,8 +787,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const problems = mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file);
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
       try {
-        await store.saveBuildItem({ buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, BUILD_LIMITS.mapsPerBuild);
+        await store.saveBuildItem({ buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, BUILD_LIMITS.mapsPerBuild,
+          { requireAiWalls: true, expectedUpdatedAt: item.updatedAt });
       } catch (err) {
+        if (err instanceof BuildChoiceOffError) return void res.status(403).json({ error: WALLS_NOT_ALLOWED });
+        if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: AI_READ_OLD_VERSION });
         if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
         return void res.status(409).json({ error: err.message });
       }
@@ -884,12 +901,13 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     }
   }
 
-  async function saveItem(res: Response, item: Parameters<RoomStore["saveBuildItem"]>[0], max: number, build?: BuildRecord) {
+  async function saveItem(res: Response, item: Parameters<RoomStore["saveBuildItem"]>[0], max: number, build?: BuildRecord, guard?: BuildWriteGuard) {
     try {
-      const saved = await store.saveBuildItem(item, max);
+      const saved = await store.saveBuildItem(item, max, guard);
       const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
       res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
+      if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: AI_READ_OLD_VERSION });
       if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
       res.status(409).json({ error: err.message });
     }

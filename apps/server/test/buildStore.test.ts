@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { GameProfile } from "@vtt/shared";
 import {
+  BuildChoiceOffError,
   BuildClosedError,
+  BuildItemChangedError,
   BuildItemLockedError,
   BuildLimitError,
   type BuildFileRecord,
@@ -49,6 +51,25 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
     expect(await newBuild(store)).toMatchObject({ aiGrid: false, aiWalls: false });
     const ticked = await store.createBuild({ id: randomUUID(), ownerGmId: await newOwner(store), name: "Lanternfall", aiGrid: true, aiWalls: true }, 3);
     expect(await store.findBuild(ticked.id, ticked.ownerGmId)).toMatchObject({ aiGrid: true, aiWalls: true });
+  });
+
+  it("checks a write's guard inside the write: walls still allowed, and the version read (ADR 0053)", async () => {
+    const store = makeStore();
+    const build = await newBuild(store);
+    const map = item(build.id, { kind: "map", key: "shop", data: { name: "Shop" } });
+    // Turned off between the AI's read and its write: refused, and nothing written.
+    await expect(store.saveBuildItem(map, 20, { requireAiWalls: true })).rejects.toBeInstanceOf(BuildChoiceOffError);
+    expect(await store.findBuildItem(build.id, "map", "shop")).toBeNull();
+    await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true });
+    // A new item is expected not to exist yet.
+    const first = await store.saveBuildItem(map, 20, { requireAiWalls: true, expectedUpdatedAt: null });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await store.saveBuildItem({ ...map, data: { name: "Shop 2" } }, 20, { expectedUpdatedAt: first.updatedAt });
+    // A save made from the first version, after the second landed, is refused rather than undoing it.
+    await expect(store.saveBuildItem({ ...map, data: { name: "Stale" } }, 20, { expectedUpdatedAt: first.updatedAt })).rejects.toBeInstanceOf(BuildItemChangedError);
+    await expect(store.editBuildItem({ ...map, data: { name: "Stale owner" } }, { expectedUpdatedAt: first.updatedAt })).rejects.toBeInstanceOf(BuildItemChangedError);
+    expect((await store.findBuildItem(build.id, "map", "shop"))?.data).toEqual({ name: "Shop 2" });
+    await expect(store.editBuildItem({ ...map, data: { name: "Owner" } }, { expectedUpdatedAt: second.updatedAt })).resolves.toMatchObject({ editedByUser: true });
   });
 
   it("changes the choices only for the owner of an open build", async () => {
