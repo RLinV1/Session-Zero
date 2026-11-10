@@ -5,6 +5,7 @@ import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
+import { t } from "../i18n/locale";
 
 /**
  * The GM's Share control, last in the room's top bar. One button opens a "Share this room" modal
@@ -130,38 +131,38 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
       setCode(inviteCode);
       flash("reset");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't reset the link");
+      setError(err instanceof Error ? err.message : t("share.resetFailed"));
     } finally {
       generation.current++;
       setBusy(false);
     }
   }
 
-  const status = result === "copied" ? "Copied" : result === "failed" ? "Copy failed" : result === "reset" ? "Link reset" : "";
+  const status = result === "copied" ? t("share.copied") : result === "failed" ? t("share.copyFailed") : result === "reset" ? t("share.linkReset") : "";
 
   return (
     <div className="share-group" data-tour="share">
       {!hideTrigger && (
         <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
-          Share
+          {t("share.share")}
         </button>
       )}
-      <Modal open={open} title="Share this room" className="share-modal" onAfterClose={onAfterClose} onClose={() => !busy && setOpen(false)}>
+      <Modal open={open} title={t("share.title")} className="share-modal" onAfterClose={onAfterClose} onClose={() => !busy && setOpen(false)}>
         <div className="share-body" aria-busy={!link && !loadFailed}>
           {loadFailed && (
             <div role="alert" className="error">
-              Couldn't load the link{" "}
+              {t("share.loadFailed")}{" "}
               <button type="button" className="secondary" onClick={load}>
-                Retry
+                {t("share.retry")}
               </button>
             </div>
           )}
-          {!link && !loadFailed && <p className="muted">Loading…</p>}
+          {!link && !loadFailed && <p className="muted">{t("common.loading")}</p>}
           {link && (
             <>
               <div className="share-section">
                 <label className="field-label" htmlFor={fieldId}>
-                  Invite link
+                  {t("share.inviteLink")}
                 </label>
                 <div className="share-link-row">
                   <input
@@ -175,8 +176,8 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                   <button
                     type="button"
                     className="icon-button share-copy"
-                    aria-label="Copy link"
-                    title="Copy link"
+                    aria-label={t("share.copyLink")}
+                    title={t("share.copyLink")}
                     onClick={(e) => void copy(e.currentTarget)}
                     disabled={busy}
                   >
@@ -184,7 +185,7 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                   </button>
                 </div>
                 <p className="muted share-hint">
-                  {joinsLocked ? "The room is locked, so this link can't admit anyone new." : "Anyone with this link can join as a player."}
+                  {joinsLocked ? t("share.lockedNote") : t("share.anyone")}
                 </p>
               </div>
             </>
@@ -193,7 +194,7 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
             <div className="share-action-buttons">
               {link && (
                 <button type="button" className="secondary share-qr-toggle" onClick={() => setQrOpen(true)}>
-                  <QrCode size={16} aria-hidden="true" /> Show QR code
+                  <QrCode size={16} aria-hidden="true" /> {t("share.showQr")}
                 </button>
               )}
               <button
@@ -202,10 +203,10 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                 onClick={() => setConfirming(true)}
                 disabled={busy || !link}
               >
-                <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
+                <ArrowsClockwise size={16} aria-hidden="true" /> {t("share.resetLink")}
               </button>
             </div>
-            <p className="muted share-hint">Reset replaces the link and QR code. The old ones stop working.</p>
+            <p className="muted share-hint">{t("share.resetNote")}</p>
           </div>
           {/* Outside the link's own loading: a leaked link should be stoppable even if it won't load. */}
           <div className="share-actions" aria-busy={locking}>
@@ -218,10 +219,10 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                 aria-describedby={lockHintId}
                 onChange={(e) => void setLocked(e.target.checked)}
               />
-              Lock the room
+              {t("share.lock")}
             </label>
             <p id={lockHintId} className="muted share-hint">
-              Stops anyone new joining, even with the link. Players already here can still come back.
+              {t("share.lockNote")}
             </p>
             {lockError && <p role="alert" className="error small">{lockError}</p>}
           </div>
@@ -230,7 +231,7 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
           </span>
         </div>
       </Modal>
-      <Modal open={qrOpen && !!link} title="QR code" className="share-qr-modal" onClose={() => setQrOpen(false)}>
+      <Modal open={qrOpen && !!link} title={t("share.qr")} className="share-qr-modal" onClose={() => setQrOpen(false)}>
         {link && (
           <div className="share-qr-body">
             <div className="share-qr">
@@ -241,13 +242,13 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
                 bgColor="#ffffff"
                 fgColor="#000000"
                 role="img"
-                aria-label="QR code for the invite link"
+                aria-label={t("share.qrLabel")}
               />
             </div>
-            <p className="muted share-hint">Scan to join as a player.</p>
+            <p className="muted share-hint">{t("share.scan")}</p>
             <div className="row modal-actions">
               <button type="button" className="secondary" onClick={() => setQrOpen(false)}>
-                Close
+                {t("common.close")}
               </button>
             </div>
           </div>
@@ -255,15 +256,14 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
       </Modal>
       <Modal
         open={confirming}
-        title="Reset the invite link?"
+        title={t("share.resetQ")}
         onClose={() => !busy && closeConfirm()}
         initialFocus={cancelRef}
       >
         <div className="leave-confirm">
-          <p>The current link stops working straight away. Anyone who opens it sees "Invite not found".</p>
+          <p>{t("share.resetBody1")}</p>
           <p className="muted">
-            Everyone already in the room stays connected and can come back as usual. Share the new link with anyone
-            who still needs to join.
+            {t("share.resetBody2")}
           </p>
           {error && (
             <p role="alert" className="error">
@@ -272,10 +272,10 @@ export function ShareButton({ roomId, token, connection, joinsLocked, open: open
           )}
           <div className="row modal-actions">
             <button ref={cancelRef} type="button" className="secondary" onClick={closeConfirm} disabled={busy}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="danger-fill" onClick={() => void reset()} disabled={busy}>
-              {busy ? "Resetting…" : "Reset link"}
+              {busy ? t("share.resetting") : t("share.resetLink")}
             </button>
           </div>
         </div>

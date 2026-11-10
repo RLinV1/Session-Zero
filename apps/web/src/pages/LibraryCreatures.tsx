@@ -14,6 +14,7 @@ import { TokenPreview } from "../ui/TokenPreview";
 import { creatureSummary, type CreaturePrefill } from "./creatureDraft";
 import { LibraryPicker } from "./LibraryPicker";
 import { TokenDisc } from "../ui/TokenDisc";
+import { t } from "../i18n/locale";
 
 /** A creature in the library's Creatures tab (library-creatures): its art or a colour disc, name and stats. */
 export function CreatureCard(props: {
@@ -32,7 +33,7 @@ export function CreatureCard(props: {
       await api.library.creatures.remove(creature.id);
       props.onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t("common.deleteFailed"));
       setDeleting(false);
       setConfirming(false);
     }
@@ -47,21 +48,21 @@ export function CreatureCard(props: {
       <span className="muted asset-meta">{creatureSummary(creature)}</span>
       {error && <p role="alert" className="error">{error}</p>}
       {confirming ? (
-        <div className="confirm" role="alertdialog" aria-label={`Delete ${creature.name}?`}>
-          <p>Delete “{creature.name}”? Tokens already on a board stay as they are.</p>
+        <div className="confirm" role="alertdialog" aria-label={t("common.deleteNamedQ", { name: creature.name })}>
+          <p>{t("creature.deleteBody", { name: creature.name })}</p>
           <div className="row">
             <button type="button" className="secondary small" disabled={deleting} onClick={() => setConfirming(false)}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="small danger-fill" disabled={deleting} onClick={() => void remove()}>
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("common.deleting") : t("common.delete")}
             </button>
           </div>
         </div>
       ) : (
         <div className="row asset-actions">
-          <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label="Edit" onClick={props.onEdit} />
-          <IconAction icon={<Trash size={16} aria-hidden="true" />} label="Delete" danger onClick={() => setConfirming(true)} />
+          <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label={t("common.edit")} onClick={props.onEdit} />
+          <IconAction icon={<Trash size={16} aria-hidden="true" />} label={t("common.delete")} danger onClick={() => setConfirming(true)} />
         </div>
       )}
     </li>
@@ -71,7 +72,7 @@ export function CreatureCard(props: {
 /** A creature included with the app: read-only art, name and stats; GMs place it from "From creature". */
 export function BuiltinCreatureCard(props: { creature: LibraryCreature }) {
   const { creature } = props;
-  const stats: [string, number | null][] = [["HP", creature.maxHp ?? null], ["AC", creature.ac ?? null]];
+  const stats: [string, number | null][] = [[t("creature.stat.hp"), creature.maxHp ?? null], [t("creature.stat.ac"), creature.ac ?? null]];
   return (
     <li className="asset-card creature-card builtin-creature">
       <TokenDisc name={creature.name} color={creature.color} image={creature.imageUrl} size="6rem" className="builtin-creature-portrait" />
@@ -80,19 +81,20 @@ export function BuiltinCreatureCard(props: { creature: LibraryCreature }) {
         {stats.map(([label, value]) => value !== null && (
           <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
         ))}
-        <div><dt>Attacks</dt><dd>{creature.attacks?.length ?? 0}</dd></div>
+        <div><dt>{t("creature.attacks")}</dt><dd>{creature.attacks?.length ?? 0}</dd></div>
       </dl>
     </li>
   );
 }
 
-const FIELD_HINTS:Record<string, string> = {
-  name: "Give it a name of up to 60 characters.",
-  size: "Size must be above 0 and at most 10 cells.",
-  hp: `HP must be a whole number from ${MIN_HP} to 9999, or blank.`,
-  maxHp: "Max HP must be a whole number from 1 to 9999, or blank.",
-  ac: "AC must be a whole number from 0 to 99, or blank.",
-};
+/** Read when the form renders, so the hints follow the reader's language. */
+const fieldHint = (field: string): string | undefined => ({
+  name: t("creature.hint.name"),
+  size: t("creature.hint.size"),
+  hp: t("creature.hint.hp", { min: MIN_HP }),
+  maxHp: t("creature.hint.maxHp"),
+  ac: t("creature.hint.ac"),
+} as Record<string, string>)[field];
 
 const optionalNumber = (value: string) => (value.trim() === "" ? null : Number(value));
 
@@ -120,7 +122,7 @@ export function CreatureForm(props: {
   const [attacks, setAttacks] = useState<AttackPreset[]>(structuredClone(from?.attacks ?? []));
   const [editingAttack, setEditingAttack] = useState<number | "new" | null>(null);
   const [image, setImage] = useState<{ assetId: string; url: string; label: string } | null>(
-    from?.imageAssetId && from.imageUrl ? { assetId: from.imageAssetId, url: from.imageUrl, label: creature ? "Current art" : "Token's art" } : null,
+    from?.imageAssetId && from.imageUrl ? { assetId: from.imageAssetId, url: from.imageUrl, label: creature ? t("creature.currentArt") : t("creature.tokensArt") } : null,
   );
   const [picking, setPicking] = useState(false);
   const conditionsLabelId = useId();
@@ -141,8 +143,8 @@ export function CreatureForm(props: {
     imageAssetId: image?.assetId ?? null,
   });
   const hint = parsed.success ? null : parsed.error.issues[0]?.message === "Starting HP cannot exceed Max HP"
-    ? "Starting HP cannot exceed Max HP."
-    : FIELD_HINTS[String(parsed.error.issues[0]?.path[0])] ?? "Check the values above.";
+    ? t("creature.hpOverMax")
+    : fieldHint(String(parsed.error.issues[0]?.path[0])) ?? t("creature.checkValues");
   const touched = creature !== null || name !== "";
   // A hint about Starting HP must not point at a closed section: open it before this render paints.
   const hpHinted = touched && !parsed.success && parsed.error.issues[0]?.path[0] === "hp";
@@ -159,7 +161,7 @@ export function CreatureForm(props: {
         : await api.library.creatures.create(parsed.data);
       props.onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the creature");
+      setError(err instanceof Error ? err.message : t("creature.saveFailed"));
       setSaving(false);
     }
   }
@@ -168,51 +170,51 @@ export function CreatureForm(props: {
     <>
       <form className="stack creature-form" onSubmit={(e) => void save(e)}>
         <label>
-          Name on the board
+          {t("creature.nameOnBoard")}
           <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus aria-describedby="creature-name-hint" />
-          <span id="creature-name-hint" className="muted">Players see this name on the creature's tokens.</span>
+          <span id="creature-name-hint" className="muted">{t("creature.nameHint")}</span>
         </label>
         <div className="token-setup-grid token-setup-grid-3">
-          <label>Size (cells)<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
-          <label>Max HP<input type="number" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} min="1" max="9999" step="1" /></label>
-          <label>AC<input type="number" value={ac} onChange={(e) => setAc(e.target.value)} min="0" max="99" step="1" /></label>
+          <label>{t("creature.size")}<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
+          <label>{t("creature.maxHp")}<input type="number" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} min="1" max="9999" step="1" /></label>
+          <label>{t("creature.ac")}<input type="number" value={ac} onChange={(e) => setAc(e.target.value)} min="0" max="99" step="1" /></label>
         </div>
-        <div className="stack" role="group" aria-label="Creature attacks">
-          <span className="field-label">Attacks</span>
+        <div className="stack" role="group" aria-label={t("creature.attacksLabel")}>
+          <span className="field-label">{t("creature.attacks")}</span>
           {attacks.map((attack, index) => (
             <div className="row" key={attack.name}>
               <span>{attack.name} · {presetSummary(attack)}</span>
-              <button type="button" className="link" onClick={() => setEditingAttack(index)}>Edit</button>
+              <button type="button" className="link" onClick={() => setEditingAttack(index)}>{t("common.edit")}</button>
             </div>
           ))}
-          <button type="button" className="secondary" disabled={attacks.length >= MAX_TOKEN_ATTACKS} onClick={() => setEditingAttack("new")}>Add attack</button>
+          <button type="button" className="secondary" disabled={attacks.length >= MAX_TOKEN_ATTACKS} onClick={() => setEditingAttack("new")}>{t("creature.addAttack")}</button>
         </div>
         <div className="stack token-image-field">
-          <span className="field-label">Image</span>
+          <span className="field-label">{t("creature.image")}</span>
           {image ? (
             <div className="row token-image-chosen">
               <TokenPreview url={image.url} color={color} />
               <span className="token-name" title={image.label}>{image.label}</span>
-              <button type="button" className="link" onClick={() => setImage(null)}>Remove</button>
+              <button type="button" className="link" onClick={() => setImage(null)}>{t("common.remove")}</button>
             </div>
           ) : (
             <div className="row creature-image-choose">
-              <button type="button" className="secondary" onClick={() => setPicking(true)}>Choose token art</button>
+              <button type="button" className="secondary" onClick={() => setPicking(true)}>{t("creature.chooseArt")}</button>
             </div>
           )}
         </div>
         {/* Rarely changed, so tucked away as in Add Token; open whenever it holds a value or the HP hint
             (creature-form-advanced-settings). */}
         <details className="token-editor-section" open={advancedOpen} onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}>
-          <summary>Advanced settings</summary>
+          <summary>{t("creature.advanced")}</summary>
           <div className="stack">
             <label>
-              Starting HP
+              {t("creature.startingHp")}
               <input type="number" value={hp} onChange={(e) => setHp(e.target.value)} min={MIN_HP} max="9999" step="1" />
-              <span className="muted small-print">Leave Starting HP blank to start at Max HP.</span>
+              <span className="muted small-print">{t("creature.startingHpHint")}</span>
             </label>
             <div className="stack" role="group" aria-labelledby={conditionsLabelId}>
-              <span id={conditionsLabelId} className="field-label">Starting conditions</span>
+              <span id={conditionsLabelId} className="field-label">{t("creature.startingConditions")}</span>
               <ConditionPicker value={conditions} onChange={setConditions} />
             </div>
           </div>
@@ -220,14 +222,14 @@ export function CreatureForm(props: {
         {touched && hint && <p className="error" role="alert">{hint}</p>}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
-          <button type="button" className="secondary" disabled={saving} onClick={props.onCancel}>Cancel</button>
+          <button type="button" className="secondary" disabled={saving} onClick={props.onCancel}>{t("common.cancel")}</button>
           <button className="primary" type="submit" disabled={!parsed.success || saving}>
-            {saving ? "Saving…" : creature ? "Save creature" : "Create creature"}
+            {saving ? t("common.saving") : creature ? t("creature.save") : t("creature.create")}
           </button>
         </div>
       </form>
       {/* Stacked over this one, outside the form so its buttons can never submit it. */}
-      <Modal open={picking} title="Choose token art" onClose={() => setPicking(false)}>
+      <Modal open={picking} title={t("creature.chooseArt")} onClose={() => setPicking(false)}>
         <LibraryPicker
           kind="token"
           onPick={async (asset) => {
@@ -237,13 +239,13 @@ export function CreatureForm(props: {
               setImage({ assetId: own.id, url: own.url, label: own.name });
               setPicking(false);
             } catch {
-              setError("Could not add that art to your library. Try again.");
+              setError(t("creature.artFailed"));
               setPicking(false);
             }
           }}
         />
       </Modal>
-      <Modal open={editingAttack !== null} title={editingAttack === "new" ? "Add attack" : "Edit attack"} onClose={() => setEditingAttack(null)}>
+      <Modal open={editingAttack !== null} title={editingAttack === "new" ? t("creature.addAttack") : t("creature.editAttack")} onClose={() => setEditingAttack(null)}>
         {editingAttack !== null && <PresetEditor
           key={editingAttack}
           initial={typeof editingAttack === "number" ? attacks[editingAttack] ?? null : null}
@@ -273,7 +275,7 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
     let live = true;
     api.library.creatures.list().then(
       (list) => live && setCreatures(list),
-      (err: unknown) => live && setError(err instanceof Error ? err.message : "Could not load your creatures"),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : t("library.creaturesLoadFailed")),
     );
     return () => {
       live = false;
@@ -284,13 +286,13 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
   const shown = [...(creatures ?? []), ...(creatures ? BUILTIN_CREATURES : [])].filter((c) => !q || c.name.toLowerCase().includes(q));
 
   return (
-    <div className="library-picker" role="group" aria-label="Choose a creature">
-      <input type="search" aria-label="Search creatures" placeholder="Search creatures" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+    <div className="library-picker" role="group" aria-label={t("creature.choose")}>
+      <input type="search" aria-label={t("creature.search")} placeholder={t("creature.search")} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
       {error && <p role="alert" className="error">{error}</p>}
-      {!creatures && !error && <p className="muted">Loading…</p>}
+      {!creatures && !error && <p className="muted">{t("common.loading")}</p>}
       {creatures && shown.length === 0 && (
         <p className="muted">
-          {creatures.length === 0 && !q ? "No creatures yet. Make them on the library's Creatures tab." : "Nothing matches that search."}
+          {creatures.length === 0 && !q ? t("creature.noneYet") : t("common.nothingMatches")}
         </p>
       )}
       <ul className="plain picker-grid">

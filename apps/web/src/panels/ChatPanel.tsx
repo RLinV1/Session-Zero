@@ -4,6 +4,8 @@ import { MAX_CHAT_LENGTH, mentionSegments, type ChatMessage, type Participant, t
 import { useRoomSnapshot, type RoomConnection } from "../net/roomConnection";
 import { usePersistentState } from "../ui/usePersistentState";
 import { applyMention, mentionQuery, mentionSuggestions } from "./chatMentionInput";
+import { formatClock } from "../ui/formatRelative";
+import { t } from "../i18n/locale";
 
 /** Where the chat button sits: its distance in pixels from the window's right and bottom edges. */
 export interface ChatSpot {
@@ -57,8 +59,7 @@ const mentionsOf = (message: ChatMessage, participantId: string) =>
 
 /** The committed time in the viewer's locale, or empty when the message has none (KAN-75). */
 function timeLabel(at: string | null): string {
-  const date = at ? new Date(at) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  return at ? formatClock(at) : "";
 }
 
 /**
@@ -247,10 +248,10 @@ export function ChatPanel({
   return (
     <div className={widgetClass} data-tour="chat" style={widgetStyle as CSSProperties}>
       {open && (
-        <section className="chat-popup" aria-label="Chat">
+        <section className="chat-popup" aria-label={t("chat.title")}>
           <header className="chat-popup-header">
-            <h2>Chat</h2>
-            <button type="button" className="icon-button" aria-label="Close chat"
+            <h2>{t("chat.title")}</h2>
+            <button type="button" className="icon-button" aria-label={t("chat.close")}
               onClick={() => {
                 setOpen(false);
                 // The button unmounts with the popup, so hand focus to the launcher.
@@ -261,18 +262,18 @@ export function ChatPanel({
             </button>
           </header>
       {state.chat.length === 0 ? (
-        <p className="muted">No messages yet.</p>
+        <p className="muted">{t("chat.empty")}</p>
       ) : (
-        <ul className="plain chat-log" ref={log} aria-label="Chat messages" aria-live="polite" tabIndex={0}>
+        <ul className="plain chat-log" ref={log} aria-label={t("chat.messages")} aria-live="polite" tabIndex={0}>
           {state.chat.map((m) => (
             <ChatRow key={m.id} message={m} mine={m.senderId === you?.id} viewerId={you?.id} />
           ))}
         </ul>
       )}
       <form onSubmit={send} className="chat-form">
-        <label htmlFor="chat-text" className="sr-only">Message</label>
+        <label htmlFor="chat-text" className="sr-only">{t("chat.message")}</label>
         {listOpen && (
-          <ul id={listId} role="listbox" aria-label="Mention someone" className="plain chat-mention-list">
+          <ul id={listId} role="listbox" aria-label={t("chat.mention")} className="plain chat-mention-list">
             {suggestions.map((p, i) => (
               <li
                 key={p.id}
@@ -285,7 +286,7 @@ export function ChatPanel({
                 onClick={() => pick(p)}
               >
                 <span>{p.displayName}</span>
-                {p.role === "gm" && <span className="muted">GM</span>}
+                {p.role === "gm" && <span className="muted">{t("people.gm")}</span>}
               </li>
             ))}
           </ul>
@@ -305,12 +306,12 @@ export function ChatPanel({
             aria-activedescendant={listOpen ? `${listId}-${suggestions[active]!.id}` : undefined}
             maxLength={MAX_CHAT_LENGTH}
             disabled={readOnly}
-            placeholder={readOnly ? "Chat is read-only while previewing" : online ? "Say something…" : "Offline"}
+            placeholder={readOnly ? t("chat.readOnly") : online ? t("chat.placeholder") : t("chat.offline")}
             autoComplete="off"
             aria-invalid={error !== null}
             aria-describedby={error ? "chat-error" : undefined}
           />
-          <button type="submit" className="primary" disabled={!canSend}>Send</button>
+          <button type="submit" className="primary" disabled={!canSend}>{t("chat.send")}</button>
         </div>
         {error && <p id="chat-error" role="alert" className="error">{error}</p>}
       </form>
@@ -322,7 +323,7 @@ export function ChatPanel({
         className="chat-fab"
         aria-label={launcherLabel(unread, mentioned)}
         aria-expanded={open}
-        title="Chat · drag, or Shift+arrow keys, to move"
+        title={t("chat.move")}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -349,9 +350,9 @@ export function ChatPanel({
 
 /** "Chat", plus how many messages are unread and how many of those mention you (chat-mentions). */
 export function launcherLabel(unread: number, mentioned: number): string {
-  if (unread === 0) return "Chat";
-  if (mentioned === 0) return `Chat, ${unread} unread`;
-  return `Chat, ${unread} unread, ${mentioned} ${mentioned === 1 ? "mentions" : "mention"} you`;
+  if (unread === 0) return t("chat.title");
+  if (mentioned === 0) return t("chat.unread", { n: unread });
+  return t("chat.unreadMentions", { n: unread, m: mentioned });
 }
 
 /**
@@ -368,7 +369,7 @@ export function ChatRow({ message, mine, viewerId }: { message: ChatMessage; min
       <span className="chat-meta">
         <strong className="chat-sender">{message.senderName}</strong>
         {time && <time dateTime={message.at ?? undefined} className="muted">{time}</time>}
-        {mentionsYou && <span className="chat-mentions-you">Mentions you</span>}
+        {mentionsYou && <span className="chat-mentions-you">{t("chat.mentionsYou")}</span>}
       </span>
       <span className="chat-text">
         {mentionSegments(message.text, message.mentions, { participantId: message.senderId, displayName: message.senderName }).map((segment, i) =>

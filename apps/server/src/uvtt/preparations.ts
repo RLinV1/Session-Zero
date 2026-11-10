@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { UvttError, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene, type UvttBaseline, type UvttDraftEdit, type UvttPreparation } from "@vtt/shared";
+import { englishText, sharedMsg, type MessageRef } from "@vtt/shared";
+
+/** A lease refusal: English, and as data for the client's language (ADR 0052). */
+const leaseRefusal = (code: "not_found" | "invalid", text: MessageRef) => ({ ok: false as const, code, message: englishText(text), text });
 
 export const UVTT_PREPARATION_TTL = 30 * 60_000;
 export const UVTT_MAX_OWNER_DRAFTS = 20;
 export const UVTT_MAX_DRAFTS = 100;
 interface Entry { roomId: string; actorId: string; ownerId: string; expiresAt: number; view: UvttPreparation; baseline: UvttBaseline; leased: boolean; appliedSeq?: number | null; appliedSceneId?: string }
 export type UvttLease =
-  | { ok: false; code: "not_found" | "invalid"; message: string }
+  | { ok: false; code: "not_found" | "invalid"; message: string; text: MessageRef }
   | { ok: true; scene: PreparedUvttScene; finish: (seq?: number | null) => void; appliedSeq?: undefined }
   | { ok: true; appliedSeq: number | null; scene?: undefined; finish?: undefined };
 /** Preparations/receipts are bounded and private. Stored images follow room upload retention. */
@@ -51,10 +55,10 @@ export class UvttPreparations {
   }
   lease(roomId: string, actorId: string, id: string, revision: number, sceneId?: string): UvttLease {
     const e = this.find(roomId, actorId, id);
-    if (!e) return { ok: false, code: "not_found", message: "This preparation expired or the server restarted. Re-import the file." };
-    if (revision !== e.view.revision || e.leased) return { ok: false, code: "invalid", message: "This preparation changed. Use its current revision or re-import." };
+    if (!e) return leaseRefusal("not_found", sharedMsg("reject.preparationExpiredLive"));
+    if (revision !== e.view.revision || e.leased) return leaseRefusal("invalid", sharedMsg("reject.preparationChanged"));
     if (e.appliedSeq !== undefined) {
-      if (sceneId !== undefined && e.appliedSceneId !== sceneId) return { ok: false, code: "invalid", message: "This preparation was already applied to another scene. Re-import the file." };
+      if (sceneId !== undefined && e.appliedSceneId !== sceneId) return leaseRefusal("invalid", sharedMsg("reject.preparationAppliedElsewhere"));
       return { ok: true, appliedSeq: e.appliedSeq };
     }
     e.leased = true;

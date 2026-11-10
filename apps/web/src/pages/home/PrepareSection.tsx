@@ -4,6 +4,7 @@ import { MAP_IMAGE_TYPES, MAP_IMPORT_TYPES } from "../../net/mapFileTypes";
 import { MapGrid } from "../../ui/MapGrid";
 import { CROP, MAPS, cropWallLines, onCrop } from "./crops";
 import { GridPanel } from "./GridPanel";
+import { t } from "../../i18n/locale";
 
 /**
  * Preparing a map (gm-home: "The home page covers the four promises"): what the library takes,
@@ -13,10 +14,9 @@ export function PrepareSection() {
   return (
     <section className="home-section prepare-section" aria-labelledby="prepare-heading">
       <div className="section-copy">
-        <h3 id="prepare-heading">Bring the map you already have.</h3>
+        <h3 id="prepare-heading">{t("home.prepare.title")}</h3>
         <p>
-          Upload a picture of your map or import one from another map tool. Line up the grid once, and set the walls
-          that decide what your players can see.
+          {t("home.prepare.body")}
         </p>
       </div>
       <MapIntake />
@@ -32,12 +32,12 @@ function MapIntake() {
     <div className="intake">
       <FileArrowUp className="intake-icon" aria-hidden="true" />
       <div className="intake-copy">
-        <h4>Upload or import</h4>
-        <p>A UVTT file brings its grid, walls and doors with it.</p>
+        <h4>{t("home.prepare.upload.title")}</h4>
+        <p>{t("home.prepare.upload.body")}</p>
       </div>
       <dl className="file-types">
         <div>
-          <dt>Pictures</dt>
+          <dt>{t("home.prepare.pictures")}</dt>
           <dd>
             {MAP_IMAGE_TYPES.map((t) => (
               <span key={t.label} className="file-chip">
@@ -47,7 +47,7 @@ function MapIntake() {
           </dd>
         </div>
         <div>
-          <dt>From other map tools</dt>
+          <dt>{t("home.prepare.otherTools")}</dt>
           <dd>
             {MAP_IMPORT_TYPES.map((t) => (
               <span key={t.label} className="file-chip">
@@ -79,27 +79,26 @@ export function WallsPanel() {
   return (
     <div className="prepare-step walls-step">
       <div className="step-copy">
-        <h4>Walls, doors and windows</h4>
+        <h4>{t("home.prepare.walls.title")}</h4>
         <p>
-          Draw them in the map editor or bring them in with a UVTT file, and they stay with the map. Walls and shut
-          doors stop sight and your players' moves. A window lets them see through, not walk through.
+          {t("home.prepare.walls.body")}
         </p>
-        <ul className="plain walls-legend" aria-label="Key to the drawing">
+        <ul className="plain walls-legend" aria-label={t("home.prepare.walls.key")}>
           <li>
             <span className="legend-line is-wall" aria-hidden="true" />
-            Wall
+            {t("home.prepare.walls.wall")}
           </li>
           <li>
             <span className="legend-line is-door" aria-hidden="true" />
-            Door
+            {t("home.prepare.walls.door")}
           </li>
           <li>
             <span className="legend-line is-window" aria-hidden="true" />
-            Window
+            {t("home.prepare.walls.window")}
           </li>
           <li>
             <span className="legend-lock" aria-hidden="true" />
-            Locked
+            {t("home.prepare.walls.locked")}
           </li>
         </ul>
       </div>

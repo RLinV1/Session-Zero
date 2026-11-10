@@ -1,3 +1,4 @@
+import { t } from "../../i18n/locale";
 import { decide, emptyRoomState, reduce, type Command, type DecideContext, type Participant, type RoomState, type Token } from "@vtt/shared";
 
 /**
@@ -6,24 +7,25 @@ import { decide, emptyRoomState, reduce, type Command, type DecideContext, type 
  * same rules the table runs").
  */
 export const TURN_GM: Participant = { id: "gm", role: "gm", displayName: "GM" };
-export const TURN_PLAYER: Participant = { id: "mara-player", role: "player", displayName: "Mara's player" };
+/** Read when the demo is built, so a remount after a language change rebuilds it in that language. */
+export const turnPlayer = (): Participant => ({ id: "mara-player", role: "player", displayName: t("home.turn.player", { name: "Mara" }) });
 
-const ENTRIES: { id: string; name: string; color: string; score: number; image?: string; owner?: boolean }[] = [
-  { id: "goblin-boss", name: "Goblin boss", color: "#c0392b", score: 17, image: "/img/home/tokens/camp-boss.webp" },
+const ENTRIES: { id: string; name: string; nameKey?: "home.creature.boss" | "home.creature.wolf"; color: string; score: number; image?: string; owner?: boolean }[] = [
+  { id: "goblin-boss", name: "Goblin boss", nameKey: "home.creature.boss", color: "#c0392b", score: 17, image: "/img/home/tokens/camp-boss.webp" },
   { id: "mara", name: "Mara", color: "#5b8def", score: 15, image: "/img/home/tokens/camp-mara.webp", owner: true },
-  { id: "wolf", name: "Wolf", color: "#7f8c8d", score: 12, image: "/img/home/tokens/camp-wolf.webp" },
+  { id: "wolf", name: "Wolf", nameKey: "home.creature.wolf", color: "#7f8c8d", score: 12, image: "/img/home/tokens/camp-wolf.webp" },
   { id: "pell", name: "Pell", color: "#3fb950", score: 9, image: "/img/home/tokens/camp-pell.webp" },
 ];
 
 const token = (e: (typeof ENTRIES)[number], i: number): Token => ({
   id: e.id,
-  name: e.name,
+  name: e.nameKey ? t(e.nameKey) : e.name,
   position: { x: 35 + i * 70, y: 35 },
   size: 1,
   rotation: 0,
   color: e.color,
   imageUrl: e.image ?? null,
-  ownerIds: e.owner ? [TURN_PLAYER.id] : [],
+  ownerIds: e.owner ? ["mara-player"] : [],
   hidden: false,
   stats: { hp: null, maxHp: null, ac: null },
   conditions: [],
@@ -41,7 +43,7 @@ function run(state: RoomState, command: Command): RoomState {
 export function fightRoom(): RoomState {
   let state = emptyRoomState("home-turns");
   state = reduce(state, { type: "ParticipantJoined", participant: TURN_GM });
-  state = reduce(state, { type: "ParticipantJoined", participant: TURN_PLAYER });
+  state = reduce(state, { type: "ParticipantJoined", participant: turnPlayer() });
   ENTRIES.forEach((e, i) => (state = reduce(state, { type: "TokenCreated", token: token(e, i) })));
   return run(state, { type: "initiative.start", entries: ENTRIES.map((e) => ({ tokenId: e.id, score: e.score })) });
 }

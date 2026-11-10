@@ -5,6 +5,7 @@ import { Modal } from "../ui/Modal";
 import { ConditionPicker } from "./ConditionMarker";
 import { damageRollId, savesRollId } from "../board/tokenDice";
 import { amountText, applyToAll, parseAmount, resolveRows, resolveTargets, type ResolveDraft } from "./resolveDraft";
+import { t } from "../i18n/locale";
 
 /**
  * The resolve step of an Area Effect (ADR 0046), docked low on the screen so most of the map stays
@@ -57,7 +58,7 @@ export function ResolveDialog({
     void send({ type: "areaEffect.resolve", effectId: effect.id, rows: built.rows });
   };
 
-  const effectName = effect.label ?? "Area effect";
+  const effectName = effect.label ?? t("area.title");
   // The token is what the GM is deciding about, so it is the title; the effect and step sit beside it.
   const position = target ? `${effectName} · ${step + 1} of ${targets.length}` : effectName;
   const rollShown = target?.roll ? (airborne.has(savesRollId(effect.id)) ? "…" : String(target.roll.total)) : null;
@@ -68,7 +69,7 @@ export function ResolveDialog({
   return (
     <Modal
       open={open}
-      title={target?.name ?? "No targets left"}
+      title={target?.name ?? t("resolve.noTargets")}
       className="resolve-dock"
       onClose={onClose}
       // The roll, damage and HP sit beside the token's name, so they never scroll out of view.
@@ -78,23 +79,23 @@ export function ResolveDialog({
             <dl className="resolve-results">
               {rollShown !== null && (
                 <div className="resolve-result">
-                  <dt>Roll</dt>
+                  <dt>{t("home.dice.roll")}</dt>
                   <dd>{rollShown}</dd>
                   <dd className="resolve-result-detail">{effect.expression}</dd>
                 </div>
               )}
               {damageShown !== null && (
                 <div className="resolve-result">
-                  <dt>Damage</dt>
+                  <dt>{t("resolve.damage")}</dt>
                   <dd>{damageShown}</dd>
                   <dd className="resolve-result-detail">{effect.damage?.expression}</dd>
                 </div>
               )}
               {token.stats.hp !== null && (
                 <div className="resolve-result">
-                  <dt>HP</dt>
+                  <dt>{t("creature.stat.hp")}</dt>
                   <dd>{token.stats.hp}</dd>
-                  {token.stats.maxHp !== null && <dd className="resolve-result-detail">of {token.stats.maxHp}</dd>}
+                  {token.stats.maxHp !== null && <dd className="resolve-result-detail">{t("resolve.ofMax", { n: token.stats.maxHp })}</dd>}
                 </div>
               )}
             </dl>
@@ -107,14 +108,14 @@ export function ResolveDialog({
         <div className="resolve-target">
 
           {token.stats.hp === null ? (
-            <p className="muted">{target.name} has no HP to change.</p>
+            <p className="muted">{t("resolve.noHp", { name: target.name })}</p>
           ) : (
             <div className="resolve-amount">
-              <label htmlFor={fieldId}>Amount</label>
+              <label htmlFor={fieldId}>{t("resolve.amount")}</label>
               <input id={fieldId} inputMode="numeric" value={text} onChange={(e) => setAmount(e.target.value)} aria-invalid={parseAmount(text) === null} aria-describedby="resolve-amount-hint" />
-              <button type="button" className="secondary small" onClick={() => setAmount(String(halfDamage(rolled ?? 0)))}>Half</button>
-              <button type="button" className="secondary small" onClick={() => setAmount("0")}>None</button>
-              <span id="resolve-amount-hint" className="muted small-print">Negative heals, up to max HP.</span>
+              <button type="button" className="secondary small" onClick={() => setAmount(String(halfDamage(rolled ?? 0)))}>{t("resolve.half")}</button>
+              <button type="button" className="secondary small" onClick={() => setAmount("0")}>{t("resolve.none")}</button>
+              <span id="resolve-amount-hint" className="muted small-print">{t("resolve.negativeHeals")}</span>
             </div>
           )}
           {conditionsOn && (
@@ -131,7 +132,7 @@ export function ResolveDialog({
                   disabled={(draft.added[target.tokenId] ?? []).length === 0}
                   onClick={() => onDraft(applyToAll(draft, targets.map((t) => t.tokenId), target.tokenId, (id) => state.tokens[id]?.conditions ?? []))}
                 >
-                  Apply these conditions to every target
+                  {t("resolve.applyConditions")}
                 </button>
               )}
             </>
@@ -140,12 +141,12 @@ export function ResolveDialog({
       )}
       {error && <p role="alert" className="error">{error}</p>}
       <div className="resolve-actions">
-        <button type="button" className="secondary" disabled={step === 0} onClick={() => go(step - 1)}>Previous</button>
-        <button type="button" className={step >= targets.length - 1 ? undefined : "primary"} disabled={step >= targets.length - 1} onClick={() => go(step + 1)}>Next</button>
+        <button type="button" className="secondary" disabled={step === 0} onClick={() => go(step - 1)}>{t("resolve.previous")}</button>
+        <button type="button" className={step >= targets.length - 1 ? undefined : "primary"} disabled={step >= targets.length - 1} onClick={() => go(step + 1)}>{t("tour.next")}</button>
         <span className="resolve-actions-gap" />
         {/* Quiet until the last target, so stepping through with Next is the obvious path. */}
-        <button type="button" className={step >= targets.length - 1 ? "primary" : undefined} disabled={busy} onClick={confirm}>Confirm resolution</button>
-        <button type="button" className="secondary" disabled={busy} onClick={() => void send({ type: "areaEffect.close", effectId: effect.id })}>Skip</button>
+        <button type="button" className={step >= targets.length - 1 ? "primary" : undefined} disabled={busy} onClick={confirm}>{t("resolve.confirm")}</button>
+        <button type="button" className="secondary" disabled={busy} onClick={() => void send({ type: "areaEffect.close", effectId: effect.id })}>{t("area.skip")}</button>
       </div>
     </Modal>
   );

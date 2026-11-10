@@ -3,6 +3,7 @@ import { MAX_TOKEN_ATTACKS, type AttackPreset } from "@vtt/shared";
 import { Modal } from "../ui/Modal";
 import { PresetEditor } from "./AttackPanel";
 import { presetSummary } from "./attackRoll";
+import { t } from "../i18n/locale";
 
 /**
  * A token's named attacks as a collapsible section of a dialog (shared-token-attacks): closed when
@@ -17,22 +18,22 @@ export function useAttackListEditor({ attacks, onChange }: { attacks: AttackPres
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const section = (
     <details className="token-editor-section attack-list-section">
-      <summary>Attacks<span className="token-editor-summary">{attacks.length || "none"}</span></summary>
-      <div className="stack" role="group" aria-label="Attacks">
+      <summary>{t("home.attack.title")}<span className="token-editor-summary">{attacks.length || t("card.noneLower")}</span></summary>
+      <div className="stack" role="group" aria-label={t("home.attack.title")}>
         {attacks.map((attack, index) => (
           <div className="row" key={attack.name}>
             <span>{attack.name} · {presetSummary(attack)}</span>
-            <button type="button" className="link" onClick={() => setEditing(index)}>Edit</button>
+            <button type="button" className="link" onClick={() => setEditing(index)}>{t("common.edit")}</button>
           </div>
         ))}
         <button type="button" className="secondary" disabled={attacks.length >= MAX_TOKEN_ATTACKS} onClick={() => setEditing("new")}>
-          Add attack
+          {t("creature.addAttack")}
         </button>
       </div>
     </details>
   );
   const editor = (
-    <Modal open={editing !== null} title={editing === "new" ? "Add attack" : "Edit attack"} onClose={() => setEditing(null)}>
+    <Modal open={editing !== null} title={editing === "new" ? t("creature.addAttack") : t("creature.editAttack")} onClose={() => setEditing(null)}>
       {editing !== null && (
         <PresetEditor
           key={editing}

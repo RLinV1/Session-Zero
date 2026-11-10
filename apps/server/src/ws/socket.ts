@@ -5,6 +5,11 @@ import {
   SOCKET_EVENTS,
   type ServerMessage,
 } from "@vtt/shared";
+import { englishText, sharedMsg, validationRef, type MessageRef, type RejectionCode } from "@vtt/shared";
+
+/** A `rejected` message: English for every client, the id and params for one that formats its own (ADR 0052). */
+const rejection = (clientCommandId: string, code: RejectionCode, text: MessageRef): ServerMessage =>
+  ({ type: "rejected", clientCommandId, code, message: englishText(text), messageId: text.id, params: text.params });
 import { hashToken } from "../domain/credentials";
 import type { LiveRoom, RoomClient } from "../domain/liveRoom";
 import type { RoomRegistry } from "../domain/roomRegistry";
@@ -229,7 +234,7 @@ export function registerSocket(
         if (!budget.every((windows) => windows.take(room, participantId, now))) {
           const clientCommandId = commandIdOf(raw);
           if (clientCommandId) {
-            send({ type: "rejected", clientCommandId, code: "invalid", message: "You're sending commands too fast. Wait a few seconds." });
+            send(rejection(clientCommandId, "invalid", sharedMsg("reject.tooFastCommands")));
           }
           return;
         }
@@ -251,11 +256,16 @@ export function registerSocket(
         // settle its pending Apply request and show the validation error.
         const clientCommandId = commandIdOf(raw);
         if (clientCommandId) {
+          // Our own schema messages carry their id, so the client can show them in its language;
+          // zod's built-in ones stay as zod wrote them (ADR 0052).
+          const issue = parsed.error.issues[0]?.message;
+          const ours = issue === undefined ? sharedMsg("reject.invalidCommand") : validationRef(issue);
           return send({
             type: "rejected",
             clientCommandId,
             code: "bad_request",
-            message: parsed.error.issues[0]?.message ?? "Invalid command",
+            message: issue ?? englishText(sharedMsg("reject.invalidCommand")),
+            ...(ours && { messageId: ours.id, params: ours.params }),
           });
         }
         return send({ type: "error", code: "bad_request", message: parsed.error.message });
@@ -265,25 +275,15 @@ export function registerSocket(
       switch (msg.type) {
         case "command": {
           if (msg.command.type === "chat.send" && !chatWindows.take(room, participantId, Date.now())) {
-            return send({
-              type: "rejected",
-              clientCommandId: msg.clientCommandId,
-              code: "invalid",
-              message: "You're sending messages too fast. Wait a few seconds.",
-            });
+            return send(rejection(msg.clientCommandId, "invalid", sharedMsg("reject.tooFastMessages")));
           }
           const diceLookChange = msg.command.type === "participant.setDiceLook" || msg.command.type === "participant.clearDiceLook";
           if (diceLookChange && !diceLookWindows.take(room, participantId, Date.now())) {
-            return send({
-              type: "rejected",
-              clientCommandId: msg.clientCommandId,
-              code: "invalid",
-              message: "You're changing dice too fast. Wait a minute.",
-            });
+            return send(rejection(msg.clientCommandId, "invalid", sharedMsg("reject.tooFastDice")));
           }
           const result = await room.submit(participantId, msg.command);
           if (result.ok) send({ type: "ack", clientCommandId: msg.clientCommandId, seq: result.seq });
-          else send({ type: "rejected", clientCommandId: msg.clientCommandId, code: result.code, message: result.message });
+          else send({ type: "rejected", clientCommandId: msg.clientCommandId, code: result.code, message: result.message, messageId: result.text.id, params: result.text.params });
           return;
         }
         case "ephemeral":

@@ -1,4 +1,5 @@
 import { EmptyState } from "./EmptyState";
+import { t } from "../i18n/locale";
 
 /**
  * A room with no map yet (design-language: "Empty states show the next step"). Players see
@@ -13,12 +14,12 @@ export function BoardEmptyState({ isGm, onChooseMap }: { isGm: boolean; onChoose
         action={
           isGm && onChooseMap ? (
             <button type="button" className="primary" onClick={onChooseMap}>
-              Choose a map
+              {t("stage.chooseMap")}
             </button>
           ) : undefined
         }
       >
-        {isGm ? "There is no map on the table yet." : "The GM hasn't set a map yet."}
+        {isGm ? t("empty.gmNoMap") : t("empty.playerNoMap")}
       </EmptyState>
     </div>
   );

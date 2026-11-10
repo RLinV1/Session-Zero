@@ -49,3 +49,4 @@ Changes to existing schemas in `packages/shared` need an ADR in `docs/adr/` and 
 - Commands `noun.verb`; events `PastTense`.
 - Reference the FR ID in tests (`describe("... (FR-PL-02)")`) and PR titles.
 - Keep PixiJS code in `board/`; React components never touch Pixi objects directly.
+- UI text goes through `t()` (`apps/web/src/i18n`, English and zh-TW catalogs); no literal text in components — lint enforces it. Server text people read is a catalog id too (ADR 0052). Terms follow `docs/GLOSSARY-zh-TW.md`.

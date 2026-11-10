@@ -5,7 +5,6 @@ import {
   can,
   CreatureFields,
   hpFraction,
-  inactiveLabel,
   isActive,
   type AttackPreset,
   type ConditionId,
@@ -35,7 +34,9 @@ import { groupedTokens } from "./tokenGroups";
 import { GroupMoveMenu } from "./GroupMoveMenu";
 import { hpLevel } from "../ui/palette";
 import { TokenDisc } from "../ui/TokenDisc";
+import { t } from "../i18n/locale";
 
+import { inactiveText } from "../i18n/labels";
 /**
  * Focusable token roster (FR-GM-24), showing stats and conditions (FR-TAC-07/08).
  *
@@ -174,16 +175,16 @@ export function TokenRoster({
   );
 
   return (
-    <PanelSection id="tokens" title="Tokens" actions={isGm ? <NewGroupButton connection={connection} onError={setError} /> : undefined}>
+    <PanelSection id="tokens" title={t("panel.tokens")} actions={isGm ? <NewGroupButton connection={connection} onError={setError} /> : undefined}>
       <label htmlFor="roster-search" className="sr-only">
-        Search tokens by name
+        {t("roster.search")}
       </label>
       <input
         id="roster-search"
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search tokens…"
+        placeholder={t("roster.searchPlaceholder")}
         autoComplete="off"
       />
 
@@ -194,18 +195,18 @@ export function TokenRoster({
             // An empty Ungrouped appears while dragging, so a token can be dropped out of its group.
             group || members.length > 0 || tokens.length === 0 || dragging ? (
               <section key={group?.id ?? "ungrouped"} {...dropZone(group?.id ?? null)}
-                className={dropTarget === (group?.id ?? "") ? "roster-group drop-target" : "roster-group"} aria-label={group?.name ?? "Ungrouped tokens"}>
+                className={dropTarget === (group?.id ?? "") ? "roster-group drop-target" : "roster-group"} aria-label={group?.name ?? t("roster.ungroupedTokens")}>
                 {group ? (
                   <GroupHeading group={group} tokens={members} others={Object.values(state.tokens).filter((t) => state.tokenGroups[t.id] !== group.id).slice(0, 100)} connection={connection} onError={setError}
                     collapsed={collapsed.has(group.id)} onToggle={() => toggle(group.id)} />
                 ) : (
                   <div className="group-heading">
-                    <CollapseToggle label={Object.keys(state.groups).length > 0 ? "Ungrouped" : "All tokens"} count={members.length}
+                    <CollapseToggle label={Object.keys(state.groups).length > 0 ? t("group.ungrouped") : t("roster.all")} count={members.length}
                       collapsed={collapsed.has("")} onToggle={() => toggle("")} />
                   </div>
                 )}
                 {collapsed.has(group?.id ?? "") ? null : members.length === 0 ? (
-                  <p className="muted">{group ? "No tokens in this group yet. Drag a token here by its grip, or use its Move menu." : query ? "No tokens match." : "No tokens yet."}</p>
+                  <p className="muted">{group ? t("roster.emptyGroup") : query ? t("roster.noMatch") : t("roster.none")}</p>
                 ) : (
                   <ul className="plain roster">
                     {members.map((token) => row(token))}
@@ -216,7 +217,7 @@ export function TokenRoster({
           )}
         </>
       ) : tokens.length === 0 ? (
-        <p className="muted">{query ? "No tokens match." : "No tokens yet."}</p>
+        <p className="muted">{query ? t("roster.noMatch") : t("roster.none")}</p>
       ) : (
         <ul className="plain roster">
           {tokens.map((token) => row(token))}
@@ -225,7 +226,7 @@ export function TokenRoster({
       {error && !editing && <p role="alert" className="error">{error}</p>}
       {isGm && <AddTokenButton state={state} token={guestToken} onPlace={onPlaceToken} />}
 
-      <Modal open={!!editing} title={editing ? `Edit ${editing.name}` : "Edit token"} onClose={() => onEditToken(null)}>
+      <Modal open={!!editing} title={editing ? t("roster.editNamed", { name: editing.name }) : t("roster.edit")} onClose={() => onEditToken(null)}>
         {editing && (
           <TokenEditor
             key={editing.id}
@@ -289,23 +290,23 @@ function RosterRow({
         <button type="button" className="roster-focus" onClick={onFocus}>
           <TokenDisc name={token.name} color={token.color} image={token.imageUrl} size="1.5rem" className="small" />
           <span className="token-name">{token.name}</span>
-          {token.hidden && <span className="badge">hidden</span>}
-          {isActive && <span className="badge active-badge">active turn</span>}
+          {token.hidden && <span className="badge">{t("roster.hidden")}</span>}
+          {isActive && <span className="badge active-badge">{t("roster.activeTurn")}</span>}
           {token.stats.hp !== null && (
             <span className="hp">
               {stats.hp}
-              {token.stats.maxHp !== null && `/${token.stats.maxHp}`} HP
+              {token.stats.maxHp !== null && `/${token.stats.maxHp}`} {t("creature.stat.hp")}
             </span>
           )}
-          {token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
+          {token.stats.ac !== null && <span className="muted num">{t("creature.ac")} {token.stats.ac}</span>}
         </button>
         {editable && (
-          <button type="button" className="icon-button roster-edit" onClick={onEdit} aria-label={`Edit ${token.name}`} title="Edit">
+          <button type="button" className="icon-button roster-edit" onClick={onEdit} aria-label={t("roster.editNamed", { name: token.name })} title={t("common.edit")}>
             <PencilSimple size={16} aria-hidden="true" />
           </button>
         )}
         {onDuplicate && (
-          <button type="button" className="icon-button roster-edit" onClick={onDuplicate} aria-label={`Duplicate ${token.name}`} title="Duplicate">
+          <button type="button" className="icon-button roster-edit" onClick={onDuplicate} aria-label={t("roster.duplicateNamed", { name: token.name })} title={t("common.duplicate")}>
             <Copy size={16} aria-hidden="true" />
           </button>
         )}
@@ -318,7 +319,7 @@ function RosterRow({
           aria-valuemin={0}
           aria-valuemax={token.stats.maxHp ?? 0}
           aria-valuenow={stats.hp ?? 0}
-          aria-label={`${token.name} hit points`}
+          aria-label={t("roster.hpOf", { name: token.name })}
         >
           <span style={{ width: `${fraction * 100}%` }} data-level={hpLevel(fraction)} />
         </div>
@@ -415,9 +416,9 @@ export function TokenEditor({
       // The token's own attacks, as the GM and its owners see them (ADR 0034).
       const { imageUrl: _imageUrl, ...fields } = creatureFromToken(token, ownArt);
       const saved = await api.library.creatures.create(CreatureFields.parse(fields));
-      setCreatureStatus(`Saved ${saved.name} to your creatures.`);
+      setCreatureStatus(t("roster.savedCreature", { name: saved.name }));
     } catch (err) {
-      setCreatureStatus(err instanceof Error ? err.message : "Could not save the creature.");
+      setCreatureStatus(err instanceof Error ? err.message : t("roster.saveCreatureFailed"));
     } finally {
       setSavingCreature(false);
     }
@@ -471,7 +472,7 @@ export function TokenEditor({
       const { url } = await api.upload(file, roomToken);
       setImage({ url, assetId: null });
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setUploadError(err instanceof Error ? err.message : t("common.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -488,19 +489,19 @@ export function TokenEditor({
         if (hasChanges && !uploading) setConfirming("save");
       }}
     >
-      {isGm && <label>Name<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus /></label>}
+      {isGm && <label>{t("common.name")}<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus /></label>}
       <div className="stats-row">
         <label>
-          HP
+          {t("creature.stat.hp")}
           <input type="number" inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value)} min="-999" max="9999" step="1" autoFocus={!isGm} />
         </label>
         <label>
-          Max
+          {t("roster.max")}
           <input type="number" inputMode="numeric" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} min="1" max="9999" step="1" />
         </label>
         {features.armorClass && (
           <label>
-            AC
+            {t("creature.ac")}
             <input type="number" inputMode="numeric" value={ac} onChange={(e) => setAc(e.target.value)} min="0" max="99" step="1" />
           </label>
         )}
@@ -508,7 +509,7 @@ export function TokenEditor({
 
       {features.conditions && (
         <details className="token-editor-section">
-          <summary>Conditions<span className="token-editor-summary">{conditions.length || "none"}</span></summary>
+          <summary>{t("home.play.conditions")}<span className="token-editor-summary">{conditions.length || t("card.noneLower")}</span></summary>
           <ConditionPicker value={conditions} onChange={setConditions} />
         </details>
       )}
@@ -518,20 +519,20 @@ export function TokenEditor({
       {isGm && (
         <details className="token-editor-section">
           <summary>
-            Control &amp; visibility
+            {t("roster.control")}
             <span className="token-editor-summary">
-              {players.find((p) => p.id === ownerId)?.displayName ?? (ownerId ? departedOwner?.displayName : "GM only")}
+              {players.find((p) => p.id === ownerId)?.displayName ?? (ownerId ? departedOwner?.displayName : t("rail.gmOnly"))}
               {groups.find((g) => g.id === groupId) && ` · ${groups.find((g) => g.id === groupId)!.name}`}
-              {hidden && " · hidden"}
+              {hidden && ` · ${t("roster.hidden")}`}
             </span>
           </summary>
           <label>
-            Controlled by
+            {t("roster.controlledBy")}
             <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              <option value="">No one (GM only)</option>
+              <option value="">{t("roster.noOneGm")}</option>
               {departedOwner && (
                 <option value={departedOwner.id} disabled>
-                  {departedOwner.displayName} ({inactiveLabel(departedOwner)})
+                  {departedOwner.displayName} ({inactiveText(departedOwner)})
                 </option>
               )}
               {players.map((p) => (
@@ -543,16 +544,16 @@ export function TokenEditor({
           </label>
           {groups.length > 0 && (
             <label className="token-group-field">
-              Group
+              {t("add.group")}
               <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                <option value="">No group</option>
+                <option value="">{t("add.noGroup")}</option>
                 {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </label>
           )}
           <label className="inline">
             <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
-            Hidden from players
+            {t("add.hidden")}
           </label>
         </details>
       )}
@@ -560,28 +561,28 @@ export function TokenEditor({
 
       {isGm && (
         <details className="token-editor-section">
-          <summary>Advanced<span className="token-editor-summary">{size} cells · {rotation}° · {image.url ? "image" : "no image"}</span></summary>
+          <summary>{t("common.advanced")}<span className="token-editor-summary">{t("roster.cells", { n: Number(size) })} · {rotation}° · {image.url ? t("roster.image") : t("roster.noImage")}</span></summary>
           <div className="token-setup-grid">
-            <label>Board X<input type="number" value={x} onChange={(e) => setX(e.target.value)} required step="any" /></label>
-            <label>Board Y<input type="number" value={y} onChange={(e) => setY(e.target.value)} required step="any" /></label>
-            <label>Size (cells)<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
-            <label>Rotation (°)<input type="number" value={rotation} onChange={(e) => setRotation(e.target.value)} required step="any" /></label>
+            <label>{t("roster.boardX")}<input type="number" value={x} onChange={(e) => setX(e.target.value)} required step="any" /></label>
+            <label>{t("roster.boardY")}<input type="number" value={y} onChange={(e) => setY(e.target.value)} required step="any" /></label>
+            <label>{t("creature.size")}<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
+            <label>{t("add.rotation")}<input type="number" value={rotation} onChange={(e) => setRotation(e.target.value)} required step="any" /></label>
           </div>
           <div className="stack token-image-field">
-            <span className="field-label">Image</span>
+            <span className="field-label">{t("creature.image")}</span>
             {image.url && (
               <div className="row token-image-chosen">
                 <TokenPreview url={image.url} color={token.color} hidden={hidden} />
-                <button type="button" className="link" disabled={uploading} onClick={() => setImage({ url: null, assetId: null })}>Remove image</button>
+                <button type="button" className="link" disabled={uploading} onClick={() => setImage({ url: null, assetId: null })}>{t("roster.removeImage")}</button>
               </div>
             )}
             <div className="row">
               <label className="upload-button secondary">
-                <span>{uploading ? "Uploading…" : image.url ? "Replace image" : "Upload image"}</span>
+                <span>{uploading ? t("common.uploading") : image.url ? t("roster.replaceImage") : t("roster.uploadImage")}</span>
                 <input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" disabled={uploading}
                   onChange={(e) => { pickArt(e.target.files?.[0]); e.target.value = ""; }} />
               </label>
-              <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>{hasLibrary ? "From library" : "Built-in art"}</button>
+              <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>{hasLibrary ? t("guide.map.library.title") : t("add.builtInArt")}</button>
             </div>
           </div>
         </details>
@@ -590,57 +591,56 @@ export function TokenEditor({
       {(error || uploadError) && <p role="alert" className="error">{error || uploadError}</p>}
 
       {confirming === "save" ? (
-        <div className="confirm" role="group" aria-label="Confirm changes">
+        <div className="confirm" role="group" aria-label={t("roster.confirmChanges")}>
           <p>
-            Save changes to {token.name}? Everyone in the
-            room sees the update.
+            {t("roster.saveQ", { name: token.name })}
           </p>
           <div className="row">
             <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(null)}>
-              Back
+              {t("common.back")}
             </button>
             <button className="primary" type="button" disabled={busy || uploading} onClick={() => void save()} autoFocus>
-              Confirm
+              {t("roster.confirm")}
             </button>
           </div>
         </div>
       ) : confirming === "delete" ? (
-        <div className="confirm" role="group" aria-label="Confirm delete">
-          <p>Delete {token.name}? Everyone loses it from the map.</p>
+        <div className="confirm" role="group" aria-label={t("roster.confirmDelete")}>
+          <p>{t("roster.deleteQ", { name: token.name })}</p>
           <div className="row">
             <button type="button" className="secondary" onClick={() => setConfirming(null)}>
-              Keep
+              {t("common.keep")}
             </button>
             <button type="button" className="danger-fill" onClick={onDelete} autoFocus>
-              Delete token
+              {t("depart.deleteToken")}
             </button>
           </div>
         </div>
       ) : (
         <div className="token-editor-actions">
           {isGm && onDuplicate && (
-            <button type="button" className="secondary" disabled={busy} title="Same stats, conditions, owner and visibility. Click squares on the board to place copies." onClick={onDuplicate}>
-              Duplicate
+            <button type="button" className="secondary" disabled={busy} title={t("roster.duplicateHint")} onClick={onDuplicate}>
+              {t("common.duplicate")}
             </button>
           )}
           {isGm && hasLibrary && (
             <button type="button" className="secondary token-save-creature" disabled={savingCreature} onClick={() => void saveAsCreature()}>
-              {savingCreature ? "Saving…" : "Save as creature"}
+              {savingCreature ? t("common.saving") : t("roster.saveCreature")}
             </button>
           )}
           {isGm && (
             <button
               type="button"
               className="icon-button token-delete"
-              aria-label={`Delete ${token.name}`}
-              title="Delete token"
+              aria-label={t("common.deleteNamed", { name: token.name })}
+              title={t("depart.deleteToken")}
               onClick={() => setConfirming("delete")}
             >
               <Trash size={18} aria-hidden />
             </button>
           )}
           <button type="submit" className="token-save primary" disabled={!hasChanges || uploading}>
-            Save
+            {t("common.save")}
           </button>
         </div>
       )}
@@ -650,7 +650,7 @@ export function TokenEditor({
     <p role="status" className={creatureStatus ? "muted small-print" : "sr-only"}>{creatureStatus}</p>
     {cropFile && <TokenArtCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(f) => { setCropFile(null); void onUpload(f); }} />}
     {isGm && (
-      <Modal open={picking} title="Choose a token image" onClose={() => setPicking(false)}>
+      <Modal open={picking} title={t("add.chooseImage")} onClose={() => setPicking(false)}>
         <LibraryPicker kind="token" onPick={(asset) => {
           setImage({ url: asset.url, assetId: libraryAssetId(asset) });
           setPicking(false);

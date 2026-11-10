@@ -183,10 +183,11 @@ describe("GM grid suggestion editor (FR-GM-03)", () => {
   });
 });
 
-it.each([
-  { submitLabel: "Apply grid", cancelLabel: "Cancel", saveLabel: "Save changes", closeLabel: "Discard" },
+// Default labels (none passed) read as the editor header's Save changes / Discard.
+it.each<{ submitLabel?: string; cancelLabel?: string; saveLabel: string; closeLabel: string }>([
+  { saveLabel: "Save changes", closeLabel: "Discard" },
   { submitLabel: "Apply map", cancelLabel: "Close", saveLabel: "Apply map", closeLabel: "Close" },
-  { submitLabel: "Save grid", cancelLabel: "Cancel", saveLabel: "Save grid", closeLabel: "Discard" },
+  { submitLabel: "Save grid", saveLabel: "Save grid", closeLabel: "Discard" },
 ])("keeps $saveLabel and $closeLabel actions in the header", async ({ submitLabel, cancelLabel, saveLabel, closeLabel }) => {
   const apply = vi.fn(async () => {});
   function Editor() {

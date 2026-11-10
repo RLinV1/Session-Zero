@@ -1,3 +1,6 @@
+
+import { t } from "../i18n/locale";
+
 /**
  * Step arithmetic for the replay bar (FR-PL-07), kept pure so it is tested without a DOM.
  * Steps run from 0 (the replay point itself) to `count` (after the last change).
@@ -24,5 +27,5 @@ export function playFrom(index: number, count: number): number {
 
 /** "Step 3 of 12", or "Start" for step 0. */
 export function stepLabel(index: number, count: number): string {
-  return index === 0 ? `Start · ${count} ${count === 1 ? "change" : "changes"}` : `Step ${index} of ${count}`;
+  return index === 0 ? t("replay.startChanges", { n: count }) : t("replay.stepOf", { n: index, total: count });
 }

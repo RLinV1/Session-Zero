@@ -3,6 +3,7 @@ import { SignOut } from "@phosphor-icons/react";
 import type { Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
+import { t } from "../i18n/locale";
 
 /**
  * Leave table (KAN-58, ADR 0006): a player gives up their seat for good.
@@ -47,35 +48,34 @@ export function LeaveTable({ connection, state, you }: { connection: RoomConnect
   return (
     <>
       <button type="button" className="secondary small leave-table" onClick={() => setOpen(true)}>
-        <SignOut size={14} aria-hidden="true" /> Leave table
+        <SignOut size={14} aria-hidden="true" /> {t("leave.title")}
       </button>
-      <Modal open={open} title={`Leave ${state.name}?`} onClose={close} initialFocus={stayRef}>
+      <Modal open={open} title={t("leave.q", { name: state.name })} onClose={close} initialFocus={stayRef}>
         <div className="leave-confirm">
           <p>
-            Leaving is permanent for <strong>{you.displayName}</strong> in this room. You lose:
+            {t("leave.permanentFor")} <strong>{you.displayName}</strong> {t("leave.youLose")}
           </p>
           <ul className="leave-losses">
-            <li>Your seat and the name “{you.displayName}” here.</li>
+            <li>{t("leave.seatName", { name: you.displayName })}</li>
             <li>
               {owned.length === 0 ? (
-                "Nothing else: you don't control any tokens."
+                t("leave.nothing")
               ) : (
                 <>
-                  Control of {owned.length === 1 ? "your token" : `your ${owned.length} tokens`}:{" "}
-                  {owned.map((t, i) => (
-                    <span key={t.id}>
-                      {i > 0 && ", "}
-                      <strong>{t.name}</strong>
+                  {t("leave.controlOf", { n: owned.length })}
+                  {owned.map((token, i) => (
+                    <span key={token.id}>
+                      {i > 0 && t("common.listSep")}
+                      <strong>{token.name}</strong>
                     </span>
                   ))}
-                  . The GM decides what happens to {owned.length === 1 ? "it" : "them"}.
+                  {t("leave.gmDecides", { n: owned.length })}
                 </>
               )}
             </li>
           </ul>
           <p className="muted">
-            Every tab you have open on this room closes too. If you come back through the invite link, you join as a new
-            player and the GM has to give you tokens again.
+            {t("leave.tabsClose")}
           </p>
           {error && (
             <p role="alert" className="error">
@@ -84,10 +84,10 @@ export function LeaveTable({ connection, state, you }: { connection: RoomConnect
           )}
           <div className="row modal-actions">
             <button ref={stayRef} type="button" className="secondary" onClick={close} disabled={busy}>
-              Stay
+              {t("leave.stay")}
             </button>
             <button type="button" className="danger-fill" onClick={() => void leave()} disabled={busy}>
-              {busy ? "Leaving…" : "Leave table"}
+              {busy ? t("common.leaving") : t("leave.title")}
             </button>
           </div>
         </div>

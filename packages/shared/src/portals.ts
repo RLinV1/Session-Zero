@@ -1,5 +1,7 @@
 import type { Point } from "./geometry";
 import type { Portal, PortalState, Wall } from "./state";
+import type { Locale } from "./i18n/core";
+import { portalChangeZhTW } from "./i18n/sentences.zh-TW";
 
 /**
  * Doors and windows on walls (FR-GM-18, ADR 0030). The rules every reader shares: what blocks
@@ -29,7 +31,8 @@ const STATE_VERBS: Partial<Record<`${PortalState}>${PortalState}`, [string, stri
  * One portal change in words (ADR 0030): `past` for the activity log ("opened a door"), `verb`
  * for the Undo button ("open a door") and `gerund` for "Undid …" ("opening a door").
  */
-export function describePortalChange(from: Portal | null, to: Portal | null): { past: string; verb: string; gerund: string } {
+export function describePortalChange(from: Portal | null, to: Portal | null, locale: Locale = "en"): { past: string; verb: string; gerund: string } {
+  if (locale === "zh-TW") return portalChangeZhTW(from, to);
   const phrase = (base: string, past: string, gerund: string, rest: string) =>
     ({ verb: `${base} ${rest}`, past: `${past} ${rest}`, gerund: `${gerund} ${rest}` });
   if (from && to && from.kind === to.kind) {

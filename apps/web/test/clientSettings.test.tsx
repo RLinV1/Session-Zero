@@ -60,9 +60,9 @@ describe("browser settings (FR-TAC-06)", () => {
 });
 
 describe("settings tabs (FR-TAC-06)", () => {
-  it("shows Audio and Graphics to everyone, Audio first, and switches panels", () => {
+  it("shows Audio, Graphics and Language to everyone, Audio first, and switches panels", () => {
     render(<SettingsMenu open onClose={() => {}} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Language"]);
     expect(screen.getByRole("tab", { name: "Audio" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Audio" }).id);
     expect(screen.queryByLabelText("Graphics quality")).toBeNull();
@@ -80,12 +80,15 @@ describe("settings tabs (FR-TAC-06)", () => {
     expect(audio.tabIndex).toBe(-1);
     expect(document.activeElement).toBe(graphics);
     fireEvent.keyDown(graphics, { key: "ArrowRight" });
+    const language = screen.getByRole("tab", { name: "Language" });
+    expect(language.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(language, { key: "ArrowRight" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "ArrowLeft" });
-    expect(graphics.getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(graphics, { key: "Home" });
+    expect(language.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(language, { key: "Home" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "End" });
-    expect(graphics.getAttribute("aria-selected")).toBe("true");
+    expect(language.getAttribute("aria-selected")).toBe("true");
   });
 });

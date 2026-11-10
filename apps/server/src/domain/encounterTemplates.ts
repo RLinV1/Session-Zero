@@ -1,4 +1,5 @@
 import { ENCOUNTER_TEMPLATE_VERSION, EncounterTemplateData, shippedMapByUrl, templateMapImage, type ResolvedEncounter } from "@vtt/shared";
+import { englishText, sharedMsg, type MessageRef } from "@vtt/shared";
 import { ensureShippedMaps } from "./shippedMaps";
 import type { LibraryStore } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
@@ -6,7 +7,11 @@ import type { RoomRegistry } from "./roomRegistry";
 
 export type ResolveEncounterResult =
   | { ok: true; encounter: ResolvedEncounter }
-  | { ok: false; reason: "missing" | "unreadable" | "map_missing"; message: string };
+  /** `message` in English; `text` for the reader's language (ADR 0052). */
+  | { ok: false; reason: "missing" | "unreadable" | "map_missing"; message: string; text: MessageRef };
+
+const refusal = (reason: "missing" | "unreadable" | "map_missing", text: MessageRef): ResolveEncounterResult =>
+  ({ ok: false, reason, message: englishText(text), text });
 
 /**
  * Reads one of the owner's encounter templates for an apply (ADR 0024): validated against the
@@ -19,14 +24,14 @@ export async function resolveEncounter(
   templateId: string,
 ): Promise<ResolveEncounterResult> {
   const record = await store.findEncounter(templateId, ownerGmId);
-  if (!record) return { ok: false, reason: "missing", message: "That encounter template isn't available." };
+  if (!record) return refusal("missing", sharedMsg("reject.templateUnavailable"));
   if (record.version !== ENCOUNTER_TEMPLATE_VERSION) {
-    return { ok: false, reason: "unreadable", message: `"${record.name}" was saved in a format this server can't read.` };
+    return refusal("unreadable", sharedMsg("reject.templateFormat", { name: record.name }));
   }
   const data = EncounterTemplateData.safeParse(record.data);
-  if (!data.success) return { ok: false, reason: "unreadable", message: `"${record.name}" can't be read. It may be damaged.` };
+  if (!data.success) return refusal("unreadable", sharedMsg("reject.templateDamaged", { name: record.name }));
   if (!record.mapAssetId || !record.mapUrl) {
-    return { ok: false, reason: "map_missing", message: `The map for "${record.name}" was deleted from your library.` };
+    return refusal("map_missing", sharedMsg("reject.templateMapDeleted", { name: record.name }));
   }
   return {
     ok: true,

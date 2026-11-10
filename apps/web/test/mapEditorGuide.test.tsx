@@ -5,7 +5,7 @@ import { api } from "../src/net/api";
 import { toGridDraft } from "../src/pages/gridDraft";
 import { GmPanel } from "../src/pages/GmPanel";
 import { GuideTour } from "../src/ui/GuideTour";
-import { EDITOR_GUIDES } from "../src/pages/mapEditor/mapEditorGuides";
+import { editorGuide } from "../src/pages/mapEditor/mapEditorGuides";
 import { GRID, TOKEN, fakeConnection, room, stubMapEditorEnvironment } from "./mapEditorHarness";
 
 vi.mock("../src/panels/CheckpointsPanel", () => ({ CheckpointsPanel: () => null }));
@@ -100,7 +100,10 @@ describe("map editor step guides (map-editor-step-guides)", () => {
   });
 
   it("every editor tour has distinct cards", () => {
-    for (const steps of Object.values(EDITOR_GUIDES)) expect(new Set(steps.map((s) => s.target)).size).toBe(steps.length);
+    for (const key of ["map", "grid", "walls", "fog", "sight"]) {
+      const steps = editorGuide(key)!;
+      expect(new Set(steps.map((s) => s.target)).size).toBe(steps.length);
+    }
   });
 
   it("still runs the app-wide guide for a role", () => {

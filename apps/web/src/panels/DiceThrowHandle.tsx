@@ -6,6 +6,7 @@ import { holdEvent, releaseVelocity, type PointerSample } from "../board/diceThr
 import { startDiceShake, type DiceShake } from "../board/fxSound";
 import { Die3D, layoutDice } from "../ui/Die3D";
 import { useActiveDiceLook } from "../ui/diceSkinStore";
+import { t } from "../i18n/locale";
 
 /** How long a die that didn't make it onto the board takes to fade where it was let go. */
 const FADE_MS = 400;
@@ -189,7 +190,7 @@ export function DiceThrowHandle({
         <Die3D die={handleDie} skin={dieSkin} />
       </div>
       <p className="muted small-print" id="dice-throw-hint">
-        {blocker ?? "Or drag the die onto the map to throw it"}
+        {blocker ?? t("dice.dragToThrow")}
       </p>
       {ghostAt &&
         createPortal(

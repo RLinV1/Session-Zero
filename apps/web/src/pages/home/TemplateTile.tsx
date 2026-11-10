@@ -5,6 +5,7 @@ import { MAPS, PORTRAITS, viewRect, type CropView } from "./crops";
 import { CropWindow, viewBoxOf } from "./CropWindow";
 import { CROP_GRID, squareCenter } from "./sightDemo";
 import { TokenChip } from "./TokenChip";
+import { t } from "../../i18n/locale";
 
 /** The goblins' cooking fire, loot pile and cart below the broken watchtower, on the camp's home crop. */
 export const TEMPLATE_VIEW: CropView = { col: 0, row: 1, cols: 16, rows: 9 };
@@ -13,10 +14,14 @@ export const TEMPLATE_VIEW: CropView = { col: 0, row: 1, cols: 16, rows: 9 };
 export const TEMPLATE_TOKENS = [
   { id: "mara", name: "Mara", color: "#5b8def", hp: 84, image: PORTRAITS.templates.mara, at: { col: 11, row: 8 } },
   { id: "pell", name: "Pell", color: "#3fb950", hp: 61, image: PORTRAITS.templates.pell, at: { col: 12, row: 8 } },
-  { id: "goblin", name: "Goblin", color: "#c0392b", hp: 100, image: PORTRAITS.templates.goblin, at: { col: 5, row: 4 } },
-  { id: "archer", name: "Goblin archer", color: "#a93226", hp: 70, image: PORTRAITS.templates.archer, at: { col: 7, row: 4 } },
-  { id: "wolf", name: "Wolf", color: "#7f8c8d", hp: 45, image: PORTRAITS.templates.wolf, at: { col: 4, row: 6 } },
+  { id: "goblin", name: "Goblin", nameKey: "home.creature.goblin" as const, color: "#c0392b", hp: 100, image: PORTRAITS.templates.goblin, at: { col: 5, row: 4 } },
+  { id: "archer", name: "Goblin archer", nameKey: "home.creature.archer" as const, color: "#a93226", hp: 70, image: PORTRAITS.templates.archer, at: { col: 7, row: 4 } },
+  { id: "wolf", name: "Wolf", nameKey: "home.creature.wolf" as const, color: "#7f8c8d", hp: 45, image: PORTRAITS.templates.wolf, at: { col: 4, row: 6 } },
 ].map((t) => ({ ...t, position: squareCenter(t.at.col, t.at.row), size: 1 }));
+
+/** A demo token's name: a creature in the reader's language, a character as named. */
+const demoName = (token: { name: string; nameKey?: "home.creature.goblin" | "home.creature.archer" | "home.creature.wolf" }) =>
+  token.nameKey ? t(token.nameKey) : token.name;
 
 /** Radius choices for the sphere, in feet, as the table sizes templates. */
 const SIZES = [10, 15, 20] as const;
@@ -77,12 +82,12 @@ export function TemplateTile() {
 
   return (
     <>
-      <h4>Area templates</h4>
-      <p>Click the map to place a sphere, or drag it. The tokens it marks are the ones the table counts as caught.</p>
-      <div className="seg seg-small" role="group" aria-label="Sphere radius">
+      <h4>{t("home.templates.title")}</h4>
+      <p>{t("home.templates.body")}</p>
+      <div className="seg seg-small" role="group" aria-label={t("home.templates.radius")}>
         {SIZES.map((s) => (
           <button key={s} type="button" aria-pressed={size === s} onClick={() => setSize(s)}>
-            <span className="num">{s}</span> ft
+            <span className="num">{s}</span> {t("home.templates.unit")}
           </button>
         ))}
       </div>
@@ -90,7 +95,7 @@ export function TemplateTile() {
         className="template-stage"
         tabIndex={0}
         role="group"
-        aria-label="Template on the map. Click to place it; arrow keys move it one square."
+        aria-label={t("home.templates.onMap")}
         aria-describedby="template-caught"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -104,7 +109,7 @@ export function TemplateTile() {
           {TEMPLATE_TOKENS.map((t) => (
             <TokenChip
               key={t.id}
-              name={t.name}
+              name={demoName(t)}
               color={t.color}
               hp={t.hp}
               image={t.image}
@@ -116,7 +121,7 @@ export function TemplateTile() {
         </CropWindow>
       </div>
       <p id="template-caught" className="figure-note" role="status">
-        {caught.length ? `Caught: ${caught.map((t) => t.name).join(", ")}.` : "Nobody is caught."}
+        {caught.length ? t("home.templates.caught", { names: caught.map(demoName) }) : t("home.templates.nobody")}
       </p>
     </>
   );

@@ -5,6 +5,8 @@ import type { LiveRoom } from "../domain/liveRoom";
 import type { RoomRegistry } from "../domain/roomRegistry";
 import type { Sessions } from "../identity/sessions";
 import type { RoomStore } from "../store/roomStore";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 
 /** A preparation-only body limit, authorized before parsing. Socket and other JSON limits stay unchanged. */
 export function registerRoomPreparation(app: Express, deps: { store: RoomStore; registry: RoomRegistry; sessions: Sessions }) {
@@ -39,7 +41,7 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
       if (auth.sessionHash && !await deps.sessions.isLive(auth.sessionHash)) { res.status(403).json({ error: "Your sign-in ended before saving." }); return; }
       // submit checks the active actor and all preparation context again inside the room FIFO.
       const result = await auth.room.submit(auth.actorId, command.data);
-      if (!result.ok) { res.status(result.code === "forbidden" ? 403 : 409).json({ error: result.message, code: result.code }); return; }
+      if (!result.ok) { res.status(result.code === "forbidden" ? 403 : 409).json({ error: sharedText(requestLocale(res), result.text), code: result.code }); return; }
       // No room state is returned here; snapshots and events retain the existing viewer filters.
       res.json(PreparationSaved.parse({ seq: result.seq }));
     })().catch(next);

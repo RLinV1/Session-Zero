@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { conditionSpec, type ConditionId } from "@vtt/shared";
+import { conditionLabel, type ConditionId } from "@vtt/shared";
 import { ConditionMarker } from "../../panels/ConditionMarker";
 import { useNearViewport } from "../../ui/nearViewport";
 import { TokenDisc } from "../../ui/TokenDisc";
@@ -8,6 +8,7 @@ import { PORTRAITS } from "./crops";
 import { DiceTile } from "./DiceTile";
 import { SightStage } from "./SightStage";
 import { TemplateTile } from "./TemplateTile";
+import { getLocale, t } from "../../i18n/locale";
 
 /** The turn order runs the table's `decide`, so it is fetched near the viewport with the rest of that code. */
 const TurnTile = lazy(() => import("./TurnTile"));
@@ -21,10 +22,9 @@ export function PlaySection() {
   return (
     <section className="home-section play-section" aria-labelledby="play-heading">
       <div className="section-copy">
-        <h3 id="play-heading">Run the fight at the table.</h3>
+        <h3 id="play-heading">{t("home.play.title")}</h3>
         <p>
-          Sight, templates, dice, attacks, turns and conditions, all by the table's own rules. Your players see each
-          result as it happens.
+          {t("home.play.body")}
         </p>
       </div>
       <SightStage />
@@ -53,11 +53,12 @@ function TurnSlot() {
   const [near, ref] = useNearViewport<HTMLDivElement>();
   return (
     <>
-      <h4>Turn order</h4>
+      <h4>{t("home.play.turnOrder")}</h4>
       <div ref={ref} className="turn-slot">
         {near && (
           <Suspense fallback={null}>
-            <TurnTile />
+            {/* Keyed on the language: the demo's room is built with names in it (localization). */}
+            <TurnTile key={getLocale()} />
           </Suspense>
         )}
       </div>
@@ -74,11 +75,11 @@ function ConditionsTile() {
   const toggle = (id: ConditionId) => setOn((list) => (list.includes(id) ? list.filter((c) => c !== id) : [...list, id]));
   return (
     <>
-      <h4>Conditions</h4>
-      <p>Each marker is its own picture, so nobody has to tell them apart by colour.</p>
+      <h4>{t("home.play.conditions")}</h4>
+      <p>{t("home.play.conditionsBody")}</p>
       <div className="condition-token">
         <TokenDisc name="Pell" color="#3fb950" image={PORTRAITS.templates.pell} hp={0.61} size="3.25rem">
-          <span className="token-label">Pell</span>
+          <span className="token-label">{"Pell"}</span>
         </TokenDisc>
         <span className="condition-markers">
           {on.map((id) => (
@@ -86,14 +87,14 @@ function ConditionsTile() {
           ))}
         </span>
       </div>
-      <ul className="plain condition-list" aria-label="Conditions on Pell">
+      <ul className="plain condition-list" aria-label={t("home.play.conditionsOn", { name: "Pell" })}>
         {SHOWN.map((id) => (
           <li key={id}>
             <button type="button" className="condition-toggle" aria-pressed={on.includes(id)} onClick={() => toggle(id)}>
               <span aria-hidden="true">
                 <ConditionMarker id={id} size={20} />
               </span>
-              {conditionSpec(id).label}
+              {conditionLabel(id, getLocale())}
             </button>
           </li>
         ))}

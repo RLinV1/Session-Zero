@@ -3,6 +3,8 @@ import { CaretLeft, CaretRight, Pause, Play, Rewind } from "@phosphor-icons/reac
 import { replayStates, type ReplayFrame, type ReplayPoint, type ReplayResponse, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { playFrom, playTick, REPLAY_STEP_MS, stepLabel, stepTo } from "./replaySteps";
+import { formatClock } from "./formatRelative";
+import { t, useLocale } from "../i18n/locale";
 
 /** Keys typed into a field belong to that field, not to the replay. */
 function isTyping(target: EventTarget | null) {
@@ -31,32 +33,42 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
 
   useEffect(() => exitRef.current?.focus(), []);
 
+  // The server labels points and writes sentences in the request's language, so a language
+  // change refetches both, keeping the chosen point and step.
+  const locale = useLocale();
+  const shownPoint = useRef<string | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
     api.replayPoints(roomId, token, controller.signal).then((list) => {
       setPoints(list);
       // The latest encounter is usually what a late joiner wants; otherwise the room's start.
-      setPointId(([...list].reverse().find((p) => p.kind === "encounter") ?? list[0])?.id ?? null);
+      const fallback = ([...list].reverse().find((p) => p.kind === "encounter") ?? list[0])?.id ?? null;
+      setPointId((current) => (current && list.some((p) => p.id === current) ? current : fallback));
     }, (err: unknown) => {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Couldn't load the replay");
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : t("replay.loadFailed"));
     });
     return () => controller.abort();
-  }, [roomId, token]);
+  }, [roomId, token, locale]);
 
   useEffect(() => {
     if (!pointId) return;
     const controller = new AbortController();
-    setReplay(null);
-    setPlaying(false);
+    const samePoint = shownPoint.current === pointId;
+    shownPoint.current = pointId;
+    if (!samePoint) {
+      setReplay(null);
+      setPlaying(false);
+    }
     setError(null);
     api.replay(roomId, token, pointId, controller.signal).then((r) => {
       setReplay(r);
-      setIndex(0);
+      if (!samePoint) setIndex(0);
     }, (err: unknown) => {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Couldn't load the replay");
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : t("replay.loadFailed"));
     });
     return () => controller.abort();
-  }, [roomId, token, pointId]);
+  }, [roomId, token, pointId, locale]);
 
   // Folded once per replay, so stepping back is a lookup rather than a refold.
   const states = useMemo(() => (replay ? replayStates(replay) : null), [replay]);
@@ -111,11 +123,11 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
   const sentence = index === 0 ? (point ? `${point.label} (${formatTime(point.at)})` : "") : replay?.frames[index - 1]?.sentence ?? "";
 
   return (
-    <section className="replay-bar" aria-label="Replay">
+    <section className="replay-bar" aria-label={t("menu.replay")}>
       <div className="replay-row">
         <Rewind size={18} aria-hidden="true" />
         <label className="replay-point">
-          <span>Replay from</span>
+          <span>{t("replay.from")}</span>
           <select
             value={pointId ?? ""}
             disabled={!points || points.length === 0}
@@ -125,19 +137,19 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
           </select>
         </label>
         <button ref={exitRef} type="button" className="replay-exit primary" onClick={onExit}>
-          Back to the live table
+          {t("replay.backToLive")}
         </button>
       </div>
       <div className="replay-row">
-        <button type="button" className="tool-button" onClick={() => step(-1)} disabled={!replay || index === 0} aria-label="Back one step">
-          <CaretLeft size={16} aria-hidden="true" /> Back
+        <button type="button" className="tool-button" onClick={() => step(-1)} disabled={!replay || index === 0} aria-label={t("replay.back")}>
+          <CaretLeft size={16} aria-hidden="true" /> {t("common.back")}
         </button>
         <button type="button" className="tool-button" onClick={togglePlay} disabled={!replay || count === 0}>
           {playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-          {playing ? "Pause" : "Play"}
+          {playing ? t("replay.pause") : t("replay.play")}
         </button>
-        <button type="button" className="tool-button" onClick={() => step(1)} disabled={!replay || index === count} aria-label="Forward one step">
-          Forward <CaretRight size={16} aria-hidden="true" />
+        <button type="button" className="tool-button" onClick={() => step(1)} disabled={!replay || index === count} aria-label={t("replay.forwardStep")}>
+          {t("replay.forward")} <CaretRight size={16} aria-hidden="true" />
         </button>
         <input
           type="range"
@@ -146,28 +158,27 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
           max={count}
           value={index}
           disabled={!replay || count === 0}
-          aria-label="Replay position"
+          aria-label={t("replay.position")}
           aria-valuetext={stepLabel(index, count)}
           onChange={(e) => {
             setPlaying(false);
             setIndex(Number(e.target.value));
           }}
         />
-        <span className="replay-count muted">{replay ? stepLabel(index, count) : "Loading…"}</span>
+        <span className="replay-count muted">{replay ? stepLabel(index, count) : t("common.loading")}</span>
       </div>
       <p className="replay-sentence" role="status" aria-live="polite">
         {error ?? sentence}
       </p>
       {replay?.truncated && (
-        <p className="muted small-print">This replay stops after {count} changes. Pick a later point to see what came next.</p>
+        <p className="muted small-print">{t("replay.truncated", { n: count })}</p>
       )}
-      <p className="muted small-print">You are watching a replay. Nothing you do here reaches the table.</p>
+      <p className="muted small-print">{t("replay.watching")}</p>
     </section>
   );
 }
 
 /** "14:02", in the viewer's own clock. */
 function formatTime(iso: string) {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatClock(iso, true);
 }

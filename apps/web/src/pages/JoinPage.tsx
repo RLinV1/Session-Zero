@@ -6,6 +6,7 @@ import { gmRoomForInvite, guestRoomForInvite, newGuestToken, rememberInvite, sav
 import { ensureSeat } from "../net/seats";
 import { navigate } from "../router";
 import { joinFailure } from "./joinFailure";
+import { t } from "../i18n/locale";
 import { EntryPage } from "../ui/SiteHeader";
 
 /**
@@ -47,7 +48,7 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
       await ensureSeat(roomId);
       navigate(`/r/${roomId}`, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open your seat");
+      setError(err instanceof Error ? err.message : t("join.openSeatFailed"));
       setBusy(false);
     }
   }
@@ -56,11 +57,11 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
     return (
       <EntryPage>
         <div className="card">
-          <h1>You're already at this table</h1>
-          <p className="muted">Your seat is kept on your account, so you can pick up where you left off.</p>
+          <h1>{t("join.alreadyHere.title")}</h1>
+          <p className="muted">{t("join.alreadyHere.body")}</p>
           {error && <p role="alert" className="error">{error}</p>}
           <button type="button" className="primary" onClick={() => void resume(seat.roomId)} disabled={busy}>
-            {busy ? "Opening…" : `Resume as ${seat.displayName}`}
+            {busy ? t("join.opening") : t("join.resumeAs", { name: seat.displayName })}
           </button>
         </div>
       </EntryPage>
@@ -71,14 +72,10 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
     return (
       <EntryPage>
         <div className="card">
-          <h1>You're the GM of this room</h1>
-          <p className="muted">
-            This browser is signed in as the room's GM, so it can't also join as a player. Share this
-            link with your players. To test as a player yourself, open it in a private window, another
-            browser, or another device.
-          </p>
+          <h1>{t("join.gm.title")}</h1>
+          <p className="muted">{t("join.gm.body")}</p>
           <button type="button" className="primary" onClick={() => navigate(`/r/${gmRoomId}`, { replace: true })}>
-            Back to GM view
+            {t("join.gm.back")}
           </button>
         </div>
       </EntryPage>
@@ -116,9 +113,9 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
   return (
     <EntryPage>
       <form className="card" onSubmit={onSubmit}>
-        <h1>Join the table</h1>
+        <h1>{t("join.title")}</h1>
         <label>
-          Your name
+          {t("join.name")}
           <input
             value={displayName}
             onChange={(e) => {
@@ -135,7 +132,7 @@ export function JoinPage({ inviteCode }: { inviteCode: string }) {
         </label>
         {error && <p id="join-error" role="alert" className="error">{error}</p>}
         <button className="primary" type="submit" disabled={busy}>
-          {busy ? "Joining…" : "Join"}
+          {busy ? t("join.joining") : t("join.submit")}
         </button>
       </form>
     </EntryPage>

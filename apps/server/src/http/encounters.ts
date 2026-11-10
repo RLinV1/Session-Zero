@@ -15,6 +15,8 @@ import type { RoomRegistry } from "../domain/roomRegistry";
 import { requireAccountOwner, resolveOwner, type Owner } from "../ownership/resolveOwner";
 import { EncounterNameConflictError, EncounterLimitError, EncounterMapMissingError, type EncounterRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 
 const IdParam = z.uuid();
 
@@ -38,7 +40,7 @@ export function registerEncounterRoutes(app: Express, deps: { store: RoomStore; 
       const id = IdParam.safeParse(req.params.id);
       if (!id.success) return void res.status(404).json({ error: "Template not found" });
       const resolved = await resolveEncounter(store, gmId, id.data);
-      if (!resolved.ok) return void res.status(resolved.reason === "missing" ? 404 : 409).json({ error: resolved.message });
+      if (!resolved.ok) return void res.status(resolved.reason === "missing" ? 404 : 409).json({ error: sharedText(requestLocale(res), resolved.text) });
       const { name, scene, tokens, fog, terrain } = resolved.encounter;
       const preview: EncounterPreview = { name, map: scene.map!, grid: scene.grid, tokens, fog, ...(terrain ? { terrain } : {}) };
       res.json(preview);

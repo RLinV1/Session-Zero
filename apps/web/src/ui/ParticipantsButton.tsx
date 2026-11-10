@@ -4,6 +4,7 @@ import type { RoomConnection } from "../net/roomConnection";
 import { inkOn } from "./color";
 import { Modal } from "./Modal";
 import { PopoverButton } from "./Popover";
+import { t } from "../i18n/locale";
 
 /**
  * Who is in the room, on demand (room-sidebar-layout: Participants on demand).
@@ -53,8 +54,8 @@ export function ParticipantsButton({
   return (
     <>
       <PopoverButton
-        label={`Participants, ${count}`}
-        title="Participants"
+        label={t("people.count", { n: count })}
+        title={t("people.title")}
         tourId="participants"
         buttonContent={<AvatarStack participants={participants} />}
       >
@@ -64,37 +65,37 @@ export function ParticipantsButton({
           {participants.map((p) => (
             <li key={p.id}>
               <span className="participant-name">{p.displayName}</span>
-              {p.role === "gm" && <span className="badge">GM</span>}
+              {p.role === "gm" && <span className="badge">{t("people.gm")}</span>}
               {isGm && p.role === "player" && onViewAs && (
                 <button
                   type="button"
                   className="link participant-view-as"
-                  aria-label={`View the room as ${p.displayName}`}
+                  aria-label={t("people.viewAsNamed", { name: p.displayName })}
                   aria-pressed={viewingAs === p.id}
                   onClick={() => onViewAs(p.id)}
                 >
-                  View as
+                  {t("people.viewAs")}
                 </button>
               )}
               {isGm && !readOnly && p.role === "player" && p.diceLook && (
                 <button
                   type="button"
                   className="link participant-reset-dice"
-                  aria-label={`Put ${p.displayName}'s dice back to classic`}
-                  title="Their dice look stays in their library; this room shows classic dice for them."
+                  aria-label={t("people.resetDiceNamed", { name: p.displayName })}
+                  title={t("people.resetDiceHint")}
                   onClick={() => void connection.command({ type: "participant.clearDiceLook", participantId: p.id })}
                 >
-                  Reset dice
+                  {t("people.resetDice")}
                 </button>
               )}
               {isGm && !readOnly && p.role === "player" && (
                 <button
                   type="button"
                   className="link danger participant-remove"
-                  aria-label={`Remove ${p.displayName} from the room`}
+                  aria-label={t("people.removeNamed", { name: p.displayName })}
                   onClick={() => setRemoving(p)}
                 >
-                  Remove
+                  {t("common.remove")}
                 </button>
               )}
             </li>
@@ -102,13 +103,13 @@ export function ParticipantsButton({
           {away.map((p) => (
             <li key={p.id} className="participant-away">
               <span className="participant-name">{p.displayName}</span>
-              <span className="badge">AFK</span>
+              <span className="badge">{t("people.afk")}</span>
             </li>
           ))}
         </ul>
         {isGm && !readOnly && participants.filter((p) => p.role === "player").length >= 2 && (
           <button type="button" className="link danger participant-remove-several" onClick={() => setRemovingSeveral(true)}>
-            Remove several…
+            {t("people.removeSeveral")}
           </button>
         )}
       </PopoverButton>
@@ -188,21 +189,19 @@ function RemoveParticipant({
   }
 
   return (
-    <Modal open={!!target} title={target ? `Remove ${target.displayName} from this room?` : "Remove"} onClose={close} initialFocus={cancelRef}>
+    <Modal open={!!target} title={target ? t("people.removeQ", { name: target.displayName }) : t("common.remove")} onClose={close} initialFocus={cancelRef}>
       {target && (
         <div className="leave-confirm">
           <p>
-            <strong>{target.displayName}</strong> is disconnected straight away, on every device, and can't come back
-            with this seat.
+            <strong>{target.displayName}</strong> {t("people.disconnected")}
           </p>
           <p>
             {owned === 0
-              ? "They don't control any tokens."
-              : `Their ${owned === 1 ? "token stays" : `${owned} tokens stay`} on the board under your control, and you choose what happens to ${owned === 1 ? "it" : "them"} next.`}
+              ? t("people.noTokens")
+              : t("people.tokensStay", { n: owned })}
           </p>
           <p className="muted">
-            They can still join again as a new player with the current invite link. To stop that, lock the room or
-            reset the link from Share.
+            {t("people.rejoinNote")}
           </p>
           {error && (
             <p role="alert" className="error">
@@ -211,10 +210,10 @@ function RemoveParticipant({
           )}
           <div className="row modal-actions">
             <button ref={cancelRef} type="button" className="secondary" onClick={close} disabled={busy}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="danger-fill" onClick={() => void remove()} disabled={busy}>
-              {busy ? "Removing…" : `Remove ${target.displayName}`}
+              {busy ? t("people.removing") : t("people.removeButton", { name: target.displayName })}
             </button>
           </div>
         </div>
@@ -276,11 +275,10 @@ function RemoveSeveral({
   }
 
   return (
-    <Modal open={open} title="Remove players" onClose={close} initialFocus={cancelRef}>
+    <Modal open={open} title={t("people.removePlayers")} onClose={close} initialFocus={cancelRef}>
       <div className="leave-confirm">
         <p>
-          Everyone you tick is disconnected straight away, on every device, and can't come back with that seat. Any
-          tokens they control stay on the board under your control, and you choose what happens to them next.
+          {t("people.removeManyBody")}
         </p>
         <label className="checkbox" htmlFor={allId}>
           <input
@@ -290,7 +288,7 @@ function RemoveSeveral({
             disabled={busy || players.length === 0}
             onChange={(e) => setPicked(new Set(e.target.checked ? players.map((p) => p.id) : []))}
           />
-          Everyone ({players.length})
+          {t("people.everyone", { n: players.length })}
         </label>
         <ul className="plain remove-several-list">
           {players.map((p) => (
@@ -303,8 +301,7 @@ function RemoveSeveral({
           ))}
         </ul>
         <p className="muted">
-          They can still join again as new players with the current invite link. To stop that, lock the room or reset
-          the link from Share.
+          {t("people.rejoinManyNote")}
         </p>
         {error && (
           <p role="alert" className="error">
@@ -313,10 +310,10 @@ function RemoveSeveral({
         )}
         <div className="row modal-actions">
           <button ref={cancelRef} type="button" className="secondary" onClick={close} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" className="danger-fill" onClick={() => void remove()} disabled={busy || chosen.length === 0}>
-            {busy ? "Removing…" : chosen.length === 1 ? "Remove 1 player" : `Remove ${chosen.length} players`}
+            {busy ? t("people.removing") : t("people.removeN", { n: chosen.length })}
           </button>
         </div>
       </div>
@@ -340,7 +337,7 @@ function avatarStyle(p: Participant, playerIndex: number) {
 }
 
 function initials(p: Participant) {
-  if (p.role === "gm") return "GM";
+  if (p.role === "gm") return t("people.gm");
   const words = p.displayName.trim().split(/\s+/);
   return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
 }
@@ -365,5 +362,5 @@ function AvatarStack({ participants }: { participants: Participant[] }) {
 /** "12 of 32 player seats taken", from the active participants; the GM's seat is not counted (room-player-cap). */
 export function playerSeats(active: readonly Participant[]) {
   const taken = active.filter((p) => p.role === "player").length;
-  return `${taken} of ${MAX_PLAYERS_PER_ROOM} player seats taken`;
+  return t("people.seats", { n: taken, max: MAX_PLAYERS_PER_ROOM });
 }

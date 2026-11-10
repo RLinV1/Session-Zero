@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAccount } from "../account/accountStore";
 import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
+import { t } from "../i18n/locale";
 
 /**
  * Offered inside the room to a signed-in person whose seat here is still a guest seat, for
@@ -26,7 +27,7 @@ export function KeepSeatNotice({ roomId, token, name }: { roomId: string; token:
       if (stored) saveCredentials({ ...stored, viaAccount: true });
       setKept(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Your seat could not be kept. Try again.");
+      setError(err instanceof Error ? err.message : t("seat.keepFailed"));
       setBusy(false);
     }
   }
@@ -34,7 +35,7 @@ export function KeepSeatNotice({ roomId, token, name }: { roomId: string; token:
   return (
     <div className="board-notice keep-seat-notice">
       <p>
-        <strong>Keep this seat on your account?</strong> Then you can come back as {name} from any device you sign in on.
+        <strong>{t("seat.keepQ")}</strong> {t("seat.keepBody", { name })}
       </p>
       {error && (
         <p role="alert" className="error">
@@ -43,10 +44,10 @@ export function KeepSeatNotice({ roomId, token, name }: { roomId: string; token:
       )}
       <div className="row">
         <button type="button" className="small primary" onClick={() => void keep()} disabled={busy}>
-          {busy ? "Keeping…" : "Keep seat"}
+          {busy ? t("seat.keeping") : t("seat.keep")}
         </button>
         <button type="button" className="secondary small" onClick={() => setDismissed(true)} disabled={busy}>
-          Not now
+          {t("common.notNow")}
         </button>
       </div>
     </div>

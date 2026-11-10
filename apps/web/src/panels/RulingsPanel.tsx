@@ -6,6 +6,7 @@ import { pendingRulingCount, pendingRulings, type PendingRuling } from "./attack
 import { ResolveButton, useGoToAreaEffect } from "./AreaEffectPanel";
 import { RulingButtons } from "./RulingButtons";
 import { useDisplayedHealth } from "../board/nukeHealth";
+import { getLocale, t } from "../i18n/locale";
 
 /**
  * The GM's queue of attack rolls to rule on (attack-rulings, ADR 0011): to-hit rolls waiting for
@@ -48,9 +49,9 @@ export function RulingsPanel({
   };
 
   return (
-    <PanelSection id="rulings" title={count ? `Rulings (${count})` : "Rulings"}>
+    <PanelSection id="rulings" title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}>
       {count === 0 ? (
-        <p className="muted">Nothing to rule on.</p>
+        <p className="muted">{t("ruling.nothing")}</p>
       ) : (
         <ul className="plain rulings">
           {effect && (
@@ -103,35 +104,35 @@ function AreaEffectRow({ effect, state, you, busy, onTakeOver, onResolve, onSkip
   const stage = areaEffectStage(effect);
   const caller = effect.call ? state.participants[effect.call.participantId] : undefined;
   const yours = effect.call?.participantId === you.id;
-  const count = `${effect.targets.length} ${effect.targets.length === 1 ? "target" : "targets"}`;
+  const count = t("ruling.targetsN", { n: effect.targets.length });
   const status =
-    stage === "started" ? "Rolled"
-    : stage === "rolled" ? "Damage rolled"
-    : yours ? "Your damage roll"
-    : `Waiting on ${caller?.displayName ?? "someone"}${caller && !isActive(caller) ? " (left the table)" : ""}`;
+    stage === "started" ? t("ruling.rolled")
+    : stage === "rolled" ? t("ruling.damageRolled")
+    : yours ? t("ruling.yourDamage")
+    : t("ruling.waiting", { name: !caller ? t("common.someone") : isActive(caller) ? caller.displayName : t("area.leftTable", { name: caller.displayName }) });
   return (
     <li className="ruling">
       <span className="ruling-line">
-        <span className="ruling-parties">{effect.label ?? "Area effect"} · {count}</span>
+        <span className="ruling-parties">{effect.label ?? t("area.title")} · {count}</span>
         <span className="muted">{status}</span>
       </span>
       <span className="ruling-actions">
         <span className="ruling-buttons">
           {stage === "started" && (
             <>
-              <button type="button" disabled={busy} onClick={goTo}>Call</button>
+              <button type="button" disabled={busy} onClick={goTo}>{t("area.call")}</button>
               <ResolveButton stage={stage} disabled={busy} onClick={onResolve} />
             </>
           )}
-          {stage === "called" && yours && <button type="button" className="primary" disabled={busy} onClick={goTo}>Roll damage</button>}
+          {stage === "called" && yours && <button type="button" className="primary" disabled={busy} onClick={goTo}>{t("attack.rollDamage")}</button>}
           {stage === "called" && !yours && (
             <>
-              <button type="button" disabled={busy} onClick={goTo}>Reassign</button>
-              <button type="button" disabled={busy} onClick={onTakeOver}>Take over</button>
+              <button type="button" disabled={busy} onClick={goTo}>{t("area.reassign")}</button>
+              <button type="button" disabled={busy} onClick={onTakeOver}>{t("area.takeOver")}</button>
             </>
           )}
           {stage === "rolled" && <ResolveButton stage={stage} disabled={busy} onClick={onResolve} />}
-          {!(stage === "called" && !yours) && <button type="button" className="secondary" disabled={busy} onClick={onSkip}>Skip</button>}
+          {!(stage === "called" && !yours) && <button type="button" className="secondary" disabled={busy} onClick={onSkip}>{t("area.skip")}</button>}
         </span>
       </span>
     </li>
@@ -154,23 +155,23 @@ function RulingRow({
 }) {
   const { roll } = item;
   const attack = roll.attack!;
-  const label = attackLabel(attack);
-  const description = `${formatAttackParties(attack)}${label ? ` · ${label}` : ""}`;
+  const label = attackLabel(attack, getLocale());
+  const description = `${formatAttackParties(attack, getLocale())}${label ? ` · ${label}` : ""}`;
   return (
     <li className="ruling">
       <span className="ruling-line">
         <span className="ruling-parties">{description}</span>
         <span className="ruling-total">
-          <strong>{rolling ? "Rolling…" : roll.total}</strong> <span className="muted">{roll.expression}</span>
-          {roll.visibility === "gm" && <em className="badge">GM only</em>}
+          <strong>{rolling ? t("home.dice.rolling") : roll.total}</strong> <span className="muted">{roll.expression}</span>
+          {roll.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
         </span>
       </span>
       <span className="ruling-actions">
         {/* A reference for the GM's own call; nothing here compares it to the roll. */}
         <span className="muted">
           {item.kind === "toHit"
-            ? item.ac === null ? "No AC" : `AC ${item.ac}`
-            : `${item.hp}${item.maxHp !== null ? `/${item.maxHp}` : ""} HP`}
+            ? item.ac === null ? t("ruling.noAc") : t("ruling.ac", { n: item.ac })
+            : t("ruling.hp", { hp: `${item.hp}${item.maxHp !== null ? `/${item.maxHp}` : ""}` })}
         </span>
         {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
         {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onApply={onApply} />}

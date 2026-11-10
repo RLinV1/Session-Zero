@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Command, RoomState } from "@vtt/shared";
 import type { EditorConnection } from "../../net/roomConnection";
 import { coversWholeMap, describeCells, wholeMapRegion } from "../../panels/fogCells";
+import { t } from "../../i18n/locale";
 
 /**
  * The map editor's fog controls (FR-GM-17, ADR 0016): fog the whole map, and reveal any region from
@@ -32,10 +33,10 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
   /** What the list and its Reveal button call a region: "Whole map", or its shape and cells. */
   const label = (id: string) => {
     const region = state.fog[id];
-    if (!region || !map) return "fog";
-    if (coversWholeMap(region, map)) return "Whole map";
-    const kind = region.shape === "rect" ? "Rectangle" : `Polygon, ${region.points.length} corners`;
-    return `${kind} · ${describeCells(region, map, grid)}`;
+    if (!region || !map) return t("fog.fallback");
+    if (coversWholeMap(region, map)) return t("fog.wholeMap");
+    const kind = region.shape === "rect" ? t("common.rectangle") : t("fog.polygonCorners", { n: region.points.length });
+    return t("fog.regionLabel", { kind, cells: describeCells(region, map, grid) });
   };
 
   /** Send a `fog.add`; on success, announce `done`. */
@@ -55,7 +56,7 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
     setBusy(false);
     setError(result.ok ? null : result.message);
     if (result.ok) {
-      setStatus(`Revealed: ${what}.`);
+      setStatus(t("fog.revealed", { what }));
       setRevealed({ id, index });
     }
   };
@@ -63,7 +64,7 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
   return (
     <>
       {!map ? (
-        <p className="muted">Set a battle map to use fog.</p>
+        <p className="muted">{t("fog.needsMap")}</p>
       ) : (
         <>
           <p className="muted">{intro}</p>
@@ -73,16 +74,16 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
               className="secondary"
               data-guide="fog-whole"
               disabled={busy}
-              onClick={() => void add({ type: "fog.add", region: wholeMapRegion(map) }, "Fogged the whole map.")}
+              onClick={() => void add({ type: "fog.add", region: wholeMapRegion(map) }, t("fog.fogged"))}
             >
-              Fog whole map
+              {t("fog.fogWhole")}
             </button>
           </div>
           <p ref={headingRef} tabIndex={-1} className="fog-count">
-            {regions.length === 0 ? "No fog on the map." : `${regions.length} fogged ${regions.length === 1 ? "region" : "regions"}`}
+            {regions.length === 0 ? t("fog.none") : t("fog.regionsN", { n: regions.length })}
           </p>
           {regions.length > 0 && (
-            <ul ref={listRef} className="plain fog-list" aria-label="Fogged regions">
+            <ul ref={listRef} className="plain fog-list" aria-label={t("fog.regions")}>
               {regions.map((region, i) => (
                 <li key={region.id} className="fog-row">
                   <span>{label(region.id)}</span>
@@ -90,10 +91,10 @@ export function FogControls({ connection, state, intro }: { connection: EditorCo
                     type="button"
                     className="small secondary"
                     disabled={busy}
-                    aria-label={`Reveal ${label(region.id)}`}
+                    aria-label={t("fog.revealNamed", { what: label(region.id) })}
                     onClick={() => void reveal(region.id, i)}
                   >
-                    Reveal
+                    {t("fog.reveal")}
                   </button>
                 </li>
               ))}

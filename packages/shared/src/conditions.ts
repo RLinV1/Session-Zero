@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Locale } from "./i18n/core";
+import { CONDITION_LABELS_ZH_TW } from "./i18n/sentences.zh-TW";
 
 /**
  * Status conditions (FR-TAC-07) and how they are drawn (FR-TAC-08).
@@ -56,6 +58,13 @@ export const CONDITIONS: readonly ConditionSpec[] = [
 
 const BY_ID = new Map(CONDITIONS.map((c) => [c.id, c]));
 export const conditionSpec = (id: ConditionId): ConditionSpec => BY_ID.get(id)!;
+
+/** A condition's name in `locale`: "Prone", "倒地" (docs/GLOSSARY-zh-TW.md). */
+export const conditionLabel = (id: ConditionId, locale: Locale = "en"): string =>
+  locale === "zh-TW" ? CONDITION_LABELS_ZH_TW[id].label : conditionSpec(id).label;
+/** The marker's short text in `locale`: two letters in English, one character in Chinese ("PR", "倒"). */
+export const conditionAbbr = (id: ConditionId, locale: Locale = "en"): string =>
+  locale === "zh-TW" ? CONDITION_LABELS_ZH_TW[id].abbr : conditionSpec(id).abbr;
 
 /** Numeric resources shown on a token (FR-TAC-07). */
 /** The lowest HP a token can hold; applying damage stops here (ADR 0011). */

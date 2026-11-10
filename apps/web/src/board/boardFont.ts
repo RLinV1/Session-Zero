@@ -5,14 +5,16 @@
  * one arrives. So the board waits for both before its first label, with a timeout so a slow
  * font never holds up the table, and relabels once if they only arrive after that.
  */
-export const BOARD_FONT = '"Geist Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
-export const BOARD_MONO = '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace';
+/** Traditional Chinese system faces, so a Chinese label never takes Japanese or Simplified glyph shapes (localization). */
+export const CJK_TC = '"PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei"';
+export const BOARD_FONT = `"Geist Sans", ${CJK_TC}, system-ui, -apple-system, "Segoe UI", sans-serif`;
+export const BOARD_MONO = `"Geist Mono", ui-monospace, "SF Mono", Menlo, ${CJK_TC}, monospace`;
 /**
  * The same stacks spelt differently. Pixi caches a label's texture by its text and style, so a
  * relabel needs a style that differs from the one the fallback face was drawn with.
  */
-export const BOARD_FONT_LOADED = '"Geist Sans", system-ui, sans-serif';
-export const BOARD_MONO_LOADED = '"Geist Mono", ui-monospace, monospace';
+export const BOARD_FONT_LOADED = `"Geist Sans", ${CJK_TC}, system-ui, sans-serif`;
+export const BOARD_MONO_LOADED = `"Geist Mono", ui-monospace, ${CJK_TC}, monospace`;
 /** Long enough for a local font file, short enough not to be felt. */
 export const BOARD_FONT_WAIT_MS = 1500;
 /** The faces the board draws labels in. */

@@ -3,7 +3,9 @@ import { DEFAULT_PRESET_ID, GAME_PRESETS, type GamePresetId } from "@vtt/shared"
 import { useAccount } from "../account/accountStore";
 import { api } from "../net/api";
 import { newGuestToken, saveCredentials } from "../net/identity";
+import { t } from "../i18n/locale";
 
+import { presetDescription, presetName } from "../i18n/labels";
 /** What creating a room asks for (FR-GM-01, KAN-63). */
 export interface RoomDetails {
   roomName: string;
@@ -37,7 +39,7 @@ export function RoomDetailsFields({ value, onChange, disabled = false }: {
   return (
     <>
       <label>
-        Room name
+        {t("room.details.name")}
         <input
           value={value.roomName}
           onChange={(e) => onChange({ ...value, roomName: e.target.value })}
@@ -47,7 +49,7 @@ export function RoomDetailsFields({ value, onChange, disabled = false }: {
         />
       </label>
       <label>
-        Your name
+        {t("room.details.yourName")}
         <input
           value={value.displayName}
           onChange={(e) => onChange({ ...value, displayName: e.target.value })}
@@ -58,13 +60,13 @@ export function RoomDetailsFields({ value, onChange, disabled = false }: {
       </label>
       {/* Only a choice once there is more than one game (KAN-63). */}
       {GAME_PRESETS.length > 1 && <fieldset className="preset-choice" disabled={disabled}>
-        <legend>Game</legend>
+        <legend>{t("room.details.game")}</legend>
         {GAME_PRESETS.map((p) => (
           <label key={p.id} className="preset-option">
             <input type="radio" name="preset" value={p.id} checked={value.preset === p.id} onChange={() => onChange({ ...value, preset: p.id })} />
             <span>
-              <strong>{p.name}</strong>
-              <span className="muted small-print">{p.description}</span>
+              <strong>{presetName(p)}</strong>
+              <span className="muted small-print">{presetDescription(p)}</span>
             </span>
           </label>
         ))}

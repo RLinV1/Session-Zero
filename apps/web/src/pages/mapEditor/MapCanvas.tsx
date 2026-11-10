@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { MapGuide } from "./EditorGuide";
 import { GridLines, MapFilter } from "./GridLines";
 import { type GridSpec, type MapImage, type Point } from "@vtt/shared";
+import { t } from "../../i18n/locale";
 
 /** A press that moves further than this is a drag, not a click. */
 const CLICK_SLOP_PX = 4;
@@ -207,10 +208,10 @@ export function MapCanvas({
       </svg>
       <MapGuide />
       <MapFilter />
-      <div className="wall-canvas-zoom" role="group" aria-label="Zoom">
+      <div className="wall-canvas-zoom" role="group" aria-label={t("common.zoom")}>
         <button type="button" className="secondary small" onClick={() => setCamera((c) => ({ ...c, zoom: Math.min(MAX_ZOOM, c.zoom * 1.5) }))}>+</button>
         <button type="button" className="secondary small" onClick={() => setCamera((c) => ({ ...c, zoom: Math.max(1, c.zoom / 1.5) }))}>−</button>
-        <button type="button" className="secondary small" onClick={() => setCamera({ cx: map.width / 2, cy: map.height / 2, zoom: 1 })}>Fit</button>
+        <button type="button" className="secondary small" onClick={() => setCamera({ cx: map.width / 2, cy: map.height / 2, zoom: 1 })}>{t("common.fit")}</button>
       </div>
     </div>
   );

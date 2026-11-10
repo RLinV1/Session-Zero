@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { t } from "../../i18n/locale";
 
 const DEFAULT_WIDTH = 272;
 const MIN_WIDTH = 220;
@@ -57,7 +58,7 @@ export function HudLayout({ className, children }: { className: string; children
         className="hud-handle"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize side panel"
+        aria-label={t("editor.resizePanel")}
         aria-valuemin={MIN_WIDTH}
         aria-valuemax={MAX_WIDTH}
         aria-valuenow={layout.collapsed ? 0 : layout.width}
@@ -71,7 +72,7 @@ export function HudLayout({ className, children }: { className: string; children
         <button
           type="button"
           className="hud-fold"
-          aria-label={layout.collapsed ? "Show side panel" : "Hide side panel"}
+          aria-label={layout.collapsed ? t("editor.showPanel") : t("editor.hidePanel")}
           aria-expanded={!layout.collapsed}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => setLayout((now) => ({ ...now, collapsed: !now.collapsed }))}

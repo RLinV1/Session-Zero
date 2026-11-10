@@ -6,6 +6,7 @@ import { makeSightMaskCanvas, sightColor } from "../../board/sightMask";
 import { rangeFill } from "../../ui/rangeFill";
 import { MapCanvas } from "./MapCanvas";
 import { HudLayout } from "./HudLayout";
+import { t } from "../../i18n/locale";
 
 const MAX_SQUARES = 60;
 /** The editor-only viewer that owns the test tokens: never a room participant, never sent anywhere. */
@@ -86,11 +87,11 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     if (!map || tokens.length === 0) return null;
     const { sightRange: _drop, ...rest } = state.scene;
     const scene = { ...rest, lineOfSight: true, ...(range !== null && { sightRange: range }) };
-    const asToken = (t: TestToken): Token => ({
-      id: t.id, name: t.name, position: t.position, size: 1, rotation: 0, color: "#c2410c", imageUrl: null,
-      ownerIds: shown.has(t.id) ? [TEST_ID] : [], hidden: false, stats: EMPTY_STATS, conditions: [],
+    const asToken = (token: TestToken): Token => ({
+      id: token.id, name: token.name, position: token.position, size: 1, rotation: 0, color: "#c2410c", imageUrl: null,
+      ownerIds: shown.has(token.id) ? [TEST_ID] : [], hidden: false, stats: EMPTY_STATS, conditions: [],
     });
-    const seen = { ...state, scene, walls, tokens: Object.fromEntries(tokens.map((t) => [t.id, asToken(t)])) };
+    const seen = { ...state, scene, walls, tokens: Object.fromEntries(tokens.map((token) => [token.id, asToken(token)])) };
     return { polygons: viewerSight(seen, TEST_VIEWER), visible: new Set(Object.keys(filterStateForViewer(seen, TEST_VIEWER).tokens)) };
   }, [map, tokens, shown, state, walls, range]);
   const polygons = preview?.polygons ?? null;
@@ -101,7 +102,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     return makeSightMaskCanvas(polygons, map.width, map.height, grid.cellSize, sightColor(null)).canvas.toDataURL();
   }, [polygons, map, grid.cellSize]);
 
-  if (!map) return <p className="map-editor-empty">Apply a map before setting up sight.</p>;
+  if (!map) return <p className="map-editor-empty">{t("sight.needsMap")}</p>;
 
   const send = async (command: { type: "scene.setLineOfSight"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
     const result = await connection.command(command);
@@ -114,17 +115,17 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
   const setRange = (next: number) => void send({ type: "scene.setSightRange", range: Math.min(grid.unitsPerCell * 1000, Math.max(grid.unitsPerCell, next)) });
 
   const clamp = (p: Point): Point => ({ x: Math.min(map.width, Math.max(0, p.x)), y: Math.min(map.height, Math.max(0, p.y)) });
-  const moveTo = (id: string, position: Point) => setTokens((now) => now.map((t) => (t.id === id ? { ...t, position } : t)));
+  const moveTo = (id: string, position: Point) => setTokens((now) => now.map((token) => (token.id === id ? { ...token, position } : token)));
   const add = (at?: Point) => {
     const n = nextNumber.current++;
     const id = `test-${n}`;
     // Showing everyone stays that way when another token joins.
-    if (tokens.every((t) => shown.has(t.id))) setShown(new Set([...shown, id]));
-    setTokens((now) => [...now, { id, name: `Token ${n}`, position: at ? place(at) : centre(now.length) }]);
+    if (tokens.every((token) => shown.has(token.id))) setShown(new Set([...shown, id]));
+    setTokens((now) => [...now, { id, name: t("sight.token", { n }), position: at ? place(at) : centre(now.length) }]);
     setPlacing(false);
   };
   const remove = (id: string) => {
-    setTokens((now) => now.filter((t) => t.id !== id));
+    setTokens((now) => now.filter((token) => token.id !== id));
     setShown((now) => new Set([...now].filter((x) => x !== id)));
   };
   // MapCanvas hands over map points; a press on a token starts its drag, on the empty map places a token while placing.
@@ -133,11 +134,11 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     pressed.current = target;
     if (target.closest(".sight-portal") || e.button !== 0) return;
     const id = target.closest<SVGGElement>(".sight-test-token")?.dataset.id;
-    const t = tokens.find((x) => x.id === id);
-    if (t) {
-      grab.current = { x: t.position.x - at.x, y: t.position.y - at.y };
-      setShown(new Set([t.id]));
-      setDrag({ id: t.id, at: t.position });
+    const hit = tokens.find((x) => x.id === id);
+    if (hit) {
+      grab.current = { x: hit.position.x - at.x, y: hit.position.y - at.y };
+      setShown(new Set([hit.id]));
+      setDrag({ id: hit.id, at: hit.position });
     } else if (placing) {
       add(at);
     }
@@ -154,64 +155,64 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     moveTo(drag.id, e.altKey ? drag.at : place(drag.at));
     setDrag(null);
   };
-  const onTokenKey = (t: TestToken) => (e: KeyboardEvent<SVGGElement>) => {
+  const onTokenKey = (token: TestToken) => (e: KeyboardEvent<SVGGElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
-      setShown(new Set([t.id]));
+      setShown(new Set([token.id]));
       return;
     }
     const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (!step) return;
     e.preventDefault();
     e.stopPropagation();
-    moveTo(t.id, place({ x: t.position.x + step[0]! * grid.cellSize, y: t.position.y + step[1]! * grid.cellSize }));
+    moveTo(token.id, place({ x: token.position.x + step[0]! * grid.cellSize, y: token.position.y + step[1]! * grid.cellSize }));
   };
 
   const radius = grid.cellSize / 2 - 4;
-  const others = tokens.filter((t) => !shown.has(t.id));
-  const seenCount = others.filter((t) => preview?.visible.has(t.id)).length;
+  const others = tokens.filter((token) => !shown.has(token.id));
+  const seenCount = others.filter((token) => preview?.visible.has(token.id)).length;
   const allShown = tokens.length > 0 && others.length === 0;
-  const who = shown.size === 1 ? tokens.find((t) => shown.has(t.id))?.name : "They";
+  const who = shown.size === 1 ? tokens.find((token) => shown.has(token.id))?.name : undefined;
 
   return (
     <HudLayout className="map-editor-split map-editor-sight-split">
-      <aside className="map-editor-panel sight-token-panel" aria-label="Test tokens">
+      <aside className="map-editor-panel sight-token-panel" aria-label={t("sight.testTokens")}>
         <div className="sight-panel-head">
-          <h3 className="map-editor-heading">Test tokens</h3>
+          <h3 className="map-editor-heading">{t("sight.testTokens")}</h3>
           <button
             type="button" data-guide="sight-add" className="icon-button sight-add" aria-pressed={placing}
-            aria-label="Add token" title={placing ? "Add token (press again or Esc to cancel)" : "Add token"}
+            aria-label={t("common.addToken")} title={placing ? t("sight.addTokenHint") : t("common.addToken")}
             onClick={() => setPlacing(!placing)}
           >
             <Plus size={18} aria-hidden="true" />
           </button>
         </div>
         {tokens.length === 0 ? (
-          <p className="muted small-print">Click the map to place a token.</p>
+          <p className="muted small-print">{t("sight.clickToPlace")}</p>
         ) : (
           <>
             {tokens.length > 1 && (
               <label className="sight-token-pick sight-select-all">
                 <input
                   type="checkbox" checked={allShown} ref={(el) => { if (el) el.indeterminate = shown.size > 0 && !allShown; }}
-                  onChange={() => setShown(allShown ? new Set() : new Set(tokens.map((t) => t.id)))}
+                  onChange={() => setShown(allShown ? new Set() : new Set(tokens.map((token) => token.id)))}
                 />
-                <span>Select all</span>
+                <span>{t("sight.selectAll")}</span>
               </label>
             )}
             <ul className="sight-token-list">
-              {tokens.map((t) => (
-                <li key={t.id} className={`sight-token-row${shown.has(t.id) ? " is-shown" : ""}`}>
+              {tokens.map((token) => (
+                <li key={token.id} className={`sight-token-row${shown.has(token.id) ? " is-shown" : ""}`}>
                   <label className="sight-token-pick">
                     <input
-                      type="checkbox" aria-label={`Show ${t.name}'s sight`} checked={shown.has(t.id)}
-                      onChange={(e) => setShown((now) => { const next = new Set(now); if (e.target.checked) next.add(t.id); else next.delete(t.id); return next; })}
+                      type="checkbox" aria-label={t("sight.showSight", { name: token.name })} checked={shown.has(token.id)}
+                      onChange={(e) => setShown((now) => { const next = new Set(now); if (e.target.checked) next.add(token.id); else next.delete(token.id); return next; })}
                     />
-                    <span className="sight-token-swatch" aria-hidden="true">{t.name.replace("Token ", "")}</span>
-                    <span className="sight-token-name">{t.name}</span>
+                    <span className="sight-token-swatch" aria-hidden="true">{token.id.replace("test-", "")}</span>
+                    <span className="sight-token-name">{token.name}</span>
                   </label>
-                  <button type="button" className="icon-button token-delete" aria-label={`Remove ${t.name}`} title={`Remove ${t.name}`} onClick={() => remove(t.id)}>
+                  <button type="button" className="icon-button token-delete" aria-label={t("sight.removeNamed", { name: token.name })} title={t("sight.removeNamed", { name: token.name })} onClick={() => remove(token.id)}>
                     <Trash size={16} aria-hidden="true" />
                   </button>
                 </li>
@@ -224,7 +225,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         <MapCanvas
           map={map} grid={grid} mode={placing ? "place" : "view"} pan={false}
           className={`map-editor-sight-preview${drag ? " is-dragging" : ""}${placing ? " is-placing" : ""}`}
-          label={placing ? "Sight preview. Click to place a test token, or press Enter to place it in the middle." : "Sight preview"}
+          label={placing ? t("sight.previewHint") : t("sight.preview")}
           onPress={press} onMove={dragTo} onRelease={release} onCancel={() => { pressed.current = null; setDrag(null); }}
           onKeyDown={(e) => { if (placing && e.target === e.currentTarget && e.key === "Enter") { e.preventDefault(); add(); } }}
         >
@@ -234,13 +235,13 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
             <line key={w.id} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} className="sight-preview-wall" strokeWidth={Math.max(2, grid.cellSize / 20)} />
           ))}
           {Object.values(walls).filter(isPortal).map((w) => {
-            const kind = w.portal?.kind === "window" ? "Window" : "Door";
+            const kind = w.portal?.kind === "window" ? t("common.window") : t("common.door");
             const open = isOpen(w);
-            const status = open ? "open" : w.portal?.state === "locked" ? "locked" : "closed";
+            const status = (open ? t("common.openState") : w.portal?.state === "locked" ? t("common.locked") : t("common.closed")).toLowerCase();
             return (
               <g
                 key={w.id} data-id={w.id} className={`sight-portal${open ? " is-open" : ""}`} tabIndex={0} role="button" aria-pressed={open}
-                aria-label={`${kind}, ${status}. Press to ${open ? "close" : "open"} it in this preview.`}
+                aria-label={t(open ? "sight.portalOpenAria" : "sight.portalClosedAria", { kind, status })}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggle(w.id); } }}
               >
                 {/* A wide invisible line so a thin door is easy to click. */}
@@ -249,20 +250,20 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
               </g>
             );
           })}
-          {tokens.map((t) => {
-            const at = drag?.id === t.id ? drag.at : t.position;
-            const unseen = !shown.has(t.id) && !preview?.visible.has(t.id);
+          {tokens.map((token) => {
+            const at = drag?.id === token.id ? drag.at : token.position;
+            const unseen = !shown.has(token.id) && !preview?.visible.has(token.id);
             return (
               <g
-                key={t.id} data-id={t.id}
+                key={token.id} data-id={token.id}
                 className={`sight-test-token${unseen ? " is-unseen" : ""}`}
-                tabIndex={0} role="button" aria-pressed={shown.has(t.id)}
-                aria-label={`${t.name}. Drag it, or use the arrow keys to move it one square. Press Enter to show only its sight.`}
-                onKeyDown={onTokenKey(t)}
+                tabIndex={0} role="button" aria-pressed={shown.has(token.id)}
+                aria-label={t("sight.tokenAria", { name: token.name })}
+                onKeyDown={onTokenKey(token)}
               >
                 <circle cx={at.x} cy={at.y} r={radius} strokeWidth={Math.max(2, grid.cellSize / 16)} />
                 <text x={at.x} y={at.y} className="sight-test-token-label" fontSize={radius} dominantBaseline="central" textAnchor="middle">
-                  {t.name.replace("Token ", "")}
+                  {token.id.replace("test-", "")}
                 </text>
               </g>
             );
@@ -271,63 +272,63 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         </MapCanvas>
         {placing && (
           <div className="sight-place-prompt" role="status">
-            <span>{tokens.length === 0 ? "Click the map to place a test token." : "Click the map to place another token."}</span>
+            <span>{tokens.length === 0 ? t("sight.placeTest") : t("sight.placeAnother")}</span>
           </div>
         )}
         {shown.size > 0 && others.length > 0 && closedFor !== shown && (
           <div className="sight-popup" role="status">
-            <span>{`${who} ${shown.size === 1 ? "sees" : "see"} ${seenCount} of ${others.length} other ${others.length === 1 ? "token" : "tokens"}.`}</span>
-            <button type="button" className="icon-button" aria-label="Close" onClick={() => setClosedFor(shown)}>
+            <span>{who !== undefined ? t("sight.oneSees", { name: who, n: seenCount, total: others.length }) : t("sight.theySee", { n: seenCount, total: others.length })}</span>
+            <button type="button" className="icon-button" aria-label={t("common.close")} onClick={() => setClosedFor(shown)}>
               <X size={14} aria-hidden="true" />
             </button>
           </div>
         )}
       </div>
-      <aside className="map-editor-hud" aria-label="Sight settings">
+      <aside className="map-editor-hud" aria-label={t("sight.settings")}>
         <section className="sight-setting">
-          <h3 className="map-editor-heading">Line of sight</h3>
-          <div className="map-editor-modes" role="radiogroup" aria-label="Line of sight" data-guide="sight-toggle">
+          <h3 className="map-editor-heading">{t("sight.lineOfSight")}</h3>
+          <div className="map-editor-modes" role="radiogroup" aria-label={t("sight.lineOfSight")} data-guide="sight-toggle">
             <button type="button" role="radio" aria-checked={!enabled} className="tool-button map-editor-mode"
               onClick={() => { if (enabled) void send({ type: "scene.setLineOfSight", enabled: false }); }}>
               <EyeSlash size={18} aria-hidden="true" />
-              <span>Off</span>
+              <span>{t("common.off")}</span>
             </button>
             <button type="button" role="radio" aria-checked={enabled} className="tool-button map-editor-mode"
               onClick={() => { if (!enabled) void send({ type: "scene.setLineOfSight", enabled: true }); }}>
               <Eye size={18} aria-hidden="true" />
-              <span>On</span>
+              <span>{t("common.on")}</span>
             </button>
           </div>
         </section>
         <section className="sight-setting">
-          <h3 className="map-editor-heading">Range</h3>
-          <div className="map-editor-modes" role="radiogroup" aria-label="Sight range">
+          <h3 className="map-editor-heading">{t("sight.range")}</h3>
+          <div className="map-editor-modes" role="radiogroup" aria-label={t("sight.rangeLabel")}>
             <button type="button" role="radio" aria-checked={range === null} className="tool-button map-editor-mode"
               onClick={() => { if (range !== null) void send({ type: "scene.setSightRange", range: null }); }}>
               <InfinityIcon size={18} aria-hidden="true" />
-              <span>Unlimited</span>
+              <span>{t("sight.unlimited")}</span>
             </button>
             <button type="button" role="radio" aria-checked={range !== null} className="tool-button map-editor-mode"
               onClick={() => { if (range === null) setRange(12 * grid.unitsPerCell); }}>
               <Ruler size={18} aria-hidden="true" />
-              <span>Limited</span>
+              <span>{t("sight.limited")}</span>
             </button>
           </div>
           {range !== null && (
             <>
               <label className="sight-range-field">
-                <span className="small-print">Distance: {range} {unit} ({squares} {squares === 1 ? "square" : "squares"})</span>
+                <span className="small-print">{t("sight.distance", { range, unit, squares })}</span>
                 <input
-                  type="range" className="range range-filled" aria-label="Sight range in squares" min={1} max={maxSquares} step={1}
+                  type="range" className="range range-filled" aria-label={t("sight.rangeSquares")} min={1} max={maxSquares} step={1}
                   value={squares} style={rangeFill(squares, 1, maxSquares)}
                   onChange={(e) => setRange(e.target.valueAsNumber * grid.unitsPerCell)}
                 />
               </label>
               <label className="sight-range-exact">
-                <span className="small-print">Exact distance</span>
+                <span className="small-print">{t("sight.exact")}</span>
                 <span className="sight-range-input">
                   <input
-                    type="number" inputMode="numeric" aria-label={`Sight range in ${unit}`}
+                    type="number" inputMode="numeric" aria-label={t("sight.rangeIn", { unit })}
                     min={grid.unitsPerCell} max={grid.unitsPerCell * 1000} step={grid.unitsPerCell} value={range}
                     onChange={(e) => { const n = e.target.valueAsNumber; if (n > 0) setRange(n); }}
                   />

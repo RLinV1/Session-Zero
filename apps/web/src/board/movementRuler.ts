@@ -1,6 +1,7 @@
 import { effectiveTerrain, emptyTerrain, movementTerrain, movementRouteKnown, sweptCrossesWalls, footprintCrossesWall, blocksMovement, type GridSpec, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
 import { formatDistance } from "./tools";
 
+import { t } from "../i18n/locale";
 export type MovementPreview = { label: string; obstruction: "blocked" | "unknown" | "clear" };
 
 export function movementPreview(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free = false, reposition = false): MovementPreview {
@@ -11,8 +12,8 @@ export function movementPreview(state: RoomState, you: Participant, token: Token
   const walls = Object.values(state.walls).filter(blocksMovement);
   const destination = movementTerrain(to, to, token.size, grid, runs).blocked || footprintCrossesWall(to, token.size, grid, walls);
   const obstruction = destination || (!reposition && (result.blocked || sweptCrossesWalls(from, to, token.size, grid, walls.filter((w) => !footprintCrossesWall(from, token.size, grid, [w])))));
-  const cost = unknown ? " · Cost unknown" : Math.abs(result.cost - result.distance) > 1e-8 ? ` · Cost ${formatDistance(result.cost, grid)}` : "";
-  return { label: `${formatDistance(result.distance, grid)}${cost}${reposition ? " · Reposition" : ""}`, obstruction: obstruction ? "blocked" : unknown ? "unknown" : "clear" };
+  const cost = unknown ? t("move.costUnknown") : Math.abs(result.cost - result.distance) > 1e-8 ? t("move.cost", { cost: formatDistance(result.cost, grid) }) : "";
+  return { label: `${formatDistance(result.distance, grid)}${cost}${reposition ? t("move.reposition") : ""}`, obstruction: obstruction ? "blocked" : unknown ? "unknown" : "clear" };
 }
 
 export function movementReadout(...args: Parameters<typeof movementPreview>): string {
@@ -30,5 +31,6 @@ export function isMovementSettings(value: unknown): value is MovementSettings {
 }
 export function budgetLabel(distance: number, allowance: number, grid: GridSpec): string {
   const difference = allowance - distance;
-  return `${formatDistance(distance, grid).replace(` ${grid.unitLabel}`, "")} / ${formatDistance(allowance, grid)} · ${formatDistance(Math.abs(difference), grid)} ${difference < -1e-9 ? "over" : "remaining"}`;
+  const parts = { used: formatDistance(distance, grid).replace(` ${grid.unitLabel}`, ""), budget: formatDistance(allowance, grid), left: formatDistance(Math.abs(difference), grid) };
+  return t(difference < -1e-9 ? "board.over" : "board.remaining", parts);
 }

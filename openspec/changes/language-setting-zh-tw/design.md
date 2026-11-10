@@ -72,6 +72,8 @@ Keys are dotted by area (`room.leave.confirm`). The core is pure (no I/O, no glo
 
 English is bundled. The Traditional Chinese web and shared catalogs are one lazily imported chunk. `main.tsx` awaits it before the first render when the starting locale is `zh-TW`, so there is no English flash; switching loads it first and flips the locale only once it has loaded, so a switch is never half-applied. `<html lang>`, `document.title` and the meta description are set with the locale (the same pre-render and route-hook pattern `theme.ts` uses for `data-theme`).
 
+Components call the module-level `t()` directly. The app root subscribes with `useT()`, so a language change re-renders the whole React tree and every `t()` call reads the new language; only the two `memo` components (which render no text) could skip it, and a `useMemo` that holds text lists the locale among its dependencies. Demos that build state from text (the home page's turn and recover demos) are keyed on the locale so they rebuild in it. This keeps the migration to replacing literals, with no hook to thread through each component.
+
 ### 4. Command rejections are formatted on the client
 
 `reject(code, id, params?)` returns `{ ok: false, code, message, text: { id, params } }`, where `message` is the English formatting of `text`, so every existing assertion on `.message` and every non-browser client still sees today's English. `liveRoom.ts` sends `rejected` with the new optional `messageId` and `params` beside `message`. `RoomConnection` formats `{ messageId, params }` in the current locale when the id is known and falls back to `message` otherwise; its own messages ("Not connected") come from the web catalog. The socket `error` message keeps mapping by `code`.
@@ -80,17 +82,21 @@ English is bundled. The Traditional Chinese web and shared catalogs are one lazi
 
 ### 5. REST is formatted on the server, from `Accept-Language`
 
-Every web request goes through one header helper that sets `Accept-Language` to the current locale (it is a CORS-safelisted header, so `fetch` may set it). An Express middleware resolves `req.locale` with `resolveLocale` over the header's q-ordered tags, defaulting to `en`, and sets `Content-Language` and `Vary: Accept-Language`. Routes call `req.t(id, params)`.
+Every web request goes through one header helper that sets `Accept-Language` to the current locale (a CORS-safelisted header, so `fetch` may set it). An Express middleware resolves the request's locale with `resolveLocale` over the header's q-ordered tags, defaulting to `en`, and sets `Content-Language` and `Vary: Accept-Language`.
 
-Field errors: zod's built-in issue messages are produced per parse with zod's bundled `zh-TW` locale error map when `req.locale` is `zh-TW`. Our own `refine` messages in `protocol.ts` become constants read from the shared English catalog, and a reverse index (English text → id) translates them in `badRequest`. A unit test fails if two validation ids share an English text, which would make the index ambiguous.
+Routes keep writing English. For a Chinese request the middleware passes every JSON body through `localizeBody`, which rewrites its `error` and `issues` where the response is sent: a reverse index of the typed server catalog (`apps/server/src/i18n`) covers the fixed messages, a few exact patterns cover the messages written with a value, our own zod messages map back to their shared ids (`validationMessage`/`validationRef`), and zod's built-in issues use zod's bundled `zh-TW` map by issue code. Anything unrecognised stays English, so a missing entry never produces a wrong sentence. A test scans `apps/server/src` and fails on any English error literal without a translation. Refusals that already carry a shared message ref (the join decision, encounter template problems) are written directly in the request's language.
 
-Activity history is REST, so `formatActivity(event, actor, before, locale)` and `activityHistory(..., locale)` take the request locale; the web's activity log keys its query on the locale so switching refetches. The home page's recover demo calls the same function with the current locale.
+*Alternative:* `req.t(id)` at each of the ~120 call sites. Rejected once the inventory showed only six interpolated messages: the boundary keeps the routes unchanged, and the typed catalog plus the source scan give the same completeness check.
 
-*Alternative:* return ids on REST too and format on the client. Rejected for the activity log, whose sentences need the historical state only the server has, and then not worth splitting REST into two styles.
+Activity history and replay are REST, so `activityHistory` and `replayPoints`/`replayFrom` take the request locale; the web's activity log keys its query on the locale so switching refetches.
 
-### 6. Shared English-grammar helpers become messages
+### 6. Shared sentence builders take a locale, with a Chinese twin
 
-`formatActivity` becomes one catalog function per event type in each language, receiving names and nested messages as parameters; the English functions reproduce today's output exactly, and the existing activity tests are the regression guard. `describeUndo` and `describePortalChange` return message refs (`undo.move`, `portal.opened`) instead of English verb fragments, and their callers render whole phrases from the catalog. Condition labels and abbreviations come from the shared catalog by condition id; in Chinese the board marker uses a one-character abbreviation (倒 for Prone). The "Scene 1" fallback is a catalog entry because it is not stored; a stored name is content.
+Simple messages are catalog entries (decision 1). The builders that compose sentences with English grammar (`formatActivity`, `describeUndo`, `describePortalChange`, the replay's labels and step sentences, and the attack-roll formatters) instead take a `locale` (default `"en"`) and hand Chinese to twins in `packages/shared/src/i18n/sentences.zh-TW.ts`. Each twin mirrors its English switch case for case and ends in the same `never` check, so an event type added in English fails the typecheck until it reads in Chinese too. English is untouched, so the existing English tests stay the regression guard. Splitting the English into fragments (articles, plurals, past and gerund forms) would have made both languages harder to read and to check.
+
+Condition labels and markers come from `conditionLabel(id, locale)` and `conditionAbbr(id, locale)`; in Chinese a marker is one distinct character (倒 for Prone). Chinese templates use the `cjk` tagged template, which adds the half-width space only where a Han character meets a Latin letter or digit, so a typed name reads "Goblin 已不存在" and a Chinese noun reads "那個棋子已不存在".
+
+"Scene 1", the initial scene's name, stays as it is: `decide` copies it into rename and switch events, so it is room data like the "ft" unit, not interface text.
 
 ### 7. The board relabels on locale change
 
@@ -106,7 +112,7 @@ Activity history is REST, so `formatActivity(event, actor, before, locale)` and 
 
 ### 10. Translation conventions
 
-Translations use Taiwan Mandarin vocabulary, full-width punctuation, 「」 for quotations, and a half-width space between Chinese and Latin letters or digits ("3 天前", "GM 已移除"). A glossary in `docs/GLOSSARY-zh-TW.md` fixes game terms before the bulk translation. Proposed core terms, to be confirmed by a native-speaking reviewer before translation starts:
+Translations use Taiwan Mandarin vocabulary, full-width punctuation, 「」 for quotations, and a half-width space between Chinese and Latin letters or digits ("3 天前", "GM 已移除"). A glossary in `docs/GLOSSARY-zh-TW.md` fixes game terms before the bulk translation. Core terms (approved 2026-11-10; the glossary is the source of truth):
 
 | English | 繁體中文 | | English | 繁體中文 |
 | --- | --- | --- | --- | --- |
@@ -117,12 +123,50 @@ Translations use Taiwan Mandarin vocabulary, full-width punctuation, 「」 for 
 | Map / grid | 地圖／網格 | | Critical hit | 重擊 |
 | Scene / encounter | 場景／遭遇 | | Area effect | 範圍效果 |
 | Fog of war | 戰爭迷霧 | | Cone / circle / line / square | 錐形／圓形／直線／方形 |
-| Wall / door / window | 牆／門／窗 | | Blinded / Charmed / Frightened | 目盲／魅惑／恐懼 |
-| Line of sight | 視線 | | Grappled / Invisible / Paralyzed | 被擒抱／隱形／麻痺 |
+| Wall / door / window | 牆／門／窗 | | Blinded / Charmed / Frightened | 目盲／魅惑／恐慌 |
+| Line of sight | 視線 | | Grappled / Invisible / Paralyzed | 擒抱／隱形／麻痺 |
 | Library | 素材庫 | | Poisoned / Prone / Restrained | 中毒／倒地／束縛 |
 | Checkpoint | 存檔點 | | Stunned / Unconscious / Concentrating | 震懾／昏迷／專注 |
 | Undo / replay | 復原／重播 | | Invite link | 邀請連結 |
 | Activity log | 活動紀錄 | | Sign in / sign up / sign out | 登入／註冊／登出 |
+
+### 11. The language control, by design thinking
+
+**Empathize: who changes language, and where they are when they do.**
+
+- *The invited player.* An invite link opens the join page, a single card with "Your name" and "Join". For most players it is the only page they see before the table, often on a phone. If their browser isn't set to Chinese, that card is English, and the language decision happens there or not at all.
+- *The reader the browser guessed wrong for.* A Taiwanese player whose browser says `zh-TW` but who plays in English, or a Chinese reader on a borrowed English laptop. Neither can read their way to the setting; they have to recognise it.
+- *The player mid-fight.* They switch at the table and worry about two things: that the whole table changes language, and that a reload drops them out of the encounter.
+- *The GM* setting up from the home page or dashboard, and *the screen-reader user*, who needs the control named and the page's language declared so the voice switches too.
+
+**Define: what the control must do.**
+
+1. Be recognisable without reading the page's current language.
+2. Show which language is on, and let every reader find theirs by its own name.
+3. Be on the first screen a person sees, the join page included, at phone width.
+4. Make plain at the table that the change is personal and interrupts nothing.
+5. Sit with the theme toggle and account menu in the existing control language (neutral surface, no rust), and still work when a third language arrives.
+
+**Ideate: options considered.**
+
+| Option | For | Against |
+|---|---|---|
+| A. Icon toggle that cycles languages, like the theme toggle | One click | Can't tell whether the icon means "current" or "next"; easy to hit by accident; stops making sense at three languages |
+| B. A link naming the other language ("繁體中文" on English pages), the Taiwanese bilingual-site habit | One click; the most findable for two languages | Doesn't show the current language (need 2); becomes a list at three |
+| C. A native `<select>` | Accessible; native picker on phones | Unlike every other header control; a closed select hides the other names |
+| D. Language links in the footer | No header space | The entry pages and the table have no footer; easy to miss |
+| **E. Globe icon + current language's own name + caret, opening a short menu of languages each named in itself, the current one checked** | The globe is the widely used language signifier; the name shows what is on; the menu shows everyone their own language; same anatomy as the account trigger; scales | Two clicks instead of one |
+
+**Prototype: what is built (E).**
+
+- **Header trigger** on the home, hub and entry pages: globe, current language name ("English" or "繁體中文", with its own `lang`), caret. Its accessible name and tooltip say "Language: English" in the current language. It sits before the theme toggle; on the entry pages it is the header's only control, top right, so the join card stays untouched.
+- **Menu**: one row per language, named in itself with its own `lang`, a check on the current one, which is also marked `aria-current`. Choosing a row switches, closes the menu and returns focus to the trigger. Escape and an outside click close it unchanged (the existing `PopoverButton` behaviour).
+- **At the table**: a Language tab in Settings, with the globe in the tab so it is findable in either language, holding the same choices as radio buttons and the line "Only changes this browser. Everyone else at the table keeps their own language." Switching keeps the dialog open on that tab.
+- Language names are never translated, and nothing else in the control is left untranslated.
+
+**Test: how it is checked.** Keyboard only (Tab to the trigger, Enter, arrows or Tab to a row, Enter; focus back on the trigger); accessibility tree names in both languages and the `lang` on each name; the join page at 375 px with a long current name; light and dark headers; switching at the table while a second socket client watches for reconnects or state changes. Results go in `verification-log.md`.
+
+Not pursued: a one-time hint for Simplified Chinese browsers ("也提供繁體中文"). It would help those readers but is not in the spec; it is a candidate follow-up.
 
 ## Risks / Trade-offs
 
@@ -143,4 +187,4 @@ Rollout is the `feat/i18n-zh-tw` branch, landing in PRs area by area. The langua
 
 ## Open Questions
 
-- Glossary sign-off: which team member reviews the Traditional Chinese terms and each area's catalog. This changes who approves, not what is built.
+- Who reviews each area's catalog in its PR. The glossary itself was approved by Vincent Chen on 2026-11-10.

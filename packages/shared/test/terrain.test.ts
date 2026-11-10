@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Command, Terrain, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, sweptCrossesWalls, tableOf, terrainCellKnown, undoConflict, type CommandInput, type MovementPreviewRequest, type RoomState, type TerrainRun, type Token } from "../src";
+import { Command, Terrain, englishText, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, sweptCrossesWalls, tableOf, terrainCellKnown, undoConflict, type CommandInput, type MovementPreviewRequest, type RoomState, type TerrainRun, type Token } from "../src";
 import { alice, attempt, baseRoom, gm, run, withToken } from "./fixtures";
 const grid = { cellSize: 10, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" };
 const one = (kind: "blocked" | "difficult", col = 1, row = 0): TerrainRun[] => [{ row, start: col, end: col, kind }];
@@ -23,7 +23,7 @@ describe.each(["token.configure", "token.setAppearance"] as const)("%s resize de
     const terrain = layer === "base"
       ? { base: one("blocked"), effects: [] }
       : { base: one("difficult"), effects: [{ id: "trap", name: "Trap", runs: one("blocked") }] };
-    expect(attempt({ ...state, terrain }, gm, resize(type, token, 2))).toEqual(unavailable);
+    expect(attempt({ ...state, terrain }, gm, resize(type, token, 2))).toMatchObject(unavailable);
   });
   it.each([
     { name: "wall", portal: undefined, allowed: false },
@@ -33,7 +33,7 @@ describe.each(["token.configure", "token.setAppearance"] as const)("%s resize de
     const walls = { w: { id: "w", a: { x: 15, y: 0 }, b: { x: 15, y: 20 }, ...(portal ? { portal } : {}) } };
     const result = attempt({ ...state, walls }, gm, resize(type, token, 2));
     if (allowed) expect(result.ok).toBe(true);
-    else expect(result).toEqual(unavailable);
+    else expect(result).toMatchObject(unavailable);
   });
   it.each([
     { name: "integer", from: 1, to: 2, position: { x: 5, y: 5 }, expected: { x: 10, y: 10 } },
@@ -48,7 +48,7 @@ describe.each(["token.configure", "token.setAppearance"] as const)("%s resize de
     const ready = { ...state, scene: { ...state.scene, grid: offset ? { ...grid, offsetX: 3, offsetY: -2 } : grid }, tokens: { [token.id]: current } };
     const command = resize(type, current, to);
     expect(run(ready, gm, command).state.tokens[token.id]).toMatchObject({ size: to, position: expected });
-    expect(attempt({ ...ready, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toEqual(unavailable);
+    expect(attempt({ ...ready, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toMatchObject(unavailable);
   });
   it("allows Difficult, boundary contact, wall clearance and fog without sweeping automatic anchoring", () => {
     const { state, token } = setup();
@@ -73,7 +73,7 @@ describe.each(["token.configure", "token.setAppearance"] as const)("%s resize de
       : { ...ready, walls: { w: { id: "w", a: { x: clear ? 15 : 5, y: 0 }, b: { x: clear ? 15 : 5, y: 20 } } } };
     const result = run(obstructed(true), gm, resize(type, current, 1));
     expect(result.state.tokens[token.id]).toMatchObject({ size: 1, position: { x: 5, y: 5 } });
-    expect(attempt(obstructed(false), gm, resize(type, current, 1))).toEqual(unavailable);
+    expect(attempt(obstructed(false), gm, resize(type, current, 1))).toMatchObject(unavailable);
   });
   it("permits unchanged geometry and metadata edits while terrain and walls cover the token", () => {
     const { state, token } = setup();
@@ -96,14 +96,14 @@ describe("combined resize and position (FR-TAC-03)", () => {
       : { ...state, walls: { w: { id: "w", a: { x: 20, y: 10 }, b: { x: 20, y: 20 } } } };
     const move = { type: "token.configure" as const, tokenId: token.id, changes: { position: { x: 45, y: 5 } } };
     expect(attempt(ready, gm, move).ok).toBe(true);
-    expect(attempt(ready, gm, { ...move, changes: { ...move.changes, size: 2 } })).toEqual(unavailable);
+    expect(attempt(ready, gm, { ...move, changes: { ...move.changes, size: 2 } })).toMatchObject(unavailable);
     expect(run(state, gm, { ...move, changes: { ...move.changes, size: 2 } }).state.tokens[token.id]).toMatchObject({ size: 2, position: move.changes.position });
   });
   it("honors an explicit unchanged centre without a route, but still checks the resized destination", () => {
     const { state, token } = setup();
     const command = { type: "token.configure" as const, tokenId: token.id, changes: { size: 2, position: token.position } };
     expect(run(state, gm, command).state.tokens[token.id]).toMatchObject({ size: 2, position: token.position });
-    expect(attempt({ ...state, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toEqual(unavailable);
+    expect(attempt({ ...state, terrain: { base: one("blocked"), effects: [] } }, gm, command)).toMatchObject(unavailable);
     const large = { ...token, size: 2, position: { x: 15, y: 5 } };
     const ready = { ...state, tokens: { [token.id]: large }, terrain: { base: one("blocked", 0), effects: [] } };
     expect(run(ready, gm, { ...command, changes: { size: .5, position: large.position } }).state.tokens[token.id]).toMatchObject({ size: .5, position: large.position });
@@ -193,7 +193,7 @@ describe("terrain decisions and recovery (FR-GM-15, FR-REC-02)", () => {
     const event = paint(state).events[0]!;
     const first = reduceCommitted(state, { seq: 1, actorId: gm.id, commandId: "p", at: "x", event });
     expect(undoConflict(paint(first, "blocked", 3).state, first.undo[0]!)).toBeNull();
-    expect(undoConflict(paint(first, "blocked").state, first.undo[0]!)).toContain("changed");
+    expect(englishText(undoConflict(paint(first, "blocked").state, first.undo[0]!)!)).toContain("changed");
     const restored = reduce(first, { type: "CheckpointRestored", checkpointId: "c", name: "C", restored: tableOf(state), previous: tableOf(first) });
     expect(restored.terrain).toBeUndefined();
     expect(restored.terrainRevision).toBeGreaterThan(first.terrainRevision!);
@@ -315,7 +315,7 @@ describe("terrain bounds and atomic lifecycle (FR-GM-15, FR-REC-02)", () => {
     expect(reduce(changed.state, inverseOf(event)[0]!).terrain).toEqual(painted.terrain);
     const fresh = run(state, gm, { type: "scene.setMap", map: { ...state.scene.map!, url: "/other" } }).events[0]!;
     const mapped = reduceCommitted(state, { seq: 1, actorId: gm.id, commandId: "map", at: "x", event: fresh });
-    expect(undoConflict(paint(mapped).state, mapped.undo[0]!)).toContain("terrain");
+    expect(englishText(undoConflict(paint(mapped).state, mapped.undo[0]!)!)).toContain("terrain");
   });
   it("restores a removed effect at its original position and advances the edit revision", () => {
     const { state } = setup();

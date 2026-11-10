@@ -1,6 +1,7 @@
 import { parseDiceExpression, type GridSpec, type MapImage, type Point } from "@vtt/shared";
 import { seed, throwTurns, type ThrowPath } from "../ui/diceGeometry";
 
+import { t } from "../i18n/locale";
 /**
  * Throwing dice onto the board (throw-dice-on-board): the pure parts. Where a release lands,
  * how the board maps to the page, and when the Dice panel's die can be picked up.
@@ -42,10 +43,10 @@ export function onMap(p: Point, map: Pick<MapImage, "width" | "height">): boolea
  */
 export function throwBlocker(expression: string, hasMap: boolean, privateRoll = false): string | null {
   const parsed = parseDiceExpression(expression);
-  if (!parsed.ok) return "Enter a valid expression to throw it";
-  if (!hasMap) return "Throwing needs a map on the board";
-  if (privateRoll) return "Private rolls stay off the board; use Roll";
-  if (parsed.expression.count > BOARD_THROW_MAX_DICE) return `At most ${BOARD_THROW_MAX_DICE} dice can be thrown on the map; use Roll`;
+  if (!parsed.ok) return t("board.throwNeedsExpr");
+  if (!hasMap) return t("board.throwNeedsMap");
+  if (privateRoll) return t("throw.private");
+  if (parsed.expression.count > BOARD_THROW_MAX_DICE) return t("throw.tooMany", { max: BOARD_THROW_MAX_DICE });
   return null;
 }
 

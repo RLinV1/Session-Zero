@@ -14,6 +14,7 @@ import {
   type Token,
 } from "@vtt/shared";
 import { squareCenter } from "./sightDemo";
+import { getLocale, t } from "../../i18n/locale";
 
 /**
  * The recovery demo's room (gm-home: "Undo runs the table's undo"). Its log is a list of committed
@@ -43,15 +44,18 @@ const token = (id: string, name: string, color: string, at: { col: number; row: 
   conditions: [],
 });
 
-/** The captain and the bosun on deck, a cutthroat by the far rail. */
-export const RECOVER_TOKENS: Token[] = [
+/**
+ * The captain and the bosun on deck, a cutthroat by the far rail. Built when the demo opens, so
+ * the cutthroat is named in the reader's language (the demo remounts when the language changes).
+ */
+export const recoverTokens = (): Token[] => [
   token("sela", "Sela", "#2a9d8f", { col: 3, row: 7 }, "/img/home/tokens/ship-sela.webp"),
   token("dunn", "Dunn", "#e76f51", { col: 8, row: 4 }, "/img/home/tokens/ship-dunn.webp"),
-  token("cutthroat", "Cutthroat", "#c0392b", { col: 13, row: 7 }, "/img/home/tokens/ship-cutthroat.webp"),
+  token("cutthroat", t("home.creature.cutthroat"), "#c0392b", { col: 13, row: 7 }, "/img/home/tokens/ship-cutthroat.webp"),
 ];
 
 /** The room's setup: the GM and the tokens. The log shown starts after it. */
-export const SETUP_SEQ = 1 + RECOVER_TOKENS.length;
+export const SETUP_SEQ = 1 + 3;
 
 /** Commit times for the log. The demo never shows them, so a fixed clock keeps it repeatable. */
 const at = (seq: number) => new Date(Date.UTC(2026, 9, 31, 19, 0, seq)).toISOString();
@@ -71,7 +75,7 @@ export function startRoom(): DemoRoom {
   const empty: DemoRoom = { events: [], state: emptyRoomState(ROOM_ID) };
   return commit(empty, null, "setup", [
     { type: "ParticipantJoined", participant: RECOVER_GM },
-    ...RECOVER_TOKENS.map((t): DomainEvent => ({ type: "TokenCreated", token: t })),
+    ...recoverTokens().map((token): DomainEvent => ({ type: "TokenCreated", token })),
   ]);
 }
 
@@ -103,7 +107,7 @@ export interface LogLine {
 
 /** The GM's activity log for the room after setup, newest first, as the table's log panel lays it out. */
 export function logLines(room: DemoRoom): LogLine[] {
-  const { entries } = activityHistory(ROOM_ID, room.events, RECOVER_GM, { limit: 100, player: "" });
+  const { entries } = activityHistory(ROOM_ID, room.events, RECOVER_GM, { limit: 100, player: "" }, getLocale());
   const shown = entries.filter((e) => e.committed.seq > SETUP_SEQ);
   const newestSeq = new Map<string, number>();
   const undone = new Set<string>();
@@ -119,7 +123,7 @@ export function logLines(room: DemoRoom): LogLine[] {
       seq: committed.seq,
       sentence,
       commandId: id,
-      undo: action ? { label: `Undo ${describeUndo(action, room.state.tokens).verb}` } : null,
+      undo: action ? { label: t("home.recover.undoAction", { action: describeUndo(action, room.state.tokens, getLocale()).verb }) } : null,
       undone: newest && undone.has(id!),
     };
   });

@@ -6,6 +6,7 @@ import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
+import { t } from "../i18n/locale";
 
 /** The persisted map origin. Each viewer renders the blast at their own screen centre. */
 export function mapCentre(state: Pick<RoomState, "scene">): Point {
@@ -82,17 +83,17 @@ export function EffectsPanel({
     setBusy(false);
     setConfirming(false);
     setError(result.ok ? null : result.message);
-    setStatus(result.ok ? `Nuke detonated for ${amountValue} damage.` : "");
+    setStatus(result.ok ? t("effects.nuked", { n: amountValue }) : "");
   };
 
   return (
-    <PanelSection id="gm-effects" title="Table effects">
+    <PanelSection id="gm-effects" title={t("effects.title")}>
       <div className="stack">
         {nukeAllowed && (
-          <form className="stack nuke-form" onSubmit={ask} aria-label="Map nuke">
-            <h3 className="field-label">Map nuke</h3>
+          <form className="stack nuke-form" onSubmit={ask} aria-label={t("effects.nuke")}>
+            <h3 className="field-label">{t("effects.nuke")}</h3>
             <label>
-              Damage to every token with HP
+              {t("effects.nukeHint")}
               <input
                 type="number"
                 inputMode="numeric"
@@ -104,11 +105,11 @@ export function EffectsPanel({
                 onChange={(e) => setAmount(e.target.value)}
               />
             </label>
-            {!amountValid && <p className="error" role="alert">Enter a whole number from 1 to {MAX_NUKE_DAMAGE}.</p>}
+            {!amountValid && <p className="error" role="alert">{t("effects.amountInvalid", { max: MAX_NUKE_DAMAGE })}</p>}
             <label>
-              Animation
+              {t("home.attack.animation")}
               <select value={animationId} onChange={(e) => setAnimationId(e.target.value)}>
-                <option value={BUILTIN}>Built-in nuke</option>
+                <option value={BUILTIN}>{t("effects.builtIn")}</option>
                 {library.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -117,7 +118,7 @@ export function EffectsPanel({
               </select>
             </label>
             <button type="submit" className="danger-fill" disabled={!amountValid || busy}>
-              Detonate…
+              {t("effects.detonateMenu")}
             </button>
           </form>
         )}
@@ -125,17 +126,17 @@ export function EffectsPanel({
         <p className="sr-only" role="status">{status}</p>
       </div>
 
-      <Modal open={confirming} title="Detonate nuke?" onClose={() => setConfirming(false)}>
+      <Modal open={confirming} title={t("effects.detonateQ")} onClose={() => setConfirming(false)}>
         <div className="stack">
           <p>
-            Every token with HP, including hidden ones, takes {amountValid ? amountValue : "?"} damage. You can undo it from the activity log.
+            {t("effects.confirmBody", { n: amountValid ? String(amountValue) : "?" })}
           </p>
           <div className="row nuke-confirm-actions">
             <button type="button" className="danger-fill" disabled={busy} onClick={() => void detonate()}>
-              {busy ? "Detonating…" : "Detonate"}
+              {busy ? t("common.detonating") : t("effects.detonate")}
             </button>
             <button type="button" className="secondary" onClick={() => setConfirming(false)}>
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </div>

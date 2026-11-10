@@ -4,6 +4,7 @@ import {
   polygonArea, wallsFitMap, removePortalOverlaps, sameValue,
   type PreparationEdit, type CommandInput, type FogRegion, type Point, type Portal, type RoomState, type Wall,
 } from "@vtt/shared";
+import { t } from "../../i18n/locale";
 
 /**
  * The map editor's private copy of the room's walls and fog (map-editor-drafts). The Walls and Fog
@@ -84,8 +85,8 @@ function matchEntities<T extends { id: string }>(room: Record<string, T>, draft:
 }
 
 export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog"> & Partial<Pick<RoomState, "terrain" | "boardEpoch" | "terrainRevision" | "activeSceneId">>, draft: MapDraft): CommandInput[] {
-  if (draft.sceneId !== undefined && draft.sceneId !== (room.activeSceneId ?? "initial")) throw new Error("The scene changed. Reopen the editor before saving.");
-  if (room.scene.map?.url !== draft.mapUrl) throw new Error("The map changed. Reopen the editor before saving.");
+  if (draft.sceneId !== undefined && draft.sceneId !== (room.activeSceneId ?? "initial")) throw new Error(t("editor.sceneChanged"));
+  if (room.scene.map?.url !== draft.mapUrl) throw new Error(t("editor.mapChanged"));
   const commands: PreparationEdit[] = [];
   const fogMatches = matchEntities(room.fog, draft.fog, fogKey);
 
@@ -174,15 +175,15 @@ const fogPoints = (region: FogAdd): Point[] => region.shape === "rect"
 
 /** Why the server would refuse this wall or fog addition on a map of this size, or null: the draft only holds what Save can send. */
 export function draftCommandProblem(command: CommandInput, map: { width: number; height: number }): string | null {
-  if (command.type === "terrain.paint" && !TerrainRuns.safeParse(paintTerrain([], command.paint)).success) return "Too many terrain cells.";
-  if (command.type === "terrain.effect.create" && !command.name.trim()) return "Name the layer.";
+  if (command.type === "terrain.paint" && !TerrainRuns.safeParse(paintTerrain([], command.paint)).success) return t("editor.tooManyTerrainCells");
+  if (command.type === "terrain.effect.create" && !command.name.trim()) return t("editor.nameLayer");
   if (command.type === "wall.add" || command.type === "wall.update") {
     const walls = command.type === "wall.add" ? command.walls : [command.wall];
-    if (walls.some((w) => w.a.x === w.b.x && w.a.y === w.b.y)) return "A wall needs two different ends.";
-    if (!wallsFitMap(walls, map)) return "Walls must lie on the map.";
+    if (walls.some((w) => w.a.x === w.b.x && w.a.y === w.b.y)) return t("walls.twoEnds");
+    if (!wallsFitMap(walls, map)) return t("walls.onMap");
   }
-  if (command.type === "fog.add" && Math.abs(polygonArea(fogPoints(command.region))) < 1) return "A fog region needs some area.";
-  if (command.type === "fog.replace" && command.add.some((region) => Math.abs(polygonArea(fogPoints(region))) < 1)) return "A fog region needs some area.";
+  if (command.type === "fog.add" && Math.abs(polygonArea(fogPoints(command.region))) < 1) return t("fog.needsArea");
+  if (command.type === "fog.replace" && command.add.some((region) => Math.abs(polygonArea(fogPoints(region))) < 1)) return t("fog.needsArea");
   return null;
 }
 

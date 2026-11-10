@@ -1,13 +1,14 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { hexToHsv, hsvToHex, hueSatToPoint, isHex, pointToHueSat, type Hsv } from "./color";
+import { t, type TextId } from "../i18n/locale";
 
 const SIZE = 136;
 const RADIUS = SIZE / 2;
 /** Quick picks: the historical grid, white for dark maps, and the app's accent. */
-const SWATCHES = [
-  { hex: "#000000", name: "Black" },
-  { hex: "#ffffff", name: "White" },
-  { hex: "#b9582f", name: "Rust" },
+const SWATCHES: { hex: string; name: TextId }[] = [
+  { hex: "#000000", name: "colour.black" },
+  { hex: "#ffffff", name: "colour.white" },
+  { hex: "#b9582f", name: "colour.rust" },
 ];
 
 /**
@@ -97,7 +98,7 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-disabled={disabled}
-        aria-label={`${label}: hue and saturation`}
+        aria-label={t("colour.hueSat", { label })}
         aria-valuetext={hex}
         aria-valuenow={Math.round(hsv.h)}
         aria-valuemin={0}
@@ -122,7 +123,7 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
       </div>
       <div className="color-wheel-controls">
         <label className="range-field">
-          <span className="range-label">Brightness</span>
+          <span className="range-label">{t("colour.brightness")}</span>
           <input
             type="range"
             className="range range-brightness"
@@ -136,7 +137,7 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
         </label>
         <div className="color-wheel-row">
           <label className="color-wheel-hex">
-            <span className="sr-only">Hex colour</span>
+            <span className="sr-only">{t("colour.hex")}</span>
             <span className="color-wheel-chip" style={{ background: hex }} aria-hidden="true" />
             <input
               value={hexDraft}
@@ -156,7 +157,7 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
               }}
             />
           </label>
-          <div className="color-wheel-swatches" role="group" aria-label="Quick colours">
+          <div className="color-wheel-swatches" role="group" aria-label={t("colour.quick")}>
             {SWATCHES.map((s) => (
               <button
                 key={s.hex}
@@ -164,9 +165,9 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
                 disabled={disabled}
                 className="color-swatch"
                 style={{ background: s.hex }}
-                aria-label={s.name}
+                aria-label={t(s.name)}
                 aria-pressed={hex === s.hex}
-                title={s.name}
+                title={t(s.name)}
                 onClick={() => {
                   setHsv(hexToHsv(s.hex));
                   onChange(s.hex);
@@ -176,7 +177,7 @@ export function ColorWheel({ value, onChange, label, disabled = false }: {
           </div>
         </div>
         {/* Said in words, not only by the red border (WCAG 1.4.1, 3.3.1). */}
-        {hexInvalid && <p id={hexErrorId} className="error color-wheel-error">Enter a hex colour like #b3552d.</p>}
+        {hexInvalid && <p id={hexErrorId} className="error color-wheel-error">{t("colour.hexInvalid")}</p>}
       </div>
     </div>
   );

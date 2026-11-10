@@ -2,6 +2,7 @@ import type { DragEvent } from "react";
 import { Check, DotsSixVertical } from "@phosphor-icons/react";
 import type { Token, TokenGroup } from "@vtt/shared";
 import { PopoverButton } from "../ui/Popover";
+import { t } from "../i18n/locale";
 
 /**
  * The grip on a GM roster row (roster-group-move): click it for a Move to menu, or drag it onto a
@@ -17,12 +18,12 @@ export function GroupMoveMenu({ token, groups, groupId, onMove, onDragStart, onD
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
-  const entries: { id: string | null; name: string }[] = [...groups.map((g) => ({ id: g.id, name: g.name })), { id: null, name: "Ungrouped" }];
+  const entries: { id: string | null; name: string }[] = [...groups.map((g) => ({ id: g.id, name: g.name })), { id: null, name: t("group.ungrouped") }];
 
   return (
     <PopoverButton
-      label={`Move ${token.name} to group`}
-      title={`Move ${token.name} to`}
+      label={t("group.moveTo", { name: token.name })}
+      title={t("group.moveToShort", { name: token.name })}
       className="move-handle"
       placement="fixed"
       buttonContent={<DotsSixVertical size={14} aria-hidden="true" />}
@@ -40,7 +41,7 @@ export function GroupMoveMenu({ token, groups, groupId, onMove, onDragStart, onD
     >
       {(close) => (
         <div className="stack move-menu">
-          <p className="muted small-print">Move {token.name} to</p>
+          <p className="muted small-print">{t("group.moveToShort", { name: token.name })}</p>
           <ul className="plain">
             {entries.map((entry) => {
               const current = entry.id === groupId;

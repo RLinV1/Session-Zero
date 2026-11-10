@@ -1,0 +1,125 @@
+import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
+
+/**
+ * English the REST API writes for people (localization; ADR 0052): errors, refusals and import
+ * issues. Routes keep writing these exact strings; `localizeBody` maps them to the request's
+ * language where the response is sent. `localizedRest.test.ts` fails if a route writes an English
+ * error that is not in this catalog.
+ */
+export const serverEn = {
+  // Accounts and sign-in.
+  "api.signInRequired": "Sign in to do that",
+  "api.notFromApp": "This request didn't come from the app",
+  "api.currentPasswordWrong": "Current password is incorrect",
+  "api.passwordIsEmail": "Password can't be your email address",
+  "api.passwordWrong": "Password is incorrect",
+  "api.tooManyAttempts": "Too many attempts. Try again later.",
+  "api.sendJson": "Send JSON",
+  "api.internalError": "Internal error",
+  "api.invalidRequest": "Invalid request",
+  "api.unknownDevice": "Unknown device identity",
+  "api.nothingToBringOver": "Nothing to bring over from this browser",
+  "api.signInToSave": "Sign in to save rooms and library art",
+
+  // Rooms, invites, history and replay.
+  "api.roomNotFound": "Room not found",
+  "api.inviteNotFound": "Invite not found",
+  "api.displayNameBlank": "Display name can't be blank.",
+  "api.tooManyJoins": "Too many joins from this address. Try again later.",
+  "api.gmOnly": "GM only",
+  "api.notInRoom": "Not in this room",
+  "api.invalidHistoryQuery": "Invalid history query",
+  "api.noReplayPoint": "No such replay point",
+  "api.noCheckpoint": "No such checkpoint",
+
+  // Library, creatures, animations, dice looks and uploads.
+  "api.assetNotFound": "Asset not found",
+  "api.onlyMapsHaveGrid": "Only maps have a grid",
+  "api.gridTooSmall": "Grid cell size is too small for this map",
+  "api.invalidMapPreparation": "Invalid map preparation",
+  "api.nameTheMap": "Name the map",
+  "api.creatureNotFound": "Creature not found",
+  "api.startingHpOverMax": "Starting HP cannot exceed Max HP",
+  "api.animationNotFound": "Animation not found",
+  "api.diceLookNotFound": "Dice look not found",
+  "api.invalidLook": "Invalid look",
+  "api.diceLookLimit": `You can keep up to ${MAX_DICE_LOOKS} dice looks. Delete one to make another.`,
+  "api.dicePictureFormat": "Use a PNG, JPEG or WebP picture",
+  "api.dicePictureSize": "The picture's size doesn't match what was sent",
+  "api.uploadFailed": "Upload failed",
+  "api.imageFormat": "Use PNG, JPEG or WebP",
+
+  // Encounter templates.
+  "api.templateNotFound": "Template not found",
+  "api.encounterTemplateNotFound": "Encounter template not found",
+  "api.editRoomNotFound": "Encounter editing room not found",
+  "api.templateNeedsName": "Name this encounter template to save it.",
+  "api.chooseLibraryMapWithGrid": "Choose one of your library maps with a saved grid.",
+  "api.saveTemplateNeedsLibraryMap": "Put this room's map in your library first, then save the encounter",
+  "api.boardTooLargeForTemplate": "This board is too large to save as a template",
+
+  // Map preparation, wall detection and the walls and fog of a library map.
+  "api.invalidPreparationJson": "Invalid JSON for map preparation.",
+  "api.invalidOrOversizedPreparation": "Invalid or oversized map preparation.",
+  "api.signInEndedBeforeSaving": "Your sign-in ended before saving.",
+  "api.libraryWallsOffMap": "Walls must lie on the map.",
+  "api.libraryFogOffMap": "Fog must lie on the map.",
+  "api.setMapFirst": "Set a map first.",
+  "api.invalidDetectionRequest": "Invalid detection request",
+  "api.noAnalysis": "No analysis for this map",
+  "api.analysisNotInError": "Analysis is not in error",
+  "api.noWallDetection": "No wall detection for that map",
+  "api.wallDetectionNotSetUp": "Wall detection isn't set up on this server.",
+  "api.pickWall": "Click on the map to pick a wall.",
+  "api.wallsBeingDetected": "Walls are already being detected for this map.",
+  "api.imageCantBeAnalyzed": "This map's image can't be analyzed.",
+  "api.wallDetectionBusy": "Wall detection is busy. Try again in a minute.",
+  "api.wallDetectionUnavailable": "Wall detection is unavailable right now.",
+  "api.wallDetectionUnreadable": "Wall detection couldn't read this map.",
+  "api.visionTimeout": "The vision service didn't answer in time.",
+  "api.wallDetectionUnusable": "Wall detection returned an unusable result.",
+  "api.tooManyWallDetections": "Too many wall detections for this room. Try again later.",
+
+  // Thrown by the stores and the library preparation checks, then sent as `error`.
+  "api.emailTaken": "An account with this email already exists",
+  "api.creatureImageOwnArt": "Image must be your own token art",
+  "api.mapMustBeInLibrary": "The map must be in your library",
+  "api.templateNameTaken": "An encounter template with this name already exists. Choose another name.",
+  "api.mapChangedDraftKept": "This map changed. Reopen it before saving; your draft has been kept.",
+  "api.gridTooSmallPeriod": "Grid cell size is too small for this map.",
+  "api.gridNeedsTerrainReset": "Changing grid spacing or origin requires an explicit terrain reset.",
+  "api.terrainOffMap": "Terrain must lie on the map.",
+  "api.wallZeroLength": "A wall needs two different ends.",
+  "api.fogNoArea": "A fog region needs some area.",
+
+  // UVTT import and export.
+  "api.uvttFileRules": "Use one UVTT file, at most 40 MiB, without additional fields.",
+  "api.processFailed": "Could not process this map. Try again.",
+  "api.tooManyImports": "Too many import attempts. Try again in a minute.",
+  "api.signInEndedUpload": "Your sign-in ended during validation. Sign in and upload again.",
+  "api.gmCredentialRequired": "An active GM credential for this room is required.",
+  "api.signInAsGmToSave": "Sign in as this room's GM to save uploads to your library.",
+  "api.gmSeatOrScene": "Your GM seat ended or that scene no longer exists.",
+  "api.gmCredentialEnded": "Your GM credential ended during validation.",
+  "api.signInEndedDuringValidation": "Your sign-in ended during validation.",
+  "api.invalidUvttEdit": "Use a valid revision, grid and geometry (at most 1500 walls).",
+  "api.gmSeatEnded": "Your GM seat ended.",
+  "api.tooManyPreparations": "Too many preparations. Discard an unused draft or wait for it to expire.",
+  "api.preparationChangedOrApplied": "This preparation changed or was applied. Re-import or use the current revision.",
+  "uvtt.gridLimit": "Grid creates too many lines. Increase pixels per grid.",
+  "uvtt.tooManyPoints": "Too many geometry points to process.",
+  "uvtt.coordinateRange": "Coordinate conversion exceeds the supported numeric range.",
+  "uvtt.zeroSegment": "A segment needs two different endpoints.",
+  "uvtt.clipped": "Geometry outside the image crop was clipped or removed.",
+  "uvtt.unsupportedData": "Lighting, environment and extension data are not imported or included in the supported round trip.",
+  "uvtt.portalExtension": "Portal extension data is excluded from the supported round trip.",
+  "uvtt.resolutionExtension": "Resolution extension data is excluded from the supported round trip.",
+  "uvtt.integerGrid": "UVTT export needs an integer grid cell size. In Edit map → Grid, choose an integer pixel size and apply it, then export again.",
+  "uvtt.invalidGrid": "Use a valid grid that can render on this image.",
+  "uvtt.wallOffImage": "Wall endpoints must lie on the image.",
+  "uvtt.zeroWall": "A wall needs two different endpoints.",
+  "uvtt.tooManyWalls": `A map can hold at most ${MAX_WALLS} walls.`,
+  "uvtt.normalizedTooMany": `Normalized geometry exceeds ${MAX_WALLS} walls. Reduce geometry in the exporter.`,
+} as const satisfies CatalogSource;
+
+export type ServerEn = typeof serverEn;

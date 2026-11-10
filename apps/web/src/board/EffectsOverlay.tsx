@@ -20,6 +20,7 @@ import {
 import { NUKE_DROP_SHARE } from "./fxBudget";
 import { attackPlan, effectiveReducedMotion, prefersReducedMotion, watchReducedMotion, type AttackEffect } from "./effects";
 
+import { t } from "../i18n/locale";
 /** An attack effect the overlay is playing, until its plan duration is over. */
 export interface OverlayEffect {
   id: number;
@@ -403,7 +404,7 @@ function Hit({ at, r, seed, reduced }: { at: { x: number; y: number }; r: number
 }
 
 function Miss({ at, r, reduced }: { at: { x: number; y: number }; r: number; reduced: boolean }) {
-  if (reduced) return <Marker at={at} r={r} color="#cbd5e1" label="Miss" />;
+  if (reduced) return <Marker at={at} r={r} color="#cbd5e1" label={t("ruling.miss")} />;
   const size = r * 2.6;
   return (
     <>
@@ -438,7 +439,7 @@ function Miss({ at, r, reduced }: { at: { x: number; y: number }; r: number; red
         animate={{ y: -r * 0.9, opacity: [0, 1, 1, 0], scale: [0.4, 1.35, 1, 1], rotate: [-8, 5, -3, 0] }}
         transition={{ duration: 0.85, ease: "easeOut", times: [0, 0.2, 0.7, 1] }}
       >
-        MISS
+        {t("board.missSplash")}
       </motion.span>
     </>
   );

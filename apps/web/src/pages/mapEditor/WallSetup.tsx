@@ -13,13 +13,14 @@ import { openingsToDoors } from "./importedOpenings";
 import { Modal } from "../../ui/Modal";
 import { WallCanvas, type CanvasMode } from "./WallCanvas";
 import { HudLayout } from "./HudLayout";
+import { t, type TextId } from "../../i18n/locale";
 
-const MODES: { key: CanvasMode; label: string; icon: typeof Eraser; needsDetection?: boolean }[] = [
-  { key: "select", label: "Select", icon: Cursor },
-  { key: "draw", label: "Draw", icon: LineSegments },
-  { key: "erase", label: "Erase", icon: Eraser },
-  { key: "portal", label: "Door", icon: Door },
-  { key: "sample", label: "Pick", icon: Eyedropper, needsDetection: true },
+const MODES: { key: CanvasMode; label: TextId; icon: typeof Eraser; needsDetection?: boolean }[] = [
+  { key: "select", label: "common.select", icon: Cursor },
+  { key: "draw", label: "common.draw", icon: LineSegments },
+  { key: "erase", label: "common.erase", icon: Eraser },
+  { key: "portal", label: "common.door", icon: Door },
+  { key: "sample", label: "common.pick", icon: Eyedropper, needsDetection: true },
 ];
 
 /** Detected walls the model was unsure about (wall-review) get a halo in this colour in the preview and its legend. */
@@ -27,26 +28,27 @@ const DOUBTFUL_COLOR = "#ff5fa2";
 /** Preview stroke colours, shared with the Sight step: plain wall, door, window. */
 const KIND_COLOR = { wall: "#f0a24a", door: "#e8c46a", window: "#6cc6ff" } as const;
 const kindOf = (w: DetectedWall): "wall" | PortalKind => w.portal?.kind ?? "wall";
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** What the Door / window tool turns a clicked wall into (ADR 0030). "wall" makes it plain again. */
-const PORTAL_KINDS: { key: PortalKind | "wall"; label: string }[] = [
-  { key: "door", label: "Door" },
-  { key: "window", label: "Window" },
-  { key: "wall", label: "Wall" },
+const PORTAL_KINDS: { key: PortalKind | "wall"; label: TextId }[] = [
+  { key: "door", label: "common.door" },
+  { key: "window", label: "common.window" },
+  { key: "wall", label: "common.wall" },
 ];
-const PORTAL_STATES: { key: PortalState; label: string }[] = [
-  { key: "closed", label: "Closed" },
-  { key: "open", label: "Open" },
-  { key: "locked", label: "Locked" },
+const PORTAL_KIND_WORD: Record<PortalKind, TextId> = { door: "common.door", window: "common.window" };
+const PORTAL_STATE_WORD: Record<PortalState, TextId> = { closed: "common.closed", open: "common.openState", locked: "common.locked" };
+const PORTAL_STATES: { key: PortalState; label: TextId }[] = [
+  { key: "closed", label: "common.closed" },
+  { key: "open", label: "common.openState" },
+  { key: "locked", label: "common.locked" },
 ];
 
-const HINTS: Record<CanvasMode, string> = {
-  select: "Select geometry on the map, or choose it below, to edit its endpoints and metadata.",
-  draw: "Click to start a wall, click again to end it. Alt places freely; Esc stops.",
-  erase: "Click a wall to remove it, or a blue detected wall to leave it out.",
-  portal: "Pick a type, then click walls.",
-  sample: "Click a wall to find walls like it.",
+const HINTS: Record<CanvasMode, TextId> = {
+  select: "walls.hint.select",
+  draw: "walls.hint.draw",
+  erase: "walls.hint.erase",
+  portal: "walls.hint.door",
+  sample: "walls.hint.pick",
 };
 
 /** The detection result (by resultId) the GM already applied or dismissed per room + map; module-level so it survives a remount. */
@@ -102,7 +104,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     const abort = new AbortController();
     api.walls.availability(state.roomId, token, abort.signal)
       .then(setAvailability)
-      .catch(() => { if (!abort.signal.aborted) setAvailability({ available: false, reason: "Couldn't reach the server." }); });
+      .catch(() => { if (!abort.signal.aborted) setAvailability({ available: false, reason: t("walls.noServer") }); });
     return () => abort.abort();
     // The answer depends on the room's current map and its size (stored walls fit one size only).
   }, [detectionEnabled, state.roomId, token, mapUrl, map?.width, map?.height]);
@@ -121,7 +123,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
       // A fresh run (the id is a hash of the walls, so it can repeat) must open its result again.
       if (next.status === "queued" || next.status === "running") handledResults.delete(handledKey(state.roomId, mapUrl));
       setDetection({ mapUrl, status: next });
-      if (next.status === "done") setMessage({ text: `Detection found ${next.wallCount} ${next.wallCount === 1 ? "wall" : "walls"}.`, error: false });
+      if (next.status === "done") setMessage({ text: t("walls.found", { n: next.wallCount }), error: false });
       if (next.status === "failed") setMessage({ text: next.message, error: true });
     });
     return () => { abort.abort(); stop(); };
@@ -150,7 +152,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
     return () => abort.abort();
   }, [done, status, state.roomId, token, mapUrl]);
 
-  if (!map) return <p className="map-editor-empty">Apply a map in the Map step first, then set up its walls here.</p>;
+  if (!map) return <p className="map-editor-empty">{t("walls.applyMapFirst")}</p>;
 
   /** The detection request: the sliders' values, and the clicked wall's point when there is one. */
   const request = (sample?: Point): WallDetectionRequest => ({
@@ -168,9 +170,9 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
       const started = await api.walls.detect(state.roomId, token, request(sample));
       detectionChanges.current += 1;
       setDetection({ mapUrl, status: started });
-      setMessage({ text: sample ? "Detecting walls like the one you clicked…" : "Detecting walls…", error: false });
+      setMessage({ text: sample ? t("walls.detectingLike") : t("walls.detecting"), error: false });
     } catch (err) {
-      setMessage({ text: err instanceof Error ? err.message : "Couldn't start wall detection", error: true });
+      setMessage({ text: err instanceof Error ? err.message : t("walls.startFailed"), error: true });
     } finally {
       setBusy(false);
     }
@@ -196,7 +198,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
   /** Makes every imported opening a door at once, open or closed as its file marks it; stops at the first refusal. */
   const makeOpeningsDoors = async () => {
     for (const command of openings) if (!(await run(command))) return;
-    setMessage({ text: `Made ${plural(openings.length, "door", "doors")} from imported openings.`, error: false });
+    setMessage({ text: t("walls.madeDoors", { n: openings.length }), error: false });
   };
 
   const pendingWalls = candidates?.mapUrl === mapUrl ? candidates : null;
@@ -214,7 +216,11 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
   pendingWalls?.walls.forEach((w) => { kindCounts[kindOf(w)]++; if (w.portal) stateSeen.add(w.portal.state); });
   const hasPortals = kindCounts.door + kindCounts.window > 0;
   const kindBreakdown = hasPortals
-    ? `: ${[plural(kindCounts.wall, "wall", "walls"), plural(kindCounts.door, "door", "doors"), plural(kindCounts.window, "window", "windows")].filter((t) => !t.startsWith("0 ")).join(", ")}`
+    ? [
+      kindCounts.wall > 0 && t("walls.nWalls", { n: kindCounts.wall }),
+      kindCounts.door > 0 && t("walls.nDoors", { n: kindCounts.door }),
+      kindCounts.window > 0 && t("walls.nWindows", { n: kindCounts.window }),
+    ].filter((part) => part !== false).join(t("common.sep"))
     : "";
   const reviewKey = reviewing === null ? null : doubtfulList[reviewing] ?? null;
   const toggleCandidate = (key: number) => setCandidates((current) => {
@@ -247,7 +253,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
       ? { resultId: pendingWalls.resultId, indices: [...left].sort((a, b) => a - b) }
       : undefined;
     const count = pendingWalls ? pendingWalls.walls.length - left.size : found;
-    const ok = await run({ type: "wall.applyDetected", mapUrl, ...(exclude && { exclude }) }, `Applied ${count} walls.`);
+    const ok = await run({ type: "wall.applyDetected", mapUrl, ...(exclude && { exclude }) }, t("walls.applied", { n: count ?? 0 }));
     // The result is spent: drop its overlay so the new walls aren't drawn twice.
     if (ok) { markHandled(); setDetection({ mapUrl, status: null }); }
   };
@@ -270,10 +276,10 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
         selected={selected}
         onSample={(at) => void detect(at)}
       />
-      <aside className="map-editor-hud" aria-label="Wall tools">
+      <aside className="map-editor-hud" aria-label={t("walls.tools")}>
         <section className="stack">
-          <h3 className="map-editor-heading">Tools</h3>
-          <div className="map-editor-modes" role="radiogroup" aria-label="Wall tool">
+          <h3 className="map-editor-heading">{t("common.tools")}</h3>
+          <div className="map-editor-modes" role="radiogroup" aria-label={t("walls.tool")}>
             {MODES.filter(({ needsDetection }) => !needsDetection || canSample).map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -281,25 +287,25 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                 role="radio"
                 aria-checked={mode === key}
                 className="tool-button map-editor-mode"
-                title={label}
+                title={t(label)}
                 onClick={() => setMode(key)}
               >
                 <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
+                <span>{t(label)}</span>
               </button>
             ))}
           </div>
           {mode === "portal" && (
             <div className="stack map-editor-portal">
-              <OptionRow label="Make walls" options={PORTAL_KINDS} value={portalKind} onChange={setPortalKind} />
-              <OptionRow label="Starting state" options={PORTAL_STATES} value={portalState} onChange={setPortalState} disabled={portalKind === "wall"} />
+              <OptionRow label={t("walls.makeWalls")} options={PORTAL_KINDS} value={portalKind} onChange={setPortalKind} />
+              <OptionRow label={t("walls.startingState")} options={PORTAL_STATES} value={portalState} onChange={setPortalState} disabled={portalKind === "wall"} />
             </div>
           )}
-          <p className="muted small-print">{HINTS[mode]}</p>
-          <label className="stack">Selected geometry
+          <p className="muted small-print">{t(HINTS[mode])}</p>
+          <label className="stack">{t("walls.selected")}
             <select value={state.walls[selected] ? selected : ""} onChange={(e) => setSelected(e.target.value)}>
-              <option value="">Select a wall, door or window</option>
-              {Object.values(state.walls).map((wall, i) => <option key={wall.id} value={wall.id}>{wall.portal?.kind === "window" ? "Window" : wall.portal || wall.uvttPortal ? "Door" : "Wall"} {i + 1}</option>)}
+              <option value="">{t("walls.selectOne")}</option>
+              {Object.values(state.walls).map((wall, i) => <option key={wall.id} value={wall.id}>{wall.portal?.kind === "window" ? t("common.window") : wall.portal || wall.uvttPortal ? t("common.door") : t("common.wall")} {i + 1}</option>)}
             </select>
           </label>
           {state.walls[selected] && <WallProperties key={JSON.stringify(state.walls[selected])} wall={state.walls[selected]!} map={map} disabled={busy} onSave={async (wall) => {
@@ -308,7 +314,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
           }} />}
           {mode === "sample" && (
             <label className="stack">
-              <span className="small-print">Colour range: {tolerance}</span>
+              <span className="small-print">{t("walls.colourRange", { n: tolerance })}</span>
               <input
                 type="range"
                 className="range range-filled"
@@ -317,43 +323,43 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                 value={tolerance}
                 style={rangeFill(tolerance, SAMPLE_TOLERANCE_MIN, SAMPLE_TOLERANCE_MAX)}
                 onChange={(event) => setTolerance(Number(event.target.value))}
-                title="Lower finds only walls close to the clicked colour; higher finds paler or darker ones, and more noise."
+                title={t("walls.sensitivity")}
               />
             </label>
           )}
           <p className="map-editor-count">
-            {wallCount} {wallCount === 1 ? "wall" : "walls"}. Middle-drag or Space-drag pans.
+            {t("walls.countPans", { n: wallCount })}
           </p>
         </section>
 
         {openings.length > 0 && (
-          <section className="stack" aria-label="Imported openings">
-            <h3 className="map-editor-heading">Imported openings</h3>
+          <section className="stack" aria-label={t("walls.importedOpenings")}>
+            <h3 className="map-editor-heading">{t("walls.importedOpenings")}</h3>
             <p className="muted small-print">
-              Players don't see the {plural(openings.length, "opening", "openings")} from the map file until each is a door or window. Each door starts open or closed as the file marks it.
+              {t("walls.openingsNote", { n: openings.length })}
             </p>
             <button type="button" className="secondary" disabled={busy} onClick={() => void makeOpeningsDoors()}>
-              Make all imported openings doors
+              {t("walls.makeAllDoors")}
             </button>
           </section>
         )}
 
         {canDetect && <section className="stack" data-guide="walls-detection">
-          <h3 className="map-editor-heading">Automatic detection</h3>
-          {canDetect && pending && <p className="walls-status" aria-busy="true">{status?.status === "running" ? "Detecting walls…" : "Waiting for the vision service…"}</p>}
+          <h3 className="map-editor-heading">{t("walls.auto")}</h3>
+          {canDetect && pending && <p className="walls-status" aria-busy="true">{status?.status === "running" ? t("walls.detecting") : t("walls.waitingVision")}</p>}
           {canDetect && (
             <div className="stack">
               <label className="stack">
-                <span className="small-print">Wall colour</span>
-                <select title="Pick one if automatic detection follows shadows instead of walls." value={style ?? "auto"} onChange={(event) => setStyle(event.target.value === "auto" ? null : (event.target.value as WallStyle))}>
-                  <option value="auto">Automatic</option>
-                  <option value="bright">Light stone walls</option>
-                  <option value="dark">Dark ink walls</option>
-                  <option value="outlined">Inked outlines (buildings, caves)</option>
+                <span className="small-print">{t("walls.colour")}</span>
+                <select title={t("walls.colourHint")} value={style ?? "auto"} onChange={(event) => setStyle(event.target.value === "auto" ? null : (event.target.value as WallStyle))}>
+                  <option value="auto">{t("walls.colour.auto")}</option>
+                  <option value="bright">{t("walls.colour.light")}</option>
+                  <option value="dark">{t("walls.colour.dark")}</option>
+                  <option value="outlined">{t("walls.colour.inked")}</option>
                 </select>
               </label>
               <label className="stack">
-                <span className="small-print">Strictness: {strictness === null ? "automatic" : strictness.toFixed(2)}</span>
+                <span className="small-print">{t("walls.strictness", { value: strictness === null ? t("walls.automatic") : strictness.toFixed(2) })}</span>
                 <input
                   type="range"
                   className="range range-filled"
@@ -363,12 +369,12 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                   value={strictness ?? STRICTNESS_DEFAULT}
                   style={rangeFill(strictness ?? STRICTNESS_DEFAULT, STRICTNESS_MIN, STRICTNESS_MAX)}
                   onChange={(event) => setStrictness(Number(event.target.value))}
-                  title="Higher keeps only walls with a clear drawn edge; it can miss faint ones."
+                  title={t("walls.edgeHint")}
                 />
-                {strictness !== null && <button type="button" className="secondary" onClick={() => setStrictness(null)}>Back to automatic</button>}
+                {strictness !== null && <button type="button" className="secondary" onClick={() => setStrictness(null)}>{t("walls.backToAuto")}</button>}
               </label>
               <label className="stack">
-                <span className="small-print">Shortest wall: {minLength === 0 ? "any" : `${minLength} ${minLength === 1 ? "cell" : "cells"}`}</span>
+                <span className="small-print">{t("walls.shortest", { value: minLength === 0 ? t("walls.anyLength") : t("walls.nCells", { n: minLength }) })}</span>
                 <input
                   type="range"
                   className="range range-filled"
@@ -378,34 +384,34 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                   value={minLength}
                   style={rangeFill(minLength, 0, MIN_LENGTH_MAX)}
                   onChange={(event) => setMinLength(Number(event.target.value))}
-                  title="Drops short pieces such as rubble. Detect again to apply."
+                  title={t("walls.minLengthHint")}
                 />
               </label>
             </div>
           )}
           <div className="row button-row walls-actions">
             <button ref={detectButton} type="button" className="secondary" disabled={!canDetect || busy || pending} onClick={() => void detect()}>
-              {status ? "Detect again" : "Detect walls"}
+              {status ? t("walls.detectAgain") : t("walls.detect")}
             </button>
           </div>
         </section>}
 
         {wallCount > 0 && (
-          <button type="button" className="secondary danger" onClick={() => void run({ type: "wall.clear" }, "Walls cleared.")}>
-            Clear all walls
+          <button type="button" className="secondary danger" onClick={() => void run({ type: "wall.clear" }, t("walls.cleared"))}>
+            {t("walls.clearAll")}
           </button>
         )}
         {message && <p className={message.error ? "error" : "muted"} role={message.error ? "alert" : "status"}>{message.text}</p>}
         <Modal
           className="walls-preview-modal"
           open={pendingWalls !== null && pendingWalls.walls.length > 0}
-          title="Detected walls"
+          title={t("walls.detected")}
           onClose={discard}
           onAfterClose={() => detectButton.current?.focus()}
         >
           {pendingWalls && (
             <div className="stack">
-              <svg className="walls-preview-map" style={{ aspectRatio: `${map.width} / ${map.height}` }} viewBox={`0 0 ${map.width} ${map.height}`} role="img" aria-label={`The map with ${pendingWalls.walls.length} detected ${pendingWalls.walls.length === 1 ? "wall" : "walls"} drawn over it.`}>
+              <svg className="walls-preview-map" style={{ aspectRatio: `${map.width} / ${map.height}` }} viewBox={`0 0 ${map.width} ${map.height}`} role="img" aria-label={t("walls.detectedOver", { n: pendingWalls.walls.length })}>
                 <image href={map.url} width={map.width} height={map.height} />
                 <g strokeLinecap="round" fill="none">
                   {pendingWalls.walls.map((w, i) => {
@@ -425,7 +431,12 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                         role="button"
                         tabIndex={0}
                         aria-pressed={gone}
-                        aria-label={`Detected wall ${i + 1}${w.portal ? `, ${kind}, ${portalState}` : ""}${doubtfulKeys.has(i) ? ", doubtful" : ""}${gone ? ", erased" : ""}`}
+                        aria-label={[
+                          t("walls.detectedWall", { n: i + 1 }),
+                          ...(w.portal ? [t(PORTAL_KIND_WORD[w.portal.kind]).toLowerCase(), t(PORTAL_STATE_WORD[w.portal.state]).toLowerCase()] : []),
+                          ...(doubtfulKeys.has(i) ? [t("walls.doubtfulTag")] : []),
+                          ...(gone ? [t("walls.erasedTag")] : []),
+                        ].join(t("common.sep"))}
                         className="walls-preview-wall"
                         opacity={gone ? 0.55 : 1}
                         data-doubtful={unsure ? "true" : undefined}
@@ -459,48 +470,48 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                   })}
                 </g>
               </svg>
-              <p className="walls-status" role="status">{pendingWalls.walls.length} {pendingWalls.walls.length === 1 ? "wall" : "walls"} found{kindBreakdown}.</p>
-              <p className="small-print">Click a wall to erase it, or again to bring it back.</p>
+              <p className="walls-status" role="status">{kindBreakdown ? t("walls.foundBreakdown", { n: pendingWalls.walls.length, parts: kindBreakdown }) : t("walls.foundCount", { n: pendingWalls.walls.length })}</p>
+              <p className="small-print">{t("walls.eraseHint")}</p>
               {(hasPortals || doubtfulKeys.size > 0 || erased.size > 0) && (
-                <ul className="walls-legend" aria-label="Detected wall colours">
-                  {kindCounts.wall > 0 && <li><span className="walls-legend-swatch" aria-hidden="true" />Wall</li>}
-                  {kindCounts.door > 0 && <li><span className="walls-legend-swatch portal" style={{ borderColor: KIND_COLOR.door }} aria-hidden="true" />Door</li>}
-                  {kindCounts.window > 0 && <li><span className="walls-legend-swatch portal" style={{ borderColor: KIND_COLOR.window }} aria-hidden="true" />Window</li>}
+                <ul className="walls-legend" aria-label={t("walls.colours")}>
+                  {kindCounts.wall > 0 && <li><span className="walls-legend-swatch" aria-hidden="true" />{t("common.wall")}</li>}
+                  {kindCounts.door > 0 && <li><span className="walls-legend-swatch portal" style={{ borderColor: KIND_COLOR.door }} aria-hidden="true" />{t("common.door")}</li>}
+                  {kindCounts.window > 0 && <li><span className="walls-legend-swatch portal" style={{ borderColor: KIND_COLOR.window }} aria-hidden="true" />{t("common.window")}</li>}
                   {hasPortals && <li className="walls-legend-sep" role="presentation" aria-hidden="true" />}
-                  {stateSeen.has("closed") && <li><span className="walls-legend-swatch state" aria-hidden="true" />Closed</li>}
-                  {stateSeen.has("open") && <li><span className="walls-legend-swatch state open" aria-hidden="true" />Open</li>}
-                  {stateSeen.has("locked") && <li><span className="walls-legend-swatch state locked" aria-hidden="true" />Locked</li>}
+                  {stateSeen.has("closed") && <li><span className="walls-legend-swatch state" aria-hidden="true" />{t("common.closed")}</li>}
+                  {stateSeen.has("open") && <li><span className="walls-legend-swatch state open" aria-hidden="true" />{t("common.openState")}</li>}
+                  {stateSeen.has("locked") && <li><span className="walls-legend-swatch state locked" aria-hidden="true" />{t("common.locked")}</li>}
                   {hasPortals && (doubtfulKeys.size > 0 || erased.size > 0) && <li className="walls-legend-sep" role="presentation" aria-hidden="true" />}
-                  {doubtfulKeys.size > 0 && <li><span className="walls-legend-swatch doubtful" style={{ borderColor: DOUBTFUL_COLOR }} aria-hidden="true" />Doubtful</li>}
-                  {erased.size > 0 && <li><span className="walls-legend-swatch erased" aria-hidden="true" />Erased</li>}
+                  {doubtfulKeys.size > 0 && <li><span className="walls-legend-swatch doubtful" style={{ borderColor: DOUBTFUL_COLOR }} aria-hidden="true" />{t("walls.doubtful")}</li>}
+                  {erased.size > 0 && <li><span className="walls-legend-swatch erased" aria-hidden="true" />{t("walls.erased")}</li>}
                 </ul>
               )}
               {doubtfulKeys.size > 0 && (
                 <div className="stack walls-review">
-                  <p className="walls-status" role="status">{doubtfulLeft} doubtful {doubtfulLeft === 1 ? "wall" : "walls"}</p>
+                  <p className="walls-status" role="status">{t("walls.doubtfulCount", { n: doubtfulLeft })}</p>
                   {reviewing === null ? (
-                    <button type="button" className="secondary" disabled={doubtfulLeft === 0} onClick={() => setReview(0)}>Review doubtful walls</button>
+                    <button type="button" className="secondary" disabled={doubtfulLeft === 0} onClick={() => setReview(0)}>{t("walls.reviewDoubtful")}</button>
                   ) : (
-                    <div className="stack" role="group" aria-label="Review doubtful walls">
-                      <p className="small-print">Wall {reviewing + 1} of {doubtfulList.length}{reviewKey !== null && erased.has(reviewKey) ? " (erased)" : ""}</p>
+                    <div className="stack" role="group" aria-label={t("walls.reviewDoubtful")}>
+                      <p className="small-print">{t("walls.reviewPosition", { n: reviewing + 1, total: doubtfulList.length })}{reviewKey !== null && erased.has(reviewKey) ? t("walls.erasedSuffix") : ""}</p>
                       <div className="row button-row">
-                        <button type="button" className="secondary" disabled={reviewing === 0} onClick={() => reviewStep(-1)}>Back</button>
-                        <button type="button" className="secondary" onClick={eraseReviewed}>{reviewKey !== null && erased.has(reviewKey) ? "Bring back" : "Erase"}</button>
-                        <button type="button" className="secondary" onClick={() => reviewStep(1)}>{reviewing === doubtfulList.length - 1 ? "Finish" : "Keep"}</button>
+                        <button type="button" className="secondary" disabled={reviewing === 0} onClick={() => reviewStep(-1)}>{t("common.back")}</button>
+                        <button type="button" className="secondary" onClick={eraseReviewed}>{reviewKey !== null && erased.has(reviewKey) ? t("walls.bringBack") : t("common.erase")}</button>
+                        <button type="button" className="secondary" onClick={() => reviewStep(1)}>{reviewing === doubtfulList.length - 1 ? t("common.finish") : t("common.keep")}</button>
                       </div>
                     </div>
                   )}
                 </div>
               )}
               <div className="row button-row">
-                <button type="button" className="secondary" disabled={busy} onClick={discard}>Discard</button>
+                <button type="button" className="secondary" disabled={busy} onClick={discard}>{t("common.discard")}</button>
                 {doubtfulKeys.size > 0 && (
                   <button type="button" className="secondary" disabled={busy || confident === 0} onClick={() => void apply(true)}>
-                    Apply confident walls only ({confident})
+                    {t("walls.applyConfident", { n: confident })}
                   </button>
                 )}
                 <button className="primary" type="button" disabled={busy || keeping === 0} onClick={() => void apply()}>
-                  {wallCount > 0 ? `Replace with ${keeping} walls` : `Apply ${keeping} walls`}
+                  {wallCount > 0 ? t("walls.replaceN", { n: keeping }) : t("walls.applyN", { n: keeping })}
                 </button>
               </div>
             </div>
@@ -514,7 +525,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
 /** A small radio row for the Door / window tool's choices. */
 function OptionRow<T extends string>({ label, options, value, onChange, disabled }: {
   label: string;
-  options: { key: T; label: string }[];
+  options: { key: T; label: TextId }[];
   value: T;
   onChange: (value: T) => void;
   disabled?: boolean;
@@ -533,7 +544,7 @@ function OptionRow<T extends string>({ label, options, value, onChange, disabled
             disabled={disabled}
             onClick={() => onChange(option.key)}
           >
-            {option.label}
+            {t(option.label)}
           </button>
         ))}
       </div>

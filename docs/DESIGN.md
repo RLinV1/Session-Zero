@@ -679,6 +679,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0048](adr/0048-map-isometric-flag.md) | 2.5D map style flag | Proposed |
 | [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
 | [0051](adr/0051-seat-limits-and-room-lock.md) | Seat limits and locking a room | Proposed |
+| [0052](adr/0052-localized-messages.md) | Localized messages: ids on rejections, `Accept-Language` on REST | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

@@ -4,6 +4,7 @@ import type { EncounterPreview } from "@vtt/shared";
 import { api } from "../net/api";
 import { Modal } from "../ui/Modal";
 import { MapCanvas } from "./mapEditor/MapCanvas";
+import { t } from "../i18n/locale";
 
 /** A template's saved board for a read-only look, fetched while `templateId` is set. */
 export function useEncounterPreview(templateId: string | null) {
@@ -17,7 +18,7 @@ export function useEncounterPreview(templateId: string | null) {
     let live = true;
     api.library.encounters.preview(templateId).then(
       (next) => { if (live) setPreview(next); },
-      (err: unknown) => { if (live) setError(err instanceof Error ? err.message : "Couldn't load the preview"); },
+      (err: unknown) => { if (live) setError(err instanceof Error ? err.message : t("encounterPreview.loadFailed")); },
     );
     return () => { live = false; };
   }, [templateId]);
@@ -31,7 +32,7 @@ export function useEncounterPreview(templateId: string | null) {
  */
 export function EncounterPreviewBoard({ preview, name }: { preview: EncounterPreview; name: string }) {
   return (
-    <MapCanvas map={preview.map} grid={preview.grid} mode="view" pan label={`Preview of ${name}`}>
+    <MapCanvas map={preview.map} grid={preview.grid} mode="view" pan label={t("encounterPreview.of", { name })}>
       {() => (
         <>
           {preview.terrain && <TerrainCells runs={preview.terrain} grid={preview.grid} />}
@@ -52,7 +53,7 @@ export function EncounterPreviewBoard({ preview, name }: { preview: EncounterPre
                     clipPath={`circle(${radius}px at ${radius}px ${radius}px)`}
                   />
                 )}
-                <title>{token.hidden ? `${token.name} (hidden)` : token.name}</title>
+                <title>{token.hidden ? t("board.hiddenName", { name: token.name }) : token.name}</title>
               </g>
             );
           })}
@@ -66,11 +67,11 @@ export function EncounterPreviewBoard({ preview, name }: { preview: EncounterPre
 export function EncounterPreviewModal({ templateId, name, onClose }: { templateId: string | null; name: string; onClose: () => void }) {
   const { preview, error } = useEncounterPreview(templateId);
   return (
-    <Modal open={templateId !== null} title={`Preview: ${name}`} className="map-editor encounter-preview" onClose={onClose}>
+    <Modal open={templateId !== null} title={t("encounterPreview.title", { name })} className="map-editor encounter-preview" onClose={onClose}>
       <div className="map-editor-shell">
         <div className="map-editor-body">
           {error && <p role="alert" className="error">{error}</p>}
-          {!preview && !error && <p className="muted">Loading…</p>}
+          {!preview && !error && <p className="muted">{t("common.loading")}</p>}
           {preview && <EncounterPreviewBoard preview={preview} name={name} />}
         </div>
       </div>

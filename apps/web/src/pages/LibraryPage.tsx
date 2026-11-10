@@ -3,7 +3,7 @@ import { IconAction } from "../ui/IconAction";
 import { useEffect, useMemo, useState } from "react";
 import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
 import { api } from "../net/api";
-import { builtinsMatching } from "../net/builtinAssets";
+import { assetDisplayName, builtinsMatching } from "../net/builtinAssets";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import { Modal } from "../ui/Modal";
 import { isCroppable, TokenArtCropper } from "../ui/TokenArtCropper";
@@ -21,6 +21,7 @@ import { LibraryPicker } from "./LibraryPicker";import { startEncounterEdit } fr
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
 import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
+import { t } from "../i18n/locale";
 
 /**
  * Maps and token art are uploaded assets; creatures are reusable token setups (library-creatures);
@@ -28,14 +29,15 @@ import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
  */
 type Tab = AssetKind | "creature" | "encounter" | "animation" | "dice";
 
-const TABS: { tab: Tab; label: string }[] = [
-  { tab: "map", label: "Maps" },
-  { tab: "token", label: "Token Art" },
-  { tab: "creature", label: "Creatures" },
-  { tab: "encounter", label: "Encounters" },
-  { tab: "animation", label: "Animations" },
-  { tab: "dice", label: "Dice" },
-];
+/** Tab labels are catalog ids, read when the page renders. */
+const TABS = [
+  { tab: "map", label: "library.tab.map" },
+  { tab: "token", label: "library.tab.token" },
+  { tab: "creature", label: "library.tab.creature" },
+  { tab: "encounter", label: "library.tab.encounter" },
+  { tab: "animation", label: "library.tab.animation" },
+  { tab: "dice", label: "library.tab.dice" },
+] as const satisfies readonly { tab: Tab; label: string }[];
 
 /** `/library?tab=dice` opens on the Dice tab: the room's Dice panel links there. */
 const wantsDice = () => new URLSearchParams(location.search).get("tab") === "dice";
@@ -66,11 +68,11 @@ function DiceLibrary() {
       <SiteHeader />
     </div>
     <main className="page-shell home gm-page">
-      <h1>Dice looks</h1>
+      <h1>{t("library.diceLooks")}</h1>
       <div className="library-toolbar">
-        <input type="search" aria-label="Search by name" placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input type="search" aria-label={t("common.searchByName")} placeholder={t("common.searchByName")} value={query} onChange={(e) => setQuery(e.target.value)} />
         <button type="button" className="primary" onClick={() => void createDiceLook().then(setEditing)}>
-          New dice look
+          {t("library.newDiceLook")}
         </button>
       </div>
       <DiceSignInLine />
@@ -117,7 +119,7 @@ function Library() {
     try {
       await startEncounterEdit({ mapAssetId: map.id });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't start a new encounter");
+      setError(err instanceof Error ? err.message : t("library.encounterStartFailed"));
       setStartingEncounter(false);
     }
   }
@@ -126,15 +128,15 @@ function Library() {
     let live = true;
     api.library.list().then(
       (list) => live && setAssets(list),
-      (err: unknown) => live && setError(err instanceof Error ? err.message : "Could not load the library"),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : t("library.loadFailed")),
     );
     api.library.creatures.list().then(
       (list) => live && setCreatures(list),
-      (err: unknown) => live && setError(err instanceof Error ? err.message : "Could not load your creatures"),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : t("library.creaturesLoadFailed")),
     );
     api.library.encounters.list().then(
       (list) => live && setEncounters(list),
-      (err: unknown) => live && setError(err instanceof Error ? err.message : "Could not load your encounter templates"),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : t("library.encountersLoadFailed")),
     );
     return () => {
       live = false;
@@ -186,42 +188,42 @@ function Library() {
       <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} />
     </div>
     <main className="page-shell home gm-page">
-      <h1>Asset library</h1>
+      <h1>{t("library.title")}</h1>
       {error && <p role="alert" className="error">{error}</p>}
 
       <div className="library-toolbar">
-        <div role="tablist" aria-label="Asset type" className="tabs">
-          {TABS.map((t) => (
+        <div role="tablist" aria-label={t("library.assetType")} className="tabs">
+          {TABS.map((entry) => (
             <button
-              key={t.tab}
+              key={entry.tab}
               type="button"
               role="tab"
-              aria-selected={tab === t.tab}
-              className={tab === t.tab ? "tab active" : "tab"}
+              aria-selected={tab === entry.tab}
+              className={tab === entry.tab ? "tab active" : "tab"}
               onClick={() => {
-                setTab(t.tab);
+                setTab(entry.tab);
                 // Keep the Dice tab in the address, so reloading or sharing lands back on it.
-                history.replaceState(null, "", t.tab === "dice" ? "/library?tab=dice" : "/library");
+                history.replaceState(null, "", entry.tab === "dice" ? "/library?tab=dice" : "/library");
               }}
             >
-              {t.label}
+              {t(entry.label)}
             </button>
           ))}
         </div>
         <input
           type="search"
-          aria-label="Search by name"
-          placeholder="Search by name"
+          aria-label={t("common.searchByName")}
+          placeholder={t("common.searchByName")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         {tab === "dice" ? (
-          <button type="button" className="primary" onClick={() => void createDiceLook().then(setDiceTarget)}>New dice look</button>
+          <button type="button" className="primary" onClick={() => void createDiceLook().then(setDiceTarget)}>{t("library.newDiceLook")}</button>
         ) : tab === "creature" ? (
-          <button type="button" className="primary" onClick={() => setCreatureTarget("new")}>New creature</button>
+          <button type="button" className="primary" onClick={() => setCreatureTarget("new")}>{t("library.newCreature")}</button>
         ) : tab === "encounter" ? (
           <button type="button" className="primary" disabled={startingEncounter} onClick={() => setPickingEncounterMap(true)}>
-            {startingEncounter ? "Opening…" : "New encounter"}
+            {startingEncounter ? t("common.opening") : t("library.newEncounter")}
           </button>
         ) : tab === "animation" ? null : (
           <UploadButton
@@ -236,7 +238,7 @@ function Library() {
         )}
       </div>
 
-      {tab === "map" && <p className="muted">Upload PNG, JPEG or WebP images (up to 25 MiB), or UVTT, DD2VTT and DF2VTT maps (up to 40 MiB). UVTT imports include their grid, walls and doors.</p>}
+      {tab === "map" && <p className="muted">{t("library.uploadHint")}</p>}
 
       {tab === "dice" ? (
         <>
@@ -247,13 +249,13 @@ function Library() {
         <AnimationsTab query={query} onError={setError} />
       ) : tab === "encounter" ? (
         <>
-          {!encounters && !error && <p className="muted" aria-busy="true">Loading…</p>}
+          {!encounters && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
           {encounters && shownEncounters.length === 0 && (query ? (
-            <p className="muted">None of your encounter templates match that search.</p>
+            <p className="muted">{t("library.noEncounterMatch")}</p>
           ) : (
             // The toolbar's New encounter is right above, so the empty state adds no second one.
             <EmptyState picture="empty-library">
-              You haven't saved any encounter templates yet. Use New encounter to place creatures and fog on one of your maps, or save a room you run from the Encounter templates section of its Manage tab.
+              {t("library.noEncounters")}
             </EmptyState>
           ))}
           <ul className="plain asset-grid" role="tabpanel">
@@ -270,12 +272,12 @@ function Library() {
         </>
       ) : tab === "creature" ? (
         <>
-          {!creatures && !error && <p className="muted" aria-busy="true">Loading…</p>}
+          {!creatures && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
           {creatures && shownCreatures.length === 0 && (query ? (
-            <p className="muted">None of your creatures match that search.</p>
+            <p className="muted">{t("library.noCreatureMatch")}</p>
           ) : (
             <EmptyState picture="empty-library">
-              You haven't made any creatures yet. A creature saves a name, size, HP and AC, so you can place it from Add token without setting it up again.
+              {t("library.noCreatures")}
             </EmptyState>
           ))}
           <ul className="plain asset-grid" role="tabpanel">
@@ -290,8 +292,8 @@ function Library() {
           </ul>
           {builtinCreatures.length > 0 && (
             <section className="builtin-assets" aria-labelledby="builtin-creatures-heading">
-              <h2 id="builtin-creatures-heading">Included with the app</h2>
-              <p className="muted">Every GM has these. Place them from “From creature” in any room.</p>
+              <h2 id="builtin-creatures-heading">{t("library.included")}</h2>
+              <p className="muted">{t("library.includedCreatures")}</p>
               <ul className="plain asset-grid">
                 {builtinCreatures.map((creature) => (
                   <BuiltinCreatureCard key={creature.id} creature={creature} />
@@ -302,12 +304,12 @@ function Library() {
         </>
       ) : (
         <>
-          {!assets && !error && <p className="muted" aria-busy="true">Loading…</p>}
+          {!assets && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
           {assets && shown.length === 0 && (query ? (
-            <p className="muted">None of your uploads match that search.</p>
+            <p className="muted">{t("library.noUploadMatch")}</p>
           ) : (
             <EmptyState picture="empty-library">
-              You haven't uploaded any {kind === "map" ? "maps" : "token art"} yet. The ones below are ready to use.
+              {t(kind === "map" ? "library.noUploads.map" : "library.noUploads.token")}
             </EmptyState>
           ))}
           <ul className="plain asset-grid" role="tabpanel">
@@ -330,9 +332,9 @@ function Library() {
 
       {(builtins.length > 0 || seededMaps.length > 0) && (
         <section className="builtin-assets" aria-labelledby="builtin-heading">
-          <h2 id="builtin-heading">Included with the app</h2>
-          <p className="muted">Every GM has these. Place them from “From library” in any room.</p>
-          {kind === "token" && <p className="muted small-print">Portrait sources and credits. <a href="/img/tokens/enemies/CREDITS.md" target="_blank" rel="noreferrer">Art credits and license</a></p>}
+          <h2 id="builtin-heading">{t("library.included")}</h2>
+          <p className="muted">{t("library.includedArt")}</p>
+          {kind === "token" && <p className="muted small-print">{t("library.creditsDetail")} <a href="/img/tokens/enemies/CREDITS.md" target="_blank" rel="noreferrer">{t("library.credits")}</a></p>}
           <ul className="plain asset-grid">
             {seededMaps.map((asset) => (
               <AssetCard
@@ -352,7 +354,7 @@ function Library() {
 
       <Modal
         open={creatureTarget !== null}
-        title={creatureTarget === "new" ? "New creature" : "Edit creature"}
+        title={creatureTarget === "new" ? t("library.newCreature") : t("library.editCreature")}
         onClose={() => setCreatureTarget(null)}
       >
         {creatureTarget !== null && (
@@ -370,7 +372,7 @@ function Library() {
 
       <DiceLookModal lookId={diceTarget}onClose={() => setDiceTarget(null)} />
 
-      <Modal open={pickingEncounterMap} title="Choose a map for the encounter" onClose={() => setPickingEncounterMap(false)}>
+      <Modal open={pickingEncounterMap} title={t("library.chooseEncounterMap")} onClose={() => setPickingEncounterMap(false)}>
         {/* Only the GM's own maps: a template keeps its map by library id (ADR 0024). */}
         <LibraryPicker kind="map" includeBuiltins={false} onPick={(map) => void newEncounterOn(map)} />
       </Modal>
@@ -400,12 +402,12 @@ function BuiltinCard({ asset }: { asset: LibraryAsset }) {
           <img src={asset.url} alt="" loading="lazy" decoding="async" />
         )}
       </div>
-      <strong className="asset-name" title={asset.name}>
-        {asset.name}
+      <strong className="asset-name" title={assetDisplayName(asset)}>
+        {assetDisplayName(asset)}
       </strong>
       <span className="muted asset-meta">
         {asset.width}×{asset.height}
-        {asset.grid && ` · ${asset.grid.cellSize}px grid`}
+        {asset.grid && t("library.gridMeta", { cell: asset.grid.cellSize })}
       </span>
     </li>
   );
@@ -431,7 +433,7 @@ function UploadButton(props: {
       const { width, height } = await imageSize(file);
       props.onUploaded(await api.library.upload(file, { kind: props.kind, name: nameFromFile(file), width, height }));
     } catch (err) {
-      props.onError(err instanceof Error ? err.message : "Upload failed");
+      props.onError(err instanceof Error ? err.message : t("common.uploadFailed"));
     } finally {
       setBusy(false);
     }
@@ -439,7 +441,7 @@ function UploadButton(props: {
   return (
     <>
     <label className="upload-button">
-      <span>{busy ? "Uploading…" : props.kind === "map" ? "Upload map" : "Upload token art"}</span>
+      <span>{busy ? t("common.uploading") : props.kind === "map" ? t("library.uploadMap") : t("library.uploadTokenArt")}</span>
       <input
         type="file"
         className="sr-only"
@@ -484,7 +486,7 @@ function AssetCard(props: {
       props.onChanged(await api.library.update(asset.id, { name: trimmed }));
       setEditing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rename failed");
+      setError(err instanceof Error ? err.message : t("common.renameFailed"));
     }
   }
 
@@ -496,7 +498,7 @@ function AssetCard(props: {
       const { rooms, creatures, encounters } = await api.library.usage(asset.id);
       setDel({ step: "confirm", rooms, creatures, encounters });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check where this is used");
+      setError(err instanceof Error ? err.message : t("library.usageCheckFailed"));
       setDel({ step: "idle" });
     }
   }
@@ -507,12 +509,12 @@ function AssetCard(props: {
       await api.library.remove(asset.id);
       props.onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t("common.deleteFailed"));
       setDel({ step: "idle" });
     }
   }
 
-  const standIn = asset.kind === "map" ? "a blank map of the same size" : "a plain coloured token";
+  const standIn = asset.kind === "map" ? t("library.standIn.map") : t("library.standIn.token");
 
   return (
     <li className="asset-card">
@@ -531,59 +533,59 @@ function AssetCard(props: {
             void rename();
           }}
         >
-          <input aria-label="Name" value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} />
+          <input aria-label={t("common.name")} value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} />
           <button type="submit" className="small primary">
-            Save
+            {t("common.save")}
           </button>
         </form>
       ) : (
-        <strong className="asset-name" title={asset.name}>
-          {asset.name}
+        <strong className="asset-name" title={assetDisplayName(asset)}>
+          {assetDisplayName(asset)}
         </strong>
       )}
       <span className="muted asset-meta">
         {asset.width}×{asset.height}
-        {asset.grid && ` · ${asset.grid.cellSize}px grid`}
+        {asset.grid && t("library.gridMeta", { cell: asset.grid.cellSize })}
       </span>
       {error && <p role="alert" className="error">{error}</p>}
 
       {del.step === "confirm" ? (
-        <div className="confirm" role="alertdialog" aria-label={`Delete ${asset.name}?`}>
+        <div className="confirm" role="alertdialog" aria-label={t("common.deleteNamedQ", { name: assetDisplayName(asset) })}>
           {del.rooms.length > 0 && (
             <p>
-              Used in {del.rooms.length === 1 ? "1 room" : `${del.rooms.length} rooms`}:{" "}
-              <strong>{del.rooms.map((r) => r.name || "Untitled room").join(", ")}</strong>. They will show {standIn} instead.
+              {t("library.usedInRooms", { count: del.rooms.length })}{" "}
+              <strong>{del.rooms.map((r) => r.name || t("common.untitledRoom")).join(t("library.listSeparator"))}</strong>{t("library.roomsStandIn", { standIn })}
             </p>
           )}
           {del.creatures.length > 0 && (
             <p>
-              Used by {del.creatures.length === 1 ? "1 creature" : `${del.creatures.length} creatures`}:{" "}
-              <strong>{del.creatures.map((c) => c.name).join(", ")}</strong>. {del.creatures.length === 1 ? "It" : "They"} will lose {del.creatures.length === 1 ? "its" : "their"} image.
+              {t("library.usedByCreatures", { count: del.creatures.length })}{" "}
+              <strong>{del.creatures.map((c) => c.name).join(t("library.listSeparator"))}</strong>{t("library.creaturesLoseImage", { count: del.creatures.length })}
             </p>
           )}
           {del.encounters.length > 0 && (
             <p>
-              Used by {del.encounters.length === 1 ? "1 encounter template" : `${del.encounters.length} encounter templates`}:{" "}
-              <strong>{del.encounters.map((e) => e.name).join(", ")}</strong>. {del.encounters.length === 1 ? "It" : "They"} can't be used until saved again with another map.
+              {t("library.usedByEncounters", { count: del.encounters.length })}{" "}
+              <strong>{del.encounters.map((e) => e.name).join(t("library.listSeparator"))}</strong>{t("library.encountersUnusable", { count: del.encounters.length })}
             </p>
           )}
-          {del.rooms.length === 0 && del.creatures.length === 0 && del.encounters.length === 0 && <p>Delete “{asset.name}”? This can't be undone.</p>}
+          {del.rooms.length === 0 && del.creatures.length === 0 && del.encounters.length === 0 && <p>{t("library.deleteUnused", { name: assetDisplayName(asset) })}</p>}
           <div className="row">
             <button type="button" className="secondary small" onClick={() => setDel({ step: "idle" })}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="small danger-fill" onClick={() => void confirmDelete()}>
-              Delete
+              {t("common.delete")}
             </button>
           </div>
         </div>
       ) : (
         <div className="row asset-actions">
-          <IconAction icon={editing ? <X size={16} aria-hidden="true" /> : <TextAa size={16} aria-hidden="true" />} label={editing ? "Cancel" : "Rename"} onClick={() => setEditing(!editing)} />
-          {asset.kind === "map" && <IconAction icon={<GridFour size={16} aria-hidden="true" />} label="Edit grid" onClick={props.onEditGrid} />}
+          <IconAction icon={editing ? <X size={16} aria-hidden="true" /> : <TextAa size={16} aria-hidden="true" />} label={editing ? t("common.cancel") : t("common.rename")} onClick={() => setEditing(!editing)} />
+          {asset.kind === "map" && <IconAction icon={<GridFour size={16} aria-hidden="true" />} label={t("library.editGrid")} onClick={props.onEditGrid} />}
           <IconAction
             icon={<Trash size={16} aria-hidden="true" />}
-            label={del.step === "checking" ? "Checking…" : del.step === "deleting" ? "Deleting…" : "Delete"}
+            label={del.step === "checking" ? t("common.checking") : del.step === "deleting" ? t("common.deleting") : t("common.delete")}
             danger
             disabled={del.step !== "idle"}
             onClick={() => void startDelete()}

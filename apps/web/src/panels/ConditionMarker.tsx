@@ -1,4 +1,5 @@
-import { CONDITIONS, conditionSpec, type ConditionId } from "@vtt/shared";
+import { CONDITIONS, conditionLabel, type ConditionId } from "@vtt/shared";
+import { getLocale, t } from "../i18n/locale";
 import { conditionIconUrl } from "../ui/conditionIcon";
 
 /**
@@ -8,14 +9,14 @@ import { conditionIconUrl } from "../ui/conditionIcon";
  * so the marker reads without colour, and its label is real text for a screen reader.
  */
 export function ConditionMarker({ id, size = 22 }: { id: ConditionId; size?: number }) {
-  const spec = conditionSpec(id);
+  const label = conditionLabel(id, getLocale());
   return (
     <span
       className="condition-marker"
       style={{ width: size, height: size }}
-      title={spec.label}
+      title={label}
       role="img"
-      aria-label={spec.label}
+      aria-label={label}
     >
       <img src={conditionIconUrl(id)} width={size} height={size} alt="" draggable={false} />
     </span>
@@ -40,7 +41,7 @@ export function ConditionPicker({
 
   return (
     <fieldset className="condition-picker" disabled={disabled}>
-      <legend className="sr-only">Conditions</legend>
+      <legend className="sr-only">{t("conditions.legend")}</legend>
       {CONDITIONS.map((c) => (
         <label key={c.id} className={value.includes(c.id) || locked.includes(c.id) ? "condition-option on" : "condition-option"}>
           <input
@@ -48,10 +49,10 @@ export function ConditionPicker({
             checked={value.includes(c.id) || locked.includes(c.id)}
             disabled={locked.includes(c.id)}
             onChange={() => toggle(c.id)}
-            aria-label={locked.includes(c.id) ? `${c.label} (already has it)` : c.label}
+            aria-label={locked.includes(c.id) ? t("conditions.alreadyHas", { name: conditionLabel(c.id, getLocale()) }) : conditionLabel(c.id, getLocale())}
           />
           <ConditionMarker id={c.id} size={24} />
-          <span>{c.label}</span>
+          <span>{conditionLabel(c.id, getLocale())}</span>
         </label>
       ))}
     </fieldset>

@@ -1,4 +1,5 @@
 import type { AttackPreset, ConditionId, LibraryAsset, LibraryCreature, Token, TokenStats } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /** What "From creature" fills into Add Token (library-creatures, ADR 0012). */
 export interface CreatureDraft {
@@ -29,10 +30,10 @@ export function creatureDraft(creature: LibraryCreature): CreatureDraft {
 export function creatureSummary(creature: Pick<LibraryCreature, "size" | "hp" | "maxHp" | "ac" | "attacks">): string {
   const hp = creature.hp ?? creature.maxHp;
   return [
-    `Size ${creature.size}`,
-    creature.ac !== null && `AC ${creature.ac}`,
-    hp !== null && `${hp}${creature.maxHp !== null && hp !== creature.maxHp ? `/${creature.maxHp}` : ""} HP`,
-    (creature.attacks?.length ?? 0) > 0 && `${creature.attacks!.length} attack${creature.attacks!.length === 1 ? "" : "s"}`,
+    t("creature.summary.size", { size: creature.size }),
+    creature.ac !== null && t("creature.summary.ac", { ac: creature.ac }),
+    hp !== null && t("creature.summary.hp", { hp: `${hp}${creature.maxHp !== null && hp !== creature.maxHp ? `/${creature.maxHp}` : ""}` }),
+    (creature.attacks?.length ?? 0) > 0 && t("creature.summary.attacks", { n: creature.attacks!.length }),
   ].filter(Boolean).join(" · ");
 }
 

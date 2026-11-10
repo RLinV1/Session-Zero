@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LibraryAnimation } from "@vtt/shared";
 import { animationThumbnail, cachedAnimationThumbnail, thumbnailKey } from "../board/animationThumbnail";
 
+import { t } from "../i18n/locale";
 /** One cached still, requested only near the viewport. No canvas or animation loop per card. */
 export function AnimationThumbnail({ animation }: { animation: LibraryAnimation }) {
   const host = useRef<HTMLDivElement>(null);
@@ -34,7 +35,7 @@ export function AnimationThumbnail({ animation }: { animation: LibraryAnimation 
   const url = image.key === key ? image.url : undefined;
   return (
     <div ref={host} className="asset-thumb animation-thumb" aria-busy={!url && !failed}>
-      {url ? <img src={url} alt={`Preview of ${animation.name}`} width={240} height={180} decoding="async" /> : (
+      {url ? <img src={url} alt={t("thumb.previewOf", { name: animation.name })} width={240} height={180} decoding="async" /> : (
         <div className="animation-thumb-placeholder">
           <svg viewBox="0 0 240 180" aria-hidden="true">
             <path d="M0 45H240M0 90H240M0 135H240M60 0V180M120 0V180M180 0V180" stroke="currentColor" opacity="0.12" />
@@ -42,7 +43,7 @@ export function AnimationThumbnail({ animation }: { animation: LibraryAnimation 
             <circle cx="187" cy="90" r="12" fill="#ef4444" />
             <path d="M77 90H163M153 83L163 90L153 97" fill="none" stroke={animation.def.primary} strokeWidth="3" />
           </svg>
-          <span>{failed ? "Preview unavailable" : "Preparing preview…"}</span>
+          <span>{failed ? t("thumb.unavailable") : t("thumb.preparing")}</span>
         </div>
       )}
     </div>

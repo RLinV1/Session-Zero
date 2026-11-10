@@ -3,6 +3,7 @@ import { Eye, EyeSlash, FolderSimplePlus, PencilSimple, Plus, Trash } from "@pho
 import { MAX_GROUP_NAME, type Token, type TokenGroup } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
+import { t } from "../i18n/locale";
 
 /**
  * A group's heading in the GM's roster (KAN-82): its name and size, and Add tokens, Rename, Delete and one
@@ -49,31 +50,31 @@ export function GroupHeading({ group, tokens, others, connection, onError, colla
     <div className="group-heading">
       <CollapseToggle label={group.name} count={tokens.length} collapsed={collapsed} onToggle={onToggle} />
       <span className="group-actions">
-        <button type="button" className="icon-button" disabled={busy || others.length === 0} title="Add tokens"
-          onClick={() => { setPicked(new Set()); setAdding(true); }} aria-label={`Add tokens to ${group.name}`}>
+        <button type="button" className="icon-button" disabled={busy || others.length === 0} title={t("appGuide.addTokens.title")}
+          onClick={() => { setPicked(new Set()); setAdding(true); }} aria-label={t("group.addTo", { name: group.name })}>
           <Plus size={16} aria-hidden="true" />
         </button>
-        <button type="button" className="icon-button" disabled={busy || tokens.length === 0} title={anyVisible ? "Hide all" : "Show all"}
-          onClick={() => void setHidden(anyVisible)} aria-label={`${anyVisible ? "Hide" : "Show"} all of ${group.name}`}>
+        <button type="button" className="icon-button" disabled={busy || tokens.length === 0} title={anyVisible ? t("group.hideAll") : t("group.showAll")}
+          onClick={() => void setHidden(anyVisible)} aria-label={t(anyVisible ? "group.hideAllOf" : "group.showAllOf", { name: group.name })}>
           {anyVisible ? <Eye size={16} aria-hidden="true" /> : <EyeSlash size={16} aria-hidden="true" />}
         </button>
-        <button type="button" className="icon-button" title="Rename" onClick={() => { setName(group.name); setRenaming(true); }}
-          aria-label={`Rename ${group.name}`}>
+        <button type="button" className="icon-button" title={t("common.rename")} onClick={() => { setName(group.name); setRenaming(true); }}
+          aria-label={t("group.renameNamed", { name: group.name })}>
           <PencilSimple size={16} aria-hidden="true" />
         </button>
-        <button type="button" className="icon-button token-delete" title="Delete group" onClick={() => setConfirmingDelete(true)}
-          aria-label={`Delete group ${group.name}`}>
+        <button type="button" className="icon-button token-delete" title={t("group.delete")} onClick={() => setConfirmingDelete(true)}
+          aria-label={t("group.deleteNamed", { name: group.name })}>
           <Trash size={16} aria-hidden="true" />
         </button>
       </span>
 
-      <Modal open={adding} title={`Add tokens to ${group.name}`} onClose={() => setAdding(false)}>
+      <Modal open={adding} title={t("group.addTo", { name: group.name })} onClose={() => setAdding(false)}>
         <form className="stack" onSubmit={async (e) => {
           e.preventDefault();
           if (await send({ type: "group.assign", groupId: group.id, tokenIds: [...picked] })) setAdding(false);
         }}>
           <button type="button" className="link small" onClick={() => setPicked(new Set(picked.size === others.length ? [] : others.map((t) => t.id)))}>
-            {picked.size === others.length ? "Clear selection" : "Select all"}
+            {picked.size === others.length ? t("group.clearSelection") : t("sight.selectAll")}
           </button>
           <ul className="plain stack">
             {others.map((t) => (
@@ -87,31 +88,31 @@ export function GroupHeading({ group, tokens, others, connection, onError, colla
             ))}
           </ul>
           <div className="row modal-actions">
-            <button type="button" className="secondary" onClick={() => setAdding(false)}>Cancel</button>
-            <button className="primary" type="submit" disabled={picked.size === 0}>Add {picked.size || ""} {picked.size === 1 ? "token" : "tokens"}</button>
+            <button type="button" className="secondary" onClick={() => setAdding(false)}>{t("common.cancel")}</button>
+            <button className="primary" type="submit" disabled={picked.size === 0}>{t("group.addN", { n: picked.size })}</button>
           </div>
         </form>
       </Modal>
-      <Modal open={renaming} title={`Rename ${group.name}`} onClose={() => setRenaming(false)}>
+      <Modal open={renaming} title={t("group.renameNamed", { name: group.name })} onClose={() => setRenaming(false)}>
         <form className="stack" onSubmit={async (e) => {
           e.preventDefault();
           if (await send({ type: "group.rename", groupId: group.id, name })) setRenaming(false);
         }}>
-          <label>Group name<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={MAX_GROUP_NAME} autoFocus /></label>
+          <label>{t("group.name")}<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={MAX_GROUP_NAME} autoFocus /></label>
           <div className="row modal-actions">
-            <button type="button" className="secondary" onClick={() => setRenaming(false)}>Cancel</button>
-            <button type="submit" className="primary">Rename</button>
+            <button type="button" className="secondary" onClick={() => setRenaming(false)}>{t("common.cancel")}</button>
+            <button type="submit" className="primary">{t("common.rename")}</button>
           </div>
         </form>
       </Modal>
-      <Modal open={confirmingDelete} title={`Delete ${group.name}?`} onClose={() => setConfirmingDelete(false)}>
+      <Modal open={confirmingDelete} title={t("common.deleteNamedQ", { name: group.name })} onClose={() => setConfirmingDelete(false)}>
         <div className="stack">
-          <p>The group goes; its {tokens.length} {tokens.length === 1 ? "token stays" : "tokens stay"} on the board, ungrouped.</p>
+          <p>{t("group.deleteBody", { n: tokens.length })}</p>
           <div className="row modal-actions">
-            <button type="button" className="secondary" onClick={() => setConfirmingDelete(false)} autoFocus>Keep</button>
+            <button type="button" className="secondary" onClick={() => setConfirmingDelete(false)} autoFocus>{t("common.keep")}</button>
             <button type="button" className="danger-fill" onClick={async () => {
               if (await send({ type: "group.delete", groupId: group.id })) setConfirmingDelete(false);
-            }}>Delete group</button>
+            }}>{t("group.delete")}</button>
           </div>
         </div>
       </Modal>
@@ -125,23 +126,23 @@ export function NewGroupButton({ connection, onError }: { connection: RoomConnec
   const [name, setName] = useState("");
   return (
     <>
-      <button type="button" className="icon-button new-group-button" title="Create group" aria-label="Create group" onClick={() => { setName(""); setOpen(true); }}>
+      <button type="button" className="icon-button new-group-button" title={t("group.create")} aria-label={t("group.create")} onClick={() => { setName(""); setOpen(true); }}>
         <FolderSimplePlus size={18} aria-hidden="true" />
       </button>
-      <Modal open={open} title="Create group" onClose={() => setOpen(false)}>
+      <Modal open={open} title={t("group.create")} onClose={() => setOpen(false)}>
         <form className="stack" onSubmit={async (e) => {
           e.preventDefault();
           const r = await connection.command({ type: "group.create", name });
           onError(r.ok ? null : r.message);
           if (r.ok) setOpen(false);
         }}>
-          <label>Group name
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gate guards"
+          <label>{t("group.name")}
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("group.placeholder")}
               maxLength={MAX_GROUP_NAME} required autoComplete="off" autoFocus />
           </label>
           <div className="row modal-actions">
-            <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="submit" className="primary">Create group</button>
+            <button type="button" className="secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
+            <button type="submit" className="primary">{t("group.create")}</button>
           </div>
         </form>
       </Modal>
@@ -155,7 +156,7 @@ export function CollapseToggle({ label, count, collapsed, onToggle }: { label: s
     <button type="button" className="group-toggle" aria-expanded={!collapsed} onClick={onToggle}>
       <span aria-hidden="true" className="group-caret">{collapsed ? "▸" : "▾"}</span>
       <span className="group-name">{label}</span>
-      <span className="muted">{count} {count === 1 ? "token" : "tokens"}</span>
+      <span className="muted">{t("group.tokensN", { n: count })}</span>
     </button>
   );
 }

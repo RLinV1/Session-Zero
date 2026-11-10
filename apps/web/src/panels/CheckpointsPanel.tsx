@@ -6,6 +6,7 @@ import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
+import { t } from "../i18n/locale";
 
 /**
  * Named checkpoints (KAN-41, FR-REC-02, ADR 0019, ADR 0036): the GM saves the board under a name,
@@ -33,7 +34,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
     api.checkpointPreview(state.roomId, token, previewing.id, controller.signal).then(
       setPreview,
       (err: unknown) => {
-        if (!controller.signal.aborted) setPreviewError(err instanceof Error ? err.message : "Couldn't load that checkpoint.");
+        if (!controller.signal.aborted) setPreviewError(err instanceof Error ? err.message : t("checkpoint.loadFailed"));
       },
     );
     return () => controller.abort();
@@ -42,14 +43,14 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
   const save = async () => {
     if (busy) return; // Enter pressed twice must not save two checkpoints.
     const trimmed = name.trim();
-    if (!trimmed) return setError("Give the checkpoint a name.");
+    if (!trimmed) return setError(t("checkpoint.nameRequired"));
     setBusy(true);
     try {
       const result = await connection.command({ type: "checkpoint.create", name: trimmed });
       setError(result.ok ? null : result.message);
       if (result.ok) {
         setName("");
-        setStatus(`Saved checkpoint "${trimmed}".`);
+        setStatus(t("checkpoint.saved", { name: trimmed }));
       }
     } finally {
       setBusy(false);
@@ -62,7 +63,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
     try {
       const result = await connection.command({ type: "checkpoint.restore", checkpointId: checkpoint.id });
       setError(result.ok ? null : result.message);
-      if (result.ok) setStatus(`Restored checkpoint "${checkpoint.name}". Undo it from the activity log if that was wrong.`);
+      if (result.ok) setStatus(t("checkpoint.restored", { name: checkpoint.name }));
     } finally {
       setBusy(false);
       setPreviewing(null);
@@ -75,7 +76,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
     try {
       const result = await connection.command({ type: "checkpoint.delete", checkpointId: checkpoint.id });
       setError(result.ok ? null : result.message);
-      if (result.ok) setStatus(`Deleted checkpoint "${checkpoint.name}".`);
+      if (result.ok) setStatus(t("checkpoint.deleted", { name: checkpoint.name }));
     } finally {
       setBusy(false);
       setDeleting(null);
@@ -91,8 +92,8 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
   const readOnlyConnection = useMemo(() => previewConnection(connection, "a checkpoint preview"), [connection]);
 
   return (
-    <PanelSection id="gm-checkpoints" title="Checkpoints">
-      <p className="muted">Save the board now and put it back later. Chat and dice rolls are kept.</p>
+    <PanelSection id="gm-checkpoints" title={t("checkpoint.title")}>
+      <p className="muted">{t("checkpoint.intro")}</p>
       <form
         className="row checkpoint-form"
         onSubmit={(e) => {
@@ -101,48 +102,48 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
         }}
       >
         <label className="checkpoint-name">
-          <span className="sr-only">Checkpoint name</span>
+          <span className="sr-only">{t("checkpoint.name")}</span>
           <input
             value={name}
             maxLength={MAX_CHECKPOINT_NAME}
-            placeholder="Checkpoint name"
+            placeholder={t("checkpoint.name")}
             onChange={(e) => setName(e.target.value)}
             disabled={busy}
           />
         </label>
         <button type="submit" className="secondary" disabled={busy}>
-          Save
+          {t("common.save")}
         </button>
       </form>
       {error && <p role="alert" className="error">{error}</p>}
       <p role="status" className="sr-only">{status}</p>
       {newestFirst.length === 0 ? (
-        <p className="muted">No checkpoints yet.</p>
+        <p className="muted">{t("checkpoint.none")}</p>
       ) : (
         <ul className="plain checkpoint-list">
           {newestFirst.map((c) => (
             <li key={c.id} className="checkpoint-row">
               <span>{c.name}</span>
               <span className="row checkpoint-actions">
-                <button type="button" className="secondary" disabled={busy} aria-label={`Restore ${c.name}`} onClick={() => setPreviewing(c)}>
-                  Restore
+                <button type="button" className="secondary" disabled={busy} aria-label={t("checkpoint.restoreNamed", { name: c.name })} onClick={() => setPreviewing(c)}>
+                  {t("checkpoint.restore")}
                 </button>
-                <button type="button" className="secondary" disabled={busy} aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
-                  Delete
+                <button type="button" className="secondary" disabled={busy} aria-label={t("common.deleteNamed", { name: c.name })} onClick={() => setDeleting(c)}>
+                  {t("common.delete")}
                 </button>
               </span>
             </li>
           ))}
         </ul>
       )}
-      <Modal className="checkpoint-preview-modal" open={previewing !== null} title={previewing ? `Preview: ${previewing.name}` : "Preview"} onClose={() => setPreviewing(null)}>
+      <Modal className="checkpoint-preview-modal" open={previewing !== null} title={previewing ? t("checkpoint.previewNamed", { name: previewing.name }) : t("common.preview")} onClose={() => setPreviewing(null)}>
         {previewing && (
           <div className="stack checkpoint-preview">
             <p className="checkpoint-preview-banner" role="note">
-              <strong>Preview · View only.</strong> This is the table as it was when "{previewing.name}" was saved. Restoring puts the map, tokens, areas, fog and initiative back to this; chat and dice rolls stay, and you can undo it from the activity log. Nothing changes until you restore.
+              <strong>{t("checkpoint.viewOnly")}</strong> {t("checkpoint.previewBody", { name: previewing.name })}
             </p>
             {previewError && <p role="alert" className="error">{previewError}</p>}
-            {!previewState && !previewError && <p className="muted" role="status">Loading the saved board…</p>}
+            {!previewState && !previewError && <p className="muted" role="status">{t("checkpoint.loadingBoard")}</p>}
             {previewState && gm && readOnlyConnection && (
               <div className="checkpoint-preview-board">
                 <Board connection={readOnlyConnection} state={previewState} you={gm} gridPreview={null} readOnly suppressLiveEffects />
@@ -150,28 +151,27 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
             )}
             <div className="row button-row">
               <button type="button" className="secondary" onClick={() => setPreviewing(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
               <button className="primary" type="button" disabled={busy || (!previewState && !previewError)} onClick={() => void restore(previewing)}>
-                Restore {previewing.name}
+                {t("checkpoint.restoreNamed", { name: previewing.name })}
               </button>
             </div>
           </div>
         )}
       </Modal>
-      <Modal open={deleting !== null} title="Delete checkpoint?" onClose={() => setDeleting(null)}>
+      <Modal open={deleting !== null} title={t("checkpoint.deleteQ")} onClose={() => setDeleting(null)}>
         {deleting && (
           <div className="stack">
             <p>
-              Delete <strong>{deleting.name}</strong>? The board stays as it is, but this checkpoint can't be restored
-              afterwards, and deleting it can't be undone.
+              {t("checkpoint.deleteBefore")} <strong>{deleting.name}</strong>{t("checkpoint.deleteAfter")}
             </p>
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void remove(deleting)}>
-                Delete {deleting.name}
+                {t("common.delete")} {deleting.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setDeleting(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 
 /**
  * Account wire schemas (FR-GM-01, ADR 0017). Accounts belong to people, not roles, and none of
@@ -10,8 +11,8 @@ export const Email = z
   .string()
   .trim()
   .toLowerCase()
-  .max(254, { message: "Email must be 254 characters or fewer" })
-  .regex(/^[^@\s]+@[^@\s]+$/, { message: "Enter an email address like name@example.com" });
+  .max(254, { message: validationMessage(sharedMsg("valid.emailTooLong", { max: 254 })) })
+  .regex(/^[^@\s]+@[^@\s]+$/, { message: validationMessage(sharedMsg("valid.email")) });
 
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 128;
@@ -19,20 +20,20 @@ export const PASSWORD_MAX = 128;
 /** Length only, as NIST 800-63B advises. The cap also bounds the hashing work per request. */
 export const Password = z
   .string()
-  .min(PASSWORD_MIN, { message: `Password must be at least ${PASSWORD_MIN} characters` })
-  .max(PASSWORD_MAX, { message: `Password must be ${PASSWORD_MAX} characters or fewer` });
+  .min(PASSWORD_MIN, { message: validationMessage(sharedMsg("valid.passwordTooShort", { min: PASSWORD_MIN })) })
+  .max(PASSWORD_MAX, { message: validationMessage(sharedMsg("valid.passwordTooLong", { max: PASSWORD_MAX })) });
 
 /** The account's name. A room still uses the display name given for that room. */
 export const AccountDisplayName = z
   .string()
   .trim()
-  .min(1, { message: "Display name can't be blank" })
-  .max(40, { message: "Display name must be 40 characters or fewer" });
+  .min(1, { message: validationMessage(sharedMsg("valid.displayNameBlank")) })
+  .max(40, { message: validationMessage(sharedMsg("valid.displayNameTooLong", { max: 40 })) });
 
 export const SignUpRequest = z
   .object({ email: Email, password: Password, displayName: AccountDisplayName })
   .refine((r) => r.password.trim().toLowerCase() !== r.email, {
-    message: "Password can't be your email address",
+    message: validationMessage(sharedMsg("valid.passwordIsEmail")),
     path: ["password"],
   });
 export type SignUpRequest = z.infer<typeof SignUpRequest>;
@@ -69,7 +70,7 @@ export interface MeResponse {
 }
 
 /** The one message for a failed sign-in, whatever the reason (non-enumeration). */
-export const SIGN_IN_FAILED = "Email or password is incorrect.";
+export const SIGN_IN_FAILED = validationMessage(sharedMsg("auth.signInFailed"));
 
 /** What a legacy GM device token owns (`GET /api/gm/legacy`), and what a claim moved. */
 export interface LegacySummary {

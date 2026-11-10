@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GridDetectionStatus } from "@vtt/shared";
 import { api, ApiError } from "../net/api";
+import { t } from "../i18n/locale";
 
 interface DetectionActivation {
   key: string;
@@ -47,7 +48,7 @@ export function useGridDetection(source: "library" | "room", token: string, id: 
           source === "library" ? api.detection.library(id, signal) : api.detection.room(id, token, mapUrl, signal),
           new Promise<never>((_, reject) => {
             deadline = setTimeout(() => {
-              reject(new Error("Could not check grid fitting"));
+              reject(new Error(t("grid.fitCheckFailed")));
               abort?.abort();
             }, 10_000);
           }),
@@ -61,7 +62,7 @@ export function useGridDetection(source: "library" | "room", token: string, id: 
         const denied = err instanceof ApiError && (err.status === 401 || err.status === 403);
         setView((previous) => generation.current === current ? {
           activation, status: !denied && previous?.activation === activation ? previous.status : null, accessDenied: denied,
-          error: err instanceof Error ? err.message : "Could not check analysis",
+          error: err instanceof Error ? err.message : t("grid.analysisCheckFailed"),
         } : previous);
         if (!denied) timer = setTimeout(() => { void poll(); }, 3000);
       } finally {
@@ -87,7 +88,7 @@ export function useGridDetection(source: "library" | "room", token: string, id: 
       }
     } catch (err) {
       if (generation.current === current) setView((previous) => generation.current === current ? {
-        activation, status, error: err instanceof Error ? err.message : "Could not retry analysis",
+        activation, status, error: err instanceof Error ? err.message : t("grid.retryFailed"),
         accessDenied: err instanceof ApiError && (err.status === 401 || err.status === 403),
       } : previous);
     } finally {

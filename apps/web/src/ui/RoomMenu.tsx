@@ -3,6 +3,7 @@ import { ClockCounterClockwise, DotsThree, Rewind, GearSix, ShareNetwork } from 
 import { SettingsMenu, type SettingsRoom } from "./SettingsMenu";
 import { GuideIcon } from "./GuideTour";
 import { PopoverButton } from "./Popover";
+import { t } from "../i18n/locale";
 
 /**
  * The room bar's "More" menu: the activity log, replay and the guide, folded into one button so
@@ -28,12 +29,12 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
   return (
     <>
     <PopoverButton
-      label="More"
-      title="More"
+      label={t("menu.more")}
+      title={t("menu.more")}
       align="right"
       tourId="guide"
       buttonRef={menuButtonRef}
-      buttonContent={<><DotsThree size={16} aria-hidden="true" /> <span className="menu-label">More</span></>}
+      buttonContent={<><DotsThree size={16} aria-hidden="true" /> <span className="menu-label">{t("menu.more")}</span></>}
     >
       {(close) => {
         const item = (action: () => void) => () => { close(); action(); };
@@ -41,27 +42,27 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
           <div className="room-menu">
             {onShare && (
               <button type="button" className="tool-button" onClick={item(onShare)}>
-                <ShareNetwork size={16} aria-hidden="true" /> Share
+                <ShareNetwork size={16} aria-hidden="true" /> {t("share.share")}
               </button>
             )}
             <button type="button" className="tool-button" onClick={item(() => setSettingsOpen(true))}>
-              <GearSix size={16} aria-hidden="true" /> Settings
+              <GearSix size={16} aria-hidden="true" /> {t("settings.title")}
             </button>
             {onActivityLog && (
               <button type="button" className="tool-button" onClick={item(onActivityLog)}>
                 <ClockCounterClockwise size={16} aria-hidden="true" />
-                Activity log
+                {t("home.recover.log")}
               </button>
             )}
             {onReplay && (
               <button type="button" className="tool-button" aria-pressed={replaying} onClick={item(onReplay)}>
                 <Rewind size={16} aria-hidden="true" />
-                {replaying ? "Exit replay" : "Replay"}
+                {replaying ? t("menu.exitReplay") : t("menu.replay")}
               </button>
             )}
             <button type="button" className="tool-button" onClick={item(onGuide)}>
               <GuideIcon />
-              Guide
+              {t("common.guide")}
             </button>
           </div>
         );

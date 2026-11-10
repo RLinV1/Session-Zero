@@ -4,6 +4,8 @@ import { describeUndo, undoableAction, type HistoryResponse, type RoomState } fr
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
+import { formatStamp } from "../ui/formatRelative";
+import { getLocale, t, useLocale } from "../i18n/locale";
 
 interface Props {
   roomId: string;
@@ -20,7 +22,7 @@ interface Props {
  */
 export function ActivityLog({ open, onClose, ...props }: Props & { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Activity log" onClose={onClose}>
+    <Modal open={open} title={t("home.recover.log")} onClose={onClose}>
       {open && <History key={props.roomId} {...props} />}
     </Modal>
   );
@@ -52,6 +54,7 @@ function History({ roomId, token, seq, state, connection }: Props) {
     setRefresh((n) => n + 1);
   };
 
+  const locale = useLocale();
   useEffect(() => {
     const controller = new AbortController();
     request.current = controller;
@@ -65,7 +68,7 @@ function History({ roomId, token, seq, state, connection }: Props) {
         setPage(result);
         setLoadedSeq(atSeq);
       }).catch((err: unknown) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not load activity.");
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : t("log.loadFailed"));
       }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     }, search ? 250 : 0);
     return () => {
@@ -73,7 +76,8 @@ function History({ roomId, token, seq, state, connection }: Props) {
       controller.abort();
       request.current?.abort();
     };
-  }, [roomId, token, search, refresh]);
+    // A language change refetches: the server writes the sentences in the request's language.
+  }, [roomId, token, search, refresh, locale]);
 
   const loadOlder = async () => {
     if (!page?.nextBefore || busy) return;
@@ -86,7 +90,7 @@ function History({ roomId, token, seq, state, connection }: Props) {
       const older = await api.history(roomId, token, search.trim(), page.nextBefore, controller.signal);
       if (!controller.signal.aborted) setPage({ entries: [...page.entries, ...older.entries], nextBefore: older.nextBefore });
     } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not load activity.");
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : t("log.loadFailed"));
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
@@ -102,31 +106,31 @@ function History({ roomId, token, seq, state, connection }: Props) {
   }
 
   return <div className="activity-log">
-    <label htmlFor="activity-player">Search by player</label>
+    <label htmlFor="activity-player">{t("log.searchByPlayer")}</label>
     <div className="activity-search">
       <input id="activity-player" type="search" maxLength={40} value={search}
-        placeholder="Player or GM name" onChange={(e) => {
+        placeholder={t("log.playerPlaceholder")} onChange={(e) => {
           request.current?.abort();
           setBusy(true);
           setSearch(e.target.value);
         }} />
-      <button type="button" className="activity-refresh" aria-label="Refresh" title="Refresh"
+      <button type="button" className="activity-refresh" aria-label={t("log.refresh")} title={t("log.refresh")}
         onClick={() => setRefresh((n) => n + 1)} disabled={busy}>
         <ArrowClockwise size={16} aria-hidden="true" />
       </button>
     </div>
-    <p className="muted">Committed actions, newest first. Search uses names at the time of each action.</p>
-    {seq > loadedSeq && <p role="status">New activity is available. Refresh to see it.</p>}
-    {error && <p role="alert" className="error">{error} Try refreshing or loading older entries again.</p>}
-    {busy && <p role="status">Loading activity…</p>}
-    {page && page.entries.length === 0 && <p>No {search.trim() ? "matching " : ""}activity.</p>}
+    <p className="muted">{t("log.intro")}</p>
+    {seq > loadedSeq && <p role="status">{t("log.newActivity")}</p>}
+    {error && <p role="alert" className="error">{error}{t("log.retryHint")}</p>}
+    {busy && <p role="status">{t("log.loading")}</p>}
+    {page && page.entries.length === 0 && <p>{search.trim() ? t("log.noMatch") : t("log.empty")}</p>}
     <ol className="plain activity-entries" aria-busy={busy}>
       {page?.entries.map(({ committed, sentence }) => {
         const commandId = committed.commandId;
         // One action can span several entries (an editor save); its controls go on the newest.
         const newestOfAction = commandId !== undefined && firstSeq.get(commandId) === committed.seq;
         const action = newestOfAction ? undoableAction(state.undo, commandId) : undefined;
-        const label = action ? `Undo ${describeUndo(action, state.tokens).verb}` : "";
+        const label = action ? t("log.undoVerb", { verb: describeUndo(action, state.tokens, getLocale()).verb }) : "";
         return <li key={committed.seq}>
           <div className="activity-entry-head">
             <p>{sentence}</p>
@@ -134,18 +138,18 @@ function History({ roomId, token, seq, state, connection }: Props) {
               <button type="button" className="secondary small activity-undo" aria-label={label} title={label}
                 disabled={undoing !== null} onClick={() => void undo(commandId)}>
                 <ArrowCounterClockwise size={14} aria-hidden="true" />
-                {undoing === commandId ? "Undoing…" : "Undo"}
+                {undoing === commandId ? t("gmMap.undoing") : t("home.facts.undo")}
               </button>
             )}
-            {newestOfAction && undone.has(commandId) && <span className="activity-undone">Undone</span>}
+            {newestOfAction && undone.has(commandId) && <span className="activity-undone">{t("home.recover.undone")}</span>}
           </div>
           {undoError && undoError.commandId === commandId && newestOfAction && (
             <p role="alert" className="error">{undoError.message}</p>
           )}
-          <small className="muted activity-meta"><time dateTime={committed.at}>{new Date(committed.at).toLocaleString()}</time> · #{committed.seq}</small>
+          <small className="muted activity-meta"><time dateTime={committed.at}>{formatStamp(committed.at)}</time> · #{committed.seq}</small>
         </li>;
       })}
     </ol>
-    {page?.nextBefore && <button type="button" disabled={busy} onClick={() => void loadOlder()}>Load older</button>}
+    {page?.nextBefore && <button type="button" disabled={busy} onClick={() => void loadOlder()}>{t("log.loadOlder")}</button>}
   </div>;
 }

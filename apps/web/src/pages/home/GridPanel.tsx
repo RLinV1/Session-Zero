@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { DEFAULT_GRID } from "@vtt/shared";
 import { MapGrid } from "../../ui/MapGrid";
 import { CROP, MAPS } from "./crops";
+import { t } from "../../i18n/locale";
 
 /**
  * Grid alignment, live (gm-home: "Grid alignment is operable"). The faint grid is the map's own
@@ -16,10 +17,9 @@ export function GridPanel() {
   return (
     <div className="prepare-step">
       <div className="step-copy">
-        <h4>Line up the grid</h4>
+        <h4>{t("home.grid.title")}</h4>
         <p>
-          Got a map with squares already drawn on it? Match the table's grid to them, so moves and distances line up
-          with the squares your players see. Drag the slider to try it.
+          {t("home.grid.body")}
         </p>
       </div>
       <figure className="map-figure" style={{ "--map": `url(${MAPS.grid.src})` } as CSSProperties}>
@@ -30,15 +30,15 @@ export function GridPanel() {
         </div>
         <div className="demo-bar">
           <label className="demo-slider">
-            Square size
+            {t("home.grid.squareSize")}
             <input type="range" min={40} max={110} step={1} value={cell} onChange={(e) => setCell(Number(e.target.value))} />
           </label>
           <output className="readout">
-            <b>{cell}</b> px squares · 1 square = <b>{DEFAULT_GRID.unitsPerCell}</b> {DEFAULT_GRID.unitLabel}
+            {t("home.grid.readout", { px: cell, units: DEFAULT_GRID.unitsPerCell, unit: DEFAULT_GRID.unitLabel })}
           </output>
         </div>
         <p className="figure-note" role="status">
-          {lined ? "Lined up with the map's squares." : "Drag until the grids line up."}
+          {lined ? t("home.grid.lined") : t("home.grid.drag")}
         </p>
       </figure>
     </div>

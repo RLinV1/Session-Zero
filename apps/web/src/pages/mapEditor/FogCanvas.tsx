@@ -4,6 +4,7 @@ import { FOG_TEXTURE_SIZE, averageColor, fogPalette, makeFogCanvas, type Rgb } f
 import { fogRegionAt } from "../../board/tools";
 import { motionReduced } from "../../ui/motion";
 import { MapCanvas } from "./MapCanvas";
+import { t } from "../../i18n/locale";
 
 /** A polygon closes when a click lands this close to its first corner, in screen pixels. */
 const CLOSE_PX = 12;
@@ -210,7 +211,7 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
       grid={grid}
       mode={mode}
       pan={false}
-      label="Map fog. Drag a rectangle, click out a polygon, click fog to reveal it, or select fog to move or reshape it; the wheel or a pinch zooms, and two fingers pan."
+      label={t("fog.canvas")}
       onMove={(p) => {
         // Hover only drives the reveal highlight and the draft being drawn; elsewhere a pointer
         // move must not redraw the canvas.
@@ -262,7 +263,7 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
           return;
         }
         if (corners.length >= MAX_FOG_POINTS) {
-          onNotice(`A fog region holds at most ${MAX_FOG_POINTS} corners. Close this one, then start another.`);
+          onNotice(t("fog.tooManyCorners", { max: MAX_FOG_POINTS }));
           return;
         }
         setCorners([...corners, p]);

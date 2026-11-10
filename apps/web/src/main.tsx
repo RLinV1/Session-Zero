@@ -10,6 +10,7 @@ import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
 import "@fontsource/geist-mono/600.css";
 import { App } from "./App";
+import { initLocale } from "./i18n/locale";
 import { loadAccount, whenThisDeviceSignsOut } from "./account/accountStore";
 import { dropGuestChoice, forgetAccountSeats } from "./net/identity";
 import { parseRoute } from "./router";
@@ -28,8 +29,11 @@ void loadAccount();
 whenThisDeviceSignsOut(() => forgetAccountSeats());
 dropGuestChoice();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+// The viewer's language is loaded before the first render, so a Chinese page never flashes English.
+void initLocale().then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  ),
 );

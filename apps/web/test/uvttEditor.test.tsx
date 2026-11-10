@@ -66,7 +66,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     vi.mocked(api.uvtt.prepare).mockResolvedValue({ ...structuredClone(preparation), walls: [...preparation.walls, { a: { x: 200, y: 100 }, b: { x: 700, y: 100 }, source: "line_of_sight" }] });
     const fake = mount(); await importFile();
     expect(fake.commands).toEqual([]);
-    expect(screen.getByText("1 import warnings")).toBeTruthy();
+    expect(screen.getByText("1 import warning")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /· Walls$/ }));
     fireEvent.change(screen.getByLabelText("Selected geometry"), { target: { value: "draft:0" } });
     expect((screen.getByLabelText("Door position X") as HTMLInputElement).value).toBe("40");

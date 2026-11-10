@@ -7,6 +7,7 @@ import { canRenderGrid, minimumGridCellSizeForDisplay, type BoardSize } from "..
 import { adjustGridSampleCorner, drawGridSample, GRID_CELL_SNAP, gridFromSample, screenToMap, seedGridSample, snapGridSampleOffsets, type GridSample, type SampleCount } from "./gridSample";
 import { beginPointerGesture, EMPTY_GESTURE, EMPTY_PLACEMENT, finishPointerGesture, interruptPointerGesture, movePointerGesture,
   repositionGridSample, transitionPlacement, type Anchor, type Placement, type PointerGesture } from "./gridSampleInteraction";
+import { t } from "../i18n/locale";
 
 const MAX_SCALE = 8;
 const BUTTON_STEP = 1.5;
@@ -193,7 +194,7 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
   const invalid = () => {
     setCursor(null);
     setPreviewActive(false);
-    setMessage(`Keep the sample inside the map, with each square between ${minimumGridCellSizeForDisplay(map)} and 2000 px. Your last valid grid is retained. Try another location.`);
+    setMessage(t("grid.sampleBounds", { min: minimumGridCellSizeForDisplay(map) }));
   };
   const commit = (point: Point, freeformPlacement = false) => {
     onInteraction?.();
@@ -430,16 +431,16 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
   const first = placement.stage === "awaiting-b" ? shownSample?.anchor ?? placement.anchor : sample?.anchor;
   const second = sample?.corner ?? shownSample?.corner;
   const side = shownSample ? Math.abs(shownSample.corner.x - shownSample.anchor.x) : 0;
-  const status = placement.stage === "awaiting-a" ? "Step 1: Click or tap a grid intersection to place A."
-    : placement.stage === "awaiting-b" ? "Step 2: Click or tap the opposite corner to place B."
-      : selected ? `Anchor ${selected} selected. Click the map to reposition it, or press Enter to confirm and deselect.`
-        : "Sample placed. Check alignment across the map; select A to move it or B to change spacing.";
+  const status = placement.stage === "awaiting-a" ? t("grid.step1")
+    : placement.stage === "awaiting-b" ? t("grid.step2")
+      : selected ? t("grid.anchorSelected", { anchor: selected })
+        : t("grid.samplePlaced");
 
   return (
     <div className="map-grid-preview">
-      <p className="grid-instruction">Place A and B at opposite corners of one square. For a gridless map, choose the square size you want.</p>
+      <p className="grid-instruction">{t("grid.placeHint")}</p>
       <div className="map-grid-toolbar">
-        <div role="group" aria-label="Sample size" className="grid-sample-count">
+        <div role="group" aria-label={t("grid.sampleSize")} className="grid-sample-count">
           {([1, 3, 5] as const).map((n) => (
             <button key={n} type="button" className="secondary" aria-pressed={count === n} disabled={disabled}
               onClick={() => {
@@ -456,28 +457,28 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
                 setCount(n);
                 setMessage(null);
                 if (result.grid) { sentGeometry.current = result.grid; onChange(result.grid); }
-              }}>{n === 1 ? "1 square" : `${n}×${n}`}</button>
+              }}>{n === 1 ? t("grid.oneSquare") : t("grid.nByN", { n })}</button>
           ))}
         </div>
         <button type="button" className="secondary" disabled={disabled} onClick={() => {
           onInteraction?.();
           clearTransient(); setPlacement(EMPTY_PLACEMENT); setProvisionalSample(null); setMessage(null); svgRef.current?.focus();
-        }}>Start over</button>
-        <div role="group" aria-label="Select anchor" className="grid-anchor-controls">
+        }}>{t("grid.startOver")}</button>
+        <div role="group" aria-label={t("grid.selectAnchor")} className="grid-anchor-controls">
           {(["A", "B"] as const).map((anchor) => (
             <button key={anchor} type="button" className="secondary" data-anchor={anchor}
               aria-pressed={selected === anchor} disabled={disabled || !sample} onClick={() => select(anchor)}
-              onKeyDown={onKeyDown}>Select {anchor}</button>
+              onKeyDown={onKeyDown}>{t("grid.selectN", { anchor })}</button>
           ))}
         </div>
-        <div className="map-grid-zoom" role="group" aria-label="Zoom">
-          <button type="button" className="secondary" aria-label="Zoom out" disabled={view.zoom <= MIN_ZOOM}
+        <div className="map-grid-zoom" role="group" aria-label={t("common.zoom")}>
+          <button type="button" className="secondary" aria-label={t("common.zoomOut")} disabled={view.zoom <= MIN_ZOOM}
             onClick={() => zoomAt(1 / BUTTON_STEP)}><MagnifyingGlassMinus size={18} aria-hidden="true" /></button>
           <span className="map-grid-zoom-level">{Math.round(scale * 100)}%</span>
-          <button type="button" className="secondary" aria-label="Zoom in" disabled={view.zoom >= maxZoom}
+          <button type="button" className="secondary" aria-label={t("common.zoomIn")} disabled={view.zoom >= maxZoom}
             onClick={() => zoomAt(BUTTON_STEP)}><MagnifyingGlassPlus size={18} aria-hidden="true" /></button>
           <button type="button" className="secondary" onClick={() => { clearTransient(); setCamera(FIT); }}>
-            <CornersOut size={18} aria-hidden="true" /> Fit map
+            <CornersOut size={18} aria-hidden="true" /> {t("grid.fitMap")}
           </button>
         </div>
       </div>
@@ -486,7 +487,7 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
       <MapGuide />
       <svg ref={svgRef} className={`map-grid-canvas${space ? " is-panning" : ""}`}
         viewBox={ready ? `${vx} ${vy} ${vw} ${vh}` : `0 0 ${map.width} ${map.height}`}
-        role="group" aria-label="Place grid anchors on the map" aria-describedby={`${statusId} ${helpId} ${keysId}`} tabIndex={0}
+        role="group" aria-label={t("grid.placeAnchors")} aria-describedby={`${statusId} ${helpId} ${keysId}`} tabIndex={0}
         aria-disabled={disabled} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
         onPointerUp={onPointerUp} onPointerCancel={cancelPointer} onLostPointerCapture={(e) => {
           if (gesture.current.pointers.some((p) => p.id === e.pointerId)) clearTransient();
@@ -504,7 +505,7 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
               strokeDasharray={previewGrid ? `${6 / scale} ${4 / scale}` : undefined} pointerEvents="none" />}
             {([{ anchor: "A", point: first }, { anchor: "B", point: second }] as const).map(({ anchor, point }) => point && (
               <g key={anchor} data-anchor={anchor} role={sample ? "button" : undefined} tabIndex={sample && !disabled ? 0 : -1}
-                aria-label={`Select anchor ${anchor}. Use arrow keys; Enter confirms and deselects.`}
+                aria-label={t("grid.selectAnchorN", { anchor })}
                 aria-pressed={selected === anchor} aria-disabled={disabled}>
                 <circle cx={point.x} cy={point.y} r={22 / scale} fill="transparent" />
                 <circle className="grid-anchor-dot" cx={point.x} cy={point.y} r={8 / scale}
@@ -519,14 +520,12 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
       </svg>
       </div>
       <p id={helpId} className="muted small-print map-grid-help">
-        Hold Shift to place freely. Scroll to zoom; middle-drag or Space-drag moves the view.
+        {t("grid.freeHint")}
       </p>
       <details className="map-grid-keys small-print">
-        <summary>Keyboard and fine control</summary>
+        <summary>{t("grid.keyboard")}</summary>
         <p id={keysId} className="muted">
-          Focus the map and press Enter to place A at the view center, then use arrows and Enter to place B.
-          Select A to move both anchors by 1 pixel, or B to change the cell size by 0.5 px; Shift moves 10 pixels.
-          Placement snaps to 0.5 px. On touch, use two fingers to pan and zoom.
+          {t("grid.keyboardHelp")}
         </p>
       </details>
       {message && <p className="error" role="status">{message}</p>}

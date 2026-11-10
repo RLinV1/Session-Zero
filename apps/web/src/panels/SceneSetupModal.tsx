@@ -4,6 +4,7 @@ import type { CommandInput, EncounterSummary, RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
+import { t } from "../i18n/locale";
 
 /** New scenes are private; choosing their starting content never activates them. */
 export function SceneSetupModal({ open, state, connection, onClose, onChooseMap }: {
@@ -19,7 +20,7 @@ export function SceneSetupModal({ open, state, connection, onClose, onChooseMap 
     let current = true;
     api.library.encounters.list().then(
       (items) => { if (current) { setTemplates(items); setError(null); } },
-      (err: unknown) => { if (current) setError(err instanceof Error ? err.message : "Could not load encounter templates."); },
+      (err: unknown) => { if (current) setError(err instanceof Error ? err.message : t("sceneSetup.loadFailed")); },
     );
     return () => { current = false; };
   }, [open, choice]);
@@ -29,22 +30,22 @@ export function SceneSetupModal({ open, state, connection, onClose, onChooseMap 
     try {
       const result = await connection.command(command);
       if (result.ok) onClose(); else setError(result.message);
-    } catch { setError("Could not set up this scene. Try again."); }
+    } catch { setError(t("sceneSetup.failed")); }
     finally { setBusy(false); }
   };
-  return <Modal className="scene-setup" open={open} title="Prepare scene" onClose={() => { if (!busy) onClose(); }} onAfterClose={() => {
+  return <Modal className="scene-setup" open={open} title={t("sceneSetup.title")} onClose={() => { if (!busy) onClose(); }} onAfterClose={() => {
     if (mapRequested) { setMapRequested(false); onChooseMap(); }
   }}>
-    <p className="muted">Private until you activate.</p>
+    <p className="muted">{t("sceneSetup.private")}</p>
     <div className="scene-setup-choices">
-      <button type="button" className="secondary" aria-label="Current map" title="Copy the live map, tokens and progress" disabled={busy} onClick={() => void apply({ type: "scene.copyCurrent", sceneId: state.activeSceneId ?? "initial" })}><Copy size={18} aria-hidden="true" /><span>Current map<small>Copy the live board and progress</small></span><CaretRight size={14} aria-hidden="true" /></button>
-      <button type="button" className="secondary" aria-label="Encounter template" aria-pressed={choice === "template"} disabled={busy} onClick={() => { setChoice("template"); setError(null); }}><SquaresFour size={18} aria-hidden="true" /><span>Encounter template<small>Start from a saved encounter</small></span><CaretRight size={14} aria-hidden="true" /></button>
-      <button type="button" className="secondary" aria-label="Map" disabled={busy} onClick={() => { setMapRequested(true); onClose(); }}><Image size={18} aria-hidden="true" /><span>Map<small>Choose a new location</small></span><CaretRight size={14} aria-hidden="true" /></button>
+      <button type="button" className="secondary" aria-label={t("sceneSetup.currentMap")} title={t("sceneSetup.copyLiveHint")} disabled={busy} onClick={() => void apply({ type: "scene.copyCurrent", sceneId: state.activeSceneId ?? "initial" })}><Copy size={18} aria-hidden="true" /><span>{t("sceneSetup.currentMap")}<small>{t("sceneSetup.copyLive")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
+      <button type="button" className="secondary" aria-label={t("encounterEdit.template")} aria-pressed={choice === "template"} disabled={busy} onClick={() => { setChoice("template"); setError(null); }}><SquaresFour size={18} aria-hidden="true" /><span>{t("encounterEdit.template")}<small>{t("sceneSetup.fromEncounter")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
+      <button type="button" className="secondary" aria-label={t("common.map")} disabled={busy} onClick={() => { setMapRequested(true); onClose(); }}><Image size={18} aria-hidden="true" /><span>{t("common.map")}<small>{t("sceneSetup.newLocation")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
     </div>
     {error && <p className="error" role="alert">{error}</p>}
     {choice === "template" && <div className="stack">
-      <h3>Encounter templates</h3>
-      {templates === null ? !error && <p aria-busy="true">Loading…</p> : templates.length === 0 ? <p className="muted">No encounter templates yet.</p> : <ul className="plain checkpoint-list">{templates.map((template) => <li key={template.id} className="checkpoint-row"><span>{template.name}</span><button type="button" disabled={busy || template.mapName === null} aria-label={`Apply ${template.name}`} onClick={() => void apply({ type: "encounter.apply", templateId: template.id })}>Apply</button></li>)}</ul>}
+      <h3>{t("enc.title")}</h3>
+      {templates === null ? !error && <p aria-busy="true">{t("common.loading")}</p> : templates.length === 0 ? <p className="muted">{t("sceneSetup.noTemplates")}</p> : <ul className="plain checkpoint-list">{templates.map((template) => <li key={template.id} className="checkpoint-row"><span>{template.name}</span><button type="button" disabled={busy || template.mapName === null} aria-label={t("enc.applyNamed", { name: template.name })} onClick={() => void apply({ type: "encounter.apply", templateId: template.id })}>{t("enc.apply")}</button></li>)}</ul>}
     </div>}
   </Modal>;
 }
