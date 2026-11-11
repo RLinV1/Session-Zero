@@ -1526,7 +1526,7 @@ a.build-issue-item { font-weight: 600; }
 @media (pointer: coarse) {
   /* Padding rather than flex, so a summary keeps its open/closed marker. */
   .build-walls summary, .build-disclosure > summary { box-sizing: border-box; min-height: 44px; padding-block: var(--space-3); }
-  .build-card h3 a, .build-closed li a { display: inline-flex; align-items: center; min-height: 44px; }
+  .build-card h3 a, .build-closed li a, .build-card-actions .link { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .build-wall-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
 .build-wall-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem var(--space-2); min-width: 0; }

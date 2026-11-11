@@ -105,6 +105,39 @@ describe("what kind a dropped file is (FR-GM-26)", () => {
   });
 });
 
+describe("arriving from the AI builds tab (FR-GM-27, AI builds redesign 2026-11-10)", () => {
+  afterEach(() => {
+    history.replaceState(null, "", "/");
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("lands on the part of the page its link names once the draft has loaded, with focus on its heading", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    history.replaceState(null, "", "/builds/b1#build-issues");
+    await open(detail({ items: [map()] }));
+    const heading = host.querySelector("#build-issues");
+    expect(heading?.textContent).toBe("Needs your attention");
+    expect(document.activeElement).toBe(heading);
+    expect(scrolled.mock.contexts[0]).toBe(heading);
+  });
+
+  it("focuses a section's heading when the link names the section", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    history.replaceState(null, "", "/builds/b1#build-publish");
+    await open(detail({ items: [goblin()] }));
+    expect(document.activeElement?.id).toBe("build-publish-title");
+  });
+
+  it("stays at the top without one", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    history.replaceState(null, "", "/builds/b1");
+    await open(detail({ items: [map()] }));
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
 describe("reviewing a build (FR-GM-27)", () => {
   it("lists what needs attention first, with each flag's reason", async () => {
     await open(detail({ items: [goblin({ flags: [{ field: "ac", message: "around 14 maybe" }] }), map()] }));

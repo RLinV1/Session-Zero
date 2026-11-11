@@ -6,6 +6,7 @@ import { EmptyState } from "../../ui/EmptyState";
 import { Modal } from "../../ui/Modal";
 import { PassPanel } from "./PassPanel";
 import { RIGHTS_NOTICE } from "./buildCopy";
+import { EMPTY_PROGRESS, buildProgress, counted, type BuildProgress } from "./buildProgress";
 
 /** The line saying why New build is off, so the library toolbar's button can point at it. */
 export const BUILD_LIMIT_REASON_ID = "build-limit-reason";
@@ -133,35 +134,85 @@ function NewBuildDialog({ open, onClose, onAfterClose, onStarted }: { open: bool
   );
 }
 
+/**
+ * What there is to fix, as the build page lists it, once the AI has saved something. Before that
+ * the only finding is a missing game profile, which is the AI's to save, not the owner's to fix.
+ */
+const toFix = (progress: BuildProgress | undefined) => (progress && progress.draft.length + progress.published > 0 ? progress.problems : 0);
+
+/**
+ * The one thing to do next on a build, from what its draft holds: fix what its page lists, then
+ * publish, then give the AI a pass again. A section of the build page is named after its `#`.
+ */
+function nextStep(build: BuildSummary, passLive: boolean, progress: BuildProgress | undefined): { label: string; href: string } | "new pass" {
+  const fix = toFix(progress);
+  if (fix > 0) return { label: `Fix ${fix} ${fix === 1 ? "thing" : "things"}`, href: `/builds/${build.id}#build-issues` };
+  if (progress && progress.draft.length > 0) return { label: `Review and publish ${progress.draft.length}`, href: `/builds/${build.id}#build-publish` };
+  if (!passLive) return "new pass";
+  return { label: "Open", href: `/builds/${build.id}` };
+}
+
+/** How much a build needs its owner, so the ones that do come first. */
+function urgency(build: BuildSummary, now: number, progress: BuildProgress | undefined): number {
+  if (toFix(progress) > 0) return 3;
+  if (progress && progress.draft.length > 0) return 2;
+  return passState(build, now).live ? 0 : 1;
+}
+
+/** What the draft holds, as its page counts it. */
+function DraftCounts({ progress }: { progress: BuildProgress }) {
+  const parts = [
+    progress.draft.length > 0 ? `${counted(progress.draft)} not yet published` : null,
+    progress.published > 0 ? `${progress.published} published` : null,
+    progress.notes > 0 ? `${progress.notes} ${progress.notes === 1 ? "note" : "notes"} from your AI` : null,
+  ].filter((p): p is string => p !== null);
+  return <p className="build-stats">{parts.length > 0 ? parts.map((p) => <span key={p}>{p}</span>) : <span>Nothing saved yet.</span>}</p>;
+}
+
 /** An open build: what state it's in, and the one thing to do next. */
-function BuildCard({ build, now, making, error, onNewPass }: { build: BuildSummary; now: number; making: boolean; error: string | null; onNewPass: () => void }) {
+function BuildCard({ build, now, progress, making, error, onNewPass }: {
+  build: BuildSummary;
+  now: number;
+  /** Absent while the draft is read, or if it couldn't be. */
+  progress: BuildProgress | undefined;
+  making: boolean;
+  error: string | null;
+  onNewPass: () => void;
+}) {
   const pass = passState(build, now);
   const closingSoon = Date.parse(build.closesAt) - now < CLOSING_SOON_MS;
+  const next = nextStep(build, pass.live, progress);
+  const newPassButton = (className: string) => (
+    <button type="button" className={className} aria-label={`Make a new pass for ${build.name}`} disabled={making} onClick={onNewPass}>
+      {making ? "Making a pass…" : "Make a new pass"}
+    </button>
+  );
   return (
-    <li className="build-card">
+    <li className="build-card" data-build-id={build.id}>
       <div className="build-card-head">
         <div className="build-card-title">
           <h3><a href={`/builds/${build.id}`} onClick={openBuildPage(build.id)}>{build.name}</a></h3>
           <div className="build-badges">
             <span className={pass.live ? "chip" : "chip build-chip-warn"}>{pass.chip}</span>
+            {toFix(progress) > 0 && <span className="chip build-chip-warn">{toFix(progress)} to fix</span>}
             {closingSoon && <span className="chip build-chip-warn">Closes {day(build.closesAt)}</span>}
             <span className="chip">{mapSetupLabel(build.choices)}</span>
           </div>
         </div>
       </div>
+      {progress && <DraftCounts progress={progress} />}
       <p className="build-card-facts muted small-print">
         <span>{pass.text}</span>
         <span>Last change {moment(build.updatedAt)}. Closes {day(build.closesAt)} if nothing changes.</span>
       </p>
       {error && <p role="alert" className="error">{error}</p>}
       <div className="row build-card-actions">
-        {pass.live ? (
-          <button type="button" className="secondary" aria-label={`Open ${build.name}`} onClick={() => navigate(`/builds/${build.id}`)}>Open</button>
-        ) : (
-          <button type="button" className="secondary" aria-label={`Make a new pass for ${build.name}`} disabled={making} onClick={onNewPass}>
-            {making ? "Making a pass…" : "Make a new pass"}
+        {next === "new pass" ? newPassButton("secondary") : (
+          <button type="button" className="secondary" aria-label={next.label === "Open" ? `Open ${build.name}` : `${next.label} in ${build.name}`} onClick={() => navigate(next.href)}>
+            {next.label}
           </button>
         )}
+        {next !== "new pass" && !pass.live && newPassButton("link small-print")}
       </div>
     </li>
   );
@@ -180,16 +231,29 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
   onFullChange?: (full: boolean) => void;
 }) {
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
+  /** Each open build's draft, read once the list is in; null until every read has finished. */
+  const [progress, setProgress] = useState<Record<string, BuildProgress> | null>(null);
   const [shownPass, setShownPass] = useState<{ id: string; pass: string } | null>(null);
   const [making, setMaking] = useState<string | null>(null);
   const [passError, setPassError] = useState<{ id: string; message: string } | null>(null);
   const [closedOpen, setClosedOpen] = useState(false);
   const startedPass = useRef<{ id: string; pass: string } | null>(null);
+  /** The build whose pass dialog just closed, for where focus goes next. */
+  const passFor = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
     api.builds.list().then(
-      (list) => { if (live) setBuilds(list); },
+      async (list) => {
+        if (!live) return;
+        setBuilds(list);
+        // At most three, read together, so the cards appear once, already in order. A draft that
+        // can't be read leaves its card without counts rather than holding up the others.
+        const open = list.filter((b) => b.status === "open");
+        const read = await Promise.allSettled(open.map((b) => api.builds.get(b.id)));
+        if (!live) return;
+        setProgress(Object.fromEntries(read.flatMap((r, i) => (r.status === "fulfilled" ? [[open[i]!.id, buildProgress(r.value)]] : []))));
+      },
       (err: unknown) => { if (live) onError(err instanceof Error ? err.message : "Could not load your builds"); },
     );
     return () => { live = false; };
@@ -202,7 +266,9 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
 
   const q = query.trim().toLowerCase();
   const matches = (b: BuildSummary) => !q || b.name.toLowerCase().includes(q);
-  const openShown = open.filter(matches);
+  const now = Date.now();
+  // The ones that need their owner first; otherwise newest first, as the list comes.
+  const openShown = open.filter(matches).sort((a, b) => urgency(b, now, progress?.[b.id]) - urgency(a, now, progress?.[a.id]));
   const closedShown = (builds ?? []).filter((b) => b.status === "closed" && matches(b));
   // A search that finds a closed build shows it, rather than leaving it folded away.
   useEffect(() => { if (q && closedShown.length > 0) setClosedOpen(true); }, [q, closedShown.length]);
@@ -221,7 +287,6 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
     }
   }
 
-  const now = Date.now();
   return (
     <div role="tabpanel" className="build-section">
       {full && <p id={BUILD_LIMIT_REASON_ID} className="muted small-print">{limit} of {limit} builds are open, the most at once. To start another, discard one on its page. What it published stays in your library.</p>}
@@ -248,12 +313,14 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
             <span className="muted small-print">{open.length} of {limit} open</span>
           </div>
           {open.length === 0 && <p className="muted">Nothing in progress.</p>}
+          {open.length > 0 && progress === null && <p className="muted" aria-busy="true">Reading your drafts…</p>}
           <ul className="plain build-list" aria-labelledby="builds-in-progress">
-            {openShown.map((b) => (
+            {progress !== null && openShown.map((b) => (
               <BuildCard
                 key={b.id}
                 build={b}
                 now={now}
+                progress={progress[b.id]}
                 making={making === b.id}
                 error={passError?.id === b.id ? passError.message : null}
                 onNewPass={() => void newPass(b)}
@@ -282,6 +349,7 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
         onClose={() => onCreatingChange(false)}
         onStarted={(build, pass) => {
           setBuilds((all) => [build, ...(all ?? [])]);
+          setProgress((all) => (all ? { ...all, [build.id]: EMPTY_PROGRESS } : all));
           startedPass.current = { id: build.id, pass };
           onCreatingChange(false);
         }}
@@ -294,7 +362,19 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
         }}
       />
 
-      <PassPanel pass={shownPass?.pass ?? null} onClose={() => setShownPass(null)}>
+      <PassPanel
+        pass={shownPass?.pass ?? null}
+        onClose={() => { passFor.current = shownPass?.id ?? null; setShownPass(null); }}
+        // "Make a new pass" beside a card's main step goes once the pass works. Focus that was on
+        // it lands on the card's main step instead of the top of the page.
+        onAfterClose={() => {
+          const id = passFor.current;
+          passFor.current = null;
+          if (!id || (document.activeElement && document.activeElement !== document.body)) return;
+          const card = [...document.querySelectorAll<HTMLElement>(".build-card[data-build-id]")].find((el) => el.dataset.buildId === id);
+          card?.querySelector<HTMLButtonElement>(".build-card-actions button")?.focus();
+        }}
+      >
         {shownPass && (
           <>
             <ol className="share-ai-steps build-pass-next" aria-label="What happens next">

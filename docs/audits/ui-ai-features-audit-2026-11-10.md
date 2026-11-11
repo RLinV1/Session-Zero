@@ -63,7 +63,22 @@ The user asked for the tab to be rethought as a workflow, keeping the look: no c
 
 **Found while checking it live.** The start route sends the build's summary from before its first pass exists, so a new card read "No pass". The tab now takes the expiry that comes with the pass. On touch screens, the 44-pixel rule made summaries flex boxes, which hid their open and closed marker. That affected the build page's walls summary too, and both now use padding instead.
 
-**Still to come.** Phase 2, still frontend only, adds what each draft holds (maps, creatures, encounters, published, to fix) from one read per open build. The next step becomes "Fix 2 things" or "Review and publish 5". Phase 3 needs the server: whether the AI is working now, and what is new since you last looked.
+**Phase 2: what each draft holds.** Also frontend only. Once the list is in, the tab reads each open build's draft, at most 3, together. It counts them with the build page's own code, moved into `buildProgress.ts`, so a card and its page always agree.
+- **Each card shows** what isn't published yet ("1 map and 2 creatures"), how much is published, and the AI's notes. A "2 to fix" chip appears when there's something to fix.
+- **One next step**, in this order:
+  - **Fix 2 things**, which opens the build page at *Needs your attention*;
+  - **Review and publish 5**, which opens it at *Publish*;
+  - **Make a new pass**;
+  - **Open**.
+  
+  A pass that has ended still offers **Make a new pass** beside the main step. The build page lands on the named section once its draft has loaded, with focus on that section's heading.
+- **Order.** The builds that need their owner come first: something to fix, then something to publish, then an ended pass.
+- **Loading.** The cards appear once every read is done, so they don't reorder under the pointer. A draft that can't be read leaves its card without counts.
+- **Focus.** When the new-pass link beside a card's main step goes, closing the pass dialog moves focus to that main step.
+
+**Found while checking phase 2 live.** A build whose AI hadn't saved anything showed "Fix 1 thing". The owner's check counts a missing game profile as a problem, and that is the AI's to save. The card now counts problems only once the AI has saved something. The build page still lists the missing profile, as it always has.
+
+**Still to come.** Phase 3 needs the server: whether the AI is working now, and what is new since you last looked.
 
 ## Not done
 
@@ -110,3 +125,19 @@ The user asked for the tab to be rethought as a workflow, keeping the look: no c
   - filled the limit, and searched for a closed build;
   - at 375 px: no sideways scroll, no control under 44 px, and the New build dialog fits without scrolling. The first card starts at 579 px, below the limit's reason;
   - light and dark.
+- **Phase 2:**
+  - **Component tests,** 6 more on the tab:
+    - the counts and where "Fix" goes;
+    - publishing, with an ended pass still offered;
+    - the order by need;
+    - a draft that can't be read;
+    - focus after the new-pass link goes;
+    - an empty draft and the missing profile.
+  - **Build page,** 3 tests: landing on a named heading, landing on a named section, and staying at the top without a `#`.
+  - **Deliberate breaks:** 15, one at a time across the tab, `buildProgress.ts` and the build page's landing. Each made a test fail.
+  - **Browser.** Three drafts were filled through the AI's own routes on the in-memory server: one with a player character missing AC, one with a flagged creature, and an empty one with no pass.
+    - The cards came newest-first from the server and were ordered by need.
+    - **Fix 1 thing** opened the build page scrolled to *Needs your attention*, with focus on its heading.
+    - **Review and publish 2** focused *Publish*.
+    - Each build page's summary matched its card.
+    - At 375 px: no sideways scroll, and no control under 44 px.

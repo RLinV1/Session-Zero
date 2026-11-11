@@ -16,6 +16,8 @@ Session Zero never calls a model and never receives your rulebook. Your AI app's
 
 1. Open **Library → AI builds** and choose **New build**. Name it, choose how much map setup your AI does (see [Maps](#maps)), then choose **Start build**. Up to 3 builds can be open at once.
 2. Copy the message it shows you. **The pass is shown only once.** You can make a new one on the build page, which ends the old one. When a pass has ended, the build's card under AI builds offers **Make a new pass** too.
+
+Under **AI builds**, each build in progress shows what its draft holds and the next step. That step is **Fix** when the build page lists something to fix, **Review and publish** when there's something to publish, or **Make a new pass** when the pass has ended. Builds that need you come first.
 3. Add the build address as a connector in your AI app, with no sign-in:
 
    ```

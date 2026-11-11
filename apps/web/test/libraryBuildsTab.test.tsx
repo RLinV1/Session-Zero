@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { BuildSummary } from "@vtt/shared";
+import type { BuildDetail, BuildItemView, BuildSummary } from "@vtt/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { accountStore } from "../src/account/accountStore";
 import { api } from "../src/net/api";
@@ -23,12 +23,35 @@ const build = (over: Partial<BuildSummary> = {}): BuildSummary => ({
   choices: { aiGrid: false, aiWalls: false }, ...over,
 });
 
+// What each build's draft holds, by build id, as its page reads it. Empty unless a test says.
+let drafts: Record<string, BuildItemView[]> = {};
+/** Builds whose AI hasn't saved a game profile yet. */
+let noProfile = new Set<string>();
+const draftItem = (over: Partial<BuildItemView> & Pick<BuildItemView, "kind" | "key" | "data">): BuildItemView => ({
+  flags: [], notCarriedOver: "", editedByUser: false, published: false, updatedAt: "2026-11-09T00:00:00Z", ...over,
+});
+const creature = (key: string, over: Partial<BuildItemView> = {}) => draftItem({
+  kind: "creature", key, ...over,
+  data: { name: key, isPlayerCharacter: false, size: 1, hp: 7, maxHp: 7, ac: 13, attacks: [], conditions: [], color: "#336699", imageFileId: null },
+});
+/** A map whose grid waits for the owner: something to fix. */
+const mapAwaitingGrid = draftItem({ kind: "map", key: "cave", data: { name: "Cave", fileId: "f1", proposedGrid: { cellSize: 70, offsetX: 0, offsetY: 0 }, gridStatus: "proposed", grid: null } });
+const detailOf = (id: string): BuildDetail => ({
+  build: build({ id }),
+  profile: noProfile.has(id) ? null : { name: "Lanternfall", features: { hitPoints: true, armorClass: true, attacks: true, conditions: true }, unitsPerCell: 5, unitLabel: "ft", notes: "", flags: [] },
+  files: [{ id: "f1", kind: "map", name: "cave.png", width: 700, height: 700, sizeBytes: 100, fromUvtt: false, grid: null, walls: 0, detection: null, url: "/uploads/cave.webp", published: false, board: null }],
+  items: drafts[id] ?? [],
+});
+
 beforeEach(() => {
   accountStore.setState({ status: "signedIn", account: { id: "a1", email: "dana@example.com", displayName: "Dana" } });
   vi.spyOn(api.library, "list").mockResolvedValue([]);
   vi.spyOn(api.library.creatures, "list").mockResolvedValue([]);
   vi.spyOn(api.library.encounters, "list").mockResolvedValue([]);
   vi.spyOn(api.builds, "list").mockResolvedValue([]);
+  drafts = {};
+  noProfile = new Set();
+  vi.spyOn(api.builds, "get").mockImplementation(async (id) => detailOf(id));
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -42,7 +65,9 @@ const openTab = async (list: BuildSummary[]) => {
   vi.mocked(api.builds.list).mockResolvedValue(list);
   history.replaceState(null, "", "/library?tab=builds");
   render(<LibraryPage />);
+  // The list, then the drafts read after it.
   await act(async () => { await Promise.resolve(); });
+  await act(async () => { await new Promise((done) => setTimeout(done, 0)); });
 };
 const dialog = (name: string) => screen.getByRole("dialog", { name });
 const newBuildDialog = async () => {
@@ -119,6 +144,7 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     expect(within(within(pass).getByRole("list", { name: "What happens next" })).getAllByRole("listitem")).toHaveLength(3);
     expect(within(pass).getByRole("link", { name: "Open the build page" }).getAttribute("href")).toBe("/builds/b9");
     expect(card("Lanternfall").textContent).toContain("Pass works");
+    expect(card("Lanternfall").textContent).toContain("Nothing saved yet.");
   });
 
   it("keeps a failed start in the dialog, next to its action", async () => {
@@ -202,6 +228,75 @@ describe("the builds in progress (FR-GM-26, AI builds redesign 2026-11-10)", () 
     expect(closed.open).toBe(true);
     expect(screen.queryByRole("link", { name: "Hollow Coast" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "In progress" })).toBeNull();
+  });
+
+  it("counts each draft as its page does, and sends the owner to fix what it lists first", async () => {
+    drafts = { b1: [mapAwaitingGrid, creature("goblin", { flags: [{ field: "ac", message: "around 14 maybe" }] }), creature("orc", { published: true })] };
+    await openTab([build({ id: "b1", name: "Hollow Coast" })]);
+    const hollow = card("Hollow Coast");
+    expect([...hollow.querySelectorAll(".build-stats span")].map((s) => s.textContent)).toEqual([
+      "1 map and 1 creature not yet published", "1 published", "1 note from your AI",
+    ]);
+    expect(within(hollow).getByText("1 to fix").className).toContain("build-chip-warn");
+    fireEvent.click(within(hollow).getByRole("button", { name: "Fix 1 thing in Hollow Coast" }));
+    expect(location.pathname + location.hash).toBe("/builds/b1#build-issues");
+  });
+
+  it("sends the owner to publish once nothing needs fixing, and still offers a pass that has ended", async () => {
+    drafts = { b1: [creature("goblin"), creature("orc")] };
+    await openTab([build({ id: "b1", name: "Hollow Coast", passExpiresAt: at(-HOUR) })]);
+    const buttons = within(card("Hollow Coast")).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(buttons).toEqual(["Review and publish 2 in Hollow Coast", "Make a new pass for Hollow Coast"]);
+    fireEvent.click(screen.getByRole("button", { name: "Review and publish 2 in Hollow Coast" }));
+    expect(location.pathname + location.hash).toBe("/builds/b1#build-publish");
+  });
+
+  it("leaves a missing game profile to the AI until it has saved something (found in the browser check)", async () => {
+    noProfile = new Set(["empty", "started"]);
+    drafts = { started: [creature("goblin")] };
+    await openTab([build({ id: "empty", name: "Gloomwood Fair", passExpiresAt: null }), build({ id: "started", name: "Hollow Coast" })]);
+    const empty = card("Gloomwood Fair");
+    expect(empty.textContent).toContain("Nothing saved yet.");
+    expect(within(empty).queryByText(/to fix$/)).toBeNull();
+    expect(within(empty).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Make a new pass for Gloomwood Fair"]);
+    // Once it has, the build page lists the missing profile to fix, and so does the card.
+    expect(within(card("Hollow Coast")).getByRole("button", { name: "Fix 1 thing in Hollow Coast" })).toBeTruthy();
+  });
+
+  it("puts the builds that need their owner first", async () => {
+    drafts = { ready: [creature("goblin")], broken: [mapAwaitingGrid] };
+    await openTab([
+      build({ id: "idle", name: "Idle" }),
+      build({ id: "ended", name: "Ended", passExpiresAt: at(-HOUR) }),
+      build({ id: "ready", name: "Ready" }),
+      build({ id: "broken", name: "Broken" }),
+    ]);
+    const names = [...screen.getByRole("list", { name: "In progress" }).querySelectorAll("h3")].map((h) => h.textContent);
+    expect(names).toEqual(["Broken", "Ready", "Ended", "Idle"]);
+  });
+
+  it("keeps a card whose draft can't be read, without counts", async () => {
+    drafts = { b1: [creature("goblin")] };
+    vi.mocked(api.builds.get).mockImplementation(async (id) => {
+      if (id === "b2") throw new Error("unreadable");
+      return detailOf(id);
+    });
+    await openTab([build({ id: "b1", name: "Hollow Coast" }), build({ id: "b2", name: "Sunken Archive" })]);
+    expect(card("Hollow Coast").querySelector(".build-stats")).not.toBeNull();
+    expect(card("Sunken Archive").querySelector(".build-stats")).toBeNull();
+    expect(within(card("Sunken Archive")).getByRole("button", { name: "Open Sunken Archive" })).toBeTruthy();
+  });
+
+  it("moves focus to the card's main step when the new-pass link beside it goes", async () => {
+    drafts = { b1: [creature("goblin")] };
+    vi.spyOn(api.builds, "newPass").mockResolvedValue({ pass: "szb_fresh", expiresAt: at(DAY) });
+    await openTab([build({ id: "b1", name: "Hollow Coast", passExpiresAt: at(-HOUR) })]);
+    const link = screen.getByRole("button", { name: "Make a new pass for Hollow Coast" });
+    link.focus();
+    await act(async () => { fireEvent.click(link); });
+    expect(screen.queryByRole("button", { name: "Make a new pass for Hollow Coast" })).toBeNull();
+    fireEvent.click(within(dialog("Give this to your AI")).getByRole("button", { name: "Close" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Review and publish 1 in Hollow Coast" }));
   });
 
   it("explains how builds work on a first visit, and keeps it folded after", async () => {

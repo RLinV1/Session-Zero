@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
   EMPTY_MAP_SETUP,
-  checkBuild,
   describeDraftLine,
   draftMapBoard,
   listOpenings,
@@ -11,8 +10,6 @@ import {
   type BuildFileView,
   type BuildItemView,
   type BuildPublished,
-  type DraftCreatureState,
-  type DraftEncounterState,
   type DraftMapSetup,
   type DraftMapState,
   type DraftMark,
@@ -32,6 +29,7 @@ import { HubNav, SiteHeader } from "../../ui/SiteHeader";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
 import { BuildChoiceFields } from "./LibraryBuilds";
+import { KIND_WORD, counted, creatureOf, encounterOf, flaggedFirst, mapOf, ownerIssues } from "./buildProgress";
 import { PassPanel } from "./PassPanel";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
 
@@ -41,24 +39,10 @@ const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { mont
 const itemId = (item: Pick<BuildItemView, "kind" | "key">) => `${item.kind}/${item.key}`;
 /** The square size the person saw, sent with what they reviewed. Item ids always hold a slash, so this can't clash. */
 const PROFILE_REVIEWED = "profile";
-const creatureOf = (item: BuildItemView) => item.data as unknown as DraftCreatureState;
-const mapOf = (item: BuildItemView) => item.data as unknown as DraftMapState;
-const encounterOf = (item: BuildItemView) => item.data as unknown as DraftEncounterState;
-/** Items with flags come first, so what needs a person is what they see first. */
-const flaggedFirst = (a: BuildItemView, b: BuildItemView) => Number(b.flags.length > 0) - Number(a.flags.length > 0);
 /** Where an item's card is on the page, so the issue list and the changed list can link to it. Keys are safe in ids. */
 const cardId = (item: Pick<BuildItemView, "kind" | "key">) => `build-${item.kind}-${item.key}`;
 /** An item's own name, as the person knows it. */
 const nameOf = (item: BuildItemView) => String((item.data as { name?: unknown }).name ?? item.key);
-const KIND_WORD: Record<BuildItemView["kind"], string> = { creature: "creature", map: "map", encounter: "encounter" };
-/** "1 map, 2 creatures and 1 encounter". */
-function counted(items: readonly BuildItemView[]): string {
-  const parts = (["map", "creature", "encounter"] as const).map((kind) => {
-    const n = items.filter((i) => i.kind === kind).length;
-    return n === 0 ? null : `${n} ${KIND_WORD[kind]}${n === 1 ? "" : "s"}`;
-  }).filter((p): p is string => p !== null);
-  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
-}
 
 /** One group of issues, each naming its item and linking to it. */
 function IssueList({ title, className, issues }: { title: string; className: string; issues: readonly BuildCheckIssue[] }) {
@@ -166,20 +150,27 @@ function Build({ id }: { id: string }) {
     errorRef.current.focus();
   }, [error]);
 
+  // A link to a part of this page, such as "Fix 2 things" on the AI builds tab, lands there once the
+  // draft has loaded, as it would on a page that loads all at once. Focus moves to its heading, so
+  // the keyboard carries on from there too.
+  const landed = useRef(false);
+  useEffect(() => {
+    if (!detail || landed.current) return;
+    landed.current = true;
+    const target = location.hash.length > 1 ? document.getElementById(location.hash.slice(1)) : null;
+    if (!target) return;
+    const heading = target.matches("h2") ? target : target.querySelector<HTMLElement>("h2") ?? target;
+    heading.tabIndex = -1;
+    target.scrollIntoView?.({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [detail]);
+
   const items = useMemo(() => detail?.items ?? [], [detail]);
   const files = useMemo(() => detail?.files ?? [], [detail]);
   const creatures = useMemo(() => items.filter((i) => i.kind === "creature").sort(flaggedFirst), [items]);
   const maps = useMemo(() => items.filter((i) => i.kind === "map").sort(flaggedFirst), [items]);
   const encounters = useMemo(() => items.filter((i) => i.kind === "encounter").sort(flaggedFirst), [items]);
-  const issues = useMemo(() => (detail ? checkBuild({
-    profile: detail.profile,
-    audience: "owner",
-    aiWalls: detail.build.choices.aiWalls,
-    files,
-    creatures: creatures.map((i) => ({ key: i.key, data: creatureOf(i), flags: i.flags })),
-    maps: maps.map((i) => ({ key: i.key, data: mapOf(i), flags: i.flags })),
-    encounters: encounters.map((i) => ({ key: i.key, data: encounterOf(i), flags: i.flags })),
-  }) : []), [detail, files, creatures, maps, encounters]);
+  const issues = useMemo(() => (detail ? ownerIssues(detail) : []), [detail]);
 
   if (missing) {
     return <main className="page-shell home gm-page"><h1>Build not found</h1><p className="muted">It may be someone else's, or it no longer exists.</p><a href="/library">Back to your library</a></main>;
