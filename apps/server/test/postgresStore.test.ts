@@ -110,6 +110,23 @@ describe.skipIf(!store)("PostgresRoomStore (docs/adr/0001-event-model.md)", () =
     // The whole append is one transaction, so the losing writer leaves no partial rows.
     expect((await store!.loadEvents(roomId)).map((e) => e.seq)).toEqual([1]);
   });
+  it("stamps an append with this server's clock, which rooms use too, not the database's (gm-home)", async () => {
+    // A database clock tens of ms behind (Docker Desktop's VM) made a fresh event sort as
+    // older than its room in "most recently active" (libraryStore.test.ts).
+    const roomId = await newRoom();
+    const before = Date.now();
+    const committed = await store!.append(roomId, 0, [
+      { actorId: null, event: { type: "RoomCreated", name: "One" } },
+      { actorId: null, event: { type: "RoomCreated", name: "Two" } },
+    ]);
+    const after = Date.now();
+
+    const [at, ...rest] = committed.map((c) => Date.parse(c.at));
+    expect(rest).toEqual([at]);
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(at).toBeLessThanOrEqual(after);
+    expect((await store!.loadEvents(roomId)).map((e) => e.at)).toEqual(committed.map((c) => c.at));
+  });
   it("preserves full double precision across JSON payload writes and reads for exact undo", async () => {
     const roomId = await newRoom();
     const event = { type: "MapSet" as const, map: { url: "/map.png", width: 100, height: 100 }, previous: null,

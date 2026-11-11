@@ -270,14 +270,20 @@ export class PostgresRoomStore implements RoomStore {
         });
         if ((_max.seq ?? 0) !== expectedLastSeq) throw new SeqConflictError(roomId, expectedLastSeq);
 
+        // Stamped with this server's clock, not the column default's database `now()`: Prisma
+        // fills `rooms.created_at` and every other `@default(now())` from this process, so the
+        // database clock would be a second clock. A database a few ms behind then made a new
+        // event look older than its room in "most recently active" (`summarize`). One time for
+        // the whole batch, as the transaction's `now()` was and as the memory store does.
+        const createdAt = new Date();
         const committed: CommittedEvent[] = [];
         for (const [i, e] of events.entries()) {
           // Prisma's JSON input encoder can change a 17-digit double (e.g.
           // 15.000000000000002 -> 15). Pass canonical JS JSON as a text parameter so
           // checkpoints/reload see the exact values broadcast after this append.
           const [row] = await tx.$queryRaw<{ seq: number; createdAt: Date; actorId: string | null; commandId: string | null }[]>`
-            INSERT INTO events (room_id, seq, type, payload, actor_id, command_id)
-            VALUES (${roomId}::uuid, ${firstSeq + i}, ${e.event.type}, ${JSON.stringify(e.event)}::jsonb, ${e.actorId}::uuid, ${e.commandId ?? null}::uuid)
+            INSERT INTO events (room_id, seq, type, payload, actor_id, command_id, created_at)
+            VALUES (${roomId}::uuid, ${firstSeq + i}, ${e.event.type}, ${JSON.stringify(e.event)}::jsonb, ${e.actorId}::uuid, ${e.commandId ?? null}::uuid, ${createdAt})
             RETURNING seq, created_at AS "createdAt", actor_id AS "actorId", command_id AS "commandId"
           `;
           if (!row) throw new Error("Event append returned no row");
