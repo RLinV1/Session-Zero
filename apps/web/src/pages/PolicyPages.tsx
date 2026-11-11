@@ -176,6 +176,7 @@ export function TermsPage() {
         <ul>
           <li>You keep the rights to the maps, tokens and other images you upload.</li>
           <li>Upload only what you have the right to use: your own work, work licensed to you, or work that is free to use.</li>
+          <li>This also covers anything an AI app adds to a build on your behalf. You review it, and you decide what to publish.</li>
           <li>
             You let us store your uploads and show them to the people in your rooms, only so the app can work. We may
             remove content that infringes someone's rights or breaks these terms.

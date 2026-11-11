@@ -1,7 +1,6 @@
 import { PreparationConflictError } from "../store/libraryPreparation";
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
-import path from "node:path";
 import express, { type Express, type Request, type Response } from "express";
 import { z } from "zod";
 import {
@@ -19,13 +18,14 @@ import {
 import { registerAnimationRoutes } from "./animations";
 import { registerCreatureRoutes } from "./creatures";
 import type { AssetStore } from "../store/assetStore";
-import type { LibraryAssetRecord } from "../store/libraryStore";
+import { UPLOAD_ALLOWANCE, UploadAllowanceError, type LibraryAssetRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 import { ensureShippedMaps, isShippedKey } from "../domain/shippedMaps";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import type { DetectionRecord } from "../store/gridDetectionStore";
 import { requireAccountOwner, resolveOwner, type Owner } from "../ownership/resolveOwner";
 import { imageUploader } from "./imageUpload";
+import { LIBRARY_UPLOAD_NEEDS, refuseIfFull } from "./uploadAllowance";
 import { inspectMapUpload } from "../domain/uploadAnalysis";
 import { refused } from "../identity/routes";
 import type { RateLimiter } from "../identity/rateLimit";
@@ -72,16 +72,17 @@ export function registerLibraryRoutes(
       if (!requireAccountOwner(owner, res)) return;
       // One budget with room uploads, keyed by the same owner id (FR-GM-02).
       if (refused(res, uploads.hit(`upload:${gmId}`), "Too many uploads. Try again later.")) return;
+      if (await refuseIfFull(res, store, { ownerGmId: gmId }, LIBRARY_UPLOAD_NEEDS)) return;
       const upload = await receiveImage(req, res);
       if (!upload.ok) return void res.status(upload.status).json({ error: upload.error });
       const fields = LibraryUploadFields.safeParse(req.body);
       if (!fields.success) {
-        await unlink(upload.file.path).catch(() => {});
+        await unlink(upload.image.path).catch(() => {});
         return void res.status(400).json({ error: fields.error.issues });
       }
-      const key = path.basename(upload.file.path);
-      const analysis = fields.data.kind === "map" ? await inspectMapUpload(upload.file.path, fields.data) : null;
-      const url = await assets.put(upload.file.path, key, upload.file.mimetype);
+      const { key, width, height, contentType, bytes } = upload.image;
+      const analysis = fields.data.kind === "map" ? await inspectMapUpload(upload.image.path, { width, height }) : null;
+      const url = await assets.put(upload.image.path, key, contentType);
       const record: LibraryAssetRecord = {
         id: randomUUID(),
         ownerGmId: gmId,
@@ -89,8 +90,9 @@ export function registerLibraryRoutes(
         objectKey: key,
         url,
         name: fields.data.name,
-        width: fields.data.width,
-        height: fields.data.height,
+        width,
+        height,
+        byteSize: bytes,
         // Uploading an image does not establish its spacing. The setup editor saves
         // an explicit grid, including when the GM accepts the default values (KAN-09).
         // Analysis only suggests one (grid-detection).
@@ -101,7 +103,15 @@ export function registerLibraryRoutes(
         ...analysis,
         createdAt: new Date().toISOString(),
       };
-      await store.createAsset(record);
+      try {
+        await store.createAsset(record, UPLOAD_ALLOWANCE);
+      } catch (err) {
+        await assets.delete(key).catch((cleanupErr: unknown) => {
+          console.error(`[vtt] could not delete upload ${key} after its library record failed`, cleanupErr);
+        });
+        if (err instanceof UploadAllowanceError) return void res.status(409).json({ error: err.message });
+        throw err;
+      }
       if (record.detectionStatus === "queued") await enqueueDetection(store, detection, { scope: "library", id: record.id }, 1);
       res.status(201).json(toWire(record));
     });

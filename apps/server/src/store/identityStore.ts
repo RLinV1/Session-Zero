@@ -64,7 +64,7 @@ export interface IdentityStore {
 
   /**
    * Erases the account in one transaction: its sessions (seat credentials first), room
-   * memberships, library rows, then the user and its owner row. Its rooms must already be deleted
+   * memberships, builds, library rows, then the user and its owner row. Its rooms must already be deleted
    * (the foreign keys refuse otherwise). Null when there is no such user.
    */
   deleteUser(userId: string): Promise<DeletedUser | null>;

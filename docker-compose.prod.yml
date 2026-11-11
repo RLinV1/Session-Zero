@@ -115,6 +115,21 @@ services:
       redis: { condition: service_healthy }
       s3: { condition: service_healthy }
       vision: { condition: service_healthy }
+  # Lets people's own AI apps sit at a table (docs/AI-PLAYERS.md). An ordinary client of the server, and
+  # nothing depends on it: if it stops, only /mcp fails and browser play carries on (ADR 0052).
+  mcp:
+    build: { context: ., dockerfile: Dockerfile.mcp }
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      ROOM_SERVER_URL: http://server:3001
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:?set CLIENT_ORIGIN (the public URL, e.g. https://vtt.example.com) in .env.production}
+      # One proxy (the web container) sits in front of this too.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    depends_on:
+      server: { condition: service_healthy }
   web:
     build: { context: ., dockerfile: Dockerfile.web }
     restart: unless-stopped

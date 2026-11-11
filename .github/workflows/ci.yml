@@ -83,6 +83,8 @@ jobs:
         run: docker build -f Dockerfile.server -t vtt-server .
       - name: Build web image
         run: docker build -f Dockerfile.web -t vtt-web .
+      - name: Build MCP image
+        run: docker build -f Dockerfile.mcp -t vtt-mcp .
       - name: Check the Caddyfile against the web image's Caddy
         run: docker run --rm vtt-web caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Build vision image

@@ -5,6 +5,7 @@ export type Route =
   | { page: "isometricLighting" }
   | { page: "gmDashboard" }
   | { page: "library" }
+  | { page: "build"; buildId: string }
   | { page: "signin" }
   | { page: "signup" }
   | { page: "account" }
@@ -20,6 +21,8 @@ export function parseRoute(pathname: string): Route {
   if (/^\/demos\/apartments\/?$/.test(pathname)) return { page: "isometricLighting" };
   if (/^\/gm-dashboard\/?$/.test(pathname)) return { page: "gmDashboard" };
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
+  const build = pathname.match(/^\/builds\/([^/]+)\/?$/);
+  if (build) return { page: "build", buildId: decodeURIComponent(build[1]!) };
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };
   if (/^\/signup\/?$/.test(pathname)) return { page: "signup" };
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };

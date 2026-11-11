@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DETECTION_STALE_MS, DETECTION_VERSION, detectionJob, type DetectionTarget } from "../src/store/gridDetectionStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 const identity = { sourceHash: "a".repeat(64), detectionSourceHash: "a".repeat(64), detectionVersion: DETECTION_VERSION };
 let store: MemoryRoomStore;
@@ -16,17 +17,17 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function upload(scope: DetectionTarget["scope"]) {
+async function upload(scope: "library" | "room") {
   const id = randomUUID();
   let target: DetectionTarget;
   if (scope === "library") {
     target = { scope, id };
     await store.createAsset({ id, ownerGmId, kind: "map", objectKey: `${id}.png`, url: `/uploads/${id}.png`,
       name: "Recovery", width: 768, height: 648, grid: null, createdAt: new Date().toISOString(),
-      ...identity, detectionStatus: "queued", detectionAttempt: 1 });
+      ...identity, detectionStatus: "queued", detectionAttempt: 1 }, UPLOAD_ALLOWANCE);
   } else {
     target = { scope, roomId, objectKey: `${id}.png` };
-    await store.recordRoomUpload(roomId, target.objectKey, "map", 768, 648, identity);
+    await store.recordRoomUpload(roomId, target.objectKey, UPLOAD_ALLOWANCE, { purpose: "map", width: 768, height: 648, analysis: identity });
   }
   return detectionJob((await store.findDetection(target))!);
 }

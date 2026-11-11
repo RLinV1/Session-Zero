@@ -42,6 +42,8 @@ export default defineConfig({
       "/api": { target: server, changeOrigin: false },
       "/uploads": { target: server, changeOrigin: false },
       "/socket.io": { target: server, ws: true },
+      // `npm run dev:mcp`, so the address the Share dialog shows also works in dev.
+      "/mcp": { target: process.env.VTT_MCP ?? "http://127.0.0.1:3002" },
     },
   },
 });

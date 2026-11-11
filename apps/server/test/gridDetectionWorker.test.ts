@@ -12,6 +12,7 @@ import { createGridDetectionDispatcher, visionDetector } from "../src/domain/gri
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
@@ -49,7 +50,7 @@ describe("grid detection vision boundary (FR-GM-03)", () => {
         name: "Local map", width: 1, height: 1, grid: DEFAULT_GRID,
         createdAt: new Date().toISOString(), detectionStatus: "queued", detectionAttempt: 1,
         sourceHash: createHash("sha256").update(PNG).digest("hex"), detectionSourceHash: createHash("sha256").update(PNG).digest("hex"), detectionVersion: DETECTION_VERSION,
-      });
+      }, UPLOAD_ALLOWANCE);
       const detector = vi.fn(async () => ({ status: "no_grid" as const }));
       app = await buildApp({ store, uploadDir: dir, detector, redisUrl: "redis://127.0.0.1:1" });
       await app.listen({ port: 0, host: "127.0.0.1" });
@@ -82,7 +83,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.REDIS_URL)("grid detec
         name: "Redis map", width: 1, height: 1, grid: DEFAULT_GRID,
         createdAt: new Date().toISOString(), detectionStatus: "queued", detectionAttempt: 1,
         sourceHash: createHash("sha256").update(PNG).digest("hex"), detectionSourceHash: createHash("sha256").update(PNG).digest("hex"), detectionVersion: DETECTION_VERSION,
-      });
+      }, UPLOAD_ALLOWANCE);
       const detector = vi.fn(async (bytes: Uint8Array, size: { width: number; height: number }) => {
         expect(Buffer.from(bytes)).toEqual(PNG);
         expect(size).toEqual({ width: 1, height: 1 });

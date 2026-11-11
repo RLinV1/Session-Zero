@@ -11,6 +11,8 @@ export interface LibraryAssetRecord extends UploadAnalysis {
   name: string;
   width: number;
   height: number;
+  /** The stored file's length; null or missing until recorded, which counts as zero (upload-limits). Never sent. */
+  byteSize?: number | null;
   grid: GridSpec | null;
   /** Walls and fog prepared on a map (ADR 0037); never sent with the asset, read through `findAssetBoard`. */
   board?: LibraryMapBoard | null;
@@ -121,6 +123,8 @@ export interface DiceFaceRecord {
   url: string;
   width: number;
   height: number;
+  /** The stored file's length; missing on pictures from before it was recorded. Never sent. */
+  bytes?: number;
 }
 
 export interface DiceLookRecord {
@@ -130,6 +134,43 @@ export interface DiceLookRecord {
   faces: Partial<Record<DieName, DiceFaceRecord>>;
   createdAt: string;
   updatedAt: string;
+}
+
+/** How much one owner may keep (upload-limits). Limits are passed in, so no store write can skip them. */
+export interface UploadAllowance {
+  maxItems: number;
+  maxBytes: number;
+}
+
+export const UPLOAD_ALLOWANCE: UploadAllowance = { maxItems: 1000, maxBytes: 2 * 1024 ** 3 };
+
+/** Whose allowance an upload counts against: an owner's, or its own room's when the room has no owner. */
+export type UploadScope = { ownerGmId: string } | { roomId: string };
+
+/** `items` counts library items only. Built-in maps count toward neither figure. */
+export interface UploadUsage {
+  items: number;
+  bytes: number;
+}
+
+/** An upload the size backfill still has to measure. */
+export type UnsizedUpload =
+  | { table: "library"; id: string; objectKey: string }
+  | { table: "room"; roomId: string; objectKey: string };
+
+/** The owner would go over the allowance. The message is shown as is, and waiting does not help. */
+export class UploadAllowanceError extends Error {
+  constructor(readonly limit: "items" | "bytes", allowance: UploadAllowance) {
+    super(limit === "items"
+      ? `Your library can hold up to ${allowance.maxItems.toLocaleString("en-US")} items. Delete some items to make room.`
+      : `This image doesn't fit in your ${Math.round(allowance.maxBytes / 1024 ** 3)} GB of image storage. Delete library art, dice pictures or rooms you no longer need to make room.`);
+  }
+}
+
+/** Throws `UploadAllowanceError` when `adding` does not fit. Adding nothing, or shrinking, always fits. */
+export function assertFitsAllowance(used: UploadUsage, adding: UploadUsage, allowance: UploadAllowance) {
+  if (adding.items > 0 && used.items + adding.items > allowance.maxItems) throw new UploadAllowanceError("items", allowance);
+  if (adding.bytes > 0 && used.bytes + adding.bytes > allowance.maxBytes) throw new UploadAllowanceError("bytes", allowance);
 }
 
 export interface NewRoomOptions {
@@ -155,7 +196,16 @@ export interface LibraryStore {
   /** Every room the owner has, temporary encounter-editing rooms included (account deletion). */
   listOwnedRoomIds(ownerGmId: string): Promise<string[]>;
 
-  createAsset(asset: LibraryAssetRecord): Promise<void>;
+  /** Throws `UploadAllowanceError` when it does not fit; the usage check and the insert are one step per owner. */
+  createAsset(asset: LibraryAssetRecord, allowance: UploadAllowance): Promise<void>;
+  /** What counts against an allowance now. A size not yet recorded counts as zero. */
+  uploadUsage(scope: UploadScope): Promise<UploadUsage>;
+  /** Every owner holding anything that counts, for the backfill's report. */
+  uploadUsageByOwner(): Promise<(UploadUsage & { ownerGmId: string })[]>;
+  /** Library and room uploads with no recorded size. Built-in maps have no stored object and never appear. */
+  listUnsizedUploads(): Promise<UnsizedUpload[]>;
+  /** Records a size only where none is recorded yet. */
+  setUploadSize(upload: UnsizedUpload, bytes: number): Promise<void>;
   listAssets(ownerGmId: string): Promise<LibraryAssetRecord[]>;
   /**
    * Inserts the rows whose shipped slug (`shipped:<slug>` object key) the owner was not yet given,
@@ -239,6 +289,8 @@ export interface LibraryStore {
   /**
    * Sets one die's picture, or resets it to classic with `face: null`. Returns the updated look
    * and the object key it replaced, for the caller to delete; null when there is no such look.
+   * Throws `UploadAllowanceError` when the new picture grows the total past the allowance; the
+   * check and the write are one step per owner.
    */
   setDiceLookFace(
     id: string,
@@ -246,6 +298,7 @@ export interface LibraryStore {
     die: DieName,
     face: DiceFaceRecord | null,
     at: string,
+    allowance: UploadAllowance,
   ): Promise<{ look: DiceLookRecord; replacedKey: string | null } | null>;
   /** Deletes the look, clearing it as anyone's look in use. Returns its object keys, or null. */
   deleteDiceLook(id: string, ownerGmId: string): Promise<string[] | null>;

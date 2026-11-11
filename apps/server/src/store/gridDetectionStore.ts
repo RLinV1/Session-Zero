@@ -2,7 +2,8 @@ import { GRID_DETECTION_VERSION, type GridDetectionCandidate } from "@vtt/shared
 
 export type DetectionTarget =
   | { scope: "library"; id: string }
-  | { scope: "room"; roomId: string; objectKey: string };
+  | { scope: "room"; roomId: string; objectKey: string }
+  | { scope: "build"; fileId: string };
 export type DetectionState = "queued" | "running" | "suggested" | "no_grid" | "error";
 export const DETECTION_STALE_MS = 90_000;
 export const DETECTION_MAX_ATTEMPTS = 3;
