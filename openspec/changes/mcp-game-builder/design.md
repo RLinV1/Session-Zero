@@ -1,0 +1,407 @@
+# Design
+
+## Context
+
+See `proposal.md` for why and the specs for the required behavior. These facts come from reading `origin/main` and the uncommitted `mcp-ai-players` work, and they shape the approach:
+
+- **The MCP work isn't committed.** `apps/mcp`, ADR 0052 and the `/mcp` Caddy route exist only in the worktree `.claude/worktrees/mcp-ai-players`. This change builds on them, so that change must land first.
+- **The MCP server has no accounts.** It holds player seats and stores nothing. ADR 0052 chose no OAuth, because joining a table needs no account (FR-PL-01). Building is different: it writes to someone's account.
+- **The cookie is the only account credential.** `resolveOwner` and `requireAccount` take the session cookie (or a read-only legacy device token). Nothing lets another program act for an account.
+- **A template can only come from a live room.** ADR 0024 and ADR 0033 say the server builds every template from room state and no board crosses the API.
+- **Creating a room needs only the cookie.** `POST /api/rooms` takes an optional `templateId` and `preset`, and the caller's browser becomes the GM. So going live needs no GM seat for the AI.
+- **A creature is small.** `CreatureFields`: name (60), size (up to 10 squares), HP, Max HP, AC, up to 8 attacks, the 12 conditions, colour, and one image.
+- **An attack is one group of dice.** Count 1 to 20, sides 4, 6, 8, 10, 12, 20 or 100, modifier -99 to 99. No "1d12 + 1d6", no d2 or d3, no flat damage.
+- **A preset is code.** `GAME_PRESETS` has one entry, Free Mode, and a room stores its id. There is no user-defined preset.
+- **Grid detection only suggests.** The upload never sets a grid (KAN-09). Library uploads queue detection, and the GM saves the grid in the editor.
+- **Wall detection needs a room.** Its routes require a room's GM credential and that room's current map, and only 4 jobs can run at once on the whole server. The library map editor reaches it through a temporary room.
+- **A wall is a segment with an optional portal.** `Wall` holds two board points and, for a door or window, a `Portal` that is open, closed or locked (ADR 0030).
+  - A UVTT file's portals import as GM-only openings (`uvttPortal` with no `portal`) until someone makes them doors (ADR 0041).
+  - The map editor can make every opening a door at once, but nothing tells a door from a window or finds the locked ones.
+  - Encounter templates keep their own copy of the walls.
+- **UVTT is exact.** `POST /api/library/uvtt/imports` validates the file in a bounded worker and writes the image, grid and walls in one row.
+- **Upload checks trust the browser.** `imageUploader` filters on the declared type. Only maps get their real size read. There is a shared budget of 300 uploads per 15 minutes per account, but no limit on how many assets an account holds.
+- **What real AI apps support today:** see the table in D2.
+
+## Goals / Non-Goals
+
+**Goals:**
+- The worst that a leaked pass or a hostile rulebook can do is put wrong data in one draft that a person then reviews.
+- `Command`, `DomainEvent`, `RoomState`, `decide`, `reduce` and `visibility.ts` don't change. No AI ever holds a GM seat.
+- Reuse what exists: the library, the map editor, UVTT import, grid detection, room creation, the file budget, the wall and portal model, and the UVTT importer's rule that a portal cuts the wall under it.
+- The MCP server stays stateless: a restart loses nothing, and it stores no secrets.
+
+**Non-Goals:** see the proposal. In addition, this runs as one instance like the rest of the app, so its limits stay in process memory.
+
+## How it works
+
+```
+ GM's browser (signed in)             GM's AI app                    Session Zero
+ ───────────────────────              ───────────                    ────────────
+ Start a build ───────────────────────────────────────────────────▶  draft + pass
+ Copy message ──────────▶  reads rules and sheets (in its own app)
+ Drop art (any app)  ─────────────────────────────────────────────▶  draft files
+                           curl art (if it has a shell) ──────────▶  draft files
+                           save creatures, maps, encounters ──────▶  draft items
+                           set doors, windows, walls (if allowed) ▶  draft maps
+ Review, fix, confirm grids ──────────────────────────────────────▶  draft items
+ Publish ─────────────────────────────────────────────────────────▶  library items
+ Start room ──────────────────────────────────────────────────────▶  normal room
+                                                                     (GM is the browser)
+```
+
+## Decisions
+
+### D1. Everything goes into a private draft first
+
+A **build** is a private draft on an account: files, a game profile, and draft creatures, maps and encounters. The AI writes only there. Nothing is in the library or usable in a room until the user publishes.
+
+| Option | Verdict |
+|---|---|
+| **A draft, published by the user** | **Chosen.** Review comes first. A wrong or hostile build touches nothing the user has. |
+| Write straight to the library with an "AI made this" tag | Unreviewed items appear in the library. Every library query and the delete rules must learn the tag. |
+| Give the AI a GM seat in a temporary room | The GM's view is unfiltered, and the MCP server refuses GM seats for that reason. |
+| Have the server drive a temporary room with commands | Keeps ADR 0024's rule literally, but adds a large moving part and leaves half-built rooms on failure. |
+
+### D2. Sign-in: a build pass given as a tool argument
+
+Starting a build shows a **build pass**, a random 256-bit value shown once. The server stores only its hash (the same approach as ADR 0002). The AI passes it as an argument on each tool call, and the MCP server forwards it to the room server as a Bearer header.
+
+**Why not something else:**
+
+| Option | Claude Code | Claude app | ChatGPT | Work | Verdict |
+|---|---|---|---|---|---|
+| **Build pass, as a tool argument** | Yes | Should work with a "No sign-in" connector | Should work with a no-auth tool, in developer mode | Small | **Recommended for now** |
+| Build pass as a request header | Yes | Beta, limited organizations only, set by an org Owner | Can't send custom keys | Small | Doesn't reach chat apps |
+| OAuth 2.1 sign-in | Yes | Yes | Yes | Medium: the MCP SDK (1.32.2) has the protocol endpoints, but we'd write storage for clients, codes and tokens, a consent page, a way to tie a token to one build, and a list of connected apps | **Next step**, if a chat app refuses the pass or we list the connector publicly |
+| The user's password or cookie | | | | | **Never** |
+
+Sources: [Claude connector authentication](https://claude.com/docs/connectors/building/authentication), [Claude remote MCP](https://claude.com/docs/connectors/custom/remote-mcp), [OpenAI Apps SDK authentication](https://developers.openai.com/apps-sdk/build/auth). "Should work" means the documentation allows it. It has not been tested with the real apps, and the same test is still open for `mcp-ai-players` (its task 10.5).
+
+**The trade-off, stated plainly.** The pass sits in the AI app's conversation, and so on that vendor's servers, as a seat value already does (ADR 0052). It is acceptable here because of what it can reach: one draft, for 24 hours, cancellable with one click. OpenAI's guide says servers offering write actions should sign users in, so a public listing will probably need OAuth. If OAuth is added, it replaces only how the pass reaches the server: the same limits apply behind it.
+
+**Decided by the user on 2026-11-08: use the pass for now.** Task 1.3 tests it in the real apps first. OAuth comes next if a chat app refuses the pass or the connector is listed publicly.
+
+**OAuth would not remove every code.** The AI app holds an OAuth token and the model never sees it, so a model running `curl` from a local folder couldn't use it to upload. That path would still need a short upload code, or the user would drop the files in the browser.
+
+**Why it's a pass per build, not per account.** It keeps the damage small, and a user can hand one build to one AI without trusting it with anything else.
+
+### D3. What a pass may and may not do
+
+**May:** read its own build; upload files to it; see small copies of those files; add, change and remove draft items the user hasn't edited.
+
+**May not:** read or change the library; read other builds; list or enter rooms; hold a seat; publish; delete anything outside its draft; change the account; make or extend a pass.
+
+Enforcement is by construction, not by checks scattered around. Pass requests are handled only by one new route family, `/api/build/*`. `resolveOwner`, `requireAccount` and the socket handshake aren't changed and don't know passes exist, so every existing route treats a pass as no credential. The room's identity layers (ADR 0017) gain one small, separate layer beside them.
+
+### D4. A separate address, `/mcp/build`
+
+Build tools live at `/mcp/build`, in the same service.
+
+- An AI playing at a table reads text from strangers. Keeping build tools off that connection means table chat can never reach them.
+- If OAuth comes later, it can guard this address alone, and joining a table stays account-free (FR-PL-01).
+- The player tools' cost per turn doesn't grow.
+
+The cost is that a user adds a second connector. The Caddy route `/mcp/*` already covers it.
+
+### D5. How files get there
+
+Tool calls are JSON limited to 64 KB, and image data can't go through a model at any sensible cost. A 25 MB map is about 33 MB of base64, or millions of tokens, and the model has no way to copy it exactly. So files never pass through the model.
+
+| AI app | Rules and sheets | Art and maps | Status |
+|---|---|---|---|
+| **Claude Code, or any app with a shell** | Reads local files | `curl -F file=@goblin.png` with the pass, one command per file or a loop | Expected to work. PDFs need `poppler` installed (see Cost) |
+| **Claude app** | User attaches them to the chat | **User drops them on the build page** | Browser path works regardless. The connector is untested |
+| **ChatGPT** | User attaches them to the chat | **User drops them on the build page** | Browser path works regardless. The connector is untested |
+| **Any other MCP app** | However it reads files | **User drops them on the build page** | Browser path always works |
+
+**What can't work, honestly:**
+- A chat app has no standard way to send a chat attachment to an MCP server. [ChatGPT has its own `openai/fileParams`](https://developers.openai.com/apps-sdk/reference), which passes a download link. It only serves ChatGPT, and using it means our server fetching a link. Claude's connector docs describe nothing similar. It's a possible follow-up, not part of this plan.
+- A chat app's code sandbox may not be able to reach our site. We don't rely on it.
+- An AI can't "see" a dropped image by itself, so `view_file` returns a small copy when it needs to tell which picture is which. Filenames usually make this unnecessary.
+
+**Why the pass and not one-time upload links.** A link adds a table and an expiry, and buys no safety: the pass can already upload up to the build's limits. The upload route takes the same pass and a normal multipart body, so it reuses `imageUploader` and `receiveUvtt`.
+
+**The server fetches nothing.** No tool takes a web address, which closes off server-side request forgery.
+
+### D6. Where the result lands and how it goes live
+
+Publishing turns drafts into **ordinary library items**: map and token art (`library_assets`), creatures (`library_creatures`) and encounter templates (`encounter_templates`). Then "Start a room" uses `POST /api/rooms` with `templateId`, from the browser, so the browser is the GM. A room starts from one encounter, and the GM applies the others from the library as usual.
+
+- **Only the browser publishes.** Publish routes need the cookie and pass `requireSameOrigin`. This is the promise that a person looks before anything is used. Decided by the user on 2026-11-08: a person always approves publishing, and no tool or pass can do it.
+- **Publish is one transaction** and only adds. Files don't move: the new library row points at the object already stored.
+- **Publish can be partial and repeated.** Publishing an encounter brings along its map, creatures and art. This also solves maps that aren't ready: unselect that encounter, publish the rest, and come back.
+- **The GM assigns characters.** Decided by the user on 2026-11-08: characters arrive with no owner, and the GM gives each one to a player with the existing **Controlled by** control. A "claim your character" link is a possible later change, and would need a schema change and an ADR.
+
+### D7. Templates from an approved draft (needs ADR 0053)
+
+The server builds `EncounterTemplateData` itself at publish time, from the draft and the current library values. Draft tokens are stored **by square** and converted to board coordinates then, using the grid the user confirmed, so correcting a grid can't misplace tokens (invariant 8). A token's square is the **top-left square it covers**, and its whole footprint must be on the map. This differs from the player tools, where a square is the one at the token's center, because the two connectors are separate and the top-left is what a person placing a large creature on a map names. A token with no square is accepted in the draft but must be placed or removed before its encounter can be published, so nothing is dropped without the user seeing it. `imageUrl` comes only from the published art. Validation uses the unchanged shared schema, and the checks `token.create` makes (`footprintCrossesWall`, on-map, HP at most Max HP) are applied too. Owners and initiative are never set.
+
+This is an exception to "the server builds every template from live room state". That rule exists so that a forged board can't be stored. Here the client still sends no board: the server assembles one from fields that were each validated, after its owner approved them. It only affects that owner's own rooms, and apply re-validates it as for any template.
+
+### D8. Reading the materials
+
+The AI reads them in its own app, on the user's plan. Session Zero never receives a rulebook and never calls a model.
+
+**Sheet to field:**
+
+| On a sheet | In the app | When it doesn't fit |
+|---|---|---|
+| Name | `name`, shown to players | Over 60 characters: flagged |
+| HP, wounds | `maxHp`, and `hp` if different | Missing or vague: blank and flagged |
+| AC, defence, guard | `ac` (0 to 99) | Several defence numbers: the game profile says which one is used |
+| Size word | Squares: tiny, small, medium 1; large 2; huge 3; gargantuan 4, unless the game sheet says otherwise | Unknown word: flagged |
+| Attack, one dice group | An attack, with to-hit and damage | Two dice groups, flat damage, d2 or d3: that roll is blank and flagged, and the text is kept |
+| Save-based effect | An attack with damage only | The save and area are not carried over |
+| More than 8 attacks | The first 8 that have rolls | The rest are not carried over |
+| The 12 conditions | `conditions` | Others, such as bleeding: not carried over |
+| Art | A file in the build | None: a colour disc |
+| Class, level, abilities, skills, saves, speed, spells, gear, notes | **No field** | Not carried over |
+
+Blank means blank: the server refuses nothing for being blank, the review page shows it, and the flag says why. A real test (see Cost) showed Sonnet and Haiku both leaving missing values blank and flagging them, on sample sheets with "HP ??", "around 14 maybe" and a planted instruction.
+
+**Readings are different from missing values.** In that test both models also read "+5" as a d20 roll, and "Guard" as AC, though the sample rulebook never said so. That is a reasonable guess, and a guess all the same. So the game profile records the to-hit die, which number is the defence and which is HP. Where the game sheet doesn't say, the AI must flag that reading once in the profile, and the review page shows it first.
+
+**The field guide lives in the tool result** (`get_build`), so the AI has the rules when it needs them. The test showed it must also give the size-word table and say colour is optional, or the AI flags those on every character.
+
+**A game sheet is not a preset.** Presets are code, and the only one is Free Mode, which has every feature on. A game sheet becomes a small **game profile**: its name, which features it uses (so a game with no AC raises no flags for blank AC), what one square is worth, and notes for the GM. The room uses Free Mode.
+
+**Copying characters to the table:** `not carried over` text stays on the build page, and the GM can copy it to a player. The app has no character-notes field, and adding one would change `Token`.
+
+### D9. Maps
+
+| Input | What happens | Grid status |
+|---|---|---|
+| **UVTT file** | Existing validator gives the image, grid, walls and openings | Confirmed, because the file is exact |
+| **Plain image, grid detection works** | Existing detection runs on upload, via a third `DetectionTarget` scope (`build`). The AI can read the suggestion and propose a grid | Waiting for the user, or confirmed if grids are allowed and the AI's proposal matches detection |
+| **Plain image, user gives the size** | The AI proposes it | Waiting for the user |
+| **Plain image, nothing known** | Flagged as needing a grid | No grid |
+
+The build page draws the grid over the map with number fields and a confirm control. Detection is shared by every user, so a build is limited to 20 maps.
+
+**Two choices, made per build.** Starting a build shows two tick boxes, both off: "Let my AI set grids" and "Let my AI set walls, doors and windows". They're stored on the build, shown on the build page where the owner can change them, and reported by `get_build`. Only the owner's cookie routes change them. With both off, the builder works exactly as before.
+
+| Option | Verdict |
+|---|---|
+| **Per build, at start, changeable** | **Chosen** by the user on 2026-11-10. The user decides for this game's maps and can change their mind before publishing. |
+| One account setting | Fewer clicks, but a choice made once applies to builds the user hasn't thought about. |
+| Always on | Walls change what players see and where tokens move, so the user should opt in. |
+
+**Grids: the AI's grid needs detection to agree.** With grids allowed, a proposal counts as confirmed only when detection suggested a grid and the two match:
+- cell size within 0.5 pixels;
+- offsets within 1 pixel, compared across the cell.
+
+The status is worked out when read. The map then uses detection's numbers, which it fits across the whole map. The AI's proposal is a second opinion, so half a pixel per square can't add up to squares of drift across a large map (found in the sync review). The check is weaker when the AI copies the suggestion, so the guide tells it to look at the picture with the grid drawn before comparing.
+
+An agreed grid takes its square size from the game profile, which the AI can change without touching any map. So publishing sends the square size the person saw, and the page shows a change under "Changed by your AI since you looked". KAN-09's "a person accepts the grid" is met because the person ticks the choice and publishes from a page that draws the grid.
+
+| Option | Verdict |
+|---|---|
+| The AI's grid alone | Convenient, but a few pixels' error drifts tokens and walls across a large map. |
+| **The AI and detection agree** | **Chosen** (recommended, accepted 2026-11-10 pending review). Two methods must land on the same numbers, and anything else waits for the user. |
+| Always the user | Safest. It costs one click per map, which is what the choice saves. |
+
+**Walls: the user's AI does the looking.** With walls allowed:
+
+- **Imported openings.**
+  - `get_map_setup` lists a map's openings, numbered in the file's order, which never changes after upload, with the square at the middle, the direction and the width.
+  - `view_file` with `overlay` draws the grid with column and row numbers, the walls and the numbered openings.
+  - The AI matches these against the materials, such as "the office door at (21, 3) is locked". It sets each opening as a door or window, open, closed or locked, or leaves it with a reason.
+- **Drawn lines.**
+  - On any map with a grid, the AI saves walls, doors and windows as lines between grid corners, in half-square steps. It reads the corners off the numbered grid instead of guessing pixels, and `region` lets it look closer.
+  - Lines are stored in grid units and turned into pixels at publish with the confirmed grid, the same as tokens (D7).
+  - A door or window cuts the wall it lies on, using the UVTT importer's `removePortalOverlaps`. This also covers a gate the file drew as a solid wall.
+- **Hard cases go to the user.** These are marked with a square and a reason, and the user finishes them in the map editor after publishing:
+  - curved or broken walls;
+  - openings that might be archways;
+  - places where the materials and the picture disagree.
+- **Turning walls off** stops further changes. What the AI set stays in the draft, and the page offers to remove all of it.
+
+| Option | Verdict |
+|---|---|
+| Pixel positions | Models misjudge positions, which was the earlier reason for not letting the AI draw. Walls would land beside the drawn ones. |
+| **Grid corners in half steps** | **Chosen.** Read off a labelled picture, and moved with a grid correction. Curves become a hard case for the user. |
+| Server wall detection, with the AI choosing | Uses the server-side model the user wants to avoid, and the 4 shared job slots. |
+
+**Server wall detection stays out of builds.** It needs a room and holds one of only 4 server-wide job slots, so a build could take them all. The user's AI already reads the materials, which say where the doors are. Server wall detection stays in the map editor.
+
+**The review page draws every wall.**
+- Plain walls are one colour, and doors and windows the AI set are another.
+- Openings left for the user and marked places are numbered and listed.
+- The owner can change an opening's kind and state, remove a line the AI drew, or remove everything the AI set on that map. Any of these marks the map edited.
+- The owner's change carries the version of the map the page showed, and is refused if the AI has changed it since, because openings are numbered for one file.
+- The grid fields follow the AI's latest grid until the owner types their own. A typed grid that isn't confirmed is called out, with what publishing would use instead.
+- The AI's saves are checked inside the store's write, for the walls choice and for the version they read, so turning walls off, or two saves at once, can't be undone by a write already in flight.
+- Drawing and moving walls by hand stays in the map editor, which already does it well.
+
+**Fog and terrain stay out.** Fog depends on the scene and the session, and terrain is rarely in the materials.
+
+### D10. Safety
+
+**Hostile text in the materials.** A PDF can say "ignore your instructions." We can't stop a model being fooled, so the design limits what a fooled model can do: there is no tool that reads, deletes or publishes anything outside the draft. The worst case is wrong values in a draft, which a person reviews. Tool descriptions and results also say material text is data. In the test, both models ignored the planted instruction and reported it.
+
+On top of that:
+- An AI with a shell could be told to run other commands. The guide warns against broad shell permission and against connecting this next to tools holding private data, like the player guide.
+- Draft text is plain text only, with length limits. No draft field is rendered as HTML, markdown or a link.
+- **Wrong-account trick:** someone sends a victim a message containing the attacker's pass, so the victim's AI uploads into the attacker's build. `get_build` names the account, and the tool description tells the AI to say whose build it is before uploading.
+
+**Uploads.** The same types and sizes as the browser, plus reading what the file really is from its bytes with `sharp`, which is stricter than today's filter. Real image size is read for every file, not only maps.
+
+**Not overwriting or deleting.**
+- The AI can only write draft items in its own build.
+- If the user edited an item, the AI's save is refused.
+- Publishing only adds, and a name clash gets a number.
+- Discarding deletes only draft items and unpublished files.
+
+**Removing what a build made.** Each published item records its library id. "Remove" goes through the same delete and usage warning as the library. Rooms are never deleted, and a room using a removed image shows the usual stand-in (ADR 0004).
+
+**Limits:**
+
+| What | Limit |
+|---|---|
+| Open builds per account | 3 |
+| Pass lifetime | 24 hours |
+| Files per build | 100, of which 20 maps |
+| Storage per build | 500 MiB |
+| One image / one UVTT | 25 MiB / 40 MiB, as the browser |
+| Uploads per account | The existing shared budget of 300 per 15 minutes |
+| Requests per pass | 120 per minute |
+| Draft items | 200 creatures, 20 encounters, 500 tokens per encounter |
+| Text | Flag 200, not-carried-over 2,000, game notes 8,000 characters |
+| Abandoned build | Closed after 14 days without a change |
+
+The user accepted these values on 2026-11-08. They are estimates, not measurements. These limits are in the room server, so a script can't skip them. There is no account-wide cap on published library items today; this change doesn't add one, and it's listed as a follow-up.
+
+**Copyright.** The rulebook goes only to the user's own AI app, under that app's terms. We refuse PDFs and store no passages: flags may name a page but not quote it, and the text limits stop a book being pasted into notes. Art and maps follow the existing terms ("Upload only what you have the right to use"), repeated when starting a build and publishing. Rooms share art with the people at the table, and game text and art are usually protected even when the rules themselves may not be. Decided by the user on 2026-11-08: this is a notice on the page, with no required tick box. This is not legal advice, and the team should agree on the wording.
+
+### D11. MCP tools
+
+Ten tools at `/mcp/build`, each taking `pass`:
+
+| Tool | Purpose |
+|---|---|
+| `get_build` | Whose build, its two choices, field guide, files, drafts, limits, the upload command |
+| `view_file` | A small copy of one of its files. For a map, `overlay` draws the grid with column and row numbers, the walls and the numbered openings, and `region` picks a range of columns and rows |
+| `save_game_profile` | Game name, features, square size, notes |
+| `save_creatures` | Up to 20 per call; each succeeds or fails alone; upsert by key |
+| `save_map` | Turn an uploaded file into a draft map, optionally proposing a grid |
+| `get_map_setup` | A map's numbered openings, the lines the AI drew, its marks, and whether grids and walls are allowed. Always allowed |
+| `save_map_setup` | Openings' kinds and states, the drawn lines (replacing earlier ones) and marks. Refused unless walls are allowed and the map is unedited and unpublished |
+| `save_encounter` | Name, map, tokens by square with hidden stated |
+| `remove_draft_item` | Removes an unedited draft item |
+| `check_build` | Every problem and flag, in plain words |
+
+Tools are named `save_*` and take a key so that a retry is harmless, as the `mcp-ai-players` tests showed AIs do retry. The inputs use camelCase, because that test also showed mixed naming wastes calls.
+
+### D12. Data model
+
+Two additive migrations. Stores come in pairs, so `BuildStore` gets memory and Postgres versions.
+
+```
+builds(id, owner_gm_id, name, status open|closed, game_profile jsonb,
+       pass_hash unique null, pass_expires_at null, created_at, updated_at)
+build_files(id, build_id, kind map|token, object_key, url, original_name, width, height,
+            size_bytes, grid jsonb null, board jsonb null, ...upload analysis columns,
+            published_asset_id null)
+build_items(id, build_id, kind creature|map|encounter, key, data jsonb, flags jsonb,
+            not_carried_over, edited_by_user, published_id null, updated_at,
+            unique(build_id, kind, key))
+```
+
+`/uploads/<key>` is public to anyone with the random key, as for all uploads today. Draft file addresses appear only on the owner's build page, and `view_file` returns pictures, never addresses.
+
+ADR 0050 removes account data with an explicit list and no cascades, so builds and their object keys must join that list.
+
+**The two choices and the map setup:**
+- `builds` gains `ai_grid boolean not null default false` and `ai_walls boolean not null default false`, in a **second additive migration**. The first has been applied to a dev database, so it isn't edited.
+- The draft map's `data` gains these fields, so no new table:
+  - `openings`: number to door or window, or left for the user with a reason;
+  - `lines`: grid-corner lines, each a wall, door or window;
+  - `marks`.
+- `planPublish` builds the library map's board from the file's walls plus the map's setup, and the map's encounters use that board.
+
+### D13. Maps published before this existed
+
+Publishing only adds, and a build never changes library items. Lanternfall was published on 2026-11-10 with its openings as imported. There are two ways to get its doors in:
+1. **A new build**, recommended. Start it with walls allowed, from the same folder. The AI sets the doors, locks and windows, and the user reviews them. On the first build's page, the user removes what it published, then publishes the new build, so the names don't get "(2)". This also fixes Ysolde Crane's art, and it's the real test of this work (task 9.9).
+2. **By hand.**
+   - In the map editor, use "Make all imported openings doors", then set windows and locks one at a time.
+   - The templates keep their own copy of the walls. Either apply them with "Keep this map's setup" after placing the edited map, or save them again from a room.
+
+## Cost
+
+Using the method in `mcp-ai-players/verification-log.md`: real `claude -p` runs, with cost from the CLI's own `total_cost_usd`. The full record is in `verification-log.md`.
+
+**Measured with the finished tools (task 8.3):** Claude Code on Sonnet built all of Lanternfall (58 KB of rules and adventure, 4 maps, 22 tokens, 17 creatures, 4 encounters) for **$1.01** in 76 turns and 348 seconds. That replaces the projection below, which was made before the tools existed. It's one run, one model and one game, and it spent 56 of its tool calls on uploads because that test's shell permissions forced one command per file.
+
+**Measured: reading a 30-page rulebook and 6 messy sheets, and mapping them to fields:**
+
+| Model | Cost | Turns | Output tokens |
+|---|---|---|---|
+| Sonnet, rulebook as text | $0.36 | 13 | 8,595 |
+| Haiku, rulebook as PDF | $0.03 | 18 | 19,855 |
+
+The fitted rates from the earlier log (cached read $0.10, cache write $4 and output $10 per million) reproduce the Sonnet run exactly. Haiku's PDF read worked only because the test PDF wasn't compressed. **Sonnet couldn't read the PDF at all on this machine, because `pdftoppm` isn't installed**, so the guide must tell Claude Code users to install `poppler` or export text.
+
+**Projected: a typical build** (30-page rules, 6 characters, 8 pieces of art, 2 maps, 2 encounters), about 12 more turns:
+
+| Part | Sonnet |
+|---|---|
+| Read and map (measured) | $0.36 |
+| A cold start, since the test reused a warm cache | $0.15 |
+| 12 tool turns at about 95,000 tokens cached | $0.11 |
+| Tool schemas and results | $0.04 |
+| Two map images and small art previews, at 3,200 tokens per map (measured earlier) | $0.03 |
+| Upload commands, map and encounter inputs | $0.03 |
+| **Total** | **about $0.75** |
+
+On Haiku, about $0.10, going by the 10-to-1 ratio measured earlier. Quality is less sure: Haiku tried to store a d3, which the server would refuse and cost a retry.
+
+**Measured: setting walls (task 9.9).** Claude Code on Sonnet built all of Lanternfall with both choices on for **$0.80** in 51 turns and 227 seconds. The same materials without walls cost $0.69 in 23 turns. Setting the 21 openings took 6 tool calls, and most of the extra turns were 27 uploads sent one command at a time. So walls added less than the $0.10 to $0.30 estimated before. It didn't need the map pictures, because `adventure.md` names every door's square. A map whose materials don't would need `view_file` pictures at about 3,200 tokens each, which this run didn't measure.
+
+A 200-page rulebook would come to about $2 on Sonnet, mostly from re-reading it each turn. The guide should suggest giving the AI only the pages it needs. Dollars are what the same use costs on the API, and on a subscription it counts toward usage limits. A real measurement with the finished tools is a task.
+
+## What changes where
+
+| Area | Change | ADR or review? |
+|---|---|---|
+| `apps/mcp` | New `/mcp/build`, 10 tools, `view_file` image and overlay work | Covered by 0053 |
+| `apps/server` | **Must change.** New `build/` routes and store, two migrations, sweep, `DetectionTarget` scope, pass ended on password change, builds in account deletion, the map setup routes and choice-aware grid status | 0053 |
+| `packages/shared` | New `build.ts` only | No existing schema changes |
+| `apps/web` | Build page, library entry, copy message | |
+| `Command`, `DomainEvent`, `RoomState`, `decide`, `reduce`, `visibility.ts` | **None** | |
+| Existing rule changed | ADR 0024 and 0033's "only from a live room" gains the exception in D7. ADR 0017 gains a new credential. KAN-09's person-accepted grid, and the map editor as the only way walls are set, gain the per-build choice in D9 | **ADR 0053, reviewed by the Real-Time Architecture owner (Raymond)** |
+
+ADR 0053 is the next free number: `origin/main` stops at 0051, and `mcp-ai-players` holds 0052. Recheck before pushing, because numbers have collided before.
+
+## Risks / Trade-offs
+
+- [The pass sits in the AI vendor's logs] → One draft, 24 hours, cancellable, can't publish. See D2.
+- [Chat apps may refuse a no-sign-in connector] → Test the real apps first. If they do, OAuth moves up, and the tools don't change.
+- [Models misread a sheet without any sign] → A number can look fine and be wrong. The review page puts values side by side for a person to check. This can't be fully removed.
+- [Published names can spoil a surprise] → Token names reach players. The page marks which names are visible, and the AI must state hidden or not for every token.
+- [Draft art is public to anyone with its random address] → Same as all uploads today.
+- [The browser drop adds a manual step for chat users] → Accepted: it's the one path that works for every app.
+- [Storage growth] → Build limits, plus the 14-day close. Published items are not capped today.
+- [Grid detection load] → 20 maps per build. It's shared by everyone, so a large build can slow others briefly.
+- [One model tested] → Only Claude models were run, on made-up materials. Real rulebooks and other AI apps are untested.
+- [Wrong walls change what players see and where tokens move] → Off unless ticked. Every wall is drawn in review, hard cases go to the user, and the map editor fixes anything after publishing.
+- [The AI copies detection's grid instead of checking it] → The guide says to check the picture first, the review page marks such grids, and the user can leave the choice off.
+- [More pictures cost more] → Measured on Lanternfall at less than $0.11 more per build, with no pictures needed. Maps whose materials name no squares will cost more, unmeasured.
+- [A door drawn slightly off a UVTT wall doesn't cut it] → The review page draws both, and the build check reports a door lying across a wall it doesn't cut.
+
+## Migration Plan
+
+1. `mcp-ai-players` merges first.
+2. Additive migrations: the old code ignores the new tables and the two new columns.
+3. Server, then web and MCP, in one deploy, as usual.
+4. Test with real AI apps before writing the support table in the guide.
+
+To roll back: remove the routes and `/mcp/build`. Published items are ordinary library items and keep working. Draft files would remain in storage until the migration's tables are cleaned up.
+
+## Open Questions
+
+These can be answered later without changing the design:
+
+- Do the Claude app and ChatGPT accept the `/mcp/build` connector with no sign-in, and pass the argument through? (Task in group 8.)
+- Is `openai/fileParams` worth a ChatGPT-only path later?
+- Should there be an account-wide cap on library storage? This is an existing gap, wider than this change.

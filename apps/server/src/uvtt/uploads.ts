@@ -6,7 +6,7 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { MAX_UVTT_BYTES, uvttError, type GridSpec } from "@vtt/shared";
 import type { AssetStore } from "../store/assetStore";
-import type { LibraryAssetRecord } from "../store/libraryStore";
+import { UPLOAD_ALLOWANCE, type LibraryAssetRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 import type { ValidatedUvttFile } from "./validateFile";
 import type { UvttValidationPool } from "./validationPool";
@@ -50,13 +50,13 @@ export async function createUvttLibraryMap(store: RoomStore, assets: AssetStore,
   const record: LibraryAssetRecord = {
     id: randomUUID(), ownerGmId: ownerId, kind: "map", objectKey: image.key, url: image.url,
     name: (filename.replace(/\.(?:uvtt|dd2vtt|df2vtt)$/i, "").replace(/[_-]+/g, " ").trim() || "Imported map").slice(0, 80),
-    width: validated.width, height: validated.height, grid: validated.grid,
+    width: validated.width, height: validated.height, byteSize: validated.image.length, grid: validated.grid,
     board: { walls: validated.walls, fog: [] },
     // UVTT supplies the spacing; image-based detection must not replace it.
     detectionStatus: null, detectionAttempt: 0, createdAt: new Date().toISOString(),
   };
   try {
-    await store.createAsset(record);
+    await store.createAsset(record, UPLOAD_ALLOWANCE);
     return record;
   } catch (error) {
     await assets.delete(image.key).catch(() => {});

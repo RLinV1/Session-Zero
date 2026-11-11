@@ -12,6 +12,7 @@ import { roomLifecycle } from "./domain/roomLifecycle";
 import { RoomRegistry } from "./domain/roomRegistry";
 import { createGridDetectionDispatcher, type Detector, type GridDetectionDispatcher } from "./domain/gridDetection";
 import { bullmqWallQueue, WallDetections, type WallJobQueue } from "./domain/wallDetection";
+import { registerBuildRoutes } from "./http/build";
 import { registerRoutes } from "./http/routes";
 import { attachAccount, requireSameOrigin } from "./identity/middleware";
 import { accountLimits, registerIdentityRoutes, type AccountLimits } from "./identity/routes";
@@ -72,6 +73,8 @@ export interface App {
   sweep(): Promise<void>;
   /** The hourly sweep of temporary encounter-editing rooms left behind (ADR 0033), on demand. */
   sweepTemporaryRooms(): Promise<void>;
+  /** The hourly sweep that closes AI builds left unchanged for 14 days (ADR 0053), on demand. */
+  sweepAbandonedBuilds(): Promise<void>;
   listen(opts: { port: number; host: string }): Promise<void>;
   close(): Promise<void>;
 }
@@ -150,7 +153,7 @@ export async function buildApp({
     res.setHeader("Cache-Control", "no-store");
     next();
   });
-  // Every API response knows the language its request asked for (localization; ADR 0052).
+  // Every API response knows the language its request asked for (localization; ADR 0054).
   app.use("/api", attachLocale);
   app.use(attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
@@ -198,6 +201,9 @@ export async function buildApp({
   });
   registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
+  const builds = registerBuildRoutes(app, { store, assets: assetStore, uploadDir, limits, detection, pool, sessions, now });
+  const stopBuildSweep = setInterval(() => void builds.sweepAbandoned(), 60 * 60_000);
+  stopBuildSweep.unref();
   registerSocket(io, { store, registry, sessions, logger });
 
   return {
@@ -211,6 +217,7 @@ export async function buildApp({
       await closeDeletedSeats();
     },
     sweepTemporaryRooms,
+    sweepAbandonedBuilds: builds.sweepAbandoned,
     listen: ({ port, host }) =>
       new Promise((resolve, reject) => {
         server.once("error", reject);
@@ -222,6 +229,7 @@ export async function buildApp({
       stopSweeping();
       clearInterval(stopLimitSweep);
       clearInterval(stopTemporaryRoomSweep);
+      clearInterval(stopBuildSweep);
       await detection.close();
       await walls.close();
       await pool.close();

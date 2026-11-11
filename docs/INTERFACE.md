@@ -375,7 +375,7 @@ so they stop jittering as they change.
 ```
 
 **Language and type.** The interface is in English or Traditional Chinese (zh-TW; see
-[ADR 0052](adr/0052-localized-messages.md) and the [glossary](GLOSSARY-zh-TW.md)). Latin
+[ADR 0054](adr/0054-localized-messages.md) and the [glossary](GLOSSARY-zh-TW.md)). Latin
 text stays in Geist; Chinese falls through to the system's Traditional Chinese face, never
 downloaded. "CJK Punctuation" is a local `@font-face` limited to U+3000–303F and U+FF00–FFEF,
 listed first so full-width punctuation (，。：「」) comes from the CJK face instead of Geist's

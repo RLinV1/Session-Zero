@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import {
+  BUILD_LIMITS,
   ChangePasswordRequest,
   DeleteAccountRequest,
   SIGN_IN_FAILED,
@@ -9,6 +10,7 @@ import {
   type MeResponse,
 } from "@vtt/shared";
 import type { DeleteAccount } from "../domain/accountDeletion";
+import type { BuildStore } from "../store/buildStore";
 import { EmailTakenError, type IdentityStore } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
 import { hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
@@ -38,6 +40,10 @@ export function accountLimits(now: () => number = Date.now) {
     wallDetectionsPerRoom: new RateLimiter(50, 15 * MINUTE, now),
     /** Image uploads per account, in rooms and the library together: each one is stored and may queue analysis (FR-GM-02). */
     uploadsPerOwner: new RateLimiter(300, 15 * MINUTE, now),
+    /** Requests per build pass, so a runaway AI can't hammer the server (ADR 0053). */
+    buildPassRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
+    /** Invalid build passes per IP, counted only on failure, so guessing gets refused and working passes don't. */
+    buildPassFailuresPerIp: new RateLimiter(60, 15 * MINUTE, now),
   };
 }
 export type AccountLimits = ReturnType<typeof accountLimits>;
@@ -45,7 +51,7 @@ export type AccountLimits = ReturnType<typeof accountLimits>;
 /** `/api/auth/*`: sign up, sign in, sign out, who am I, change password (FR-GM-01, ADR 0017 C2). */
 export function registerIdentityRoutes(
   app: Express,
-  deps: { store: IdentityStore; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
+  deps: { store: IdentityStore & Pick<BuildStore, "endBuildPasses">; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
 ) {
   const { store, sessions, limits, deleteAccount } = deps;
 
@@ -140,6 +146,7 @@ export function registerIdentityRoutes(
       }
       await store.setPasswordHash(current.user.id, await hashPassword(body.data.newPassword), true);
       await sessions.endOthers(current.user.id, current.session.tokenHash);
+      await store.endBuildPasses(current.user.ownerId);
       res.status(204).end();
     })().catch(internalError(res));
   });

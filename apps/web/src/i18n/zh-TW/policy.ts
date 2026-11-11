@@ -55,6 +55,7 @@ export const policyZhTW = {
   "terms.upload.title": "上傳內容與使用權利",
   "terms.upload.rights": "你上傳的地圖、棋子圖片與其他素材，相關權利仍由你保有。",
   "terms.upload.only": "請只上傳你有權使用的內容，例如自己的作品、已取得使用授權的素材，或可自由使用的作品。",
+  "terms.upload.ai": "這也包括 AI 應用程式代你加入建置內容的素材。內容由你審閱，也由你決定是否發布。",
   "terms.upload.license": "為了讓平台正常運作，你同意我們儲存上傳的內容，並向房間內的其他人顯示。我們有權移除侵犯他人權利或違反服務條款的內容。",
   "terms.use.title": "使用規範",
   "terms.use.harassment": "聊天訊息、名稱與圖片中，不得包含騷擾、仇恨或違法內容。",

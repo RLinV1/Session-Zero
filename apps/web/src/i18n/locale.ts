@@ -199,6 +199,7 @@ const TITLE_KEYS = {
   isometricLighting: "title.isometricLighting",
   room: "title.room",
   encounterEdit: "title.encounterEdit",
+  build: "title.build",
 } as const satisfies Record<Exclude<Route["page"], "home">, keyof WebEn>;
 
 /** The browser tab's title: "Library · Session Zero", or the product name alone at home. */

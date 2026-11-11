@@ -9,6 +9,7 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/mcp/package.json apps/mcp/
 # The server's postinstall runs `prisma generate`, which reads the schema.
 COPY apps/server/prisma apps/server/prisma
 RUN npm ci --workspace=@vtt/server --include-workspace-root

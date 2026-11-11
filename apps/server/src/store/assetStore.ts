@@ -7,6 +7,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
@@ -41,6 +42,8 @@ export interface AssetStore {
    * Rooms whose event log still names the URL then get a 404 and draw a generic stand-in.
    */
   delete(key: string): Promise<void>;
+  /** The stored object's length in bytes, or null when there is no such object. */
+  sizeOf(key: string): Promise<number | null>;
 }
 
 /** Fallback for `pnpm dev` and CI with no containers running. Served by express.static. */
@@ -59,6 +62,15 @@ export class LocalDiskAssetStore implements AssetStore {
     await unlink(path.join(this.uploadDir, path.basename(key))).catch((err: NodeJS.ErrnoException) => {
       if (err.code !== "ENOENT") throw err;
     });
+  }
+
+  async sizeOf(key: string) {
+    try {
+      return (await stat(path.join(this.uploadDir, path.basename(key)))).size;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
   }
 
   async readPrivate(key: string, maxBytes: number) {
@@ -150,6 +162,17 @@ export class S3AssetStore implements AssetStore {
   async delete(key: string) {
     // S3 DeleteObject is already idempotent: a missing key succeeds.
     await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async sizeOf(key: string) {
+    try {
+      const out = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return out.ContentLength ?? null;
+    } catch (err) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 404) return null;
+      throw err;
+    }
   }
 
   async read(key: string) {
@@ -255,6 +278,7 @@ function withDiskCopy(s3: AssetStore, disk: LocalDiskAssetStore): AssetStore {
       await s3.delete(key);
       await disk.delete(key);
     },
+    sizeOf: async (key) => (await s3.sizeOf(key)) ?? disk.sizeOf(key),
   };
 }
 

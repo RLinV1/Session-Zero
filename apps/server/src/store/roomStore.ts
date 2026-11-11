@@ -1,6 +1,7 @@
 import type { CommittedEvent, DomainEvent } from "@vtt/shared";
+import type { BuildStore } from "./buildStore";
 import type { IdentityStore } from "./identityStore";
-import type { EncounterRecord, LibraryStore, NewEncounterRecord, NewRoomOptions } from "./libraryStore";
+import type { EncounterRecord, LibraryStore, NewEncounterRecord, NewRoomOptions, UploadAllowance } from "./libraryStore";
 import type { GridDetectionStore, UploadAnalysis } from "./gridDetectionStore";
 import type { RoomUploadPurpose } from "@vtt/shared";
 import type { MembershipStore } from "./membershipStore";
@@ -10,6 +11,15 @@ export interface NewEvent {
   /** Shared by every event of one command's batch, so undo reverses it as a unit (ADR 0013). */
   commandId?: string;
   event: DomainEvent;
+}
+
+/** What is known about a room upload. A missing `byteSize` counts as zero (upload-limits). */
+export interface RoomUploadDetails {
+  purpose?: RoomUploadPurpose;
+  width?: number;
+  height?: number;
+  byteSize?: number;
+  analysis?: UploadAnalysis;
 }
 
 export interface CredentialRecord {
@@ -37,7 +47,7 @@ export class SeqConflictError extends Error {
  *  - events are never updated or deleted, except that `deleteRoom` erases a whole room's
  *    log together with the room (ADR 0009).
  */
-export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore {
+export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;
@@ -65,9 +75,13 @@ export interface RoomStore extends LibraryStore, GridDetectionStore, IdentitySto
 
   /** The GM identity that owns the room: null for an unowned room, undefined for no room. */
   findRoomOwner(roomId: string): Promise<string | null | undefined>;
-  /** Records an image uploaded from inside the room, so deleting the room removes it (ADR 0009). */
   hasRoomUpload(roomId: string, objectKey: string): Promise<boolean>;
-  recordRoomUpload(roomId: string, objectKey: string, purpose?: RoomUploadPurpose, width?: number, height?: number, analysis?: UploadAnalysis): Promise<void>;
+  /**
+   * Records an image uploaded from inside the room, so deleting the room removes it (ADR 0009).
+   * Counts against the room owner's allowance, or the room's own when it has no owner, and throws
+   * `UploadAllowanceError` when it does not fit; the check and the insert are one step.
+   */
+  recordRoomUpload(roomId: string, objectKey: string, allowance: UploadAllowance, details?: RoomUploadDetails): Promise<void>;
   /**
    * Erases the room and everything scoped to it in one atomic step (ADR 0009): events,
    * snapshots, checkpoints, credentials (revoked ones too), memberships (ADR 0017), the invite

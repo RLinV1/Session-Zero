@@ -4,6 +4,9 @@ import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import {
   Prisma,
   PrismaClient,
+  type Build,
+  type BuildFile,
+  type BuildItem,
   type DiceLook,
   type EncounterTemplate,
   type LibraryAnimation,
@@ -13,9 +16,32 @@ import {
   type User,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import type { GridDetectionCandidate, RoomUploadPurpose } from "@vtt/shared";
-import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type UploadAnalysis, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import type { GridDetectionCandidate } from "@vtt/shared";
+import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
+import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import {
+  BuildClosedError,
+  BuildChoiceOffError,
+  BuildItemChangedError,
+  BuildItemLockedError,
+  type BuildWriteGuard,
+  BuildLimitError,
+  BuildPublishConflictError,
+  assertBuildFileFits,
+  uniqueEncounterName,
+  type BuildPublishPlan,
+  type BuildPublishResult,
+  type BuildFileKind,
+  type BuildFileLimits,
+  type BuildFileRecord,
+  type BuildFileUsage,
+  type BuildItemKind,
+  type BuildItemRecord,
+  type BuildRecord,
+  type BuildStatus,
+  type NewBuildItem,
+  type NewBuildRecord,
+} from "./buildStore";
 import {
   EmailTakenError,
   type DeletedUser,
@@ -42,10 +68,90 @@ import {
   type NewCreatureRecord,
   type NewRoomOptions,
   shippedSlug,
+  type UnsizedUpload,
+  type UploadAllowance,
+  type UploadScope,
+  type UploadUsage,
 } from "./libraryStore";
+import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
 import type { RedisSeqSource } from "./redisSeq";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore } from "./roomStore";
+import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+
+/**
+ * As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043). The complete
+ * map goes in one statement, so readers can never see it with its grid or geometry missing.
+ */
+async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetRecord) {
+  await tx.$executeRaw`
+    INSERT INTO library_assets
+      (id, owner_gm_id, kind, object_key, url, name, width, height, byte_size, grid, board,
+       source_hash, detection_source_hash, detection_version, detection_error,
+       detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
+    VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
+      ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height}, ${asset.byteSize ?? null}::int,
+      ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
+      ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
+      ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
+      ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
+      ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
+      ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
+  `;
+}
+
+/** One writer per build at a time, and only while it's open, so checks and writes are one step. */
+async function lockOpenBuild(tx: Prisma.TransactionClient, buildId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
+  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true, aiWalls: true } });
+  if (build?.status !== "open") throw new BuildClosedError();
+  return build;
+}
+
+/** A write's guard, checked under the build's lock (ADR 0053). */
+function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean }, existing: { updatedAt: Date } | null) {
+  if (guard.requireAiWalls && !build.aiWalls) throw new BuildChoiceOffError();
+  if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt.toISOString() ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
+}
+
+async function readBuildFileUsage(client: Pick<Prisma.TransactionClient, "buildFile">, buildId: string): Promise<BuildFileUsage> {
+  const [all, maps] = await Promise.all([
+    client.buildFile.aggregate({ where: { buildId }, _count: true, _sum: { sizeBytes: true } }),
+    client.buildFile.count({ where: { buildId, kind: "map" } }),
+  ]);
+  return { files: all._count, maps, bytes: all._sum.sizeBytes ?? 0 };
+}
+
+function toBuildRecord(row: Build): BuildRecord {
+  return {
+    id: row.id, ownerGmId: row.ownerGmId, name: row.name, status: row.status as BuildStatus,
+    gameProfile: row.gameProfile as GameProfile | null,
+    passHash: row.passHash, passExpiresAt: row.passExpiresAt?.toISOString() ?? null,
+    aiGrid: row.aiGrid, aiWalls: row.aiWalls,
+    createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toBuildFileRecord(row: BuildFile): BuildFileRecord {
+  return {
+    ...row,
+    kind: row.kind as BuildFileKind,
+    grid: row.grid as GridSpec | null,
+    board: row.board as LibraryMapBoard | null,
+    detectionError: row.detectionError as DetectionError | null,
+    detectionStatus: row.detectionStatus as DetectionState | null,
+    detectionResult: row.detectionResult as GridDetectionCandidate | null,
+    detectionUpdatedAt: row.detectionUpdatedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toBuildItemRecord(row: BuildItem): BuildItemRecord {
+  return {
+    buildId: row.buildId, kind: row.kind as BuildItemKind, key: row.key,
+    data: row.data as Record<string, unknown>, flags: row.flags as BuildFlag[], notCarriedOver: row.notCarriedOver,
+    editedByUser: row.editedByUser, publishedId: row.publishedId, updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 /** Postgres unique-violation code; Prisma surfaces it as P2002. */
 const PRISMA_UNIQUE_VIOLATION = "P2002";
@@ -224,17 +330,24 @@ export class PostgresRoomStore implements RoomStore {
     return !!(await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId, objectKey } }, select: { objectKey: true } }));
   }
 
-  async recordRoomUpload(roomId: string, objectKey: string, purpose: RoomUploadPurpose = "token", width?: number, height?: number, analysis?: UploadAnalysis) {
-    await this.prisma.roomUpload.upsert({
-      where: { roomId_objectKey: { roomId, objectKey } },
-      create: {
-        roomId, objectKey, purpose, width, height, sourceHash: analysis?.sourceHash,
-        ...(purpose === "map" && analysis?.sourceHash && {
-          detectionSourceHash: analysis.sourceHash, detectionVersion: analysis.detectionVersion, detectionError: analysis.detectionError,
-          detectionStatus: analysis.detectionError ? "error" : "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
-        }),
-      },
-      update: {},
+  async recordRoomUpload(roomId: string, objectKey: string, allowance: UploadAllowance, details: RoomUploadDetails = {}) {
+    const { purpose = "token", width, height, byteSize, analysis } = details;
+    await this.prisma.$transaction(async (tx) => {
+      const room = await tx.room.findUnique({ where: { id: roomId }, select: { ownerGmId: true } });
+      const scope: UploadScope = room?.ownerGmId ? { ownerGmId: room.ownerGmId } : { roomId };
+      await lockUploadAllowance(tx, scope);
+      assertFitsAllowance(await readUploadUsage(tx, scope), { items: 0, bytes: byteSize ?? 0 }, allowance);
+      await tx.roomUpload.upsert({
+        where: { roomId_objectKey: { roomId, objectKey } },
+        create: {
+          roomId, objectKey, purpose, width, height, byteSize, sourceHash: analysis?.sourceHash,
+          ...(purpose === "map" && analysis?.sourceHash && {
+            detectionSourceHash: analysis.sourceHash, detectionVersion: analysis.detectionVersion, detectionError: analysis.detectionError,
+            detectionStatus: analysis.detectionError ? "error" : "queued", detectionAttempt: 1, detectionUpdatedAt: new Date(),
+          }),
+        },
+        update: {},
+      });
     });
   }
 
@@ -355,23 +468,50 @@ export class PostgresRoomStore implements RoomStore {
       .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   }
 
-  async createAsset(asset: LibraryAssetRecord) {
-    // As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043).
-    // Insert the complete map in one statement: readers can never see missing grid/geometry.
-    await this.prisma.$executeRaw`
-      INSERT INTO library_assets
-        (id, owner_gm_id, kind, object_key, url, name, width, height, grid, board,
-         source_hash, detection_source_hash, detection_version, detection_error,
-         detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
-      VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
-        ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height},
-        ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
-        ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
-        ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
-        ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
-        ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
-        ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
-    `;
+  async createAsset(asset: LibraryAssetRecord, allowance: UploadAllowance) {
+    await this.prisma.$transaction(async (tx) => {
+      const scope = { ownerGmId: asset.ownerGmId };
+      await lockUploadAllowance(tx, scope);
+      assertFitsAllowance(await readUploadUsage(tx, scope), { items: 1, bytes: asset.byteSize ?? 0 }, allowance);
+      await insertAssetRow(tx, asset);
+    });
+  }
+
+  async uploadUsage(scope: UploadScope) {
+    return readUploadUsage(this.prisma, scope);
+  }
+
+  async uploadUsageByOwner() {
+    const rows = await this.prisma.$queryRaw<{ owner: string; items: bigint; bytes: bigint }[]>`
+      WITH usage AS (
+        SELECT owner_gm_id AS owner, 1 AS items, COALESCE(byte_size, 0)::bigint AS bytes
+          FROM library_assets WHERE object_key NOT LIKE 'shipped:%'
+        UNION ALL
+        SELECT r.owner_gm_id, 0, COALESCE(u.byte_size, 0)::bigint
+          FROM room_uploads u JOIN rooms r ON r.id = u.room_id WHERE r.owner_gm_id IS NOT NULL
+        UNION ALL
+        SELECT d.owner_gm_id, 0, COALESCE((f.value->>'bytes')::bigint, 0)
+          FROM dice_looks d, jsonb_each(d.faces) f
+      )
+      SELECT owner::text, SUM(items)::bigint AS items, SUM(bytes)::bigint AS bytes
+        FROM usage GROUP BY owner HAVING SUM(items) > 0 OR SUM(bytes) > 0 ORDER BY bytes DESC`;
+    return rows.map((row) => ({ ownerGmId: row.owner, items: Number(row.items), bytes: Number(row.bytes) }));
+  }
+
+  async listUnsizedUploads() {
+    const [assets, uploads] = await Promise.all([
+      this.prisma.libraryAsset.findMany({ where: { byteSize: null, NOT: { objectKey: { startsWith: "shipped:" } } }, select: { id: true, objectKey: true } }),
+      this.prisma.roomUpload.findMany({ where: { byteSize: null }, select: { roomId: true, objectKey: true } }),
+    ]);
+    return [
+      ...assets.map((a): UnsizedUpload => ({ table: "library", id: a.id, objectKey: a.objectKey })),
+      ...uploads.map((u): UnsizedUpload => ({ table: "room", roomId: u.roomId, objectKey: u.objectKey })),
+    ];
+  }
+
+  async setUploadSize(upload: UnsizedUpload, bytes: number) {
+    if (upload.table === "library") await this.prisma.libraryAsset.updateMany({ where: { id: upload.id, byteSize: null }, data: { byteSize: bytes } });
+    else await this.prisma.roomUpload.updateMany({ where: { roomId: upload.roomId, objectKey: upload.objectKey, byteSize: null }, data: { byteSize: bytes } });
   }
 
   async seedShippedMaps(ownerGmId: string, rows: LibraryAssetRecord[]) {
@@ -414,7 +554,9 @@ export class PostgresRoomStore implements RoomStore {
   async findDetection(target: DetectionTarget): Promise<DetectionRecord | null> {
     const row = target.scope === "library"
       ? await this.prisma.libraryAsset.findUnique({ where: { id: target.id } })
-      : await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId: target.roomId, objectKey: target.objectKey } } });
+      : target.scope === "build"
+        ? await this.prisma.buildFile.findUnique({ where: { id: target.fileId } })
+        : await this.prisma.roomUpload.findUnique({ where: { roomId_objectKey: { roomId: target.roomId, objectKey: target.objectKey } } });
     if (!row || ("kind" in row ? row.kind !== "map" : row.purpose !== "map") || !row.detectionStatus
       || !row.sourceHash || row.sourceHash !== row.detectionSourceHash || row.detectionVersion !== DETECTION_VERSION
       || !row.width || !row.height) return null;
@@ -432,15 +574,20 @@ export class PostgresRoomStore implements RoomStore {
       detectionAttempt: job.attempt };
   }
 
+  /** One detection row, wherever its scope keeps it, changed only if it still matches `where`. */
+  private async updateDetection(target: DetectionTarget, where: Record<string, unknown>, data: Record<string, unknown>) {
+    const result = target.scope === "library"
+      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
+      : target.scope === "build"
+        ? await this.prisma.buildFile.updateMany({ where: { id: target.fileId, ...where }, data })
+        : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
+    return result.count === 1;
+  }
+
   async markDetectionRunning(job: DetectionJob) {
     if (job.configVersion !== DETECTION_VERSION || job.attempt > DETECTION_MAX_ATTEMPTS) return false;
-    const where = { ...this.detectionWhere(job), detectionStatus: "queued" };
-    const data = { detectionStatus: "running", detectionUpdatedAt: new Date() };
-    const target = job.target;
-    const result = target.scope === "library"
-      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, kind: "map", ...where }, data })
-      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, purpose: "map", ...where }, data });
-    return result.count === 1;
+    const where = { ...this.detectionWhere(job), detectionStatus: "queued", ...(job.target.scope === "room" ? { purpose: "map" } : { kind: "map" }) };
+    return this.updateDetection(job.target, where, { detectionStatus: "running", detectionUpdatedAt: new Date() });
   }
 
   async finishDetection(job: DetectionJob, outcome: DetectionOutcome) {
@@ -453,10 +600,7 @@ export class PostgresRoomStore implements RoomStore {
       detectionError: outcome.status === "error" ? outcome.error ?? "execution_failed" : null,
       detectionUpdatedAt: new Date(),
     };
-    const result = target.scope === "library"
-      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
-      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
-    return result.count === 1;
+    return this.updateDetection(target, where, data);
   }
 
   async deferDetection(job: DetectionJob, consumeAttempt: boolean) {
@@ -466,10 +610,7 @@ export class PostgresRoomStore implements RoomStore {
     const where = { ...this.detectionWhere(job), detectionStatus: "running" };
     const data = { detectionStatus: "queued", detectionAttempt: job.attempt + Number(consumeAttempt),
       detectionResult: Prisma.DbNull, detectionError: null, detectionUpdatedAt: new Date() };
-    const result = target.scope === "library"
-      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
-      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
-    return result.count === 1;
+    return this.updateDetection(target, where, data);
   }
 
   async retryDetection(target: DetectionTarget) {
@@ -477,10 +618,7 @@ export class PostgresRoomStore implements RoomStore {
     if (!row || row.status !== "error" || row.error !== "execution_failed" || row.attempt >= DETECTION_MAX_ATTEMPTS) return null;
     const where = { ...this.detectionWhere(row), detectionStatus: "error", detectionError: "execution_failed" };
     const data = { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionResult: Prisma.DbNull, detectionError: null, detectionUpdatedAt: new Date() };
-    const result = target.scope === "library"
-      ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
-      : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
-    return result.count === 1 ? row.attempt + 1 : null;
+    return await this.updateDetection(target, where, data) ? row.attempt + 1 : null;
   }
 
   async recoverDetections(limit = 100) {
@@ -494,9 +632,13 @@ export class PostgresRoomStore implements RoomStore {
     const rooms = await this.prisma.roomUpload.findMany({
       where: { purpose: "map", ...where, detectionSourceHash: { equals: this.prisma.roomUpload.fields.sourceHash } }, take: limit, orderBy: { detectionUpdatedAt: "asc" },
     });
+    const builds = await this.prisma.buildFile.findMany({
+      where: { kind: "map", ...where, detectionSourceHash: { equals: this.prisma.buildFile.fields.sourceHash } }, take: limit, orderBy: { detectionUpdatedAt: "asc" },
+    });
     const rows = [
-      ...library.map((r) => ({ ...r, target: { scope: "library" as const, id: r.id } })),
-      ...rooms.map((r) => ({ ...r, target: { scope: "room" as const, roomId: r.roomId, objectKey: r.objectKey } })),
+      ...library.map((r) => ({ ...r, target: { scope: "library" as const, id: r.id } as DetectionTarget })),
+      ...rooms.map((r) => ({ ...r, target: { scope: "room" as const, roomId: r.roomId, objectKey: r.objectKey } as DetectionTarget })),
+      ...builds.map((r) => ({ ...r, target: { scope: "build" as const, fileId: r.id } as DetectionTarget })),
     ].sort((a, b) => (a.detectionUpdatedAt?.getTime() ?? 0) - (b.detectionUpdatedAt?.getTime() ?? 0));
     for (const raw of rows) {
       if (pending.length >= limit) break;
@@ -511,14 +653,241 @@ export class PostgresRoomStore implements RoomStore {
           ? { detectionStatus: "error", detectionError: "execution_failed", detectionUpdatedAt: new Date() }
           : { detectionStatus: "queued", detectionAttempt: { increment: 1 }, detectionUpdatedAt: new Date() };
         const check = { ...this.detectionWhere(row), detectionStatus: "running", detectionUpdatedAt: { lt: stale } };
-        const target = raw.target;
-        const changed = target.scope === "library"
-          ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...check }, data })
-          : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...check }, data });
-        if (changed.count === 1 && row.attempt < DETECTION_MAX_ATTEMPTS) pending.push({ ...detectionJob(row), attempt: row.attempt + 1 });
+        const changed = await this.updateDetection(raw.target, check, data);
+        if (changed && row.attempt < DETECTION_MAX_ATTEMPTS) pending.push({ ...detectionJob(row), attempt: row.attempt + 1 });
       }
     }
     return pending;
+  }
+
+  // ---------- AI game builds (ADR 0053) ----------
+
+  async createBuild(build: NewBuildRecord, maxOpen: number) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:${build.ownerGmId}`}))`;
+      const open = await tx.build.count({ where: { ownerGmId: build.ownerGmId, status: "open" } });
+      if (open >= maxOpen) throw new BuildLimitError(`You can have up to ${maxOpen} open builds. Finish or discard one first.`);
+      return toBuildRecord(await tx.build.create({ data: build }));
+    });
+  }
+
+  async listBuilds(ownerGmId: string) {
+    return (await this.prisma.build.findMany({ where: { ownerGmId }, orderBy: { createdAt: "desc" } })).map(toBuildRecord);
+  }
+
+  async findBuild(id: string, ownerGmId: string) {
+    const row = await this.prisma.build.findFirst({ where: { id, ownerGmId } });
+    return row ? toBuildRecord(row) : null;
+  }
+
+  async findBuildByPassHash(passHash: string) {
+    const row = await this.prisma.build.findUnique({ where: { passHash } });
+    return row ? toBuildRecord(row) : null;
+  }
+
+  async findBuildOwnerName(ownerGmId: string) {
+    return (await this.prisma.user.findFirst({ where: { ownerId: ownerGmId }, select: { displayName: true } }))?.displayName ?? null;
+  }
+
+  async setBuildPass(id: string, ownerGmId: string, passHash: string, expiresAt: string) {
+    const result = await this.prisma.build.updateMany({ where: { id, ownerGmId, status: "open" }, data: { passHash, passExpiresAt: new Date(expiresAt) } });
+    return result.count === 1;
+  }
+
+  async clearBuildPass(id: string, ownerGmId: string) {
+    const result = await this.prisma.build.updateMany({ where: { id, ownerGmId }, data: { passHash: null, passExpiresAt: null } });
+    return result.count === 1;
+  }
+
+  async endBuildPasses(ownerGmId: string) {
+    await this.prisma.build.updateMany({ where: { ownerGmId }, data: { passHash: null, passExpiresAt: null } });
+  }
+
+  async saveGameProfile(buildId: string, profile: GameProfile) {
+    const result = await this.prisma.build.updateMany({
+      where: { id: buildId, status: "open" }, data: { gameProfile: profile as Prisma.InputJsonValue, updatedAt: new Date() },
+    });
+    if (result.count !== 1) throw new BuildClosedError();
+  }
+
+  async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
+    // Under the same lock as the AI's writes, so a write that saw walls allowed finishes first.
+    const changed = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
+      const result = await tx.build.updateMany({
+        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, updatedAt: new Date() },
+      });
+      return result.count === 1;
+    });
+    return changed ? this.findBuild(id, ownerGmId) : null;
+  }
+
+  async buildFileUsage(buildId: string): Promise<BuildFileUsage> {
+    return readBuildFileUsage(this.prisma, buildId);
+  }
+
+  async addBuildFile(file: BuildFileRecord, limits: BuildFileLimits) {
+    await this.prisma.$transaction(async (tx) => {
+      await lockOpenBuild(tx, file.buildId);
+      assertBuildFileFits(await readBuildFileUsage(tx, file.buildId), file, limits);
+      await tx.buildFile.create({
+        data: {
+          ...file,
+          grid: file.grid === null ? Prisma.DbNull : (file.grid as Prisma.InputJsonValue),
+          board: file.board === null ? Prisma.DbNull : (file.board as Prisma.InputJsonValue),
+          detectionResult: file.detectionResult === null ? Prisma.DbNull : (file.detectionResult as Prisma.InputJsonValue),
+          detectionUpdatedAt: file.detectionUpdatedAt ? new Date(file.detectionUpdatedAt) : null,
+          createdAt: new Date(file.createdAt),
+        },
+      });
+      await tx.build.update({ where: { id: file.buildId }, data: { updatedAt: new Date() } });
+    });
+  }
+
+  async listBuildFiles(buildId: string) {
+    return (await this.prisma.buildFile.findMany({ where: { buildId }, orderBy: { createdAt: "asc" } })).map(toBuildFileRecord);
+  }
+
+  async findBuildFile(buildId: string, fileId: string) {
+    const row = UUID.test(fileId) ? await this.prisma.buildFile.findFirst({ where: { id: fileId, buildId } }) : null;
+    return row ? toBuildFileRecord(row) : null;
+  }
+
+  async saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard: BuildWriteGuard = {}) {
+    return this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, item.buildId);
+      const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
+      const existing = await tx.buildItem.findUnique({ where });
+      if (existing?.publishedId) throw new BuildItemLockedError("published");
+      if (existing?.editedByUser) throw new BuildItemLockedError("edited");
+      checkGuard(guard, build, existing);
+      if (!existing && maxForKind !== null && await tx.buildItem.count({ where: { buildId: item.buildId, kind: item.kind } }) >= maxForKind) {
+        throw new BuildLimitError(`A build can hold up to ${maxForKind} of these.`);
+      }
+      const values = {
+        data: item.data as Prisma.InputJsonValue, flags: item.flags as Prisma.InputJsonValue, notCarriedOver: item.notCarriedOver, updatedAt: new Date(),
+      };
+      const row = await tx.buildItem.upsert({ where, create: { id: randomUUID(), buildId: item.buildId, kind: item.kind, key: item.key, ...values }, update: values });
+      await tx.build.update({ where: { id: item.buildId }, data: { updatedAt: new Date() } });
+      return toBuildItemRecord(row);
+    });
+  }
+
+  async listBuildItems(buildId: string) {
+    return (await this.prisma.buildItem.findMany({ where: { buildId }, orderBy: { key: "asc" } })).map(toBuildItemRecord);
+  }
+
+  async findBuildItem(buildId: string, kind: BuildItemKind, key: string) {
+    const row = await this.prisma.buildItem.findUnique({ where: { buildId_kind_key: { buildId, kind, key } } });
+    return row ? toBuildItemRecord(row) : null;
+  }
+
+  async removeBuildItem(buildId: string, kind: BuildItemKind, key: string, byOwner = false) {
+    return this.prisma.$transaction(async (tx) => {
+      await lockOpenBuild(tx, buildId);
+      const where = { buildId_kind_key: { buildId, kind, key } };
+      const existing = await tx.buildItem.findUnique({ where });
+      if (!existing) return false;
+      if (existing.publishedId) throw new BuildItemLockedError("published");
+      if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
+      await tx.buildItem.delete({ where });
+      await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
+      return true;
+    });
+  }
+
+  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt"> = {}) {
+    return this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, item.buildId);
+      const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
+      const existing = await tx.buildItem.findUnique({ where });
+      if (existing?.publishedId) throw new BuildItemLockedError("published");
+      checkGuard(guard, build, existing);
+      const values = {
+        data: item.data as Prisma.InputJsonValue, flags: item.flags as Prisma.InputJsonValue, notCarriedOver: item.notCarriedOver, editedByUser: true, updatedAt: new Date(),
+      };
+      const row = await tx.buildItem.upsert({ where, create: { id: randomUUID(), buildId: item.buildId, kind: item.kind, key: item.key, ...values }, update: values });
+      await tx.build.update({ where: { id: item.buildId }, data: { updatedAt: new Date() } });
+      return toBuildItemRecord(row);
+    });
+  }
+
+  async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
+    return missingImageAsError(() => this.prisma.$transaction(async (tx) => {
+      await lockOpenBuild(tx, plan.buildId);
+      const scope = { ownerGmId: plan.ownerGmId };
+      await lockUploadAllowance(tx, scope);
+      assertFitsAllowance(await readUploadUsage(tx, scope), { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) }, allowance);
+      const current = await tx.buildItem.findMany({ where: { buildId: plan.buildId }, select: { kind: true, key: true, updatedAt: true } });
+      const versions = new Map(current.map((i) => [`${i.kind}/${i.key}`, i.updatedAt.toISOString()]));
+      if (plan.reviewed.some((r) => versions.get(`${r.kind}/${r.key}`) !== r.updatedAt)) throw new BuildPublishConflictError();
+
+      const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
+      for (const { fileId, record } of plan.assets) {
+        // Claimed only if still unpublished, so two publishes at once can't both add this file.
+        const claimed = await tx.buildFile.updateMany({ where: { id: fileId, buildId: plan.buildId, publishedAssetId: null }, data: { publishedAssetId: record.id } });
+        if (claimed.count !== 1) throw new BuildPublishConflictError();
+        await insertAssetRow(tx, record);
+      }
+      const claim = async (kind: BuildItemKind, key: string, publishedId: string) => {
+        const claimed = await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind, key, publishedId: null }, data: { publishedId } });
+        if (claimed.count !== 1) throw new BuildPublishConflictError();
+      };
+      for (const { key, record } of plan.creatures) {
+        await claim("creature", key, record.id);
+        await tx.libraryCreature.create({ data: { ...record, createdAt: new Date(record.createdAt) } });
+        result.creatures.push({ key, id: record.id });
+      }
+      for (const { key, assetId } of plan.maps) {
+        await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind: "map", key, publishedId: null }, data: { publishedId: assetId } });
+        result.maps.push({ key, id: assetId });
+      }
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`encounter_templates:${plan.ownerGmId}`}))`;
+      for (const { key, record } of plan.encounters) {
+        await claim("encounter", key, record.id);
+        const names = (await tx.encounterTemplate.findMany({ where: { ownerGmId: plan.ownerGmId }, select: { name: true } })).map((e) => e.name);
+        const name = uniqueEncounterName(record.name, names);
+        await insertEncounter(tx, { ...record, name }, maxEncounters);
+        result.encounters.push({ key, id: record.id, name });
+      }
+      await tx.build.update({ where: { id: plan.buildId }, data: { updatedAt: new Date() } });
+      return result;
+      // A large publish is hundreds of statements, well past Prisma's default of 5 seconds.
+    }, { timeout: 30_000, maxWait: 10_000 }));
+  }
+
+  async closeBuild(id: string, ownerGmId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
+      const build = await tx.build.findFirst({ where: { id, ownerGmId }, select: { id: true } });
+      if (!build) return null;
+      const files = await tx.buildFile.findMany({ where: { buildId: id, publishedAssetId: null }, select: { id: true, objectKey: true } });
+      await tx.buildFile.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
+      await tx.buildItem.deleteMany({ where: { buildId: id, publishedId: null } });
+      await tx.build.update({ where: { id }, data: { status: "closed", passHash: null, passExpiresAt: null, updatedAt: new Date() } });
+      return { objectKeys: files.map((f) => f.objectKey) };
+    });
+  }
+
+  async listAbandonedBuilds(before: string) {
+    return this.prisma.build.findMany({ where: { status: "open", updatedAt: { lt: new Date(before) } }, select: { id: true, ownerGmId: true } });
+  }
+
+  async forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
+      await tx.buildFile.deleteMany({ where: { buildId, id: { in: removed.fileIds } } });
+      const open = (await tx.build.findUnique({ where: { id: buildId }, select: { status: true } }))?.status === "open";
+      for (const { kind, key } of removed.items) {
+        if (open) await tx.buildItem.updateMany({ where: { buildId, kind, key }, data: { publishedId: null } });
+        else await tx.buildItem.deleteMany({ where: { buildId, kind, key } });
+      }
+    });
+  }
+
+  async markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }) {
+    const result = await this.prisma.buildItem.updateMany({ where: { buildId, kind, key }, data: state });
+    return result.count === 1;
   }
 
   async listAssets(ownerGmId: string) {
@@ -778,6 +1147,15 @@ export class PostgresRoomStore implements RoomStore {
       await tx.roomMember.deleteMany({ where: { userId } });
       await tx.user.update({ where: { id: userId }, data: { activeDiceLookId: null } });
 
+      const buildIds = (await tx.build.findMany({ where: { ownerGmId }, select: { id: true } })).map((b) => b.id);
+      // So an AI saving at this moment waits, rather than making the foreign keys refuse the delete.
+      for (const id of [...buildIds].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
+      // A published file's object belongs to its library row, which is collected below.
+      const buildFiles = await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, publishedAssetId: null }, select: { objectKey: true } });
+      await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });
+      await tx.buildFile.deleteMany({ where: { buildId: { in: buildIds } } });
+      await tx.build.deleteMany({ where: { ownerGmId } });
+
       const looks = await tx.diceLook.findMany({ where: { ownerGmId } });
       const assets = await tx.libraryAsset.findMany({ where: { ownerGmId }, select: { id: true, objectKey: true } });
       await tx.assetRef.deleteMany({ where: { assetId: { in: assets.map((a) => a.id) } } });
@@ -793,6 +1171,7 @@ export class PostgresRoomStore implements RoomStore {
         objectKeys: [
           ...looks.flatMap((l) => Object.values(toDiceLookRecord(l).faces).map((f) => f.objectKey)),
           ...assets.map((a) => a.objectKey).filter((k) => !k.startsWith("shipped:")),
+          ...buildFiles.map((f) => f.objectKey),
         ],
       };
     });
@@ -1012,14 +1391,17 @@ export class PostgresRoomStore implements RoomStore {
   }
 
   /** Read-modify-write under a row lock, so two face uploads to one look can't lose each other. */
-  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string) {
+  async setDiceLookFace(id: string, ownerGmId: string, die: DieName, face: DiceFaceRecord | null, at: string, allowance: UploadAllowance) {
     if (!UUID.test(id)) return null;
     return this.prisma.$transaction(async (tx) => {
+      // The allowance lock first, always, so this cannot deadlock against another upload.
+      await lockUploadAllowance(tx, { ownerGmId });
       const locked = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM dice_looks WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
       if (locked.length === 0) return null;
       const row = await tx.diceLook.findUniqueOrThrow({ where: { id } });
       const faces = { ...(row.faces as unknown as DiceLookRecord["faces"]) };
+      if (face) assertFitsAllowance(await readUploadUsage(tx, { ownerGmId }), { items: 0, bytes: (face.bytes ?? 0) - (faces[die]?.bytes ?? 0) }, allowance);
       const replacedKey = faces[die]?.objectKey ?? null;
       if (face) faces[die] = face;
       else delete faces[die];
@@ -1045,6 +1427,29 @@ export class PostgresRoomStore implements RoomStore {
   async close() {
     await this.prisma.$disconnect();
   }
+}
+
+type SqlReader = Pick<Prisma.TransactionClient, "$queryRaw">;
+
+/** One lock per allowance, so concurrent uploads cannot pass the limit together. Held until the transaction ends. */
+async function lockUploadAllowance(tx: Prisma.TransactionClient, scope: UploadScope) {
+  const holder = "ownerGmId" in scope ? scope.ownerGmId : scope.roomId;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`upload_allowance:${holder}`}))`;
+}
+
+/** Summed from the rows on every call, so deleting anything frees its share with nothing to keep in step. */
+async function readUploadUsage(db: SqlReader, scope: UploadScope): Promise<UploadUsage> {
+  const rows = "ownerGmId" in scope
+    ? await db.$queryRaw<{ items: bigint; bytes: bigint }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM library_assets WHERE owner_gm_id = ${scope.ownerGmId}::uuid AND object_key NOT LIKE 'shipped:%')::bigint AS items,
+        ((SELECT COALESCE(SUM(byte_size), 0) FROM library_assets WHERE owner_gm_id = ${scope.ownerGmId}::uuid AND object_key NOT LIKE 'shipped:%')
+          + (SELECT COALESCE(SUM(u.byte_size), 0) FROM room_uploads u JOIN rooms r ON r.id = u.room_id WHERE r.owner_gm_id = ${scope.ownerGmId}::uuid)
+          + (SELECT COALESCE(SUM((f.value->>'bytes')::bigint), 0) FROM dice_looks d, jsonb_each(d.faces) f WHERE d.owner_gm_id = ${scope.ownerGmId}::uuid)
+        )::bigint AS bytes`
+    : await db.$queryRaw<{ items: bigint; bytes: bigint }[]>`
+      SELECT 0::bigint AS items, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM room_uploads WHERE room_id = ${scope.roomId}::uuid`;
+  return { items: Number(rows[0]!.items), bytes: Number(rows[0]!.bytes) };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -1139,6 +1544,7 @@ function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
     name: row.name,
     width: row.width,
     height: row.height,
+    byteSize: row.byteSize,
     grid: (row.grid as unknown as GridSpec | null) ?? null,
     board: (row.board as unknown as LibraryMapBoard | null) ?? null,
     sourceHash: row.sourceHash, detectionSourceHash: row.detectionSourceHash, detectionVersion: row.detectionVersion,

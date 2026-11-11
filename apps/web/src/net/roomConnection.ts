@@ -287,7 +287,7 @@ export class RoomConnection {
         return;
 
       case "rejected":
-        // Shown in the language on screen now, even if it changed since the room opened (ADR 0052).
+        // Shown in the language on screen now, even if it changed since the room opened (ADR 0054).
         this.settle(msg.clientCommandId, {
           ok: false,
           code: msg.code,

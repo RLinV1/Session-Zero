@@ -24,6 +24,7 @@ function setup() {
   } satisfies WallJobQueue;
   const assets = {
     readPrivate: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    sizeOf: vi.fn(async () => 3),
     put: vi.fn(async () => "/uploads/map.png"),
     delete: vi.fn(async () => {}),
   } satisfies AssetStore;

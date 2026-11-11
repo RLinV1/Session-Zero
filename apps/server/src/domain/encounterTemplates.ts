@@ -7,7 +7,7 @@ import type { RoomRegistry } from "./roomRegistry";
 
 export type ResolveEncounterResult =
   | { ok: true; encounter: ResolvedEncounter }
-  /** `message` in English; `text` for the reader's language (ADR 0052). */
+  /** `message` in English; `text` for the reader's language (ADR 0054). */
   | { ok: false; reason: "missing" | "unreadable" | "map_missing"; message: string; text: MessageRef };
 
 const refusal = (reason: "missing" | "unreadable" | "map_missing", text: MessageRef): ResolveEncounterResult =>

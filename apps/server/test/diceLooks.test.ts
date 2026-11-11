@@ -5,6 +5,7 @@ import { MAX_DICE_LOOKS, type DiceLookView, type DiceLooksResponse } from "@vtt/
 import { startServer, type HttpAccount } from "./helpers";
 import { pngOfSize } from "./pngOfSize";
 import { storeCases } from "./storeHarness";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 describe("dice looks on the account (dice-looks, FR-GM-01)", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
@@ -158,7 +159,7 @@ describe.each(storeCases)("dice look store, %s (ADR 0017 O3)", (_name, makeStore
     await store.createDiceLook({ id, ownerGmId: kim, name: "Jungle", faces: {}, createdAt: now, updatedAt: now });
     expect(await store.findDiceLook(id, sam)).toBeNull();
     expect(await store.renameDiceLook(id, sam, "x", now)).toBeNull();
-    expect(await store.setDiceLookFace(id, sam, "d6", null, now)).toBeNull();
+    expect(await store.setDiceLookFace(id, sam, "d6", null, now, UPLOAD_ALLOWANCE)).toBeNull();
     expect(await store.deleteDiceLook(id, sam)).toBeNull();
     expect(await store.listDiceLooks(sam)).toEqual([]);
     expect(await store.countDiceLooks(kim)).toBe(1);
@@ -170,9 +171,9 @@ describe.each(storeCases)("dice look store, %s (ADR 0017 O3)", (_name, makeStore
     const id = randomUUID();
     await store.createDiceLook({ id, ownerGmId: kim, name: "Jungle", faces: {}, createdAt: now, updatedAt: now });
     const face = (key: string) => ({ objectKey: key, url: `/uploads/${key}`, width: 512, height: 512 });
-    expect((await store.setDiceLookFace(id, kim, "d6", face("a.png"), now))!.replacedKey).toBeNull();
-    expect((await store.setDiceLookFace(id, kim, "d6", face("b.png"), now))!.replacedKey).toBe("a.png");
-    expect((await store.setDiceLookFace(id, kim, "d8", face("c.png"), now))!.look.faces.d6!.objectKey).toBe("b.png");
+    expect((await store.setDiceLookFace(id, kim, "d6", face("a.png"), now, UPLOAD_ALLOWANCE))!.replacedKey).toBeNull();
+    expect((await store.setDiceLookFace(id, kim, "d6", face("b.png"), now, UPLOAD_ALLOWANCE))!.replacedKey).toBe("a.png");
+    expect((await store.setDiceLookFace(id, kim, "d8", face("c.png"), now, UPLOAD_ALLOWANCE))!.look.faces.d6!.objectKey).toBe("b.png");
     expect((await store.deleteDiceLook(id, kim))!.sort()).toEqual(["b.png", "c.png"]);
   });
 });

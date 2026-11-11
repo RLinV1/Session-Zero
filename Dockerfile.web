@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
 COPY apps/server/package.json apps/server/
+COPY apps/mcp/package.json apps/mcp/
 COPY apps/server/prisma apps/server/prisma
 RUN npm ci --workspace=@vtt/web --include-workspace-root
 COPY tsconfig.base.json ./

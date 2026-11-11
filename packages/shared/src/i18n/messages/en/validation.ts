@@ -1,5 +1,5 @@
 /**
- * Messages our own zod schemas attach to their checks (ADR 0052). The schemas read their English
+ * Messages our own zod schemas attach to their checks (ADR 0054). The schemas read their English
  * from here through `validationMessage`, so the server and the web can map an issue back to its id.
  */
 export const validationEn = {

@@ -29,6 +29,7 @@ async function main() {
     const temporary = randomBytes(12).toString("base64url");
     await store.setPasswordHash(user.id, await hashPassword(temporary), true);
     const ended = await store.deleteUserSessions(user.id);
+    await store.endBuildPasses(user.ownerId);
     console.log(`Reset ${user.email}. Every session ended (${ended.credentialHashes.length} device seat(s) closed).`);
     console.log(`Temporary password (shown once): ${temporary}`);
   } finally {

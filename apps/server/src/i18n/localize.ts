@@ -5,7 +5,7 @@ import { serverEn } from "./en";
 import { SERVER_PATTERNS_ZH_TW, serverZhTW } from "./zh-TW";
 
 /**
- * REST text in the request's language (localization; ADR 0052). Routes write English; the locale
+ * REST text in the request's language (localization; ADR 0054). Routes write English; the locale
  * middleware passes every JSON body through `localizeBody` on its way out. Anything not recognised
  * is left in English, so a missing entry can never show a wrong or half-made sentence.
  */

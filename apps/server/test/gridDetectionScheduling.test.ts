@@ -7,16 +7,17 @@ import type { AssetStore } from "../src/store/assetStore";
 import type { RoomStore } from "../src/store/roomStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { PostgresRoomStore } from "../src/store/postgresRoomStore";
+import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 const bytes = Buffer.from("stored-map-fixture");
 const sourceHash = createHash("sha256").update(bytes).digest("hex");
-const assets: AssetStore = { put: async () => "/uploads/test", delete: async () => {}, readPrivate: async () => bytes };
+const assets: AssetStore = { put: async () => "/uploads/test", delete: async () => {}, readPrivate: async () => bytes, sizeOf: async () => bytes.length };
 async function row(store: RoomStore) {
   const ownerGmId = await store.registerGm(randomUUID());
   const id = randomUUID();
   await store.createAsset({ id, ownerGmId, kind: "map", objectKey: `${id}.png`, url: `/uploads/${id}.png`,
     name: "Scheduling test", width: 768, height: 648, grid: null, createdAt: new Date().toISOString(),
-    sourceHash, detectionSourceHash: sourceHash, detectionVersion: DETECTION_VERSION, detectionStatus: "queued", detectionAttempt: 1 });
+    sourceHash, detectionSourceHash: sourceHash, detectionVersion: DETECTION_VERSION, detectionStatus: "queued", detectionAttempt: 1 }, UPLOAD_ALLOWANCE);
   return { ownerGmId, id, job: detectionJob((await store.findDetection({ scope: "library", id }))!) };
 }
 async function until(check: () => Promise<boolean>, timeout = 5000) {

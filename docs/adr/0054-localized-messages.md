@@ -1,4 +1,4 @@
-# ADR 0052 — Localized messages: ids on rejections, `Accept-Language` on REST
+# ADR 0054 — Localized messages: ids on rejections, `Accept-Language` on REST
 
 **Status:** Proposed — awaiting review by the Real-Time Architecture owner · **Extends:** `docs/adr/0001-event-model.md`, `docs/adr/0002-transport-and-identity.md`
 **Change:** `openspec/changes/language-setting-zh-tw` · **Capability:** `localization`
@@ -24,7 +24,7 @@ The app is being offered in English and Traditional Chinese (`zh-TW`), chosen pe
 
 ```ts
 | { type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request"; message: string;
-    /** Shared catalog id for `message` (ADR 0052); absent for zod parse failures. */
+    /** Shared catalog id for `message` (ADR 0054); absent for zod parse failures. */
     messageId?: string;
     params?: Record<string, MessageParam> }
 ```

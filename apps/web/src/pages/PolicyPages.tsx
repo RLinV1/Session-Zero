@@ -162,6 +162,7 @@ export function TermsPage() {
             <ul>
               <li>{tr("terms.upload.rights")}</li>
               <li>{tr("terms.upload.only")}</li>
+              <li>{tr("terms.upload.ai")}</li>
               <li>{tr("terms.upload.license")}</li>
             </ul>
           </Part>

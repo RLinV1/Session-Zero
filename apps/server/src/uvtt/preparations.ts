@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { UvttError, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene, type UvttBaseline, type UvttDraftEdit, type UvttPreparation } from "@vtt/shared";
 import { englishText, sharedMsg, type MessageRef } from "@vtt/shared";
 
-/** A lease refusal: English, and as data for the client's language (ADR 0052). */
+/** A lease refusal: English, and as data for the client's language (ADR 0054). */
 const leaseRefusal = (code: "not_found" | "invalid", text: MessageRef) => ({ ok: false as const, code, message: englishText(text), text });
 
 export const UVTT_PREPARATION_TTL = 30 * 60_000;

@@ -4,7 +4,7 @@ import { validationEn } from "./messages/en/validation";
 
 /**
  * English text that shared code writes for people: rejections, validation, activity sentences,
- * condition names, undo and portal phrases, replay points (localization; ADR 0052). The source
+ * condition names, undo and portal phrases, replay points (localization; ADR 0054). The source
  * every other language is checked against, so editing an entry here edits the English the app
  * shows.
  */

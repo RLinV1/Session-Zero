@@ -4,7 +4,7 @@ import { sharedEn } from "./en";
 const englishText = (ref: MessageRef) => formatRef(undefined, sharedEn as Readonly<Record<string, Entry>>, ref) ?? ref.id;
 
 /**
- * Our own zod messages, mapped back to their catalog ids (ADR 0052). A schema writes
+ * Our own zod messages, mapped back to their catalog ids (ADR 0054). A schema writes
  * `message: validationMessage(sharedMsg("valid.nameBlank"))`: it gets the English zod reports, and
  * the server and the web can turn that issue's message back into an id with `validationRef` and
  * show it in the reader's language. Built when the schemas are defined, from fixed values only.

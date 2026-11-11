@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DetectedWallsResponse, type ServerMessage, type WallDetectionStatus } from "@vtt/shared";
 import type { WallJobData, WallJobEvent, WallJobQueue } from "../src/domain/wallDetection";
 import { startServer, type TestClient } from "./helpers";
+import { pngOfSize } from "./pngOfSize";
 
-/** 1×1 PNG: the stand-in worker never decodes it, but the server reads real bytes from storage. */
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const MAP = { width: 700, height: 700 };
+/** The stand-in worker never decodes it, but the server reads its real size and bytes. */
+const PNG = pngOfSize(MAP.width, MAP.height);
 const PREVIEW = { contentType: "image/jpeg", width: 10, height: 10, data: Buffer.from("preview-bytes").toString("base64") };
 /** A wall along the edge between columns 1 and 2, the full height of the map. */
 const WALL = { a: { x: 140, y: 0 }, b: { x: 140, y: 700 } };
@@ -139,6 +140,20 @@ describe("automatic wall detection through the queue (FR-GM-11, ADR 0029)", () =
     expect(await gm.command({ type: "fog.add", expectedMapUrl: url, region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 70, y: 70 } } })).toMatchObject({ type: "rejected", code: "invalid" });
     expect(gm.state.walls).toEqual({});
     expect(gm.state.fog).toEqual({});
+  });
+
+  it("queues a map with its real size, not the size that was declared (upload-limits)", async () => {
+    const queue = new StandInQueue();
+    server = await startServer(undefined, { wallQueue: queue });
+    const room = await server.createRoom();
+    const form = new FormData();
+    form.append("purpose", "map");
+    form.append("width", "1400");
+    form.append("height", "1000");
+    form.append("file", new Blob([pngOfSize(700, 500)], { type: "image/png" }), "map.png");
+    const res = await fetch(`${server.base}/api/uploads`, { method: "POST", headers: { authorization: `Bearer ${room.guestToken}` }, body: form });
+    expect(res.status).toBe(200);
+    expect(queue.only()[1]).toMatchObject({ width: 700, height: 500 });
   });
 
   it("queues a map upload, hears the worker finish, notifies only the GM, and serves the preview", async () => {

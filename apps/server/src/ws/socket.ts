@@ -7,7 +7,7 @@ import {
 } from "@vtt/shared";
 import { englishText, sharedMsg, validationRef, type MessageRef, type RejectionCode } from "@vtt/shared";
 
-/** A `rejected` message: English for every client, the id and params for one that formats its own (ADR 0052). */
+/** A `rejected` message: English for every client, the id and params for one that formats its own (ADR 0054). */
 const rejection = (clientCommandId: string, code: RejectionCode, text: MessageRef): ServerMessage =>
   ({ type: "rejected", clientCommandId, code, message: englishText(text), messageId: text.id, params: text.params });
 import { hashToken } from "../domain/credentials";
@@ -257,7 +257,7 @@ export function registerSocket(
         const clientCommandId = commandIdOf(raw);
         if (clientCommandId) {
           // Our own schema messages carry their id, so the client can show them in its language;
-          // zod's built-in ones stay as zod wrote them (ADR 0052).
+          // zod's built-in ones stay as zod wrote them (ADR 0054).
           const issue = parsed.error.issues[0]?.message;
           const ours = issue === undefined ? sharedMsg("reject.invalidCommand") : validationRef(issue);
           return send({

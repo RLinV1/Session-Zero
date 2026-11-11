@@ -50,7 +50,7 @@ const formatPoint = (p: { x: number; y: number }) => `(${Number(p.x.toFixed(2))}
 
 /**
  * Pure, exhaustive sentence formatter. Context must already be viewer-filtered. Writes in `locale`;
- * the Traditional Chinese twin mirrors this switch case for case (ADR 0052).
+ * the Traditional Chinese twin mirrors this switch case for case (ADR 0054).
  */
 export function formatActivity(event: DomainEvent, actorName: string, before: RoomState, locale: Locale = "en"): string {
   if (locale === "zh-TW") return formatActivityZhTW(event, actorName, before, (id) => findDiceRoll(before.rolls, id));

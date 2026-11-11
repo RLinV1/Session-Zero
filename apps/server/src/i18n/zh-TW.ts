@@ -109,6 +109,27 @@ export const serverZhTW = {
   "uvtt.zeroWall": "牆壁的起點和終點不能重疊。",
   "uvtt.tooManyWalls": cjk`每張地圖最多可建立${MAX_WALLS}面牆。`,
   "uvtt.normalizedTooMany": cjk`地圖幾何資料經過正規化處理後，牆壁數量超過${MAX_WALLS}面。請在匯出工具中減少牆壁數量。`,
+
+  // AI game builds.
+  "build.notFound": "找不到這個建置。",
+  "build.closed": "這個建置已關閉。",
+  "build.noItem": "找不到這個項目。",
+  "build.chooseToPublish": "請選擇要發布的項目。",
+  "build.somethingWrong": "發生錯誤，請再試一次。",
+  "build.ownerSawOld": "你查看之後，AI 又修改了這張地圖。請重新確認，再進行修改。",
+  "build.itemChanged": "讀取後這個項目已有變更。請重新讀取，再試一次。",
+  "build.ownerDisallows": "建置擁有者不允許在這個建置中進行這項操作。",
+  "build.wrongFileType": "建置只接受 PNG、JPEG、WebP 圖片與 UVTT 檔案。規則與角色卡請留在你的 AI 應用程式中。",
+  "build.oneUvtt": "請使用一個 UVTT 檔案，大小上限為 40 MiB。",
+  "build.chooseTokenArt": "imageFileId：請從這個建置中選擇棋子圖片。",
+  "build.mapFileGone": "這張地圖的檔案已不在建置中。",
+  "build.squareSizeMisfit": "這個方格大小不適用於這張地圖。",
+  "build.proposedSquareMisfit": "proposedGrid：這個方格大小不適用於這張地圖。",
+  "build.noFile": "這個建置中沒有這個 ID 的檔案。",
+  "build.pictureUnavailable": "無法取得這個檔案的圖片。",
+  "build.busyPictures": "正在產生其他圖片，請稍後再試。",
+  "build.blockNeedsGrid": "查看一塊方格範圍需要先有網格。請先用 save_map 提議網格。",
+  "build.allOrNoBounds": "請同時提供 fromColumn、toColumn、fromRow 與 toRow，或全部不提供。",
 } satisfies Catalog<ServerEn>;
 
 /**

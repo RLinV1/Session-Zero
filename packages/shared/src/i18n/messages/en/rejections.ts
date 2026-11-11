@@ -1,5 +1,5 @@
 /**
- * Why `decide` refuses a command (ADR 0052). The English is exactly what the server always sent;
+ * Why `decide` refuses a command (ADR 0054). The English is exactly what the server always sent;
  * existing tests assert it, so edit it here only on purpose.
  */
 type Max = { max: number };

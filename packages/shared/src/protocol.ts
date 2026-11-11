@@ -116,7 +116,7 @@ export type ServerMessage =
     type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request";
     /** English, as it always was: what a client shows when it can't format `messageId`. */
     message: string;
-    /** The shared catalog id `message` was written from, for the client to show in its own language (ADR 0052). */
+    /** The shared catalog id `message` was written from, for the client to show in its own language (ADR 0054). */
     messageId?: string;
     params?: Record<string, MessageParam>;
   }

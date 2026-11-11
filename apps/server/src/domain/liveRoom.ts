@@ -90,7 +90,7 @@ export type SubmitResult =
   | { ok: true; seq: number | null }
   | { ok: false; code: RejectionCode; message: string; text: MessageRef };
 
-/** A refusal in English for `message`, and as data for the client's own language (ADR 0052). */
+/** A refusal in English for `message`, and as data for the client's own language (ADR 0054). */
 const refuse = <C extends string>(code: C, text: MessageRef) => ({ ok: false as const, code, message: englishText(text), text });
 
 /**

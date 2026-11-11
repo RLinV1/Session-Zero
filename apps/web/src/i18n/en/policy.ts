@@ -69,6 +69,7 @@ export const policy = {
   "terms.upload.title": "What you upload",
   "terms.upload.rights": "You keep the rights to the maps, tokens and other images you upload.",
   "terms.upload.only": "Upload only what you have the right to use: your own work, work licensed to you, or work that is free to use.",
+  "terms.upload.ai": "This also covers anything an AI app adds to a build on your behalf. You review it, and you decide what to publish.",
   "terms.upload.license":
     "You let us store your uploads and show them to the people in your rooms, only so the app can work. We may remove content that infringes someone's rights or breaks these terms.",
   "terms.use.title": "Acceptable use",

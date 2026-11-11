@@ -145,7 +145,7 @@ const PATTERN = /^\s*(\d*)\s*d\s*(\d+)\s*(?:([+-])\s*(\d+))?\s*$/i;
 
 export type ParseResult =
   | { ok: true; expression: DiceExpression }
-  /** `message` is `text` in English; `text` is for the reader's own language (ADR 0052). */
+  /** `message` is `text` in English; `text` is for the reader's own language (ADR 0054). */
   | { ok: false; message: string; text: MessageRef };
 
 const parseFailure = (text: MessageRef): ParseResult => ({ ok: false, message: englishText(text), text });

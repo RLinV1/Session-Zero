@@ -32,6 +32,7 @@ export * from "./portals";
 export * from "./sight";
 
 export * from "./uvtt";
+export * from "./build";
 export * from "./chatMentions";
 
 export * from "./terrain";

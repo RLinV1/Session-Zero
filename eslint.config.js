@@ -9,6 +9,12 @@ import tseslint from 'typescript-eslint';
  */
 /** Where the no-literal-text guard applies: every web component (localization task 8.1). */
 export const LOCALIZED_FILES = ['apps/web/src/**/*.tsx'];
+/**
+ * Not translated yet: the AI game builder's screens (FR-GM-26, FR-GM-27), merged from main on
+ * 2026-11-11 after the guard already covered everything. Delete this list once they read from the
+ * catalogs; `lintGuard.test.ts` keeps it from quietly growing.
+ */
+export const NOT_YET_LOCALIZED = ['apps/web/src/pages/build/**'];
 const TEXT_ATTRIBUTES = '/^(aria-label|aria-description|title|placeholder|alt)$/';
 const USE_CATALOG = 'Put text people read in the i18n catalog and render it with t() (localization).';
 export const noLiteralText = {
@@ -38,7 +44,7 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['apps/server/**/*.ts', 'apps/web/vite.config.ts', 'apps/web/scripts/**/*.mjs', 'scripts/**/*.mjs', 'eslint.config.js'],
+    files: ['apps/server/**/*.ts', 'apps/mcp/**/*.ts', 'apps/web/vite.config.ts', 'apps/web/scripts/**/*.mjs', 'scripts/**/*.mjs', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
   },
   {
@@ -48,6 +54,7 @@ export default tseslint.config(
   },
   {
     files: LOCALIZED_FILES,
+    ignores: NOT_YET_LOCALIZED,
     rules: noLiteralText,
   },
 );

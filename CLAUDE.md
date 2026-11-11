@@ -10,6 +10,7 @@ The team plans changes with OpenSpec (`/opsx:propose`, `openspec/`).
 - `packages/shared` — THE CONTRACT: zod schemas for state/commands/events/protocol, `decide`, `reduce`, visibility filters. Pure TS, no I/O.
 - `apps/server` — Express + Socket.IO. `domain/liveRoom.ts` is the command pipeline. `store/` is persistence (memory, Postgres via Prisma, Redis seq, S3 assets).
 - `apps/web` — React panels + PixiJS board (`board/boardView.ts`). `net/roomConnection.ts` is the sync client.
+- `apps/mcp` — lets users' own AI apps hold player seats over MCP. An ordinary client of the room server: REST and Socket.IO only, never `apps/server` code (ADR 0052). `/mcp/build` holds the AI game builder's tools, which reach one private draft through a build pass (ADR 0053).
 - `services/vision` — (planned) Python/OpenCV grid detection and wall parsing.
 
 ## Commands
@@ -17,6 +18,7 @@ The team plans changes with OpenSpec (`/opsx:propose`, `openspec/`).
 npm install
 npm run dev         # server :3001 + web :5173 (proxies /api, /socket.io, /uploads)
 npm run dev:db      # same, on docker compose Postgres + Redis (migrates first; survives restarts)
+npm run dev:mcp     # the AI seat server on :3002, for a room server on :3001 (not part of npm run dev)
 npm test            # vitest: shared unit tests + server multi-client integration tests
 npm run typecheck
 npm run lint
@@ -49,4 +51,4 @@ Changes to existing schemas in `packages/shared` need an ADR in `docs/adr/` and 
 - Commands `noun.verb`; events `PastTense`.
 - Reference the FR ID in tests (`describe("... (FR-PL-02)")`) and PR titles.
 - Keep PixiJS code in `board/`; React components never touch Pixi objects directly.
-- UI text goes through `t()` (`apps/web/src/i18n`, English and zh-TW catalogs); no literal text in components — lint enforces it. Server text people read is a catalog id too (ADR 0052). Terms follow `docs/GLOSSARY-zh-TW.md`.
+- UI text goes through `t()` (`apps/web/src/i18n`, English and zh-TW catalogs); no literal text in components — lint enforces it. Server text people read is a catalog id too (ADR 0054). Terms follow `docs/GLOSSARY-zh-TW.md`.

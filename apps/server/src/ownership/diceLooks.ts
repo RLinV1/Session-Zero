@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
-import path from "node:path";
 import type { Express, Request, Response } from "express";
-import { imageSizeFromFile } from "image-size/fromFile";
 import { z } from "zod";
 import {
   ActiveDiceLookRequest,
@@ -19,12 +17,10 @@ import { imageUploader } from "../http/imageUpload";
 import { requireAccount } from "../identity/middleware";
 import type { SignedIn } from "../identity/sessions";
 import type { AssetStore } from "../store/assetStore";
-import type { DiceLookRecord } from "../store/libraryStore";
+import { UPLOAD_ALLOWANCE, UploadAllowanceError, type DiceLookRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 
 const LookIdParam = z.uuid();
-/** File types a dice picture may really be, as `image-size` names them. */
-const REAL_TYPES = new Set(["png", "jpg", "webp"]);
 
 /**
  * Dice looks saved to the account (ADR 0017 O3): the same looks, and the same look in use, on
@@ -106,24 +102,26 @@ export function registerDiceLookRoutes(
       if (!upload.ok) return void res.status(upload.status).json({ error: upload.error });
       const fields = DiceLookFaceFields.safeParse(req.body);
       if (!fields.success) {
-        await unlink(upload.file.path).catch(() => {});
+        await unlink(upload.image.path).catch(() => {});
         return void res.status(400).json({ error: fields.error.issues[0]?.message ?? "Invalid picture size" });
       }
-      // Other people's browsers load these pictures (ADR 0018 D5), so the file itself is checked:
-      // its real type, and its real size against what the browser declared.
-      const real = await imageSizeFromFile(upload.file.path).catch(() => null);
-      if (!real || !REAL_TYPES.has(real.type ?? "")) {
-        await unlink(upload.file.path).catch(() => {});
-        return void res.status(415).json({ error: "Use a PNG, JPEG or WebP picture" });
-      }
-      if (real.width !== fields.data.width || real.height !== fields.data.height) {
-        await unlink(upload.file.path).catch(() => {});
+      // Other people's browsers load these pictures (ADR 0018 D5), so the size the browser
+      // declared must be the file's real size.
+      const { key: objectKey, width, height, contentType, bytes } = upload.image;
+      if (width !== fields.data.width || height !== fields.data.height) {
+        await unlink(upload.image.path).catch(() => {});
         return void res.status(400).json({ error: "The picture's size doesn't match what was sent" });
       }
-      const objectKey = path.basename(upload.file.path);
-      const url = await assets.put(upload.file.path, objectKey, upload.file.mimetype);
-      const face = { objectKey, url, width: fields.data.width, height: fields.data.height };
-      const updated = await store.setDiceLookFace(id.data, user.ownerId, die.data, face, new Date().toISOString());
+      const url = await assets.put(upload.image.path, objectKey, contentType);
+      const face = { objectKey, url, width, height, bytes };
+      let updated;
+      try {
+        updated = await store.setDiceLookFace(id.data, user.ownerId, die.data, face, new Date().toISOString(), UPLOAD_ALLOWANCE);
+      } catch (err) {
+        await deleteObjects([objectKey]);
+        if (err instanceof UploadAllowanceError) return void res.status(409).json({ error: err.message });
+        throw err;
+      }
       // Deleted while the picture uploaded: keep nothing behind.
       if (!updated) {
         await deleteObjects([objectKey]);
@@ -140,7 +138,7 @@ export function registerDiceLookRoutes(
       const id = LookIdParam.safeParse(req.params.id);
       const die = DieName.safeParse(req.params.die);
       if (!id.success || !die.success) return void notFound(res);
-      const updated = await store.setDiceLookFace(id.data, user.ownerId, die.data, null, new Date().toISOString());
+      const updated = await store.setDiceLookFace(id.data, user.ownerId, die.data, null, new Date().toISOString(), UPLOAD_ALLOWANCE);
       if (!updated) return void notFound(res);
       if (updated.replacedKey) await deleteObjects([updated.replacedKey]);
       res.json(toView(updated.look));

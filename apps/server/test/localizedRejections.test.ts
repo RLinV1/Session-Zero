@@ -21,7 +21,7 @@ async function room() {
   return { gm, alice };
 }
 
-describe("rejections carry their message id (localization, ADR 0052)", () => {
+describe("rejections carry their message id (localization, ADR 0054)", () => {
   it("sends the id with the English message unchanged", async () => {
     const { gm } = await room();
     expect(await gm.command({ type: "room.setJoinsLocked", locked: false })).toEqual({

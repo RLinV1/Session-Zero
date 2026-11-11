@@ -30,7 +30,7 @@ export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
 export type Decision =
   | { ok: true; events: DomainEvent[] }
-  /** `message` is `text` in English, as it always was; `text` is for the client's own language (ADR 0052). */
+  /** `message` is `text` in English, as it always was; `text` is for the client's own language (ADR 0054). */
   | { ok: false; code: RejectionCode; message: string; text: MessageRef };
 
 export interface DecideContext {
@@ -1603,7 +1603,7 @@ const accept = (...events: DomainEvent[]): Decision => ({ ok: true, events });
 const portalNoun = (kind: Portal["kind"]) => sharedMsg(kind === "door" ? "noun.door" : "noun.window");
 const PORTAL_STATE = { open: "noun.open", closed: "noun.closed", locked: "noun.locked" } as const;
 
-/** A refusal: the message as data for the client's language, and in English for everyone else (ADR 0052). */
+/** A refusal: the message as data for the client's language, and in English for everyone else (ADR 0054). */
 const reject = (code: RejectionCode, text: MessageRef): Decision => ({ ok: false, code, message: englishText(text), text });
 const forbidden = () => reject("forbidden", sharedMsg("reject.forbidden"));
 const NOT_FOUND = {

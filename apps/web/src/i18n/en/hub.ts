@@ -51,6 +51,8 @@ export const hub = {
   "library.tab.creature": "Creatures",
   "library.tab.encounter": "Encounters",
   "library.tab.animation": "Animations",
+  "library.tab.build": "AI builds",
+  "library.newBuild": "New build",
   "library.tab.dice": "Dice",
   "library.title": "Asset library",
   "library.assetType": "Asset type",

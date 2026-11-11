@@ -25,6 +25,7 @@ export const commonZhTW = {
   "title.isometricLighting": "光影示範",
   "title.room": "遊戲桌",
   "title.encounterEdit": "遭遇編輯器",
+  "title.build": "AI 建置",
   "meta.description": "Session Zero — 你的冒險，從這裡開始！免費線上桌遊平台，整合戰鬥地圖、角色棋子、先攻排序與擲骰功能。無論隊友在哪裡，都能一起展開冒險！",
 
   "time.justNow": "剛剛",

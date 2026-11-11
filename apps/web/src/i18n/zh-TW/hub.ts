@@ -52,6 +52,8 @@ export const hubZhTW = {
   "library.tab.creature": "生物",
   "library.tab.encounter": "遭遇",
   "library.tab.animation": "動畫",
+  "library.tab.build": "AI 建置",
+  "library.newBuild": "新增建置",
   "library.tab.dice": "骰子",
   "library.title": "素材庫",
   "library.assetType": "素材類型",

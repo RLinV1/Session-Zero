@@ -1,0 +1,143 @@
+# UI design audit of the AI features — 2026-11-10
+
+A design review of the interfaces for AI players and AI game builds, judged against [`FRONTEND-CONTRACT.md`](../FRONTEND-CONTRACT.md) §13 (which wins on conflict), [`INTERFACE.md`](../INTERFACE.md) §11 and the principles the [2026-10-29 audit](ui-design-audit-2026-10-29.md) numbers. The questions were the ones design thinking asks: what does each person come to the screen to do, what do they see first, and where do they get stuck. Findings were fixed in the same change, on `feat/mcp-game-builder`.
+
+## Scope
+
+| Surface | Who uses it | What they came to do |
+| --- | --- | --- |
+| Share dialog, "Play with your AI" (`ui/ShareButton.tsx`) | A GM | Bring their AI to the table as a player |
+| Library, AI builds tab (`pages/build/LibraryBuilds.tsx`) | A GM | Start a build, or get back to one |
+| The pass dialog (`pages/build/PassPanel.tsx`) | A GM | Hand the pass to their AI |
+| The build page (`pages/build/BuildPage.tsx`) | A GM | Check what their AI made, fix it and publish |
+| The MCP tools and guide (`apps/mcp/src/buildTools.ts`, `buildGuide.ts`, `tools.ts`) | The GM's AI | Know what to do and what went wrong |
+
+AI players at the table are ordinary players whose name ends in " (AI)" (ADR 0052), so they have no surface of their own.
+
+**Method.**
+- This branch ran on an in-memory store at `127.0.0.1:5493`, with the seeded test account, a sample build and a test room. The user's dev database was not touched.
+- Each screen was checked at 1024 and 375 pixels wide, with the touch-pointer rule on at 375.
+- The page's text, focus, sizes and overflow were read with scripts, as well as on screen.
+
+The evidence came from this live run. The user's own run earlier the same day had already shown two of the problems: a pass ended unnoticed, and maps were locked by a grid confirmation.
+
+## Findings and fixes
+
+| # | Principle | Surface | Finding | Fix |
+|---|---|---|---|---|
+| 1 | Speak the user's language | Build page | The issue list was written for the AI and shown to the owner. It used internal keys ("creature maren", "map chandlery"), field codes ("hp:"), and instructions only an AI can follow ("Save one so the GM knows…", "Propose one with save_map", "left for the user") | `checkBuild` takes an audience. The owner reads each item's name, plain field names, and what to do on the page. The AI's wording is unchanged |
+| 2 | P22 Colour never sole signal | Build page | Problems and notes differed only by a red or yellow bar | Two headed groups, "To fix (n)" and "Notes from your AI (n)" |
+| 3 | Recognition over recall | Build page | An issue gave no way to reach its item on a long page | Every issue and every "changed by your AI" entry links to its card |
+| 4 | Orientation | Build page | Nothing said what the draft held or what came next. The first thing after the title was the pass's expiry | A summary line, "Your AI has saved 1 map, 2 creatures and 1 encounter. 2 things need fixing, and it left 3 notes for you…", linking to Publish. The access controls get a heading |
+| 5 | Error prevention | Build page, map card | A UVTT map's exact grid still offered fields and Confirm grid. Confirming marks the map edited, which locks the AI out. That is how two maps were locked during the real run | A file's grid is shown as text, with nothing to confirm. Other confirmed grids offer "Save grid" only once the numbers change. A note says any change stops the AI changing the map |
+| 6 | P18 Destructive confirmations name the target | Build page | New pass silently ended the pass the AI was using. Remove deleted a draft item at once. Discard's dialog said "this build" | New pass asks first when a pass is live, and the new pass dialog says the old one stopped. Remove asks, naming the item. Discard names the build |
+| 7 | P17 Button states | Build page | No pending states: publishing could be sent twice | Actions show their own pending label ("Publishing…", "Making a pass…") and the page's actions wait for it |
+| 8 | P16 Data states, errors near the action | Build page | An error from a button at the bottom appeared at the top, out of view | The error scrolls into view and takes focus, as the contract's error summary does |
+| 9 | Visibility of system status | Build page | "Publish selected (n)" sat only at the very bottom, so ticking items higher up gave no feedback | A bar stays at the bottom of the window while anything is selected: "n selected · Review and publish" |
+| 10 | P3 Touch targets (44 px) | Build page | At 375 px with a touch pointer, these were under 44 px: opening and line selects (33), the Publish tick boxes (22) and the walls summary (38) | All at least 44 px; checked live |
+| 11 | Wording | Build page, walls | "Done" on a mark actually deleted it | "Clear mark" |
+| 12 | P9 Tabs at narrow widths | Library | At 375 px the library's seven tabs scrolled with no cue. AI builds, the last, was entirely off-screen | The list fades at an edge with tabs past it, and keeps the selected tab in view |
+| 13 | Navigation, user control | Library, build page | The build page's way back opened the library on Maps, and a reload of AI builds did the same | `/library?tab=builds` opens AI builds and is kept in the address. The build page's link reads "AI builds" and goes there |
+| 14 | Recognition over recall | Share dialog | Three identical-looking copy buttons with no way to tell them apart. The one explanation came after them, for the third only | Each way of playing has a one-line description, tied to its button by `aria-describedby` |
+| 15 | Match the task's order | Share dialog | Connector, message and token are steps in order, laid out as loose paragraphs | Numbered steps: add the connector, choose how it plays, give it a token |
+| 16 | Feedback, P16 | Share dialog | A failed copy was announced only to screen readers. On plain http, where the clipboard refuses, nobody could get a message | A visible result beside the button. On failure, the message appears in a box to select. It stays, rather than flashing for 1.5 seconds, which was found and fixed during the live check |
+| 17 | Consistency | Share dialog | The copy buttons reused the QR button's class, and the steps' titles had two type styles | Their own class, and one title style |
+| 18 | Clarity | Pass dialog | "Shown only once" didn't say what to do about it | "…so copy it before you close this" |
+
+**MCP tools.** The tools are named verb-first and their titles say what they do. They have no finding beyond #1, which also affected what the AI is told: its words stay as they were.
+
+## Follow-up: the AI builds tab (same day)
+
+The user asked for the tab to be rethought as a workflow, keeping the look: no change to fonts, colours, borders or button styles, and no backend change. A preview built from the app's own stylesheet was approved before any code, as phase 1 of three.
+
+**Measured before.** At 375 by 812 pixels the first existing build started 796 pixels down, behind an always-open start form. Each build showed only its name and "In progress" or "Closed", though the list already holds each pass's expiry, the last change, the closing date and the map choices.
+
+| Before | After |
+| --- | --- |
+| A start form always open on the tab | **New build** in the toolbar, where every other tab has its action, opens a dialog. It focuses the name, and keeps its errors and the rights notice beside Start |
+| Two map checkboxes | One choice: *You set up maps*, *Your AI sets grids*, or *Your AI sets grids, walls, doors and windows*, each saying what you still check. *Choose each one separately* has the two checkboxes, so walls without grids stays possible. Still off by default (ADR 0053) |
+| Name and status rows, open and closed mixed | Open builds as cards. Each has chips for its pass (works, ended or none) and map setup, plus "Closes …" in the last 3 days. One next step: **Open**, or **Make a new pass** once the pass has ended. Closed builds are folded under *Closed builds (n)*, and a search that finds one opens it |
+| The 3-open-build limit only as an error | "n of 3 open" beside the heading. At 3, New build is off and the reason sits under the toolbar, tied to it with `aria-describedby` |
+| A 39-word intro | One line, then *How AI builds work*: three numbered steps and the safety facts. It opens by itself on a first visit |
+| The pass dialog ended at a link | Three steps say what happens next, including that the build waits under AI builds |
+
+**Found while checking it live.** The start route sends the build's summary from before its first pass exists, so a new card read "No pass". The tab now takes the expiry that comes with the pass. On touch screens, the 44-pixel rule made summaries flex boxes, which hid their open and closed marker. That affected the build page's walls summary too, and both now use padding instead.
+
+**Phase 2: what each draft holds.** Also frontend only. Once the list is in, the tab reads each open build's draft, at most 3, together. It counts them with the build page's own code, moved into `buildProgress.ts`, so a card and its page always agree.
+- **Each card shows** what isn't published yet ("1 map and 2 creatures"), how much is published, and the AI's notes. A "2 to fix" chip appears when there's something to fix.
+- **One next step**, in this order:
+  - **Fix 2 things**, which opens the build page at *Needs your attention*;
+  - **Review and publish 5**, which opens it at *Publish*;
+  - **Make a new pass**;
+  - **Open**.
+  
+  A pass that has ended still offers **Make a new pass** beside the main step. The build page lands on the named section once its draft has loaded, with focus on that section's heading.
+- **Order.** The builds that need their owner come first: something to fix, then something to publish, then an ended pass.
+- **Loading.** The cards appear once every read is done, so they don't reorder under the pointer. A draft that can't be read leaves its card without counts.
+- **Focus.** When the new-pass link beside a card's main step goes, closing the pass dialog moves focus to that main step.
+
+**Found while checking phase 2 live.** A build whose AI hadn't saved anything showed "Fix 1 thing". The owner's check counts a missing game profile as a problem, and that is the AI's to save. The card now counts problems only once the AI has saved something. The build page still lists the missing profile, as it always has.
+
+**Still to come.** Phase 3 needs the server: whether the AI is working now, and what is new since you last looked.
+
+## Not done
+
+- **Content-shaped skeletons for initial loading (P16).** The build page still says "Loading…", as other hub pages do, and it exposes `aria-busy`.
+- **Arrow-key navigation and `aria-controls` on the library's tabs (P20).** This is library-wide, and an open item of the 2026-10-29 audit.
+- **Draft walls in the build page.** Owners change and remove the AI's walls there, but drawing and moving them stays in the map editor, as designed.
+
+## Verification
+
+- **Component tests:**
+  - the summary, grouping, names and links;
+  - the owner's wording, with no AI-only phrases;
+  - Remove asking first, naming the item;
+  - publishing pending, and sent once;
+  - errors focused, and the publish bar;
+  - no grid confirmation on a UVTT map;
+  - New pass asking first, and its replaced notice;
+  - Discard naming the build, and the breadcrumb;
+  - the Share dialog's steps, descriptions, copy result and fallback, including that the fallback stays;
+  - the library's `?tab=builds`, both ways.
+- **Unit test:** the check's owner wording.
+- **Browser, at 1024 and 375 pixels:**
+  - no sideways overflow;
+  - no control under 44 px on the build page;
+  - issue links scroll to their cards;
+  - the publish bar stays in view;
+  - the tab list fades, and keeps AI builds in view;
+  - the Share dialog's numbered steps and its copy fallback, on plain http in the built-in browser.
+
+**The AI builds tab follow-up.**
+- **Component tests** (`libraryBuildsTab.test.tsx`, 15) cover:
+  - New build in the toolbar, focusing the name;
+  - each choice sending its two settings, and the two still set separately;
+  - the pass and its steps after Start, and the new card's working pass;
+  - a failed start kept in the dialog;
+  - the limit and its reason;
+  - the pass, map setup and closing chips;
+  - the one next step, and a new pass from a card;
+  - closed builds folded away, and opened by a search;
+  - the first visit's open explainer.
+- **Deliberate breaks.** The tab was broken 11 ways, one at a time, and each made a test fail.
+- **Browser**, on an in-memory server with the seeded test account at `localhost:5593`, not the user's database:
+  - started a build through the dialog, and made a new pass from a card. Focus went back to the button that opened each dialog;
+  - filled the limit, and searched for a closed build;
+  - at 375 px: no sideways scroll, no control under 44 px, and the New build dialog fits without scrolling. The first card starts at 579 px, below the limit's reason;
+  - light and dark.
+- **Phase 2:**
+  - **Component tests,** 6 more on the tab:
+    - the counts and where "Fix" goes;
+    - publishing, with an ended pass still offered;
+    - the order by need;
+    - a draft that can't be read;
+    - focus after the new-pass link goes;
+    - an empty draft and the missing profile.
+  - **Build page,** 3 tests: landing on a named heading, landing on a named section, and staying at the top without a `#`.
+  - **Deliberate breaks:** 15, one at a time across the tab, `buildProgress.ts` and the build page's landing. Each made a test fail.
+  - **Browser.** Three drafts were filled through the AI's own routes on the in-memory server: one with a player character missing AC, one with a flagged creature, and an empty one with no pass.
+    - The cards came newest-first from the server and were ordered by need.
+    - **Fix 1 thing** opened the build page scrolled to *Needs your attention*, with focus on its heading.
+    - **Review and publish 2** focused *Publish*.
+    - Each build page's summary matched its card.
+    - At 375 px: no sideways scroll, and no control under 44 px.

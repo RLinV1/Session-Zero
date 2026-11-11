@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import { unlink } from "node:fs/promises";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
@@ -41,6 +40,8 @@ import { registerDiceLookRoutes } from "../ownership/diceLooks";
 import { registerLegacyRoutes } from "../ownership/legacy";
 import { resolveOwner } from "../ownership/resolveOwner";
 import { imageUploader } from "./imageUpload";
+import { ROOM_UPLOAD_NEEDS, refuseIfFull } from "./uploadAllowance";
+import { UPLOAD_ALLOWANCE, UploadAllowanceError } from "../store/libraryStore";
 import { registerEncounterEditRoutes } from "./encounterEdits";
 import { registerEncounterRoutes } from "./encounters";
 import { registerLibraryRoutes } from "./library";
@@ -162,32 +163,33 @@ export function registerRoutes(
       // Counted per room owner, not per room, so making more rooms buys no more uploads.
       const owner = await store.findRoomOwner(actor.roomId);
       if (refused(res, limits.uploadsPerOwner.hit(`upload:${owner ?? actor.roomId}`), "Too many uploads. Try again later.")) return;
+      if (await refuseIfFull(res, store, owner ? { ownerGmId: owner } : { roomId: actor.roomId }, ROOM_UPLOAD_NEEDS)) return;
       const upload = await receiveImage(req, res);
       if (!upload.ok) return res.status(upload.status).json({ error: upload.error });
       const fields = DirectUploadFields.safeParse(req.body);
       if (!fields.success) {
-        await unlink(upload.file.path).catch(() => {});
+        await unlink(upload.image.path).catch(() => {});
         return res.status(400).json({ error: fields.error.issues });
       }
-      const key = path.basename(upload.file.path);
-      const analysis = fields.data.purpose === "map"
-        ? await inspectMapUpload(upload.file.path, { width: fields.data.width!, height: fields.data.height! }) : null;
-      const url = await assets.put(upload.file.path, key, upload.file.mimetype);
+      const { key, width, height, contentType, bytes } = upload.image;
+      const analysis = fields.data.purpose === "map" ? await inspectMapUpload(upload.image.path, { width, height }) : null;
+      const url = await assets.put(upload.image.path, key, contentType);
       // So deleting the room removes the image too (ADR 0009). If the room was deleted
       // since the check above, recording fails: remove the object rather than orphan it.
       try {
-        await store.recordRoomUpload(actor.roomId, key, fields.data.purpose, analysis?.width ?? fields.data.width, analysis?.height ?? fields.data.height, analysis ?? undefined);
+        await store.recordRoomUpload(actor.roomId, key, UPLOAD_ALLOWANCE, { purpose: fields.data.purpose, width, height, byteSize: bytes, analysis: analysis ?? undefined });
       } catch (err) {
         await assets.delete(key).catch((cleanupErr: unknown) => {
           console.error(`[vtt] could not delete upload ${key} after its room upload record failed`, cleanupErr);
         });
+        if (err instanceof UploadAllowanceError) return res.status(409).json({ error: err.message });
         throw err;
       }
       if (fields.data.purpose === "map") {
         if (analysis?.detectionStatus === "queued") await enqueueDetection(store, detection, { scope: "room", roomId: actor.roomId, objectKey: key }, 1);
         // Walls too, while the GM lines up the grid; best-effort, like grid analysis (ADR 0029).
-        if (walls.available && fields.data.width && fields.data.height) {
-          await walls.start(actor.roomId, { url, width: fields.data.width, height: fields.data.height }, 0).catch((err: unknown) => {
+        if (walls.available) {
+          await walls.start(actor.roomId, { url, width, height }, 0).catch((err: unknown) => {
             console.error(`[vtt] could not queue wall detection for an upload in room ${actor.roomId}`, err);
           });
         }

@@ -1,5 +1,5 @@
 /**
- * Traditional Chinese twins of the shared sentence builders (localization; ADR 0052): activity
+ * Traditional Chinese twins of the shared sentence builders (localization; ADR 0054): activity
  * sentences, undo phrases, portal changes, replay labels, and the attack and condition words in
  * them. Each mirrors its English switch case for case and ends in the same `never` check, so an
  * event type added in English fails the typecheck until it reads in Chinese too.

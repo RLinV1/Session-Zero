@@ -12,7 +12,7 @@ export const sharedEnRecord: Readonly<Record<string, Entry>> = sharedEn;
 
 /**
  * A shared message in English: what `message` fields carry for clients that never ask for a
- * language (ADR 0052). Pure, so `decide` can call it.
+ * language (ADR 0054). Pure, so `decide` can call it.
  */
 export function englishText(ref: MessageRef): string {
   return formatRef(undefined, sharedEnRecord, ref) ?? ref.id;

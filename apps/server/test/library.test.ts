@@ -137,6 +137,8 @@ describe("library upload and management (asset-library)", () => {
     expect(map.grid).toBeNull();
     const token = await uploadOk(gm, { kind: "token", name: "Goblin", width: 256, height: 256 });
     expect(token.grid).toBeNull();
+    // The declared 256x256 is ignored: these bytes are a 1x1 image (upload-limits).
+    expect(token).toMatchObject({ width: 1, height: 1 });
 
     const list = uploadsOnly((await (await gmFetch(gm, "/api/library")).json()) as LibraryAsset[]);
     expect(list.map((a) => a.name).sort()).toEqual(["Goblin", "Goblin Cave"]);

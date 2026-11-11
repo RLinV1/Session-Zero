@@ -1,0 +1,27 @@
+# Production AI seat server (docker-compose.prod.yml), an ordinary client of the room server (ADR 0052).
+FROM node:22-bookworm-slim AS deps
+# DejaVu draws the grid labels on the map image.
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# Manifests first so `npm ci` is cached until a dependency changes. It reads every workspace's.
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/mcp/package.json apps/mcp/
+COPY apps/server/package.json apps/server/
+COPY apps/web/package.json apps/web/
+COPY apps/server/prisma apps/server/prisma
+RUN npm ci --workspace=@vtt/mcp --include-workspace-root
+
+FROM deps AS runtime
+ENV NODE_ENV=production
+COPY packages/shared packages/shared
+COPY apps/mcp apps/mcp
+# The built-in maps, which get_map_image reads from disk (design D7).
+COPY apps/web/public/img/hero-map.webp apps/web/public/img/map-*.webp apps/web/public/img/
+USER node
+WORKDIR /app/apps/mcp
+EXPOSE 3002
+HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=12 \
+  CMD node -e "fetch('http://127.0.0.1:3002/mcp/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+# Not `npx tsx`: that keeps npx and a loader process alive beside the app, about 150 MB more (verification-log.md).
+CMD ["node", "--import", "tsx", "src/index.ts"]

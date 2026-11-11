@@ -89,6 +89,16 @@
 		}
 	}
 
+	# AI apps connect here (docs/AI-PLAYERS.md). Its address is resolved per request, so if this service is down, only this path fails.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		reverse_proxy mcp:3002 {
+			flush_interval -1
+			# As for the app server: one entry, so TRUST_PROXY=1 finds the real address behind anything.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
 	# Everything else is the built web app; unknown paths get index.html so client routes survive a reload.
 	handle {
 		root * /srv

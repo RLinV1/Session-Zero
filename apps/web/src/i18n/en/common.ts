@@ -29,6 +29,7 @@ export const common = {
   "title.isometricLighting": "Lighting demo",
   "title.room": "Table",
   "title.encounterEdit": "Encounter editor",
+  "title.build": "AI build",
   "meta.description":
     "Session Zero, a free virtual tabletop. Your game starts here: shared battle map, tokens, initiative and dice for remote play.",
 

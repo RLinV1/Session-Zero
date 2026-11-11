@@ -1,7 +1,7 @@
 import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
 
 /**
- * English the REST API writes for people (localization; ADR 0052): errors, refusals and import
+ * English the REST API writes for people (localization; ADR 0054): errors, refusals and import
  * issues. Routes keep writing these exact strings; `localizeBody` maps them to the request's
  * language where the response is sent. `localizedRest.test.ts` fails if a route writes an English
  * error that is not in this catalog.
@@ -120,6 +120,27 @@ export const serverEn = {
   "uvtt.zeroWall": "A wall needs two different endpoints.",
   "uvtt.tooManyWalls": `A map can hold at most ${MAX_WALLS} walls.`,
   "uvtt.normalizedTooMany": `Normalized geometry exceeds ${MAX_WALLS} walls. Reduce geometry in the exporter.`,
+
+  // AI game builds (FR-GM-26, FR-GM-27): the owner's build page, and the AI's build-pass tools.
+  "build.notFound": "No such build.",
+  "build.closed": "This build is closed.",
+  "build.noItem": "No such item.",
+  "build.chooseToPublish": "Choose something to publish.",
+  "build.somethingWrong": "Something went wrong. Try again.",
+  "build.ownerSawOld": "Your AI changed this map since you looked. Check it again, then make your change.",
+  "build.itemChanged": "This item changed since it was read. Read it again, then try again.",
+  "build.ownerDisallows": "The owner doesn't allow this on this build.",
+  "build.wrongFileType": "A build takes PNG, JPEG or WebP images and UVTT files. Rules and character sheets stay in your AI app.",
+  "build.oneUvtt": "Use one UVTT file, at most 40 MiB.",
+  "build.chooseTokenArt": "imageFileId: choose token art from this build.",
+  "build.mapFileGone": "This map's file isn't in the build any more.",
+  "build.squareSizeMisfit": "That square size doesn't fit this map.",
+  "build.proposedSquareMisfit": "proposedGrid: that square size doesn't fit this map.",
+  "build.noFile": "This build has no file with that id.",
+  "build.pictureUnavailable": "This file's picture isn't available.",
+  "build.busyPictures": "Busy making other pictures. Try again in a moment.",
+  "build.blockNeedsGrid": "Looking at a block of squares needs a grid. Propose one with save_map first.",
+  "build.allOrNoBounds": "Give all of fromColumn, toColumn, fromRow and toRow, or none.",
 } as const satisfies CatalogSource;
 
 export type ServerEn = typeof serverEn;

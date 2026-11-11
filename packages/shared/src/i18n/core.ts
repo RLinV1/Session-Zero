@@ -1,6 +1,6 @@
 /**
  * Message catalogs for every runtime that writes text people read: pure shared code, the server,
- * React and the Pixi board (localization; ADR 0052).
+ * React and the Pixi board (localization; ADR 0054).
  *
  * A catalog maps an id to a fixed string or to a function of typed params. English is the
  * source and the type; every other language is declared `satisfies Catalog<typeof en>`, so a

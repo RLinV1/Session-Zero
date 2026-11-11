@@ -3,7 +3,7 @@ import { DEFAULT_LOCALE, isLocale, localeFromAcceptLanguage, type Locale } from 
 import { localizeBody } from "./localize";
 
 /**
- * The language an API request asks for (localization; ADR 0052): the first tag of its
+ * The language an API request asks for (localization; ADR 0054): the first tag of its
  * `Accept-Language` that maps, by q order, with the same mapping the browser default uses; English
  * when none does. The web client sends its chosen language here on every request.
  *

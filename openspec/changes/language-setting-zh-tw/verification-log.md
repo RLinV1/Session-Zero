@@ -220,6 +220,15 @@ Setup: dev servers (web 127.0.0.1:5473 / API 3301). GM signed in on `127.0.0.1` 
 | English, 375 × 812 | Two rows of two 148 px tabs; page width 375, no sideways scroll; screenshot taken |
 | Three tabs (no Table), 375 px | Audio and Graphics side by side; Language spans the second row (303 px). Checked on a detached copy of the tab list, removed afterwards |
 
+## 2026-11-11 — Merging main's AI game builder (PR #175)
+
+Main merged the AI game builder and AI player seats while PR #174 was open, and GitHub reported conflicts.
+
+- **Conflicts (5 files):** library tabs, the Share button, dice-look saving, the upload terms and the ADR index. Each kept both sides: main's new AI builds tab, the Share button's new copy handler and the dice-look allowance message, plus this branch's catalog text. The new terms bullet about AI apps is `terms.upload.ai`, translated.
+- **ADR number:** main's ADR 0052 is AI player seats and 0053 is build passes, so this change's ADR is now **0054** (`docs/adr/0054-localized-messages.md`). Only this branch's references were renumbered: lines that also exist on main were left alone, so every remaining "ADR 0052" is main's.
+- **Translated now:** the builder's server errors (19 entries; `localizedRest.test.ts` scans the source and found them), the Share dialog's "Play with your AI" section, the AI builds tab, New build and the page title. The messages pasted into an AI app stay in English, since they're instructions to the AI, like its tool descriptions.
+- **Not translated yet (agreed with Vincent):** the builder's own screens (`apps/web/src/pages/build/`) and the owner messages the shared `checkBuild` writes. `NOT_YET_LOCALIZED` in `eslint.config.js` exempts that one folder from the guard, and `lintGuard.test.ts` pins the list. Translating them is a follow-up, because `checkBuild` would need to return message ids (a change to main's shared contract).
+
 ## 2026-11-10 — Final checks (task 8.6)
 
 `npm run lint && npm run typecheck && npm test` from the worktree root: lint clean, typecheck clean; shared 1,345 tests, server 650 passed (53 skipped, as before), web 163 files / 1,362 tests, latency benchmark 2 — all pass.
