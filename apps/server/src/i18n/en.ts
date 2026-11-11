@@ -141,6 +141,9 @@ export const serverEn = {
   "build.busyPictures": "Busy making other pictures. Try again in a moment.",
   "build.blockNeedsGrid": "Looking at a block of squares needs a grid. Propose one with save_map first.",
   "build.allOrNoBounds": "Give all of fromColumn, toColumn, fromRow and toRow, or none.",
+  // Thrown by the build store (store/buildStore.ts), which the source scan can't see.
+  "build.alreadyPublished": "This item has already been published, so it can't be changed here.",
+  "build.changedWhilePublishing": "This build changed while publishing. Reload the page and try again.",
 } as const satisfies CatalogSource;
 
 export type ServerEn = typeof serverEn;

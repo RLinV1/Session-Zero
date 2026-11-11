@@ -701,6 +701,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0052](adr/0052-mcp-player-seats.md) | AI player seats over MCP | Proposed |
 | [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes, templates from an approved draft, and AI-set grids and walls by the owner's choice | Proposed |
 | [0054](adr/0054-localized-messages.md) | Localized messages: ids on rejections, `Accept-Language` on REST | Proposed |
+| [0055](adr/0055-build-check-message-ids.md) | The build check's owner messages as message ids | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

@@ -130,7 +130,14 @@ export const serverZhTW = {
   "build.busyPictures": "正在產生其他圖片，請稍後再試。",
   "build.blockNeedsGrid": "查看一塊方格範圍需要先有網格。請先用 save_map 提議網格。",
   "build.allOrNoBounds": "請同時提供 fromColumn、toColumn、fromRow 與 toRow，或全部不提供。",
+  "build.alreadyPublished": "這個項目已經發布，無法在這裡修改。",
+  "build.changedWhilePublishing": "發布期間這個建置有了變更。請重新載入頁面，再試一次。",
 } satisfies Catalog<ServerEn>;
+
+/** A draft item a publish conflict names ("map cave"), with its kind in Chinese. */
+const BUILD_ITEM_KIND: Readonly<Record<string, string>> = { creature: "生物", map: "地圖", encounter: "遭遇" };
+const buildItems = (list: string) =>
+  list.split(", ").map((item) => item.replace(/^(creature|map|encounter) /, (_, kind: string) => `${BUILD_ITEM_KIND[kind]} `)).join("、");
 
 /**
  * Messages a route writes with a value in them. Each pattern matches the English exactly, so a
@@ -148,4 +155,17 @@ export const SERVER_PATTERNS_ZH_TW: readonly { english: RegExp; translate: (matc
   { english: /^Images must be (\d+) MB or smaller$/, translate: (m) => `圖片必須小於或等於 ${m[1]} MB` },
   { english: /^You can keep at most (\d+) encounter templates$/, translate: (m) => `你最多可以保留 ${m[1]} 個遭遇範本` },
   { english: /^You can keep at most (\d+) animations$/, translate: (m) => `你最多可以保留 ${m[1]} 個動畫` },
+  // AI game builds, as their owner meets them (store/buildStore.ts, domain/buildPublish.ts).
+  { english: /^You can have up to (\d+) open builds\. Finish or discard one first\.$/, translate: (m) => `你最多可以同時進行 ${m[1]} 個建置。請先完成或捨棄其中一個。` },
+  { english: /^A build can hold up to (\d+) files\. Remove some, or start another build\.$/, translate: (m) => `每個建置最多可放 ${m[1]} 個檔案。請移除一些檔案，或開始另一個建置。` },
+  { english: /^A build can hold up to (\d+) maps\.$/, translate: (m) => `每個建置最多可放 ${m[1]} 張地圖。` },
+  { english: /^A build can hold up to (\d+) MB of files\.$/, translate: (m) => `每個建置的檔案最多共 ${m[1]} MB。` },
+  {
+    english: /^Something changed since you looked at it: (.+)\. Check it, then publish again\.$/,
+    translate: (m) => `你查看之後，這些項目有了變更：${buildItems(m[1]!)}。請重新確認，再發布一次。`,
+  },
+  {
+    english: /^The game's square size changed since you looked: one square is now (.+)\. Check it, then publish again\.$/,
+    translate: (m) => `你查看之後，遊戲的方格大小有了變更：現在每格是 ${m[1]}。請重新確認，再發布一次。`,
+  },
 ];

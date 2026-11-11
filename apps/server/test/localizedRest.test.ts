@@ -80,6 +80,19 @@ describe("the server catalog (localization)", () => {
     expect(localizeText("en", "Room not found")).toBe("Room not found");
   });
 
+  it("translates what the build store tells a build's owner, which the source scan can't see (FR-GM-26, FR-GM-27)", () => {
+    expect(localizeText("zh-TW", "You can have up to 3 open builds. Finish or discard one first.")).toBe("你最多可以同時進行 3 個建置。請先完成或捨棄其中一個。");
+    expect(localizeText("zh-TW", "A build can hold up to 100 files. Remove some, or start another build.")).toBe("每個建置最多可放 100 個檔案。請移除一些檔案，或開始另一個建置。");
+    expect(localizeText("zh-TW", "A build can hold up to 20 maps.")).toBe("每個建置最多可放 20 張地圖。");
+    expect(localizeText("zh-TW", "A build can hold up to 500 MB of files.")).toBe("每個建置的檔案最多共 500 MB。");
+    expect(localizeText("zh-TW", "Something changed since you looked at it: map cave, creature map. Check it, then publish again."))
+      .toBe("你查看之後，這些項目有了變更：地圖 cave、生物 map。請重新確認，再發布一次。");
+    expect(localizeText("zh-TW", "The game's square size changed since you looked: one square is now 1.5 m. Check it, then publish again."))
+      .toBe("你查看之後，遊戲的方格大小有了變更：現在每格是 1.5 m。請重新確認，再發布一次。");
+    expect(localizeText("zh-TW", "This build changed while publishing. Reload the page and try again.")).toBe("發布期間這個建置有了變更。請重新載入頁面，再試一次。");
+    expect(localizeText("zh-TW", "This item has already been published, so it can't be changed here.")).toBe("這個項目已經發布，無法在這裡修改。");
+  });
+
   it("leaves bodies without people-facing text alone", () => {
     const body = { id: "r1", name: "Room not found" };
     expect(localizeBody("zh-TW", body)).toEqual(body);

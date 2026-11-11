@@ -18,6 +18,7 @@ import { RemoveDialog, BuildPage, GridOverlay } from "../src/pages/build/BuildPa
 import { PassPanel } from "../src/pages/build/PassPanel";
 import { DraftCreatureEditor } from "../src/pages/build/DraftEditors";
 import { buildMessage, uploadKindFor, RIGHTS_NOTICE } from "../src/pages/build/buildCopy";
+import { t } from "../src/i18n/locale";
 
 // jsdom has no <dialog> methods.
 HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute("open", ""); };
@@ -240,7 +241,7 @@ describe("reviewing a build (FR-GM-27)", () => {
   it("publishing repeats the rights notice", async () => {
     await open(detail({ items: [goblin()] }));
     const section = host.querySelector("#build-publish");
-    expect(section?.textContent).toContain(RIGHTS_NOTICE);
+    expect(section?.textContent).toContain(t(RIGHTS_NOTICE));
   });
 
   it("shows the server's reasons when publishing fails", async () => {

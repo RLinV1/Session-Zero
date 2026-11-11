@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CONDITIONS, formatExpression, parseDiceExpression, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { CONDITIONS, conditionLabel, formatExpression, parseDiceExpression, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { getLocale, useT } from "../../i18n/locale";
 
 const optionalNumber = (text: string): number | null => (text.trim() === "" ? null : Number(text));
 const diceText = (dice: { count: number; sides: number; modifier: number } | null) => (dice ? formatExpression(dice) : "");
@@ -20,6 +21,7 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(data.name);
   const [size, setSize] = useState(String(data.size));
   const [hp, setHp] = useState(data.hp === null ? "" : String(data.hp));
@@ -40,7 +42,7 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
     const rolls = attacks.map((a) => ({ ...a, hit: readDice(a.toHit), dmg: readDice(a.damage) }));
     const bad = rolls.find((r) => !r.hit.ok || !r.dmg.ok);
     if (bad) {
-      setError(`${bad.name || "An attack"}: use dice such as 1d20+5, or leave it blank.`);
+      setError(bad.name ? t("build.edit.badDiceNamed", { name: bad.name }) : t("build.edit.badDice"));
       return;
     }
     setSaving(true);
@@ -57,41 +59,41 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
         })),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save this.");
+      setError(err instanceof Error ? err.message : t("build.edit.saveFailed"));
       setSaving(false);
     }
   }
 
   return (
     <form className="build-form" onSubmit={(e) => void save(e)}>
-      <label>Name<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
+      <label>{t("common.name")}<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
       <div className="build-fields">
-        <label>Size<input inputMode="decimal" value={size} onChange={(e) => setSize(e.target.value)} /></label>
-        <label>HP<input inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
-        <label>Max HP<input inputMode="numeric" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} /></label>
-        <label>AC<input inputMode="numeric" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
-        <label>Colour<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
+        <label>{t("build.stat.size")}<input inputMode="decimal" value={size} onChange={(e) => setSize(e.target.value)} /></label>
+        <label>{t("build.stat.hp")}<input inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value)} /></label>
+        <label>{t("build.stat.maxHp")}<input inputMode="numeric" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} /></label>
+        <label>{t("build.stat.ac")}<input inputMode="numeric" value={ac} onChange={(e) => setAc(e.target.value)} /></label>
+        <label>{t("build.edit.colour")}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
       </div>
-      <label>Art
+      <label>{t("build.edit.art")}
         <select value={art} onChange={(e) => setArt(e.target.value)}>
-          <option value="">None: a coloured disc</option>
+          <option value="">{t("build.edit.noArt")}</option>
           {tokens.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
       </label>
       <fieldset>
-        <legend>Attacks</legend>
+        <legend>{t("build.edit.attacks")}</legend>
         {attacks.map((attack, i) => (
           <div className="build-attack" key={i}>
-            <input aria-label={`Attack ${i + 1} name`} placeholder="Name" value={attack.name} maxLength={40} onChange={(e) => setAttack(i, { name: e.target.value })} />
-            <input aria-label={`Attack ${i + 1} to-hit`} placeholder="To hit, 1d20+5" value={attack.toHit} onChange={(e) => setAttack(i, { toHit: e.target.value })} />
-            <input aria-label={`Attack ${i + 1} damage`} placeholder="Damage, 1d6+2" value={attack.damage} onChange={(e) => setAttack(i, { damage: e.target.value })} />
-            <button type="button" aria-label={`Remove attack ${i + 1}`} onClick={() => setAttacks((all) => all.filter((_, n) => n !== i))}>Remove</button>
+            <input aria-label={t("build.edit.attackName", { n: i + 1 })} placeholder={t("common.name")} value={attack.name} maxLength={40} onChange={(e) => setAttack(i, { name: e.target.value })} />
+            <input aria-label={t("build.edit.attackToHit", { n: i + 1 })} placeholder={t("build.edit.toHitPlaceholder")} value={attack.toHit} onChange={(e) => setAttack(i, { toHit: e.target.value })} />
+            <input aria-label={t("build.edit.attackDamage", { n: i + 1 })} placeholder={t("build.edit.damagePlaceholder")} value={attack.damage} onChange={(e) => setAttack(i, { damage: e.target.value })} />
+            <button type="button" aria-label={t("build.edit.removeAttack", { n: i + 1 })} onClick={() => setAttacks((all) => all.filter((_, n) => n !== i))}>{t("common.remove")}</button>
           </div>
         ))}
-        {attacks.length < 8 && <button type="button" onClick={() => setAttacks((all) => [...all, { name: "", toHit: "", damage: "" }])}>Add attack</button>}
+        {attacks.length < 8 && <button type="button" onClick={() => setAttacks((all) => [...all, { name: "", toHit: "", damage: "" }])}>{t("creature.addAttack")}</button>}
       </fieldset>
       <fieldset>
-        <legend>Conditions</legend>
+        <legend>{t("build.edit.conditions")}</legend>
         <div className="build-conditions">
           {CONDITIONS.map((c) => (
             <label key={c.id} className="build-check">
@@ -100,15 +102,15 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
                 checked={conditions.includes(c.id)}
                 onChange={(e) => setConditions((all) => (e.target.checked ? [...all, c.id] : all.filter((x) => x !== c.id)))}
               />
-              {c.label}
+              {conditionLabel(c.id, getLocale())}
             </label>
           ))}
         </div>
       </fieldset>
       {error && <p role="alert" className="error build-error">{error}</p>}
       <div className="row build-form-actions">
-        <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary" disabled={saving}>Save</button>
+        <button type="button" onClick={onCancel}>{t("common.cancel")}</button>
+        <button type="submit" className="primary" disabled={saving}>{t("common.save")}</button>
       </div>
     </form>
   );
@@ -123,6 +125,7 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creatureName }: {
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(data.name);
   const [tokens, setTokens] = useState<TokenRow[]>(data.tokens.map((t) => ({
     creatureKey: t.creatureKey, name: t.name ?? "", column: t.square ? String(t.square.column) : "", row: t.square ? String(t.square.row) : "", hidden: t.hidden,
@@ -146,32 +149,32 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creatureName }: {
         })),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save this.");
+      setError(err instanceof Error ? err.message : t("build.edit.saveFailed"));
       setSaving(false);
     }
   }
 
   return (
     <form className="build-form" onSubmit={(e) => void save(e)}>
-      <label>Name<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
+      <label>{t("common.name")}<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
       <fieldset>
-        <legend>Tokens</legend>
-        <p className="muted small-print">A square is the top-left square the token covers. Leave both blank to place it later.</p>
+        <legend>{t("build.edit.tokens")}</legend>
+        <p className="muted small-print">{t("build.edit.squareHint")}</p>
         {tokens.map((token, i) => (
           <div className="build-token-row" key={i}>
             <span className="build-token-of">{creatureName(token.creatureKey)}</span>
-            <input aria-label={`Token ${i + 1} name`} placeholder="Name on the board" value={token.name} maxLength={60} onChange={(e) => setToken(i, { name: e.target.value })} />
-            <input aria-label={`Token ${i + 1} column`} placeholder="Col" inputMode="numeric" value={token.column} onChange={(e) => setToken(i, { column: e.target.value })} />
-            <input aria-label={`Token ${i + 1} row`} placeholder="Row" inputMode="numeric" value={token.row} onChange={(e) => setToken(i, { row: e.target.value })} />
-            <label className="build-check"><input type="checkbox" checked={token.hidden} onChange={(e) => setToken(i, { hidden: e.target.checked })} />Hidden</label>
-            <button type="button" aria-label={`Remove token ${i + 1}`} onClick={() => setTokens((all) => all.filter((_, n) => n !== i))}>Remove</button>
+            <input aria-label={t("build.edit.tokenName", { n: i + 1 })} placeholder={t("creature.nameOnBoard")} value={token.name} maxLength={60} onChange={(e) => setToken(i, { name: e.target.value })} />
+            <input aria-label={t("build.edit.tokenColumn", { n: i + 1 })} placeholder={t("build.edit.col")} inputMode="numeric" value={token.column} onChange={(e) => setToken(i, { column: e.target.value })} />
+            <input aria-label={t("build.edit.tokenRow", { n: i + 1 })} placeholder={t("build.edit.row")} inputMode="numeric" value={token.row} onChange={(e) => setToken(i, { row: e.target.value })} />
+            <label className="build-check"><input type="checkbox" checked={token.hidden} onChange={(e) => setToken(i, { hidden: e.target.checked })} />{t("build.edit.hidden")}</label>
+            <button type="button" aria-label={t("build.edit.removeToken", { n: i + 1 })} onClick={() => setTokens((all) => all.filter((_, n) => n !== i))}>{t("common.remove")}</button>
           </div>
         ))}
       </fieldset>
       {error && <p role="alert" className="error build-error">{error}</p>}
       <div className="row build-form-actions">
-        <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary" disabled={saving}>Save</button>
+        <button type="button" onClick={onCancel}>{t("common.cancel")}</button>
+        <button type="submit" className="primary" disabled={saving}>{t("common.save")}</button>
       </div>
     </form>
   );

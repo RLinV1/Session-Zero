@@ -4,7 +4,8 @@ import { DEFAULT_TOKEN_COLOR } from "./commands";
 import type { ConditionId } from "./conditions";
 import { EncounterTemplateData, MAX_ENCOUNTER_NAME, type TemplateToken } from "./encounters";
 import { DEFAULT_GRID, GridSpec, footprintCrossesWall, snapTokenCenter, type Point, type Segment } from "./geometry";
-import { EMPTY_LIBRARY_BOARD, libraryBoardProblem, type LibraryMapBoard } from "./libraryBoard";
+import { englishText, sharedMsg, validationRef, type MessageRef, type SharedEn } from "./i18n";
+import { EMPTY_LIBRARY_BOARD, libraryBoardIssue, type LibraryMapBoard } from "./libraryBoard";
 import { blocksMovement } from "./portals";
 import { CreatureFields, LibraryUploadFields } from "./protocol";
 import { MAX_WALLS, PortalState, type Portal, type Wall } from "./state";
@@ -340,6 +341,8 @@ export interface DraftEncounterProblem {
   /** The token's name as the GM will see it, or the encounter's when it isn't about one token. */
   token: string;
   message: string;
+  /** The whole problem as its owner reads it, `token: message` in English, as a catalog ref (ADR 0055). */
+  text: MessageRef;
 }
 
 export type DraftEncounterResult =
@@ -487,9 +490,16 @@ export function listOpenings(fileBoard: LibraryMapBoard | null, setup: DraftMapS
 export const cornerPoint = (corner: DraftCorner, grid: GridNumbers): Point =>
   ({ x: grid.offsetX + corner.column * grid.cellSize, y: grid.offsetY + corner.row * grid.cellSize });
 
-/** A drawn line in words, numbered from 1 as the AI sent them. */
-export const describeDraftLine = (line: DraftLine, index: number) =>
-  `Line ${index + 1} (a ${line.kind} from column ${line.from.column}, row ${line.from.row} to column ${line.to.column}, row ${line.to.row})`;
+const LINE_KIND = { wall: "buildCheck.line.wall", door: "buildCheck.line.door", window: "buildCheck.line.window" } as const;
+
+/** A drawn line in words, numbered from 1 as the AI sent them, as a catalog ref for the owner's page (ADR 0055). */
+export const draftLineRef = (line: DraftLine, index: number): MessageRef => sharedMsg("buildCheck.line", {
+  number: index + 1, kind: sharedMsg(LINE_KIND[line.kind]),
+  fromColumn: line.from.column, fromRow: line.from.row, toColumn: line.to.column, toRow: line.to.row,
+});
+
+/** A drawn line in words, in English. */
+export const describeDraftLine = (line: DraftLine, index: number) => englishText(draftLineRef(line, index));
 
 function distanceToSegment(p: Point, s: Segment): number {
   const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
@@ -500,7 +510,11 @@ function distanceToSegment(p: Point, s: Segment): number {
 
 export type DraftMapBoardResult =
   | { ok: true; board: LibraryMapBoard; blockedLines: number[] }
-  | { ok: false; problems: string[] };
+  /**
+   * `problems` are in the AI's English, which may name its tools. `ownerProblems` are the same
+   * problems, in the same order, for the build's owner, as catalog refs (ADR 0055).
+   */
+  | { ok: false; problems: string[]; ownerProblems: MessageRef[] };
 
 /**
  * The board a draft map publishes (ADR 0053): its file's walls with the setup's openings applied
@@ -511,10 +525,13 @@ export type DraftMapBoardResult =
 export function draftMapBoard(fileBoard: LibraryMapBoard | null, setup: DraftMapSetup | undefined, grid: GridNumbers | null, map: { width: number; height: number }): DraftMapBoardResult {
   const base = fileBoard ?? EMPTY_LIBRARY_BOARD;
   const problems: string[] = [];
+  const ownerProblems: MessageRef[] = [];
+  /** One problem: the owner's ref and the AI's English, which is the same words unless they name a tool. */
+  const problem = (owner: MessageRef, ai = englishText(owner)) => { problems.push(ai); ownerProblems.push(owner); };
   const settings = new Map((setup?.openings ?? []).map((o) => [o.number, o]));
   const openingCount = mapOpenings(base).length;
   for (const number of settings.keys()) {
-    if (number > openingCount) problems.push(`Opening ${number} isn't on this map. It has ${openingCount === 1 ? "1 opening" : `${openingCount} openings`}.`);
+    if (number > openingCount) problem(sharedMsg("buildCheck.noSuchOpening", { number, count: openingCount }));
   }
 
   let number = 0;
@@ -528,22 +545,22 @@ export function draftMapBoard(fileBoard: LibraryMapBoard | null, setup: DraftMap
 
   const lines = setup?.lines ?? [];
   const marks = setup?.marks ?? [];
-  if (lines.length > 0 && !grid) problems.push("Drawing lines needs a grid first. Propose one with save_map.");
-  if (marks.length > 0 && !grid) problems.push("Marking places needs a grid first. Propose one with save_map.");
+  if (lines.length > 0 && !grid) problem(sharedMsg("buildCheck.linesNeedGrid"), "Drawing lines needs a grid first. Propose one with save_map.");
+  if (marks.length > 0 && !grid) problem(sharedMsg("buildCheck.marksNeedGrid"), "Marking places needs a grid first. Propose one with save_map.");
   const inside = (p: Point) => p.x >= 0 && p.y >= 0 && p.x <= map.width && p.y <= map.height;
   const drawn: LibraryMapBoard["walls"] = [];
   if (grid) {
     lines.forEach((line, index) => {
       const a = cornerPoint(line.from, grid), b = cornerPoint(line.to, grid);
-      if (!inside(a) || !inside(b)) return void problems.push(`${describeDraftLine(line, index)} has a corner off the map.`);
+      if (!inside(a) || !inside(b)) return problem(sharedMsg("buildCheck.cornerOff", { line: draftLineRef(line, index) }));
       drawn.push(line.kind === "wall" ? { a, b } : { a, b, portal: { kind: line.kind, state: line.state ?? "closed" } });
     });
     marks.forEach((mark, index) => {
       const corner = cornerPoint(mark.square, grid);
-      if (!inside(corner)) problems.push(`Mark ${index + 1} (column ${mark.square.column}, row ${mark.square.row}) is off the map.`);
+      if (!inside(corner)) problem(sharedMsg("buildCheck.markOff", { number: index + 1, column: mark.square.column, row: mark.square.row }));
     });
   }
-  if (problems.length > 0) return { ok: false, problems };
+  if (problems.length > 0) return { ok: false, problems, ownerProblems };
 
   // Only the drawn doors and windows cut: the file's own openings already cut its walls on import.
   // Walls stay in the file's order, each replaced by what is left of it.
@@ -551,10 +568,11 @@ export function draftMapBoard(fileBoard: LibraryMapBoard | null, setup: DraftMap
   const cut = (wall: LibraryMapBoard["walls"][number]) =>
     drawnPortals.length === 0 || hasPortalBounds(wall) ? [wall] : removePortalOverlaps([wall, ...drawnPortals]).slice(0, -drawnPortals.length);
   const walls = [...fileWalls.flatMap(cut), ...drawn.flatMap(cut)];
-  if (walls.length > MAX_WALLS) return { ok: false, problems: [`This map would have ${walls.length} walls. A map can hold at most ${MAX_WALLS}.`] };
+  const refused = (owner: MessageRef): DraftMapBoardResult => ({ ok: false, problems: [englishText(owner)], ownerProblems: [owner] });
+  if (walls.length > MAX_WALLS) return refused(sharedMsg("buildCheck.tooManyWalls", { count: walls.length, max: MAX_WALLS }));
   const board: LibraryMapBoard = { ...base, walls };
-  const boardProblem = libraryBoardProblem(board, map);
-  if (boardProblem) return { ok: false, problems: [boardProblem] };
+  const boardIssue = libraryBoardIssue(board, map);
+  if (boardIssue) return refused(boardIssue);
 
   const remainingSolids = walls.filter((w) => !hasPortalBounds(w));
   const blockedLines: number[] = [];
@@ -569,7 +587,7 @@ export function draftMapBoard(fileBoard: LibraryMapBoard | null, setup: DraftMap
   return { ok: true, board, blockedLines };
 }
 
-/** Why a map's setup can't be saved, naming each line, or null. Checked with the grid the map has now. */
+/** Why a map's setup can't be saved, in the AI's English, naming each line. Checked with the grid the map has now. */
 export function mapSetupProblems(fileBoard: LibraryMapBoard | null, setup: DraftMapSetup, grid: GridNumbers | null, map: { width: number; height: number }): string[] {
   const result = draftMapBoard(fileBoard, setup, grid, map);
   return result.ok ? [] : result.problems;
@@ -588,6 +606,13 @@ export interface BuildCheckIssue {
   /** The draft item it is about, so a page can link to it. Null for the game profile. */
   target: { kind: "creature" | "map" | "encounter"; key: string } | null;
   message: string;
+  /**
+   * For the owner only (ADR 0055): `message` as a catalog ref, so the page can show it in the
+   * reader's language. The AI reads `message` alone, in English.
+   */
+  text?: MessageRef;
+  /** For the owner only: `label` as a catalog ref when it is the app's own words ("Game profile"), not an item's name. */
+  labelText?: MessageRef;
 }
 
 /**
@@ -596,27 +621,52 @@ export interface BuildCheckIssue {
  */
 export type BuildCheckAudience = "ai" | "owner";
 
-/** Whether a blank value is a problem: only on a player character, for a field the game uses, with no flag. */
-export function creatureProblems(creature: Pick<DraftCreature, "isPlayerCharacter" | "hp" | "maxHp" | "ac">, flags: readonly BuildFlag[], features: GameProfile["features"], audience: BuildCheckAudience = "ai"): string[] {
-  if (!creature.isPlayerCharacter) return [];
-  const flagged = new Set(flags.map((f) => f.field.toLowerCase()));
-  const wanted: [boolean, "hp" | "maxHp" | "ac", string][] = [
-    [features.hitPoints, "hp", "HP"], [features.hitPoints, "maxHp", "Max HP"], [features.armorClass, "ac", "AC"],
-  ];
-  return wanted
-    .filter(([used, field]) => used && creature[field] === null && !flagged.has(field.toLowerCase()))
-    .map(([, , label]) => (audience === "owner"
-      ? `${label} is blank, and your AI didn't say why. Fill it in, or publish it blank.`
-      : `${label} is blank with no flag. Give a value, or flag it and say why.`));
+type FieldLabelId = Extract<keyof SharedEn, `buildCheck.field.${string}`>;
+
+/** How a flagged field reads to a person: the field names the AI uses are code. Keyed by the name in lower case. */
+const FIELD_LABELS: Readonly<Record<string, FieldLabelId>> = {
+  hp: "buildCheck.field.hp", maxhp: "buildCheck.field.maxHp", ac: "buildCheck.field.ac", attacks: "buildCheck.field.attacks",
+  conditions: "buildCheck.field.conditions", size: "buildCheck.field.size", name: "buildCheck.field.name", color: "buildCheck.field.colour",
+  imagefileid: "buildCheck.field.art", grid: "buildCheck.field.grid", proposedgrid: "buildCheck.field.grid", square: "buildCheck.field.square",
+  tokens: "buildCheck.field.tokens", unitspercell: "buildCheck.field.squareSize", unitlabel: "buildCheck.field.squareSize",
+  features: "buildCheck.field.features", notes: "buildCheck.field.notes",
+};
+
+/** A flagged field's name for people, as a catalog ref (ADR 0055), or the AI's own name for a field the page doesn't know. */
+export function buildFieldLabelRef(field: string): string | MessageRef {
+  const key = field.toLowerCase();
+  return Object.hasOwn(FIELD_LABELS, key) ? sharedMsg(FIELD_LABELS[key]!) : field;
 }
 
-/** How a flagged field reads to a person: the field names the AI uses are code. */
-const FIELD_LABELS: Record<string, string> = {
-  hp: "HP", maxhp: "Max HP", ac: "AC", attacks: "Attacks", conditions: "Conditions", size: "Size", name: "Name",
-  color: "Colour", imagefileid: "Art", grid: "Grid", proposedgrid: "Grid", square: "Square", tokens: "Tokens",
-  unitspercell: "Square size", unitlabel: "Square size", features: "Features", notes: "Notes",
-};
-export const buildFieldLabel = (field: string) => FIELD_LABELS[field.toLowerCase()] ?? field;
+/** A flagged field's name for people, in English. */
+export function buildFieldLabel(field: string): string {
+  const label = buildFieldLabelRef(field);
+  return typeof label === "string" ? label : englishText(label);
+}
+
+type CreatureCheck = Pick<DraftCreature, "isPlayerCharacter" | "hp" | "maxHp" | "ac">;
+
+/** The fields left blank that are a problem: only on a player character, for a field the game uses, with no flag. */
+function blankFields(creature: CreatureCheck, flags: readonly BuildFlag[], features: GameProfile["features"]): ("hp" | "maxHp" | "ac")[] {
+  if (!creature.isPlayerCharacter) return [];
+  const flagged = new Set(flags.map((f) => f.field.toLowerCase()));
+  const wanted: [boolean, "hp" | "maxHp" | "ac"][] = [[features.hitPoints, "hp"], [features.hitPoints, "maxHp"], [features.armorClass, "ac"]];
+  return wanted.filter(([used, field]) => used && creature[field] === null && !flagged.has(field.toLowerCase())).map(([, field]) => field);
+}
+
+const aiBlankProblem = (field: string) => `${buildFieldLabel(field)} is blank with no flag. Give a value, or flag it and say why.`;
+const ownerBlankProblem = (field: string) => sharedMsg("buildCheck.blankNoReason", { field: buildFieldLabelRef(field) });
+
+/** Whether a blank value is a problem, in the owner's words, as catalog refs (ADR 0055). */
+export function creatureProblemRefs(creature: CreatureCheck, flags: readonly BuildFlag[], features: GameProfile["features"]): MessageRef[] {
+  return blankFields(creature, flags, features).map(ownerBlankProblem);
+}
+
+/** Whether a blank value is a problem: only on a player character, for a field the game uses, with no flag. In English. */
+export function creatureProblems(creature: CreatureCheck, flags: readonly BuildFlag[], features: GameProfile["features"], audience: BuildCheckAudience = "ai"): string[] {
+  if (audience === "owner") return creatureProblemRefs(creature, flags, features).map(englishText);
+  return blankFields(creature, flags, features).map(aiBlankProblem);
+}
 
 export interface BuildCheckInput {
   profile: GameProfile | null;
@@ -630,11 +680,14 @@ export interface BuildCheckInput {
   encounters: readonly { key: string; data: DraftEncounterState; flags: readonly BuildFlag[] }[];
 }
 
-const gridWords = (g: GridNumbers) => `${g.cellSize}-pixel squares at offset (${g.offsetX}, ${g.offsetY})`;
+const gridRef = (g: GridNumbers) => sharedMsg("buildCheck.gridWords", { cellSize: g.cellSize, offsetX: g.offsetX, offsetY: g.offsetY });
+const gridWords = (g: GridNumbers) => englishText(gridRef(g));
 
-type AddIssue = (type: BuildCheckIssue["type"], message: string) => void;
-/** The AI's words, or the owner's, for the same issue. */
-type Say = (ai: string, owner: string) => string;
+/** An issue's words: English for `message` and, for the owner, the catalog ref it was formatted from. */
+type Words = { message: string; text?: MessageRef };
+type AddIssue = (type: BuildCheckIssue["type"], words: Words) => void;
+/** The AI's words, or the owner's, for the same issue. The AI's stay English; the owner's are a catalog ref. */
+type Say = (ai: string, owner: MessageRef) => Words;
 
 /** What still needs work on one map's walls, doors and windows, and what the AI left for the user. */
 function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][number] | undefined, aiWalls: boolean, add: AddIssue, say: Say) {
@@ -642,10 +695,14 @@ function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][numb
   const board = file?.board ?? null;
   const grid = data.grid ?? data.proposedGrid;
   for (const opening of listOpenings(board, setup, grid)) {
-    if (opening.now.kind === "left") add("flag", say(`Opening ${opening.number} is left for the user: ${opening.now.reason}`, `Opening ${opening.number} is left for you: ${opening.now.reason}`));
+    if (opening.now.kind === "left") {
+      const { number } = opening, { reason } = opening.now;
+      add("flag", say(`Opening ${number} is left for the user: ${reason}`, sharedMsg("buildCheck.openingLeft", { number, reason })));
+    }
   }
   for (const mark of setup?.marks ?? []) {
-    add("flag", say(`Marked at column ${mark.square.column}, row ${mark.square.row}: ${mark.reason}`, `Left for you at column ${mark.square.column}, row ${mark.square.row}: ${mark.reason}`));
+    const { column, row } = mark.square;
+    add("flag", say(`Marked at column ${column}, row ${row}: ${mark.reason}`, sharedMsg("buildCheck.markLeft", { column, row, reason: mark.reason })));
   }
   // Reported only while the AI may set them, so a build without the choice raises nothing new.
   if (aiWalls) {
@@ -653,7 +710,7 @@ function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][numb
     if (untouched.length > 0) {
       add("problem", say(
         `Openings still as imported: ${untouched.join(", ")}. Set each as a door or window, or leave it for the user with a reason.`,
-        `Openings still as the file has them: ${untouched.join(", ")}. Set them on the map below, or leave them hidden from players.`,
+        sharedMsg("buildCheck.openingsAsFile", { numbers: untouched.join(", ") }),
       ));
     }
   }
@@ -661,37 +718,43 @@ function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][numb
   const result = draftMapBoard(board, setup, grid, file);
   if (!result.ok) {
     // The board's own messages are written for the AI's tools; the owner sets a grid on the page.
-    for (const message of result.problems) add("problem", say(message, message.replace(/ Propose one with save_map\.$/, " Set the map's grid first.")));
+    result.problems.forEach((message, i) => add("problem", say(message, result.ownerProblems[i]!)));
     return;
   }
   for (const index of result.blockedLines) {
     const line = setup.lines[index]!;
     add("problem", say(
       `${describeDraftLine(line, index)} sits on a wall it doesn't cut, so the wall still blocks it. Draw it along the wall's line, or mark the place for the user.`,
-      `${describeDraftLine(line, index)} sits on a wall it doesn't cut, so the wall still blocks it. Remove the line below, or fix it in the map editor after publishing.`,
+      sharedMsg("buildCheck.blockedLine", { line: draftLineRef(line, index) }),
     ));
   }
 }
 
-/** Every problem and flag in a draft, in plain words. Reads only: it changes and publishes nothing. */
+/**
+ * Every problem and flag in a draft, in plain words. Reads only: it changes and publishes nothing.
+ * For the owner, each issue also carries its words as catalog refs (`text`, `labelText`), so the
+ * page shows them in the reader's language (ADR 0055); `message` stays the English.
+ */
 export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
   const issues: BuildCheckIssue[] = [];
-  const audience = input.audience ?? "ai";
-  const say: Say = (ai, owner) => (audience === "owner" ? owner : ai);
-  const about = (item: string, label: string, target: BuildCheckIssue["target"]): AddIssue =>
-    (type, message) => void issues.push({ type, item, label, target, message });
+  const owner = (input.audience ?? "ai") === "owner";
+  const say: Say = (ai, ref) => (owner ? { message: englishText(ref), text: ref } : { message: ai });
+  /** Words that read the same to the AI and the owner. */
+  const same = (ref: MessageRef) => say(englishText(ref), ref);
+  const about = (item: string, label: string, target: BuildCheckIssue["target"], labelText?: MessageRef): AddIssue =>
+    (type, { message, text }) => void issues.push({
+      type, item, label, target, message,
+      ...(text ? { text } : {}),
+      ...(owner && labelText ? { labelText } : {}),
+    });
   const addFlags = (add: AddIssue, flags: readonly BuildFlag[]) =>
-    flags.forEach((f) => add("flag", `${audience === "owner" ? buildFieldLabel(f.field) : f.field}: ${f.message}`));
+    flags.forEach((f) => add("flag", say(`${f.field}: ${f.message}`, sharedMsg("buildCheck.flag", { field: buildFieldLabelRef(f.field), message: f.message }))));
   const features = input.profile?.features ?? ALL_FEATURES;
 
-  const profile = about("game profile", "Game profile", null);
+  const profileLabel = sharedMsg("buildCheck.gameProfile");
+  const profile = about("game profile", englishText(profileLabel), null, profileLabel);
   if (input.profile) addFlags(profile, input.profile.flags);
-  else {
-    profile("problem", say(
-      "No game profile yet. Save one so the GM knows which fields this game uses.",
-      "Your AI hasn't saved a game profile, so every field counts as in use. Ask it to save one if that's wrong.",
-    ));
-  }
+  else profile("problem", say("No game profile yet. Save one so the GM knows which fields this game uses.", sharedMsg("buildCheck.noProfile")));
 
   const creatures = new Map(input.creatures.map((c) => [c.key, c]));
   const maps = new Map(input.maps.map((m) => [m.key, m]));
@@ -700,24 +763,24 @@ export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
   for (const { key, data, flags } of input.creatures) {
     const add = about(`creature ${key}`, data.name, { kind: "creature", key });
     addFlags(add, flags);
-    for (const message of creatureProblems(data, flags, features, audience)) add("problem", message);
-    if (data.imageFileId !== null && !files.has(data.imageFileId)) add("problem", "Its art isn't in this build any more.");
+    for (const field of blankFields(data, flags, features)) add("problem", say(aiBlankProblem(field), ownerBlankProblem(field)));
+    if (data.imageFileId !== null && !files.has(data.imageFileId)) add("problem", same(sharedMsg("buildCheck.artGone")));
   }
 
   for (const { key, data, flags } of input.maps) {
     const add = about(`map ${key}`, data.name, { kind: "map", key });
     addFlags(add, flags);
-    if (data.gridStatus === "none") add("problem", say("It needs a grid. Propose one, or ask the user for the square size.", "It has no grid yet. Set the square size on the map below, then confirm it."));
+    if (data.gridStatus === "none") add("problem", say("It needs a grid. Propose one, or ask the user for the square size.", sharedMsg("buildCheck.noGrid")));
     if (data.gridStatus === "proposed" && data.gridDiffers && data.proposedGrid) {
       add("problem", say(
         `Your grid (${gridWords(data.proposedGrid)}) differs from grid detection's (${gridWords(data.gridDiffers)}), so it waits for the user. Look at the map with the grid drawn, then propose again.`,
-        `Your AI's grid (${gridWords(data.proposedGrid)}) differs from grid detection's (${gridWords(data.gridDiffers)}). Check the map below and confirm the right one.`,
+        sharedMsg("buildCheck.gridDiffers", { ai: gridRef(data.proposedGrid), detected: gridRef(data.gridDiffers) }),
       ));
     } else if (data.gridStatus === "proposed") {
-      add("problem", say("Its grid is waiting for the user to confirm it on the build page.", "Its grid is waiting for you. Check it on the map below, then confirm it."));
+      add("problem", say("Its grid is waiting for the user to confirm it on the build page.", sharedMsg("buildCheck.gridWaiting")));
     }
     const file = files.get(data.fileId);
-    if (!file) add("problem", "Its file isn't in this build any more.");
+    if (!file) add("problem", same(sharedMsg("buildCheck.fileGone")));
     mapSetupIssues(data, file, input.aiWalls ?? false, add, say);
   }
 
@@ -725,18 +788,25 @@ export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
     const add = about(`encounter ${key}`, data.name, { kind: "encounter", key });
     addFlags(add, flags);
     const map = maps.get(data.mapKey);
-    if (!map) add("problem", `It names map "${data.mapKey}", which isn't in this build.`);
+    if (!map) add("problem", same(sharedMsg("buildCheck.unknownMap", { map: data.mapKey })));
     const file = map ? files.get(map.data.fileId) : undefined;
     const grid = map?.data.grid ?? map?.data.proposedGrid ?? null;
     data.tokens.forEach((token, index) => {
       const creature = creatures.get(token.creatureKey);
       const label = token.name ?? creature?.data.name ?? token.creatureKey;
-      if (!creature) add("problem", `Token ${index + 1} names creature "${token.creatureKey}", which isn't in this build.`);
-      if (!token.square) add("problem", say(`${label} has no square yet.`, `${label} has no square yet. Place it in the encounter's editor, or remove it.`));
-      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", `${label} is off the map.`);
+      if (!creature) add("problem", same(sharedMsg("buildCheck.unknownCreature", { number: index + 1, creature: token.creatureKey })));
+      if (!token.square) add("problem", say(`${label} has no square yet.`, sharedMsg("buildCheck.noSquare", { token: label })));
+      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", same(sharedMsg("buildCheck.offMap", { token: label })));
     });
   }
   return issues;
+}
+
+/** One token's problem: the English the page and the AI always had, and the owner's ref for both parts (ADR 0055). */
+function tokenProblem(token: string | MessageRef, problem: string | MessageRef): DraftEncounterProblem {
+  const text = sharedMsg("buildCheck.tokenProblem", { token, problem });
+  const english = (part: string | MessageRef) => (typeof part === "string" ? part : englishText(part));
+  return { token: english(token), message: english(problem), text };
 }
 
 /**
@@ -754,15 +824,15 @@ export function draftEncounterToTemplate(source: DraftEncounterSource): DraftEnc
   for (const draft of source.tokens) {
     const creature = source.creatures.get(draft.creatureKey);
     const name = draft.name ?? creature?.name ?? draft.creatureKey;
-    const refuse = (message: string) => void problems.push({ token: name, message });
+    const refuse = (problem: MessageRef) => void problems.push(tokenProblem(name, problem));
 
-    if (!creature) { refuse("This build has no creature with that key."); continue; }
-    if (!draft.square) { refuse("It has no square yet. Place it or remove it."); continue; }
+    if (!creature) { refuse(sharedMsg("buildCheck.noCreatureWithKey")); continue; }
+    if (!draft.square) { refuse(sharedMsg("buildCheck.tokenNoSquare")); continue; }
     const position = footprintCenter(draft.square, creature.size, grid, map);
-    if (!position) { refuse("Its square is off the map."); continue; }
-    if (footprintCrossesWall(position, creature.size, grid, walls)) { refuse("It would stand across a wall. Move it or remove it."); continue; }
+    if (!position) { refuse(sharedMsg("buildCheck.squareOffMap")); continue; }
+    if (footprintCrossesWall(position, creature.size, grid, walls)) { refuse(sharedMsg("buildCheck.acrossWall")); continue; }
     const hp = creature.hp ?? creature.maxHp;
-    if (hp !== null && creature.maxHp !== null && hp > creature.maxHp) { refuse("Its HP is more than its Max HP."); continue; }
+    if (hp !== null && creature.maxHp !== null && hp > creature.maxHp) { refuse(sharedMsg("buildCheck.hpOverMax")); continue; }
 
     tokens.push({
       name,
@@ -788,7 +858,9 @@ export function draftEncounterToTemplate(source: DraftEncounterSource): DraftEnc
       ok: false,
       problems: parsed.error.issues.map((issue) => {
         const index = issue.path[0] === "tokens" && typeof issue.path[1] === "number" ? issue.path[1] : undefined;
-        return { token: index === undefined ? "This encounter" : (tokens[index]?.name ?? "This encounter"), message: issue.message };
+        const name = index === undefined ? undefined : tokens[index]?.name;
+        // Zod's own wording has no id, so the owner reads it in English; ours maps back to its id.
+        return tokenProblem(name ?? sharedMsg("buildCheck.thisEncounter"), validationRef(issue.message) ?? issue.message);
       }),
     };
   }

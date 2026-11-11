@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { BUILD_LIMITS, NO_BUILD_CHOICES, type BuildChoices, type BuildSummary } from "@vtt/shared";
+import { BUILD_LIMITS, NO_BUILD_CHOICES, formatDateTime, type BuildChoices, type BuildSummary } from "@vtt/shared";
+import { formattingLocale, t, useLocale, type TextId } from "../../i18n/locale";
 import { api } from "../../net/api";
 import { navigate } from "../../router";
 import { EmptyState } from "../../ui/EmptyState";
@@ -14,8 +15,8 @@ export const BUILD_LIMIT_REASON_ID = "build-limit-reason";
 /** A build closing within this long says so on its card, not only in the small print. */
 const CLOSING_SOON_MS = 3 * 24 * 60 * 60 * 1000;
 
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
-const moment = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+const day = (iso: string) => formatDateTime(formattingLocale(), new Date(iso), { month: "long", day: "numeric" });
+const moment = (iso: string) => formatDateTime(formattingLocale(), new Date(iso), { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
 const openBuildPage = (id: string) => (e: React.MouseEvent) => { e.preventDefault(); navigate(`/builds/${id}`); };
 
 function ChoiceBoxes({ choices, onChange }: { choices: BuildChoices; onChange: (choices: BuildChoices) => void }) {
@@ -23,11 +24,11 @@ function ChoiceBoxes({ choices, onChange }: { choices: BuildChoices; onChange: (
     <>
       <label className="build-choice">
         <input type="checkbox" checked={choices.aiGrid} onChange={(e) => onChange({ ...choices, aiGrid: e.target.checked })} />
-        <span>Let my AI set grids <span className="muted small-print">Only when grid detection agrees with it. Otherwise you confirm each grid.</span></span>
+        <span>{t("build.choice.aiGrid")} <span className="muted small-print">{t("build.choice.aiGridHint")}</span></span>
       </label>
       <label className="build-choice">
         <input type="checkbox" checked={choices.aiWalls} onChange={(e) => onChange({ ...choices, aiWalls: e.target.checked })} />
-        <span>Let my AI set walls, doors and windows <span className="muted small-print">You see every one before publishing. Anything it can't work out is left for you.</span></span>
+        <span>{t("build.choice.aiWalls")} <span className="muted small-print">{t("build.choice.aiWallsHint")}</span></span>
       </label>
     </>
   );
@@ -40,17 +41,17 @@ function ChoiceBoxes({ choices, onChange }: { choices: BuildChoices; onChange: (
 export function BuildChoiceFields({ choices, onChange, disabled }: { choices: BuildChoices; onChange: (choices: BuildChoices) => void; disabled?: boolean }) {
   return (
     <fieldset className="build-choices" disabled={disabled}>
-      <legend>What your AI may set up on maps</legend>
+      <legend>{t("build.choice.legend")}</legend>
       <ChoiceBoxes choices={choices} onChange={onChange} />
     </fieldset>
   );
 }
 
-/** The usual answers to "how much map setup does my AI do", over the same two choices. */
-const MAP_SETUPS: { label: string; detail: string; choices: BuildChoices }[] = [
-  { label: "You set up maps", detail: "Your AI suggests each grid and you confirm it. It doesn't draw walls, doors or windows.", choices: { aiGrid: false, aiWalls: false } },
-  { label: "Your AI sets grids", detail: "Its grid counts only when grid detection agrees. You confirm the rest. It doesn't draw walls, doors or windows.", choices: { aiGrid: true, aiWalls: false } },
-  { label: "Your AI sets grids, walls, doors and windows", detail: "Its grid counts only when grid detection agrees. You see every wall, door and window before publishing, and anything it can't work out is left for you.", choices: { aiGrid: true, aiWalls: true } },
+/** The usual answers to "how much map setup does my AI do", over the same two choices. Shown with `t()`. */
+const MAP_SETUPS: { label: TextId; detail: TextId; choices: BuildChoices }[] = [
+  { label: "build.setup.you", detail: "build.setup.youDetail", choices: { aiGrid: false, aiWalls: false } },
+  { label: "build.setup.grids", detail: "build.setup.gridsDetail", choices: { aiGrid: true, aiWalls: false } },
+  { label: "build.setup.all", detail: "build.setup.allDetail", choices: { aiGrid: true, aiWalls: true } },
 ];
 
 /** One choice for the usual cases, and each of the two on its own for the rest. */
@@ -58,7 +59,7 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
   const group = useId();
   return (
     <fieldset className="build-choices">
-      <legend>How much map setup your AI does</legend>
+      <legend>{t("build.setup.legend")}</legend>
       {MAP_SETUPS.map((setup) => (
         <label key={setup.label} className="build-choice">
           <input
@@ -67,26 +68,27 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
             checked={setup.choices.aiGrid === choices.aiGrid && setup.choices.aiWalls === choices.aiWalls}
             onChange={() => onChange(setup.choices)}
           />
-          <span>{setup.label} <span className="muted small-print">{setup.detail}</span></span>
+          <span>{t(setup.label)} <span className="muted small-print">{t(setup.detail)}</span></span>
         </label>
       ))}
       <details className="build-disclosure">
-        <summary>Choose each one separately</summary>
+        <summary>{t("build.setup.separately")}</summary>
         <ChoiceBoxes choices={choices} onChange={onChange} />
       </details>
     </fieldset>
   );
 }
 
-const mapSetupLabel = ({ aiGrid, aiWalls }: BuildChoices) =>
-  aiGrid && aiWalls ? "AI sets grids and walls" : aiGrid ? "AI sets grids" : aiWalls ? "AI sets walls" : "You set up maps";
+const mapSetupLabel = ({ aiGrid, aiWalls }: BuildChoices): TextId =>
+  aiGrid && aiWalls ? "build.setup.chip.both" : aiGrid ? "build.setup.chip.grids" : aiWalls ? "build.setup.chip.walls" : "build.setup.you";
 
-/** Whether the build's AI can still add to it, from the pass's expiry alone. */
+/** Whether the build's AI can still add to it, from the pass's expiry alone, in the current language. */
 function passState(build: BuildSummary, now: number): { live: boolean; chip: string; text: string } {
-  if (!build.passExpiresAt) return { live: false, chip: "No pass", text: "Your AI has no working pass." };
+  if (!build.passExpiresAt) return { live: false, chip: t("build.passState.none"), text: t("build.passState.noneText") };
+  const when = moment(build.passExpiresAt);
   return Date.parse(build.passExpiresAt) > now
-    ? { live: true, chip: "Pass works", text: `Your AI can add to it until ${moment(build.passExpiresAt)}.` }
-    : { live: false, chip: "Pass ended", text: `Your AI's pass ended ${moment(build.passExpiresAt)}.` };
+    ? { live: true, chip: t("build.passState.works"), text: t("build.passState.worksText", { when }) }
+    : { live: false, chip: t("build.passState.ended"), text: t("build.passState.endedText", { when }) };
 }
 
 /** Starting a build: its name and how much map setup the AI does, then its pass (FR-GM-26). */
@@ -110,24 +112,24 @@ function NewBuildDialog({ open, onClose, onAfterClose, onStarted }: { open: bool
       // The summary is read before its first pass is made, so the pass's expiry comes alongside it.
       onStarted({ ...build, passExpiresAt: expiresAt }, pass);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start a build");
+      setError(err instanceof Error ? err.message : t("build.new.startFailed"));
     } finally {
       setStarting(false);
     }
   }
 
   return (
-    <Modal open={open} title="New build" onClose={cancel} onAfterClose={onAfterClose} closeLabel="Cancel" initialFocus={nameField}>
+    <Modal open={open} title={t("library.newBuild")} onClose={cancel} onAfterClose={onAfterClose} closeLabel={t("common.cancel")} initialFocus={nameField}>
       <form className="build-form build-new" onSubmit={(e) => void start(e)}>
-        <p className="muted small-print">Your AI app reads your own folder of rules, sheets and art, and adds what it finds to a private draft.</p>
-        <label>Name of this build<input ref={nameField} value={name} maxLength={80} required onChange={(e) => setName(e.target.value)} /></label>
+        <p className="muted small-print">{t("build.new.lead")}</p>
+        <label>{t("build.new.name")}<input ref={nameField} value={name} maxLength={80} required onChange={(e) => setName(e.target.value)} /></label>
         <MapSetupFields choices={choices} onChange={setChoices} />
-        <p className="muted small-print">You can change this on the build page. Only you can publish.</p>
+        <p className="muted small-print">{t("build.new.changeLater")}</p>
         {error && <p role="alert" className="error">{error}</p>}
-        <p className="muted small-print">{RIGHTS_NOTICE}</p>
+        <p className="muted small-print">{t(RIGHTS_NOTICE)}</p>
         <div className="row build-form-actions">
-          <button type="button" disabled={starting} onClick={cancel}>Cancel</button>
-          <button type="submit" className="primary" disabled={starting || name.trim() === ""}>{starting ? "Starting…" : "Start build"}</button>
+          <button type="button" disabled={starting} onClick={cancel}>{t("common.cancel")}</button>
+          <button type="submit" className="primary" disabled={starting || name.trim() === ""}>{starting ? t("build.new.starting") : t("build.new.start")}</button>
         </div>
       </form>
     </Modal>
@@ -143,13 +145,14 @@ const toFix = (progress: BuildProgress | undefined) => (progress && progress.dra
 /**
  * The one thing to do next on a build, from what its draft holds: fix what its page lists, then
  * publish, then give the AI a pass again. A section of the build page is named after its `#`.
+ * `open` marks the plain Open step, whose accessible name is "Open <build>".
  */
-function nextStep(build: BuildSummary, passLive: boolean, progress: BuildProgress | undefined): { label: string; href: string } | "new pass" {
+function nextStep(build: BuildSummary, passLive: boolean, progress: BuildProgress | undefined): { label: string; href: string; open?: true } | "new pass" {
   const fix = toFix(progress);
-  if (fix > 0) return { label: `Fix ${fix} ${fix === 1 ? "thing" : "things"}`, href: `/builds/${build.id}#build-issues` };
-  if (progress && progress.draft.length > 0) return { label: `Review and publish ${progress.draft.length}`, href: `/builds/${build.id}#build-publish` };
+  if (fix > 0) return { label: t("build.next.fix", { n: fix }), href: `/builds/${build.id}#build-issues` };
+  if (progress && progress.draft.length > 0) return { label: t("build.next.publish", { n: progress.draft.length }), href: `/builds/${build.id}#build-publish` };
   if (!passLive) return "new pass";
-  return { label: "Open", href: `/builds/${build.id}` };
+  return { label: t("common.open"), href: `/builds/${build.id}`, open: true };
 }
 
 /** How much a build needs its owner, so the ones that do come first. */
@@ -162,11 +165,11 @@ function urgency(build: BuildSummary, now: number, progress: BuildProgress | und
 /** What the draft holds, as its page counts it. */
 function DraftCounts({ progress }: { progress: BuildProgress }) {
   const parts = [
-    progress.draft.length > 0 ? `${counted(progress.draft)} not yet published` : null,
-    progress.published > 0 ? `${progress.published} published` : null,
-    progress.notes > 0 ? `${progress.notes} ${progress.notes === 1 ? "note" : "notes"} from your AI` : null,
+    progress.draft.length > 0 ? t("build.counts.unpublished", { items: counted(progress.draft) }) : null,
+    progress.published > 0 ? t("build.counts.published", { n: progress.published }) : null,
+    progress.notes > 0 ? t("build.counts.notes", { n: progress.notes }) : null,
   ].filter((p): p is string => p !== null);
-  return <p className="build-stats">{parts.length > 0 ? parts.map((p) => <span key={p}>{p}</span>) : <span>Nothing saved yet.</span>}</p>;
+  return <p className="build-stats">{parts.length > 0 ? parts.map((p) => <span key={p}>{p}</span>) : <span>{t("build.counts.nothing")}</span>}</p>;
 }
 
 /** An open build: what state it's in, and the one thing to do next. */
@@ -183,8 +186,8 @@ function BuildCard({ build, now, progress, making, error, onNewPass }: {
   const closingSoon = Date.parse(build.closesAt) - now < CLOSING_SOON_MS;
   const next = nextStep(build, pass.live, progress);
   const newPassButton = (className: string) => (
-    <button type="button" className={className} aria-label={`Make a new pass for ${build.name}`} disabled={making} onClick={onNewPass}>
-      {making ? "Making a pass…" : "Make a new pass"}
+    <button type="button" className={className} aria-label={t("build.card.newPassFor", { name: build.name })} disabled={making} onClick={onNewPass}>
+      {making ? t("build.card.makingPass") : t("build.card.newPass")}
     </button>
   );
   return (
@@ -194,21 +197,21 @@ function BuildCard({ build, now, progress, making, error, onNewPass }: {
           <h3><a href={`/builds/${build.id}`} onClick={openBuildPage(build.id)}>{build.name}</a></h3>
           <div className="build-badges">
             <span className={pass.live ? "chip" : "chip build-chip-warn"}>{pass.chip}</span>
-            {toFix(progress) > 0 && <span className="chip build-chip-warn">{toFix(progress)} to fix</span>}
-            {closingSoon && <span className="chip build-chip-warn">Closes {day(build.closesAt)}</span>}
-            <span className="chip">{mapSetupLabel(build.choices)}</span>
+            {toFix(progress) > 0 && <span className="chip build-chip-warn">{t("build.card.toFix", { n: toFix(progress) })}</span>}
+            {closingSoon && <span className="chip build-chip-warn">{t("build.card.closes", { day: day(build.closesAt) })}</span>}
+            <span className="chip">{t(mapSetupLabel(build.choices))}</span>
           </div>
         </div>
       </div>
       {progress && <DraftCounts progress={progress} />}
       <p className="build-card-facts muted small-print">
         <span>{pass.text}</span>
-        <span>Last change {moment(build.updatedAt)}. Closes {day(build.closesAt)} if nothing changes.</span>
+        <span>{t("build.card.facts", { when: moment(build.updatedAt), day: day(build.closesAt) })}</span>
       </p>
       {error && <p role="alert" className="error">{error}</p>}
       <div className="row build-card-actions">
         {next === "new pass" ? newPassButton("secondary") : (
-          <button type="button" className="secondary" aria-label={next.label === "Open" ? `Open ${build.name}` : `${next.label} in ${build.name}`} onClick={() => navigate(next.href)}>
+          <button type="button" className="secondary" aria-label={next.open ? t("build.next.openNamed", { name: build.name }) : t("build.next.inBuild", { step: next.label, name: build.name })} onClick={() => navigate(next.href)}>
             {next.label}
           </button>
         )}
@@ -230,6 +233,8 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
   onCreatingChange?: (creating: boolean) => void;
   onFullChange?: (full: boolean) => void;
 }) {
+  // The tab and its cards and dialogs re-render in a newly chosen language.
+  useLocale();
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   /** Each open build's draft, read once the list is in; null until every read has finished. */
   const [progress, setProgress] = useState<Record<string, BuildProgress> | null>(null);
@@ -254,7 +259,7 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
         if (!live) return;
         setProgress(Object.fromEntries(read.flatMap((r, i) => (r.status === "fulfilled" ? [[open[i]!.id, buildProgress(r.value)]] : []))));
       },
-      (err: unknown) => { if (live) onError(err instanceof Error ? err.message : "Could not load your builds"); },
+      (err: unknown) => { if (live) onError(err instanceof Error ? err.message : t("build.tab.loadFailed")); },
     );
     return () => { live = false; };
   }, [onError]);
@@ -281,7 +286,7 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
       setBuilds((all) => (all ?? []).map((b) => (b.id === build.id ? { ...b, passExpiresAt: expiresAt } : b)));
       setShownPass({ id: build.id, pass });
     } catch (err) {
-      setPassError({ id: build.id, message: err instanceof Error ? err.message : "Couldn't make a new pass." });
+      setPassError({ id: build.id, message: err instanceof Error ? err.message : t("build.tab.newPassFailed") });
     } finally {
       setMaking(null);
     }
@@ -289,31 +294,31 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
 
   return (
     <div role="tabpanel" className="build-section">
-      {full && <p id={BUILD_LIMIT_REASON_ID} className="muted small-print">{limit} of {limit} builds are open, the most at once. To start another, discard one on its page. What it published stays in your library.</p>}
-      <p className="muted">Your own AI app turns a folder of rules, sheets and art into a draft game. You check it here and choose what to publish.</p>
+      {full && <p id={BUILD_LIMIT_REASON_ID} className="muted small-print">{t("build.tab.full", { limit })}</p>}
+      <p className="muted">{t("build.tab.lead")}</p>
 
       <details className="build-disclosure build-help" open={(builds !== null && builds.length === 0) || undefined}>
-        <summary>How AI builds work</summary>
+        <summary>{t("build.tab.how")}</summary>
         <ol className="share-ai-steps">
-          <li><span className="share-ai-step">Start a build and give the message to your AI app</span><span className="muted small-print">It carries a pass that works for 24 hours, for this one draft. Your AI never gets your password, and it can't reach your library or rooms.</span></li>
-          <li><span className="share-ai-step">Your AI fills the draft</span><span className="muted small-print">It reads your folder and saves rules, creatures, maps and encounters. Anything unclear it leaves blank and flags for you.</span></li>
-          <li><span className="share-ai-step">You check it and publish</span><span className="muted small-print">On the build page you fix what's flagged and choose what goes into your library. Your AI can't publish.</span></li>
+          <li><span className="share-ai-step">{t("build.tab.step1")}</span><span className="muted small-print">{t("build.tab.step1Detail")}</span></li>
+          <li><span className="share-ai-step">{t("build.tab.step2")}</span><span className="muted small-print">{t("build.tab.step2Detail")}</span></li>
+          <li><span className="share-ai-step">{t("build.tab.step3")}</span><span className="muted small-print">{t("build.tab.step3Detail")}</span></li>
         </ol>
-        <p className="muted small-print">Up to {limit} builds can be open at once. A build closes after {BUILD_LIMITS.abandonedAfterDays} days with no changes.</p>
+        <p className="muted small-print">{t("build.tab.limits", { limit, days: BUILD_LIMITS.abandonedAfterDays })}</p>
       </details>
 
-      {!builds && <p className="muted" aria-busy="true">Loading…</p>}
-      {builds && builds.length === 0 && <EmptyState picture="empty-library">You haven't started an AI build yet.</EmptyState>}
-      {builds && builds.length > 0 && q && openShown.length === 0 && closedShown.length === 0 && <p className="muted">None of your builds match that search.</p>}
+      {!builds && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
+      {builds && builds.length === 0 && <EmptyState picture="empty-library">{t("build.tab.empty")}</EmptyState>}
+      {builds && builds.length > 0 && q && openShown.length === 0 && closedShown.length === 0 && <p className="muted">{t("build.tab.noMatch")}</p>}
 
       {builds && builds.length > 0 && (!q || openShown.length > 0) && (
         <>
           <div className="builds-head">
-            <h2 id="builds-in-progress">In progress</h2>
-            <span className="muted small-print">{open.length} of {limit} open</span>
+            <h2 id="builds-in-progress">{t("build.tab.inProgress")}</h2>
+            <span className="muted small-print">{t("build.tab.openCount", { open: open.length, limit })}</span>
           </div>
-          {open.length === 0 && <p className="muted">Nothing in progress.</p>}
-          {open.length > 0 && progress === null && <p className="muted" aria-busy="true">Reading your drafts…</p>}
+          {open.length === 0 && <p className="muted">{t("build.tab.nothingInProgress")}</p>}
+          {open.length > 0 && progress === null && <p className="muted" aria-busy="true">{t("build.tab.reading")}</p>}
           <ul className="plain build-list" aria-labelledby="builds-in-progress">
             {progress !== null && openShown.map((b) => (
               <BuildCard
@@ -332,12 +337,12 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
 
       {closedShown.length > 0 && (
         <details className="build-disclosure build-closed" open={closedOpen} onToggle={(e) => setClosedOpen(e.currentTarget.open)}>
-          <summary>Closed builds ({closedShown.length})</summary>
+          <summary>{t("build.tab.closed", { n: closedShown.length })}</summary>
           <ul className="plain build-published">
             {closedShown.map((b) => (
               <li key={b.id}>
                 <a href={`/builds/${b.id}`} onClick={openBuildPage(b.id)}>{b.name}</a>
-                <span className="muted small-print">Closed. What it published stays in your library.</span>
+                <span className="muted small-print">{t("build.tab.closedNote")}</span>
               </li>
             ))}
           </ul>
@@ -377,12 +382,12 @@ export function BuildsTab({ query, onError, creating = false, onCreatingChange =
       >
         {shownPass && (
           <>
-            <ol className="share-ai-steps build-pass-next" aria-label="What happens next">
-              <li><span className="share-ai-step">Paste it into your AI app</span><span className="muted small-print">Then point it at your folder of rules, sheets and art.</span></li>
-              <li><span className="share-ai-step">Your AI fills the draft</span><span className="muted small-print">You can close this page. The build waits under AI builds.</span></li>
-              <li><span className="share-ai-step">Check it and publish</span><span className="muted small-print">The build page shows what to fix and what's ready.</span></li>
+            <ol className="share-ai-steps build-pass-next" aria-label={t("build.tab.nextSteps")}>
+              <li><span className="share-ai-step">{t("build.tab.next1")}</span><span className="muted small-print">{t("build.tab.next1Detail")}</span></li>
+              <li><span className="share-ai-step">{t("build.tab.step2")}</span><span className="muted small-print">{t("build.tab.next2Detail")}</span></li>
+              <li><span className="share-ai-step">{t("build.tab.next3")}</span><span className="muted small-print">{t("build.tab.next3Detail")}</span></li>
             </ol>
-            <a href={`/builds/${shownPass.id}`} onClick={openBuildPage(shownPass.id)}>Open the build page</a>
+            <a href={`/builds/${shownPass.id}`} onClick={openBuildPage(shownPass.id)}>{t("build.tab.openPage")}</a>
           </>
         )}
       </PassPanel>
