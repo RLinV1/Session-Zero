@@ -16,7 +16,7 @@ const state: RoomState = {
   ...emptyRoomState("r"),
   participants: { gm },
   tokens: {
-    a: token("a", { attacks: [{ name: "Fireball", toHit: null, damage: { count: 2, sides: 6, modifier: 0 }, maxTargets: 2 }] }),
+    a: token("a", { attacks: [{ name: "Fireball", toHit: null, damage: { terms: [{ count: 2, sides: 6 }], modifier: 0 }, maxTargets: 2 }] }),
     b: token("b", { position: { x: 150, y: 100 } }),
     c: token("c", { position: { x: 200, y: 100 } }),
     d: token("d", { position: { x: 250, y: 100 } }),

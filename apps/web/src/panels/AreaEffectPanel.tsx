@@ -3,7 +3,6 @@ import {
   areaEffectStage,
   isActive,
   MAX_ATTACK_LABEL,
-  parseDiceExpression,
   type AreaEffect,
   type AreaEffectStage,
   type CommandInput,
@@ -12,6 +11,8 @@ import {
   type RoomState,
 } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
+import { DicePoolInput } from "../ui/DicePoolInput";
+import { poolExpression, poolOf, type DicePool } from "../ui/dicePool";
 import { PanelSection, useSectionCollapse } from "../ui/PanelSection";
 import { defaultCaller } from "./attackRoll";
 import { GroupSelectionList, type GroupSelection } from "./GroupSelection";
@@ -86,25 +87,24 @@ export function AreaEffectPanel({ connection, state, you, selection, onResolve, 
 }
 
 function StartForm({ connection, state, selection }: { connection: RoomConnection; state: RoomState; selection: GroupSelection }) {
-  const [expression, setExpression] = useState("1d20");
+  const [pool, setPool] = useState<DicePool>(poolOf(20));
+  const expression = poolExpression(pool);
   const [label, setLabel] = useState("");
   const { busy, error, setError, send } = useSender(connection);
-  const parsed = parseDiceExpression(expression);
   const tokenIds = selection.tokenIds.filter((id) => state.tokens[id]);
 
   const start = async (e: FormEvent) => {
     e.preventDefault();
-    if (!parsed.ok) return setError(parsed.message);
     if (await send({ type: "areaEffect.start", tokenIds, expression, label: label.trim() || undefined })) selection.clear();
   };
 
   return (
     <form onSubmit={start} className="stack">
       <GroupSelectionList selection={selection} state={state} idPrefix="area-effect" />
-      <label htmlFor="area-effect-expression">{t("area.rollEach")}</label>
+      <span className="field-label">{t("area.rollEach")}</span>
+      <DicePoolInput value={pool} onChange={(next) => { setPool(next); setError(null); }} label={t("area.rollEach")} focusFirst="area-effect-focus" />
       <div className="dice-row">
-        <input id="area-effect-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} data-area-effect-focus />
-        <button className="primary" type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? t("area.selectFirst") : undefined}>
+        <button className="primary" type="submit" disabled={busy || tokenIds.length === 0} title={tokenIds.length === 0 ? t("area.selectFirst") : undefined}>
           {t("area.start")}
         </button>
       </div>
@@ -238,30 +238,21 @@ function CallForm({ connection, state, you, effect, label }: { connection: RoomC
 
 /** Whoever holds the call writes the formula and picks one roll or one per target (ADR 0046). */
 function DamageRollForm({ connection, effect, visibleTargets }: { connection: RoomConnection; effect: AreaEffect; visibleTargets: number }) {
-  const [expression, setExpression] = useState("");
+  const [pool, setPool] = useState<DicePool>(poolOf(6));
+  const expression = poolExpression(pool);
   const [mode, setMode] = useState<DamageMode>("single");
   const { busy, error, setError, send } = useSender(connection);
-  const parsed = parseDiceExpression(expression);
   const roll = (e: FormEvent) => {
     e.preventDefault();
-    if (!parsed.ok) return setError(parsed.message);
     void send({ type: "areaEffect.rollDamage", effectId: effect.id, expression, mode });
   };
   const name = `damage-mode-${effect.id}`;
   return (
     <form onSubmit={roll} className="stack damage-roll-form">
-      <label htmlFor={`damage-expression-${effect.id}`}>{t("area.damageFor", { n: visibleTargets })}</label>
+      <span className="field-label">{t("area.damageFor", { n: visibleTargets })}</span>
+      <DicePoolInput value={pool} onChange={(next) => { setPool(next); setError(null); }} label={t("area.damageFor", { n: visibleTargets })} className="damage" focusFirst="area-effect-focus" />
       <div className="dice-row">
-        <input
-          id={`damage-expression-${effect.id}`}
-          value={expression}
-          onChange={(e) => { setExpression(e.target.value); setError(null); }}
-          placeholder={t("area.damageFormula")}
-          autoComplete="off"
-          aria-invalid={expression.trim() !== "" && !parsed.ok}
-          data-area-effect-focus
-        />
-        <button type="submit" className="primary" disabled={busy || !parsed.ok}>{t("home.dice.roll")}</button>
+        <button type="submit" className="primary" disabled={busy}>{t("dice.rollExpr", { expr: expression })}</button>
       </div>
       <fieldset className="damage-mode segmented">
         <legend className="sr-only">{t("area.howToRoll")}</legend>

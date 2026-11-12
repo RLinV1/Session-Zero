@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Crosshair, DiceFive, DotsThree, Eye, EyeSlash, Minus, PencilSimple, Plus, SlidersHorizontal, Sword, Target, X } from "@phosphor-icons/react";
+import { Crosshair, DiceFive, DotsThree, Eye, EyeSlash, PencilSimple, Plus, SlidersHorizontal, Sword, Target, X } from "@phosphor-icons/react";
 import {
   can,
   isGroupRoll,
@@ -21,25 +21,22 @@ import { PopoverButton } from "../ui/Popover";
 import { isBoolean, usePersistentState } from "../ui/usePersistentState";
 import {
   attackExpression,
-  clampCount,
-  clampModifier,
   DEFAULT_ATTACK,
-  DIE_SIDES,
   isSettingsRecord,
   kindOf,
   LAST_USED_KEY,
-  MAX_ATTACK_DICE,
-  MAX_ATTACK_MODIFIER,
   MAX_PRESETS,
   presetsForToken,
   presetRollLabel,
   presetSummary,
   shouldPingTarget,
   targetsByDistance,
-  type AttackDice,
+  readAttackSettings,
   type AttackPreset,
   type AttackSettings,
 } from "./attackRoll";
+import { DicePoolInput } from "../ui/DicePoolInput";
+import { poolOf, type DicePool } from "../ui/dicePool";
 import type { AttackReset } from "./attackSession";
 import { saveTokenAttacks } from "./tokenAttacks";
 import { BUILTIN_ANIMATIONS } from "../board/effectPresets";
@@ -162,7 +159,7 @@ export function AttackPanel({
           inTurn={inTurn !== undefined}
           targetId={target?.id ?? null}
           rolling={rolling}
-          initial={lastUsed[attacker.id] ?? DEFAULT_ATTACK}
+          initial={readAttackSettings(lastUsed[attacker.id]) ?? DEFAULT_ATTACK}
           presets={allPresets[attacker.id] ?? []}
           customOpen={customOpen}
           onCustomOpen={setCustomOpen}
@@ -226,8 +223,6 @@ function AttackForm({
   onPresets: (update: (presets: AttackPreset[]) => AttackPreset[]) => Promise<string | null>;
 }) {
   const [settings, setSettings] = useState<AttackSettings>(initial);
-  // The modifier field's own text, so "-" or an empty box can be typed on the way to "-2".
-  const [modifierText, setModifierText] = useState(String(initial.modifier));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The named attack being edited: its index, "new" while adding, or null. */
@@ -255,7 +250,6 @@ function AttackForm({
   const kind = kindOf(settings);
   const update = (changes: Partial<AttackSettings>) => {
     setSettings((s) => ({ ...s, ...changes }));
-    if (changes.modifier !== undefined) setModifierText(String(changes.modifier));
     setError(null);
   };
 
@@ -296,7 +290,7 @@ function AttackForm({
   /** The chosen attack's to-hit roll, or its damage when it has no to-hit, at every aimed target (attack-ux-polish). */
   const rollPreset = (preset: AttackPreset) => {
     if (!target) return;
-    const [dice, rollKind]: [AttackDice, AttackKind] = preset.toHit ? [preset.toHit, "toHit"] : [preset.damage!, "damage"];
+    const [dice, rollKind]: [DicePool, AttackKind] = preset.toHit ? [preset.toHit, "toHit"] : [preset.damage!, "damage"];
     void send({ expression: attackExpression(dice), kind: rollKind, label: presetRollLabel(preset, rollKind), targetId: target.token.id }, extras);
   };
 
@@ -540,44 +534,8 @@ function AttackForm({
               </button>
             </div>
 
-            <fieldset className="attack-dice">
-              <legend className="sr-only">{t("home.dice.title")}</legend>
-              <div className="attack-die-types" role="group" aria-label={t("attack.dieType")}>
-                {DIE_SIDES.map((sides) => (
-                  <button key={sides} type="button" className="chip" aria-pressed={settings.sides === sides} onClick={() => update({ sides })}>
-                    d{sides}
-                  </button>
-                ))}
-              </div>
-              <div className="attack-dice-row">
-                <span className="attack-stepper" role="group" aria-label={t("attack.numberOfDice")}>
-                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count - 1) })} disabled={settings.count <= 1} aria-label={t("attack.fewer")}>
-                    <Minus size={12} aria-hidden="true" />
-                  </button>
-                  <output aria-live="polite">{settings.count}</output>
-                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count + 1) })} disabled={settings.count >= MAX_ATTACK_DICE} aria-label={t("attack.more")}>
-                    <Plus size={12} aria-hidden="true" />
-                  </button>
-                </span>
-                <span className="muted">d{settings.sides}</span>
-                <label className="attack-modifier">
-                  <span className="muted">+</span>
-                  <span className="sr-only">{t("attack.modifier")}</span>
-                  <input
-                    type="number"
-                    value={modifierText}
-                    min={-MAX_ATTACK_MODIFIER}
-                    max={MAX_ATTACK_MODIFIER}
-                    step={1}
-                    onChange={(e) => {
-                      setModifierText(e.target.value);
-                      setSettings((s) => ({ ...s, modifier: clampModifier(Number(e.target.value)) }));
-                      setError(null);
-                    }}
-                    onBlur={() => setModifierText(String(settings.modifier))}
-                  />
-                </label>
-              </div>
+            <div className="attack-dice">
+              <DicePoolInput value={settings} onChange={(pool) => update(pool)} label={t("home.dice.title")} className={kind === "damage" ? "damage" : undefined} />
               <input
                 className="attack-custom-label"
                 aria-label={t("attack.label")}
@@ -586,7 +544,7 @@ function AttackForm({
                 maxLength={MAX_ATTACK_LABEL}
                 placeholder={t("attack.labelOptional")}
               />
-            </fieldset>
+            </div>
 
             <div className="attack-roll-row">
               <button
@@ -629,8 +587,8 @@ export function PresetEditor({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [toHit, setToHit] = useState<AttackDice | null>(initial ? initial.toHit : { count: 1, sides: 20, modifier: 0 });
-  const [damage, setDamage] = useState<AttackDice | null>(initial ? initial.damage : { count: 1, sides: 6, modifier: 0 });
+  const [toHit, setToHit] = useState<DicePool | null>(initial ? initial.toHit : poolOf(20));
+  const [damage, setDamage] = useState<DicePool | null>(initial ? initial.damage : poolOf(6));
   const [multi, setMulti] = useState(initial?.maxTargets !== undefined);
   const [maxTargets, setMaxTargets] = useState(initial?.maxTargets ?? 3);
   const [maxTargetsText, setMaxTargetsText] = useState(String(initial?.maxTargets ?? 3));
@@ -661,8 +619,8 @@ export function PresetEditor({
         {t("common.name")}
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_ATTACK_LABEL} placeholder={t("attack.namePlaceholder")} autoFocus />
       </label>
-      <DiceField label={t("attack.toHit")} value={toHit} fallback={{ count: 1, sides: 20, modifier: 0 }} onChange={setToHit} />
-      <DiceField label={t("attack.damage")} value={damage} fallback={{ count: 1, sides: 6, modifier: 0 }} onChange={setDamage} />
+      <DiceField label={t("attack.toHit")} kind="toHit" value={toHit} fallback={poolOf(20)} onChange={setToHit} />
+      <DiceField label={t("attack.damage")} kind="damage" value={damage} fallback={poolOf(6)} onChange={setDamage} />
       <label className="checkbox">
         <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
         {t("attack.multiTarget")}
@@ -710,62 +668,37 @@ export function PresetEditor({
   );
 }
 
-/** An optional roll in the editor: a checkbox to include it, then count, die and modifier. */
-function DiceField({
+/**
+ * An optional roll in the attack editor: a checkbox to include it, then the dice builder
+ * (dice-pool). Exported for the other editors of named attacks, such as the AI builder's drafts.
+ */
+export function DiceField({
   label,
+  kind,
   value,
   fallback,
   onChange,
 }: {
   label: string;
-  value: AttackDice | null;
-  fallback: AttackDice;
-  onChange: (dice: AttackDice | null) => void;
+  /** Which roll this is, so to hit and damage read as separate sections. */
+  kind: AttackKind;
+  value: DicePool | null;
+  fallback: DicePool;
+  onChange: (dice: DicePool | null) => void;
 }) {
-  const [modifierText, setModifierText] = useState(String(value?.modifier ?? fallback.modifier));
-  const dice = value ?? fallback;
-  const set = (changes: Partial<AttackDice>) => onChange({ ...dice, ...changes });
+  // Kept while unticked, so ticking it again brings back what was set.
+  const [kept, setKept] = useState<DicePool>(value ?? fallback);
+  const dice = value ?? kept;
   return (
-    <fieldset className="attack-dice-field">
-      <legend className="sr-only">{label}</legend>
-      <label className="checkbox">
+    <div className={`attack-dice-field ${kind === "toHit" ? "to-hit" : "damage"}${value ? "" : " off"}`}>
+      <label className="checkbox attack-dice-field-head">
         <input type="checkbox" checked={value !== null} onChange={(e) => onChange(e.target.checked ? dice : null)} />
         {label}
       </label>
-      {value && (
-        <span className="attack-dice-inputs">
-          <input
-            type="number"
-            aria-label={t("attack.diceCount", { label })}
-            value={dice.count}
-            min={1}
-            max={MAX_ATTACK_DICE}
-            onChange={(e) => set({ count: clampCount(Number(e.target.value)) })}
-          />
-          <select aria-label={t("attack.diceDie", { label })} value={dice.sides} onChange={(e) => set({ sides: Number(e.target.value) })}>
-            {DIE_SIDES.map((s) => (
-              <option key={s} value={s}>
-                d{s}
-              </option>
-            ))}
-          </select>
-          <span className="muted">+</span>
-          <input
-            type="number"
-            aria-label={t("attack.diceModifier", { label })}
-            value={modifierText}
-            min={-MAX_ATTACK_MODIFIER}
-            max={MAX_ATTACK_MODIFIER}
-            onChange={(e) => {
-              setModifierText(e.target.value);
-              set({ modifier: clampModifier(Number(e.target.value)) });
-            }}
-            onBlur={() => setModifierText(String(dice.modifier))}
-          />
-          <span className="muted attack-dice-preview">{attackExpression(dice)}</span>
-        </span>
-      )}
-    </fieldset>
+      {value
+        ? <DicePoolInput value={value} label={label} onChange={(next) => { setKept(next); onChange(next); }} />
+        : <p className="muted small-print attack-dice-field-off">{t("attack.notRolled")}</p>}
+    </div>
   );
 }
 

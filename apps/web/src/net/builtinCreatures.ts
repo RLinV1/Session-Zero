@@ -10,8 +10,8 @@ import { t } from "../i18n/locale";
 
 const SHIPPED = "2026-11-03T00:00:00.000Z";
 
-const hit = (modifier: number) => ({ count: 1, sides: 20, modifier });
-const dmg = (count: number, sides: number, modifier = 0) => ({ count, sides, modifier });
+const hit = (modifier: number) => ({ terms: [{ count: 1, sides: 20 }], modifier });
+const dmg = (count: number, sides: number, modifier = 0) => ({ terms: [{ count, sides }], modifier });
 type AttackSlug = "scimitar" | "shortbow" | "spear" | "thrown-spear" | "staff" | "firebolt" | "longsword" | "dagger";
 type CreatureSlug = "goblin-guard" | "goblin-spearman" | "human-mage" | "human-swordsman";
 /**

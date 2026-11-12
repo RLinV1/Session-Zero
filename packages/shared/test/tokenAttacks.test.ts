@@ -3,8 +3,8 @@ import { AttackPreset as AttackPresetSchema, Command, GAME_PRESETS, decide, filt
 import { committedRoom } from "./committedRoom";
 import { alice, bob, gm } from "./fixtures";
 
-const scimitar: AttackPreset = { name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } };
-const bite: AttackPreset = { name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 1 } };
+const scimitar: AttackPreset = { name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } };
+const bite: AttackPreset = { name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } };
 
 function withGoblin(overrides: { hidden?: boolean; ownerIds?: string[] } = {}) {
   const room = committedRoom();

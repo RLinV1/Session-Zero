@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { moveCommand } from "../src/tools";
 import { addToken, eventually, gmDoes, joinAs, openTable, squareCenter, startStack, viewTokens, type Stack } from "./helpers";
 
-const sword = { name: "Sword", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 1, sides: 8, modifier: 3 } };
+const sword = { name: "Sword", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } };
 
 describe("moving by grid square (FR-PL-08, FR-TAC-02)", () => {
   let stack: Stack;

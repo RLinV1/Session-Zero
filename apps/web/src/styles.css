@@ -188,7 +188,7 @@ button.danger { color: var(--danger); }
 /* Numbers in a monospace face (design-language): every numeric readout keeps its digits one
    width as they change. Die faces are dice art and keep the dice look's own figures. */
 .num, input[type="number"],
-#dice-expression, #group-roll-expression, #area-effect-expression, [id^="damage-expression-"],
+.dice-pool-readout,
 .icon-count, .range-value, .chat-meta time, .activity-meta,
 .roll-total, .roll-breakdown, .board-roll-popup strong, .dropped-total, .resolve-result dd,
 .init-setup input[type="number"], .init-turn, .hp, .attack-stepper output, .attack-dice-preview,
@@ -667,7 +667,6 @@ button.small { min-height: 0; padding: 0.2rem 0.5rem; font-size: var(--fs-sm); }
 .dice-form { display: flex; flex-direction: column; gap: 0.4rem; }
 .dice-row { display: flex; gap: 0.4rem; }
 .dice-row input, .dice-row select { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
-.dice-quick { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 label.checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-size: var(--fs-sm); color: var(--text); }
 
 /* --- Chat (KAN-75) --- */
@@ -1018,14 +1017,9 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .attack-kind { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem; }
 .attack-kind .chip { text-align: center; }
 .attack-waiting { margin: 0; display: inline-flex; align-items: center; gap: 0.3rem; }
-.attack-die-types { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.2rem; }
-.attack-die-types .chip { padding: 0.15rem 0; text-align: center; }
-.attack-dice-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .attack-stepper { display: inline-flex; align-items: center; gap: 0.35rem; }
 .attack-stepper .icon-button { min-height: 0; padding: 0.25rem; }
 .attack-stepper output { min-width: 1.5ch; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
-.attack-modifier { flex-direction: row; align-items: center; gap: 0.3rem; }
-.attack-modifier input { width: 4rem; }
 .attack-label-row { display: flex; gap: 0.3rem; align-items: stretch; }
 .attack-label-row input { flex: 1; min-width: 0; }
 .attack-roll { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; width: 100%; }
@@ -1098,10 +1092,35 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .attack-editor { padding: var(--space-2); border: 1px dashed var(--border-strong); border-radius: var(--radius-surface); gap: var(--space-2); }
 .modal .attack-editor { padding: 0; border: 0; }
 .attack-editor-actions { justify-content: flex-end; flex-wrap: wrap; gap: 0.4rem; }
-.attack-dice-field { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
-.attack-dice-inputs { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
-.attack-dice-inputs input[type="number"] { width: 3.6rem; }
+/* To hit and damage as two separate cards, each marked by its own colour down the left edge. */
+.attack-dice-field {
+  margin: 0; padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0;
+  background: var(--raised); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-surface);
+}
+.attack-dice-field.damage { border-left-color: var(--danger); }
+.attack-dice-field.off { border-left-color: var(--border-strong); }
+.attack-dice-field-head { font-weight: 600; }
+.attack-dice-field-off { margin: 0; }
+.attack-editor .attack-dice-field + .attack-dice-field { margin-top: var(--space-1); }
 .attack-dice-preview { font-variant-numeric: tabular-nums; }
+/* The dice builder (dice-pool): a row per die type, then + Die, + Modifier and the formula. */
+/* A card, like the attack editor's To hit and Damage (accent edge; red for a damage roll). */
+.dice-pool {
+  margin: 0; padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;
+  background: var(--raised); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-surface);
+}
+.dice-pool.damage { border-left-color: var(--danger); }
+/* Already inside a To hit or Damage card: no second box. */
+.attack-dice-field .dice-pool { padding: 0; background: none; border: 0; border-radius: 0; }
+.dice-pool-rows { display: flex; flex-direction: column; gap: 0.3rem; }
+.dice-pool-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.dice-pool-row select { width: auto; min-width: 4.5rem; }
+.dice-pool-plus { font-size: var(--fs-sm); line-height: 1; color: var(--muted); padding-left: 0.6rem; }
+.dice-pool-modifier { display: inline-flex; align-items: center; gap: var(--space-2); }
+.dice-pool-modifier input { width: 4.5rem; }
+.dice-pool-remove { min-height: 0; padding: 0.25rem; }
+.dice-pool-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.dice-pool-readout { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .attack-warning { margin: 0; font-size: var(--fs-sm); color: var(--text); border-left: 3px solid var(--accent); padding-left: 0.5rem; }
 .ruling-buttons { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }
 .ruling-buttons button { min-height: 36px; min-width: 4.5rem; }
@@ -2594,9 +2613,7 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 /* ---- Dice: the shared engine, running on the page ---- */
 
 .dice-demo-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; max-width: 26rem; }
-.dice-demo-form label { flex: 1 1 11rem; }
-.dice-demo-form input { font-family: var(--font-mono); }
-.dice-demo-form .error { flex-basis: 100%; margin: 0; }
+.dice-demo-form .dice-pool { flex: 1 1 100%; }
 
 .dice-result {
   border: 1px solid var(--border);
@@ -2767,6 +2784,9 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 }
 .board-roll-popup strong { font-size: 1.4rem; line-height: 1; font-variant-numeric: tabular-nums; }
 .board-roll-popup.private { border-left-color: var(--warn); }
+.board-roll-popup { flex-wrap: wrap; row-gap: 0.15rem; }
+.board-roll-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.board-roll-breakdown { flex-basis: 100%; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .board-roll-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; min-width: 0; }
 .board-roll-meta .muted { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 @media (prefers-reduced-motion: no-preference) {
@@ -4188,10 +4208,8 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 
   /* Controls in the demos: 44px, as in the room. */
   .home-page .ui-button, .home-page .cta, .home-page .secondary.small, .home-page .condition-toggle { min-height: 2.75rem; }
-  .home-page .attack-pick select, .home-page .dice-demo-form input { min-height: 2.75rem; }
+  .home-page .attack-pick select, .home-page .dice-demo-form select, .home-page .dice-demo-form input { min-height: 2.75rem; }
   .home-page .icon-button { min-width: 2.75rem; min-height: 2.75rem; }
-  .dice-demo-form { flex-wrap: nowrap; }
-  .dice-demo-form label { flex: 1 1 auto; min-width: 0; }
   .players-join { align-self: stretch; }
   .closing-copy .cta { align-self: stretch; justify-content: center; }
 

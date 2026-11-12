@@ -119,17 +119,19 @@ describe("placing the area template (gm-home: Area templates use the table's sha
 });
 
 describe("dice run the table's engine (gm-home: Dice open on a result)", () => {
-  it("opens on a settled roll made by the shared roller, then rolls what is typed", () => {
+  it("opens on a settled roll made by the shared roller, grouped by die type, with no text field (dice-pool)", () => {
     render(<DiceTile />);
     const opening = openingRoll();
     expect(opening.dice).toHaveLength(2);
     expect(document.querySelector(".dice-total")!.textContent).toBe(String(opening.total));
+    expect(document.querySelector(".dice-line .num")!.textContent).toBe(`2d6 (${opening.dice.join(", ")}) + 3`);
     expect(screen.queryByText("Rolling…")).toBeNull();
-    fireEvent.change(screen.getByLabelText("What to roll"), { target: { value: "nonsense" } });
+    expect(document.querySelector(".dice-demo-form input[type=text], .dice-demo-form input:not([type])")).toBeNull();
+    expect(screen.getByRole("group", { name: "What to roll" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "+ Die" }));
     fireEvent.click(screen.getByRole("button", { name: "Roll" }));
-    const parsed = parseDiceExpression("nonsense");
-    expect(parsed.ok).toBe(false);
-    expect(screen.getByRole("alert").textContent).toBe(!parsed.ok ? parsed.message : "");
+    expect(document.querySelector(".dice-result .readout")!.textContent).toBe("2d6+1d4+3");
+    expect(parseDiceExpression("2d6+1d4+3").ok).toBe(true);
   });
 });
 

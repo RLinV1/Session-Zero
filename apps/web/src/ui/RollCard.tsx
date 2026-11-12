@@ -1,5 +1,6 @@
 import type { DiceRoll } from "@vtt/shared";
 import { rollHeadline } from "../panels/attackRoll";
+import { diceBreakdown } from "./dicePool";
 import { t } from "../i18n/locale";
 
 /**
@@ -14,12 +15,16 @@ export function RollCard({ roll, rollerName }: { roll: DiceRoll | undefined; rol
   const { title, meta } = rollHeadline(roll, rollerName(roll));
   return (
     // Keyed by roll, so a new result slides in afresh.
-    <div key={roll.id} className={roll.visibility === "gm" ? "board-roll-popup private" : "board-roll-popup"} role="status">
-      <strong>{title}</strong>
-      <span className="board-roll-meta">
-        <span className="muted">{meta}</span>
-        {roll.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
+    <div key={roll.id} className={roll.visibility === "gm" ? "board-roll-popup private" : "board-roll-popup"}>
+      <span className="board-roll-head" role="status">
+        <strong>{title}</strong>
+        <span className="board-roll-meta">
+          <span className="muted">{meta}</span>
+          {roll.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
+        </span>
       </span>
+      {/* Each die, grouped by type (dice-pool): wraps on a narrow board, and isn't read out. */}
+      <span className="board-roll-breakdown muted" aria-hidden="true">{diceBreakdown(roll)}</span>
     </div>
   );
 }

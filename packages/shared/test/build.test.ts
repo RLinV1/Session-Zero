@@ -31,8 +31,8 @@ import {
 const creature = (over: Record<string, unknown> = {}) => ({ key: "goblin", name: "Goblin", isPlayerCharacter: false, ...over });
 const attack = (over: Record<string, unknown> = {}) => ({
   name: "Bite",
-  toHit: { count: 1, sides: 20, modifier: 4 },
-  damage: { count: 1, sides: 6, modifier: 2 },
+  toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 },
+  damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 },
   ...over,
 });
 const messages = (result: { success: boolean; error?: { issues: { message: string }[] } }) =>
@@ -92,13 +92,13 @@ describe("a draft creature holds only real token fields (FR-GM-26)", () => {
   });
 
   it("names the die when it is a d3", () => {
-    const result = DraftCreature.safeParse(creature({ attacks: [attack({ damage: { count: 1, sides: 3, modifier: 0 } })] }));
+    const result = DraftCreature.safeParse(creature({ attacks: [attack({ damage: { terms: [{ count: 1, sides: 3 }], modifier: 0 } })] }));
     expect(result.success).toBe(false);
     expect(messages(result)).toContain("d3");
   });
 
   it("names the die when it is a d7", () => {
-    expect(messages(DraftCreature.safeParse(creature({ attacks: [attack({ toHit: { count: 1, sides: 7, modifier: 0 } })] })))).toContain("d7");
+    expect(messages(DraftCreature.safeParse(creature({ attacks: [attack({ toHit: { terms: [{ count: 1, sides: 7 }], modifier: 0 } })] })))).toContain("d7");
   });
 
   it("uses exactly the dice an attack can roll", () => {

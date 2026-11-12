@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { Command, CreateCreatureRequest, filterEventForViewer, filterStateForViewer, TokenAttacks, type CommittedEvent } from "../src";
 import { alice, baseRoom, bob, gm, run } from "./fixtures";
 
-const attacks = [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } }];
+const attacks = [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }];
 
 describe("copied template attacks (KAN-70, FR-GM-23)", () => {
   it("validates bounded, unique names and dice at both trust boundaries", () => {
     for (const bad of [
       [{ name: "Empty", toHit: null, damage: null }],
-      [{ ...attacks[0], toHit: { count: 21, sides: 20, modifier: 4 } }],
-      [{ ...attacks[0], damage: { count: 1, sides: 7, modifier: 2 } }],
-      [{ ...attacks[0], damage: { count: 1, sides: 6, modifier: 100 } }],
+      [{ ...attacks[0], toHit: { terms: [{ count: 21, sides: 20 }], modifier: 4 } }],
+      [{ ...attacks[0], damage: { terms: [{ count: 1, sides: 7 }], modifier: 2 } }],
+      [{ ...attacks[0], damage: { terms: [{ count: 1, sides: 6 }], modifier: 100 } }],
       [attacks[0], { ...attacks[0], name: "scimitar" }],
       Array.from({ length: 9 }, (_, i) => ({ ...attacks[0], name: String(i) })),
     ]) {

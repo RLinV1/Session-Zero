@@ -50,7 +50,7 @@ describe("hearing the GM's ruling (FR-PL-08, FR-GM-22)", () => {
   });
   afterAll(() => stack.close());
 
-  const sword = { name: "Sword", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 1, sides: 8, modifier: 3 } };
+  const sword = { name: "Sword", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } };
 
   /** A seat with a token and a target, and an attack waiting for the GM's ruling. */
   const attacked = async () => {

@@ -1,66 +1,45 @@
 import { attackLabel, diceRollsOf, formatAttackParties, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type DiceRoll, type LoggedRoll, type Point, type RoomState, type Token } from "@vtt/shared";
 import { measure } from "../board/tools";
+import { poolExpression, poolOf, readPool, type DicePool } from "../ui/dicePool";
 
 import { getLocale, t } from "../i18n/locale";
 /**
- * Pure helpers for the Attack section (attack-targeting). The server rolls whatever `NdX+M` it
+ * Pure helpers for the Attack section (attack-targeting). The server rolls whatever formula it
  * is sent; the dice picked here are the client's choice, never a rule.
  */
 
-/** The die types the picker offers. */
-export const DIE_SIDES = [4, 6, 8, 10, 12, 20, 100] as const;
-export const MAX_ATTACK_DICE = 20;
-export const MAX_ATTACK_MODIFIER = 99;
-
-export interface AttackDice {
-  count: number;
-  sides: number;
-  modifier: number;
-}
-
 /** What the section last rolled with a token, restored when it is chosen again. */
-export interface AttackSettings extends AttackDice {
+export interface AttackSettings extends DicePool {
   label: string;
   /** To hit or damage (ADR 0011). Values stored before it existed have none and read as to hit. */
   kind?: AttackKind;
 }
 
-export const DEFAULT_ATTACK: AttackSettings = { count: 1, sides: 20, modifier: 0, label: "", kind: "toHit" };
+export const DEFAULT_ATTACK: AttackSettings = { ...poolOf(20), label: "", kind: "toHit" };
 
 /** The roll type a stored setting stands for; older ones without it are to hit. */
 export const kindOf = (settings: AttackSettings): AttackKind => settings.kind ?? "toHit";
 
-const clamp = (value: number, min: number, max: number) =>
-  Number.isFinite(value) ? Math.min(max, Math.max(min, Math.trunc(value))) : min < 0 ? 0 : min;
-
-export const clampCount = (value: number) => clamp(value, 1, MAX_ATTACK_DICE);
-export const clampModifier = (value: number) => clamp(value, -MAX_ATTACK_MODIFIER, MAX_ATTACK_MODIFIER);
-
-/** `1d20`, `1d20+5`, `2d6-1`: always a shape `parseDiceExpression` accepts. */
-export function attackExpression({ count, sides, modifier }: AttackDice): string {
-  const m = clampModifier(modifier);
-  const mod = m === 0 ? "" : m > 0 ? `+${m}` : `${m}`;
-  return `${clampCount(count)}d${sides}${mod}`;
-}
+/** `1d20`, `1d20+5`, `2d6+1d4-1`: always a shape `parseDiceExpression` accepts. */
+export const attackExpression = (dice: DicePool): string => poolExpression(dice);
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-function isAttackSettings(v: unknown): v is AttackSettings {
-  if (!isRecord(v)) return false;
-  const { count, sides, modifier, label, kind } = v;
-  return (
-    Number.isInteger(count) && clampCount(count as number) === count &&
-    (DIE_SIDES as readonly unknown[]).includes(sides) &&
-    Number.isInteger(modifier) && clampModifier(modifier as number) === modifier &&
-    typeof label === "string" &&
-    (kind === undefined || kind === "toHit" || kind === "damage")
-  );
+/**
+ * Stored last settings for one token, in today's shape or the one-die shape stored before mixed
+ * dice (`{ count, sides, modifier, label }`); null when it is neither.
+ */
+export function readAttackSettings(v: unknown): AttackSettings | null {
+  if (!isRecord(v)) return null;
+  const { label, kind } = v;
+  if (typeof label !== "string" || !(kind === undefined || kind === "toHit" || kind === "damage")) return null;
+  const pool = readPool(v);
+  return pool && { ...pool, label, ...(kind && { kind }) };
 }
 
-/** Stored last settings by token id; anything malformed or from an older build is ignored. */
+/** Stored last settings by token id; anything malformed is ignored, older shapes are read. */
 export const isSettingsRecord = (v: unknown): v is Record<string, AttackSettings> =>
-  isRecord(v) && Object.values(v).every(isAttackSettings);
-
+  isRecord(v) && Object.values(v).every((s) => readAttackSettings(s) !== null);
 
 export interface TargetOption {
   token: Token;
@@ -185,8 +164,9 @@ export function presetRollLabel(preset: AttackPreset, kind: AttackKind): string 
 export function presetSummary(preset: AttackPreset): string {
   const parts: string[] = [];
   if (preset.toHit) {
-    const { count, sides, modifier } = preset.toHit;
-    parts.push(count === 1 && sides === 20 ? (modifier < 0 ? `${modifier}` : `+${modifier}`) : attackExpression(preset.toHit));
+    const { terms, modifier } = preset.toHit;
+    const plainD20 = terms.length === 1 && terms[0]!.count === 1 && terms[0]!.sides === 20;
+    parts.push(plainD20 ? (modifier < 0 ? `${modifier}` : `+${modifier}`) : attackExpression(preset.toHit));
   }
   if (preset.damage) parts.push(attackExpression(preset.damage));
   if (preset.maxTargets !== undefined) parts.push(t("attack.upToTargets", { n: preset.maxTargets }));

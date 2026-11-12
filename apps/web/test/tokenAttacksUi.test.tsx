@@ -5,8 +5,8 @@ import { emptyRoomState, type AttackPreset, type Token, type TokenUpdate } from 
 import { AddTokenButton } from "../src/panels/AddToken";
 import { TokenEditor } from "../src/panels/TokenRoster";
 
-const scimitar: AttackPreset = { name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } };
-const bite: AttackPreset = { name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 1 } };
+const scimitar: AttackPreset = { name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } };
+const bite: AttackPreset = { name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } };
 
 const goblin: Token = {
   id: "g1", name: "Goblin", position: { x: 35, y: 35 }, size: 1, rotation: 0, color: "#336699", imageUrl: null, assetId: null,
@@ -83,6 +83,6 @@ describe("New Token: Attacks (shared-token-attacks)", () => {
     const dialog = document.querySelector("dialog");
     dialog?.dispatchEvent(new Event("close"));
     await vi.waitFor(() => expect(onPlace).toHaveBeenCalled());
-    expect(onPlace.mock.calls[0]![0].attacks).toEqual([{ name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 0 } }]);
+    expect(onPlace.mock.calls[0]![0].attacks).toEqual([{ name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 0 } }]);
   });
 });

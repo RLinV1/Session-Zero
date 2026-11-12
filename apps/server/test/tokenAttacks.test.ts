@@ -7,7 +7,7 @@ const clients: TestClient[] = [];
 beforeEach(async () => { server = await startServer(); });
 afterEach(async () => { clients.splice(0).forEach((c) => c.close()); await server.close(); });
 
-const fireBolt: AttackPreset = { name: "Fire Bolt", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 1, sides: 10, modifier: 0 } };
+const fireBolt: AttackPreset = { name: "Fire Bolt", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 10 }], modifier: 0 } };
 
 async function table() {
   const owner = await server.createRoom("Mara");

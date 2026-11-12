@@ -201,7 +201,7 @@ describe("attack style and named attack animation (FR-TAC-09, ADR 0038)", () => 
     const stored = run(state, gm, {
       type: "token.configure",
       tokenId: aria.id,
-      changes: { attacks: [{ name: "Flame Tongue", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 1, sides: 8, modifier: 3 }, animation: slash }] },
+      changes: { attacks: [{ name: "Flame Tongue", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 }, animation: slash }] },
     });
     return { state: stored.state, aria, goblin };
   }
@@ -240,7 +240,7 @@ describe("attack style and named attack animation (FR-TAC-09, ADR 0038)", () => 
     expect(Command.safeParse({
       type: "token.configure",
       tokenId: aria.id,
-      changes: { attacks: [{ name: "Big", toHit: null, damage: { count: 1, sides: 6, modifier: 0 }, animation: blast }] },
+      changes: { attacks: [{ name: "Big", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 0 }, animation: blast }] },
     }).success).toBe(false);
   });
 });

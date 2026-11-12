@@ -1,4 +1,4 @@
-import { parseDiceExpression, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { sidesOfDice, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 
 /**
  * Dice for group and area-effect rolls (ADR 0046): each token's dice are thrown onto that token
@@ -28,7 +28,8 @@ export interface DropGroup {
 export interface BoardDrop {
   /** The roll's id, or the effect's id with `:saves` or `:damage`; what `airborne` tracks. */
   rollId: string;
-  sides: number;
+  /** Each die's sides, in a group's roll order: every group rolled the same formula (ADR 0061). */
+  sides: number | readonly number[];
   gmOnly: boolean;
   groups: DropGroup[];
   /** True when the roll has too many dice to draw: each group shows its total on one die. */
@@ -47,8 +48,7 @@ export function centroid(points: readonly Point[]): Point | null {
 
 function drop(rollId: string, expression: string, gmOnly: boolean, groups: DropGroup[]): BoardDrop | null {
   if (groups.length === 0) return null;
-  const parsed = parseDiceExpression(expression);
-  const sides = parsed.ok ? parsed.expression.sides : 20;
+  const sides = sidesOfDice(expression, groups[0]!.dice) ?? 20;
   const count = groups.reduce((n, g) => n + g.dice.length, 0);
   return { rollId, sides, gmOnly, groups, totalsOnly: count > MAX_DROP_DICE };
 }

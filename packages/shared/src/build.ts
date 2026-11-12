@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { AttackDice, AttackPreset, MAX_TOKEN_ATTACKS } from "./attackPresets";
+import { attackDiceProblems, AttackPreset, MAX_ATTACK_MODIFIER, MAX_TOKEN_ATTACKS, STANDARD_DIE_SIDES, upgradeAttackDice } from "./attackPresets";
+import { MAX_DICE } from "./dice";
 import { DEFAULT_TOKEN_COLOR } from "./commands";
 import type { ConditionId } from "./conditions";
 import { EncounterTemplateData, MAX_ENCOUNTER_NAME, type TemplateToken } from "./encounters";
@@ -75,19 +76,28 @@ const draftNotes = {
   notCarriedOver: z.string().max(BUILD_LIMITS.notCarriedOverCharacters).default(""),
 };
 
-/** The dice an attack can roll. A test holds this equal to `AttackDice`, whose list isn't exported. */
-export const BUILD_DIE_SIDES = [4, 6, 8, 10, 12, 20, 100] as const;
+/** The dice an attack can roll: the same list as `AttackDice` (ADR 0061). */
+export const BUILD_DIE_SIDES = STANDARD_DIE_SIDES;
 
 /** `AttackDice`, with a refusal that names the die, so the AI knows to blank that roll and flag it. */
-const DraftDice = z.strictObject({
-  count: AttackDice.shape.count,
+const DraftDiceTerm = z.strictObject({
+  count: z.number().int().min(1).max(MAX_DICE),
   sides: z.number().int().superRefine((sides, ctx) => {
     if (!(BUILD_DIE_SIDES as readonly number[]).includes(sides)) {
       ctx.addIssue({ code: "custom", message: `The app has no d${sides}. Leave this roll blank and add a flag.` });
     }
   }),
-  modifier: AttackDice.shape.modifier,
 });
+
+/** Terms and a modifier, like `AttackDice`; the old `{ count, sides, modifier }` still reads as one term. */
+const DraftDice = z.preprocess(upgradeAttackDice, z.strictObject({
+  terms: z.array(DraftDiceTerm).min(1).max(BUILD_DIE_SIDES.length),
+  modifier: z.number().int().min(-MAX_ATTACK_MODIFIER).max(MAX_ATTACK_MODIFIER),
+}).superRefine((dice, ctx) => {
+  const problem = attackDiceProblems(dice);
+  if (problem === "repeated") ctx.addIssue({ code: "custom", message: "Use each die type once per roll: 2d6+1d4, not 1d6+1d6+1d4.", path: ["terms"] });
+  if (problem === "tooMany") ctx.addIssue({ code: "custom", message: `A roll has at most ${MAX_DICE} dice. Leave this roll blank and add a flag.`, path: ["terms"] });
+}));
 
 const DraftAttack = z.strictObject({
   name: AttackPreset.shape.name,

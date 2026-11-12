@@ -17,7 +17,7 @@ const state: RoomState = {
   ...emptyRoomState("r"),
   participants: { gm },
   tokens: {
-    a: token("a", { attacks: [{ name: "Slash", toHit: { count: 1, sides: 20, modifier: 0 }, damage: null }] }),
+    a: token("a", { attacks: [{ name: "Slash", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 0 }, damage: null }] }),
     b: token("b"),
   },
 };
@@ -47,7 +47,7 @@ describe("Automatic attack style (FR-TAC-09, ADR 0038)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Custom roll" }));
     expect(command).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Damage" }));
-    fireEvent.click(screen.getByRole("button", { name: "d6" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Die type, row 1" }), { target: { value: "6" } });
     fireEvent.click(screen.getByRole("button", { name: /^Roll 1d6/ }));
     await waitFor(() => expect(command).toHaveBeenCalledWith({
       type: "dice.roll", expression: "1d6", visibility: "public",

@@ -360,24 +360,25 @@ describe("the small pieces of the build page (FR-GM-27)", () => {
 
   it("the creature editor sends a blank as null and reads dice", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const attacks = [{ name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null }];
+    const attacks = [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null }];
     await render(<DraftCreatureEditor data={creatureData({ hp: null, attacks }) as never} files={[]} onSave={onSave} onCancel={() => {}} />);
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ hp: null, maxHp: 7, attacks: [{ name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null }] }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ hp: null, maxHp: 7, attacks: [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null }] }));
   });
 
-  it("the creature editor refuses text that isn't dice", async () => {
-    const onSave = vi.fn();
-    const attacks = [{ name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null }];
+  it("the creature editor builds mixed dice with the dice builder, with no text field (dice-pool)", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const attacks = [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null }];
     await render(<DraftCreatureEditor data={creatureData({ attacks }) as never} files={[]} onSave={onSave} onCancel={() => {}} />);
-    const damage = host.querySelector("input[aria-label='Attack 1 damage']") as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(damage, "lots");
-      damage.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    expect(host.querySelector(".build-attack input[type=text], .build-attack input:not([type])[aria-label*='damage']")).toBeNull();
+    const damage = [...host.querySelectorAll("label.checkbox")].find((l) => l.textContent === "Attack 1 damage")!.querySelector("input")!;
+    await act(async () => { damage.click(); });
+    const addDie = [...host.querySelectorAll("button")].filter((b) => b.textContent === "+ Die").at(-1)!;
+    await act(async () => { addDie.click(); });
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    expect(onSave).not.toHaveBeenCalled();
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("Bite");
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      attacks: [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }, { count: 1, sides: 4 }], modifier: 0 } }],
+    }));
   });
 });
 

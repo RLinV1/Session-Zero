@@ -3,7 +3,7 @@ import type { LibraryCreature, Token } from "@vtt/shared";
 import { creatureDraft, creatureFromToken } from "../src/pages/creatureDraft";
 import { LEGACY_ATTACK_KEYS, clearLegacyAttackStorage } from "../src/panels/tokenAttacks";
 
-const attacks = [{ name: "Claws", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 2, sides: 6, modifier: 3 } }];
+const attacks = [{ name: "Claws", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 2, sides: 6 }], modifier: 3 } }];
 const token: Token = {
   id: "ogre", name: "Ogre", position: { x: 0, y: 0 }, size: 2, rotation: 0,
   color: "#6d4c41", imageUrl: null, ownerIds: [], hidden: false,

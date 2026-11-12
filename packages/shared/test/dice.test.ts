@@ -4,11 +4,11 @@ import { alice, attempt, baseRoom, gm, resetRandom, run } from "./fixtures";
 
 describe("dice expressions (FR-TAC-09)", () => {
   it.each([
-    ["1d20+5", { count: 1, sides: 20, modifier: 5 }],
-    ["2d6", { count: 2, sides: 6, modifier: 0 }],
-    ["4d6-1", { count: 4, sides: 6, modifier: -1 }],
-    ["d20", { count: 1, sides: 20, modifier: 0 }],
-    ["  3 D 8 + 2 ", { count: 3, sides: 8, modifier: 2 }],
+    ["1d20+5", { terms: [{ count: 1, sides: 20 }], modifier: 5 }],
+    ["2d6", { terms: [{ count: 2, sides: 6 }], modifier: 0 }],
+    ["4d6-1", { terms: [{ count: 4, sides: 6 }], modifier: -1 }],
+    ["d20", { terms: [{ count: 1, sides: 20 }], modifier: 0 }],
+    ["  3 D 8 + 2 ", { terms: [{ count: 3, sides: 8 }], modifier: 2 }],
   ])("parses %s", (input, expected) => {
     const result = parseDiceExpression(input);
     expect(result.ok && result.expression).toEqual(expected);
@@ -25,22 +25,22 @@ describe("dice expressions (FR-TAC-09)", () => {
 
   it("rolls within range and applies the modifier", () => {
     // random() = 0 is the lowest face, 0.999 the highest.
-    expect(rollDice({ count: 2, sides: 6, modifier: 3 }, () => 0)).toEqual({ dice: [1, 1], total: 5 });
-    expect(rollDice({ count: 2, sides: 6, modifier: 3 }, () => 0.999)).toEqual({ dice: [6, 6], total: 15 });
+    expect(rollDice({ terms: [{ count: 2, sides: 6 }], modifier: 3 }, () => 0)).toEqual({ dice: [1, 1], total: 5 });
+    expect(rollDice({ terms: [{ count: 2, sides: 6 }], modifier: 3 }, () => 0.999)).toEqual({ dice: [6, 6], total: 15 });
   });
 
   it("never produces a face outside 1..sides across the whole unit interval", () => {
     for (let i = 0; i <= 1000; i++) {
-      const { dice } = rollDice({ count: 1, sides: 20, modifier: 0 }, () => i / 1001);
+      const { dice } = rollDice({ terms: [{ count: 1, sides: 20 }], modifier: 0 }, () => i / 1001);
       expect(dice[0]).toBeGreaterThanOrEqual(1);
       expect(dice[0]).toBeLessThanOrEqual(20);
     }
   });
 
   it("formats back to a canonical expression", () => {
-    expect(formatExpression({ count: 1, sides: 20, modifier: 5 })).toBe("1d20+5");
-    expect(formatExpression({ count: 2, sides: 6, modifier: 0 })).toBe("2d6");
-    expect(formatExpression({ count: 4, sides: 6, modifier: -1 })).toBe("4d6-1");
+    expect(formatExpression({ terms: [{ count: 1, sides: 20 }], modifier: 5 })).toBe("1d20+5");
+    expect(formatExpression({ terms: [{ count: 2, sides: 6 }], modifier: 0 })).toBe("2d6");
+    expect(formatExpression({ terms: [{ count: 4, sides: 6 }], modifier: -1 })).toBe("4d6-1");
   });
 });
 
