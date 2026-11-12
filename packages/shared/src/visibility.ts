@@ -260,7 +260,7 @@ export function filterEventForViewer(
   }
 
   // "Hide map from players without a token" without line of sight: sight is all or nothing, so
-  // only owning a visible token can change it, never a move (ADR 0054).
+  // only owning a visible token can change it, never a move (ADR 0057).
   if (before.hideMapWithoutToken && !before.scene.lineOfSight) {
     switch (e.type) {
       case "TokenCreated":
@@ -332,14 +332,14 @@ export function filterEventForViewer(
       const token = before.tokens[e.tokenId];
       if (!token) return redacted;
       // Ownership also determines whether the copied named attacks are available, and whether
-      // hidden HP and AC are (ADR 0054).
+      // hidden HP and AC are (ADR 0057).
       const ownershipChanged = token.ownerIds.includes(viewer.id) !== e.ownerIds.includes(viewer.id);
       if (ownershipChanged && (token.attacks?.length || before.hideHp || before.hideAc)) return { kind: "resync" };
       return byVisibility(concealedFrom(conc(), token, viewer), concealedFrom(conc(), { ...token, ownerIds: e.ownerIds }, viewer));
     }
     case "TokenStatsSet": {
       if (hiddenBefore(e.tokenId)) return redacted;
-      // Hidden HP and AC never leave the server, not even as the value a change replaced (ADR 0054).
+      // Hidden HP and AC never leave the server, not even as the value a change replaced (ADR 0057).
       const token = before.tokens[e.tokenId]!;
       const stats = statsForViewer(e.stats, token, viewer, before);
       const previous = statsForViewer(e.previous, token, viewer, before);
@@ -494,7 +494,7 @@ export function filterEventForViewer(
     case "HideMapWithoutTokenSet":
     case "HideHpSet":
     case "HideAcSet":
-      // What every player may see changes; a filtered snapshot carries it (ADR 0054).
+      // What every player may see changes; a filtered snapshot carries it (ADR 0057).
       return { kind: "resync" };
     case "RoomCreated":
     case "ParticipantJoined":
@@ -560,12 +560,12 @@ export function visibleStretches(path: readonly Point[], c: Concealment): { poin
   return { points, gaps };
 }
 
-/** The room rules that withhold stats from players (ADR 0054). */
+/** The room rules that withhold stats from players (ADR 0057). */
 type StatRules = Pick<RoomState, "hideHp" | "hideAc">;
 
 /**
  * A token's stats as `viewer` may have them: with "Hide HP from Players" a player gets no HP or
- * max HP, and with "Hide AC from Players" no AC, for any token they don't own (ADR 0054). The
+ * max HP, and with "Hide AC from Players" no AC, for any token they don't own (ADR 0057). The
  * same object when nothing is withheld.
  */
 export function statsForViewer(stats: TokenStats, token: Pick<Token, "ownerIds">, viewer: Participant, rules: StatRules): TokenStats {
@@ -575,7 +575,7 @@ export function statsForViewer(stats: TokenStats, token: Pick<Token, "ownerIds">
 
 /**
  * Named attacks are private to the GM and the token's owners, including on deletion/undo; so are
- * HP and AC when the room's rules say so (ADR 0054).
+ * HP and AC when the room's rules say so (ADR 0057).
  */
 function tokenForViewer(token: Token, viewer: Participant, rules: StatRules): Token {
   if (viewer.role === "gm" || token.ownerIds.includes(viewer.id)) return token;

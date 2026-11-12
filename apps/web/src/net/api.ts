@@ -52,6 +52,7 @@ import {
   type UpdateAnimationRequest,
   type UpdateCreatureRequest,
 } from "@vtt/shared";
+import { getLocale, t } from "../i18n/locale";
 import type {
   CreateRoomRequest,
   CreateRoomResponse,
@@ -85,13 +86,23 @@ export function whenSignedOut(handler: () => void) {
   onSignedOut = handler;
 }
 
+/**
+ * Every API request says which language its messages should come back in, the viewer's choice
+ * rather than the browser's (localization; ADR 0054). A caller's own header wins.
+ */
+function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("accept-language")) headers.set("accept-language", getLocale());
+  return fetch(url, { ...init, headers });
+}
+
 async function errorFrom(res: Response): Promise<ApiError> {
   try {
     const body = (await res.json()) as Record<string, unknown>;
     const issues = UvttIssue.array().min(1).max(20).safeParse(body.issues);
     const message = issues.success
       ? issues.data.map((issue) => `${issue.path}: ${issue.message}`).join("\n")
-      : typeof body.error === "string" ? body.error : `Request failed (${res.status})`;
+      : typeof body.error === "string" ? body.error : t("api.requestFailed", { status: res.status });
     return new ApiError(message, res.status, {
       field: typeof body.field === "string" ? body.field : undefined,
       code: typeof body.code === "string" ? body.code : undefined,
@@ -99,12 +110,12 @@ async function errorFrom(res: Response): Promise<ApiError> {
       retryAfterSec: typeof body.retryAfterSec === "number" ? body.retryAfterSec : undefined,
     });
   } catch {
-    return new ApiError(`Request failed (${res.status})`, res.status);
+    return new ApiError(t("api.requestFailed", { status: res.status }), res.status);
   }
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -119,7 +130,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
  * ended, which the account module turns into "go and sign in".
  */
 async function accountRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await apiFetch(url, init);
   if (res.status === 401) onSignedOut();
   if (!res.ok) throw await errorFrom(res);
   return (res.status === 204 ? undefined : await res.json()) as T;
@@ -138,7 +149,7 @@ const jsonBody = (body: unknown): RequestInit => ({
  * server doesn't know is forgotten by the caller (gm-identity-recovery).
  */
 async function legacyRequest<T>(gmToken: string, url: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     ...init,
     headers: { ...(init.headers as Record<string, string> | undefined), [GM_TOKEN_HEADER]: gmToken },
   });
@@ -148,7 +159,7 @@ async function legacyRequest<T>(gmToken: string, url: string, init: RequestInit 
 
 /** A room request authorized by this browser's guest credential for that room. */
 async function roomRequest<T>(roomId: string, token: string, method: "GET" | "POST"): Promise<T> {
-  const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/invite`, {
+  const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/invite`, {
     method,
     headers: { authorization: `Bearer ${token}` },
   });
@@ -159,7 +170,7 @@ async function roomRequest<T>(roomId: string, token: string, method: "GET" | "PO
 export const api = {
   preparation: {
     async save(roomId: string, token: string, command: import("@vtt/shared").PreparationRequest) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/preparation`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/preparation`, {
         method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(command),
       });
       if (!res.ok) throw await errorFrom(res);
@@ -170,21 +181,21 @@ export const api = {
     async prepare(roomId: string, token: string, file: File, options?: { saveToLibrary?: boolean; sceneId?: string }) {
       const body = new FormData(); body.append("file", file);
       const query = new URLSearchParams({ ...(options?.saveToLibrary && { saveToLibrary: "1" }), ...(options?.sceneId && { sceneId: options.sceneId }) }).toString();
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports${query ? `?${query}` : ""}`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports${query ? `?${query}` : ""}`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
       if (!res.ok) throw await errorFrom(res);
       return UvttPreparation.parse(await res.json());
     },
     async revise(roomId: string, token: string, id: string, edit: UvttDraftEdit) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports/${encodeURIComponent(id)}`, { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(edit) });
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports/${encodeURIComponent(id)}`, { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(edit) });
       if (!res.ok) throw await errorFrom(res);
       return UvttPreparation.parse(await res.json());
     },
     async discard(roomId: string, token: string, id: string) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports/${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports/${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
       if (!res.ok && res.status !== 404) throw await errorFrom(res);
     },
     async export(roomId: string, token: string) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/export`, { headers: { authorization: `Bearer ${token}` } });
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/export`, { headers: { authorization: `Bearer ${token}` } });
       if (!res.ok) throw await errorFrom(res);
       return res.blob();
     },
@@ -192,7 +203,7 @@ export const api = {
   async history(roomId: string, token: string, player: string, before?: number, signal?: AbortSignal) {
     const query = new URLSearchParams({ player });
     if (before !== undefined) query.set("before", String(before));
-    const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/history?${query}`, {
+    const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/history?${query}`, {
       headers: { authorization: `Bearer ${token}` }, signal,
     });
     if (!res.ok) throw await errorFrom(res);
@@ -201,7 +212,7 @@ export const api = {
 
   /** A checkpoint's saved board, for the GM to look at before restoring it (FR-REC-02, ADR 0036). */
   async checkpointPreview(roomId: string, token: string, checkpointId: string, signal?: AbortSignal) {
-    const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/checkpoints/${encodeURIComponent(checkpointId)}/preview`, {
+    const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/checkpoints/${encodeURIComponent(checkpointId)}/preview`, {
       headers: { authorization: `Bearer ${token}` }, signal,
     });
     if (!res.ok) throw await errorFrom(res);
@@ -210,7 +221,7 @@ export const api = {
 
   /** Where this participant can start a replay of the room (FR-PL-07, ADR 0025). */
   async replayPoints(roomId: string, token: string, signal?: AbortSignal) {
-    const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/replay`, {
+    const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/replay`, {
       headers: { authorization: `Bearer ${token}` }, signal,
     });
     if (!res.ok) throw await errorFrom(res);
@@ -219,7 +230,7 @@ export const api = {
 
   /** The room's history from one replay point, filtered for this participant by the server (FR-PL-07). */
   async replay(roomId: string, token: string, pointId: string, signal?: AbortSignal) {
-    const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/replay/${encodeURIComponent(pointId)}`, {
+    const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/replay/${encodeURIComponent(pointId)}`, {
       headers: { authorization: `Bearer ${token}` }, signal,
     });
     if (!res.ok) throw await errorFrom(res);
@@ -251,7 +262,7 @@ export const api = {
       form.append("width", String(mapSize.width));
       form.append("height", String(mapSize.height));
     }
-    const res = await fetch("/api/uploads", {
+    const res = await apiFetch("/api/uploads", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: form,
@@ -268,7 +279,7 @@ export const api = {
      * (wall-editing); `strictness` and `minLength` filter what it finds.
      */
     async detect(roomId: string, token: string, request: WallDetectionRequest = {}): Promise<WallDetectionStatus> {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection`, {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(request),
@@ -278,7 +289,7 @@ export const api = {
     },
     /** Whether this server can detect walls now (map-editor D4); with a room, for that room's current map. */
     async availability(roomId?: string, token?: string, signal?: AbortSignal): Promise<WallDetectionAvailability> {
-      const res = await fetch(`/api/wall-detection/availability${roomId ? `?room=${encodeURIComponent(roomId)}` : ""}`, {
+      const res = await apiFetch(`/api/wall-detection/availability${roomId ? `?room=${encodeURIComponent(roomId)}` : ""}`, {
         signal, cache: "no-store", headers: token ? { authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw await errorFrom(res);
@@ -286,7 +297,7 @@ export const api = {
     },
     /** The latest analysis of this map, or null when the room never analyzed it. */
     async status(roomId: string, token: string, mapUrl: string, signal?: AbortSignal): Promise<WallDetectionStatus | null> {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection?map=${encodeURIComponent(mapUrl)}`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection?map=${encodeURIComponent(mapUrl)}`, {
         headers: { authorization: `Bearer ${token}` }, signal, cache: "no-store",
       });
       if (res.status === 404) return null;
@@ -295,7 +306,7 @@ export const api = {
     },
     /** The detected segments of a finished analysis, for erasing false ones before applying. */
     async detected(roomId: string, token: string, mapUrl: string, signal?: AbortSignal): Promise<DetectedWallsResponse> {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection/walls?map=${encodeURIComponent(mapUrl)}`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection/walls?map=${encodeURIComponent(mapUrl)}`, {
         signal, cache: "no-store", headers: { authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw await errorFrom(res);
@@ -303,7 +314,7 @@ export const api = {
     },
     /** The rendered preview, fetched with the GM's credential (an <img> can't send it). */
     async preview(roomId: string, token: string, mapUrl: string, signal?: AbortSignal): Promise<Blob> {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection/preview?map=${encodeURIComponent(mapUrl)}`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/wall-detection/preview?map=${encodeURIComponent(mapUrl)}`, {
         headers: { authorization: `Bearer ${token}` }, signal, cache: "no-store",
       });
       if (!res.ok) throw await errorFrom(res);
@@ -313,7 +324,7 @@ export const api = {
 
   detection: {
     async room(roomId: string, token: string, mapUrl: string, signal?: AbortSignal) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/grid-detection`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/grid-detection`, {
         headers: { authorization: `Bearer ${token}`, "x-expected-map-url": mapUrl }, signal,
       });
       if (res.status === 404) return null;
@@ -321,7 +332,7 @@ export const api = {
       return GridDetectionStatus.parse(await res.json());
     },
     async retryRoom(roomId: string, token: string, mapUrl: string) {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/grid-detection/retry`, {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/grid-detection/retry`, {
         method: "POST", headers: { authorization: `Bearer ${token}`, "x-expected-map-url": mapUrl },
       });
       if (!res.ok) throw await errorFrom(res);
@@ -329,7 +340,7 @@ export const api = {
     },
     /** A library map's analysis, as the signed-in account that owns it (ADR 0017). */
     async library(id: string, signal?: AbortSignal) {
-      const res = await fetch(`/api/library/${encodeURIComponent(id)}/grid-detection`, { signal, cache: "no-store" });
+      const res = await apiFetch(`/api/library/${encodeURIComponent(id)}/grid-detection`, { signal, cache: "no-store" });
       if (res.status === 401) onSignedOut();
       if (res.status === 404) return null;
       if (!res.ok) throw await errorFrom(res);
@@ -343,14 +354,14 @@ export const api = {
   /** Accounts (FR-GM-01, ADR 0017). Errors carry the field to show them beside. */
   auth: {
     async me(): Promise<MeResponse> {
-      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      const res = await apiFetch("/api/auth/me", { cache: "no-store" });
       if (!res.ok) throw await errorFrom(res);
       return (await res.json()) as MeResponse;
     },
     signUp: (req: SignUpRequest) => postJson<MeResponse>("/api/auth/signup", req),
     signIn: (req: SignInRequest) => postJson<MeResponse>("/api/auth/signin", req),
     async signOut(): Promise<void> {
-      await fetch("/api/auth/signout", { method: "POST" });
+      await apiFetch("/api/auth/signout", { method: "POST" });
     },
     changePassword: (currentPassword: string, newPassword: string) =>
       accountRequest<void>("/api/auth/password", { method: "POST", ...jsonBody({ currentPassword, newPassword }) }),

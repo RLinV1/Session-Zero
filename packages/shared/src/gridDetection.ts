@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 
 /** Private HTTP contract. Values are measured against the original image pixels. */
 export const GridDetectionCandidate = z.object({
@@ -6,7 +7,7 @@ export const GridDetectionCandidate = z.object({
   offsetX: z.number().finite().nonnegative(),
   offsetY: z.number().finite().nonnegative(),
 }).refine((value) => value.offsetX < value.cellSize && value.offsetY < value.cellSize,
-  { message: "Offsets must be within one cell" });
+  { message: validationMessage(sharedMsg("valid.offsetsWithinCell")) });
 export type GridDetectionCandidate = z.infer<typeof GridDetectionCandidate>;
 
 /** Bump whenever preprocessing, detector settings, fitter or the candidate contract changes. */

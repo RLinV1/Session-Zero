@@ -1,4 +1,5 @@
 import type { Verdict } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /**
  * The GM's controls on one attack roll (attack-rulings, attack-ux-polish): Hit and Miss on a
@@ -22,19 +23,19 @@ export function RulingButtons({
   if (item.kind === "damage") {
     return (
       <span className="ruling-buttons">
-        <button type="button" disabled={busy} onClick={onApply} aria-label={`Apply ${item.amount} damage: ${description}`}>
-          Apply −{item.amount}
+        <button type="button" disabled={busy} onClick={onApply} aria-label={t("ruling.applyDamage", { n: item.amount, what: description })}>
+          {t("ruling.applyMinus", { n: item.amount })}
         </button>
       </span>
     );
   }
   return (
     <span className="ruling-buttons">
-      <button type="button" disabled={busy} onClick={() => onRule("hit")} aria-label={`Hit: ${description}`}>
-        Hit
+      <button type="button" disabled={busy} onClick={() => onRule("hit")} aria-label={t("ruling.hitNamed", { what: description })}>
+        {t("ruling.hit")}
       </button>
-      <button type="button" className="secondary" disabled={busy} onClick={() => onRule("miss")} aria-label={`Miss: ${description}`}>
-        Miss
+      <button type="button" className="secondary" disabled={busy} onClick={() => onRule("miss")} aria-label={t("ruling.missNamed", { what: description })}>
+        {t("ruling.miss")}
       </button>
     </span>
   );

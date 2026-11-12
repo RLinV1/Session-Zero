@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { formatDateTime } from "@vtt/shared";
+import { getLocale, t, tFor } from "../i18n/locale";
 import { Link } from "../Link";
 import { SiteFooter, PolicyNav, type PolicyPageName } from "../ui/SiteFooter";
 import { PRODUCT_NAME, SiteHeader } from "../ui/SiteHeader";
@@ -11,28 +13,43 @@ import { AccountLinks } from "./home/AccountLinks";
  * A document, not a decision, so it is a reading page rather than an entry card: the shared
  * header with the two policies as its navigation, one column at reading width on the hub's
  * ground, sections grouped by hairline and space (design-language: "Space and materiality").
+ *
+ * In another language the page is translated, says the English version governs, and links to it:
+ * `?lang=en` shows the English text in the same page (localization).
  */
-export const POLICIES_UPDATED = { iso: "2026-11-04", label: "4 November 2026" };
+export const POLICIES_UPDATED = { iso: "2026-11-10", label: "10 November 2026" };
 
 /** Where a person reaches the project: the repository's issue tracker. */
 const CONTACT_URL = "https://github.com/RLinV1/Session-Zero/issues";
 
-function PolicyPage({ page, title, lead, children }: { page: PolicyPageName; title: string; lead: ReactNode; children: ReactNode }) {
+type Tr = typeof t;
+
+function PolicyPage({ page, title, lead, children }: { page: PolicyPageName; title: (tr: Tr) => string; lead: (tr: Tr) => ReactNode; children: (tr: Tr) => ReactNode }) {
+  const translated = getLocale() !== "en";
+  const english = translated && new URLSearchParams(location.search).get("lang") === "en";
+  const tr = english ? tFor("en") : t;
+  const updated = english || !translated ? POLICIES_UPDATED.label : formatDateTime(getLocale(), new Date(`${POLICIES_UPDATED.iso}T12:00:00Z`), { dateStyle: "long" });
   return (
     <div className="policy-page">
       <div className="page-shell page-bar">
         <SiteHeader nav={<PolicyNav current={page} />} account={<AccountLinks />} />
       </div>
       <main className="page-shell">
-        <article className="policy" aria-labelledby="policy-title">
+        {translated && (
+          <p className="policy-note notice">
+            {t("policy.englishGoverns")}{" "}
+            <Link href={english ? `/${page}` : `/${page}?lang=en`}>{english ? t("policy.showTranslation") : t("policy.showEnglish")}</Link>
+          </p>
+        )}
+        <article className="policy" aria-labelledby="policy-title" lang={english ? "en" : undefined}>
           <header className="policy-head">
-            <h1 id="policy-title">{title}</h1>
-            <p className="policy-lead">{lead}</p>
+            <h1 id="policy-title">{title(tr)}</h1>
+            <p className="policy-lead">{lead(tr)}</p>
             <p className="policy-meta">
-              Last updated <time dateTime={POLICIES_UPDATED.iso}>{POLICIES_UPDATED.label}</time>
+              {tr("policy.lastUpdated")} <time dateTime={POLICIES_UPDATED.iso}>{updated}</time>
             </p>
           </header>
-          {children}
+          {children(tr)}
         </article>
       </main>
       <SiteFooter current={page} />
@@ -51,105 +68,73 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 
 export function PrivacyPage() {
   return (
-    <PolicyPage
-      page="privacy"
-      title="Privacy"
-      lead={
+    <PolicyPage page="privacy" title={(tr) => tr("privacy.title")} lead={(tr) => tr("privacy.lead", { product: PRODUCT_NAME })}>
+      {(tr) => (
         <>
-          {PRODUCT_NAME} is a hosted virtual tabletop. This page says what the service keeps about you, why, and how to
-          have it deleted.
+          <Part title={tr("privacy.keep.title")}>
+            <dl className="policy-terms">
+              <dt>{tr("privacy.keep.account.term")}</dt>
+              <dd>{tr("privacy.keep.account.body")}</dd>
+              <dt>{tr("privacy.keep.gm.term")}</dt>
+              <dd>{tr("privacy.keep.gm.body")}</dd>
+              <dt>{tr("privacy.keep.room.term")}</dt>
+              <dd>{tr("privacy.keep.room.body")}</dd>
+              <dt>{tr("privacy.keep.guest.term")}</dt>
+              <dd>{tr("privacy.keep.guest.body")}</dd>
+            </dl>
+          </Part>
+
+          <Part title={tr("privacy.dont.title")}>
+            <ul>
+              <li>{tr("privacy.dont.tracking")}</li>
+              <li>{tr("privacy.dont.sell")}</li>
+              <li>{tr("privacy.dont.ip")}</li>
+            </ul>
+          </Part>
+
+          <Part title={tr("privacy.long.title")}>
+            <ul>
+              <li>{tr("privacy.long.account")}</li>
+              <li>{tr("privacy.long.room")}</li>
+              <li>{tr("privacy.long.session")}</li>
+            </ul>
+          </Part>
+
+          <Part title={tr("privacy.where.title")}>
+            <p>{tr("privacy.where.body")}</p>
+          </Part>
+
+          <Part title={tr("privacy.cookies.title")}>
+            <p>{tr("privacy.cookies.one")}</p>
+            <p>{tr("privacy.cookies.local")}</p>
+          </Part>
+
+          <Part title={tr("privacy.who.title")}>
+            <p>{tr("privacy.who.body")}</p>
+          </Part>
+
+          <Part title={tr("privacy.delete.title")}>
+            <ul>
+              <li>
+                {tr("privacy.delete.account.before")}
+                <strong>{tr("privacy.delete.account.strong")}</strong>
+                {tr("privacy.delete.account.after")}
+              </li>
+              <li>{tr("privacy.delete.joined")}</li>
+              <li>{tr("privacy.delete.room")}</li>
+              <li>{tr("privacy.delete.library")}</li>
+            </ul>
+          </Part>
+
+          <Part title={tr("privacy.contact.title")}>
+            <p>
+              {tr("privacy.contact.before")}
+              <a href={CONTACT_URL}>{tr("privacy.contact.link")}</a>
+              {tr("privacy.contact.after")}
+            </p>
+          </Part>
         </>
-      }
-    >
-      <Part title="What we keep">
-        <dl className="policy-terms">
-          <dt>Your account</dt>
-          <dd>
-            Needed only to host a game. Your display name, your email and your password. The password is stored only as
-            an Argon2 hash, so nobody can read it back, us included.
-          </dd>
-          <dt>What a GM makes</dt>
-          <dd>Rooms, and the maps, tokens, creatures, encounters, animations and dice looks in their library.</dd>
-          <dt>What happens in a room</dt>
-          <dd>
-            For everyone in it, guests included: the name you join with, and everything done at the table, such as token
-            moves, rolls, chat messages and uploaded images. A room keeps this as its history, so the GM can undo
-            mistakes and restore earlier points.
-          </dd>
-          <dt>Joining as a guest</dt>
-          <dd>
-            You have no account. Your browser keeps a random key that puts you back in your seat; the server keeps only
-            a hash of it.
-          </dd>
-        </dl>
-      </Part>
-
-      <Part title="What we don't do">
-        <ul>
-          <li>No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.</li>
-          <li>We don't sell or share what you put in the app with anyone.</li>
-          <li>
-            Your IP address is used to slow down repeated requests, including sign-in, sign-up and join attempts. It is
-            held in memory for an hour at most and never saved.
-          </li>
-        </ul>
-      </Part>
-
-      <Part title="How long we keep it">
-        <ul>
-          <li>Account data (name, email, password hash, library) is kept until you delete your account.</li>
-          <li>A room and its history are kept until its GM deletes the room, or the GM's account is deleted.</li>
-          <li>A sign-in session ends after 30 days without use, or 90 days at most.</li>
-        </ul>
-      </Part>
-
-      <Part title="Where it is stored">
-        <p>
-          Our hosting provider stores the database and uploaded files on our behalf. It processes them only to run the
-          service for us.
-        </p>
-      </Part>
-
-      <Part title="Cookies and browser storage">
-        <p>
-          There is one cookie. It is set when you sign in and keeps you signed in. Scripts on the page can't read it,
-          and it ends after 30 days without use or 90 days at most. Because the app can't sign you in without it, there
-          is no cookie banner.
-        </p>
-        <p>
-          Your browser's local storage keeps your guest seat key and your preferences, such as the theme, dice look and
-          panel layout. These stay in your browser; clearing site data removes them.
-        </p>
-      </Part>
-
-      <Part title="Who sees what">
-        <p>
-          People in a room see what the GM shows them: the board, chat and public rolls. Hidden tokens, fog, walls and GM
-          rolls are removed on the server before anything reaches a player. The GM of a room sees everything in it.
-        </p>
-      </Part>
-
-      <Part title="Deleting your data">
-        <ul>
-          <li>
-            Choose <strong>Delete account</strong> on your account page, under Your account in the account menu. It
-            removes your rooms, library, uploads and sessions immediately and permanently.
-          </li>
-          <li>
-            Rooms you only joined, run by someone else, keep running. What you did there, such as your name, moves and
-            chat messages, stays in that room's history until its GM deletes the room.
-          </li>
-          <li>A GM can also delete a single room, which removes its whole history, chat and uploaded images.</li>
-          <li>You can delete anything in your library yourself.</li>
-        </ul>
-      </Part>
-
-      <Part title="Contact">
-        <p>
-          Questions or requests: open an issue on the project's <a href={CONTACT_URL}>GitHub issue tracker</a>. Do not
-          post private details there.
-        </p>
-      </Part>
+      )}
     </PolicyPage>
   );
 }
@@ -158,56 +143,52 @@ export function TermsPage() {
   return (
     <PolicyPage
       page="terms"
-      title="Terms of use"
-      lead={
+      title={(tr) => tr("terms.title")}
+      lead={(tr) => (
         <>
-          Using {PRODUCT_NAME} means agreeing to these terms and to the <Link href="/privacy">privacy notice</Link>.
+          {tr("terms.lead.before", { product: PRODUCT_NAME })}
+          <Link href="/privacy">{tr("terms.lead.link")}</Link>
+          {tr("terms.lead.after")}
         </>
-      }
+      )}
     >
-      <Part title="As is">
-        <p>
-          The service is provided as is, with no warranty of any kind. It may change, break or be unavailable. Keep your
-          own copies of maps and art you care about.
-        </p>
-      </Part>
+      {(tr) => (
+        <>
+          <Part title={tr("terms.asIs.title")}>
+            <p>{tr("terms.asIs.body")}</p>
+          </Part>
 
-      <Part title="What you upload">
-        <ul>
-          <li>You keep the rights to the maps, tokens and other images you upload.</li>
-          <li>Upload only what you have the right to use: your own work, work licensed to you, or work that is free to use.</li>
-          <li>This also covers anything an AI app adds to a build on your behalf. You review it, and you decide what to publish.</li>
-          <li>
-            You let us store your uploads and show them to the people in your rooms, only so the app can work. We may
-            remove content that infringes someone's rights or breaks these terms.
-          </li>
-        </ul>
-      </Part>
+          <Part title={tr("terms.upload.title")}>
+            <ul>
+              <li>{tr("terms.upload.rights")}</li>
+              <li>{tr("terms.upload.only")}</li>
+              <li>{tr("terms.upload.ai")}</li>
+              <li>{tr("terms.upload.license")}</li>
+            </ul>
+          </Part>
 
-      <Part title="Acceptable use">
-        <ul>
-          <li>No harassment, hate, or illegal content, in chat, names or images.</li>
-          <li>Don't try to break the app, get into other people's rooms or accounts, or flood it with requests.</li>
-          <li>A GM runs their own room and can remove anyone from it.</li>
-          <li>Keep your password to yourself.</li>
-        </ul>
-      </Part>
+          <Part title={tr("terms.use.title")}>
+            <ul>
+              <li>{tr("terms.use.harassment")}</li>
+              <li>{tr("terms.use.break")}</li>
+              <li>{tr("terms.use.gm")}</li>
+              <li>{tr("terms.use.password")}</li>
+            </ul>
+          </Part>
 
-      <Part title="Removing content and accounts">
-        <p>We may remove content and close accounts that break these terms. You can delete your own account at any time.</p>
-      </Part>
+          <Part title={tr("terms.remove.title")}>
+            <p>{tr("terms.remove.body")}</p>
+          </Part>
 
-      <Part title="The software, art and sound">
-        <p>
-          The source code is released under the MIT License. The built-in art was AI-generated for this project, and the
-          built-in sound effects are CC0 (public-domain) recordings. Where each piece came from is recorded beside it in
-          the source.
-        </p>
-      </Part>
+          <Part title={tr("terms.software.title")}>
+            <p>{tr("terms.software.body")}</p>
+          </Part>
 
-      <Part title="Changes">
-        <p>When these terms change, this page changes and the date above moves. Using the service after that means you accept the new terms.</p>
-      </Part>
+          <Part title={tr("terms.changes.title")}>
+            <p>{tr("terms.changes.body")}</p>
+          </Part>
+        </>
+      )}
     </PolicyPage>
   );
 }

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { AttackStyle, StrikeAnimationDef } from "./animation";
+import { englishText, sharedMsg, type MessageRef } from "./i18n";
+import type { Locale } from "./i18n/core";
+import { attackLabelZhTW, attackOutcomeZhTW, attackPartiesZhTW } from "./i18n/sentences.zh-TW";
 
 /**
  * Dice expressions of the form `NdX + M` (FR-TAC-09).
@@ -142,22 +145,25 @@ const PATTERN = /^\s*(\d*)\s*d\s*(\d+)\s*(?:([+-])\s*(\d+))?\s*$/i;
 
 export type ParseResult =
   | { ok: true; expression: DiceExpression }
-  | { ok: false; message: string };
+  /** `message` is `text` in English; `text` is for the reader's own language (ADR 0054). */
+  | { ok: false; message: string; text: MessageRef };
+
+const parseFailure = (text: MessageRef): ParseResult => ({ ok: false, message: englishText(text), text });
 
 /** `NdX`, `NdX+M`, `NdX-M`, or `dX`. Whitespace and case are ignored. */
 export function parseDiceExpression(input: string): ParseResult {
   const match = PATTERN.exec(input);
-  if (!match) return { ok: false, message: "Use NdX, NdX+M or NdX-M, for example 1d20+5" };
+  if (!match) return parseFailure(sharedMsg("reject.diceSyntax"));
 
   const count = match[1] === "" ? 1 : Number(match[1]);
   const sides = Number(match[2]);
   const modifier = match[3] ? Number(match[4]) * (match[3] === "-" ? -1 : 1) : 0;
 
-  if (count < 1 || count > MAX_DICE) return { ok: false, message: `Roll between 1 and ${MAX_DICE} dice` };
-  if (sides < 2 || sides > MAX_SIDES) return { ok: false, message: `Dice need 2 to ${MAX_SIDES} sides` };
+  if (count < 1 || count > MAX_DICE) return parseFailure(sharedMsg("reject.diceCount", { max: MAX_DICE }));
+  if (sides < 2 || sides > MAX_SIDES) return parseFailure(sharedMsg("reject.diceSides", { max: MAX_SIDES }));
 
   const parsed = DiceExpression.safeParse({ count, sides, modifier });
-  if (!parsed.success) return { ok: false, message: "That expression is out of range" };
+  if (!parsed.success) return parseFailure(sharedMsg("reject.diceOutOfRange"));
   return { ok: true, expression: parsed.data };
 }
 
@@ -178,17 +184,20 @@ export function formatExpression(e: DiceExpression): string {
 }
 
 /** "Aria → Goblin 2"; a side blanked for this viewer reads "Unknown" (ADR 0010). */
-export function formatAttackParties(attack: AttackContext): string {
+export function formatAttackParties(attack: AttackContext, locale: Locale = "en"): string {
+  if (locale === "zh-TW") return attackPartiesZhTW(attack);
   return `${attack.actor?.name ?? "Unknown"} → ${attack.target?.name ?? "Unknown"}`;
 }
 
 /** The label an attack roll reads with: its own, or "damage" for an unlabelled damage roll (ADR 0011). */
-export function attackLabel(attack: AttackContext): string | null {
+export function attackLabel(attack: AttackContext, locale: Locale = "en"): string | null {
+  if (locale === "zh-TW") return attackLabelZhTW(attack);
   return attack.label ?? (attack.kind === "damage" ? "damage" : null);
 }
 
 /** What the GM has done with an attack roll so far: "Hit", "Miss", "Applied", or nothing yet (ADR 0011). */
-export function formatAttackOutcome(roll: Pick<DiceRoll, "verdict" | "damageApplied">): string | null {
+export function formatAttackOutcome(roll: Pick<DiceRoll, "verdict" | "damageApplied">, locale: Locale = "en"): string | null {
+  if (locale === "zh-TW") return attackOutcomeZhTW(roll);
   if (roll.verdict) return roll.verdict === "hit" ? "Hit" : "Miss";
   return roll.damageApplied ? "Applied" : null;
 }
@@ -197,8 +206,8 @@ export function formatAttackOutcome(roll: Pick<DiceRoll, "verdict" | "damageAppl
  * "Aria → Goblin 2 · Longsword · 1d20+5 = 17 · Hit", for the roll log. Plain rolls read "1d20+5 = 17".
  * The outcome is only ever what the GM decided; nothing here compares the roll to anything.
  */
-export function formatAttackRoll(roll: Pick<DiceRoll, "expression" | "total" | "attack" | "verdict" | "damageApplied">): string {
+export function formatAttackRoll(roll: Pick<DiceRoll, "expression" | "total" | "attack" | "verdict" | "damageApplied">, locale: Locale = "en"): string {
   const result = `${roll.expression} = ${roll.total}`;
   if (!roll.attack) return result;
-  return [formatAttackParties(roll.attack), attackLabel(roll.attack), result, formatAttackOutcome(roll)].filter(Boolean).join(" · ");
+  return [formatAttackParties(roll.attack, locale), attackLabel(roll.attack, locale), result, formatAttackOutcome(roll, locale)].filter(Boolean).join(" · ");
 }

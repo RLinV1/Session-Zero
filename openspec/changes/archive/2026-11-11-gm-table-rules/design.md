@@ -73,7 +73,7 @@ A small helper `statHidden(state, you, token, "hp" | "ac")` is true for a player
 **9. The Table tab is rewritten around the four rules.**
 `TableSection` in `SettingsMenu.tsx` gets a select and three switches, labelled as in the spec with no hint text, each sending its own command. It shows the server's refusal message, as it does today. The tab still appears only for the GM outside a preview.
 
-**10. A new ADR, [0054 "Table rules"](../../../docs/adr/0054-table-rules.md), amends ADR 0049.** It records Decisions 1, 2, 4, 5 and 7, the information that still gets through (spec and proposal), and the reconciliation with the in-flight `auto-remove-defeated-tokens` change: its "Room setting" requirement is replaced by `table-rules`' "Remove tokens at 0 HP mode".
+**10. A new ADR, [0054 "Table rules"](../../../docs/adr/0057-table-rules.md), amends ADR 0049.** It records Decisions 1, 2, 4, 5 and 7, the information that still gets through (spec and proposal), and the reconciliation with the in-flight `auto-remove-defeated-tokens` change: its "Room setting" requirement is replaced by `table-rules`' "Remove tokens at 0 HP mode".
 
 ## Risks / Trade-offs
 

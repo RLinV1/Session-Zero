@@ -18,6 +18,8 @@ import type { SignedIn } from "../identity/sessions";
 import { EncounterNameConflictError, EncounterLimitError, EncounterMapMissingError } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
 import { mapDeletedMessage, toSummary } from "./encounters";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 
 const RoomIdParam = z.uuid();
 const NEW_ENCOUNTER_ROOM_NAME = "New encounter";
@@ -53,7 +55,7 @@ export function registerEncounterEditRoutes(
       if ("templateId" in body.data) {
         // Resolved before anything is created, so a template that is gone leaves no room behind.
         const found = await resolveEncounter(store, gmId, body.data.templateId);
-        if (!found.ok) return void res.status(found.reason === "missing" ? 404 : 409).json({ error: found.message });
+        if (!found.ok) return void res.status(found.reason === "missing" ? 404 : 409).json({ error: sharedText(requestLocale(res), found.text) });
         created = await rooms.createRoomWithSeat({
           ...seat, roomName: found.encounter.name, editsEncounterId: found.encounter.id, encounter: found.encounter,
         });

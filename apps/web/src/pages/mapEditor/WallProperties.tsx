@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Wall, type MapImage, type Point, type UvttPortal } from "@vtt/shared";
 import { importedDoor } from "./importedOpenings";
+import { t } from "../../i18n/locale";
 
 /** Coordinates may be incomplete while editing; saved walls still require complete points. */
 type WallDraft = Omit<Wall, "uvttPortal"> & { uvttPortal?: Omit<UvttPortal, "position"> & { position?: Partial<Point> } };
@@ -19,48 +20,48 @@ export function WallProperties({ wall, map, onSave, disabled = false }: { wall: 
     if (Object.keys(position).length) uvttPortal.position = position; else delete uvttPortal.position;
     return { ...v, uvttPortal };
   });
-  return <form className="stack" aria-label="Geometry properties" onSubmit={(e) => {
+  return <form className="stack" aria-label={t("walls.properties")} onSubmit={(e) => {
     e.preventDefault();
     const parsed = Wall.safeParse(value);
-    if (!parsed.success || value.a.x === value.b.x && value.a.y === value.b.y) { setError("Use finite coordinates and two distinct endpoints."); return; }
+    if (!parsed.success || value.a.x === value.b.x && value.a.y === value.b.y) { setError(t("walls.finite")); return; }
     setBusy(true); setError(null);
-    void (async () => { await onSave(parsed.data); })().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not save geometry.")).finally(() => setBusy(false));
+    void (async () => { await onSave(parsed.data); })().catch((err: unknown) => setError(err instanceof Error ? err.message : t("walls.geometrySaveFailed"))).finally(() => setBusy(false));
   }}>
     <fieldset className="stack geometry-fields" disabled={busy || disabled}>
-    <h3 className="map-editor-heading">{wall.portal?.kind === "window" ? "Window" : wall.uvttPortal || wall.portal ? "Door" : "Wall"} properties</h3>
-    <p className="muted small-print">Coordinates are image pixels. Door rotation is in radians.</p>
+    <h3 className="map-editor-heading">{t("walls.propertiesOf", { kind: wall.portal?.kind === "window" ? t("common.window") : wall.uvttPortal || wall.portal ? t("common.door") : t("common.wall") })}</h3>
+    <p className="muted small-print">{t("walls.coordinates")}</p>
     {(["a", "b"] as const).map((end) => <div className="row" key={end}>
-      {(["x", "y"] as const).map((axis) => <label className="stack" key={axis}>End {end.toUpperCase()} {axis.toUpperCase()}
+      {(["x", "y"] as const).map((axis) => <label className="stack" key={axis}>{t("walls.endAxis", { end: end.toUpperCase(), axis: axis.toUpperCase() })}
         <input type="number" step="any" min="0" max={axis === "x" ? map.width : map.height} required value={Number.isFinite(value[end][axis]) ? value[end][axis] : ""} onChange={(e) => point(end, axis, e.target.valueAsNumber)} />
       </label>)}
     </div>)}
-    {!value.uvttPortal && !value.portal && <label className="stack">Geometry source
+    {!value.uvttPortal && !value.portal && <label className="stack">{t("walls.source")}
       <select value={value.source ?? "line_of_sight"} onChange={(e) => setValue((v) => ({ ...v, source: e.target.value as Wall["source"] }))}>
-        <option value="line_of_sight">Line of sight</option><option value="objects_line_of_sight">Object line of sight</option>
+        <option value="line_of_sight">{t("walls.lineOfSight")}</option><option value="objects_line_of_sight">{t("walls.objectLos")}</option>
       </select>
     </label>}
-    {value.uvttPortal && <label className="stack">Use as
+    {value.uvttPortal && <label className="stack">{t("walls.useAs")}
       <select value={value.portal?.kind ?? "generic"} onChange={(e) => setValue((v) => {
         const { portal: _portal, ...generic } = v;
         return e.target.value === "generic" ? generic : { ...v, portal: { kind: e.target.value as "door" | "window", state: v.portal?.state ?? importedDoor(v).state } };
-      })}><option value="generic">Imported opening (GM only)</option><option value="door">Door</option><option value="window">Window</option></select>
+      })}><option value="generic">{t("walls.importedOpening")}</option><option value="door">{t("common.door")}</option><option value="window">{t("common.window")}</option></select>
     </label>}
-    {value.portal && <label className="stack">{value.portal.kind === "window" ? "Window state" : "Door state"}
+    {value.portal && <label className="stack">{value.portal.kind === "window" ? t("walls.windowState") : t("walls.doorState")}
       <select value={value.portal.state} onChange={(e) => setValue((v) => ({ ...v, portal: { ...v.portal!, state: e.target.value as "open" | "closed" | "locked" } }))}>
-        <option value="open">Open</option><option value="closed">Closed</option><option value="locked">Locked</option>
+        <option value="open">{t("common.openState")}</option><option value="closed">{t("common.closed")}</option><option value="locked">{t("common.locked")}</option>
       </select>
     </label>}
     <label><input type="checkbox" checked={Boolean(value.uvttPortal)} onChange={(e) => setValue((v) => {
       const { uvttPortal: _portal, ...solid } = v;
       return e.target.checked ? { ...v, uvttPortal: { closed: true, freestanding: false } } : solid;
-    })} /> Imported door metadata</label>
+    })} /> {t("walls.importedDoor")}</label>
     {value.uvttPortal && <>
-      {!value.portal && <label><input type="checkbox" checked={value.uvttPortal.closed !== false} onChange={(e) => setValue((v) => ({ ...v, uvttPortal: { ...v.uvttPortal, closed: e.target.checked } }))} /> Closed (blocks movement)</label>}
-      <label><input type="checkbox" checked={value.uvttPortal.freestanding ?? false} onChange={(e) => setValue((v) => ({ ...v, uvttPortal: { ...v.uvttPortal, freestanding: e.target.checked } }))} /> Freestanding</label>
-      {(["x", "y"] as const).map((axis) => <label className="stack" key={axis}>Door position {axis.toUpperCase()}
+      {!value.portal && <label><input type="checkbox" checked={value.uvttPortal.closed !== false} onChange={(e) => setValue((v) => ({ ...v, uvttPortal: { ...v.uvttPortal, closed: e.target.checked } }))} /> {t("walls.closedBlocks")}</label>}
+      <label><input type="checkbox" checked={value.uvttPortal.freestanding ?? false} onChange={(e) => setValue((v) => ({ ...v, uvttPortal: { ...v.uvttPortal, freestanding: e.target.checked } }))} /> {t("walls.freestanding")}</label>
+      {(["x", "y"] as const).map((axis) => <label className="stack" key={axis}>{t("walls.doorPosition", { axis: axis.toUpperCase() })}
         <input type="number" step="any" value={value.uvttPortal?.position?.[axis] ?? ""} onChange={(e) => portalPoint(axis, e.target.value === "" ? undefined : e.target.valueAsNumber)} />
       </label>)}
-      <label className="stack">Rotation (radians)
+      <label className="stack">{t("walls.rotation")}
         <input type="number" step="any" value={value.uvttPortal.rotation ?? ""} onChange={(e) => {
           const rotation = e.target.value === "" ? undefined : e.target.valueAsNumber;
           setValue((v) => {
@@ -70,10 +71,10 @@ export function WallProperties({ wall, map, onSave, disabled = false }: { wall: 
           });
         }} />
       </label>
-      <p className="muted small-print">Choose Door or Window to give this imported opening the table’s visibility and player controls.</p>
+      <p className="muted small-print">{t("walls.chooseUse")}</p>
     </>}
     {error && <p role="alert" className="error">{error}</p>}
-    <button className="primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save geometry"}</button>
+    <button className="primary" type="submit" disabled={busy}>{busy ? t("common.saving") : t("walls.saveGeometry")}</button>
     </fieldset>
   </form>;
 }

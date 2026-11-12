@@ -1,5 +1,7 @@
 import portraits from "../../public/img/tokens/enemies/portraits.json";
 import { SHIPPED_MAPS, shippedMapByUrl, type LibraryAsset } from "@vtt/shared";
+import { t } from "../i18n/locale";
+import type { WebEn } from "../i18n/en";
 
 /**
  * Token art and maps that ship with the app (builtin-library-assets).
@@ -17,13 +19,33 @@ const TOKEN_SIZE = { width: 192, height: 192 };
  * Each map carries its own grid, measured from its drawn floor tiles so the lines follow
  * the paving and walls (top-down-default-maps). A regenerated map needs measuring again.
  */
+/** A built-in's name, read when used, in the reader's language; one without a catalog entry keeps its own. */
+function named<T extends object>(item: T, key: string, fallback: string): T & { name: string } {
+  return Object.defineProperty(item, "name", {
+    get: () => (key in BUILTIN_NAME_KEYS ? t(BUILTIN_NAME_KEYS[key as keyof typeof BUILTIN_NAME_KEYS]) : fallback),
+    enumerable: true,
+  }) as T & { name: string };
+}
+const BUILTIN_NAME_KEYS = {
+  "token:goblin-guard": "builtin.creature.goblin-guard",
+  "token:goblin-spearman": "builtin.creature.goblin-spearman",
+  "token:human-mage": "builtin.creature.human-mage",
+  "token:human-swordsman": "builtin.creature.human-swordsman",
+  "map:broken-span": "builtin.map.broken-span",
+  "map:hollowfrost-keep": "builtin.map.hollowfrost-keep",
+  "map:temple-green-sun": "builtin.map.temple-green-sun",
+  "map:sunken-crypt": "builtin.map.sunken-crypt",
+  "map:emberwatch-archive": "builtin.map.emberwatch-archive",
+  "map:moonwater-baths": "builtin.map.moonwater-baths",
+} as const satisfies Record<string, keyof WebEn>;
+
 function token(slug: string, name: string, url: string): LibraryAsset {
-  return { id: `builtin:${slug}`, kind: "token", name, url, ...TOKEN_SIZE, grid: null, createdAt: SHIPPED };
+  return named({ id: `builtin:${slug}`, kind: "token" as const, url, ...TOKEN_SIZE, grid: null, createdAt: SHIPPED }, `token:${slug}`, name);
 }
 
 export const BUILTIN_ASSETS: readonly LibraryAsset[] = [
   ...SHIPPED_MAPS.map(
-    ({ slug, name, url, width, height, grid }): LibraryAsset => ({ id: `builtin:${slug}`, kind: "map", name, url, width, height, grid, createdAt: SHIPPED }),
+    ({ slug, name, url, width, height, grid }): LibraryAsset => named({ id: `builtin:${slug}`, kind: "map" as const, url, width, height, grid, createdAt: SHIPPED }, `map:${slug}`, name),
   ),
   ...portraits.map(({ slug, name, file, width, height }): LibraryAsset => ({
     ...token(slug, name, `/img/tokens/enemies/${file}`), width, height,
@@ -34,25 +56,22 @@ export const BUILTIN_ASSETS: readonly LibraryAsset[] = [
  * The shipped maps' prepared thumbnails, cut by scripts/home-maps.mjs, by slug. Whole maps at 640px
  * wide, so a library card or the home page never downloads a full map just to show a picture of it.
  */
+type ShippedSlug = "emberwatch-archive" | "moonwater-baths" | "broken-span" | "hollowfrost-keep" | "temple-green-sun" | "sunken-crypt";
+/** A thumbnail whose `alt` is read when shown, in the reader's language. */
+const thumb = (slug: ShippedSlug, src: string) => ({
+  src,
+  get alt() {
+    return t(`builtin.mapAlt.${slug}`);
+  },
+});
+
 export const SHIPPED_MAP_THUMBS: Readonly<Record<string, { src: string; alt: string }>> = {
-  "emberwatch-archive": { src: "/img/home/emberwatch-archive-thumb.webp", alt: "A top-down copper-lit archive with bookcases, a reading hall, a locked vault and a looping passage." },
-  "moonwater-baths": { src: "/img/home/moonwater-baths-thumb.webp", alt: "A top-down teal stone bathhouse with two pools, pillars, glazed windows and a secluded southern gallery." },
-  "broken-span": {
-    src: "/img/home/broken-span-thumb.webp",
-    alt: "A top-down battle map of a ruined keep split by a rushing chasm, joined by two stone bridges.",
-  },
-  "hollowfrost-keep": {
-    src: "/img/home/hollowfrost-keep-thumb.webp",
-    alt: "A top-down battle map of a snowbound fortress on both sides of a frozen ravine, with an ice bridge and a crystal dais.",
-  },
-  "temple-green-sun": {
-    src: "/img/home/temple-green-sun-thumb.webp",
-    alt: "A top-down battle map of an overgrown temple plaza with a sun mosaic, lily ponds and a side chamber, framed by jungle.",
-  },
-  "sunken-crypt": {
-    src: "/img/home/sunken-crypt-thumb.webp",
-    alt: "A top-down battle map of a stone crypt: a pillared entry hall, a long corridor to a pillared chapel, a side vault behind a banded door, a guard room seen through a window, and a winding gallery.",
-  },
+  "emberwatch-archive": thumb("emberwatch-archive", "/img/home/emberwatch-archive-thumb.webp"),
+  "moonwater-baths": thumb("moonwater-baths", "/img/home/moonwater-baths-thumb.webp"),
+  "broken-span": thumb("broken-span", "/img/home/broken-span-thumb.webp"),
+  "hollowfrost-keep": thumb("hollowfrost-keep", "/img/home/hollowfrost-keep-thumb.webp"),
+  "temple-green-sun": thumb("temple-green-sun", "/img/home/temple-green-sun-thumb.webp"),
+  "sunken-crypt": thumb("sunken-crypt", "/img/home/sunken-crypt-thumb.webp"),
 };
 
 /**
@@ -77,4 +96,16 @@ export function libraryAssetId(asset: LibraryAsset): string | null {
 export function builtinsMatching(kind: LibraryAsset["kind"], query: string): LibraryAsset[] {
   const q = query.trim().toLowerCase();
   return BUILTIN_ASSETS.filter((a) => a.kind === kind && (!q || a.name.toLowerCase().includes(q)));
+}
+
+/**
+ * The name a library card shows: a seeded shipped map that still has its shipped name reads in the
+ * reader's language; a name the GM gave it is theirs and shows as typed.
+ */
+export function assetDisplayName(asset: Pick<LibraryAsset, "name" | "url">): string {
+  const shipped = shippedMapByUrl(asset.url);
+  const key = shipped ? (`map:${shipped.slug}` as const) : null;
+  return shipped && key && key in BUILTIN_NAME_KEYS && asset.name === shipped.name
+    ? t(BUILTIN_NAME_KEYS[key as keyof typeof BUILTIN_NAME_KEYS])
+    : asset.name;
 }

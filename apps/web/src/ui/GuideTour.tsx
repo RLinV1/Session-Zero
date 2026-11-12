@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { guideSteps, placeCard, type GuideStep, type Rect, type Role } from "./guide";
+import { t, useLocale } from "../i18n/locale";
 
 const PAD = 6;
 
@@ -21,7 +22,9 @@ export function GuideTour({ role = "gm", steps: given, onClose }: { role?: Role;
   // Resolved once, after the first commit, so targets are read from the laid-out page
   // rather than whatever was on screen when the Guide button was pressed.
   const [steps, setSteps] = useState<GuideStep[] | null>(null);
-  useLayoutEffect(() => setSteps((given ?? guideSteps(role)).filter((s) => findTarget(s))), [role, given]);
+  // Rebuilt in a new language too, so an open tour follows a language change.
+  const locale = useLocale();
+  useLayoutEffect(() => setSteps((given ?? guideSteps(role)).filter((s) => findTarget(s))), [role, given, locale]);
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
@@ -125,11 +128,11 @@ export function GuideTour({ role = "gm", steps: given, onClose }: { role?: Role;
       >
         <div className="guide-card-head">
           <span className="guide-count">
-            {index + 1} of {steps.length}
+            {t("tour.position", { n: index + 1, total: steps.length })}
           </span>
           {!last && (
             <button type="button" className="link guide-skip" onClick={onClose}>
-              Skip all
+              {t("tour.skipAll")}
             </button>
           )}
         </div>
@@ -141,10 +144,10 @@ export function GuideTour({ role = "gm", steps: given, onClose }: { role?: Role;
         </p>
         <div className="guide-actions">
           <button type="button" className="secondary" onClick={() => go(index - 1)} disabled={index === 0}>
-            Back
+            {t("common.back")}
           </button>
           <button className="primary" ref={nextRef} type="button" onClick={() => go(index + 1)}>
-            {last ? "Done" : "Next"}
+            {last ? t("common.done") : t("tour.next")}
           </button>
         </div>
       </div>

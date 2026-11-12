@@ -11,7 +11,7 @@ See proposal.md for the motivation and specs/ for the behavior. The current stat
 - **Players' drags are checked privately on the server.** A dragging player sends an ephemeral `tokenMovePreview { requestId, tokenId, from, to, boardEpoch, reposition? }`. The server answers that socket only with `tokenMoveFeedback { status: clear | blocked | unknown }` (`movementFeedbackForViewer`, `visibility.ts:76`). The answer is "unknown" unless the route lies within the player's known terrain coverage (`movementRouteKnown`).
 - **Players don't have walls.** They receive doors and windows outside fog, but no plain walls (ADR 0029), until `visible-walls-for-players` ships.
 - **Other screens see moves as jumps.** During a drag they see a live ghost (`tokenDragPreview`), and on commit the token jumps to `to`.
-- **Room rules** follow the table-rules pattern (ADR 0054): an optional `RoomState` field read with a default, a GM-only `room.set*` command, and a `*Set { value, previous }` event that passes the visibility filter and has an activity-log line.
+- **Room rules** follow the table-rules pattern (ADR 0057): an optional `RoomState` field read with a default, a GM-only `room.set*` command, and a `*Set { value, previous }` event that passes the visibility filter and has an activity-log line.
 
 ## Goals / Non-Goals
 

@@ -1,5 +1,6 @@
 import type { ISourceOptions } from "@tsparticles/engine";
 import { ANIMATION_SHAPES, type AnimationDef, type AnimationShape, type AttackStyle, type ConditionId, type Point } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /**
  * The look of every effect the overlay draws (board-effects-overlay). Pure data and arithmetic: no
@@ -272,36 +273,15 @@ export const ATTACK_STYLE_PRESETS: Record<AttackStyle, AnimationDef> = {
 /** The nuke's built-in blast: orange fire with a white flash and a heavy shake. */
 export const NUKE_PRESET: AnimationDef = SHAPE_DEFAULTS.nuke;
 
-/** Display name of each shape's built-in, for the library's "Start from built-in" and the nuke picker. */
-const BUILTIN_NAMES: Record<AnimationShape, string> = {
-  slash: "Melee slash",
-  claw: "Claw rake",
-  whirlwind: "Whirlwind blades",
-  slam: "Ground slam",
-  shadow: "Shadow strike",
-  projectile: "Ranged projectile",
-  volley: "Arrow volley",
-  dagger: "Thrown daggers",
-  fireball: "Fireball",
-  meteor: "Meteor",
-  explosion: "Explosion",
-  bolt: "Magic bolt",
-  chain: "Chain lightning",
-  beam: "Arcane beam",
-  frost: "Frost spikes",
-  poison: "Poison cloud",
-  smite: "Holy smite",
-  sonic: "Sonic wave",
-  tornado: "Tornado",
-  nuke: "Nuke",
-};
-
 /** Ids the first built-ins had before every shape got one; saved links and tests use them. */
 const BUILTIN_IDS: Partial<Record<AnimationShape, string>> = { slash: "builtin-melee", projectile: "builtin-ranged", bolt: "builtin-magic" };
 
 /** Every shape's default preset with a display name, in shape order. */
 export const BUILTIN_ANIMATIONS: ReadonlyArray<{ id: string; name: string; def: AnimationDef }> = ANIMATION_SHAPES.map((shape) => ({
   id: BUILTIN_IDS[shape] ?? `builtin-${shape}`,
-  name: BUILTIN_NAMES[shape],
+  /** Read when shown, in the reader's language; copying a built-in copies the copier's (localization). */
+  get name() {
+    return t(`animation.builtin.${shape}`);
+  },
   def: SHAPE_DEFAULTS[shape],
 }));

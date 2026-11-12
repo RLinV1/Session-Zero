@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { useT } from "../i18n/locale";
 
 /**
  * A modal on the native `<dialog>` (room-sidebar-layout: GM setup forms open in modals).
@@ -14,7 +15,7 @@ export function Modal({
   onAfterClose,
   initialFocus,
   headerContent,
-  closeLabel = "Close",
+  closeLabel,
   children,
 }: {
   open: boolean;
@@ -32,6 +33,7 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const t = useT();
   const titleId = useId();
   /** Whatever had focus when the modal opened, usually the button that opened it. */
   const opener = useRef<HTMLElement | null>(null);
@@ -86,7 +88,7 @@ export function Modal({
               {title}
             </h2>
             {headerContent}
-            <button type="button" className="modal-close" aria-label={closeLabel} onClick={onClose}>
+            <button type="button" className="modal-close" aria-label={closeLabel ?? t("common.close")} onClick={onClose}>
               <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
                 <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
               </svg>

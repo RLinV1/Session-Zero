@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { polygonArea, WALL_FOOTPRINT_INSET, type GridSpec, type Point, type Segment } from "./geometry";
+import { sharedMsg, type MessageRef } from "./i18n";
 
 export const MAX_TERRAIN_CELLS = 10_000;
 export const MAX_TERRAIN_EFFECTS = 32;
@@ -91,13 +92,13 @@ export function previousPaint(runs: readonly TerrainRun[], paint: readonly Paint
 export function paintMatches(runs: readonly TerrainRun[], paint: readonly PaintRun[]): boolean {
   return paint.every((r) => { for (let col = r.start; col <= r.end; col++) if (terrainAt(runs, col, r.row) !== r.kind) return false; return true; });
 }
-export function paintProblem(paint: readonly PaintRun[]): string | null {
+export function paintProblem(paint: readonly PaintRun[]): MessageRef | null {
   let count = 0;
   const seen = new Set<string>();
   for (const r of paint) {
     count += r.end - r.start + 1;
-    if (r.end < r.start || count > MAX_TERRAIN_CELLS) return "A gesture exceeds the terrain cell limit.";
-    for (let col = r.start; col <= r.end; col++) { const key = `${r.row}:${col}`; if (seen.has(key)) return "A gesture contains overlapping cells."; seen.add(key); }
+    if (r.end < r.start || count > MAX_TERRAIN_CELLS) return sharedMsg("reject.paintTooManyCells");
+    for (let col = r.start; col <= r.end; col++) { const key = `${r.row}:${col}`; if (seen.has(key)) return sharedMsg("reject.paintOverlap"); seen.add(key); }
   }
   return null;
 }

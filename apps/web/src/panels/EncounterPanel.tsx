@@ -8,6 +8,7 @@ import { EncounterThumb, encounterSummary, useLibraryMaps } from "../pages/Libra
 import { EncounterPreviewBoard, useEncounterPreview } from "../pages/EncounterPreviewModal";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
+import { t } from "../i18n/locale";
 
 /**
  * Encounter templates (FR-GM-13, ADR 0024): the GM saves this room's prepared board to their
@@ -42,7 +43,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
       (list) => setTemplates(list),
       (err: unknown) => {
         setTemplates([]);
-        setError(err instanceof Error ? err.message : "Could not load your encounter templates");
+        setError(err instanceof Error ? err.message : t("library.encountersLoadFailed"));
       },
     );
   }, []);
@@ -56,16 +57,16 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   const save = async () => {
     if (busy || preparing) return;
     const trimmed = name.trim();
-    if (!trimmed) return setError("Give the template a name.");
+    if (!trimmed) return setError(t("enc.nameRequired"));
     setBusy(true);
     try {
       const saved = await api.library.encounters.save({ roomId: state.roomId, name: trimmed });
       setTemplates((all) => [saved, ...(all ?? [])]);
       closeSave();
       setError(null);
-      setStatus(`Saved encounter template "${saved.name}".`);
+      setStatus(t("enc.saved", { name: saved.name }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the template");
+      setError(err instanceof Error ? err.message : t("enc.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -78,9 +79,9 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
       const saved = await api.library.encounters.replaceFromRoom(template.id, state.roomId);
       setTemplates((all) => [saved, ...(all ?? []).filter((t) => t.id !== saved.id)]);
       setError(null);
-      setStatus(`Replaced encounter template "${saved.name}" with this room's board.`);
+      setStatus(t("enc.replaced", { name: saved.name }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not replace the template");
+      setError(err instanceof Error ? err.message : t("enc.replaceFailed"));
     } finally {
       setBusy(false);
       setConfirmingReplace(null);
@@ -93,7 +94,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
     try {
       const result = await connection.command({ type: "encounter.apply", templateId: template.id, ...(keepSetup && canKeepSetup(template) && { keepMapSetup: true }) });
       setError(result.ok ? null : result.message);
-      if (result.ok) setStatus(`Applied "${template.name}"${preparing ? " to the private scene." : ". Undo it from the activity log if that was wrong."}`);
+      if (result.ok) setStatus(t(preparing ? "enc.appliedScene" : "enc.applied", { name: template.name }));
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -103,39 +104,39 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   return (
     <PanelSection
       id="gm-encounters"
-      title="Encounter templates"
+      title={t("enc.title")}
       actions={!preparing && (
-        <button type="button" className="secondary small encounter-save-btn" aria-label="Save as template" title="Save this board as a template" onClick={() => setSaveOpen(true)}>
+        <button type="button" className="secondary small encounter-save-btn" aria-label={t("enc.saveAs")} title={t("enc.saveBoard")} onClick={() => setSaveOpen(true)}>
           <Plus size={16} aria-hidden="true" />
         </button>
       )}
     >
-      <p className="muted" title="Saves this room's map, grid, tokens and fog so you can reuse it in any of your rooms.">
-        {preparing ? "Apply a template to this private scene." : "Reuse a prepared board in any room."}
+      <p className="muted" title={t("enc.savesHint")}>
+        {preparing ? t("enc.applyToScene") : t("enc.reuse")}
       </p>
       {error && !saveOpen && <p role="alert" className="error">{error}</p>}
       <p role="status" className="sr-only">{status}</p>
       {templates === null ? (
-        <p className="muted" aria-busy="true">Loading…</p>
+        <p className="muted" aria-busy="true">{t("common.loading")}</p>
       ) : templates.length === 0 ? (
-        <p className="muted">No templates yet. Use + above to save this board as your first one.</p>
+        <p className="muted">{t("enc.none")}</p>
       ) : (
         <ul className="plain encounter-list">
-          {templates.map((t) => (
-            <li key={t.id} className="encounter-row">
-              <EncounterThumb map={t.mapAssetId ? maps.get(t.mapAssetId) : undefined} />
+          {templates.map((template) => (
+            <li key={template.id} className="encounter-row">
+              <EncounterThumb map={template.mapAssetId ? maps.get(template.mapAssetId) : undefined} />
               <span className="encounter-row-text">
-                <strong>{t.name}</strong>
-                <span className="muted">{t.mapName === null ? "map deleted" : encounterSummary(t)}</span>
+                <strong>{template.name}</strong>
+                <span className="muted">{template.mapName === null ? t("enc.mapDeleted") : encounterSummary(template)}</span>
               </span>
               {!preparing && (
                 <button
                   type="button"
                   className="secondary small encounter-replace-btn"
-                  disabled={busy || !sameMap(t)}
-                  aria-label={`Replace ${t.name}`}
-                  title={sameMap(t) ? `Replace ${t.name} with this room's board` : "Only available in a room on this template's map"}
-                  onClick={() => setConfirmingReplace(t)}
+                  disabled={busy || !sameMap(template)}
+                  aria-label={t("enc.replaceNamed", { name: template.name })}
+                  title={sameMap(template) ? t("enc.replaceWithBoard", { name: template.name }) : t("enc.sameMapOnly")}
+                  onClick={() => setConfirmingReplace(template)}
                 >
                   <ArrowsClockwise size={16} aria-hidden="true" />
                 </button>
@@ -143,18 +144,18 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
               <button
                 type="button"
                 className="secondary small"
-                disabled={busy || t.mapName === null}
-                aria-label={`Apply ${t.name}`}
-                title={`Apply ${t.name}`}
-                onClick={() => { setKeepSetup(false); setConfirming(t); }}
+                disabled={busy || template.mapName === null}
+                aria-label={t("enc.applyNamed", { name: template.name })}
+                title={t("enc.applyNamed", { name: template.name })}
+                onClick={() => { setKeepSetup(false); setConfirming(template); }}
               >
-                <Play size={16} aria-hidden="true" /> Apply
+                <Play size={16} aria-hidden="true" /> {t("enc.apply")}
               </button>
             </li>
           ))}
         </ul>
       )}
-      <Modal open={saveOpen} title="Save encounter template" onClose={closeSave}>
+      <Modal open={saveOpen} title={t("enc.saveTitle")} onClose={closeSave}>
         <form
           className="stack"
           onSubmit={(e) => {
@@ -163,65 +164,64 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
           }}
         >
           <label className="stack">
-            <span>Template name</span>
+            <span>{t("encounter.templateName")}</span>
             <input
               autoFocus
               value={name}
               maxLength={MAX_ENCOUNTER_NAME}
-              placeholder="Encounter name"
+              placeholder={t("enc.namePlaceholder")}
               onChange={(e) => setName(e.target.value)}
               disabled={busy}
             />
           </label>
           <p className="muted">
             {roomMapId
-              ? `Saves this room's map, grid, ${tokenCount} token${tokenCount === 1 ? "" : "s"} and fog. To overwrite an existing template, use its Replace button in the list.`
-              : "Add a map from your library to this room first. A template is saved on a map."}
+              ? t("enc.savesCount", { n: tokenCount })
+              : t("enc.needsMap")}
           </p>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row modal-actions">
-            <button type="button" className="secondary" onClick={closeSave}>Cancel</button>
-            <button type="submit" className="primary" disabled={busy || !roomMapId || !name.trim()}>Save</button>
+            <button type="button" className="secondary" onClick={closeSave}>{t("common.cancel")}</button>
+            <button type="submit" className="primary" disabled={busy || !roomMapId || !name.trim()}>{t("common.save")}</button>
           </div>
         </form>
       </Modal>
-      <Modal open={confirmingReplace !== null} title="Replace encounter template?" onClose={() => setConfirmingReplace(null)}>
+      <Modal open={confirmingReplace !== null} title={t("enc.replaceQ")} onClose={() => setConfirmingReplace(null)}>
         {confirmingReplace && (
           <div className="stack">
             <p>
-              Replace <strong>{confirmingReplace.name}</strong> with this room's map, grid, tokens and fog? Its name stays,
-              and rooms already made from it don't change.
+              {t("enc.replaceLead")} <strong>{confirmingReplace.name}</strong> {t("enc.replaceBody")}
             </p>
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void replace(confirmingReplace)}>
-                Replace {confirmingReplace.name}
+                {t("enc.replace")} {confirmingReplace.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setConfirmingReplace(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </div>
         )}
       </Modal>
-      <Modal className="checkpoint-preview-modal" open={confirming !== null} title="Apply encounter template?" onClose={() => setConfirming(null)}>
+      <Modal className="checkpoint-preview-modal" open={confirming !== null} title={t("enc.applyQ")} onClose={() => setConfirming(null)}>
         {confirming && (
           <div className="stack checkpoint-preview">
             <ApplyPreview templateId={confirming.id} name={confirming.name} />
             <p>
-              {preparing ? <>Replace this private scene with <strong>{confirming.name}</strong>? Players stay on the live scene.</> : <>Replace this room’s board with <strong>{confirming.name}</strong>? The map, grid, tokens and fog are swapped, and a running encounter ends. Chat, dice rolls and players stay. You can undo this from the activity log.</>}
+              {preparing ? <>{t("enc.replaceScene")} <strong>{confirming.name}</strong>{t("enc.replaceSceneAfter")}</> : <>{t("enc.replaceRoom")} <strong>{confirming.name}</strong>{t("enc.replaceRoomAfter")}</>}
             </p>
             {canKeepSetup(confirming) && (
               <label className="checkbox">
                 <input type="checkbox" checked={keepSetup} disabled={busy} onChange={(e) => setKeepSetup(e.target.checked)} />
-                Keep this map's walls, fog, terrain and lighting
+                {t("enc.keepMap")}
               </label>
             )}
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void apply(confirming)}>
-                Apply {confirming.name}
+                {t("enc.apply")} {confirming.name}
               </button>
               <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </div>
@@ -237,7 +237,7 @@ function ApplyPreview({ templateId, name }: { templateId: string; name: string }
   return (
     <>
       {error && <p role="alert" className="error">{error}</p>}
-      {!preview && !error && <p className="muted" role="status">Loading the saved board…</p>}
+      {!preview && !error && <p className="muted" role="status">{t("checkpoint.loadingBoard")}</p>}
       {preview && (
         <div className="checkpoint-preview-board">
           <EncounterPreviewBoard preview={preview} name={name} />

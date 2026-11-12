@@ -1,6 +1,6 @@
 # ADR 0055 — Path movement
 
-**Status:** Proposed — awaiting review by the Real-Time Architecture owner · **Extends:** `docs/adr/0054-table-rules.md` (room-rule pattern), `docs/adr/0044-line-of-sight.md` (concealment)
+**Status:** Proposed — awaiting review by the Real-Time Architecture owner · **Extends:** `docs/adr/0057-table-rules.md` (room-rule pattern), `docs/adr/0044-line-of-sight.md` (concealment)
 **Change:** `openspec/changes/path-movement` · **Requirements:** FR-TAC-02, FR-TAC-03, FR-GM-15, FR-GM-23
 
 ## Context
@@ -9,7 +9,7 @@ A move is one straight leg: `token.move { to }` is checked by `movementBlocked` 
 
 ## Decision
 
-**Two room rules** in the ADR 0054 pattern (public, GM-only, unchanged value `invalid`, not undoable, absent reads as the default):
+**Two room rules** in the ADR 0057 pattern (public, GM-only, unchanged value `invalid`, not undoable, absent reads as the default):
 
 | Rule | Field | Command | Event |
 |---|---|---|---|

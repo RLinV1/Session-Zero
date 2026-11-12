@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isActive, pendingDepartures, type RoomState } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /**
  * Which departures are news. `known` is null before the first snapshot: those departures are
@@ -40,12 +41,12 @@ export function DepartureNotices({ state, onReview }: { state: RoomState; onRevi
     // Cards only: the room page wraps every board notice in one live region (BoardNotices).
     <>
       {notices.map((id) => {
-        const name = state.participants[id]?.displayName ?? "A player";
+        const name = state.participants[id]?.displayName ?? t("departure.aPlayer");
         return (
           <div key={id} className="board-notice">
             <p>
-              <strong>{name}</strong> has left the room.
-              {onReview && !pending.has(id) && " They didn't control any tokens."}
+              {t("departure.leftBefore")}<strong>{name}</strong>{t("departure.leftAfter")}
+              {onReview && !pending.has(id) && t("departure.noTokens")}
             </p>
             <div className="row">
               {onReview && pending.has(id) && (
@@ -57,11 +58,11 @@ export function DepartureNotices({ state, onReview }: { state: RoomState; onRevi
                     onReview(id);
                   }}
                 >
-                  Review tokens
+                  {t("departure.review")}
                 </button>
               )}
-              <button type="button" className="small secondary" onClick={() => dismiss(id)} aria-label={`Dismiss: ${name} left`}>
-                Dismiss
+              <button type="button" className="small secondary" onClick={() => dismiss(id)} aria-label={t("departure.dismissNamed", { name })}>
+                {t("turn.dismiss")}
               </button>
             </div>
           </div>

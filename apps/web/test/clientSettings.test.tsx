@@ -85,9 +85,9 @@ describe("browser settings (FR-TAC-06)", () => {
 });
 
 describe("settings tabs (FR-TAC-06)", () => {
-  it("shows Audio, Graphics and Controls to everyone, Audio first, and switches panels", () => {
+  it("shows Audio, Graphics, Controls and Language to everyone, Audio first, and switches panels", () => {
     render(<SettingsMenu open onClose={() => {}} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Language"]);
     expect(screen.getByRole("tab", { name: "Audio" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Audio" }).id);
     expect(screen.queryByLabelText("Graphics quality")).toBeNull();
@@ -108,13 +108,16 @@ describe("settings tabs (FR-TAC-06)", () => {
     const controls = screen.getByRole("tab", { name: "Controls" });
     expect(controls.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(controls, { key: "ArrowRight" });
+    const language = screen.getByRole("tab", { name: "Language" });
+    expect(language.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(language, { key: "ArrowRight" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "ArrowLeft" });
-    expect(controls.getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(controls, { key: "Home" });
+    expect(language.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(language, { key: "Home" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "End" });
-    expect(controls.getAttribute("aria-selected")).toBe("true");
+    expect(language.getAttribute("aria-selected")).toBe("true");
   });
   it("saves the arrow-key switch from the Controls tab (client-settings)", () => {
     render(<SettingsMenu open onClose={() => {}} />);

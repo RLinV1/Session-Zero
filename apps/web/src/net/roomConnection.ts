@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import { formatMessage, t } from "../i18n/locale";
 import { io, type Socket } from "socket.io-client";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
@@ -75,12 +76,13 @@ interface PreviewStream {
  * exactly the slice they render.
  */
 /** Why pending commands failed when this seat ended. */
-const ENDED_MESSAGE: Record<SessionEndReason, string> = {
-  left: "You left this room",
-  revoked: "You were removed from this room",
-  deleted: "This room was deleted",
-  signed_out: "You signed out on this device",
-};
+/** Why pending commands fail when a seat ends, in the viewer's language at that moment. */
+const ENDED_MESSAGE = {
+  left: "connection.ended.left",
+  revoked: "connection.ended.revoked",
+  deleted: "connection.ended.deleted",
+  signed_out: "connection.ended.signed_out",
+} as const satisfies Record<SessionEndReason, string>;
 
 export class RoomConnection {
   private socket: Socket | null = null;
@@ -122,7 +124,7 @@ export class RoomConnection {
 
     socket.on(SOCKET_EVENTS.event, (msg: ServerMessage) => this.handle(msg));
     socket.on("disconnect", () => {
-      this.failPending("Connection lost");
+      this.failPending(t("connection.lost"));
       if (!this.isTerminal()) this.update({ status: "reconnecting" });
     });
     // A handshake rejection is terminal: the credential is wrong, so retrying cannot help.
@@ -141,7 +143,7 @@ export class RoomConnection {
     for (const key of [...this.previews.keys()]) this.cancelPreview(key);
     this.socket?.disconnect();
     this.socket = null;
-    this.failPending("Disconnected");
+    this.failPending(t("connection.disconnected"));
   }
 
   onEphemeral(fn: EphemeralListener) {
@@ -166,7 +168,7 @@ export class RoomConnection {
 
   command(command: CommandInput): Promise<CommandResult> {
     if (this.snapshot.status !== "open") {
-      return Promise.resolve({ ok: false, code: "offline", message: "Not connected" });
+      return Promise.resolve({ ok: false, code: "offline", message: t("connection.offline") });
     }
     const clientCommandId = `c${++this.nextCommandId}`;
     return new Promise((resolve) => {
@@ -182,7 +184,7 @@ export class RoomConnection {
           else unsubscribe = this.store.subscribe((snapshot) => { if (snapshot.seq >= seq) complete(); });
         }).catch((error: unknown) => this.settle(clientCommandId, { ok: false,
           code: error instanceof ApiError ? error.detail.code ?? "invalid" : "offline",
-          message: error instanceof Error ? error.message : "Couldn't save the map draft.",
+          message: error instanceof Error ? error.message : t("connection.draftSaveFailed"),
         }));
       } else this.send({ type: "command", clientCommandId, command });
     });
@@ -285,7 +287,12 @@ export class RoomConnection {
         return;
 
       case "rejected":
-        this.settle(msg.clientCommandId, { ok: false, code: msg.code, message: msg.message });
+        // Shown in the language on screen now, even if it changed since the room opened (ADR 0054).
+        this.settle(msg.clientCommandId, {
+          ok: false,
+          code: msg.code,
+          message: msg.messageId ? formatMessage({ id: msg.messageId, params: msg.params }, msg.message) : msg.message,
+        });
         return;
 
       case "ephemeral":
@@ -301,7 +308,7 @@ export class RoomConnection {
         // disconnects next; stop here so Socket.IO doesn't try to reconnect (ADR 0006).
         this.update({ status: "ended", endReason: msg.reason });
         // Before disconnecting: the disconnect listener would fail them as "Connection lost".
-        this.failPending(ENDED_MESSAGE[msg.reason]);
+        this.failPending(t(ENDED_MESSAGE[msg.reason]));
         this.socket?.disconnect();
         return;
 

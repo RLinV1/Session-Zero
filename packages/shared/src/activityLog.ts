@@ -4,6 +4,8 @@ import { CommittedEvent, type DomainEvent } from "./events";
 import { reduceCommitted } from "./reducer";
 import { describePortalChange } from "./portals";
 import { describeUndo } from "./undo";
+import type { Locale } from "./i18n/core";
+import { formatActivityZhTW } from "./i18n/sentences.zh-TW";
 import { DEFEAT_REMOVAL_LABELS, DIAGONAL_RULE_LABELS, DIFFICULT_TERRAIN_LABELS, emptyRoomState, type Participant, type RoomState } from "./state";
 import { filterEventForViewer, filterStateForViewer } from "./visibility";
 
@@ -34,14 +36,24 @@ export type HistoryResponse = z.infer<typeof HistoryResponse>;
 /** "rectangle" or "polygon", for fog sentences (FR-GM-17). */
 const fogLabel = (shape: "rect" | "polygon") => (shape === "rect" ? "rectangle" : "polygon");
 
+/** Who an entry names when no participant did it, or the participant is gone. */
+export const ACTOR_NAMES: Readonly<Record<Locale, { system: string; unknown: string; someone: string }>> = {
+  en: { system: "System", unknown: "Unknown participant", someone: "Someone" },
+  "zh-TW": { system: "系統", unknown: "未知的參與者", someone: "某人" },
+};
+
 /** "1 wall", "42 walls" (ADR 0029). */
 const wallCount = (n: number) => `${n} ${n === 1 ? "wall" : "walls"}`;
 
 /** A board point for a sentence: at most 2 decimals, so float noise like 829.1000000000001 reads 829.1. */
 const formatPoint = (p: { x: number; y: number }) => `(${Number(p.x.toFixed(2))}, ${Number(p.y.toFixed(2))})`;
 
-/** Pure, exhaustive sentence formatter. Context must already be viewer-filtered. */
-export function formatActivity(event: DomainEvent, actorName: string, before: RoomState): string {
+/**
+ * Pure, exhaustive sentence formatter. Context must already be viewer-filtered. Writes in `locale`;
+ * the Traditional Chinese twin mirrors this switch case for case (ADR 0054).
+ */
+export function formatActivity(event: DomainEvent, actorName: string, before: RoomState, locale: Locale = "en"): string {
+  if (locale === "zh-TW") return formatActivityZhTW(event, actorName, before, (id) => findDiceRoll(before.rolls, id));
   /** A token's name as it was just before this event. */
   const tokenName = (id: string) => before.tokens[id]?.name ?? "an unknown token";
   /** A participant's name as it was just before this event. */
@@ -227,6 +239,7 @@ export function activityHistory(
   events: readonly CommittedEvent[],
   viewer: Participant,
   query: HistoryQuery,
+  locale: Locale = "en",
 ): HistoryResponse {
   if (viewer.role !== "gm") return { entries: [], nextBefore: null };
   const initialNames = new Map<string, string>();
@@ -242,14 +255,14 @@ export function activityHistory(
     // Dice looks change how rolls look, not what happened: kept out of the log as noise (ADR 0018).
     if (filtered.kind === "event" && committed.event.type !== "ParticipantDiceLookSet") {
       const visible = filterStateForViewer(state, viewer);
-      const actorName = committed.actorId === null ? "System"
+      const actorName = committed.actorId === null ? ACTOR_NAMES[locale].system
         : visible.participants[committed.actorId]?.displayName
-          ?? initialNames.get(committed.actorId) ?? "Unknown participant";
+          ?? initialNames.get(committed.actorId) ?? ACTOR_NAMES[locale].unknown;
       if (actorName.toLowerCase().includes(search)) {
         entries.push({
           committed: filtered.committed,
           actorName,
-          sentence: formatActivity(filtered.committed.event, actorName, visible),
+          sentence: formatActivity(filtered.committed.event, actorName, visible, locale),
         });
       }
     }

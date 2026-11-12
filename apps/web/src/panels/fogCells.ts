@@ -1,4 +1,5 @@
 import { cellAt, type FogRegion, type GridSpec, type MapImage, type Point } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /**
  * Grid-cell arithmetic for the Fog of war section (FR-GM-17): naming fogged regions by the cells
@@ -31,8 +32,9 @@ export function describeCells(region: Pick<FogRegion, "points">, map: MapImage, 
   // Edges sit on grid lines, so step half a pixel inside before asking which cell a corner is in.
   const lo = cellOf({ x: Math.min(...xs) + 0.5, y: Math.min(...ys) + 0.5 }, map, grid);
   const hi = cellOf({ x: Math.max(...xs) - 0.5, y: Math.max(...ys) - 0.5 }, map, grid);
-  const span = (word: string, from: number, to: number) => (from === to ? `${word} ${from}` : `${word}s ${from}–${to}`);
-  return `${span("column", lo.col, hi.col)}, ${span("row", lo.row, hi.row)}`;
+  const columns = lo.col === hi.col ? t("fog.column", { n: lo.col }) : t("fog.columns", { from: lo.col, to: hi.col });
+  const rows = lo.row === hi.row ? t("fog.row", { n: lo.row }) : t("fog.rows", { from: lo.row, to: hi.row });
+  return `${columns}${t("common.listSep")}${rows}`;
 }
 
 /** Whether a region is exactly the whole map, so the list can call it that. */

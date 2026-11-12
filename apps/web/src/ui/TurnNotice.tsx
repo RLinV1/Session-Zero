@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Participant, RoomState } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /** How long the notice stays before it hides itself. */
 const TURN_NOTICE_MS = 6000;
@@ -45,14 +46,14 @@ export function TurnNotice({ state, you, onFocusToken }: { state: RoomState; you
   return (
     <div className="board-notice turn-notice">
       <p>
-        It's <strong>{notice.name}</strong>'s turn.
+        {t("turn.before")}<strong>{notice.name}</strong>{t("turn.after")}
       </p>
       <div className="row">
         <button type="button" className="small primary" onClick={() => onFocusToken(notice.id)}>
-          Show on board
+          {t("turn.show")}
         </button>
-        <button type="button" className="small secondary" onClick={() => setNotice(null)} aria-label={`Dismiss: ${notice.name}'s turn`}>
-          Dismiss
+        <button type="button" className="small secondary" onClick={() => setNotice(null)} aria-label={t("turn.dismissNamed", { name: notice.name })}>
+          {t("turn.dismiss")}
         </button>
       </div>
     </div>

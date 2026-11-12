@@ -8,9 +8,10 @@ function viewerRuns(state: RoomState, you: Participant): readonly TerrainRun[] {
 
 /** A cost as the board shows it: plain distance, plus how many steps Difficult terrain doubled. */
 export function costLabel(cost: number, difficult: number, grid: GridSpec): string {
-  return formatDistance(cost, grid) + (difficult ? ` · ${difficult} difficult` : "");
+  return formatDistance(cost, grid) + (difficult ? t("board.difficult", { n: difficult }) : "");
 }
 
+import { t } from "../i18n/locale";
 export type MovementPreview = { label: string; obstruction: "blocked" | "unknown" | "clear" };
 
 export function movementPreview(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free = false, reposition = false): MovementPreview {
@@ -22,7 +23,7 @@ export function movementPreview(state: RoomState, you: Participant, token: Token
   const destination = movementTerrain(to, to, token.size, grid, runs).blocked || footprintCrossesWall(to, token.size, grid, walls);
   const obstruction = destination || (!reposition && (result.blocked || sweptCrossesWalls(from, to, token.size, grid, walls.filter((w) => !footprintCrossesWall(from, token.size, grid, [w])))));
   // A straight move shows distance only: terrain cost belongs to grid paths (ADR 0055).
-  return { label: `${formatDistance(result.distance, grid)}${reposition ? " · Reposition" : ""}`, obstruction: obstruction ? "blocked" : unknown ? "unknown" : "clear" };
+  return { label: `${formatDistance(result.distance, grid)}${reposition ? t("move.reposition") : ""}`, obstruction: obstruction ? "blocked" : unknown ? "unknown" : "clear" };
 }
 
 /** What a drag shows and sends: the line through `points`, its label, and the turns a drop commits. */
@@ -77,5 +78,5 @@ export function rangeMeasure(state: Pick<RoomState, "scene" | "diagonalRule">, f
 export function routePlan(state: RoomState, you: Participant, points: readonly Point[]) {
   const grid = state.scene.grid;
   const route = routeCost(points, grid, stepRulesOf(state), viewerRuns(state, you));
-  return { ...route, label: route.blocked ? "Blocked" : costLabel(route.cost, route.difficult, grid) };
+  return { ...route, label: route.blocked ? t("board.blocked") : costLabel(route.cost, route.difficult, grid) };
 }

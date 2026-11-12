@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 import { GamePresetId } from "./gamePresets";
 import { TokenAttacks, type AttackPreset } from "./attackPresets";
 import { Command, DEFAULT_TOKEN_COLOR } from "./commands";
@@ -7,6 +8,7 @@ import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { TokenStats, type ConditionId } from "./conditions";
 import { AreaColor, AreaShape, Id, Participant, TableState, Token, type RoomState } from "./state";
 import type { RejectionCode } from "./decide";
+import type { MessageParam } from "./i18n/core";
 import { RoomUploadPurpose } from "./gridDetection";
 import { MAX_ENCOUNTER_NAME } from "./encounters";
 import type { WallDetectionStatus } from "./wallDetection";
@@ -110,7 +112,14 @@ export type ServerMessage =
   /** A seq the viewer may not see. Client advances lastSeq only. */
   | { type: "redacted"; seq: number }
   | { type: "ack"; clientCommandId: string; seq: number | null }
-  | { type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request"; message: string }
+  | {
+    type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request";
+    /** English, as it always was: what a client shows when it can't format `messageId`. */
+    message: string;
+    /** The shared catalog id `message` was written from, for the client to show in its own language (ADR 0054). */
+    messageId?: string;
+    params?: Record<string, MessageParam>;
+  }
   | { type: "ephemeral"; from: Id; payload: ServerEphemeralPayload }
   /** Terminal: this seat has ended (ADR 0006). The server disconnects right after; do not reconnect. */
   | { type: "sessionEnded"; reason: SessionEndReason }
@@ -228,7 +237,7 @@ export const DirectUploadFields = z.object({
   width: Dimension.optional(),
   height: Dimension.optional(),
 }).refine((data) => data.purpose !== "map" || (data.width !== undefined && data.height !== undefined),
-  { message: "Map uploads require image width and height" });
+  { message: validationMessage(sharedMsg("valid.mapUploadSize")) });
 
 export const LibraryPatchRequest = z
   .object({
@@ -236,7 +245,7 @@ export const LibraryPatchRequest = z
     /** Only valid for maps. */
     grid: GridSpec.optional(),
   })
-  .refine((p) => p.name !== undefined || p.grid !== undefined, { message: "Nothing to change" });
+  .refine((p) => p.name !== undefined || p.grid !== undefined, { message: validationMessage(sharedMsg("valid.nothingToChange")) });
 export type LibraryPatchRequest = z.infer<typeof LibraryPatchRequest>;
 
 export interface LibraryAsset {
@@ -271,7 +280,7 @@ export interface LibraryUvttImportResponse {
  * creature always places as a valid `token.create`. The name is the name shown on the board.
  */
 export const CreatureFields = z.object({
-  name: Token.shape.name.refine((name) => name.trim() !== "", { message: "Name can't be blank" }),
+  name: Token.shape.name.refine((name) => name.trim() !== "", { message: validationMessage(sharedMsg("valid.nameBlank")) }),
   size: Token.shape.size,
   /** Starting HP; null/omitted preserves the legacy full-health default. */
   hp: TokenStats.shape.hp,
@@ -281,7 +290,7 @@ export const CreatureFields = z.object({
   /** The disc colour its tokens get when they have no image (KAN-70). */
   color: Token.shape.color,
   /** Conditions its tokens start with, e.g. Prone (KAN-70). No duplicates. */
-  conditions: Token.shape.conditions.refine((c) => new Set(c).size === c.length, { message: "A condition is listed twice" }),
+  conditions: Token.shape.conditions.refine((c) => new Set(c).size === c.length, { message: validationMessage(sharedMsg("valid.conditionTwice")) }),
   /** The GM's own token art, or null for a plain colour disc. */
   imageAssetId: z.uuid().nullable(),
 });
@@ -304,7 +313,7 @@ export function creatureHpValid(creature: { hp: number | null; maxHp: number | n
 }
 
 export const UpdateCreatureRequest = CreatureFields.partial().refine((p) => Object.keys(p).length > 0, {
-  message: "Nothing to change",
+  message: validationMessage(sharedMsg("valid.nothingToChange")),
 });
 export type UpdateCreatureRequest = z.infer<typeof UpdateCreatureRequest>;
 

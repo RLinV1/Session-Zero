@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BUILTIN_ANIMATIONS } from "../../board/effectPresets";
 import { AnimationPreviewStage } from "../../ui/AnimationPreviewStage";
+import { t } from "../../i18n/locale";
 
 /** Three of the built-in attack animations, one of each style. */
 const CHOICES = ["fireball", "slash", "volley"] as const;
@@ -12,7 +13,7 @@ export default function AttackStage() {
   return (
     <AnimationPreviewStage def={chosen.def}>
       <label className="attack-pick">
-        <span className="sr-only">Animation</span>
+        <span className="sr-only">{t("home.attack.animation")}</span>
         <select value={shape} onChange={(e) => setShape(e.target.value as (typeof CHOICES)[number])}>
           {CHOICES.map((c) => (
             <option key={c} value={c}>

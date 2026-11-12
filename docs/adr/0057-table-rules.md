@@ -1,4 +1,4 @@
-# ADR 0054 — Table rules
+# ADR 0057 — Table rules
 
 **Status:** Proposed — awaiting review by the Real-Time Architecture owner · **Amends:** `docs/adr/0049-auto-remove-defeated-tokens.md` · **Extends:** `docs/adr/0044-line-of-sight.md` (sight concealment), `docs/adr/0038-attack-styles-nuke-and-animations.md` (room-wide option pattern)
 **Change:** `openspec/changes/gm-table-rules` · **Requirements:** FR-TAC-07, FR-GM-15, FR-GM-16, FR-GM-23

@@ -6,6 +6,7 @@ import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
 import { armSound, withSound } from "./fxSound";
 import { shakeScreen } from "./screenShake";
+import { CJK_TC } from "./boardFont";
 import {
   DEFAULT_STAGE_ART, STAGE_CELL, mapPlacement, stageGridOrigin, standInPositions,
   type StageMapGrid, type StageScene, type StageSide, type StageSlot,
@@ -33,7 +34,7 @@ const SIDE_COLOR: Record<StageSide, number> = { attacker: 0x3b82f6, target: 0xef
 const BACKDROP_BLEED = 16;
 /** The app's one typeface (main.tsx self-hosts it), so the name tags match the panels and the board. */
 const LABEL_FACE = "Geist Sans";
-const LABEL_STYLE = { fontFamily: `"${LABEL_FACE}", system-ui, sans-serif`, fontWeight: "700", fontSize: 10, fill: 0xe6e8eb } as const;
+const LABEL_STYLE = { fontFamily: `"${LABEL_FACE}", ${CJK_TC}, system-ui, sans-serif`, fontWeight: "700", fontSize: 10, fill: 0xe6e8eb } as const;
 /** The name tags draw small and are magnified with the stage, so their text is drawn finer. */
 const LABEL_RESOLUTION = 4;
 const LABEL_TEXT = { attacker: "Attacker", target: "Target" } as const;

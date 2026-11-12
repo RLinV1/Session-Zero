@@ -73,3 +73,31 @@ describe("Human-readable activity API (FR-REC-01)", () => {
     }
   });
 });
+
+describe("activity history and replay in the requested language (localization)", () => {
+  const get = (url: string, token: string, language?: string) =>
+    fetch(`${server.base}${url}`, { headers: { authorization: `Bearer ${token}`, ...(language ? { "accept-language": language } : {}) } });
+
+  it("writes the same entries in English and Traditional Chinese, with identical events and filtering", async () => {
+    const owner = await server.createRoom("Mara");
+    const gm = await server.connect(owner);
+    clients.push(gm);
+    expect((await gm.command({ type: "token.create", name: "Aria", position: { x: 35, y: 35 }, hidden: false })).type).toBe("ack");
+    const aria = Object.values(gm.state.tokens).find((t) => t.name === "Aria")!;
+    expect((await gm.command({ type: "token.setConditions", tokenId: aria.id, conditions: ["prone"] })).type).toBe("ack");
+
+    const english = HistoryResponse.parse(await (await get(`/api/rooms/${owner.roomId}/history`, owner.guestToken)).json());
+    const chinese = HistoryResponse.parse(await (await get(`/api/rooms/${owner.roomId}/history`, owner.guestToken, "zh-TW")).json());
+    expect(chinese.entries.map((e) => e.committed)).toEqual(english.entries.map((e) => e.committed));
+    expect(english.entries[0]!.sentence).toBe("Mara set Aria's conditions to prone");
+    expect(chinese.entries[0]!.sentence).toBe("Mara 將 Aria 的狀態設為倒地");
+    expect(chinese.entries.at(-1)!.sentence).toBe("Mara 建立了房間「Test」");
+  });
+
+  it("labels replay points in the requested language", async () => {
+    const owner = await server.createRoom("Mara");
+    const player = await server.join(owner.inviteCode, "Tomas");
+    const points = await (await get(`/api/rooms/${owner.roomId}/replay`, player.guestToken, "zh-TW")).json() as { points: { label: string }[] };
+    expect(points.points[0]!.label).toBe("房間的開始");
+  });
+});

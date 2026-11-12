@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 import { ConditionId } from "./conditions";
 import type { TableState } from "./state";
 
@@ -54,7 +55,7 @@ export const DEFAULT_PRESET_ID = FREE.id;
 const byId = (id: string) => GAME_PRESETS.find((p) => p.id === id);
 
 /** A preset id the registry knows. A refined string, so adding a preset needs no schema edit. */
-export const GamePresetId = z.string().refine((id) => byId(id) !== undefined, { message: "Unknown game preset" });
+export const GamePresetId = z.string().refine((id) => byId(id) !== undefined, { message: validationMessage(sharedMsg("valid.unknownPreset")) });
 export type GamePresetId = z.infer<typeof GamePresetId>;
 
 /** The room's preset; an unknown or missing id reads as the default, so old rooms behave as before. */

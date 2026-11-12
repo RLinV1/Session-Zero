@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 import { StrikeAnimationDef } from "./animation";
 import { MAX_ATTACK_LABEL, type AttackKind } from "./dice";
 
@@ -8,7 +9,7 @@ export const MAX_TOKEN_ATTACKS = 8;
 export const MAX_ATTACK_TARGETS = 10;
 export const AttackDice = z.object({
   count: z.number().int().min(1).max(20),
-  sides: z.number().int().refine((s) => [4, 6, 8, 10, 12, 20, 100].includes(s), { message: "Choose a supported die" }),
+  sides: z.number().int().refine((s) => [4, 6, 8, 10, 12, 20, 100].includes(s), { message: validationMessage(sharedMsg("valid.supportedDie")) }),
   modifier: z.number().int().min(-99).max(99),
 });
 export type AttackDice = z.infer<typeof AttackDice>;
@@ -20,11 +21,11 @@ export const AttackPreset = z.object({
   animation: StrikeAnimationDef.optional(),
   /** Set when the attack may hit several tokens at once: how many at most. Absent means one target. The panel rolls it once per chosen target. */
   maxTargets: z.number().int().min(2).max(MAX_ATTACK_TARGETS).optional(),
-}).refine((a) => a.toHit !== null || a.damage !== null, { message: "An attack needs a to-hit or damage roll" });
+}).refine((a) => a.toHit !== null || a.damage !== null, { message: validationMessage(sharedMsg("valid.attackNeedsRoll")) });
 export type AttackPreset = z.infer<typeof AttackPreset>;
 export const TokenAttacks = z.array(AttackPreset).max(MAX_TOKEN_ATTACKS).refine(
   (attacks) => new Set(attacks.map((a) => a.name.toLowerCase())).size === attacks.length,
-  { message: "Attack names must be unique" },
+  { message: validationMessage(sharedMsg("valid.attackNamesUnique")) },
 );
 
 const DAMAGE_SUFFIX = " damage";

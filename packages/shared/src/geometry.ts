@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 
 /**
  * Board coordinates: pixels of the scene's map image, origin at the image's top-left.
@@ -36,7 +37,7 @@ export const GridSpec = z.object({
       ctx.addIssue({
         code: "custom",
         path: [offset],
-        message: "Grid offset must be less than the cell size",
+        message: validationMessage(sharedMsg("valid.gridOffset")),
       });
     }
   }

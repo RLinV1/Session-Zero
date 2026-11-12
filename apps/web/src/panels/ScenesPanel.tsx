@@ -6,6 +6,7 @@ import type { RoomConnection } from "../net/roomConnection";
 import { ScenePreparationContext } from "./ScenePreparationContext";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
+import { t } from "../i18n/locale";
 
 interface Props { state: RoomState; connection: RoomConnection }
 
@@ -20,7 +21,7 @@ function useSceneCommand(connection: RoomConnection) {
       if (!result.ok) setError(result.message);
       return result.ok;
     } catch {
-      setError("Could not change scenes. Check your connection and try again.");
+      setError(t("scenes.changeFailed"));
       return false;
     } finally { setBusy(false); }
   };
@@ -35,11 +36,11 @@ export function SceneSwitcher({ state }: Props) {
   const scenes = Object.entries(sceneNamesOf(state));
   const viewedName = sceneNamesOf(state)[viewed] ?? viewed;
   return <div className="scene-switcher">
-    <PopoverButton label="Viewing scene" title="Preview a scene privately" className="scene-trigger"
+    <PopoverButton label={t("scenes.viewing")} title={t("scenes.previewPrivately")} className="scene-trigger"
       buttonProps={{ "aria-haspopup": "listbox" }}
       buttonContent={<>
         <span className="scene-trigger-name" title={viewedName}>{viewedName}</span>
-        {viewed === liveId && <span className="scene-pill">Live</span>}
+        {viewed === liveId && <span className="scene-pill">{t("scenes.live")}</span>}
         <CaretDown size={14} aria-hidden="true" />
       </>}>
       {(close) => <SceneOptions scenes={scenes} viewed={viewed} liveId={liveId}
@@ -57,7 +58,7 @@ function SceneOptions({ scenes, viewed, liveId, onPick }: { scenes: [string, str
     const all = options();
     all[to(all.indexOf(document.activeElement as HTMLElement), all.length)]?.focus();
   };
-  return <div ref={list} role="listbox" aria-label="Scenes" className="scene-options"
+  return <div ref={list} role="listbox" aria-label={t("scenes.title")} className="scene-options"
     onKeyDown={(e) => {
       const step: Record<string, (i: number, n: number) => number> = {
         ArrowDown: (i, n) => Math.min(i + 1, n - 1), ArrowUp: (i) => Math.max(i - 1, 0),
@@ -71,7 +72,7 @@ function SceneOptions({ scenes, viewed, liveId, onPick }: { scenes: [string, str
       onClick={() => onPick(id)}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(id); } }}>
       <span className="scene-option-name">{name}</span>
-      {id === liveId && <span className="scene-pill">Live</span>}
+      {id === liveId && <span className="scene-pill">{t("scenes.live")}</span>}
       {id === viewed && <Check size={14} weight="bold" aria-hidden="true" />}
     </div>)}
   </div>;
@@ -82,13 +83,13 @@ export function SceneActivationNotice({ state, connection }: Props) {
   const preparation = useContext(ScenePreparationContext);
   const { busy, error, run } = useSceneCommand(connection);
   if (!preparation?.preparing) return null;
-  return <section className="scene-activation-popup" aria-label="Scene activation">
+  return <section className="scene-activation-popup" aria-label={t("scenes.activation")}>
     <div>
-      <p>This is not the active scene.</p>
-      <span>Activate to start this scene for everyone.</span>
+      <p>{t("scenes.notActive")}</p>
+      <span>{t("scenes.activateHint")}</span>
       {error && <p className="error" role="alert">{error}</p>}
     </div>
-    <button type="button" disabled={busy} onClick={() => { void run({ type: "scene.switch", sceneId: state.activeSceneId ?? INITIAL_SCENE_ID }); }}>Activate</button>
+    <button type="button" disabled={busy} onClick={() => { void run({ type: "scene.switch", sceneId: state.activeSceneId ?? INITIAL_SCENE_ID }); }}>{t("scenes.activate")}</button>
   </section>;
 }
 
@@ -105,62 +106,62 @@ export function ScenesPanel({ state, connection }: Props) {
   const active = state.activeSceneId ?? INITIAL_SCENE_ID;
   const full = Object.keys(names).length >= MAX_SCENES;
   const closeCreate = () => { if (!busy) { setCreating(false); setName(""); } };
-  const newScene = <button type="button" className="icon-button" aria-label="New scene" title="New scene" disabled={full}
+  const newScene = <button type="button" className="icon-button" aria-label={t("scenes.new")} title={t("scenes.new")} disabled={full}
     onClick={() => setCreating(true)}><Plus size={18} aria-hidden="true" /></button>;
-  return <PanelSection id="scenes" title="Scenes" actions={newScene}>
-    <p className="small-print">Prepare privately. Activate when ready.</p>
+  return <PanelSection id="scenes" title={t("scenes.title")} actions={newScene}>
+    <p className="small-print">{t("scenes.intro")}</p>
     {error && <p className="error" role="alert">{error}</p>}
     <ul className="plain scene-list">
       {Object.entries(names).map(([id, sceneName]) => <li key={id} className="scene-row">
         <button type="button" className="secondary scene-name" disabled={busy || id === active}
-          aria-label={`Preview ${sceneName}`} aria-current={id === active ? "true" : undefined}
+          aria-label={t("scenes.previewNamed", { name: sceneName })} aria-current={id === active ? "true" : undefined}
           onClick={() => preparation?.preview(id)}>
-          {sceneName}{id === (preparation?.activeId ?? active) && <span className="muted"> · Live</span>}
+          {sceneName}{id === (preparation?.activeId ?? active) && <span className="muted"> {t("scenes.liveSuffix")}</span>}
         </button>
-        <button type="button" className="icon-button" aria-label={`Rename ${sceneName}`} title="Rename scene" disabled={busy}
+        <button type="button" className="icon-button" aria-label={t("scenes.renameNamed", { name: sceneName })} title={t("scenes.rename")} disabled={busy}
           onClick={() => { setDraft(sceneName); setEditing(id); }}><PencilSimple size={16} aria-hidden="true" /></button>
-        <button type="button" className="icon-button" aria-label={`Delete ${sceneName}`} title="Delete scene" disabled={busy || id === (preparation?.activeId ?? active)}
+        <button type="button" className="icon-button" aria-label={t("scenes.deleteNamed", { name: sceneName })} title={t("scenes.delete")} disabled={busy || id === (preparation?.activeId ?? active)}
           onClick={() => setDeleting(id)}><Trash size={16} aria-hidden="true" /></button>
       </li>)}
     </ul>
-    {full && <p className="small-print">{MAX_SCENES}-scene limit reached.</p>}
-    <Modal open={creating} title="New scene" onClose={closeCreate}>
+    {full && <p className="small-print">{t("scenes.limit", { max: MAX_SCENES })}</p>}
+    <Modal open={creating} title={t("scenes.new")} onClose={closeCreate}>
       <form className="stack" onSubmit={(event) => {
         event.preventDefault();
         if (name.trim() && !busy && !full) void run({ type: "scene.create", name: name.trim(), activate: false }).then((ok) => { if (ok) closeCreate(); });
       }}>
-        <label>Scene name<input value={name} maxLength={MAX_SCENE_NAME} autoFocus
+        <label>{t("scenes.name")}<input value={name} maxLength={MAX_SCENE_NAME} autoFocus
           onChange={(event) => setName(event.target.value)} /></label>
-        <p className="small-print">Start with a map or encounter template.</p>
+        <p className="small-print">{t("scenes.startWith")}</p>
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
-          <button type="button" className="secondary" disabled={busy} onClick={closeCreate}>Cancel</button>
-          <button type="submit" className="primary" disabled={busy || full || !name.trim()}>Create scene</button>
+          <button type="button" className="secondary" disabled={busy} onClick={closeCreate}>{t("common.cancel")}</button>
+          <button type="submit" className="primary" disabled={busy || full || !name.trim()}>{t("scenes.create")}</button>
         </div>
       </form>
     </Modal>
-    <Modal open={editing !== null} title="Rename scene" onClose={() => { if (!busy) setEditing(null); }}>
+    <Modal open={editing !== null} title={t("scenes.rename")} onClose={() => { if (!busy) setEditing(null); }}>
       <form className="stack" onSubmit={(event) => {
         event.preventDefault();
         if (editing && draft.trim() && !busy) void run({ type: "scene.rename", sceneId: editing, name: draft.trim() }).then((ok) => { if (ok) setEditing(null); });
       }}>
-        <label>Scene name<input value={draft} maxLength={MAX_SCENE_NAME} onChange={(event) => setDraft(event.target.value)} /></label>
+        <label>{t("scenes.name")}<input value={draft} maxLength={MAX_SCENE_NAME} onChange={(event) => setDraft(event.target.value)} /></label>
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
-          <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
-          <button type="submit" className="primary" disabled={busy || !draft.trim()}>Save name</button>
+          <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(null)}>{t("common.cancel")}</button>
+          <button type="submit" className="primary" disabled={busy || !draft.trim()}>{t("scenes.saveName")}</button>
         </div>
       </form>
     </Modal>
-    <Modal open={deleting !== null} title="Delete scene" onClose={() => { if (!busy) setDeleting(null); }}>
+    <Modal open={deleting !== null} title={t("scenes.delete")} onClose={() => { if (!busy) setDeleting(null); }}>
       <div className="stack">
-        <p>Delete <strong>{deleting ? names[deleting] : ""}</strong> and its saved board? Other scenes and encounter templates will remain.</p>
+        <p>{t("common.delete")} <strong>{deleting ? names[deleting] : ""}</strong> {t("scenes.deleteBody")}</p>
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
-          <button type="button" className="secondary" disabled={busy} onClick={() => setDeleting(null)} autoFocus>Cancel</button>
+          <button type="button" className="secondary" disabled={busy} onClick={() => setDeleting(null)} autoFocus>{t("common.cancel")}</button>
           <button type="button" className="danger-fill" disabled={busy} onClick={() => {
             if (deleting) void run({ type: "scene.delete", sceneId: deleting }).then((ok) => { if (ok) setDeleting(null); });
-          }}>Delete scene</button>
+          }}>{t("scenes.delete")}</button>
         </div>
       </div>
     </Modal>

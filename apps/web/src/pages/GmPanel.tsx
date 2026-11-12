@@ -1,6 +1,6 @@
 import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { emptyTerrain, gridGeometryChanged, sameValue, inactiveLabel, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
+import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { libraryAssetId } from "../net/builtinAssets";
 import { useAccount } from "../account/accountStore";
@@ -26,6 +26,8 @@ import { draftDirty, draftFrom, planDraftSave, type MapDraft } from "./mapEditor
 import { adjustedMessage, offersTokenPolicy, prepCommand, prepDirty, startPrep, startUvttPrep, TOKEN_POLICY_CHOICES, type MapPrep } from "./mapPrep";
 import { FULL_ROOM, type RoomFeatures } from "./encounterEdit/roomFeatures";
 import { EditorGuide, GuideStepContext } from "./mapEditor/EditorGuide";
+import { t, type TextId } from "../i18n/locale";
+import { inactiveText } from "../i18n/labels";
 
 interface Props {
   connection: RoomConnection;
@@ -128,16 +130,16 @@ function DepartedPlayers({ state, onReview }: { state: RoomState; onReview: (par
   const pending = pendingDepartures(state);
   if (pending.length === 0) return null;
   return (
-    <PanelSection id="departed-players" title="Departed players">
+    <PanelSection id="departed-players" title={t("gmMap.departed")}>
       <ul className="plain departed-list">
         {pending.map(({ participant, tokenIds }) => (
           <li key={participant.id} className="departed-row">
             <span>
               <strong>{participant.displayName}</strong>
-              <span className="muted"> {inactiveLabel(participant)}, {tokenIds.length} {tokenIds.length === 1 ? "token" : "tokens"} to decide</span>
+              <span className="muted"> {t("gmMap.toDecide", { status: inactiveText(participant), n: tokenIds.length })}</span>
             </span>
             <button type="button" className="small secondary" onClick={() => onReview(participant.id)}>
-              Review
+              {t("gmMap.review")}
             </button>
           </li>
         ))}
@@ -156,23 +158,24 @@ type EditorStep = "map" | "grid" | "walls" | "fog" | "sight" | "terrain";
 /** Unsaved work the editor asks about, and where it goes once the GM answers (map-section-step-buttons). */
 type PendingKind = "map" | "grid" | "draft";
 type Pending = { kind: PendingKind; then: EditorStep | "close" };
-const PENDING_TEXT: Record<PendingKind, { title: string; body: string; save: string }> = {
-  map: { title: "Apply this map?", body: "This map is still a draft only you can see. Apply it with its grid, or discard it? The table keeps its current map until you apply.", save: "Apply map" },
-  grid: { title: "Apply grid changes?", body: "You changed this map's grid. Apply it for the table, or discard your changes?", save: "Apply grid" },
-  draft: { title: "Save changes?", body: "You changed this map's walls, fog, sight or terrain. Save them for the table, or discard them?", save: "Save" },
+const PENDING_TEXT: Record<PendingKind, { title: TextId; body: TextId; save: TextId }> = {
+  map: { title: "gmMap.applyMapQ", body: "gmMap.applyMapBody", save: "gmMap.applyMap" },
+  grid: { title: "gmMap.applyGridQ", body: "gmMap.applyGridBody", save: "grid.apply" },
+  draft: { title: "common.saveChangesQ", body: "gmMap.saveGeometryBody", save: "common.save" },
 };
-const STEPS: { key: EditorStep; label: string }[] = [
-  { key: "map", label: "1 · Map" },
-  { key: "grid", label: "2 · Grid" },
-  { key: "walls", label: "3 · Walls" },
-  { key: "fog", label: "4 · Fog" },
-  { key: "sight", label: "5 · Sight" },
-  { key: "terrain", label: "6 · Terrain" },
+/** The editor's steps, numbered in this order when shown. */
+const STEPS: { key: EditorStep; label: TextId }[] = [
+  { key: "map", label: "editor.step.map" },
+  { key: "grid", label: "editor.step.grid" },
+  { key: "walls", label: "editor.step.walls" },
+  { key: "fog", label: "editor.step.fog" },
+  { key: "sight", label: "editor.step.sight" },
+  { key: "terrain", label: "editor.step.terrain" },
 ];
 /** Encounter templates inherit walls from their map; only grid and fog are editable here. */
-const FIXED_MAP_STEPS: { key: EditorStep; label: string }[] = [
-  { key: "grid", label: "1 · Grid" },
-  { key: "fog", label: "2 · Fog" },
+const FIXED_MAP_STEPS: { key: EditorStep; label: TextId }[] = [
+  { key: "grid", label: "editor.step.grid" },
+  { key: "fog", label: "editor.step.fog" },
 ];
 
 /**
@@ -295,7 +298,7 @@ function MapSection(props: {
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
     if (geometryChanged && draft && !sameValue(draft.terrain ?? emptyTerrain(), props.room.terrain ?? emptyTerrain())) {
-      setSaveError("Save or discard private terrain before changing grid spacing or origin.");
+      setSaveError(t("gmMap.terrainFirst"));
       return false;
     }
     const applied = await props.onGridApply(grid);
@@ -328,7 +331,7 @@ function MapSection(props: {
       }
       return true;
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Couldn't save the map draft.");
+      setSaveError(err instanceof Error ? err.message : t("connection.draftSaveFailed"));
       return false;
     } finally {
       setSaving(false);
@@ -349,7 +352,7 @@ function MapSection(props: {
       const next = change({ mapUrl: current.map.url, walls: current.walls ?? {}, fog: {}, lineOfSight: false, isometric: false, sightRange: null });
       return { ...current, walls: next.walls };
     }),
-    async () => { throw new Error("UVTT geometry is already supplied."); },
+    async () => { throw new Error(t("gmMap.uvttSupplied")); },
     prep?.map.url ?? "", { width: prep?.map.width ?? 0, height: prep?.map.height ?? 0 },
     () => activeImportSession.current === importSession && importSession.open,
   ), [props.connection, prep?.map.url, prep?.map.width, prep?.map.height, importSession]);
@@ -417,8 +420,8 @@ function MapSection(props: {
   };
   /** Why Save can't run for this kind of change, or null when it can. */
   const pendingBlocked = (kind: PendingKind): string | null => {
-    if (kind === "map" && prep && !prepCommand(prep)) return "Fix the grid in the Grid step before applying the map.";
-    if (kind === "grid" && editedGrid === null) return "Fix the grid in the Grid step before applying it.";
+    if (kind === "map" && prep && !prepCommand(prep)) return t("gmMap.fixGridStepMap");
+    if (kind === "grid" && editedGrid === null) return t("gmMap.fixGridStep");
     return null;
   };
   const savePending = async () => {
@@ -437,7 +440,7 @@ function MapSection(props: {
         : pending.kind === "grid" ? editedGrid !== null && await applyGrid(editedGrid)
         : await saveDraft();
       if (ok) finishPending(pending.then);
-      else if (pending.kind === "grid") setPendingError(props.gridError ?? "Couldn't apply the grid.");
+      else if (pending.kind === "grid") setPendingError(props.gridError ?? t("gmMap.applyGridFailed"));
     } finally {
       setPendingSaving(false);
     }
@@ -460,7 +463,7 @@ function MapSection(props: {
     if (!prep || applyingMap) return false;
     const grid = parseGridDraft(prep.draft, prep.map);
     if (!grid) {
-      setPrepError("Fix the grid before applying the map.");
+      setPrepError(t("gmMap.fixGridMap"));
       return false;
     }
     setApplyingMap(true); setPrepError(null);
@@ -488,7 +491,7 @@ function MapSection(props: {
       }
       return applied;
     } catch (err) {
-      setPrepError(err instanceof Error ? err.message : "Could not apply the map. Your draft has been kept.");
+      setPrepError(err instanceof Error ? err.message : t("gmMap.applyMapFailed"));
       return false;
     } finally { setApplyingMap(false); }
   };
@@ -500,7 +503,7 @@ function MapSection(props: {
       const link = document.createElement("a"); link.href = url; link.download = "map.uvtt";
       document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) { setPrepError(err instanceof Error ? err.message : "Export failed."); }
+    } catch (err) { setPrepError(err instanceof Error ? err.message : t("gmMap.exportFailed")); }
     finally { setExporting(false); }
   };
   // A grid being edited belongs to the map it was edited for.
@@ -544,7 +547,7 @@ function MapSection(props: {
       // An upload from the Manage tab opens the editor to line up its grid.
       setEditorOpen(true);
     } catch (err) {
-      setPrepError(err instanceof Error ? err.message : "Upload failed");
+      setPrepError(err instanceof Error ? err.message : t("common.uploadFailed"));
     } finally {
       setBusy(false);
     }
@@ -566,7 +569,7 @@ function MapSection(props: {
     }
     // From the Manage tab: the library map already has its grid, so it goes straight to the table.
     const command = prepCommand(next);
-    if (!command) return setPickError("This map's saved grid isn't valid. Upload it, or fix it in your library.");
+    if (!command) return setPickError(t("gmMap.savedGridInvalid"));
     if (await props.onSetMap(command, setPickError)) {
       setPicking(false);
     }
@@ -576,12 +579,12 @@ function MapSection(props: {
   const shown = prep?.map ?? props.map;
   const steps = props.fixedMap ? FIXED_MAP_STEPS : STEPS;
   return (
-    <PanelSection id="gm-map" title="Battle map">
+    <PanelSection id="gm-map" title={t("gmMap.battleMap")}>
       <div className="stack">
         <p className="muted">
           {props.map
-            ? `${props.map.width} × ${props.map.height} px${props.fixedMap ? "" : ` · ${props.wallCount} ${props.wallCount === 1 ? "wall" : "walls"}`}`
-            : "No map yet."}
+            ? props.fixedMap ? t("gmMap.summary", { w: props.map.width, h: props.map.height }) : t("gmMap.summaryWalls", { w: props.map.width, h: props.map.height, n: props.wallCount })
+            : t("gmMap.noMap")}
         </p>
         {props.map ? (
           // Opens the editor on its first step (Grid for a fixed map, ADR 0033); its tabs reach the others.
@@ -591,20 +594,20 @@ function MapSection(props: {
               setStep(steps[0]!.key);
               setEditorOpen(true);
             }}>
-              Edit map
+              {t("editor.title.edit")}
             </button>
           </div>
         ) : props.fixedMap ? null : (
           <div className="row button-row" data-tour="gm-grid">
             <label className="upload-button">
-              <span>{busy ? "Uploading…" : "Upload map"}</span>
+              <span>{busy ? t("common.uploading") : t("library.uploadMap")}</span>
               <input
                 ref={emptyUploadRef}
                 type="file"
                 className="sr-only"
                 accept="image/png,image/jpeg,image/webp,.uvtt,.dd2vtt,.df2vtt"
                 disabled={busy}
-                aria-label="Upload battle map"
+                aria-label={t("gmMap.upload")}
                 onChange={(e) => {
                   void onChange(e.target.files?.[0]);
                   e.target.value = "";
@@ -613,7 +616,7 @@ function MapSection(props: {
             </label>
             {props.hasLibrary && (
               <button type="button" className="secondary" disabled={busy} onClick={() => setPicking(true)}>
-                From library
+                {t("guide.map.library.title")}
               </button>
             )}
           </div>
@@ -622,14 +625,14 @@ function MapSection(props: {
       </div>
       <Modal
         open={editorOpen}
-        title="Edit map"
+        title={t("editor.title.edit")}
         className={`map-editor${waiting ? " is-preparing" : ""}`}
         onClose={requestClose}
-        closeLabel={waiting ? "Set up manually" : "Close"}
+        closeLabel={waiting ? t("editor.setUpManually") : t("common.close")}
         onAfterClose={() => (editMapRef.current ?? emptyUploadRef.current)?.focus()}
         headerContent={!waiting && (
-          <nav className="map-editor-steps" role="tablist" aria-label="Map setup steps">
-            {steps.map(({ key, label }) => (
+          <nav className="map-editor-steps" role="tablist" aria-label={t("editor.steps")}>
+            {steps.map(({ key, label }, i) => (
               <button
                 key={key}
                 type="button"
@@ -638,17 +641,17 @@ function MapSection(props: {
                 className="map-editor-step"
                 onClick={() => requestStep(key)}
               >
-                {label}
+                {t("editor.stepLabel", { n: i + 1, name: t(label) })}
               </button>
             ))}
             <span ref={setGridActionSlot} hidden={step !== "grid"} style={{ marginLeft: "auto" }} />
-            {prep && step !== "grid" && <span className="map-editor-draft">Draft map: only you see it until Apply map</span>}
+            {prep && step !== "grid" && <span className="map-editor-draft">{t("gmMap.draftNote")}</span>}
             {!prep && unsaved && (
               <span className="map-editor-unsaved">
-                <span className="map-editor-draft">Unsaved changes: only you see them</span>
-                <button type="button" className="secondary small" disabled={saving} onClick={discardDraft}>Discard</button>
+                <span className="map-editor-draft">{t("grid.unsaved")}</span>
+                <button type="button" className="secondary small" disabled={saving} onClick={discardDraft}>{t("common.discard")}</button>
                 <button type="button" className="small primary" disabled={saving} onClick={() => void saveDraft()}>
-                  {saving ? "Saving…" : "Save changes"}
+                  {saving ? t("common.saving") : t("common.saveChanges")}
                 </button>
               </span>
             )}
@@ -657,7 +660,7 @@ function MapSection(props: {
         )}
       >
         {waiting ? <GridPreparation label={preparation.label} onSkip={preparation.skip} /> : <div className="map-editor-shell">
-          {prep?.uvtt && prep.uvtt.diagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{prep.uvtt.diagnostics.length} import warnings</summary><ul>{prep.uvtt.diagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
+          {prep?.uvtt && prep.uvtt.diagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{t("editor.importWarnings", { n: prep.uvtt.diagnostics.length })}</summary><ul>{prep.uvtt.diagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
           <div className="map-editor-body" role="tabpanel">
             <GridActionsContext.Provider value={gridActionSlot}>
             <GuideStepContext.Provider value={step}>
@@ -665,27 +668,27 @@ function MapSection(props: {
               <div className="map-editor-split">
                 <div className="map-editor-stage">
                   <div className="map-editor-guide-slot"><EditorGuide step="map" /></div>
-                  {shown?.url ? <img className="map-editor-thumb" src={shown.url} alt="The current battle map" /> : <p className="map-editor-empty">No map yet. Upload one, or choose one from your library.</p>}
+                  {shown?.url ? <img className="map-editor-thumb" src={shown.url} alt={t("gmMap.currentAlt")} /> : <p className="map-editor-empty">{t("gmMap.noMapHint")}</p>}
                 </div>
-                <aside className="map-editor-hud" aria-label="Map">
-                  <h3 className="map-editor-heading">Battle map</h3>
-                  <p className="muted">Upload a map image, or place one from your library. It stays private until you apply it with its grid.</p>
+                <aside className="map-editor-hud" aria-label={t("editor.step.map")}>
+                  <h3 className="map-editor-heading">{t("gmMap.battleMap")}</h3>
+                  <p className="muted">{t("gmMap.uploadHint")}</p>
                   {props.hasLibrary && (
                     <label className="inline" data-guide="map-save-library">
                       <input type="checkbox" checked={saveToLibrary} disabled={busy} onChange={(e) => setSaveToLibrary(e.target.checked)} />
-                      <span>Also save uploads to my library</span>
+                      <span>{t("gmMap.alsoSave")}</span>
                     </label>
                   )}
-                  {props.hasLibrary && saveToLibrary && <p className="muted">Uploads are saved to your library immediately. Grid and wall edits here affect this room's draft.</p>}
+                  {props.hasLibrary && saveToLibrary && <p className="muted">{t("gmMap.savedImmediately")}</p>}
                   <label className="upload-button">
-                    <span>{busy ? "Uploading…" : "Upload map"}</span>
+                    <span>{busy ? t("common.uploading") : t("library.uploadMap")}</span>
                     <input
                       ref={uploadRef}
                       type="file"
                       className="sr-only"
                       accept="image/png,image/jpeg,image/webp,.uvtt,.dd2vtt,.df2vtt"
                       disabled={busy}
-                      aria-label="Upload battle map"
+                      aria-label={t("gmMap.upload")}
                       onChange={(e) => {
                         void onChange(e.target.files?.[0]);
                         // Cleared, so picking the same file again (after cancelling its draft) still fires.
@@ -693,12 +696,12 @@ function MapSection(props: {
                       }}
                     />
                   </label>
-                  <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting || preparing} onClick={() => void exportMap()}>{exporting ? "Exporting…" : "Export applied map (UVTT)"}</button>
-                  <p className="muted small-print">UVTT files: up to 40 MiB. Preview and edit geometry in Walls before Apply.</p>
-                  {Object.values(props.room.walls).some((w) => w.portal) && <p className="muted small-print">Export preserves open/closed state. UVTT does not carry door/window identity or locks.</p>}
+                  <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting || preparing} onClick={() => void exportMap()}>{exporting ? t("gmMap.exporting") : t("gmMap.export")}</button>
+                  <p className="muted small-print">{t("gmMap.uvttLimit")}</p>
+                  {Object.values(props.room.walls).some((w) => w.portal) && <p className="muted small-print">{t("gmMap.exportNote")}</p>}
                   {props.hasLibrary && (
                     <button type="button" className="secondary" data-guide="map-library" disabled={busy} onClick={() => setPicking(true)}>
-                      From library
+                      {t("guide.map.library.title")}
                     </button>
                   )}
                   {prepError && !prep && <p role="alert" className="error">{prepError}</p>}
@@ -723,14 +726,14 @@ function MapSection(props: {
                   onApply={async () => { requestApply(); }}
                   applying={applyingMap}
                   error={prepError}
-                  submitLabel="Apply map"
-                  cancelLabel="Close"
-                  busyLabel="Applying map…"
+                  submitLabel={t("gmMap.applyMap")}
+                  cancelLabel={t("common.close")}
+                  busyLabel={t("gmMap.applyingMap")}
                   allowUnchanged
                 >
                   {prep.map.assetId && <label className="checkbox">
                     <input type="checkbox" checked={prep.resetTerrain ?? false} onChange={(e) => setPrep((now) => now ? { ...now, resetTerrain: e.target.checked } : now)} />
-                    <span>Reset prepared terrain when applying</span>
+                    <span>{t("gmMap.resetTerrain")}</span>
                   </label>}
                 </GridForm>
               </HudLayout>
@@ -738,26 +741,26 @@ function MapSection(props: {
               <HudLayout className="map-editor-grid">
 {props.grid(() => props.onGridClose(), detection, applyGrid)}</HudLayout>
             ) : (
-              <p className="map-editor-empty">Choose a map in the Map step first.</p>
+              <p className="map-editor-empty">{t("gmMap.chooseFirst")}</p>
             ))}
             {step === "walls" && (importedState ? <div className="map-editor-import">
               <WallSetup key={prep?.uvtt?.id} connection={importEdits} state={importedState} token={props.token} detection={false} initialMode="select" />
-              <div className="map-editor-import-apply"><button type="button" className="primary" disabled={applyingMap} onClick={requestApply}>{applyingMap ? "Applying map…" : "Apply map"}</button>{prepError && <p role="alert" className="error">{prepError}</p>}</div>
-            </div> : prep ? <p className="map-editor-empty">Apply this map before setting up its walls.</p> : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.walls(draftEdits, draftState)}</Fragment>)}
+              <div className="map-editor-import-apply"><button type="button" className="primary" disabled={applyingMap} onClick={requestApply}>{applyingMap ? t("gmMap.applyingMap") : t("gmMap.applyMap")}</button>{prepError && <p role="alert" className="error">{prepError}</p>}</div>
+            </div> : prep ? <p className="map-editor-empty">{t("gmMap.applyBeforeWalls")}</p> : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.walls(draftEdits, draftState)}</Fragment>)}
             {step === "fog" && (prep
-              ? <p className="map-editor-empty">Apply the draft map in the Grid step first, then set up its fog here.</p>
+              ? <p className="map-editor-empty">{t("gmMap.applyBeforeFog")}</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.fog(draftEdits, draftState)}</Fragment>)}
-            {step === "terrain" && (prep ? <p className="map-editor-empty">Apply the draft map before preparing terrain.</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} layers />)}
+            {step === "terrain" && (prep ? <p className="map-editor-empty">{t("gmMap.applyBeforeTerrain")}</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} layers />)}
         {step === "sight" && (prep
-              ? <p className="map-editor-empty">Apply a map before setting up sight.</p>
-              : !props.map ? <p className="map-editor-empty">Apply a map before setting up sight.</p>
+              ? <p className="map-editor-empty">{t("sight.needsMap")}</p>
+              : !props.map ? <p className="map-editor-empty">{t("sight.needsMap")}</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.sight(draftEdits, draftState)}</Fragment>)}
             </GuideStepContext.Provider>
             </GridActionsContext.Provider>
           </div>
         </div>}
       </Modal>
-      <Modal open={askingPolicy} title="Tokens already on the table" onClose={() => { setAskingPolicy(false); setAfterPolicy(null); }} initialFocus={applyRef}>
+      <Modal open={askingPolicy} title={t("gmMap.tokensOnTable")} onClose={() => { setAskingPolicy(false); setAfterPolicy(null); }} initialFocus={applyRef}>
         <form className="stack token-policy" onSubmit={(e) => {
           e.preventDefault();
           setAskingPolicy(false);
@@ -768,19 +771,19 @@ function MapSection(props: {
           {TOKEN_POLICY_CHOICES.map((choice) => (
             <label key={choice.value} className="checkbox">
               <input type="radio" name="token-policy" value={choice.value} checked={policy === choice.value} onChange={() => setPolicy(choice.value)} />
-              <span>{choice.label} <span className="muted">{choice.hint}</span></span>
+              <span>{t(choice.label)} <span className="muted">{t(choice.hint)}</span></span>
             </label>
           ))}
           <div className="row button-row">
-            <button type="submit" className="primary" ref={applyRef}>Apply map</button>
-            <button type="button" className="secondary" onClick={() => { setAskingPolicy(false); setAfterPolicy(null); }}>Cancel</button>
+            <button type="submit" className="primary" ref={applyRef}>{t("gmMap.applyMap")}</button>
+            <button type="button" className="secondary" onClick={() => { setAskingPolicy(false); setAfterPolicy(null); }}>{t("common.cancel")}</button>
           </div>
         </form>
       </Modal>
       {props.hasLibrary && (
         <Modal
           open={picking}
-          title="Choose a map"
+          title={t("stage.chooseMap")}
           onClose={() => {
             setPicking(false);
             setPickError(null);
@@ -810,10 +813,10 @@ function MapSection(props: {
                 if (result.ok) setChangedMapUrl(null);
                 else setUndoError(result.message);
               } catch (err) {
-                setUndoError(err instanceof Error ? err.message : "Could not undo the map change. Try again.");
+                setUndoError(err instanceof Error ? err.message : t("gmMap.undoFailed"));
               } finally { setUndoPending(false); }
             }}>
-              {undoPending ? "Undoing…" : "Undo"}
+              {undoPending ? t("gmMap.undoing") : t("home.facts.undo")}
             </button>
             {undoError && <span role="alert" className="error">{undoError}</span>}
           </div>
@@ -825,18 +828,18 @@ function MapSection(props: {
         const blocked = pending ? pendingBlocked(pending.kind) : null;
         const error = pendingError ?? (pending?.kind === "map" ? prepError : pending?.kind === "draft" ? saveError : null);
         return (
-          <Modal open={pending !== null} title={text.title} onClose={() => !pendingSaving && setPending(null)}>
+          <Modal open={pending !== null} title={t(text.title)} onClose={() => !pendingSaving && setPending(null)}>
             <div className="stack">
-              <p>{text.body}</p>
+              <p>{t(text.body)}</p>
               {blocked && <p className="muted">{blocked}</p>}
               {error && <p role="alert" className="error">{error}</p>}
               <div className="row button-row">
                 <button type="button" className="primary" disabled={pendingSaving || blocked !== null} onClick={() => void savePending()}>
-                  {pendingSaving ? "Saving…" : text.save}
+                  {pendingSaving ? t("common.saving") : t(text.save)}
                 </button>
-                <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>Discard</button>
-                {pending?.kind === "draft" && pending.then === "grid" && <button type="button" className="secondary" disabled={pendingSaving} onClick={() => finishPending("grid")}>Keep draft and edit grid</button>}
-                <button type="button" className="secondary" disabled={pendingSaving} onClick={() => setPending(null)}>Keep editing</button>
+                <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>{t("common.discard")}</button>
+                {pending?.kind === "draft" && pending.then === "grid" && <button type="button" className="secondary" disabled={pendingSaving} onClick={() => finishPending("grid")}>{t("gmMap.keepDraft")}</button>}
+                <button type="button" className="secondary" disabled={pendingSaving} onClick={() => setPending(null)}>{t("common.keepEditing")}</button>
               </div>
             </div>
           </Modal>
@@ -867,14 +870,14 @@ function SaveGridToLibrary({ assetId, grid }: { assetId: string; grid: GridSpec 
             await api.library.update(assetId, { grid });
             setStatus("saved");
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not save the grid");
+            setError(err instanceof Error ? err.message : t("gmMap.saveGridFailed"));
             setStatus("idle");
           }
         }}
       >
-        {status === "saving" ? "Saving…" : "Save grid to library"}
+        {status === "saving" ? t("common.saving") : t("gmMap.saveGridToLibrary")}
       </button>
-      {status === "saved" && <p className="muted" role="status">Saved. Future placements of this map use this grid.</p>}
+      {status === "saved" && <p className="muted" role="status">{t("gmMap.gridSaved")}</p>}
       {error && <p role="alert" className="error">{error}</p>}
     </div>
   );

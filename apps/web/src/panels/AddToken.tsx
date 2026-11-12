@@ -16,6 +16,7 @@ import { statsWithDefaults } from "./tokenDefaults";
 import { useAttackListEditor } from "./AttackListEditor";
 
 import { randomTokenColor } from "../ui/tokenColors";
+import { t } from "../i18n/locale";
 
 /**
  * The GM's New Token and Saved Creatures buttons and their modals (room-sidebar-layout: GM setup
@@ -42,9 +43,9 @@ export function AddTokenButton({
   const groups = Object.values(state.groups);
   const groupField = groups.length > 0 && (
     <label className="token-group-field">
-      Group
+      {t("add.group")}
       <select value={groups.some((g) => g.id === groupId) ? groupId : ""} onChange={(e) => setGroupId(e.target.value)}>
-        <option value="">No group</option>
+        <option value="">{t("add.noGroup")}</option>
         {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
       </select>
     </label>
@@ -60,17 +61,17 @@ export function AddTokenButton({
     <>
       <div className="row add-token-buttons" data-tour="gm-add-token">
         <button type="button" className="primary" onClick={() => { setGroupId(""); setOpen(true); }}>
-          New Token
+          {t("add.newToken")}
         </button>
         {hasLibrary && (
           <button type="button" onClick={() => { setCreatureHidden(false); setGroupId(""); setCreaturesOpen(true); }}>
-            Saved Creatures
+            {t("add.savedCreatures")}
           </button>
         )}
       </div>
       <Modal
         open={open}
-        title="New Token"
+        title={t("add.newToken")}
         onClose={() => setOpen(false)}
         onAfterClose={() => {
           const draft = pending.current;
@@ -93,7 +94,7 @@ export function AddTokenButton({
       {hasLibrary && (
         <Modal
           open={creaturesOpen}
-          title="Saved Creatures"
+          title={t("add.savedCreatures")}
           onClose={() => setCreaturesOpen(false)}
           onAfterClose={() => {
             const draft = pending.current;
@@ -113,7 +114,7 @@ export function AddTokenButton({
               {groupField}
               <label className="inline">
                 <input type="checkbox" checked={creatureHidden} onChange={(e) => setCreatureHidden(e.target.checked)} />
-                Hidden from players
+                {t("add.hidden")}
               </label>
             </div>
           </div>
@@ -180,7 +181,7 @@ function AddToken(props: {
       const { url } = await api.upload(file, props.token);
       setImage({ url, assetId: null, label: file.name });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : t("common.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -199,7 +200,7 @@ function AddToken(props: {
         }}
       >
         <label>
-          Name
+          {t("common.name")}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -210,22 +211,22 @@ function AddToken(props: {
           />
           {/* The server does the numbering (KAN-62); this only tells the GM to expect it. */}
           <span id="add-token-name-hint" className="muted">
-            Duplicate names are numbered automatically, e.g. Goblin 2.
+            {t("add.duplicateNames")}
           </span>
         </label>
         {/* Blank HP and AC fall back to the defaults shown as placeholders (token-stat-defaults). */}
         <div className="token-setup-grid token-setup-grid-3">
-          <label>HP<input type="number" value={hp} onChange={(e) => setHp(e.target.value)} min="-999" max="9999" step="1" placeholder={String(defaults.hp)} /></label>
-          <label>Max HP<input type="number" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} min="1" max="9999" step="1" placeholder={String(defaults.maxHp)} /></label>
-          {features.armorClass && <label>AC<input type="number" value={ac} onChange={(e) => setAc(e.target.value)} min="0" max="99" step="1" placeholder={String(defaults.ac)} /></label>}
+          <label>{t("creature.stat.hp")}<input type="number" value={hp} onChange={(e) => setHp(e.target.value)} min="-999" max="9999" step="1" placeholder={String(defaults.hp)} /></label>
+          <label>{t("creature.maxHp")}<input type="number" value={maxHp} onChange={(e) => setMaxHp(e.target.value)} min="1" max="9999" step="1" placeholder={String(defaults.maxHp)} /></label>
+          {features.armorClass && <label>{t("creature.ac")}<input type="number" value={ac} onChange={(e) => setAc(e.target.value)} min="0" max="99" step="1" placeholder={String(defaults.ac)} /></label>}
         </div>
         <details className="token-editor-section">
-          <summary>Control &amp; visibility</summary>
+          <summary>{t("roster.control")}</summary>
           <div className="stack">
             <label>
-              Owner
+              {t("add.owner")}
               <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-                <option value="">No owner (GM only)</option>
+                <option value="">{t("add.noOwner")}</option>
                 {props.players.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.displayName}
@@ -236,7 +237,7 @@ function AddToken(props: {
             {props.groupField}
             <label className="inline">
               <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
-              Hidden from players
+              {t("add.hidden")}
             </label>
           </div>
         </details>
@@ -244,20 +245,20 @@ function AddToken(props: {
             fields: the GM points at the square on the board next (place-token-on-board). */}
         {features.attacks && attackList.section}
         <details className="token-editor-section">
-          <summary>Image<span className="token-editor-summary">{image ? image.label : "none"}</span></summary>
+          <summary>{t("creature.image")}<span className="token-editor-summary">{image ? image.label : t("card.noneLower")}</span></summary>
         <div className="stack token-image-field">
           {image ? (
             <div className="row token-image-chosen">
               <TokenPreview url={image.url} color={color ?? DEFAULT_TOKEN_COLOR} hidden={hidden} />
               <span className="token-name" title={image.label}>{image.label}</span>
               <button type="button" className="link" onClick={() => setImage(null)}>
-                Remove
+                {t("common.remove")}
               </button>
             </div>
           ) : (
             <div className="row">
               <label className="upload-button secondary">
-                <span>{uploading ? "Uploading…" : "Upload new"}</span>
+                <span>{uploading ? t("common.uploading") : t("add.uploadNew")}</span>
                 <input
                   type="file"
                   className="sr-only"
@@ -270,36 +271,36 @@ function AddToken(props: {
                 />
               </label>
               <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>
-                {props.hasLibrary ? "From library" : "Built-in art"}
+                {props.hasLibrary ? t("guide.map.library.title") : t("add.builtInArt")}
               </button>
             </div>
           )}
         </div>
         </details>
         <details className="token-editor-section">
-          <summary>Advanced settings</summary>
+          <summary>{t("creature.advanced")}</summary>
           <div className="stack">
             {/* A creature fills these in; the GM can change them before placing (KAN-70). */}
             {features.conditions && (
               <div className="stack" role="group" aria-labelledby={conditionsLabelId}>
-                <span id={conditionsLabelId} className="field-label">Starting conditions</span>
+                <span id={conditionsLabelId} className="field-label">{t("creature.startingConditions")}</span>
                 <ConditionPicker value={conditions} onChange={setConditions} />
               </div>
             )}
             <div className="token-setup-grid">
-              <label>Size (cells)<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
-              <label>Rotation (°)<input type="number" value={rotation} onChange={(e) => setRotation(e.target.value)} required step="any" /></label>
+              <label>{t("creature.size")}<input type="number" value={size} onChange={(e) => setSize(e.target.value)} required min="0.25" max="10" step="any" /></label>
+              <label>{t("add.rotation")}<input type="number" value={rotation} onChange={(e) => setRotation(e.target.value)} required step="any" /></label>
             </div>
           </div>
         </details>
         {error && <p role="alert" className="error">{error}</p>}
-        <button className="primary" type="submit" disabled={uploading}>Choose a square</button>
-        <p className="muted">Next, click the square on the map where it should go.</p>
+        <button className="primary" type="submit" disabled={uploading}>{t("add.chooseSquare")}</button>
+        <p className="muted">{t("add.clickSquare")}</p>
       </form>
       {/* The attack editor is a form of its own, so it can't be nested in this one. */}
       {features.attacks && attackList.editor}
       {cropFile && <TokenArtCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(f) => { setCropFile(null); void onUpload(f); }} />}
-      <Modal open={picking} title="Choose a token image" onClose={() => setPicking(false)}>
+      <Modal open={picking} title={t("add.chooseImage")} onClose={() => setPicking(false)}>
         <LibraryPicker
           kind="token"
           onPick={(asset) => {

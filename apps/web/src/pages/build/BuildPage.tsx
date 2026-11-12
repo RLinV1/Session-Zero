@@ -3,6 +3,7 @@ import {
   EMPTY_MAP_SETUP,
   describeDraftLine,
   draftMapBoard,
+  formatExpression,
   listOpenings,
   squareSizeOf,
   type BuildCheckIssue,
@@ -10,6 +11,7 @@ import {
   type BuildFileView,
   type BuildItemView,
   type BuildPublished,
+  type DraftCreatureState,
   type DraftMapSetup,
   type DraftMapState,
   type DraftMark,
@@ -24,12 +26,19 @@ import { RequireAccount } from "../../account/RequireAccount";
 import { useAccount } from "../../account/accountStore";
 import { ApiError, api } from "../../net/api";
 import { navigate } from "../../router";
+import { Check, Copy, PencilSimple, Trash, X } from "@phosphor-icons/react";
+import { IconAction } from "../../ui/IconAction";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
+import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type ThumbFor } from "./BuildLayout";
+import { ContentsRail, DraftMeter, type RailLink } from "./BuildRail";
+import { CreatureRoster, MapViewer } from "./BuildViewers";
+import { EncounterBoard } from "./EncounterBoard";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
 import { BuildChoiceFields } from "./LibraryBuilds";
-import { KIND_WORD, counted, creatureOf, encounterOf, flaggedFirst, mapOf, ownerIssues } from "./buildProgress";
+import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
+import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
 import { PassPanel } from "./PassPanel";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
 
@@ -44,24 +53,11 @@ const cardId = (item: Pick<BuildItemView, "kind" | "key">) => `build-${item.kind
 /** An item's own name, as the person knows it. */
 const nameOf = (item: BuildItemView) => String((item.data as { name?: unknown }).name ?? item.key);
 
-/** One group of issues, each naming its item and linking to it. */
-function IssueList({ title, className, issues }: { title: string; className: string; issues: readonly BuildCheckIssue[] }) {
-  return (
-    <>
-      <h3 className="build-issues-title">{title} ({issues.length})</h3>
-      <ul className="plain build-issues">
-        {issues.map((issue, i) => (
-          <li key={i} className={className}>
-            {issue.target
-              ? <a className="build-issue-item" href={`#${cardId(issue.target)}`}>{issue.label}</a>
-              : <span className="build-issue-item">{issue.label}</span>}{" "}
-            {issue.message}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const shortWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+/** Where the game profile's notes link: it has no card of its own. */
+const PROFILE_ID = "build-profile";
+const linkTo = (target: Pick<BuildItemView, "kind" | "key">) => cardId(target);
 
 /** Whether the AI left openings or places on a map for the person to finish. */
 const leftForYou = (item: BuildItemView) => {
@@ -92,7 +88,9 @@ function Build({ id }: { id: string }) {
   /** Whether the pass now shown replaced one the AI may still be using. */
   const [passReplaced, setPassReplaced] = useState(false);
   const [removing, setRemoving] = useState<PublishedBuildItem[] | null>(null);
-  const [removingDraft, setRemovingDraft] = useState<BuildItemView | null>(null);
+  const [removingDraft, setRemovingDraft] = useState<BuildItemView[] | null>(null);
+  const [editingCreature, setEditingCreature] = useState<BuildItemView | null>(null);
+  const [editingEncounter, setEditingEncounter] = useState<BuildItemView | null>(null);
   /** The action in flight, named as its button says it, so nothing is sent twice. */
   const [pending, setPending] = useState<string | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -159,18 +157,42 @@ function Build({ id }: { id: string }) {
     landed.current = true;
     const target = location.hash.length > 1 ? document.getElementById(location.hash.slice(1)) : null;
     if (!target) return;
+    revealElement(target);
     const heading = target.matches("h2") ? target : target.querySelector<HTMLElement>("h2") ?? target;
     heading.tabIndex = -1;
     target.scrollIntoView?.({ block: "start" });
     heading.focus({ preventScroll: true });
   }, [detail]);
 
+  // A link to a part of this page, such as a fix's item, opens the folded section it is in before
+  // the browser jumps there. It listens before the jump, on the way down, for links anywhere.
+  useEffect(() => {
+    const open = (e: MouseEvent) => {
+      const hash = (e.target as Element | null)?.closest?.("a[href^='#']")?.getAttribute("href");
+      if (hash && hash.length > 1) revealElement(document.getElementById(hash.slice(1)));
+    };
+    document.addEventListener("click", open, true);
+    return () => document.removeEventListener("click", open, true);
+  }, []);
+
   const items = useMemo(() => detail?.items ?? [], [detail]);
   const files = useMemo(() => detail?.files ?? [], [detail]);
-  const creatures = useMemo(() => items.filter((i) => i.kind === "creature").sort(flaggedFirst), [items]);
-  const maps = useMemo(() => items.filter((i) => i.kind === "map").sort(flaggedFirst), [items]);
-  const encounters = useMemo(() => items.filter((i) => i.kind === "encounter").sort(flaggedFirst), [items]);
+  // One order for the whole page (buildOrder.ts): like things together, maps in the order the
+  // encounters use them, and fixes and notes in the order of the cards they're about.
+  const creatures = useMemo(() => sortCreatures(items.filter((i) => i.kind === "creature")), [items]);
+  const encounters = useMemo(() => sortEncounters(items.filter((i) => i.kind === "encounter")), [items]);
+  const maps = useMemo(() => sortMaps(items.filter((i) => i.kind === "map"), encounters), [items, encounters]);
   const issues = useMemo(() => (detail ? ownerIssues(detail) : []), [detail]);
+  const rankOf = useMemo(() => pageRank({ maps, creatures, encounters }), [maps, creatures, encounters]);
+  // The encounters a room can start from: what this build has in the library, and what was just
+  // published before the list has caught up.
+  const roomChoices = useMemo(() => {
+    const all = new Map<string, { id: string; name: string }>();
+    for (const e of justPublished?.encounters ?? []) all.set(e.id, { id: e.id, name: e.name });
+    for (const p of published) if (p.type === "encounter") all.set(p.id, { id: p.id, name: p.name });
+    return [...all.values()];
+  }, [justPublished, published]);
+  const issueGroups = (list: readonly BuildCheckIssue[]) => groupIssues(list).sort((a, b) => rankOf(a.target) - rankOf(b.target));
 
   if (missing) {
     return <main className="page-shell home gm-page"><h1>Build not found</h1><p className="muted">It may be someone else's, or it no longer exists.</p><a href="/library">Back to your library</a></main>;
@@ -203,20 +225,93 @@ function Build({ id }: { id: string }) {
     }, "Couldn't publish.", "Publishing…");
   }
 
+  // "Choose" is one selection for the whole draft: the bar it brings up publishes or removes it.
   const checkbox = (item: BuildItemView) => (open && !item.published
-    ? <label className="build-check"><input type="checkbox" checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />Publish</label>
+    ? (
+      <label className="build-check">
+        <input type="checkbox" aria-label={`Choose ${nameOf(item)}`} checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />
+        <span aria-hidden="true">Choose</span>
+      </label>
+    )
     : null);
-  // Asks first: a removed draft is gone unless the AI saves it again.
-  const remove = (item: BuildItemView) => setRemovingDraft(item);
   const busy = pending !== null;
   const problems = issues.filter((i) => i.type === "problem");
   const notes = issues.filter((i) => i.type === "flag");
-  const publishLabel = pending === "Publishing…" ? "Publishing…" : `Publish selected (${chosen.length})`;
+  const publishLabel = pending === "Publishing…" ? "Publishing…" : `Publish ${chosen.length}`;
   const passLive = detail?.build.passExpiresAt ? Date.parse(detail.build.passExpiresAt) > Date.now() : false;
   const makePass = () => {
     setConfirmingNewPass(false);
     void run(async () => { setPassReplaced(passLive); setPass((await api.builds.newPass(id)).pass); }, "Couldn't make a new pass.", "Making a pass…");
   };
+
+  // What the check says each item still needs, for the meter, the strip, the roster and "what's ready".
+  const tally = (list: readonly BuildCheckIssue[]) => {
+    const per = new Map<string, number>();
+    for (const issue of list) if (issue.target) per.set(itemId(issue.target), (per.get(itemId(issue.target)) ?? 0) + 1);
+    return per;
+  };
+  const fixesFor = tally(problems);
+  const notesFor = tally(notes);
+  const ready = draftItems.filter((i) => !fixesFor.has(itemId(i)));
+  const counts = {
+    fix: draftItems.length - ready.length,
+    ready: ready.length,
+    published: open ? items.filter((i) => i.published).length : published.filter((p) => p.type !== "asset").length,
+  };
+
+  const fileOfMap = (key: string) => {
+    const map = maps.find((m) => m.key === key);
+    return map ? files.find((f) => f.id === mapOf(map).fileId) : undefined;
+  };
+  const thumbFor: ThumbFor = (target) => {
+    if (!target) return null;
+    if (target.kind === "map") return fileOfMap(target.key)?.url ?? null;
+    if (target.kind === "creature") {
+      const found = creatures.find((c) => c.key === target.key);
+      return found ? files.find((f) => f.id === creatureOf(found).imageFileId)?.url ?? null : null;
+    }
+    const found = encounters.find((e) => e.key === target.key);
+    return found ? fileOfMap(encounterOf(found).mapKey)?.url ?? null : null;
+  };
+  const creatureData = (key: string) => {
+    const found = creatures.find((c) => c.key === key);
+    return found ? creatureOf(found) : undefined;
+  };
+  const mapStatus = (map: BuildItemView) => {
+    const data = mapOf(map);
+    const left = (data.setup?.openings ?? []).filter((o) => o.kind === "leave").length + (data.setup?.marks.length ?? 0);
+    const fixes = fixesFor.get(itemId(map)) ?? 0;
+    if (map.published) return { text: "Published", warn: false };
+    if (data.gridStatus !== "confirmed") return { text: "Grid to confirm", warn: true };
+    if (left > 0) return { text: `${left} left for you`, warn: true };
+    if (fixes > 0) return { text: `${fixes} to fix`, warn: true };
+    return { text: "Ready", warn: false };
+  };
+  const attention = (item: BuildItemView) => {
+    if (item.published) return { text: "Published", warn: false };
+    const fixes = fixesFor.get(itemId(item)) ?? 0;
+    if (fixes > 0) return { text: `${fixes} to fix`, warn: true };
+    const noted = notesFor.get(itemId(item)) ?? 0;
+    return noted > 0 ? { text: plural(noted, "note"), warn: false } : null;
+  };
+  const blockedText = (item: BuildItemView) => {
+    const map = maps.find((m) => m.key === encounterOf(item).mapKey);
+    return !map ? "Its map isn't in this build." : mapOf(map).gridStatus !== "confirmed" ? `Confirm the grid on ${mapOf(map).name} first.` : null;
+  };
+  const startPublish = () => { if (flaggedChosen > 0) setConfirmingPublish(true); else void doPublish(); };
+
+  const railLinks: RailLink[] = [
+    ...(open && problems.length > 0 ? [{ id: "build-issues", label: "To fix", count: problems.length, urgent: true }] : []),
+    ...(open && notes.length > 0 ? [{ id: "build-notes", label: "Notes from your AI", count: notes.length }] : []),
+    ...(open && maps.length > 0 ? [{ id: "build-maps", label: "Maps", count: maps.length }] : []),
+    ...(open && creatures.length > 0 ? [{ id: "build-creatures", label: "Creatures", count: creatures.length }] : []),
+    ...(open && encounters.length > 0 ? [{ id: "build-encounters", label: "Encounters", count: encounters.length }] : []),
+    ...(open && draftItems.length > 0 ? [{ id: "build-publish", label: "Publish", count: chosen.length > 0 ? chosen.length : undefined }] : []),
+    ...(roomChoices.length > 0 ? [{ id: "build-start", label: "Start a room" }] : []),
+    ...(published.length > 0 ? [{ id: "build-published", label: "In your library", count: published.length }] : []),
+    ...(open && detail?.profile ? [{ id: PROFILE_ID, label: "Game" }] : []),
+    ...(open ? [{ id: "build-files", label: "Files", count: files.length }, { id: "build-access", label: "Your AI's access" }] : []),
+  ];
 
   return (
     <>
@@ -226,176 +321,163 @@ function Build({ id }: { id: string }) {
       <main className="page-shell home gm-page build-page">
         <p className="small-print"><a href="/library?tab=builds" onClick={(e) => { e.preventDefault(); navigate("/library?tab=builds"); }}>AI builds</a></p>
         <h1>{detail?.build.name ?? "AI build"}</h1>
-        {error && <p ref={errorRef} tabIndex={-1} role="alert" className="error build-error">{error}</p>}
-        {!detail && !error && <p className="muted" aria-busy="true">Loading…</p>}
-
         {detail && open && (
           <p className="build-summary">
             {draftItems.length === 0
               ? "Nothing in the draft yet. Your AI's work appears here as it saves it."
-              : `Your AI has saved ${counted(draftItems)}. ${problems.length === 0 ? "Nothing needs fixing" : `${problems.length} ${problems.length === 1 ? "thing needs" : "things need"} fixing`}${notes.length > 0 ? `, and it left ${notes.length} ${notes.length === 1 ? "note" : "notes"} for you` : ""}. Check each item, then `}
-            {draftItems.length > 0 && <a href="#build-publish">publish what you choose</a>}
-            {draftItems.length > 0 && "."}
+              : <>{problems.length === 0 ? "Nothing needs fixing. Check each item, then " : "Fix what's listed, check each item, then "}<a href="#build-publish">publish what you choose</a>.</>}
           </p>
         )}
+        {error && <p ref={errorRef} tabIndex={-1} role="alert" className="error build-error">{error}</p>}
+        {!detail && !error && <p className="muted" aria-busy="true">Loading…</p>}
 
         {detail && (
-          <>
-            {open ? (
-              <section className="build-section" aria-labelledby="build-access">
-                <h2 id="build-access">Your AI's access</h2>
-                <p className="muted">
-                  {passLive && detail.build.passExpiresAt
-                    ? `Your AI's pass works until ${new Date(detail.build.passExpiresAt).toLocaleString()}. `
-                    : "There is no working pass. "}
-                  If nothing changes, this build closes on {when(detail.build.closesAt)}.
+          <div className="build-layout">
+            <ContentsRail links={railLinks}>
+              {open && <DraftMeter counts={counts} />}
+              {open && (
+                <p className="build-rail-pass small-print">
+                  <a href="#build-access">{passLive && detail.build.passExpiresAt ? `Pass works until ${shortWhen(detail.build.passExpiresAt)}` : "No working pass"}</a>
                 </p>
-                <div className="row">
-                  <button type="button" disabled={busy} onClick={() => (passLive ? setConfirmingNewPass(true) : makePass())}>{pending === "Making a pass…" ? "Making a pass…" : "New pass"}</button>
-                  {detail.build.passExpiresAt && <button type="button" disabled={busy} onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.", "Cancelling…")}>{pending === "Cancelling…" ? "Cancelling…" : "Cancel pass"}</button>}
+              )}
+            </ContentsRail>
+
+            <div className="build-main">
+              {!open && <p className="notice"><span>This build is closed. Its draft is gone, and what it published is listed below.</span></p>}
+              <PassPanel pass={pass} replaced={passReplaced} onClose={() => setPass(null)} />
+
+              {open && (changed.length > 0 || profileChanged) && (
+                <section className="build-section build-changed" aria-labelledby="build-changed">
+                  <h2 id="build-changed">Changed by your AI since you looked</h2>
+                  <p className="muted small-print">These can't be published until you've checked them.</p>
+                  <ul className="plain build-published">
+                    {profileChanged && (
+                      <li>
+                        <span>Game profile: one square is now {squareSize}</span>
+                        <button type="button" className="small" onClick={() => setReviewed((all) => ({ ...all, [PROFILE_REVIEWED]: squareSize }))}>I've checked it</button>
+                      </li>
+                    )}
+                    {changed.map((item) => (
+                      <li key={itemId(item)}>
+                        <span><a href={`#${cardId(item)}`}>{nameOf(item)}</a> <span className="muted">{KIND_WORD[item.kind]}</span></span>
+                        <button type="button" className="small" onClick={() => markReviewed(item)}>I've checked it</button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {open && issues.length > 0 && (
+                <ReviewQueue problems={issueGroups(problems)} notes={issueGroups(notes)} linkTo={linkTo} thumbFor={thumbFor} />
+              )}
+
+              {open && maps.length > 0 && (
+                <MapViewer maps={maps} files={files} idFor={cardId} statusFor={mapStatus}
+                  renderPanel={(item) => (
+                    <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)} busy={busy}
+                      onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
+                      onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change these walls.")} />
+                  )} />
+              )}
+
+              {open && creatures.length > 0 && (
+                <CreatureRoster creatures={creatures} files={files} idFor={cardId} checkbox={checkbox} attention={attention}
+                  renderDetail={(item) => <CreatureDetail item={item} files={files} checkbox={checkbox(item)} busy={busy} onEdit={() => setEditingCreature(item)} />} />
+              )}
+
+              {open && encounters.length > 0 && (
+                <EncounterBoard encounters={encounters} maps={maps} files={files} creature={creatureData} idFor={cardId}
+                  checkbox={checkbox} blockedText={blockedText} busy={busy} onEdit={setEditingEncounter}
+                  extras={(item) => <Flags item={item} />} />
+              )}
+
+              {open && draftItems.length > 0 && (
+                <section className="build-section build-publish" aria-labelledby="build-publish-title" id="build-publish">
+                  <div className="build-section-head">
+                    <h2 id="build-publish-title">Publish</h2>
+                    <span className="build-section-sum">{chosen.length} of {draftItems.length} chosen</span>
+                  </div>
+                  <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
+                  <div className="row">
+                    <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Choose everything</button>
+                    {ready.length > 0 && ready.length < draftItems.length && (
+                      <button type="button" disabled={busy} onClick={() => setSelected(new Set(ready.map(itemId)))}>Choose what's ready ({ready.length})</button>
+                    )}
+                  </div>
+                  {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed, above, before publishing.</p>}
+                  {chosen.length === 0 && <p className="muted small-print">Tick Choose on what you want. A bar then appears to publish it or remove it from the draft.</p>}
+                </section>
+              )}
+
+              {/* Stays while the build has encounters in the library, not only just after publishing. */}
+              {roomChoices.length > 0 && <StartRoom encounters={roomChoices} thumbFor={(name) => {
+                const found = encounters.find((e) => encounterOf(e).name === name);
+                return found ? fileOfMap(encounterOf(found).mapKey)?.url ?? null : null;
+              }} onError={setError} />}
+
+              {published.length > 0 && (
+                <PublishedList published={published} mapNames={new Set(maps.map((m) => mapOf(m).name))} onRemove={setRemoving}
+                  thumbFor={(p, kind) => {
+                    // The draft says what each published thing looks like, while the build is open.
+                    if (kind === "creature" || kind === "art") {
+                      const found = creatures.find((c) => creatureOf(c).name === p.name);
+                      return found ? files.find((f) => f.id === creatureOf(found).imageFileId)?.url ?? null : null;
+                    }
+                    if (kind === "map") {
+                      const found = maps.find((m) => mapOf(m).name === p.name);
+                      return found ? fileOfMap(found.key)?.url ?? null : null;
+                    }
+                    if (kind === "encounter") {
+                      const found = encounters.find((e) => encounterOf(e).name === p.name);
+                      return found ? fileOfMap(encounterOf(found).mapKey)?.url ?? null : null;
+                    }
+                    return null;
+                  }} />
+              )}
+
+              {detail.profile && open && (
+                <Fold id={PROFILE_ID} title="Game" defaultOpen={false}
+                  summary={`${detail.profile.name}. One square is ${detail.profile.unitsPerCell} ${detail.profile.unitLabel}.`}>
+                  {detail.profile.notes ? <NoteText text={detail.profile.notes} /> : <p className="muted">Your AI left no notes on the game.</p>}
+                </Fold>
+              )}
+
+              {open && <FilesSection id={id} files={files} onDone={refresh} onError={setError} />}
+
+              {open && (
+                <Fold id="build-access" title="Your AI's access" defaultOpen={!passLive}
+                  summary={passLive && detail.build.passExpiresAt ? `Pass works until ${shortWhen(detail.build.passExpiresAt)}` : "No working pass"}>
+                  <p className="muted">If nothing changes, this build closes on {when(detail.build.closesAt)}.</p>
+                  <div className="row">
+                    <button type="button" disabled={busy} onClick={() => (passLive ? setConfirmingNewPass(true) : makePass())}>{pending === "Making a pass…" ? "Making a pass…" : "New pass"}</button>
+                    {detail.build.passExpiresAt && <button type="button" disabled={busy} onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.", "Cancelling…")}>{pending === "Cancelling…" ? "Cancelling…" : "Cancel pass"}</button>}
+                  </div>
+                  <BuildChoiceFields choices={detail.build.choices} disabled={busy} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
+                  <p className="muted small-print">Turning walls off stops your AI making more changes. What it already set stays above, where you can remove it.</p>
+                </Fold>
+              )}
+
+              {open && (
+                <section className="build-section build-end">
+                  <button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDiscard(true)}>Discard this build</button>
+                </section>
+              )}
+
+              {/* One bar for what's chosen: publish it, or take it out of the draft. */}
+              {open && chosen.length > 0 && (
+                <div className="build-publish-bar" role="region" aria-label="Chosen items">
+                  <span><strong>{chosen.length}</strong> chosen</span>
+                  <div className="row">
+                    <button type="button" className="link" onClick={() => setSelected(new Set())}>Clear</button>
+                    <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => setRemovingDraft(chosen)}>
+                      <Trash size={16} aria-hidden="true" />Remove from draft
+                    </button>
+                    <button type="button" className="primary" disabled={chosenChanged || busy} onClick={startPublish}>{publishLabel}</button>
+                  </div>
                 </div>
-                <BuildChoiceFields choices={detail.build.choices} disabled={busy} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
-                <p className="muted small-print">Turning walls off stops your AI making more changes. What it already set stays below, where you can remove it.</p>
-              </section>
-            ) : (
-              <p className="notice"><span>This build is closed. Its draft is gone, and what it published is listed below.</span></p>
-            )}
-            <PassPanel pass={pass} replaced={passReplaced} onClose={() => setPass(null)} />
-
-            {open && (changed.length > 0 || profileChanged) && (
-              <section className="build-section" aria-labelledby="build-changed">
-                <h2 id="build-changed">Changed by your AI since you looked</h2>
-                <p className="muted small-print">These can't be published until you've checked them.</p>
-                <ul className="plain build-published">
-                  {profileChanged && (
-                    <li>
-                      <span>Game profile: one square is now {squareSize}</span>
-                      <button type="button" onClick={() => setReviewed((all) => ({ ...all, [PROFILE_REVIEWED]: squareSize }))}>I've checked it</button>
-                    </li>
-                  )}
-                  {changed.map((item) => (
-                    <li key={itemId(item)}>
-                      <span><a href={`#${cardId(item)}`}>{nameOf(item)}</a> <span className="muted">{KIND_WORD[item.kind]}</span></span>
-                      <button type="button" onClick={() => markReviewed(item)}>I've checked it</button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {open && issues.length > 0 && (
-              <section className="build-section" aria-labelledby="build-issues">
-                <h2 id="build-issues">Needs your attention</h2>
-                {/* Grouped under words, not only told apart by colour. */}
-                {problems.length > 0 && <IssueList title="To fix" className="build-problem" issues={problems} />}
-                {notes.length > 0 && <IssueList title="Notes from your AI" className="build-flag" issues={notes} />}
-              </section>
-            )}
-
-            {open && <FilesSection id={id} files={files} onDone={refresh} onError={setError} />}
-
-            {detail.profile && open && (
-              <section className="build-section" aria-labelledby="build-profile">
-                <h2 id="build-profile">Game</h2>
-                <p><strong>{detail.profile.name}</strong> <span className="muted">One square is {detail.profile.unitsPerCell} {detail.profile.unitLabel}.</span></p>
-                {detail.profile.notes && <p className="build-text">{detail.profile.notes}</p>}
-              </section>
-            )}
-
-            {open && maps.length > 0 && (
-              <section className="build-section" aria-labelledby="build-maps">
-                <h2 id="build-maps">Maps</h2>
-                <ul className="plain build-list build-list-maps">
-                  {maps.map((item) => (
-                    <li key={item.key} id={cardId(item)}>
-                      <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)} busy={busy}
-                        onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
-                        onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change these walls.")}
-                        onRemove={() => remove(item)} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {open && creatures.length > 0 && (
-              <section className="build-section" aria-labelledby="build-creatures">
-                <h2 id="build-creatures">Creatures and characters</h2>
-                <ul className="plain build-list">
-                  {creatures.map((item) => (
-                    <li key={item.key} id={cardId(item)}>
-                      <CreatureCard item={item} files={files} checkbox={checkbox(item)} busy={busy}
-                        onSave={async (patch) => { markReviewed((await api.builds.editCreature(id, item.key, patch)).item); await refresh(); }}
-                        onRemove={() => remove(item)} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {open && encounters.length > 0 && (
-              <section className="build-section" aria-labelledby="build-encounters">
-                <h2 id="build-encounters">Encounters</h2>
-                <ul className="plain build-list">
-                  {encounters.map((item) => (
-                    <li key={item.key} id={cardId(item)}>
-                      <EncounterCard item={item} creatures={creatures} maps={maps} checkbox={checkbox(item)} busy={busy}
-                        onSave={async (patch) => { markReviewed((await api.builds.editEncounter(id, item.key, patch)).item); await refresh(); }}
-                        onRemove={() => remove(item)} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {open && draftItems.length > 0 && (
-              <section className="build-section" aria-labelledby="build-publish-title" id="build-publish">
-                <h2 id="build-publish-title">Publish</h2>
-                <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
-                <div className="row">
-                  <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Select all</button>
-                  <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged || busy}
-                    onClick={() => { if (flaggedChosen > 0) setConfirmingPublish(true); else void doPublish(); }}>
-                    {publishLabel}
-                  </button>
-                </div>
-                {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed, above, before publishing.</p>}
-                {chosen.length === 0 && <p className="muted small-print">Tick Publish on the items you want, or choose Select all.</p>}
-              </section>
-            )}
-
-            {/* Keeps the choice in view while ticking items far up the page. */}
-            {open && chosen.length > 0 && (
-              <div className="build-publish-bar" role="region" aria-label="Selected to publish">
-                <span>{chosen.length} selected</span>
-                <a href="#build-publish">Review and publish</a>
-              </div>
-            )}
-
-            {justPublished && justPublished.encounters.length > 0 && <StartRoom published={justPublished} onError={setError} />}
-
-            {published.length > 0 && (
-              <section className="build-section" aria-labelledby="build-published">
-                <h2 id="build-published">In your library from this build</h2>
-                <p className="muted small-print">Characters arrive with no owner. In a room, open a token and set who controls it to give it to a player.</p>
-                <ul className="plain build-published">
-                  {published.map((p) => (
-                    <li key={p.id}>
-                      <span>{p.name} <span className="muted">{p.type === "asset" ? "art or map" : p.type}</span></span>
-                      <button type="button" onClick={() => setRemoving([p])}>Remove</button>
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" onClick={() => setRemoving(published)}>Remove everything this build published</button>
-              </section>
-            )}
-
-            {open && (
-              <section className="build-section">
-                <button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDiscard(true)}>Discard this build</button>
-              </section>
-            )}
-          </>
+              )}
+            </div>
+          </div>
         )}
 
         <Modal open={confirmingPublish} title="Publish with open flags?" onClose={() => setConfirmingPublish(false)}>
@@ -418,19 +500,48 @@ function Build({ id }: { id: string }) {
           </div>
         </Modal>
 
-        <Modal open={removingDraft !== null} title={removingDraft ? `Remove ${nameOf(removingDraft)} from this draft?` : "Remove from this draft?"} onClose={() => setRemovingDraft(null)}>
+        <Modal open={removingDraft !== null}
+          title={removingDraft?.length === 1 ? `Remove ${nameOf(removingDraft[0]!)} from this draft?` : `Remove ${removingDraft?.length ?? 0} items from this draft?`}
+          onClose={() => setRemovingDraft(null)}>
           {removingDraft && (
             <div className="confirm">
-              <p>{removingDraft.kind === "map" ? "Encounters on this map can't be published without it. " : ""}Your library doesn't change. Your AI can save it again if you ask it to.</p>
+              <p>{removingDraft.some((i) => i.kind === "map") ? "Encounters on a removed map can't be published without it. " : ""}Your library doesn't change. Your AI can save {removingDraft.length === 1 ? "it" : "them"} again if you ask it to.</p>
+              {removingDraft.length > 1 && <ul className="build-usage">{removingDraft.map((i) => <li key={itemId(i)}>{nameOf(i)} <span className="muted">{KIND_WORD[i.kind]}</span></li>)}</ul>}
               <div className="row">
-                <button type="button" onClick={() => setRemovingDraft(null)}>Keep it</button>
+                <button type="button" onClick={() => setRemovingDraft(null)}>Keep {removingDraft.length === 1 ? "it" : "them"}</button>
                 <button type="button" className="danger" onClick={() => {
-                  const item = removingDraft;
+                  const list = removingDraft;
                   setRemovingDraft(null);
-                  void run(() => api.builds.removeItem(id, item.kind, item.key), "Couldn't remove this.", "Removing…");
+                  void run(async () => {
+                    for (const item of list) await api.builds.removeItem(id, item.kind, item.key);
+                    setSelected((all) => new Set([...all].filter((key) => !list.some((i) => itemId(i) === key))));
+                  }, "Couldn't remove these.", "Removing…");
                 }}>Remove</button>
               </div>
             </div>
+          )}
+        </Modal>
+
+        <Modal open={editingCreature !== null} title={editingCreature ? `Edit ${nameOf(editingCreature)}` : "Edit"} className="build-editor-modal" onClose={() => setEditingCreature(null)}>
+          {editingCreature && (
+            <DraftCreatureEditor data={creatureOf(editingCreature)} files={files} onCancel={() => setEditingCreature(null)}
+              onSave={async (patch) => {
+                markReviewed((await api.builds.editCreature(id, editingCreature.key, patch)).item);
+                await refresh();
+                setEditingCreature(null);
+              }} />
+          )}
+        </Modal>
+
+        <Modal open={editingEncounter !== null} title={editingEncounter ? `Edit ${nameOf(editingEncounter)}` : "Edit"} className="build-editor-modal" onClose={() => setEditingEncounter(null)}>
+          {editingEncounter && (
+            <DraftEncounterEditor data={encounterOf(editingEncounter)} creature={(key) => { const c = creatures.find((x) => x.key === key); return c ? creatureOf(c) : undefined; }}
+              onCancel={() => setEditingEncounter(null)}
+              onSave={async (patch) => {
+                markReviewed((await api.builds.editEncounter(id, editingEncounter.key, patch)).item);
+                await refresh();
+                setEditingEncounter(null);
+              }} />
           )}
         </Modal>
 
@@ -485,8 +596,8 @@ function FilesSection({ id, files, onDone, onError }: { id: string; files: reado
   );
 
   return (
-    <section className="build-section" aria-labelledby="build-files">
-      <h2 id="build-files">Files</h2>
+    // Open while there's nothing in it, since dropping files here is then the next step.
+    <Fold id="build-files" title="Files" defaultOpen={files.length === 0} summary={files.length === 0 ? "None yet" : plural(files.length, "file")}>
       <p className="muted">Your AI can upload these itself if it can run commands. Otherwise drop them here and it will see them. {RIGHTS_NOTICE}</p>
       <div className="build-drops">
         {zone("token", "Token art")}
@@ -495,33 +606,34 @@ function FilesSection({ id, files, onDone, onError }: { id: string; files: reado
       <p role="status" className="muted small-print">{uploading > 0 ? `Uploading ${uploading}…` : ""}</p>
       {files.length > 0 && (
         <ul className="plain build-files">
-          {files.map((f) => <li key={f.id}><img src={f.url} alt="" loading="lazy" /><span className="build-file-name">{f.name}</span><span className="muted small-print">{f.width}×{f.height}{f.published ? " · published" : ""}</span></li>)}
+          {sortFiles(files).map((f) => <li key={f.id}><img src={f.url} alt="" loading="lazy" /><span className="build-file-name">{f.name}</span><span className="muted small-print">{f.width}×{f.height}{f.published ? ", published" : ""}</span></li>)}
         </ul>
       )}
-    </section>
+    </Fold>
   );
 }
 
 function Flags({ item }: { item: BuildItemView }) {
   return (
     <>
-      {item.flags.length > 0 && <ul className="plain build-flags">{item.flags.map((f, i) => <li key={i}><strong>{f.field}</strong>: {f.message}</li>)}</ul>}
+      <FlagList flags={item.flags} />
       {item.notCarriedOver && <NotCarried text={item.notCarriedOver} />}
     </>
   );
 }
 
+/** What the source had that the app can't store. Folded, since it's often the longest text on a card. */
 function NotCarried({ text }: { text: string }) {
   const [state, setState] = useState("");
   return (
-    <div className="build-carried">
-      <p className="muted small-print">Not carried over</p>
-      <p className="build-text">{text}</p>
+    <details className="build-disclosure build-carried">
+      <summary>Not carried over</summary>
+      <NoteText text={text} />
       <div className="row">
-        <button type="button" onClick={() => void copyText(text).then((ok) => setState(ok ? "Copied" : "Couldn't copy"))}>Copy notes</button>
+        <button type="button" className="link build-text-action" onClick={() => void copyText(text).then((ok) => setState(ok ? "Copied" : "Couldn't copy"))}><Copy size={16} aria-hidden="true" />Copy notes</button>
         <span role="status" className="muted small-print">{state}</span>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -533,33 +645,52 @@ const badges = (item: BuildItemView, extra?: ReactNode) => (
   </span>
 );
 
-function CreatureCard({ item, files, checkbox, busy = false, onSave, onRemove }: { item: BuildItemView; files: readonly BuildFileView[]; checkbox: ReactNode; busy?: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
-  const [editing, setEditing] = useState(false);
+/**
+ * A creature read in full, beside the roster: its numbers as plates, its attacks as a table with
+ * the dice written out, then what the AI flagged and what it couldn't store.
+ */
+function CreatureDetail({ item, files, checkbox, busy, onEdit }: { item: BuildItemView; files: readonly BuildFileView[]; checkbox: ReactNode; busy: boolean; onEdit: () => void }) {
   const data = creatureOf(item);
   const art = files.find((f) => f.id === data.imageFileId);
-  const stat = (label: string, value: number | null) => <span>{label} <strong>{value ?? "blank"}</strong></span>;
+  const plate = (label: string, value: number | null) => (
+    <div className="build-plate"><dt>{label}</dt><dd className={value === null ? "is-blank" : undefined}>{value ?? "blank"}</dd></div>
+  );
+  const dice = (roll: DraftCreatureState["attacks"][number]["toHit"]) => (roll ? formatExpression(roll) : null);
   return (
-    <article className="build-card">
-      <div className="build-card-head">
-        {art ? <img className="build-art" src={art.url} alt="" loading="lazy" /> : <span className="build-art" style={{ background: data.color }} aria-hidden />}
+    <article className="build-detail" aria-label={data.name}>
+      <div className="build-detail-head">
+        {art ? <img className="build-detail-art" src={art.url} alt="" loading="lazy" /> : <span className="build-detail-art" style={{ background: data.color }} aria-hidden="true" />}
         <div className="build-card-title">
           <h3>{data.name}</h3>
           {badges(item, data.isPlayerCharacter ? <span className="chip">Player character</span> : undefined)}
         </div>
-        {checkbox}
-      </div>
-      <p className="build-stats">{stat("HP", data.hp)} {stat("Max HP", data.maxHp)} {stat("AC", data.ac)} <span>Size <strong>{data.size}</strong></span></p>
-      {data.attacks.length > 0 && <p className="muted small-print">{data.attacks.map((a) => a.name).join(", ")}</p>}
-      <Flags item={item} />
-      {!item.published && (
-        <div className="row">
-          <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
+        <div className="build-board-actions">
+          {checkbox}
+          {!item.published && (
+            <button type="button" className="small build-text-action" disabled={busy} onClick={onEdit}>
+              <PencilSimple size={16} aria-hidden="true" />Edit
+            </button>
+          )}
         </div>
+      </div>
+      <dl className="build-plates">
+        {plate("HP", data.hp)}{plate("Max HP", data.maxHp)}{plate("AC", data.ac)}{plate("Size", data.size)}
+      </dl>
+      {data.attacks.length > 0 && (
+        <table className="build-attacks">
+          <thead><tr><th scope="col">Attack</th><th scope="col">To hit</th><th scope="col">Damage</th></tr></thead>
+          <tbody>
+            {data.attacks.map((a) => (
+              <tr key={a.name}>
+                <th scope="row">{a.name}</th>
+                <td className={a.toHit ? undefined : "is-blank"}>{dice(a.toHit) ?? "blank"}</td>
+                <td className={a.damage ? undefined : "is-blank"}>{dice(a.damage) ?? "blank"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
-      <Modal open={editing} title={`Edit ${data.name}`} onClose={() => setEditing(false)}>
-        {editing && <DraftCreatureEditor data={data} files={files} onCancel={() => setEditing(false)} onSave={async (patch) => { await onSave(patch); setEditing(false); }} />}
-      </Modal>
+      <Flags item={item} />
     </article>
   );
 }
@@ -694,7 +825,7 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
                 <option value="wall">wall</option><option value="door">door</option><option value="window">window</option>
               </select>
               {line.kind !== "wall" && stateSelect(line.state ?? "closed", (s) => setLine(i, line.kind, s), `Line ${i + 1} state`)}
-              {editable && <button type="button" onClick={() => removeLine(i)}>Remove</button>}
+              {editable && <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove line ${i + 1}`} danger onClick={() => removeLine(i)} />}
             </li>
           ))}
         </ul>
@@ -705,17 +836,17 @@ function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: Dr
             <li key={i}>
               <span>Left for you at column {mark.square.column}, row {mark.square.row}</span>
               <span className="build-flag-reason">{mark.reason}</span>
-              {editable && <button type="button" onClick={() => removeMark(i)}>Clear mark</button>}
+              {editable && <IconAction icon={<X size={16} aria-hidden="true" />} label={`Clear the mark at column ${mark.square.column}, row ${mark.square.row}`} onClick={() => removeMark(i)} />}
             </li>
           ))}
         </ul>
       )}
-      {editable && aiSetSomething && <button type="button" onClick={() => void onSave(EMPTY_MAP_SETUP)}>Remove everything your AI set on this map</button>}
+      {editable && aiSetSomething && <button type="button" className="link danger build-text-action" onClick={() => void onSave(EMPTY_MAP_SETUP)}>Remove everything your AI set on this map</button>}
     </details>
   );
 }
 
-function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup, onRemove }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void>; onRemove: () => void }) {
+function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void> }) {
   const data = mapOf(item);
   // A UVTT file's grid is exact: offering to "confirm" it would only lock the map against the AI.
   const fromFile = data.gridBy === "file";
@@ -794,7 +925,6 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup, o
             </button>
           )}
           {suggestion && !fromFile && <button type="button" disabled={busy} onClick={useSuggestion}>Use the detected grid</button>}
-          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
         </div>
       )}
       {!item.published && !fromFile && data.gridStatus === "confirmed" && !unsaved && <p className="muted small-print">The grid is confirmed. Change the numbers to save a different one.</p>}
@@ -802,73 +932,162 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup, o
   );
 }
 
-function EncounterCard({ item, creatures, maps, checkbox, busy = false, onSave, onRemove }: { item: BuildItemView; creatures: readonly BuildItemView[]; maps: readonly BuildItemView[]; checkbox: ReactNode; busy?: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onRemove: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const data = encounterOf(item);
-  const creatureName = (key: string) => {
-    const found = creatures.find((c) => c.key === key);
-    return found ? creatureOf(found).name : key;
-  };
-  const map = maps.find((m) => m.key === data.mapKey);
-  const blocked = !map ? "Its map isn't in this build." : mapOf(map).gridStatus !== "confirmed" ? `Confirm the grid on ${mapOf(map).name} first.` : null;
-  return (
-    <article className="build-card">
-      <div className="build-card-head">
-        <div className="build-card-title">
-          <h3>{data.name}</h3>
-          {badges(item)}
-          <p className="muted small-print">On {map ? mapOf(map).name : data.mapKey}</p>
-        </div>
-        {!blocked && checkbox}
-      </div>
-      {blocked && !item.published && <p className="build-blocked">Can't be published yet. {blocked}</p>}
-      <ul className="plain build-tokens">
-        {data.tokens.map((token, i) => (
-          <li key={i}>
-            <span>{token.name ?? creatureName(token.creatureKey)}</span>
-            <span className="muted small-print">{token.square ? `column ${token.square.column}, row ${token.square.row}` : "not placed"}</span>
-            {token.hidden ? <span className="chip">Hidden</span> : <span className="chip build-chip-warn">Players see this name</span>}
-          </li>
-        ))}
-      </ul>
-      <Flags item={item} />
-      {!item.published && (
-        <div className="row">
-          <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" disabled={busy} onClick={onRemove}>Remove</button>
-        </div>
-      )}
-      <Modal open={editing} title={`Edit ${data.name}`} onClose={() => setEditing(false)}>
-        {editing && <DraftEncounterEditor data={data} creatureName={creatureName} onCancel={() => setEditing(false)} onSave={async (patch) => { await onSave(patch); setEditing(false); }} />}
-      </Modal>
-    </article>
-  );
-}
-
-function StartRoom({ published, onError }: { published: BuildPublished; onError: (error: string) => void }) {
+/**
+ * What's next after publishing: a room from one of the new encounters. The encounters are a choice,
+ * each shown with its map, and the room is one button, rather than a primary button on every row.
+ */
+function StartRoom({ encounters: given, thumbFor, onError }: { encounters: readonly { id: string; name: string }[]; thumbFor: (name: string) => string | null; onError: (error: string) => void }) {
   const account = useAccount();
+  const encounters = [...given].sort((a, b) => byName(a.name, b.name));
+  const [choice, setChoice] = useState(encounters[0]!.id);
   const [starting, setStarting] = useState(false);
-  async function start(templateId: string, roomName: string) {
+  const chosen = encounters.find((e) => e.id === choice) ?? encounters[0]!;
+  async function start() {
     setStarting(true);
     try {
-      navigate(`/r/${await createRoomWith(emptyRoomDetails(roomName, account.status === "signedIn" ? account.account.displayName : "GM"), templateId)}`);
+      navigate(`/r/${await createRoomWith(emptyRoomDetails(chosen.name, account.status === "signedIn" ? account.account.displayName : "GM"), chosen.id)}`);
     } catch (err) {
       onError(message(err, "Couldn't start a room."));
       setStarting(false);
     }
   }
   return (
-    <section className="build-section" aria-labelledby="build-start">
-      <h2 id="build-start">Published</h2>
-      <ul className="plain build-published">
-        {published.encounters.map((e) => (
-          <li key={e.id}>
-            <span>{e.name}</span>
-            <button type="button" className="primary" disabled={starting} onClick={() => void start(e.id, e.name)}>Start a room</button>
-          </li>
-        ))}
-      </ul>
+    <section className="build-section build-start" aria-labelledby="build-start">
+      <div className="build-section-head">
+        <h2 id="build-start">Start a room</h2>
+        <span className="build-section-sum">{encounters.length === 1 ? "1 encounter in your library" : `${encounters.length} encounters in your library`}</span>
+      </div>
+      {encounters.length === 1
+        ? <p className="muted">{chosen.name} is in your library. Start a room with it now, or later from your library.</p>
+        : (
+          <fieldset className="build-scenes">
+            <legend>Encounter to start with</legend>
+            {encounters.map((e) => {
+              const thumb = thumbFor(e.name);
+              return (
+                <label key={e.id} className={e.id === choice ? "build-scene is-chosen" : "build-scene"}>
+                  <input type="radio" className="sr-only" name="build-start-encounter" value={e.id} checked={e.id === choice} onChange={() => setChoice(e.id)} />
+                  {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="build-scene-blank" aria-hidden="true" />}
+                  <span className="build-scene-name">{e.name}</span>
+                  {e.id === choice && <Check className="build-scene-tick" size={18} weight="bold" aria-hidden="true" />}
+                </label>
+              );
+            })}
+          </fieldset>
+        )}
+      <div className="row">
+        <button type="button" className="primary" disabled={starting} onClick={() => void start()}>{starting ? "Starting…" : "Start a room"}</button>
+      </div>
     </section>
+  );
+}
+
+type PublishedKind = "encounter" | "map" | "creature" | "art" | "file";
+const PUBLISHED_GROUPS: { kind: PublishedKind; title: string; one: string; many: string }[] = [
+  { kind: "encounter", title: "Encounters", one: "encounter", many: "encounters" },
+  { kind: "map", title: "Maps", one: "map", many: "maps" },
+  { kind: "creature", title: "Creatures", one: "creature", many: "creatures" },
+  { kind: "art", title: "Token art", one: "token art", many: "token art" },
+  { kind: "file", title: "Art and maps", one: "other file", many: "other files" },
+];
+
+/**
+ * The library only says an item is a file. A file an encounter uses, or with a draft map's name, is
+ * a map; one a creature uses is token art. Anything else, such as art whose creature was removed,
+ * stays "art and maps", since that's all that's known.
+ */
+function publishedKind(item: PublishedBuildItem, mapNames: ReadonlySet<string>): PublishedKind {
+  if (item.type !== "asset") return item.type;
+  if (item.encounters.length > 0 || mapNames.has(item.name)) return "map";
+  if (item.creatures.length > 0) return "art";
+  return "file";
+}
+
+/** A checkbox for a whole group: ticked when all of it is chosen, half-ticked when some is. */
+function GroupCheck({ label, all, some, onChange }: { label: ReactNode; all: boolean; some: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="build-pick">
+      <input type="checkbox" checked={all} ref={(el) => { if (el) el.indeterminate = some && !all; }} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+/**
+ * What a build put in the library, by kind, with each kind's count and its names in counting
+ * order, so the kind isn't repeated on every row.
+ *
+ * Removing is one action, not a button on every row: "Remove from library" turns the names into
+ * choices, a kind's heading chooses the whole kind, and one Remove takes everything chosen to the
+ * same confirmation, which lists where each thing is still in use.
+ */
+function PublishedList({ published, mapNames, thumbFor, onRemove }: { published: readonly PublishedBuildItem[]; mapNames: ReadonlySet<string>; thumbFor: (item: PublishedBuildItem, kind: PublishedKind) => string | null; onRemove: (items: PublishedBuildItem[]) => void }) {
+  const [choosing, setChoosing] = useState(false);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const groups = PUBLISHED_GROUPS
+    .map((g) => ({ ...g, items: published.filter((p) => publishedKind(p, mapNames) === g.kind).sort((a, b) => byName(a.name, b.name)) }))
+    .filter((g) => g.items.length > 0);
+  const picked = published.filter((p) => chosen.has(p.id));
+  const choose = (ids: readonly string[], on: boolean) => setChosen((all) => {
+    const next = new Set(all);
+    for (const id of ids) { if (on) next.add(id); else next.delete(id); }
+    return next;
+  });
+  const stop = () => { setChoosing(false); setChosen(new Set()); };
+  // Once what was chosen has gone from the library, choosing is over. A cancelled confirmation keeps it.
+  useEffect(() => { if (chosen.size > 0 && picked.length === 0) stop(); }, [chosen.size, picked.length]);
+
+  return (
+    <Fold id="build-published" title="In your library from this build" defaultOpen
+      summary={groups.map((g) => plural(g.items.length, g.one, g.many)).join(", ")}>
+      <p className="muted small-print">Characters arrive with no owner. In a room, open a token and set who controls it to give it to a player.</p>
+      {/* One button that changes its words, so focus stays on it as choosing starts and stops. */}
+      <button type="button" className="small build-text-action" aria-pressed={choosing} onClick={() => (choosing ? stop() : setChoosing(true))}>
+        {choosing ? "Cancel" : <><Trash size={16} aria-hidden="true" />Remove from library</>}
+      </button>
+      {choosing && <p className="muted small-print" role="status">Choose what to remove. A heading chooses all of its kind.</p>}
+      <div className="build-published-groups" onKeyDown={(e) => { if (choosing && e.key === "Escape") stop(); }}>
+        {groups.map((g) => {
+          const ids = g.items.map((p) => p.id);
+          const count = ids.filter((id) => chosen.has(id)).length;
+          const title = <>{g.title} <span className="muted">({g.items.length})</span></>;
+          return (
+            <div key={g.kind} className="build-published-group">
+              <h3>{choosing ? <GroupCheck label={title} all={count === ids.length} some={count > 0} onChange={(on) => choose(ids, on)} /> : title}</h3>
+              <ul className="plain build-published-grid">
+                {g.items.map((p) => {
+                  const thumb = thumbFor(p, g.kind);
+                  const picture = thumb
+                    ? <img className={g.kind === "creature" || g.kind === "art" ? "build-published-thumb is-round" : "build-published-thumb"} src={thumb} alt="" loading="lazy" />
+                    : null;
+                  return (
+                    <li key={p.id}>
+                      {choosing
+                        ? <label className="build-pick"><input type="checkbox" checked={chosen.has(p.id)} onChange={(e) => choose([p.id], e.target.checked)} />{picture}<span>{p.name}</span></label>
+                        : <span className="build-published-name">{picture}<span>{p.name}</span></span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      {/* Kept in view while ticking far down the list, as the publish bar is. */}
+      {choosing && (
+        <div className="build-publish-bar" role="region" aria-label="Remove from your library">
+          <span>{picked.length === 0 ? "Nothing chosen" : `${picked.length} chosen`}</span>
+          <div className="row">
+            <button type="button" className="link" onClick={() => choose(published.map((p) => p.id), picked.length < published.length)}>
+              {picked.length < published.length ? "Choose everything" : "Choose nothing"}
+            </button>
+            <button type="button" className="danger" disabled={picked.length === 0} onClick={() => onRemove(picked)}>
+              Remove{picked.length > 0 ? ` ${picked.length}` : ""}
+            </button>
+          </div>
+        </div>
+      )}
+    </Fold>
   );
 }
 

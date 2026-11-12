@@ -1,5 +1,6 @@
 import { snapTokenCenter, type CommandInput, type GridSpec, type Point, type RoomState, type TokenStats } from "@vtt/shared";
 
+import { t } from "../i18n/locale";
 /**
  * Placing a new token on the board (place-token-on-board). Pure geometry in board coordinates
  * (invariant 8), so it is testable without Pixi.
@@ -90,5 +91,5 @@ export function cursorSquare(cursor: Point, size: number, grid: GridSpec): strin
   const half = (size * grid.cellSize) / 2;
   const column = Math.floor((cursor.x - half - grid.offsetX + grid.cellSize / 2) / grid.cellSize) + 1;
   const row = Math.floor((cursor.y - half - grid.offsetY + grid.cellSize / 2) / grid.cellSize) + 1;
-  return `column ${column}, row ${row}`;
+  return `${t("fog.column", { n: column })}${t("common.listSep")}${t("fog.row", { n: row })}`;
 }

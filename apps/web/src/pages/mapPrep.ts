@@ -1,6 +1,7 @@
 import { sameValue, type UvttPreparation, type Wall, normalizeLegacyGridForBoard, type Command, type GridSpec, type MapImage, type MapTokenPolicy, type RoomState } from "@vtt/shared";
 import { gridsEqual, newGridPreparation, newGridSuggestionSession, parseGridDraft, toGridDraft, type GridDraft, type GridSuggestionSession, type GridPreparation } from "./gridDraft";
 
+import { t, type TextId } from "../i18n/locale";
 /**
  * A map being prepared before the table sees it (KAN-59, FRONTEND-CONTRACT §13.2): the chosen
  * image and its grid draft, held by the GM's browser only. Nothing reaches the room until Apply.
@@ -47,10 +48,10 @@ export function prepCommand(prep: MapPrep, tokenPolicy?: MapTokenPolicy): Extrac
 }
 
 /** The choices for tokens already on a map that is about to be replaced (KAN-67, ADR 0042). */
-export const TOKEN_POLICY_CHOICES: readonly { value: MapTokenPolicy; label: string; hint: string }[] = [
-  { value: "scale", label: "Scale to fit", hint: "Move tokens in proportion to the size of the new map." },
-  { value: "keep", label: "Keep positions", hint: "Leave tokens where they are; any off the new map move to its edge." },
-  { value: "recenter", label: "Recenter", hint: "Move the tokens to the middle of the new map." },
+export const TOKEN_POLICY_CHOICES: readonly { value: MapTokenPolicy; label: TextId; hint: TextId }[] = [
+  { value: "scale", label: "mapPrep.scale", hint: "mapPrep.scaleHint" },
+  { value: "keep", label: "mapPrep.keep", hint: "mapPrep.keepHint" },
+  { value: "recenter", label: "mapPrep.recenter", hint: "mapPrep.recenterHint" },
 ];
 
 /** The choice is only worth asking when a map would be replaced and tokens exist to move. */
@@ -60,7 +61,7 @@ export function offersTokenPolicy(state: RoomState): boolean {
 
 /** "3 tokens adjusted", or null when nothing moved. */
 export function adjustedMessage(count: number): string | null {
-  return count === 0 ? null : `${count} ${count === 1 ? "token" : "tokens"} adjusted`;
+  return count === 0 ? null : t("mapPrep.adjusted", { n: count });
 }
 
 /** A validated UVTT grid is used exactly; legacy normalization must not silently change it. */

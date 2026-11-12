@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { t } from "../i18n/locale";
 import { CaretDown } from "@phosphor-icons/react";
 import { PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
@@ -27,11 +28,11 @@ function describe(err: unknown): { message: string; field?: string } {
   if (err instanceof ApiError) {
     if (err.status === 429) {
       const minutes = Math.max(1, Math.ceil((err.detail.retryAfterSec ?? 60) / 60));
-      return { message: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` };
+      return { message: t("account.tooManyAttempts", { minutes }) };
     }
     return { message: err.message, field: err.detail.field };
   }
-  return { message: "Something went wrong. Check your connection and try again." };
+  return { message: t("account.networkError") };
 }
 
 /**
@@ -77,7 +78,7 @@ function AccountForm(props: {
         {props.busy ? props.busyLabel : props.submitLabel}
       </button>
       <p className="muted small-print">{props.footer}</p>
-      <Link href="/">Back to home</Link>
+      <Link href="/">{t("account.backHome")}</Link>
     </form>
   );
 }
@@ -86,10 +87,7 @@ function AccountForm(props: {
 function LegacyNote() {
   if (!loadGmToken()) return null;
   return (
-    <p className="notice">
-      This browser has rooms or library art from before accounts. Sign in or create an account, and you can bring them
-      with you from your rooms page.
-    </p>
+    <p className="notice">{t("account.legacyNote")}</p>
   );
 }
 
@@ -114,25 +112,25 @@ function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn
 
   return (
     <AccountForm
-      title="Sign in"
-      submitLabel="Sign in"
-      busyLabel="Signing in…"
+      title={t("account.signIn")}
+      submitLabel={t("account.signIn")}
+      busyLabel={t("account.signingIn")}
       busy={busy}
       error={error}
       onSubmit={() => void submit()}
       footer={
         <>
-          New here? <Link href={createHref}>Create an account</Link>
+          {t("account.newHere")} <Link href={createHref}>{t("account.createAnAccount")}</Link>
         </>
       }
     >
       <LegacyNote />
       <label>
-        Email
+        {t("account.email")}
         <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
       <label>
-        Password
+        {t("account.password")}
         <input
           type="password"
           autoComplete="current-password"
@@ -174,35 +172,33 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
 
   return (
     <AccountForm
-      title="Create an account"
-      submitLabel="Create account"
-      busyLabel="Creating…"
+      title={t("account.createAnAccount")}
+      submitLabel={t("account.createSubmit")}
+      busyLabel={t("account.creating")}
       busy={busy}
       error={error && !error.field ? error.message : null}
       onSubmit={() => void submit()}
       footer={
         <>
-          A free account is needed to host a game; players join from your invite link with no account. Already have one?{" "}
-          <Link href={signInHref}>Sign in</Link>
+          {t("account.signUpFooter")}{" "}
+          <Link href={signInHref}>{t("account.signIn")}</Link>
         </>
       }
     >
       <LegacyNote />
       <label>
-        Display name
+        {t("account.displayName")}
         <input autoComplete="nickname" required maxLength={40} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         {fieldError("displayName")}
       </label>
       <label>
-        Email
+        {t("account.email")}
         <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         {fieldError("email")}
       </label>
       <label>
-        Password
-        <span className="muted small">
-          {PASSWORD_MIN} to {PASSWORD_MAX} characters.
-        </span>
+        {t("account.password")}
+        <span className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
         <input
           type="password"
           autoComplete="new-password"
@@ -215,8 +211,8 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
         {fieldError("password")}
       </label>
       <p className="muted small-print">
-        By creating an account you agree to the <Link href="/terms">terms</Link> and the{" "}
-        <Link href="/privacy">privacy notice</Link>.
+        {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}
+        <Link href="/privacy">{t("account.agree.privacy")}</Link>{t("account.agree.after")}
       </p>
     </AccountForm>
   );
@@ -271,7 +267,7 @@ function SignOutButton({ className }: { className: string }) {
         void signOut().then(() => navigate("/", { replace: true }));
       }}
     >
-      Sign out
+      {t("account.signOut")}
     </button>
   );
 }
@@ -314,47 +310,47 @@ function AccountOverview({ account }: { account: AccountView }) {
       </div>
       <main className="page-shell">
         <div className="account-overview">
-          <h1>Your account</h1>
-          <AccountSection title="Signed in as">
+          <h1>{t("account.yourAccount")}</h1>
+          <AccountSection title={t("account.signedInAs")}>
             <p className="account-who">
               <strong>{account.displayName}</strong>
               <span>{account.email}</span>
             </p>
           </AccountSection>
-          <AccountSection title="Security">
+          <AccountSection title={t("account.security")}>
             <AccountRow
-              title="Password"
-              detail="Changing it signs out your other devices."
+              title={t("account.password")}
+              detail={t("account.passwordDetail")}
               action={
                 <button type="button" className="secondary" onClick={() => setChanging(true)}>
-                  Change password
+                  {t("account.changePassword")}
                 </button>
               }
             />
           </AccountSection>
-          <AccountSection title="This browser">
+          <AccountSection title={t("account.thisBrowser")}>
             <AccountRow
-              title="Sound and graphics"
-              detail="Saved here, not on your account."
+              title={t("account.soundGraphics")}
+              detail={t("account.savedHere")}
               action={
                 <button type="button" className="secondary" onClick={() => setSettingsOpen(true)}>
-                  Open settings
+                  {t("account.openSettings")}
                 </button>
               }
             />
             <AccountRow
-              title="Signed in here"
-              detail="Your other devices stay signed in."
+              title={t("account.signedInHere")}
+              detail={t("account.otherDevicesStay")}
               action={<SignOutButton className="secondary" />}
             />
           </AccountSection>
-          <AccountSection title="Your data">
+          <AccountSection title={t("account.yourData")}>
             <AccountRow
-              title="Rooms, library and uploaded images"
-              detail="Deleting your account removes these permanently. It can't be undone."
+              title={t("account.dataRow")}
+              detail={t("account.dataDetail")}
               action={
                 <button type="button" className="secondary danger" onClick={() => setDeleting(true)}>
-                  Delete account
+                  {t("account.deleteAccount")}
                 </button>
               }
             />
@@ -384,7 +380,7 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
     <>
       <PopoverButton
         label={displayName}
-        title="Account"
+        title={t("account.menu")}
         align="right"
         placement="fixed"
         className="account-trigger"
@@ -404,7 +400,7 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
             </p>
             <div className="menu-list">
               <Link href="/account" className="menu-item" aria-current={onAccountPage ? "page" : undefined} onClick={close}>
-                Your account
+                {t("account.yourAccount")}
               </Link>
               <button
                 type="button"
@@ -414,7 +410,7 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
                   setSettingsOpen(true);
                 }}
               >
-                Sound and graphics
+                {t("account.soundGraphics")}
               </button>
             </div>
             <div className="menu-list">
@@ -459,20 +455,20 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   return (
-    <Modal open={open} title="Change password" onClose={() => !busy && close()} initialFocus={firstRef}>
+    <Modal open={open} title={t("account.changePassword")} onClose={() => !busy && close()} initialFocus={firstRef}>
       {done ? (
         <>
-          <p>Your password is changed. Your other devices are signed out.</p>
+          <p>{t("account.passwordChanged")}</p>
           <div className="row modal-actions">
             <button type="button" className="primary" onClick={close}>
-              Done
+              {t("common.done")}
             </button>
           </div>
         </>
       ) : (
         <form onSubmit={(e) => void submit(e)}>
           <label>
-            Current password
+            {t("account.currentPassword")}
             <input
               ref={firstRef}
               type="password"
@@ -484,10 +480,8 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
             />
           </label>
           <label>
-            New password
-            <span className="muted small">
-              {PASSWORD_MIN} to {PASSWORD_MAX} characters. Your other devices will be signed out.
-            </span>
+            {t("account.newPassword")}
+            <span className="muted small">{t("account.newPasswordHint", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
             <input
               type="password"
               autoComplete="new-password"
@@ -505,10 +499,10 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
           )}
           <div className="row modal-actions">
             <button type="button" className="secondary" onClick={close} disabled={busy}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button className="primary" type="submit" disabled={busy}>
-              {busy ? "Changing…" : "Change password"}
+              {busy ? t("account.changing") : t("account.changePassword")}
             </button>
           </div>
         </form>
@@ -556,21 +550,21 @@ export function DeleteAccountDialog({ open, email, onClose }: { open: boolean; e
   const otherError = error && error.field !== "password" ? error.message : null;
 
   return (
-    <Modal open={open} title="Delete account" onClose={() => !busy && close()} initialFocus={firstRef}>
+    <Modal open={open} title={t("account.deleteAccount")} onClose={() => !busy && close()} initialFocus={firstRef}>
       <form onSubmit={(e) => void submit(e)}>
         <div className="notice delete-account-warning" role="note">
           <p>
-            <strong>Deleting your account is permanent and cannot be undone.</strong> This removes:
+            <strong>{t("account.delete.warning")}</strong> {t("account.delete.removes")}
           </p>
           <ul>
-            <li>your rooms and their history</li>
-            <li>your library</li>
-            <li>uploaded images</li>
-            <li>your sessions on every device</li>
+            <li>{t("account.delete.rooms")}</li>
+            <li>{t("account.delete.library")}</li>
+            <li>{t("account.delete.uploads")}</li>
+            <li>{t("account.delete.sessions")}</li>
           </ul>
         </div>
         <label>
-          Type <strong>{email}</strong> to confirm
+          {t("account.delete.typeBefore")}<strong>{email}</strong>{t("account.delete.typeAfter")}
           <input
             ref={firstRef}
             type="text"
@@ -583,7 +577,7 @@ export function DeleteAccountDialog({ open, email, onClose }: { open: boolean; e
           />
         </label>
         <label>
-          Password
+          {t("account.password")}
           <input
             type="password"
             autoComplete="current-password"
@@ -607,10 +601,10 @@ export function DeleteAccountDialog({ open, email, onClose }: { open: boolean; e
         )}
         <div className="row modal-actions">
           <button type="button" className="secondary" onClick={close} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button className="danger-fill" type="submit" disabled={!ready}>
-            {busy ? "Deleting…" : "Delete account"}
+            {busy ? t("account.deleting") : t("account.deleteAccount")}
           </button>
         </div>
       </form>

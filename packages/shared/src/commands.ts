@@ -352,22 +352,22 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("room.setReducedEffects"),
     enabled: z.boolean(),
   }),
-  /** GM only: which tokens leave the board at 0 HP or below (ADR 0049, ADR 0054). */
+  /** GM only: which tokens leave the board at 0 HP or below (ADR 0049, ADR 0057). */
   z.object({
     type: z.literal("room.setDefeatRemoval"),
     mode: z.enum(DEFEAT_REMOVALS),
   }),
-  /** GM only: players who own no visible token see nothing on the board (ADR 0054). */
+  /** GM only: players who own no visible token see nothing on the board (ADR 0057). */
   z.object({
     type: z.literal("room.setHideMapWithoutToken"),
     enabled: z.boolean(),
   }),
-  /** GM only: players get no HP for tokens they don't own (ADR 0054). */
+  /** GM only: players get no HP for tokens they don't own (ADR 0057). */
   z.object({
     type: z.literal("room.setHideHp"),
     enabled: z.boolean(),
   }),
-  /** GM only: players get no AC for tokens they don't own (ADR 0054). */
+  /** GM only: players get no AC for tokens they don't own (ADR 0057). */
   z.object({
     type: z.literal("room.setHideAc"),
     enabled: z.boolean(),

@@ -189,14 +189,14 @@ export function inSight(polygons: readonly (readonly Point[])[], p: Point, toler
  * Null means no limit: the GM, or line of sight off. Empty means the viewer sees nothing, as with
  * no map or no (unhidden) token of their own.
  */
-/** Whether the viewer owns a token the GM hasn't hidden: a sight origin, and their way onto the board (ADR 0054). */
+/** Whether the viewer owns a token the GM hasn't hidden: a sight origin, and their way onto the board (ADR 0057). */
 export function ownsVisibleToken(state: Pick<RoomState, "tokens">, viewer: Participant): boolean {
   return Object.values(state.tokens).some((t) => !t.hidden && t.ownerIds.includes(viewer.id));
 }
 
 export function viewerSight(state: Pick<RoomState, "scene" | "walls" | "tokens" | "fog" | "hideMapWithoutToken">, viewer: Participant): Point[][] | null {
   if (viewer.role === "gm") return null;
-  // "Hide map from players without a token": no sight at all, with or without line of sight (ADR 0054).
+  // "Hide map from players without a token": no sight at all, with or without line of sight (ADR 0057).
   if (state.hideMapWithoutToken && !ownsVisibleToken(state, viewer)) return [];
   if (state.scene.lineOfSight !== true) return null;
   const map = state.scene.map;

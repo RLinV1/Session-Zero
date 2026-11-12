@@ -5,19 +5,20 @@ import type { EditorConnection } from "../../net/roomConnection";
 import { FogControls } from "./FogControls";
 import { FogCanvas, type FogAdd, type FogCanvasMode } from "./FogCanvas";
 import { HudLayout } from "./HudLayout";
+import { t, type TextId } from "../../i18n/locale";
 
-const MODES: { key: FogCanvasMode; label: string; icon: typeof Eye }[] = [
-  { key: "rect", label: "Rectangle", icon: Rectangle },
-  { key: "polygon", label: "Polygon", icon: Polygon },
-  { key: "reveal", label: "Reveal", icon: Eye },
-  { key: "edit", label: "Move & reshape", icon: ArrowsOutCardinal },
+const MODES: { key: FogCanvasMode; label: TextId; icon: typeof Eye }[] = [
+  { key: "rect", label: "common.rectangle", icon: Rectangle },
+  { key: "polygon", label: "common.polygon", icon: Polygon },
+  { key: "reveal", label: "fog.reveal", icon: Eye },
+  { key: "edit", label: "fog.moveReshape", icon: ArrowsOutCardinal },
 ];
 
-const HINTS: Record<FogCanvasMode, string> = {
-  rect: "Drag to fog a rectangle.",
-  polygon: "Click each corner. Click the first corner or press Enter to close it. Esc or right-click drops it.",
-  reveal: "Click a fogged region to reveal what it covers.",
-  edit: "Click fog to select it. Drag it to move it, or drag a corner to reshape it. Esc deselects.",
+const HINTS: Record<FogCanvasMode, TextId> = {
+  rect: "fog.hint.rect",
+  polygon: "fog.hint.polygon",
+  reveal: "fog.hint.reveal",
+  edit: "fog.hint.move",
 };
 
 /**
@@ -32,7 +33,7 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
   const [playerView, setPlayerView] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
-  if (!map) return <p className="map-editor-empty">Apply a map in the Map step first, then set up its fog here.</p>;
+  if (!map) return <p className="map-editor-empty">{t("fog.applyMapFirst")}</p>;
 
   const send = async (command: { type: "fog.add"; region: FogAdd } | { type: "fog.remove"; regionId: string } | { type: "fog.replace"; removeIds: string[]; add: FogAdd[] }) => {
     setBusy(true);
@@ -56,10 +57,10 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
         onNotice={(text) => setMessage({ text, error: true })}
         playerView={playerView}
       />
-      <aside className="map-editor-hud" aria-label="Fog tools">
+      <aside className="map-editor-hud" aria-label={t("fog.tools")}>
         <section className="stack">
-          <h3 className="map-editor-heading">Tools</h3>
-          <div className="map-editor-modes" role="radiogroup" aria-label="Fog tool">
+          <h3 className="map-editor-heading">{t("common.tools")}</h3>
+          <div className="map-editor-modes" role="radiogroup" aria-label={t("fog.tool")}>
             {MODES.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -70,11 +71,11 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
                 onClick={() => { setMode(key); setMessage(null); }}
               >
                 <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
+                <span>{t(label)}</span>
               </button>
             ))}
           </div>
-          <p className="muted small-print">{HINTS[mode]}</p>
+          <p className="muted small-print">{t(HINTS[mode])}</p>
           <button
             type="button"
             className="tool-button map-editor-mode"
@@ -82,15 +83,15 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
             onClick={() => setPlayerView((on) => !on)}
           >
             <UserFocus size={18} aria-hidden="true" />
-            <span>Player view</span>
+            <span>{t("fog.playerView")}</span>
           </button>
           <p className="map-editor-count">
-            {regions} fogged {regions === 1 ? "region" : "regions"}. Players can't see anything under fog. {playerView ? "Shown as players see it." : "Only you see it as drawn here."}
+            {t("fog.regionsNote", { n: regions })} {playerView ? t("fog.asPlayers") : t("fog.onlyYou")}
           </p>
         </section>
         <section className="stack">
-          <h3 className="map-editor-heading">Fog controls</h3>
-          <FogControls connection={connection} state={state} intro="Fog the whole map without the pointer." />
+          <h3 className="map-editor-heading">{t("fog.controls")}</h3>
+          <FogControls connection={connection} state={state} intro={t("fog.noPointer")} />
         </section>
         {message && <p className={message.error ? "error" : "muted"} role={message.error ? "alert" : "status"}>{message.text}</p>}
       </aside>

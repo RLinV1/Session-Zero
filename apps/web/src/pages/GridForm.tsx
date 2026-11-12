@@ -9,6 +9,7 @@ import { DEFAULT_BOARD_SIZE, minimumGridCellSize, minimumGridCellSizeForDisplay 
 import { ColorWheel } from "../ui/ColorWheel";
 import { MapGridPreview } from "./MapGridPreview";
 import { gridsEqual, newGridSuggestionSession, parseGridDraft, withGridSuggestion, type GridDraft, type GridSuggestionSession } from "./gridDraft";
+import { t } from "../i18n/locale";
 
 const DEFAULT_PREVIEW_MAP = { ...DEFAULT_BOARD_SIZE, url: null };
 
@@ -34,9 +35,9 @@ export function GridForm({
   onUseSuggestion,
   autoSuggest = false,
   suggestionSession,
-  submitLabel = "Apply grid",
-  busyLabel = "Applying…",
-  cancelLabel = "Cancel",
+  submitLabel,
+  busyLabel,
+  cancelLabel,
   allowUnchanged = false,
   advancedOpen = false,
   children,
@@ -160,24 +161,24 @@ export function GridForm({
         })}
       />
       <div className="grid-advanced">
-        {advancedOpen ? <h3 className="map-editor-heading">Advanced</h3> : (
+        {advancedOpen ? <h3 className="map-editor-heading">{t("common.advanced")}</h3> : (
           <button type="button" className="grid-advanced-toggle" aria-expanded={advanced}
             aria-controls={advancedId} onClick={() => setAdvanced((open) => !open)}>
-            <span className="grid-advanced-title">Advanced</span>
+            <span className="grid-advanced-title">{t("common.advanced")}</span>
             <CaretDown size={14} className="grid-advanced-caret" aria-hidden="true" />
           </button>
         )}
         <div id={advancedId} className="grid-advanced-body" hidden={!advancedOpen && !advanced}>
           <p id={previewHelpId} className="muted small-print" role="status" hidden={!liveGeometry}>
-            Temporary preview values. Click the map or press Enter to confirm placement.
+            {t("grid.tempValues")}
           </p>
           <div className="grid-form" onFocus={() => { setEditingGeometry(true); setGeometryPreview(null); }}
             onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setEditingGeometry(false); }}>
-            {field("cellSize", "Cell size")}
-            {field("offsetX", "Offset X")}
-            {field("offsetY", "Offset Y")}
+            {field("cellSize", t("grid.cellSize"))}
+            {field("offsetX", t("grid.offsetX"))}
+            {field("offsetY", t("grid.offsetY"))}
           </div>
-          <p className="muted small-print">All in pixels. Offsets wrap within one cell. Resizing can change them while anchor A stays fixed.</p>
+          <p className="muted small-print">{t("grid.pixelsNote")}</p>
           <GridLineFields draft={styleDraft} map={map} disabled={applying}
             onChange={(next) => { interact(); onChange({ ...draft, lineColor: next.lineColor,
               lineWidth: next.lineWidth, lineOpacity: next.lineOpacity }); }}
@@ -187,28 +188,28 @@ export function GridForm({
       <div className="grid-editor-footer">
         {detectionNotice && detection?.status !== "suggested" && <p role="status" className="muted grid-message">{detectionNotice}</p>}
         <div className="grid-scale">
-          <span>Each square represents</span>
-          <input type="number" aria-label="Distance per square" step="any" min="0" required
+          <span>{t("grid.eachSquare")}</span>
+          <input type="number" aria-label={t("grid.distancePerSquare")} step="any" min="0" required
             disabled={applying} value={draft.unitsPerCell}
             onChange={(e) => { interact(); onChange({ ...draft, unitsPerCell: e.target.value }); }} />
-          <input type="text" aria-label="Distance unit" maxLength={12} required
+          <input type="text" aria-label={t("grid.distanceUnit")} maxLength={12} required
             disabled={applying} value={draft.unitLabel}
             onChange={(e) => { interact(); onChange({ ...draft, unitLabel: e.target.value }); }} />
         </div>
         {detection && !detectionError && detection.status !== "no_grid" && detection.status !== "error" && (
           <div className="grid-suggestion" role="status">
-            {detection.status === "queued" && <p>Checking the map for a grid…</p>}
-            {detection.status === "running" && <p>Analyzing the map grid…</p>}
+            {detection.status === "queued" && <p>{t("grid.checking")}</p>}
+            {detection.status === "running" && <p>{t("grid.analyzing")}</p>}
             {detection.status === "suggested" && (
               <>
-                <p>Grid estimate: {Number(detection.candidate.cellSize.toFixed(2))}px cells, offsets {Number(detection.candidate.offsetX.toFixed(2))}px / {Number(detection.candidate.offsetY.toFixed(2))}px. Check alignment against the map before saving.</p>
+                <p>{t("grid.estimate", { cell: Number(detection.candidate.cellSize.toFixed(2)), x: Number(detection.candidate.offsetX.toFixed(2)), y: Number(detection.candidate.offsetY.toFixed(2)) })}</p>
                 {onUseSuggestion && (
                   <button type="button" className="secondary small" disabled={applying} onClick={() => {
                     interact();
                     setGeometryRevision((current) => current + 1);
                     onUseSuggestion(detection.candidate);
                   }}>
-                    Use suggestion
+                    {t("grid.useSuggestion")}
                   </button>
                 )}
               </>
@@ -218,19 +219,19 @@ export function GridForm({
         {hasDraft && !validDraft && (
           <p className="error grid-message" role="alert">
             {tooManyLines
-              ? `Preview is paused at the last valid values. Use a cell size of at least ${minimumCellSize} px for this map.`
-              : "Preview is paused at the last valid values. Use a cell size above 0 and at most 2000 px, positive units, and offsets from 0 up to less than the cell size."}
+              ? t("grid.pausedMinCell", { min: minimumCellSize })
+              : t("grid.pausedNote")}
           </p>
         )}
         {error && <p className="error grid-message" role="alert">{error}</p>}
         {!hideActions && (actionSlot ? (dirty ? createPortal(<span className="map-editor-unsaved">
-          {dirty && <span className="map-editor-draft">Unsaved changes: only you see them</span>}
-          <button type="button" className="secondary small" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel === "Cancel" ? "Discard" : cancelLabel}</button>
-          <button type="submit" form={formId} className="small primary" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel === "Apply grid" ? "Save changes" : submitLabel}</button>
+          {dirty && <span className="map-editor-draft">{t("grid.unsaved")}</span>}
+          <button type="button" className="secondary small" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel ?? t("common.discard")}</button>
+          <button type="submit" form={formId} className="small primary" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : submitLabel ?? t("common.saveChanges")}</button>
         </span>, actionSlot) : null) : (
           <div className="grid-actions">
-            <button type="button" className="secondary" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel}</button>
-            <button className="primary" type="submit" disabled={!canSave || applying}>{applying ? busyLabel : submitLabel}</button>
+            <button type="button" className="secondary" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel ?? t("common.cancel")}</button>
+            <button className="primary" type="submit" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : submitLabel ?? t("grid.apply")}</button>
           </div>
         ))}
         {children}
@@ -239,7 +240,7 @@ export function GridForm({
   );
 }
 
-const WIDTH_NAMES = ["Hairline", "Thin", "Medium", "Thick", "Bold", "Heavy"];
+const WIDTH_NAMES = ["grid.width.0", "grid.width.1", "grid.width.2", "grid.width.3", "grid.width.4", "grid.width.5"] as const;
 
 /**
  * Line colour, thickness and opacity (grid-line-style, ADR 0005), behind an "Advanced"
@@ -260,10 +261,10 @@ function GridLineFields({ draft, map, disabled, onChange }: {
   return (
     <div className="grid-line-fields">
       <GridLinePreview grid={draft} map={map} />
-      <ColorWheel label="Line colour" value={style.color} disabled={disabled} onChange={(lineColor) => onChange({ ...draft, lineColor })} />
+      <ColorWheel label={t("grid.lineColour")} value={style.color} disabled={disabled} onChange={(lineColor) => onChange({ ...draft, lineColor })} />
       <label className="range-field">
         <span className="range-label">
-          Thickness <span className="range-value">{GRID_LINE_WIDTHS[widthIndex]} px</span>
+          {t("grid.thickness")} <span className="range-value">{t("common.px", { n: GRID_LINE_WIDTHS[widthIndex]! })}</span>
         </span>
         <input
           type="range"
@@ -273,13 +274,13 @@ function GridLineFields({ draft, map, disabled, onChange }: {
           step={1}
           value={widthIndex}
           disabled={disabled}
-          aria-valuetext={`${WIDTH_NAMES[widthIndex]}, ${GRID_LINE_WIDTHS[widthIndex]} pixels`}
+          aria-valuetext={t("grid.widthValue", { name: t(WIDTH_NAMES[widthIndex]!), px: GRID_LINE_WIDTHS[widthIndex]! })}
           onChange={(e) => onChange({ ...draft, lineWidth: GRID_LINE_WIDTHS[Number(e.target.value)] })}
         />
       </label>
       <label className="range-field">
         <span className="range-label">
-          Opacity <span className="range-value">{opacityPct}%</span>
+          {t("grid.opacity")} <span className="range-value">{opacityPct}%</span>
         </span>
         <input
           type="range"
@@ -290,7 +291,7 @@ function GridLineFields({ draft, map, disabled, onChange }: {
           value={opacityPct}
           disabled={disabled}
           style={{ "--range-to": style.color } as CSSProperties}
-          aria-valuetext={`${opacityPct} percent`}
+          aria-valuetext={t("grid.percent", { n: opacityPct })}
           onChange={(e) => onChange({ ...draft, lineOpacity: Number(e.target.value) / 100 })}
         />
       </label>
@@ -320,7 +321,7 @@ function GridLinePreview({ grid, map }: { grid: GridSpec; map: MapImage | null }
       viewBox={`${x0} ${y0} ${width} ${height}`}
       preserveAspectRatio="xMidYMid slice"
       role="img"
-      aria-label={`Preview: ${style.color} lines, ${style.width} px, ${Math.round(style.opacity * 100)}% opacity`}
+      aria-label={t("grid.previewStyle", { color: style.color, width: style.width, opacity: Math.round(style.opacity * 100) })}
     >
       <rect x={x0} y={y0} width={width} height={height} fill="#2b2e35" />
       {board.url && <image href={board.url} x={0} y={0} width={board.width} height={board.height} />}

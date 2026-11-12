@@ -1,6 +1,7 @@
 import { AccountMenu } from "../../account/AccountPages";
 import { useAccount } from "../../account/accountStore";
 import { Link } from "../../Link";
+import { t } from "../../i18n/locale";
 
 /** Top bar: sign in or create an account; signed in, the account menu and the way back to your rooms. */
 export function AccountLinks() {
@@ -10,7 +11,7 @@ export function AccountLinks() {
     return (
       <span className="account-pair">
         <Link href="/gm-dashboard" className="nav-cta">
-          Your rooms
+          {t("home.yourRooms")}
         </Link>
         <AccountMenu />
       </span>
@@ -20,10 +21,10 @@ export function AccountLinks() {
   return (
     <span className="account-pair">
       <Link href="/signin" className="nav-link">
-        Sign in
+        {t("home.signIn")}
       </Link>
       <Link href="/signup" className="nav-cta">
-        Create account
+        {t("home.createAccount")}
       </Link>
     </span>
   );

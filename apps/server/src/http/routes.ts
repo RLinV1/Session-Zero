@@ -50,6 +50,8 @@ import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDe
 import type { DetectionTarget } from "../store/gridDetectionStore";
 import { inspectMapUpload } from "../domain/uploadAnalysis";
 import type { WallDetections } from "../domain/wallDetection";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 
 /** Registers the REST API: rooms, invite joins, uploads, the library and GM history. */
 export function registerRoutes(
@@ -88,7 +90,7 @@ export function registerRoutes(
       let encounter: ResolvedEncounter | null = null;
       if (body.data.templateId) {
         const found = await resolveEncounter(store, account.user.ownerId, body.data.templateId);
-        if (!found.ok) return res.status(found.reason === "missing" ? 404 : 409).json({ error: found.message });
+        if (!found.ok) return res.status(found.reason === "missing" ? 404 : 409).json({ error: sharedText(requestLocale(res), found.text) });
         encounter = found.encounter;
       }
 
@@ -138,13 +140,13 @@ export function registerRoutes(
       // not_found: the room was deleted while this join waited in its queue (ADR 0009).
       if (!joined.ok && joined.code === "not_found") return res.status(404).json({ error: "Invite not found" });
       if (!joined.ok && joined.code === "already_member") {
-        return res.status(409).json({ error: joined.message, code: ALREADY_MEMBER });
+        return res.status(409).json({ error: sharedText(requestLocale(res), joined.text), code: ALREADY_MEMBER });
       }
-      if (!joined.ok && joined.code === "removed") return res.status(403).json({ error: joined.message });
-      if (!joined.ok && joined.reason === "room_locked") return res.status(409).json({ error: joined.message, code: ROOM_LOCKED });
+      if (!joined.ok && joined.code === "removed") return res.status(403).json({ error: sharedText(requestLocale(res), joined.text) });
+      if (!joined.ok && joined.reason === "room_locked") return res.status(409).json({ error: sharedText(requestLocale(res), joined.text), code: ROOM_LOCKED });
       // Already MAX_PLAYERS_PER_ROOM players at the table (room-player-cap).
-      if (!joined.ok && joined.reason === "room_full") return res.status(409).json({ error: joined.message, code: ROOM_FULL });
-      if (!joined.ok) return res.status(joined.reason === "name_taken" ? 409 : 400).json({ error: joined.message });
+      if (!joined.ok && joined.reason === "room_full") return res.status(409).json({ error: sharedText(requestLocale(res), joined.text), code: ROOM_FULL });
+      if (!joined.ok) return res.status(joined.reason === "name_taken" ? 409 : 400).json({ error: sharedText(requestLocale(res), joined.text) });
       await store.saveCredential(hashToken(body.data.guestToken), {
         roomId, participantId, sessionHash: account?.session.tokenHash ?? null,
       });
@@ -389,7 +391,7 @@ export function registerRoutes(
       const query = HistoryQuery.safeParse(req.query);
       if (!query.success) return res.status(400).json({ error: "Invalid history query" });
       const events = await store.loadEvents(cred.roomId);
-      return res.json(HistoryResponse.parse(activityHistory(cred.roomId, events, viewer, query.data)));
+      return res.json(HistoryResponse.parse(activityHistory(cred.roomId, events, viewer, query.data, requestLocale(res))));
     })().catch(internalError(req, res));
   });
 
@@ -404,7 +406,7 @@ export function registerRoutes(
       if (!auth || auth.roomId !== req.params.roomId) return res.status(403).json({ error: "Not in this room" });
       if (refusedReplay(res, auth.roomId, auth.participant.id)) return;
       const events = await store.loadEvents(auth.roomId);
-      return res.json(ReplayPointsResponse.parse({ points: replayPoints(events, auth.participant) }));
+      return res.json(ReplayPointsResponse.parse({ points: replayPoints(events, auth.participant, requestLocale(res)) }));
     })().catch(internalError(req, res));
   });
 
@@ -417,9 +419,9 @@ export function registerRoutes(
       const started = performance.now();
       const events = await store.loadEvents(auth.roomId);
       // Only a point from the viewer's own list: known starting places, never an arbitrary seq.
-      const point = replayPoints(events, auth.participant).find((p) => p.id === req.params.pointId);
+      const point = replayPoints(events, auth.participant, requestLocale(res)).find((p) => p.id === req.params.pointId);
       if (!point) return res.status(404).json({ error: "No such replay point" });
-      const replay = ReplayResponse.parse(replayFrom(auth.roomId, events, auth.participant, point));
+      const replay = ReplayResponse.parse(replayFrom(auth.roomId, events, auth.participant, point, undefined, requestLocale(res)));
       const ms = performance.now() - started;
       // Same cue as a slow checkpoint restore: time for a snapshot cache (ADR 0019).
       if (ms > 500) console.warn(`[vtt] replay of room ${auth.roomId} took ${Math.round(ms)} ms (${events.length} events)`);

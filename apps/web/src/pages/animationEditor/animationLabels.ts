@@ -1,26 +1,26 @@
 import type { AnimationDef } from "@vtt/shared";
 
-/** What the Animations tab shows for a shape. */
-export const SHAPE_LABELS: Record<AnimationDef["shape"], string> = {
-  slash: "Slash (melee)",
-  claw: "Claw rake (melee)",
-  whirlwind: "Whirlwind (melee)",
-  slam: "Ground slam (melee)",
-  shadow: "Shadow strike (melee)",
-  projectile: "Projectile (ranged)",
-  volley: "Arrow volley (ranged)",
-  dagger: "Thrown daggers (ranged)",
-  fireball: "Fireball (ranged)",
-  meteor: "Meteor (falls on target)",
-  explosion: "Explosion (delayed blast)",
-  bolt: "Bolt (magic)",
-  chain: "Chain lightning (magic)",
-  beam: "Beam (magic)",
-  frost: "Frost spikes (magic)",
-  poison: "Poison cloud (magic)",
-  smite: "Smite (pillar of light)",
-  sonic: "Sonic wave (cone)",
-  tornado: "Tornado (travels to target)",
-  nuke: "Nuke (map blast)",
-};
+/** What the Animations tab shows for a shape: catalog ids, read with `t()` when shown. */
+export const SHAPE_LABELS = {
+  slash: "animation.shape.slash",
+  claw: "animation.shape.claw",
+  whirlwind: "animation.shape.whirlwind",
+  slam: "animation.shape.slam",
+  shadow: "animation.shape.shadow",
+  projectile: "animation.shape.projectile",
+  volley: "animation.shape.volley",
+  dagger: "animation.shape.dagger",
+  fireball: "animation.shape.fireball",
+  meteor: "animation.shape.meteor",
+  explosion: "animation.shape.explosion",
+  bolt: "animation.shape.bolt",
+  chain: "animation.shape.chain",
+  beam: "animation.shape.beam",
+  frost: "animation.shape.frost",
+  poison: "animation.shape.poison",
+  smite: "animation.shape.smite",
+  sonic: "animation.shape.sonic",
+  tornado: "animation.shape.tornado",
+  nuke: "animation.shape.nuke",
+} as const satisfies Record<AnimationDef["shape"], string>;
 

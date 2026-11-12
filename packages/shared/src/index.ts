@@ -38,3 +38,5 @@ export * from "./chatMentions";
 export * from "./terrain";
 export * from "./movement";
 export * from "./terrainVisibility";
+
+export * from "./i18n";

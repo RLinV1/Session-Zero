@@ -2,6 +2,7 @@ import type { CommandInput, DetectedWallsResponse } from "@vtt/shared";
 import { createStore } from "zustand/vanilla";
 import type { CommandResult, EditorConnection, RoomConnection, RoomSnapshot } from "../../net/roomConnection";
 import { applyToDraft, draftCommandProblem, DRAFT_ID, withDetectedWalls, type MapDraft } from "./mapDraft";
+import { t } from "../../i18n/locale";
 
 /** The commands the draft holds; `applyToDraft` handles each. */
 const DRAFT_COMMANDS = new Set<CommandInput["type"]>(["terrain.paint", "terrain.effect.create", "terrain.effect.rename", "terrain.effect.remove", "wall.update", "wall.add", "wall.remove", "wall.clear", "portal.set", "fog.add", "fog.remove", "fog.replace", "scene.setLineOfSight", "scene.setIsometric", "scene.setSightRange"]);
@@ -25,24 +26,24 @@ export function draftConnection(
   const ok: CommandResult = { ok: true, seq: null };
 
   const command = async (input: CommandInput): Promise<CommandResult> => {
-    if (!isCurrent()) return { ok: false, code: "invalid", message: "The map editor changed. Try again in the current editor." };
+    if (!isCurrent()) return { ok: false, code: "invalid", message: t("editor.mapChangedTryAgain") };
     if (input.type === "wall.applyDetected") {
       try {
-        if (input.mapUrl !== mapUrl) return { ok: false, code: "invalid", message: "Those walls were detected for a different map." };
+        if (input.mapUrl !== mapUrl) return { ok: false, code: "invalid", message: t("editor.detectedOtherMap") };
         const result = await detectedWalls(input.mapUrl);
-        if (!isCurrent()) return { ok: false, code: "invalid", message: "The map editor changed. Try again in the current editor." };
+        if (!isCurrent()) return { ok: false, code: "invalid", message: t("editor.mapChangedTryAgain") };
         const walls = result.walls;
         const { exclude } = input;
         if (exclude && (exclude.resultId !== result.resultId || exclude.indices.some((i) => i < 0 || i >= walls.length))) {
-          return { ok: false, code: "invalid", message: "The detected walls changed. Check the preview again." };
+          return { ok: false, code: "invalid", message: t("editor.detectedChanged") };
         }
         const erased = new Set(exclude?.indices);
         const kept = walls.filter((_, i) => !erased.has(i));
-        if (kept.length === 0) return { ok: false, code: "invalid", message: "No detected walls remain to apply." };
+        if (kept.length === 0) return { ok: false, code: "invalid", message: t("editor.noDetectedLeft") };
         update((draft) => draft.mapUrl === mapUrl ? withDetectedWalls(draft, kept, newId) : draft);
         return ok;
       } catch (err) {
-        return { ok: false, code: "invalid", message: err instanceof Error ? err.message : "Couldn't load the detected walls." };
+        return { ok: false, code: "invalid", message: err instanceof Error ? err.message : t("editor.detectedLoadFailed") };
       }
     }
     if (!DRAFT_COMMANDS.has(input.type)) return connection.command(input);
@@ -78,7 +79,7 @@ export function createDraftConnection(
     store,
     onWallDetection: () => () => true,
     command: async (input) => {
-      if (!DRAFT_COMMANDS.has(input.type)) return { ok: false, code: "invalid", message: "That is not available here." };
+      if (!DRAFT_COMMANDS.has(input.type)) return { ok: false, code: "invalid", message: t("editor.notAvailable") };
       const size = mapSize();
       const problem = size ? draftCommandProblem(input, size) : null;
       if (problem) return { ok: false, code: "invalid", message: problem };

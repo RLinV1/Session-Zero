@@ -18,7 +18,7 @@ export const DIMMED_ALPHA = 0.62;
  * outside the viewer's sight. With none (a player who has just joined, or whose only token is
  * hidden) the viewer would see nothing at all, not even where the map is; so the map shows dimmed
  * instead. That reveals nothing new: the map's picture is on their screen either way. Unless the
- * GM chose "Hide map from players without a token": then it is fully dark (ADR 0054).
+ * GM chose "Hide map from players without a token": then it is fully dark (ADR 0057).
  */
 export function sightMaskAlpha(polygons: ReadonlyArray<ReadonlyArray<Point>>, hideMap = false): number {
   return hideMap || polygons.some((p) => p.length >= 3) ? 1 : DIMMED_ALPHA;

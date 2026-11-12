@@ -11,6 +11,7 @@ import { PlayersSection } from "./home/PlayersSection";
 import { PlaySection } from "./home/PlaySection";
 import { PrepareSection } from "./home/PrepareSection";
 import { RecoverSection } from "./home/RecoverSection";
+import { t } from "../i18n/locale";
 
 /**
  * The home page. One page for everyone (KAN-56): it used to branch on whether this browser
@@ -35,8 +36,8 @@ export function HomePage() {
             and players are "your players" (gm-home: "You" is unambiguous). */}
         <section className="home-part" aria-labelledby="running-a-game">
           <header className="part-head" ref={revealOnEnter}>
-            <h2 id="running-a-game">Running a game</h2>
-            <p>What you get as the GM. Your players only need the link.</p>
+            <h2 id="running-a-game">{t("home.running.title")}</h2>
+            <p>{t("home.running.body")}</p>
           </header>
           <PrepareSection />
           <PlaySection />
@@ -49,8 +50,8 @@ export function HomePage() {
         {/* Under this one, "you" is the player. */}
         <section className="home-part" aria-labelledby="joining-a-game">
           <header className="part-head" ref={revealOnEnter}>
-            <h2 id="joining-a-game">Joining a game</h2>
-            <p>For players. Your GM sends a link, and you play in any browser.</p>
+            <h2 id="joining-a-game">{t("home.joining.title")}</h2>
+            <p>{t("home.joining.body")}</p>
           </header>
           <PlayersSection />
         </section>
@@ -58,7 +59,7 @@ export function HomePage() {
         <ClosingBand />
       </main>
 
-      <p className="landing-shell home-footer"><a href="/demos/apartments">Explore isometric lighting</a></p>
+      <p className="landing-shell home-footer"><a href="/demos/apartments">{t("home.isometricLink")}</a></p>
       <SiteFooter />
     </div>
   );

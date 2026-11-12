@@ -38,7 +38,7 @@ describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
   it("is offered to a GM in a room, last, with exactly the four rules and no hint text", () => {
     const { connection } = connectionWith({ ok: true, seq: 1 });
     render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Table"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Language", "Table"]);
     fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "End" });
     const panel = screen.getByRole("tabpanel");
     const select = screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement;

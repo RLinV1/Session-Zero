@@ -5,6 +5,7 @@ import type { BodyName } from "./diceGeometry";
 import { keptSize, MAX_SKIN_FILE_BYTES, SHEET, SKIN_FILE_TYPES, skinLayoutFor, templateSvg, type DiceSkin, type DiceSkinImage } from "./diceSkin";
 import { accountBackend, copyLooks, localBackend, readActiveId, type CopyResult, type DiceLookBackend } from "./diceLookBackends";
 
+import { t } from "../i18n/locale";
 /**
  * This viewer's dice looks (dice-image-skins, dice-looks): made in the asset library's Dice tab,
  * picked in the room's Dice panel, and drawn only on this viewer's own screen.
@@ -94,8 +95,8 @@ export function useActiveDiceLook(): DiceSkin | null {
 export async function createDiceLook(): Promise<string> {
   const names = new Set(state.looks.map((l) => l.name));
   let n = state.looks.length + 1;
-  while (names.has(`Dice look ${n}`)) n++;
-  const look = await backend.create(`Dice look ${n}`);
+  while (names.has(t("diceLook.nameN", { n }))) n++;
+  const look = await backend.create(t("diceLook.nameN", { n }));
   set({ looks: [look, ...state.looks] });
   announce();
   return look.id;
@@ -103,7 +104,7 @@ export async function createDiceLook(): Promise<string> {
 
 /** A refusal for being over the upload allowance says what to do; retrying would not help (upload-limits). */
 export function diceLookSaveFailure(err: unknown) {
-  return err instanceof ApiError && err.status === 409 ? err.message : "Your dice look could not be saved. Try again.";
+  return err instanceof ApiError && err.status === 409 ? err.message : t("diceLook.saveFailed");
 }
 
 /** Shows the change at once, then stores it; the stored copy (with the server's picture addresses) replaces it. */
@@ -160,18 +161,18 @@ export async function saveBrowserLooksToAccount(): Promise<CopyResult> {
  * re-encoded, so only plain pixels are kept, at no more than the size it needs.
  */
 export async function readSkinFile(file: File): Promise<DiceSkinImage | string> {
-  if (!(SKIN_FILE_TYPES as readonly string[]).includes(file.type)) return "Use a PNG, JPEG or WebP picture";
-  if (file.size > MAX_SKIN_FILE_BYTES) return "That picture is over 5 MB";
+  if (!(SKIN_FILE_TYPES as readonly string[]).includes(file.type)) return t("diceLook.fileType");
+  if (file.size > MAX_SKIN_FILE_BYTES) return t("diceLook.fileSize");
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    return "That picture couldn't be read";
+    return t("diceLook.unreadable");
   }
   const layout = skinLayoutFor(bitmap.width, bitmap.height);
   if (!layout) {
     bitmap.close();
-    return `Use a painted template (${SHEET.width} × ${SHEET.height}, or the same 3:2 shape) or a square picture`;
+    return t("diceLook.wrongShape", { w: SHEET.width, h: SHEET.height });
   }
   const size = keptSize(bitmap.width, bitmap.height, layout);
   const canvas = document.createElement("canvas");
@@ -195,7 +196,7 @@ async function templatePng(name: BodyName): Promise<Blob> {
     canvas.height = SHEET.height;
     canvas.getContext("2d")!.drawImage(img, 0, 0);
     const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!png) throw new Error("The template couldn't be drawn");
+    if (!png) throw new Error(t("diceLook.templateFailed"));
     return png;
   } finally {
     URL.revokeObjectURL(url);

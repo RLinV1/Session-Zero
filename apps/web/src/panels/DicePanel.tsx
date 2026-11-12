@@ -10,6 +10,7 @@ import { throwBlocker } from "../board/diceThrow";
 import { DiceThrowHandle } from "./DiceThrowHandle";
 import { DiceLookPicker } from "./DiceLookPicker";
 import { GroupSelectionList, type GroupSelection } from "./GroupSelection";
+import { getLocale, t } from "../i18n/locale";
 
 const QUICK = ["1d20", "1d20+5", "2d6", "1d8+3", "4d6"];
 
@@ -108,7 +109,7 @@ export function DicePanel({
     setBusy(false);
     if (!result?.ok) {
       forget();
-      setError(result ? result.message : "The roll didn't go through. Try again.");
+      setError(result ? result.message : t("dice.rollFailed"));
       return false;
     }
     setError(null);
@@ -116,9 +117,9 @@ export function DicePanel({
   };
 
   return (
-    <PanelSection id="dice" title="Dice">
+    <PanelSection id="dice" title={t("home.dice.title")}>
       <form onSubmit={roll} className="dice-form">
-        <label htmlFor="dice-expression">Expression</label>
+        <label htmlFor="dice-expression">{t("dice.expression")}</label>
         <div className="dice-row">
           <input
             id="dice-expression"
@@ -135,9 +136,9 @@ export function DicePanel({
           <button className="primary"
             type="submit"
             disabled={busy || rollThrow.rolling || !parsed.ok}
-            title={rollThrow.rolling ? "Your dice are still on the board" : undefined}
+            title={rollThrow.rolling ? t("attack.diceOnBoard") : undefined}
           >
-            Roll
+            {t("home.dice.roll")}
           </button>
         </div>
 
@@ -168,7 +169,7 @@ export function DicePanel({
               checked={visibility === "gm"}
               onChange={(e) => setVisibility(e.target.checked ? "gm" : "public")}
             />
-            Roll privately (players won't see it)
+            {t("attack.rollPrivately")}
           </label>
         )}
 
@@ -181,9 +182,9 @@ export function DicePanel({
 
       {isGm && selection && <GroupRollForm connection={connection} state={state} selection={selection} visibility={visibility} />}
 
-      <h3 className="sr-only">Latest roll</h3>
+      <h3 className="sr-only">{t("dice.latest")}</h3>
       {!latest ? (
-        <p className="muted">No rolls yet.</p>
+        <p className="muted">{t("dice.noRolls")}</p>
       ) : (
         <>
           {latest.visibility === "gm" && !isGroupRoll(latest) && (
@@ -201,13 +202,13 @@ export function DicePanel({
             />
           </ul>
           <button type="button" className="secondary small history-button" onClick={() => setHistoryOpen(true)}>
-            Roll history ({rolls.length})
+            {t("dice.historyN", { n: rolls.length })}
           </button>
         </>
       )}
       <Modal
         open={historyOpen}
-        title="Roll history"
+        title={t("dice.history")}
         onClose={() => {
           setHistoryOpen(false);
           setWho("");
@@ -257,15 +258,15 @@ function GroupRollForm({ connection, state, selection, visibility }: { connectio
 
   return (
     <form onSubmit={roll} className="stack group-roll-form" aria-labelledby="group-roll-heading">
-      <h3 id="group-roll-heading" className="group-roll-heading">Group roll</h3>
+      <h3 id="group-roll-heading" className="group-roll-heading">{t("dice.groupRoll")}</h3>
       <GroupSelectionList selection={selection} state={state} idPrefix="group-roll" />
       <div className="dice-row">
-        <label htmlFor="group-roll-expression" className="sr-only">Group roll expression</label>
+        <label htmlFor="group-roll-expression" className="sr-only">{t("dice.groupExpression")}</label>
         <input id="group-roll-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} />
-        <label htmlFor="group-roll-label" className="sr-only">Label</label>
-        <input id="group-roll-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" autoComplete="off" />
-        <button type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? "Select tokens first" : undefined}>
-          Roll
+        <label htmlFor="group-roll-label" className="sr-only">{t("attack.label")}</label>
+        <input id="group-roll-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder={t("attack.labelOptional")} autoComplete="off" />
+        <button type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? t("area.selectFirst") : undefined}>
+          {t("home.dice.roll")}
         </button>
       </div>
       {error && <p role="alert" className="error">{error}</p>}
@@ -294,7 +295,7 @@ function RollRow({
   /** Just landed from a throw: the total arrives with the dice. */
   fresh?: boolean;
 }) {
-  const who = state.participants[r.byParticipantId]?.displayName ?? "Someone";
+  const who = state.participants[r.byParticipantId]?.displayName ?? t("room.someone");
   const className = ["roll", r.visibility === "gm" && "private", fresh && "fresh"].filter(Boolean).join(" ");
   if (isGroupRoll(r)) return <GroupRollRow roll={r} who={who} className={className} rolling={rolling} />;
   // A card like a dice tray receipt: the total big in a box with the dice under it, then
@@ -308,7 +309,7 @@ function RollRow({
         <span className="roll-detail">
           <span className="roll-title">{rollTitle(r, false)}</span>
           <span className="roll-meta">
-            {who} is rolling{r.visibility === "gm" && <em className="badge">GM only</em>}
+            {t("dice.isRolling", { who })}{r.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
           </span>
         </span>
       </li>
@@ -322,13 +323,13 @@ function RollRow({
       </span>
       <span className="roll-detail">
         <span className="roll-title">
-          <span className="sr-only">{who} rolled </span>
+          <span className="sr-only">{t("dice.rolledBy", { who })}</span>
           {rollTitle(r, true)}
         </span>
         <span className="roll-meta" aria-hidden="true">
-          {who}{r.visibility === "gm" && <em className="badge">GM only</em>}
+          {who}{r.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
         </span>
-        {r.visibility === "gm" && <span className="sr-only">, GM only</span>}
+        {r.visibility === "gm" && <span className="sr-only">{t("dice.gmOnlySuffix")}</span>}
       </span>
     </li>
   );
@@ -346,7 +347,7 @@ function GroupRollRow({ roll: r, who, className, rolling }: { roll: GroupRoll; w
     <li className={`${className} group-roll`}>
       <span className="roll-detail">
         <span className="roll-title">
-          <span className="sr-only">{who} rolled </span>
+          <span className="sr-only">{t("dice.rolledBy", { who })}</span>
           {r.label ? `${r.label} · ${r.expression}` : r.expression}
         </span>
         <ul className="plain group-roll-entries">
@@ -359,9 +360,9 @@ function GroupRollRow({ roll: r, who, className, rolling }: { roll: GroupRoll; w
           ))}
         </ul>
         <span className="roll-meta" aria-hidden="true">
-          {who}{r.visibility === "gm" && <em className="badge">GM only</em>}
+          {who}{r.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
         </span>
-        {r.visibility === "gm" && <span className="sr-only">, GM only</span>}
+        {r.visibility === "gm" && <span className="sr-only">{t("dice.gmOnlySuffix")}</span>}
       </span>
     </li>
   );
@@ -369,8 +370,8 @@ function GroupRollRow({ roll: r, who, className, rolling }: { roll: GroupRoll; w
 
 function rollTitle(r: DiceRoll, landed: boolean) {
   if (!r.attack) return r.expression;
-  if (landed) return formatAttackRoll(r);
-  return [formatAttackParties(r.attack), attackLabel(r.attack), r.expression].filter(Boolean).join(" · ");
+  if (landed) return formatAttackRoll(r, getLocale());
+  return [formatAttackParties(r.attack, getLocale()), attackLabel(r.attack, getLocale()), r.expression].filter(Boolean).join(" · ");
 }
 
 /** "12 + 5", "3 + 4 + 1 - 2": each die, then the modifier. */
@@ -399,22 +400,22 @@ function RollHistory({
   return (
     <div className="stack">
       <label htmlFor="roll-history-search" className="sr-only">
-        Search rolls by player
+        {t("dice.searchRolls")}
       </label>
       <input
         id="roll-history-search"
         type="search"
-        placeholder="Search by player"
+        placeholder={t("dice.searchPlaceholder")}
         value={query}
         onChange={(e) => onQuery(e.target.value)}
         autoComplete="off"
         autoFocus
       />
       <p className="muted small-print" role="status">
-        {q ? `${shown.length} of ${rolls.length} rolls` : `${rolls.length} ${rolls.length === 1 ? "roll" : "rolls"}`}
+        {q ? t("dice.rollsOf", { n: shown.length, total: rolls.length }) : t("dice.rollsN", { n: rolls.length })}
       </p>
       {shown.length === 0 ? (
-        <p className="muted">No rolls by that player.</p>
+        <p className="muted">{t("dice.noneByPlayer")}</p>
       ) : (
         <ul className="plain roll-log roll-history">
           {shown.map((r) => (

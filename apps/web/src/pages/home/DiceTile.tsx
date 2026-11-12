@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { formatExpression, parseDiceExpression, rollDice, type DiceExpression } from "@vtt/shared";
 import { DiceTray } from "../../ui/DiceTray";
+import { t } from "../../i18n/locale";
 
 type Roll = { id: string; expression: DiceExpression; dice: number[]; total: number };
 
@@ -52,11 +53,11 @@ export function DiceTile() {
 
   return (
     <>
-      <h4>Dice</h4>
-      <p>Type a roll like 2d6+3. Everyone at the table sees every die land, not just the total.</p>
+      <h4>{t("home.dice.title")}</h4>
+      <p>{t("home.dice.body")}</p>
       <form className="dice-demo-form" onSubmit={roll}>
         <label>
-          What to roll
+          {t("home.dice.what")}
           <input
             id="home-dice-expression"
             value={input}
@@ -68,7 +69,7 @@ export function DiceTile() {
           />
         </label>
         <button type="submit" className="ui-button">
-          Roll
+          {t("home.dice.roll")}
         </button>
         {error && (
           <p id="home-dice-error" role="alert" className="error">
@@ -85,7 +86,7 @@ export function DiceTile() {
           onLanded={() => setLanded(result.id)}
         />
         {throwing ? (
-          <p className="muted small-print">Rolling…</p>
+          <p className="muted small-print">{t("home.dice.rolling")}</p>
         ) : (
           <p className="dice-line">
             <span className="dice-total">{result.total}</span>

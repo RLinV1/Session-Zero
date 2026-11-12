@@ -53,6 +53,7 @@ import { isBoolean, usePersistentState } from "../ui/usePersistentState";
 import { PanelResizeHandle, clampPanelWidth, isPanelWidth } from "../ui/PanelResizeHandle";
 import { EncounterEditBar } from "./encounterEdit/EncounterEditBar";
 import { ENCOUNTER_EDITING, FULL_ROOM, shownTab, type RoomFeatures } from "./encounterEdit/roomFeatures";
+import { t, type TextId } from "../i18n/locale";
 
 /** The set without `id`; the same set when it wasn't there, so nothing re-renders. */
 function without(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
@@ -88,12 +89,12 @@ function useCompactLayout() {
 }
 
 
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  connecting: "Connecting…",
-  open: "Connected",
-  reconnecting: "Reconnecting…",
-  unauthorized: "No access",
-  ended: "Left the room",
+const STATUS_LABEL: Record<ConnectionStatus, TextId> = {
+  connecting: "room.connecting",
+  open: "room.connected",
+  reconnecting: "room.reconnecting",
+  unauthorized: "room.noAccess",
+  ended: "room.leftRoom",
 };
 
 /**
@@ -131,16 +132,15 @@ export function RoomPage({ roomId, editing = false }: {
 
   if (!creds || !connection) {
     const waiting = account.status === "loading" || (account.status === "signedIn" && resuming !== "failed");
-    if (waiting) return <main className="centered" aria-busy="true">Opening…</main>;
+    if (waiting) return <main className="centered" aria-busy="true">{t("common.opening")}</main>;
     return (
       <main className="centered">
         <div className="card">
-          <h1>No access to this room</h1>
-          <p className="muted">Ask the GM for an invite link.</p>
+          <h1>{t("room.noAccessTitle")}</h1>
+          <p className="muted">{t("room.askInvite")}</p>
           {account.status === "signedOut" && (
             <p className="muted">
-              Already in this room on another device? <Link href={signInFor(`/r/${roomId}`)}>Sign in</Link> to open your seat
-              here.
+              {t("room.otherDevice")} <Link href={signInFor(`/r/${roomId}`)}>{t("title.signin")}</Link> {t("room.openSeatHere")}
             </p>
           )}
         </div>
@@ -150,22 +150,23 @@ export function RoomPage({ roomId, editing = false }: {
   return <SceneRoom roomId={roomId} connection={connection} token={creds.guestToken} features={editing ? ENCOUNTER_EDITING : FULL_ROOM} />;
 }
 
-const ENDED_COPY: Record<SessionEndReason, { title: (room: string | null) => string; body: string }> = {
+/** What the ended screen says, per reason; built when shown, in the current language. */
+const ENDED_COPY: Record<SessionEndReason, { title: (room: string | null) => string; body: TextId }> = {
   left: {
-    title: (room) => `You left ${room ?? "this room"}`,
-    body: "Your seat at this table has ended. If the GM sends you the invite link again, you can join as a new player.",
+    title: (room) => t("room.youLeft", { room: room ?? t("room.thisRoom") }),
+    body: "room.seatEnded",
   },
   revoked: {
-    title: (room) => `You were removed from ${room ?? "this room"}`,
-    body: "The GM removed you from this table. If they send you an invite link, you can join again as a new player.",
+    title: (room) => t("room.removed", { room: room ?? t("room.thisRoom") }),
+    body: "room.removedBody",
   },
   deleted: {
-    title: (room) => `${room ?? "This room"} was deleted`,
-    body: "The GM deleted this room and everything in it. It can't be reopened.",
+    title: (room) => t("room.deleted", { room: room ?? t("room.thisRoomTitle") }),
+    body: "room.deletedBody",
   },
   signed_out: {
-    title: () => "You signed out on this device",
-    body: "Your seat is kept on your account. Sign in again to come back to it, here or on any other device.",
+    title: () => t("connection.ended.signed_out"),
+    body: "room.seatKept",
   },
 };
 
@@ -180,9 +181,9 @@ function SessionEnded({ roomId, roomName, reason }: { roomId: string; roomName: 
     <main className="centered">
       <div className="card">
         <h1>{copy.title(roomName)}</h1>
-        <p className="muted">{copy.body}</p>
-        {reason === "signed_out" && <Link href={signInFor(`/r/${roomId}`)}>Sign in again</Link>}
-        <Link href="/">Go to the home page</Link>
+        <p className="muted">{t(copy.body)}</p>
+        {reason === "signed_out" && <Link href={signInFor(`/r/${roomId}`)}>{t("room.signInAgain")}</Link>}
+        <Link href="/">{t("room.goHome")}</Link>
       </div>
     </main>
   );
@@ -353,14 +354,14 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     try {
       const current = connection.snapshot.state;
       const resetTerrain = !!current && gridGeometryChanged(current.scene.grid, grid) && hasTerrain(current.terrain);
-      if (resetTerrain && !window.confirm("Reset base terrain and temporary effects and apply this grid change? Cancel keeps the current grid and terrain.")) return false;
+      if (resetTerrain && !window.confirm(t("room.resetTerrainConfirm"))) return false;
       const result = await connection.command({ type: "scene.setGrid", grid, expectedSceneId: sceneId, terrainContext: { boardEpoch: current?.boardEpoch ?? 0, revision: current?.terrainRevision ?? 0 }, ...(resetTerrain ? { resetTerrain: true } : {}) });
       if (!stillCurrent(result.ok)) return false;
       if (!result.ok) setGridError(result.message);
       return result.ok;
     } catch (error) {
       if (!stillCurrent(false)) return false;
-      setGridError(error instanceof Error ? error.message : "Could not apply grid");
+      setGridError(error instanceof Error ? error.message : t("room.applyGridFailed"));
       return false;
     } finally {
       gridApplyInFlight.current = false;
@@ -419,11 +420,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   const effect = state?.areaEffect ?? null;
   const damageCalled = you?.role !== "gm" && !!effect && effect.call?.participantId === you?.id && areaEffectStage(effect) === "called";
   const tabBadges: TabBadges = pendingCount > 0
-    ? { play: { count: pendingCount, label: `${pendingCount} ${pendingCount === 1 ? "ruling" : "rulings"} pending` } }
+    ? { play: { count: pendingCount, label: t("room.rulingsPending", { n: pendingCount }) } }
     : damageCalled && !playVisible
-      ? { play: { label: "damage roll called" } }
+      ? { play: { label: t("room.damageCalled") } }
     : you?.role !== "gm" && !playVisible && outcome && seenOutcome !== undefined && outcome !== seenOutcome
-      ? { play: { label: "new ruling" } }
+      ? { play: { label: t("room.newRuling") } }
       : {};
 
   // Rolls on this viewer's screen (throw-dice-on-board). Each roll is on its own, so any number
@@ -543,7 +544,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   const rolling = onBoard.size > 0 || !!state?.rolls.some((r) => airborne.has(r.id) && r.byParticipantId === you?.id);
   const rollThrow: RollThrow = { airborne, rolling, justLandedId: landedId, onLanded: land, expectDrop };
 
-  if (leaving) return <main className="centered" aria-busy="true">Closing…</main>;
+  if (leaving) return <main className="centered" aria-busy="true">{t("encounterEdit.closing")}</main>;
 
   if (status === "ended") return <SessionEnded roomId={roomId} roomName={state?.name ?? null} reason={endReason} />;
 
@@ -551,12 +552,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     return (
       <main className="centered">
         <div className="card">
-          <h1>Open in too many places</h1>
+          <h1>{t("room.tooManyPlaces")}</h1>
           <p className="muted">
-            This seat is open in too many tabs or devices, so this one was closed. Close the ones you aren't using,
-            then reload this page.
+            {t("room.tooManyPlacesBody")}
           </p>
-          <button type="button" onClick={() => location.reload()}>Reload</button>
+          <button type="button" onClick={() => location.reload()}>{t("room.reload")}</button>
         </div>
       </main>
     );
@@ -566,9 +566,9 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     return (
       <main className="centered">
         <div className="card">
-          <h1>No access to this room</h1>
+          <h1>{t("room.noAccessTitle")}</h1>
           <p className="muted">
-            Your invite may have been revoked, or the room may have been deleted. Ask the GM for a new link.
+            {t("room.revokedBody")}
           </p>
         </div>
       </main>
@@ -576,7 +576,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   }
 
   if (!state || !you) {
-    return <main className="centered" aria-busy="true">{STATUS_LABEL[status]}</main>;
+    return <main className="centered" aria-busy="true">{t(STATUS_LABEL[status])}</main>;
   }
 
   // The rail is a desktop affordance. On a phone the panel is already below the board, so
@@ -610,7 +610,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         requestAnimationFrame(() => {
           section?.scrollIntoView({ block: "start" });
           if (openPicker) {
-            const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => button.textContent?.trim() === "From library");
+            const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => button.textContent?.trim() === t("guide.map.library.title"));
             if (library) library.click();
             else section?.querySelector<HTMLInputElement>('input[type="file"]')?.click();
           } else section?.querySelector<HTMLElement>(".panel-section-body button, .panel-section-body input, .panel-section-body label")?.focus();
@@ -642,7 +642,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           requestAnimationFrame(() => document.getElementById("room-panel")?.focus());
         }}
       >
-        Skip to room controls
+        {t("room.skipToControls")}
       </a>
       {/* Who is here and what the sidebar shows, above the board and the panel alike. */}
       <header className="room-topbar">
@@ -651,7 +651,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           {/* The GM has rooms, a library and "Create room" to get back to, all on the GM
               dashboard; a player came from an invite and just closes the tab (room-navigation). */}
           {!editing && you.role === "gm" && !readOnly && (
-            <Link href="/gm-dashboard" className="tool-button" aria-label="Home" title="Back to your GM dashboard">
+            <Link href="/gm-dashboard" className="tool-button" aria-label={t("room.home")} title={t("room.backToDashboard")}>
               <House size={16} aria-hidden="true" />
             </Link>
           )}
@@ -686,7 +686,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             />
           )}
           {features.tableChrome && !compact && (
-            <button ref={settingsButtonRef} type="button" className="tool-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}>
+            <button ref={settingsButtonRef} type="button" className="tool-button" aria-label={t("settings.title")} title={t("settings.title")} onClick={() => setSettingsOpen(true)}>
               <GearSix size={16} aria-hidden="true" />
             </button>
           )}
@@ -750,11 +750,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             {!shownState!.scene.map && !replaying && (
               <BoardEmptyState isGm={you.role === "gm" && !readOnly} onChooseMap={() => chooseMap()} />
             )}
-            {features.notices && <RollCard roll={cardRoll} rollerName={(roll) => shownState!.participants[roll.byParticipantId]?.displayName ?? "Someone"} />}
+            {features.notices && <RollCard roll={cardRoll} rollerName={(roll) => shownState!.participants[roll.byParticipantId]?.displayName ?? t("room.someone")} />}
           </>
         }
       />
-      <aside className="panel" id="room-panel" tabIndex={-1} aria-label="Room controls">
+      <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}
         {!compact && (
           // A tab on the panel's inner edge, vertically centred. With the panel collapsed to
@@ -766,8 +766,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             data-tour="sidebar-handle"
             aria-expanded={!collapsed}
             aria-controls="room-panel-body"
-            aria-label={collapsed ? "Show sidebar" : "Hide sidebar"}
-            title={collapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-label={collapsed ? t("room.showSidebar") : t("room.hideSidebar")}
+            title={collapsed ? t("room.showSidebar") : t("room.hideSidebar")}
             onClick={() => setSidebarCollapsed((c) => !c)}
           >
             <Chevron pointsLeft={collapsed} />
@@ -780,11 +780,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           */}
           <header className="panel-header">
             <span className={`status status-${status}`} role="status">
-              {STATUS_LABEL[status]} · seq {seq}
+              {t(STATUS_LABEL[status])} · {t("room.seq", { n: seq })}
             </span>
             <div className="whoami-row">
               <div className="whoami">
-                You are <strong>{shownYou!.displayName}</strong> ({shownYou!.role === "gm" ? "GM" : "player"})
+                {t("room.youAre")} <strong>{shownYou!.displayName}</strong>{t("room.roleParen", { role: shownYou!.role === "gm" ? t("room.roleGm") : t("room.rolePlayer") })}
               </div>
               {/* Players only: the GM can't leave their own room; Home is their way out. */}
               {shownYou!.role === "player" && !readOnly && <LeaveTable connection={connection} state={state} you={you} />}

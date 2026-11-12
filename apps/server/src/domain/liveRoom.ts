@@ -40,6 +40,7 @@ import {
   type TableState,
   type SessionEndReason,
 } from "@vtt/shared";
+import { englishText, sharedMsg, type MessageRef } from "@vtt/shared";
 import type { RoomStore } from "../store/roomStore";
 import { resolveEncounter, type ResolveEncounterResult } from "./encounterTemplates";
 
@@ -82,12 +83,15 @@ export interface RoomClient {
  */
 export type JoinResult =
   | JoinDecision
-  | { ok: false; code: "not_found"; message: string; reason?: undefined }
-  | { ok: false; code: "already_member" | "removed"; message: string; reason?: undefined };
+  | { ok: false; code: "not_found"; message: string; text: MessageRef; reason?: undefined }
+  | { ok: false; code: "already_member" | "removed"; message: string; text: MessageRef; reason?: undefined };
 
 export type SubmitResult =
   | { ok: true; seq: number | null }
-  | { ok: false; code: RejectionCode; message: string };
+  | { ok: false; code: RejectionCode; message: string; text: MessageRef };
+
+/** A refusal in English for `message`, and as data for the client's own language (ADR 0054). */
+const refuse = <C extends string>(code: C, text: MessageRef) => ({ ok: false as const, code, message: englishText(text), text });
 
 /**
  * One loaded room: authoritative state + connected clients.
@@ -240,15 +244,15 @@ export class LiveRoom {
   submit(actorId: string, submitted: Command): Promise<SubmitResult> {
     const command = submitted.type === "scene.prepare" ? submitted.command : submitted;
     return this.runExclusive(async () => {
-      if (this.isClosed) return { ok: false, code: "not_found", message: "This room has been deleted" };
+      if (this.isClosed) return refuse("not_found", sharedMsg("reject.roomDeleted"));
       if (["scene.create", "scene.rename", "scene.switch", "scene.delete", "scene.prepare", "scene.copyCurrent"].includes(submitted.type) && await this.store.isTemporaryRoom(this.roomId)) {
-        return { ok: false, code: "forbidden", message: "Scene management is not available while editing an encounter template." };
+        return refuse("forbidden", sharedMsg("reject.noScenesInTemplateEdit"));
       }
       const actor = this.state.participants[actorId];
-      if (!actor) return { ok: false, code: "forbidden", message: "Unknown participant" };
+      if (!actor) return refuse("forbidden", sharedMsg("reject.unknownActor"));
       // Checked inside the queue, so a command sent from another tab just before the leave
       // committed can't run after it (ADR 0006).
-      if (!isActive(actor)) return { ok: false, code: "forbidden", message: "You are no longer in this room" };
+      if (!isActive(actor)) return refuse("forbidden", sharedMsg("reject.notInRoom"));
       // Randomness is injected, never reached for inside `decide` — that is what keeps the
       // kernel pure and the dice testable (CLAUDE.md invariant 2). So is the actor's own dice
       // look, read here from the stores (ADR 0018), the pre-decide lookup ADR 0004 anticipated,
@@ -265,7 +269,7 @@ export class LiveRoom {
           // The store failed, not the replay: answer this restore so the GM's request settles,
           // and say it may work on a retry (unlike a log that won't replay).
           console.error(`[vtt] could not load the log of room ${this.roomId} for a checkpoint restore`, err);
-          return { ok: false, code: "invalid", message: "Couldn't read the room's history to restore that checkpoint. Try again." };
+          return refuse("invalid", sharedMsg("reject.checkpointHistoryUnreadable"));
         }
       }
       // An encounter template is read for the acting GM's own account before deciding (ADR 0024).
@@ -273,14 +277,14 @@ export class LiveRoom {
       let encounterTemplate: ((templateId: string) => ResolvedEncounter | null) | undefined;
       if (command.type === "encounter.apply" && can.administer(actor)) {
         const found = await this.ownedEncounter(actorId, command.templateId);
-        if (found && !found.ok) return { ok: false, code: "invalid", message: found.message };
+        if (found && !found.ok) return refuse("invalid", found.text);
         const encounter = found?.encounter ?? null;
         encounterTemplate = (id) => (encounter && encounter.id === id ? encounter : null);
       }
       let lease: UvttLease | undefined;
       let libraryMap: ResolvedLibraryMap | null | undefined;
       if (command.type === "scene.setMap" && command.includeLibraryBoard) {
-        if (!can.administer(actor)) return { ok: false, code: "forbidden", message: "Only the GM can apply a library map." };
+        if (!can.administer(actor)) return refuse("forbidden", sharedMsg("reject.gmOnlyLibraryMap"));
         try {
           const member = await this.store.findMemberByParticipant(this.roomId, actorId);
           const user = member ? await this.store.findUserById(member.userId) : null;
@@ -291,13 +295,13 @@ export class LiveRoom {
             grid: asset.grid, board: board.data,
           } : null;
         } catch {
-          return { ok: false, code: "invalid", message: "Could not read your library map. Your draft has been kept; try Apply again." };
+          return refuse("invalid", sharedMsg("reject.libraryMapUnreadable"));
         }
       }
       if (command.type === "scene.importUVTT") {
-        if (!can.administer(actor)) return { ok: false, code: "forbidden", message: "Only the GM can import a map." };
+        if (!can.administer(actor)) return refuse("forbidden", sharedMsg("reject.gmOnlyImport"));
         lease = this.hooks.uvttLease?.(this.roomId, actorId, command.importId, command.revision, command.expectedSceneId ?? this.state.activeSceneId ?? INITIAL_SCENE_ID);
-        if (!lease) return { ok: false, code: "not_found", message: "This preparation expired or the server restarted. Re-import the file." };
+        if (!lease) return refuse("not_found", sharedMsg("reject.preparationExpiredLive"));
         if (!lease.ok) return lease;
         if (lease.appliedSeq !== undefined) return { ok: true, seq: lease.appliedSeq };
       }
@@ -323,9 +327,9 @@ export class LiveRoom {
       } catch (error) {
         if (command.type === "scene.importUVTT") {
           console.error("[vtt] uvtt application failed", { code: "append_failed" });
-          return { ok: false, code: "invalid", message: "Could not save the imported scene. Your draft has been kept; try Apply again." };
+          return refuse("invalid", sharedMsg("reject.importSaveFailed"));
         }
-        if (command.type === "scene.setMap" && command.includeLibraryBoard) return { ok: false, code: "invalid", message: "Could not save the library map. Your draft has been kept; try Apply again." };
+        if (command.type === "scene.setMap" && command.includeLibraryBoard) return refuse("invalid", sharedMsg("reject.libraryMapSaveFailed"));
         throw error;
       } finally {
         if (lease?.ok) lease.finish?.();
@@ -367,14 +371,14 @@ export class LiveRoom {
    */
   join(participant: Participant, userId?: string): Promise<JoinResult> {
     return this.runExclusive(async (): Promise<JoinResult> => {
-      if (this.isClosed) return { ok: false, code: "not_found", message: "This room has been deleted" };
+      if (this.isClosed) return refuse("not_found", sharedMsg("reject.roomDeleted"));
       if (userId) {
         const existing = await this.store.findMember(this.roomId, userId);
         const seat = existing ? this.state.participants[existing.participantId] : undefined;
         if (seat && isActive(seat)) {
-          return { ok: false, code: "already_member", message: `You're already in this room as ${seat.displayName}` };
+          return refuse("already_member", sharedMsg("reject.alreadyMember", { name: seat.displayName }));
         }
-        if (seat?.revoked) return { ok: false, code: "removed", message: "You were removed from this room" };
+        if (seat?.revoked) return refuse("removed", sharedMsg("reject.removedFromRoom"));
       }
       const decision = decideJoin(this.state, participant);
       if (!decision.ok) return decision;

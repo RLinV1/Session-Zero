@@ -1,5 +1,6 @@
 import { X } from "@phosphor-icons/react";
 import type { RoomState } from "@vtt/shared";
+import { t } from "../i18n/locale";
 
 /**
  * The GM's group selection (ADR 0046): the tokens a group roll or an area effect is for. Built on
@@ -22,21 +23,21 @@ export function GroupSelectionList({ selection, state, idPrefix }: { selection: 
     <div className="group-selection" role="group" aria-labelledby={`${idPrefix}-selection-label`}>
       <div className="group-selection-head">
         <p id={`${idPrefix}-selection-label`} className="group-selection-label">
-          {tokens.length === 0 ? "No tokens selected" : `${tokens.length} ${tokens.length === 1 ? "token" : "tokens"} selected`}
+          {tokens.length === 0 ? t("group.noneSelected") : t("group.selectedN", { n: tokens.length })}
         </p>
         <div className="group-selection-actions">
           <button
             type="button"
             className="secondary"
             disabled={!hasTemplates}
-            title={hasTemplates ? "Click an area on the board to select every token it touches" : "Place an area on the board first"}
+            title={hasTemplates ? t("group.clickArea") : t("group.placeAreaFirst")}
             onClick={selection.fromTemplate}
           >
-            From template
+            {t("group.fromTemplate")}
           </button>
           {tokens.length > 0 && (
             <button type="button" className="secondary" onClick={selection.clear}>
-              Clear
+              {t("rail.clear")}
             </button>
           )}
         </div>
@@ -46,15 +47,15 @@ export function GroupSelectionList({ selection, state, idPrefix }: { selection: 
           {tokens.map((token) => (
             <li key={token.id} className="chip group-selection-token">
               {token.name}
-              {token.hidden && <em className="badge">hidden</em>}
-              <button type="button" className="icon-button" aria-label={`Remove ${token.name}`} onClick={() => selection.remove(token.id)}>
+              {token.hidden && <em className="badge">{t("group.hidden")}</em>}
+              <button type="button" className="icon-button" aria-label={t("group.removeNamed", { name: token.name })} onClick={() => selection.remove(token.id)}>
                 <X size={12} aria-hidden="true" />
               </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="muted small-print group-selection-hint">Shift-click tokens on the board to add or remove them.</p>
+      <p className="muted small-print group-selection-hint">{t("group.shiftClick")}</p>
     </div>
   );
 }

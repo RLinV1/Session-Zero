@@ -3,6 +3,7 @@ import { blocksMovement, blocksSight, type Point, type Segment } from "@vtt/shar
 import type { Rgb } from "../../board/fogTexture";
 import table from "./homeCrops.json";
 import { HOME_WALLS } from "./homeWalls";
+import { t } from "../../i18n/locale";
 
 /**
  * The home page's maps were drawn for it, each scene in its own theme and drawing style with its
@@ -87,34 +88,24 @@ const AVERAGE: Record<CropSlug, Rgb> = {
   "merchant-deck": [123, 155, 143],
 };
 
-const map = (slug: CropSlug, alt: string) => ({ slug, src: `/img/home/${slug}.webp`, alt, average: AVERAGE[slug] });
+/** `alt` is read when the page renders, so it follows the reader's language. */
+const map = (slug: CropSlug) => ({
+  slug,
+  src: `/img/home/${slug}.webp`,
+  get alt() {
+    return t(`home.alt.${slug}`);
+  },
+  average: AVERAGE[slug],
+});
 
 /** One map per section, each its own place and drawing style. */
 export const MAPS = {
-  hero: map(
-    "canal-market",
-    "A hand-painted ink and watercolour battle map of a canal-side night market at dusk: cobbled quay, cloth-awninged stalls, lantern posts and an arched stone footbridge over dark water.",
-  ),
-  visibility: map(
-    "sun-tomb",
-    "A gouache battle map of a sandstone tomb: a pillared burial hall with a sarcophagus on a dais, a small side chamber of urns behind a single doorway, and a collapsed passage.",
-  ),
-  grid: map(
-    "forge-hall",
-    "A pencil-drawn battle map of a dwarven forge hall on toned paper: square flagstones, two glowing hearths, an anvil, a quench trough and a cart track across the floor.",
-  ),
-  walls: map(
-    "moor-inn",
-    "An ink floor plan of a timber-framed coaching inn: common room with long tables and a hearth, kitchen, corridor, two guest rooms, a stair, and doors and windows in every wall.",
-  ),
-  templates: map(
-    "goblin-camp",
-    "A linocut battle map of a goblin raiding camp in the ruins of a forest watchtower.",
-  ),
-  recover: map(
-    "merchant-deck",
-    "A two-colour risograph battle map of a merchant ship's deck at anchor: planked deck, two masts, a cargo hatch, cannons along the rails and a quarterdeck with the wheel.",
-  ),
+  hero: map("canal-market"),
+  visibility: map("sun-tomb"),
+  grid: map("forge-hall"),
+  walls: map("moor-inn"),
+  templates: map("goblin-camp"),
+  recover: map("merchant-deck"),
 } as const;
 
 const portrait = (name: string) => `/img/home/tokens/${name}.webp`;
@@ -134,15 +125,15 @@ export const PORTRAITS = {
   recover: { sela: portrait("ship-sela"), dunn: portrait("ship-dunn"), cutthroat: portrait("ship-cutthroat") },
 } as const;
 
-/** The names the library strip shows for the maps. */
-const NAMES: Record<CropSlug, string> = {
-  "canal-market": "The Lantern Quay",
-  "sun-tomb": "The Sun Tomb",
-  "forge-hall": "Deepforge Hall",
-  "moor-inn": "The Moorside Inn",
-  "goblin-camp": "The Broken Watchtower",
-  "merchant-deck": "The Gull's Wager",
-};
+/** The names the library strip shows for the maps: catalog ids, read in the reader's language. */
+const NAMES = {
+  "canal-market": "home.map.canal-market",
+  "sun-tomb": "home.map.sun-tomb",
+  "forge-hall": "home.map.forge-hall",
+  "moor-inn": "home.map.moor-inn",
+  "goblin-camp": "home.map.goblin-camp",
+  "merchant-deck": "home.map.merchant-deck",
+} as const satisfies Record<CropSlug, string>;
 
 /** The page's maps whole, as a library would hold them: their own size and squares. */
 export const HOME_MAPS = table.maps.map((m) => {

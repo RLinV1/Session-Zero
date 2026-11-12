@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOME_MAPS } from "../src/pages/home/crops";
+import { t } from "../src/i18n/locale";
 import { HomePage } from "../src/pages/HomePage";
 import { LibraryStrip } from "../src/pages/home/LibraryStrip";
 
@@ -58,7 +59,8 @@ describe("the library strip (gm-home: The library is presented honestly)", () =>
   it("shows this page's maps whole, once, with their real size and squares, and says whose maps they are", () => {
     render(<LibraryStrip />);
     const shown = [...document.querySelectorAll(".marquee-track li:not([aria-hidden])")];
-    expect(shown.map((li) => li.querySelector("strong")!.textContent)).toEqual(HOME_MAPS.map((m) => m.name));
+    expect(shown.map((li) => li.querySelector("strong")!.textContent)).toEqual(HOME_MAPS.map((m) => t(m.name)));
+    expect(t(HOME_MAPS[0]!.name)).toBe("The Lantern Quay");
     shown.forEach((li, i) => {
       const m = HOME_MAPS[i]!;
       expect(li.querySelector("img")!.getAttribute("src")).toBe(m.thumb);

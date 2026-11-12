@@ -1,5 +1,6 @@
 import { MAX_AREA_AMOUNT, rolledDamageFor, type AreaEffect, type ConditionId, type RoomState } from "@vtt/shared";
 
+import { t } from "../i18n/locale";
 /**
  * What the GM has set in the resolve dialog so far (ADR 0046): kept when the dialog closes, so
  * reopening it brings everything back, and dropped once the effect is resolved or closed.
@@ -58,15 +59,15 @@ export type ResolveRow = { tokenId: string; amount: number | null; addConditions
 export function resolveRows(draft: ResolveDraft, effect: AreaEffect, state: Pick<RoomState, "tokens">): { ok: true; rows: ResolveRow[] } | { ok: false; message: string; step: number } {
   const targets = resolveTargets(effect, state);
   const rows: ResolveRow[] = [];
-  for (const [step, t] of targets.entries()) {
-    const token = state.tokens[t.tokenId]!;
+  for (const [step, target] of targets.entries()) {
+    const token = state.tokens[target.tokenId]!;
     let amount: number | null = null;
     if (token.stats.hp !== null) {
-      amount = parseAmount(amountText(draft, effect, t.tokenId));
-      if (amount === null) return { ok: false, step, message: `${t.name}'s amount must be a whole number from -${MAX_AREA_AMOUNT} to ${MAX_AREA_AMOUNT}` };
+      amount = parseAmount(amountText(draft, effect, target.tokenId));
+      if (amount === null) return { ok: false, step, message: t("resolve.amountInvalid", { name: target.name, max: MAX_AREA_AMOUNT }) };
     }
-    const addConditions = (draft.added[t.tokenId] ?? []).filter((c) => !token.conditions.includes(c));
-    rows.push({ tokenId: t.tokenId, amount, addConditions });
+    const addConditions = (draft.added[target.tokenId] ?? []).filter((c) => !token.conditions.includes(c));
+    rows.push({ tokenId: target.tokenId, amount, addConditions });
   }
   return { ok: true, rows };
 }

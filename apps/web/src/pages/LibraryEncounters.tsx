@@ -7,11 +7,12 @@ import { api } from "../net/api";
 import { formatRelative } from "../ui/formatRelative";
 import { startEncounterEdit } from "./encounterEdit/startEdit";
 import { EncounterPreviewModal } from "./EncounterPreviewModal";
+import { t } from "../i18n/locale";
 
 /** "3 tokens · 1 fog region", for a template's card and pickers. */
 export function encounterSummary(encounter: EncounterSummary): string {
-  const tokens = `${encounter.tokenCount} ${encounter.tokenCount === 1 ? "token" : "tokens"}`;
-  const fog = encounter.fogCount > 0 ? ` · ${encounter.fogCount} fog ${encounter.fogCount === 1 ? "region" : "regions"}` : "";
+  const tokens = t("encounter.tokensN", { n: encounter.tokenCount });
+  const fog = encounter.fogCount > 0 ? t("encounter.fogN", { n: encounter.fogCount }) : "";
   return `${tokens}${fog}`;
 }
 
@@ -67,7 +68,7 @@ export function EncounterCard(props: {
       setEditing(false);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rename failed");
+      setError(err instanceof Error ? err.message : t("common.renameFailed"));
     } finally {
       setBusy(false);
     }
@@ -79,7 +80,7 @@ export function EncounterCard(props: {
     try {
       await startEncounterEdit({ templateId: encounter.id });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't open this template");
+      setError(err instanceof Error ? err.message : t("encounter.openFailed"));
       setBusy(false);
     }
   }
@@ -90,7 +91,7 @@ export function EncounterCard(props: {
       await api.library.encounters.remove(encounter.id);
       props.onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t("common.deleteFailed"));
       setBusy(false);
       setConfirming(false);
     }
@@ -102,32 +103,32 @@ export function EncounterCard(props: {
       {editing ? (
         <form className="row" onSubmit={(e) => void rename(e)}>
           <label className="grow">
-            <span className="sr-only">Template name</span>
+            <span className="sr-only">{t("encounter.templateName")}</span>
             <input value={name} maxLength={MAX_ENCOUNTER_NAME} autoFocus onChange={(e) => setName(e.target.value)} disabled={busy} />
           </label>
-          <button type="submit" className="small primary" disabled={busy}>Save</button>
+          <button type="submit" className="small primary" disabled={busy}>{t("common.save")}</button>
           <button type="button" className="secondary small" disabled={busy} onClick={() => { setEditing(false); setName(encounter.name); }}>
-            Cancel
+            {t("common.cancel")}
           </button>
         </form>
       ) : (
         <strong className="asset-name" title={encounter.name}>{encounter.name}</strong>
       )}
       <span className="muted asset-meta">
-        {encounter.mapName ?? "Map deleted"} · {encounterSummary(encounter)}
+        {encounter.mapName ?? t("encounter.mapDeleted")} · {encounterSummary(encounter)}
       </span>
-      <span className="muted asset-meta">Saved {formatRelative(encounter.updatedAt)}</span>
+      <span className="muted asset-meta">{t("encounter.saved", { when: formatRelative(encounter.updatedAt) })}</span>
       {encounter.mapName === null && (
-        <p role="alert" className="error">Its map was deleted, so this template can't be used until you save it again from a room.</p>
+        <p role="alert" className="error">{t("encounter.mapDeletedBody")}</p>
       )}
       {error && <p role="alert" className="error">{error}</p>}
       {confirming ? (
-        <div className="confirm" role="alertdialog" aria-label={`Delete ${encounter.name}?`}>
-          <p>Delete “{encounter.name}”? Rooms already made from it stay as they are.</p>
+        <div className="confirm" role="alertdialog" aria-label={t("common.deleteNamedQ", { name: encounter.name })}>
+          <p>{t("encounter.deleteBody", { name: encounter.name })}</p>
           <div className="row modal-actions">
-            <button type="button" className="secondary small" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+            <button type="button" className="secondary small" disabled={busy} onClick={() => setConfirming(false)}>{t("common.cancel")}</button>
             <button type="button" className="small danger-fill" disabled={busy} onClick={() => void remove()}>
-              {busy ? "Deleting…" : "Delete"}
+              {busy ? t("common.deleting") : t("common.delete")}
             </button>
           </div>
         </div>
@@ -136,12 +137,12 @@ export function EncounterCard(props: {
           {/* A template whose map is gone can't be opened (encounter-templates). */}
           {encounter.mapName !== null && (
             <>
-              <IconAction icon={<Eye size={16} aria-hidden="true" />} label="Preview" disabled={busy} onClick={() => setPreviewing(true)} />
-              <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label="Edit" disabled={busy} onClick={() => void edit()} />
+              <IconAction icon={<Eye size={16} aria-hidden="true" />} label={t("common.preview")} disabled={busy} onClick={() => setPreviewing(true)} />
+              <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label={t("common.edit")} disabled={busy} onClick={() => void edit()} />
             </>
           )}
-          <IconAction icon={<TextAa size={16} aria-hidden="true" />} label="Rename" onClick={() => setEditing(true)} />
-          <IconAction icon={<Trash size={16} aria-hidden="true" />} label="Delete" danger onClick={() => setConfirming(true)} />
+          <IconAction icon={<TextAa size={16} aria-hidden="true" />} label={t("common.rename")} onClick={() => setEditing(true)} />
+          <IconAction icon={<Trash size={16} aria-hidden="true" />} label={t("common.delete")} danger onClick={() => setConfirming(true)} />
         </div>
       )}
       <EncounterPreviewModal templateId={previewing ? encounter.id : null} name={encounter.name} onClose={() => setPreviewing(false)} />

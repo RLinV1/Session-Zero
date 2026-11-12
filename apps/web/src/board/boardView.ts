@@ -1,4 +1,4 @@
-import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun } from "@vtt/shared";
+import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun, conditionAbbr } from "@vtt/shared";
 import { plainWallLines } from "./wallLines";
 import { slideDistance, slideDuration } from "./tokenSlide";
 import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
@@ -74,6 +74,7 @@ import { PING_MS, pingPulse } from "./ping";
 import { boardFontFamily, boardMonoFamily, relabelWhenFontsReady, relabelledFamily, waitForBoardFont } from "./boardFont";
 import { hpColor, readBoardPalette, type BoardPalette } from "../ui/palette";
 
+import { getLocale, t } from "../i18n/locale";
 /**
  * How a GM's board shows fog (FR-GM-17): see-through with outlines ("tint") or not at all ("off").
  * Players, and the GM viewing as a player, always see it opaque.
@@ -645,6 +646,18 @@ export class BoardView {
    * Redraws every label in the face that has just loaded (see board/boardFont.ts): a changed
    * font family is a new style key, so Pixi measures and rasterises each one afresh.
    */
+  /**
+   * Redraws the board's own words in the current language (token labels, condition letters, ruler
+   * and area captions). Called on a language change; the room state is untouched.
+   */
+  refreshText() {
+    if (!this.initialized || !this.state || !this.you) return;
+    this.syncTokens();
+    this.redrawMarks();
+    this.redrawOverlay();
+    this.invalidate();
+  }
+
   private relabel() {
     if (!this.initialized) return;
     const visit = (node: Container) => {
@@ -1195,7 +1208,7 @@ export class BoardView {
     const color = areaColorValue(preview.color);
     this.fillArea(g, color, preview.gmOnly, 0.1, grid);
     g.stroke({ width: 2 * px, color, alpha: 0.6 });
-    text.text = `${label} aiming`;
+    text.text = t("board.aiming", { name: label });
     text.scale.set(px);
     text.position.set(preview.origin.x + 6 * px, preview.origin.y + 6 * px);
     aim.expires = aimExpiry(performance.now());
@@ -2234,6 +2247,8 @@ export class BoardView {
     const key = JSON.stringify([
       token.name, token.size, token.rotation, token.color, token.hidden, owned, movable, grid.cellSize,
       token.stats, token.conditions, focused, active, viewed, token.imageUrl, grouped,
+      // The label and condition letters are in the viewer's language: a switch redraws them.
+      getLocale(),
     ]);
     // Every visible token takes presses so a click can select it; only movable ones start a drag.
     view.container.eventMode = "static";
@@ -2248,7 +2263,7 @@ export class BoardView {
     this.syncTokenImage(view, token.imageUrl);
     view.image.rotation = token.rotation * Math.PI / 180;
     view.container.alpha = token.hidden ? 0.45 : 1;
-    view.label.text = token.hidden ? `${token.name} (hidden)` : token.name;
+    view.label.text = token.hidden ? t("board.hiddenName", { name: token.name }) : token.name;
     const fontSize = tokenLabelFontSize(r);
     view.label.style.fontSize = fontSize;
     view.label.style.stroke = { color: 0x000000, width: tokenLabelStroke(fontSize) };
@@ -2789,7 +2804,7 @@ export class BoardView {
       shape.fill({ color: Number(`0x${spec.color.slice(1)}`) });
       shape.stroke({ width: 1.5, color: 0x000000, alpha: 0.85 });
       const text = new Text({
-        text: spec.abbr,
+        text: conditionAbbr(id, getLocale()),
         style: {
           fill: 0xffffff,
           fontSize: size * 0.85,

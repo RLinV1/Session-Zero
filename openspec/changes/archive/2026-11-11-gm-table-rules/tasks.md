@@ -2,7 +2,7 @@
 
 ## 1. ADR and review
 
-- [x] 1.1 Write `docs/adr/0054-table-rules.md` (amends ADR 0049) recording design Decisions 1, 2, 4, 5 and 7, what still gets through, the replacement of `room.setAutoRemoveDefeated`, and the reconciliation with `auto-remove-defeated-tokens`' "Room setting" requirement. Verify the file exists, lists Status "Proposed — awaiting review by the Real-Time Architecture owner", and is linked from the design.
+- [x] 1.1 Write `docs/adr/0057-table-rules.md` (amends ADR 0049) recording design Decisions 1, 2, 4, 5 and 7, what still gets through, the replacement of `room.setAutoRemoveDefeated`, and the reconciliation with `auto-remove-defeated-tokens`' "Room setting" requirement. Verify the file exists, lists Status "Proposed — awaiting review by the Real-Time Architecture owner", and is linked from the design.
 
 ## 2. Shared contract: state, commands, events
 

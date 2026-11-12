@@ -4,6 +4,7 @@ import { isBoolean, usePersistentState } from "./usePersistentState";
 import { usePhone } from "./usePhone";
 import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
 import { AREA_SHADES, AREA_SIZES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
+import { t, type TextId } from "../i18n/locale";
 
 /** The options each tool remembers while another tool is active. */
 export interface ToolOptions {
@@ -24,34 +25,34 @@ export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
 /** Tools the rail offers; Attack starts from a token instead (attack-targeting). */
 type ToolKind = Exclude<BoardTool["kind"], "attack">;
 
-const TOOLS: { kind: ToolKind; label: string; icon: ReactNode; gmOnly?: boolean }[] = [
-  { kind: "select", label: "Select", icon: <Cursor size={18} aria-hidden="true" /> },
-  { kind: "measure", label: "Measure", icon: <Ruler size={18} aria-hidden="true" /> },
-  { kind: "draw", label: "Draw", icon: <PencilSimple size={18} aria-hidden="true" /> },
-  { kind: "area", label: "AoE", icon: <Target size={18} aria-hidden="true" /> },
-  { kind: "erase", label: "Eraser", icon: <Eraser size={18} aria-hidden="true" /> },
+const TOOLS: { kind: ToolKind; label: TextId; icon: ReactNode; gmOnly?: boolean }[] = [
+  { kind: "select", label: "rail.select", icon: <Cursor size={18} aria-hidden="true" /> },
+  { kind: "measure", label: "rail.measure", icon: <Ruler size={18} aria-hidden="true" /> },
+  { kind: "draw", label: "rail.draw", icon: <PencilSimple size={18} aria-hidden="true" /> },
+  { kind: "area", label: "rail.aoe", icon: <Target size={18} aria-hidden="true" /> },
+  { kind: "erase", label: "rail.eraser", icon: <Eraser size={18} aria-hidden="true" /> },
   // Players never see a fog control, not even a disabled one (FR-GM-17, INTERFACE.md).
-  { kind: "fog", label: "Fog", icon: <CloudFog size={18} aria-hidden="true" />, gmOnly: true },
+  { kind: "fog", label: "rail.fog", icon: <CloudFog size={18} aria-hidden="true" />, gmOnly: true },
 ];
 
-const FOG_MODES: { key: FogMode; label: string; icon: ReactNode }[] = [
-  { key: "rect", label: "Fog rectangle", icon: <Square size={16} aria-hidden="true" /> },
-  { key: "polygon", label: "Fog polygon", icon: <Polygon size={16} aria-hidden="true" /> },
-  { key: "reveal", label: "Reveal (remove fog)", icon: <Eye size={16} aria-hidden="true" /> },
+const FOG_MODES: { key: FogMode; label: TextId; icon: ReactNode }[] = [
+  { key: "rect", label: "rail.fogRect", icon: <Square size={16} aria-hidden="true" /> },
+  { key: "polygon", label: "rail.fogPolygon", icon: <Polygon size={16} aria-hidden="true" /> },
+  { key: "reveal", label: "rail.reveal", icon: <Eye size={16} aria-hidden="true" /> },
 ];
 
-const DRAW_SHAPES: { shape: DrawShape; label: string; icon: ReactNode }[] = [
-  { shape: "brush", label: "Brush", icon: <PaintBrush size={16} aria-hidden="true" /> },
-  { shape: "line", label: "Line", icon: <LineSegment size={16} aria-hidden="true" /> },
-  { shape: "rect", label: "Rectangle", icon: <Square size={16} aria-hidden="true" /> },
-  { shape: "circle", label: "Circle", icon: <Circle size={16} aria-hidden="true" /> },
+const DRAW_SHAPES: { shape: DrawShape; label: TextId; icon: ReactNode }[] = [
+  { shape: "brush", label: "rail.brush", icon: <PaintBrush size={16} aria-hidden="true" /> },
+  { shape: "line", label: "rail.line", icon: <LineSegment size={16} aria-hidden="true" /> },
+  { shape: "rect", label: "rail.rectangle", icon: <Square size={16} aria-hidden="true" /> },
+  { shape: "circle", label: "rail.circle", icon: <Circle size={16} aria-hidden="true" /> },
 ];
 
-const AREA_SHAPES: { shape: AreaShape; label: string; icon: ReactNode }[] = [
-  { shape: "circle", label: "Circle", icon: <Circle size={16} aria-hidden="true" /> },
-  { shape: "cone", label: "Cone", icon: <Triangle size={16} aria-hidden="true" style={{ rotate: "90deg" }} /> },
-  { shape: "box", label: "Box", icon: <Square size={16} aria-hidden="true" /> },
-  { shape: "line", label: "Line", icon: <LineSegment size={16} aria-hidden="true" /> },
+const AREA_SHAPES: { shape: AreaShape; label: TextId; icon: ReactNode }[] = [
+  { shape: "circle", label: "rail.circle", icon: <Circle size={16} aria-hidden="true" /> },
+  { shape: "cone", label: "rail.cone", icon: <Triangle size={16} aria-hidden="true" style={{ rotate: "90deg" }} /> },
+  { shape: "box", label: "rail.box", icon: <Square size={16} aria-hidden="true" /> },
+  { shape: "line", label: "rail.line", icon: <LineSegment size={16} aria-hidden="true" /> },
 ];
 
 /** Build the board tool for a rail choice, using that tool's remembered options. */
@@ -65,7 +66,9 @@ export function toolFor(kind: ToolKind, options: ToolOptions): BoardTool {
 }
 
 const hex = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
-const colorName = (color: string) => color[0]!.toUpperCase() + color.slice(1);
+const AREA_COLOUR_NAMES: Record<AreaColor, TextId> = {
+  red: "colour.red", orange: "colour.orange", yellow: "colour.yellow", green: "colour.green", blue: "colour.blue", purple: "colour.purple", grey: "colour.grey",
+};
 
 /**
  * The board's tool rail (KAN-69): Select, Measure, Draw, Area, Eraser, the GM's Fog and Clear all,
@@ -114,8 +117,8 @@ export function ToolRail({
       type="button"
       className="tool-button rail-button rail-toggle"
       aria-expanded={!collapsed}
-      aria-label={collapsed ? "Show board tools" : "Hide board tools"}
-      title={collapsed ? "Show board tools" : "Hide board tools"}
+      aria-label={collapsed ? t("rail.showTools") : t("rail.hideTools")}
+      title={collapsed ? t("rail.showTools") : t("rail.hideTools")}
       onClick={() => {
         // Hiding the rail goes back to Select, so a hidden Draw or Fog tool can't keep catching clicks.
         if (!collapsed) onSelect("select");
@@ -130,22 +133,22 @@ export function ToolRail({
       {active === "measure" && movementControls}
 
       {active === "draw" && (
-        <div className="tool-options" role="group" aria-label="Draw options">
+        <div className="tool-options" role="group" aria-label={t("rail.drawOptions")}>
           <Segmented
-            label="Shape"
-            items={DRAW_SHAPES.map((s) => ({ key: s.shape, label: s.label, icon: s.icon }))}
+            label={t("rail.shape")}
+            items={DRAW_SHAPES.map((s) => ({ key: s.shape, label: t(s.label), icon: s.icon }))}
             value={options.draw.shape}
             onChange={(shape) => onOptions({ ...options, draw: { ...options.draw, shape } })}
           />
-          <div className="tool-swatches" role="group" aria-label="Colour">
+          <div className="tool-swatches" role="group" aria-label={t("rail.colour")}>
             {DRAW_COLORS.map((c) => (
               <button
                 key={c.value}
                 type="button"
                 className="tool-swatch"
-                aria-label={c.name}
+                aria-label={t(c.name)}
                 aria-pressed={options.draw.color === c.value}
-                title={c.name}
+                title={t(c.name)}
                 style={{ background: hex(c.value) }}
                 onClick={() => onOptions({ ...options, draw: { ...options.draw, color: c.value } })}
               />
@@ -155,16 +158,16 @@ export function ToolRail({
       )}
 
       {active === "area" && (
-        <div className="tool-options" role="group" aria-label="Area options">
+        <div className="tool-options" role="group" aria-label={t("rail.areaOptions")}>
           <Segmented
-            label="Shape"
-            items={AREA_SHAPES.map((s) => ({ key: s.shape, label: s.label, icon: s.icon }))}
+            label={t("rail.shape")}
+            items={AREA_SHAPES.map((s) => ({ key: s.shape, label: t(s.label), icon: s.icon }))}
             value={options.area.shape}
             onChange={(shape) => onOptions({ ...options, area: { ...options.area, shape } })}
           />
           <label className="tool-size">
-            <span className="sr-only">Size when placed with a click</span>
-            <select title="Size when placed with a click; drag to size it instead"
+            <span className="sr-only">{t("rail.clickSize")}</span>
+            <select title={t("rail.sizeHint")}
               value={options.area.size}
               onChange={(e) => onOptions({ ...options, area: { ...options.area, size: Number(e.target.value) } })}
             >
@@ -178,38 +181,38 @@ export function ToolRail({
           {options.area.shape === "line" && (
             <LineWidthField value={options.area.lineCells} onChange={(lineCells) => onOptions({ ...options, area: { ...options.area, lineCells } })} />
           )}
-          <div className="tool-swatches" role="group" aria-label="Area colour">
+          <div className="tool-swatches" role="group" aria-label={t("rail.areaColour")}>
             {AreaColor.options.map((color) => (
               <button
                 key={color}
                 type="button"
                 className="tool-swatch"
-                aria-label={colorName(color)}
+                aria-label={t(AREA_COLOUR_NAMES[color])}
                 aria-pressed={options.area.color === color}
-                title={colorName(color)}
+                title={t(AREA_COLOUR_NAMES[color])}
                 style={{ background: hex(AREA_SHADES[color]) }}
                 onClick={() => onOptions({ ...options, area: { ...options.area, color } })}
               />
             ))}
           </div>
           {isGm && (
-            <label className="tool-check" title="Players won't see areas placed while this is on">
+            <label className="tool-check" title={t("rail.gmOnlyHint")}>
               <input
                 type="checkbox"
                 checked={options.area.gmOnly}
                 onChange={(e) => onOptions({ ...options, area: { ...options.area, gmOnly: e.target.checked } })}
               />
-              GM only
+              {t("rail.gmOnly")}
             </label>
           )}
         </div>
       )}
 
       {active === "fog" && isGm && (
-        <div className="tool-options" role="group" aria-label="Fog options">
+        <div className="tool-options" role="group" aria-label={t("rail.fogOptions")}>
           <Segmented
-            label="Fog mode"
-            items={FOG_MODES}
+            label={t("rail.fogMode")}
+            items={FOG_MODES.map((mode) => ({ ...mode, label: t(mode.label) }))}
             value={options.fog.mode}
             onChange={(mode) => onOptions({ ...options, fog: { mode } })}
           />
@@ -217,37 +220,37 @@ export function ToolRail({
       )}
     </>
   );
-  const visibleTools = TOOLS.filter((t) => (isGm || !t.gmOnly) && (!selectOnly || t.kind === "select"));
+  const visibleTools = TOOLS.filter((tool) => (isGm || !tool.gmOnly) && (!selectOnly || tool.kind === "select"));
   if (phone) {
-    const current = TOOLS.find((t) => t.kind === active) ?? TOOLS[0]!;
+    const current = TOOLS.find((tool) => tool.kind === active) ?? TOOLS[0]!;
     const pick = (run: () => void) => () => { setFlyout(false); run(); currentRef.current?.focus(); };
     return (
       <div className="tool-rail-wrap" data-tour="tools">
-        <div className="tool-rail" role="toolbar" aria-label="Board tools">
+        <div className="tool-rail" role="toolbar" aria-label={t("rail.boardTools")}>
           {selectOnly ? (
-            <button type="button" className="tool-button rail-button" aria-pressed="false" aria-label={`${current.label} tool`} title={current.label}>
+            <button type="button" className="tool-button rail-button" aria-pressed="false" aria-label={t("rail.toolNamed", { tool: t(current.label) })} title={t(current.label)}>
               {current.icon}
             </button>
           ) : (
-            <button ref={currentRef} type="button" className="tool-button rail-button rail-current" aria-expanded={flyout} aria-haspopup="true" aria-label={`Board tools, ${current.label} selected`} title={`Board tools (${current.label})`} onClick={() => setFlyout((o) => !o)}>
+            <button ref={currentRef} type="button" className="tool-button rail-button rail-current" aria-expanded={flyout} aria-haspopup="true" aria-label={t("rail.boardToolsSelected", { tool: t(current.label) })} title={t("rail.boardToolsCurrent", { tool: t(current.label) })} onClick={() => setFlyout((o) => !o)}>
               {current.icon}
               <CaretUp size={9} weight="bold" className="rail-caret" aria-hidden="true" />
             </button>
           )}
         </div>
         {flyout && (
-          <div className="tool-flyout" role="group" aria-label="Board tools">
-            {visibleTools.map((t) => (
-              <button key={t.kind} type="button" className="tool-button rail-button" aria-pressed={active === t.kind} aria-label={t.label} title={t.label} onClick={pick(() => onSelect(t.kind))}>
-                {t.icon}
+          <div className="tool-flyout" role="group" aria-label={t("rail.boardTools")}>
+            {visibleTools.map((tool) => (
+              <button key={tool.kind} type="button" className="tool-button rail-button" aria-pressed={active === tool.kind} aria-label={t(tool.label)} title={t(tool.label)} onClick={pick(() => onSelect(tool.kind))}>
+                {tool.icon}
               </button>
             ))}
             {isGm && onToggleLineOfSight && (
-              <button type="button" className="tool-button rail-button" aria-pressed={!!lineOfSight} aria-label="Line of sight" title={`Line of sight: ${lineOfSight ? "on" : "off"}`} onClick={pick(onToggleLineOfSight)}>
+              <button type="button" className="tool-button rail-button" aria-pressed={!!lineOfSight} aria-label={t("walls.lineOfSight")} title={t(lineOfSight ? "rail.losOn" : "rail.losOff")} onClick={pick(onToggleLineOfSight)}>
                 <Lightbulb size={18} aria-hidden="true" />
               </button>
             )}
-            <button type="button" className="tool-button rail-button" aria-label="Clear all my marks" title="Clear all my marks" onClick={pick(onClear)}>
+            <button type="button" className="tool-button rail-button" aria-label={t("rail.clearMarks")} title={t("rail.clearMarks")} onClick={pick(onClear)}>
               <Trash size={18} aria-hidden="true" />
             </button>
           </div>
@@ -261,19 +264,19 @@ export function ToolRail({
   if (collapsed) return <div className="tool-rail-wrap"><div className="tool-rail">{toggle}</div></div>;
   return (
     <div className="tool-rail-wrap" data-tour="tools">
-      <div className="tool-rail" role="toolbar" aria-label="Board tools" aria-orientation="vertical">
+      <div className="tool-rail" role="toolbar" aria-label={t("rail.boardTools")} aria-orientation="vertical">
         {toggle}
-        {TOOLS.filter((t) => (isGm || !t.gmOnly) && (!selectOnly || t.kind === "select")).map((t) => (
+        {visibleTools.map((tool) => (
           <button
-            key={t.kind}
+            key={tool.kind}
             type="button"
             className="tool-button rail-button labelled"
-            aria-pressed={active === t.kind}
-            title={t.label}
-            onClick={() => onSelect(t.kind)}
+            aria-pressed={active === tool.kind}
+            title={t(tool.label)}
+            onClick={() => onSelect(tool.kind)}
           >
-            {t.icon}
-            <span className="rail-label">{t.label}</span>
+            {tool.icon}
+            <span className="rail-label">{t(tool.label)}</span>
           </button>
         ))}
         {isGm && !selectOnly && onToggleLineOfSight && (
@@ -281,20 +284,20 @@ export function ToolRail({
             type="button"
             className="tool-button rail-button labelled"
             aria-pressed={!!lineOfSight}
-            aria-label="Line of sight"
-            title={`Line of sight: ${lineOfSight ? "on" : "off"}`}
+            aria-label={t("walls.lineOfSight")}
+            title={t(lineOfSight ? "rail.losOn" : "rail.losOff")}
             onClick={onToggleLineOfSight}
           >
             <Lightbulb size={18} aria-hidden="true" />
-            <span className="rail-label">Sight</span>
+            <span className="rail-label">{t("rail.sight")}</span>
           </button>
         )}
         {!selectOnly && (
           <>
             <span className="rail-divider" aria-hidden="true" />
-            <button type="button" className="tool-button rail-button labelled" aria-label="Clear all my marks" title="Clear all my marks" onClick={onClear}>
+            <button type="button" className="tool-button rail-button labelled" aria-label={t("rail.clearMarks")} title={t("rail.clearMarks")} onClick={onClear}>
               <Trash size={18} aria-hidden="true" />
-              <span className="rail-label">Clear</span>
+              <span className="rail-label">{t("rail.clear")}</span>
             </button>
           </>
         )}
@@ -352,13 +355,13 @@ export function LineWidthField({ value, onChange }: { value: number; onChange: (
     if (cells !== value) onChange(cells);
   };
   return (
-    <div className="tool-stepper" role="group" aria-label="Line width in squares">
-      <button type="button" className="secondary" aria-label="Narrower" disabled={value <= 1} onClick={() => onChange(value - 1)}>−</button>
+    <div className="tool-stepper" role="group" aria-label={t("rail.lineWidthSquares")}>
+      <button type="button" className="secondary" aria-label={t("rail.narrower")} disabled={value <= 1} onClick={() => onChange(value - 1)}>−</button>
       <input
         type="number"
         inputMode="numeric"
-        aria-label="Line width"
-        title="Line width in squares"
+        aria-label={t("rail.lineWidth")}
+        title={t("rail.lineWidthSquares")}
         min={1}
         max={MAX_LINE_WIDTH_CELLS}
         step={1}
@@ -372,7 +375,7 @@ export function LineWidthField({ value, onChange }: { value: number; onChange: (
           }
         }}
       />
-      <button type="button" className="secondary" aria-label="Wider" disabled={value >= MAX_LINE_WIDTH_CELLS} onClick={() => onChange(value + 1)}>+</button>
+      <button type="button" className="secondary" aria-label={t("rail.wider")} disabled={value >= MAX_LINE_WIDTH_CELLS} onClick={() => onChange(value + 1)}>+</button>
     </div>
   );
 }

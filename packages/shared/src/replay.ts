@@ -1,7 +1,9 @@
 import { TerrainView } from "./terrain";
 import { Point } from "./geometry";
 import { z } from "zod";
-import { formatActivity } from "./activityLog";
+import { ACTOR_NAMES, formatActivity } from "./activityLog";
+import { cjk, type Locale } from "./i18n/core";
+import { neutralSentenceZhTW } from "./i18n/sentences.zh-TW";
 import { LoggedRoll } from "./dice";
 import { AreaEffect } from "./areaEffects";
 import { CommittedEvent, type DomainEvent } from "./events";
@@ -77,19 +79,20 @@ export type ReplayResponse = z.infer<typeof ReplayResponse>;
  * start (just before it, so the start is the first step) and each checkpoint. A player sees a
  * checkpoint only as "Checkpoint N"; its name and id stay with the GM (ADR 0019, ADR 0025).
  */
-export function replayPoints(events: readonly CommittedEvent[], viewer: Participant): ReplayPoint[] {
+export function replayPoints(events: readonly CommittedEvent[], viewer: Participant, locale: Locale = "en"): ReplayPoint[] {
+  const zh = locale === "zh-TW";
   const points: ReplayPoint[] = [];
   let encounters = 0;
   let checkpoints = 0;
   for (const { seq, at, event } of events) {
     if (event.type === "RoomCreated" && points.length === 0) {
-      points.push({ id: "start", kind: "start", label: "Start of the room", seq, at });
+      points.push({ id: "start", kind: "start", label: zh ? "房間的開始" : "Start of the room", seq, at });
     } else if (event.type === "InitiativeStarted") {
       encounters += 1;
-      points.push({ id: `e${seq}`, kind: "encounter", label: `Encounter ${encounters} starts`, seq: seq - 1, at });
+      points.push({ id: `e${seq}`, kind: "encounter", label: zh ? cjk`第${encounters}場遭遇開始` : `Encounter ${encounters} starts`, seq: seq - 1, at });
     } else if (event.type === "CheckpointCreated") {
       checkpoints += 1;
-      const label = viewer.role === "gm" ? event.checkpoint.name : `Checkpoint ${checkpoints}`;
+      const label = viewer.role === "gm" ? event.checkpoint.name : zh ? cjk`存檔點${checkpoints}` : `Checkpoint ${checkpoints}`;
       points.push({ id: `c${checkpoints}`, kind: "checkpoint", label, seq: event.checkpoint.seq, at });
     }
   }
@@ -106,6 +109,7 @@ export function replayFrom(
   viewer: Participant,
   point: ReplayPoint,
   limit = MAX_REPLAY_FRAMES,
+  locale: Locale = "en",
 ): ReplayResponse {
   // A joiner is not yet a participant before their own join: name them from it, as the activity log does.
   const joinedNames = new Map<string, string>();
@@ -113,7 +117,7 @@ export function replayFrom(
     if (event.type === "ParticipantJoined") joinedNames.set(event.participant.id, event.participant.displayName);
   }
   // What the GM hides now stays hidden in every frame, even from before they hid it: a player
-  // joining later must not read it from the history (ADR 0054).
+  // joining later must not read it from the history (ADR 0057).
   let hideHp = false;
   let hideAc = false;
   let hideMap = false;
@@ -141,11 +145,11 @@ export function replayFrom(
         break;
       }
       // Participants are public (filterStateForViewer keeps them), so the name needs no filtered copy.
-      const actorName = committed.actorId === null ? "System"
-        : state.participants[committed.actorId]?.displayName ?? joinedNames.get(committed.actorId) ?? "Someone";
+      const actorName = committed.actorId === null ? ACTOR_NAMES[locale].system
+        : state.participants[committed.actorId]?.displayName ?? joinedNames.get(committed.actorId) ?? ACTOR_NAMES[locale].someone;
       if (filtered.kind === "event") {
         const visibleBefore = filterStateForViewer(withRulesNow(state), viewer);
-        frames.push({ kind: "event", committed: filtered.committed, sentence: formatActivity(filtered.committed.event, actorName, visibleBefore) });
+        frames.push({ kind: "event", committed: filtered.committed, sentence: formatActivity(filtered.committed.event, actorName, visibleBefore, locale) });
       } else {
         const visibleAfter = filterStateForViewer(withRulesNow(next), viewer);
         frames.push({
@@ -158,7 +162,7 @@ export function replayFrom(
           boardEpoch: visibleAfter.boardEpoch,
           rolls: visibleAfter.rolls,
           areaEffect: visibleAfter.areaEffect ?? null,
-          sentence: neutralSentence(committed.event, actorName),
+          sentence: locale === "zh-TW" ? neutralSentenceZhTW(committed.event, actorName) : neutralSentence(committed.event, actorName),
         });
       }
     }

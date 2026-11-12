@@ -381,16 +381,16 @@ export interface RoomState {
    */
   autoRemoveDefeated: boolean;
   /**
-   * Which tokens leave the board at 0 HP or below (ADR 0054): every one, only those no player owns,
+   * Which tokens leave the board at 0 HP or below (ADR 0057): every one, only those no player owns,
    * or none. Public. Absent until the GM first sets it; read it with `defeatRemovalOf`, which falls
    * back to `autoRemoveDefeated` so older rooms keep their choice.
    */
   defeatRemoval?: DefeatRemoval;
-  /** A player who owns no visible token sees nothing on the board (ADR 0054). Public. Absent reads as false. */
+  /** A player who owns no visible token sees nothing on the board (ADR 0057). Public. Absent reads as false. */
   hideMapWithoutToken?: boolean;
-  /** Players get no HP or max HP for tokens they don't own (ADR 0054). Public. Absent reads as false. */
+  /** Players get no HP or max HP for tokens they don't own (ADR 0057). Public. Absent reads as false. */
   hideHp?: boolean;
-  /** Players get no AC for tokens they don't own (ADR 0054). Public. Absent reads as false. */
+  /** Players get no AC for tokens they don't own (ADR 0057). Public. Absent reads as false. */
   hideAc?: boolean;
   /** How diagonal steps cost (ADR 0055). Public. Absent reads as "equal"; read it with `diagonalRuleOf`. */
   diagonalRule?: DiagonalRule;
@@ -439,7 +439,7 @@ export const DIFFICULT_TERRAIN_LABELS: Record<DifficultTerrainMode, string> = { 
 export const diagonalRuleOf = (state: Pick<RoomState, "diagonalRule">): DiagonalRule => state.diagonalRule ?? "equal";
 export const difficultTerrainOf = (state: Pick<RoomState, "difficultTerrain">): DifficultTerrainMode => state.difficultTerrain ?? "entry";
 
-/** The room's 0 HP removal mode; a room from before ADR 0054 reads from its on/off switch (absent = on). */
+/** The room's 0 HP removal mode; a room from before ADR 0057 reads from its on/off switch (absent = on). */
 export function defeatRemovalOf(state: Pick<RoomState, "defeatRemoval"> & { autoRemoveDefeated?: boolean }): DefeatRemoval {
   return state.defeatRemoval ?? (state.autoRemoveDefeated === false ? "off" : "all");
 }

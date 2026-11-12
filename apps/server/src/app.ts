@@ -21,6 +21,7 @@ import { LocalDiskAssetStore, type AssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
 import type { RoomStore } from "./store/roomStore";
 import { registerSocket } from "./ws/socket";
+import { attachLocale } from "./i18n/locale";
 
 /** How long a temporary encounter-editing room may be left behind before the sweep deletes it (ADR 0033). */
 export const TEMPORARY_ROOM_LIFETIME_MS = 24 * 60 * 60_000;
@@ -152,6 +153,8 @@ export async function buildApp({
     res.setHeader("Cache-Control", "no-store");
     next();
   });
+  // Every API response knows the language its request asked for (localization; ADR 0054).
+  app.use("/api", attachLocale);
   app.use(attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
   registerRoomPreparation(app, { store, registry, sessions });

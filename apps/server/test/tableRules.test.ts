@@ -34,7 +34,7 @@ async function setup() {
   return { gm, alice, bob, gmCreds, aliceCreds, bobCreds, aria: byName("Aria"), goblin: byName("Goblin") };
 }
 
-describe("table rules over the wire (FR-GM-23, FR-GM-15, ADR 0054)", () => {
+describe("table rules over the wire (FR-GM-23, FR-GM-15, ADR 0057)", () => {
   it("never sends a player another token's hidden HP or AC, on any HP path, live or in replay", async () => {
     const { gm, alice, aliceCreds, aria, goblin } = await setup();
     await gm.command({ type: "room.setHideHp", enabled: true });

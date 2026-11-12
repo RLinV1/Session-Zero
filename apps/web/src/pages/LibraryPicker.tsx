@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { AssetKind, LibraryAsset } from "@vtt/shared";
 import { useAccount } from "../account/accountStore";
 import { api } from "../net/api";
-import { builtinsMatching } from "../net/builtinAssets";
+import { assetDisplayName, builtinsMatching } from "../net/builtinAssets";
+import { t } from "../i18n/locale";
 
 /**
  * Pick a map or token from the signed-in account's library inside a room (asset-library: Place a library
@@ -40,7 +41,7 @@ export function LibraryPicker(props: {
         if (active) setAssets(next);
       },
       (err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : "Could not load the library");
+        if (active) setError(err instanceof Error ? err.message : t("library.loadFailed"));
       },
     );
     return () => {
@@ -56,29 +57,29 @@ export function LibraryPicker(props: {
   }, [assets, props.kind, query, includeBuiltins, signedIn]);
 
   return (
-    <div className="library-picker" role="group" aria-label={`Choose a ${props.kind} from your library`}>
+    <div className="library-picker" role="group" aria-label={t(props.kind === "map" ? "picker.title.map" : "picker.title.token")}>
       <div className="row">
-        <input type="search" aria-label="Search library" placeholder={props.kind === "map" ? "Search maps" : "Search tokens"} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <input type="search" aria-label={t("picker.search")} placeholder={props.kind === "map" ? t("picker.searchMaps") : t("picker.searchTokens")} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
         {props.onClose && (
           <button type="button" className="secondary small" onClick={props.onClose}>
-            Close
+            {t("common.close")}
           </button>
         )}
       </div>
       {error && <p role="alert" className="error">{error}</p>}
-      {!assets && !error && <p className="muted">Loading…</p>}
+      {!assets && !error && <p className="muted">{t("common.loading")}</p>}
       {assets && shown.length === 0 && (
         <p className="muted">
-          {query.trim() || includeBuiltins ? "Nothing matches that search." : "No token art uploaded yet. Add some on the library's Token Art tab."}
+          {query.trim() || includeBuiltins ? t("common.nothingMatches") : t("picker.noTokenArt")}
         </p>
       )}
       <ul className="plain picker-grid">
         {shown.map((a) => (
           <li key={a.id}>
-            <button type="button" className="picker-item" onClick={() => props.onPick(a)} title={a.name}
+            <button type="button" className="picker-item" onClick={() => props.onPick(a)} title={assetDisplayName(a)}
               aria-pressed={props.selectedId === undefined ? undefined : props.selectedId === a.id}>
               <img src={a.url} alt="" loading="lazy" className={props.kind === "token" ? "round" : undefined} />
-              <span>{a.name}</span>
+              <span>{assetDisplayName(a)}</span>
             </button>
           </li>
         ))}

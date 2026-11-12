@@ -5,6 +5,7 @@ import { forgetCredentials } from "../../net/identity";
 import { navigate } from "../../router";
 import { Modal } from "../../ui/Modal";
 import { createRoomWith, RoomDetailsFields, roomDetailsReady, useRoomDetails } from "../RoomDetailsFields";
+import { t } from "../../i18n/locale";
 
 type Prompt = null | "name" | "close" | "discard" | "openUnsaved" | "openRoom";
 
@@ -38,7 +39,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
     let live = true;
     api.library.encounterEdits.get(roomId).then(
       (found) => live && setSession(found),
-      (err: unknown) => live && setError(err instanceof Error ? err.message : "Couldn't load this encounter"),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : t("encounterEdit.loadFailed")),
     );
     return () => {
       live = false;
@@ -68,7 +69,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
       setSavedSeq(at);
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : t("common.saveFailed"));
       return false;
     } finally {
       saving.current = false;
@@ -109,7 +110,7 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
       const opened = await createRoomWith(details, templateId);
       await leave(`/r/${opened}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the room");
+      setError(err instanceof Error ? err.message : t("encounterEdit.createFailed"));
       setBusy(false);
     }
   }
@@ -133,83 +134,83 @@ export function EncounterEditBar({ roomId, seq, onLeaving }: {
     if (await save()) void leave();
   }
 
-  const title = session?.templateName ?? (isNew ? "New encounter" : "Encounter template");
+  const title = session?.templateName ?? (isNew ? t("encounterEdit.new") : t("encounterEdit.template"));
 
   return (
     <div className="encounter-edit-bar">
-      <span className="encounter-edit-label">Editing template</span>
+      <span className="encounter-edit-label">{t("encounterEdit.editing")}</span>
       <h1 className="room-title">{title}</h1>
       <span className={dirty ? "encounter-edit-state unsaved" : "encounter-edit-state"} role="status">
-        {dirty ? "Unsaved changes" : "Saved"}
+        {dirty ? t("common.unsavedChanges") : t("common.saved")}
       </span>
       <button type="button" className="small primary" disabled={busy || !session} onClick={() => void save()}>
-        {busy ? "Saving…" : "Save"}
+        {busy ? t("common.saving") : t("common.save")}
       </button>
       {/* Only a saved template can start a room: the room is made from what is stored. */}
       {session && !isNew && (
         <button type="button" className="secondary small" disabled={busy} onClick={startOpen}>
-          Open in a room
+          {t("encounterEdit.openInRoom")}
         </button>
       )}
       <button type="button" className="secondary small" disabled={busy} onClick={() => (dirty ? setPrompt("discard") : void leave())}>
-        Discard
+        {t("common.discard")}
       </button>
       <button type="button" className="secondary small" disabled={busy} onClick={() => (dirty ? setPrompt("close") : void leave())}>
-        Close
+        {t("common.close")}
       </button>
       {error && <span role="alert" className="error">{error}</span>}
 
-      <Modal open={prompt === "name"} title="Name this encounter" onClose={() => { setPrompt(null); setPendingClose(false); }}>
+      <Modal open={prompt === "name"} title={t("encounterEdit.nameTitle")} onClose={() => { setPrompt(null); setPendingClose(false); }}>
         <form className="stack" onSubmit={(e) => void submitName(e)}>
           <label>
-            Template name
+            {t("encounter.templateName")}
             <input value={name} maxLength={MAX_ENCOUNTER_NAME} autoFocus onChange={(e) => setName(e.target.value)} disabled={busy} />
           </label>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="submit" className="primary" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save"}</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => { setPrompt(null); setPendingClose(false); }}>Cancel</button>
+            <button type="submit" className="primary" disabled={busy || !name.trim()}>{busy ? t("common.saving") : t("common.save")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => { setPrompt(null); setPendingClose(false); }}>{t("common.cancel")}</button>
           </div>
         </form>
       </Modal>
-      <Modal open={prompt === "close"} title="Save changes?" onClose={() => setPrompt(null)}>
+      <Modal open={prompt === "close"} title={t("common.saveChangesQ")} onClose={() => setPrompt(null)}>
         <div className="stack">
-          <p>This encounter has changes you haven't saved. Save them to the template, or discard them?</p>
+          <p>{t("encounterEdit.unsavedBody")}</p>
           <div className="row button-row">
-            <button type="button" className="primary" disabled={busy} onClick={() => { setPrompt(null); void saveThenLeave(); }}>Save</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => void leave()}>Discard</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Keep editing</button>
+            <button type="button" className="primary" disabled={busy} onClick={() => { setPrompt(null); void saveThenLeave(); }}>{t("common.save")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => void leave()}>{t("common.discard")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>{t("common.keepEditing")}</button>
           </div>
         </div>
       </Modal>
-      <Modal open={prompt === "openUnsaved"} title="Save before opening?" onClose={() => setPrompt(null)}>
+      <Modal open={prompt === "openUnsaved"} title={t("encounterEdit.saveBeforeOpen")} onClose={() => setPrompt(null)}>
         <div className="stack">
-          <p>The room is made from the saved template. Save your changes first, or open it without them?</p>
+          <p>{t("encounterEdit.saveBeforeOpenBody")}</p>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="button" className="primary" disabled={busy} onClick={async () => { if (await save()) askRoomDetails(); }}>Save</button>
-            <button type="button" className="secondary" disabled={busy} onClick={askRoomDetails}>Discard</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Cancel</button>
+            <button type="button" className="primary" disabled={busy} onClick={async () => { if (await save()) askRoomDetails(); }}>{t("common.save")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={askRoomDetails}>{t("common.discard")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>{t("common.cancel")}</button>
           </div>
         </div>
       </Modal>
-      <Modal open={prompt === "openRoom"} title="Open in a room" onClose={() => setPrompt(null)}>
+      <Modal open={prompt === "openRoom"} title={t("encounterEdit.openInRoom")} onClose={() => setPrompt(null)}>
         <form className="stack" onSubmit={(e) => void openRoom(e)}>
-          <p className="muted">A new room starts from this template. The template stays as it is.</p>
+          <p className="muted">{t("encounterEdit.openBody")}</p>
           <RoomDetailsFields value={details} onChange={setDetails} disabled={busy} />
           {error && <p role="alert" className="error">{error}</p>}
           <div className="row button-row">
-            <button type="submit" className="primary" disabled={busy || !roomDetailsReady(details)}>{busy ? "Opening…" : "Open room"}</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Cancel</button>
+            <button type="submit" className="primary" disabled={busy || !roomDetailsReady(details)}>{busy ? t("common.opening") : t("encounterEdit.openRoom")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>{t("common.cancel")}</button>
           </div>
         </form>
       </Modal>
-      <Modal open={prompt === "discard"} title="Discard changes?" onClose={() => setPrompt(null)}>
+      <Modal open={prompt === "discard"} title={t("encounterEdit.discardQ")} onClose={() => setPrompt(null)}>
         <div className="stack">
-          <p>Leave without saving? The template stays as it was last saved.</p>
+          <p>{t("encounterEdit.discardBody")}</p>
           <div className="row button-row">
-            <button type="button" className="primary" disabled={busy} onClick={() => void leave()}>Discard</button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>Keep editing</button>
+            <button type="button" className="primary" disabled={busy} onClick={() => void leave()}>{t("common.discard")}</button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setPrompt(null)}>{t("common.keepEditing")}</button>
           </div>
         </div>
       </Modal>
