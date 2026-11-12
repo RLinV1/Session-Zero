@@ -61,6 +61,27 @@ Every Traditional Chinese string in the app, the board, server messages and the 
 | Dice look | 骰子外觀 | |
 | Animation | 動畫 | |
 
+## AI game builder
+
+Added 2026-11-11 with the builder's screens (FR-GM-26, FR-GM-27). "Your AI" is 你的 AI, or AI alone where the sentence already says whose.
+
+| English | 繁體中文 | Notes |
+|---|---|---|
+| Build (an AI game build) | 建置 | "AI builds" → AI 建置; "New build" → 新增建置; "Start build" → 開始建置. |
+| Draft | 草稿 | |
+| Publish | 發布 | "Published" → 已發布. |
+| Build pass | 建置通行碼 | 通行碼 alone once the build is clear: "New pass" → 新的通行碼, "Pass ended" → 通行碼已失效. |
+| Discard (a build) | 捨棄 | Not 刪除: what the build published stays in the library. |
+| Game profile | 遊戲設定檔 | What the AI saves about the game's rules. |
+| Flag (the AI's note on a value) | 備註 | "Notes from your AI" → AI 留給你的備註. Not 標記, which is a mark. |
+| Mark (a place left for the GM) | 標記 | "Clear mark" → 清除標記. |
+| Opening (a gap a map file marks) | 開口 | Measure word 個, as in the map editor: 2 個開口, 開口 3. |
+| Line (drawn by the AI) | 線段 | Measure word 條. |
+| Left for you | 留給你處理 | |
+| Grid detection | 網格偵測 | |
+| Square size | 方格大小 | "One square is 5 ft" → 每格是 5 ft. |
+| Not carried over | 未匯入的內容 | What a sheet had that the app has no field for. |
+
 ## Game terms
 
 Terms follow the Chinese translation of the 5e rules where one exists, so players who own the books recognise them.

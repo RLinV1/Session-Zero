@@ -59,6 +59,13 @@ Tests reference the capability as `(localization)` in their `describe` titles. R
 - [x] 8.5 Add a Localization row to README §6, a language-and-type note to `docs/INTERFACE.md`, and a CLAUDE.md convention line ("UI text goes through `t()`; no literal text in components"); verify the docs render and link the glossary and ADR
 - [x] 8.6 Run `npm run lint && npm run typecheck && npm test`; verify all three pass
 
+## 9. The AI game builder (follow-up, merged from main during review)
+
+- [x] 9.1 Give the shared build check's owner messages catalog ids (`checkBuild`, `creatureProblems`, `buildFieldLabel`, `draftMapBoard`, `draftEncounterToTemplate`), English byte-identical and the AI's words unchanged; record it in ADR 0055; verify a before/after comparison of every message the shared build code writes, and shared tests in both languages
+- [x] 9.2 Say the publish refusal and the owner's map setup refusal in the request's language, and translate the build store's owner-facing errors; verify server tests in both languages
+- [x] 9.3 Move the builder's screens (`pages/build/*`) into a `build` catalog area, add the builder's terms to the glossary, and delete `NOT_YET_LOCALIZED`; verify lint, `language.test.tsx` build cases, and a browser walk of the builds tab, New build, the pass, the build page and a refused publish in both languages
+- [x] 9.4 Run `npm run lint && npm run typecheck && npm test`; verify all three pass
+
 ## Workflow follow-up
 
 - Open PRs by task group against `main`, titled with "localization", and get the Real-Time Architecture owner's review on the group 1–3 PR that carries the ADR.

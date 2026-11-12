@@ -6,6 +6,7 @@ import { accountStore } from "../src/account/accountStore";
 import { api } from "../src/net/api";
 import { LibraryPage } from "../src/pages/LibraryPage";
 import { RIGHTS_NOTICE } from "../src/pages/build/buildCopy";
+import { t } from "../src/i18n/locale";
 
 // jsdom has no <dialog> methods. Closing fires "close", as a browser does: the pass waits for it.
 HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) { this.setAttribute("open", ""); };
@@ -101,7 +102,7 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     const form = await newBuildDialog();
     const name = within(form).getByLabelText("Name of this build");
     expect(document.activeElement).toBe(name);
-    expect(within(form).getByText(RIGHTS_NOTICE)).toBeTruthy();
+    expect(within(form).getByText(t(RIGHTS_NOTICE))).toBeTruthy();
     expect((within(form).getByRole("button", { name: "Start build" }) as HTMLButtonElement).disabled).toBe(true);
   });
 

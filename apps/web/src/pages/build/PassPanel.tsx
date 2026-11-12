@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../../i18n/locale";
 import { Modal } from "../../ui/Modal";
 import { buildMessage, copyText } from "./buildCopy";
 
@@ -14,20 +15,21 @@ export function PassPanel({ pass, onClose, onAfterClose, children, replaced = fa
   children?: React.ReactNode;
   replaced?: boolean;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState<"done" | "failed" | null>(null);
   const message = pass ? buildMessage(location.origin, pass) : "";
   return (
-    <Modal open={pass !== null} title="Give this to your AI" onClose={() => { setCopied(null); onClose(); }} onAfterClose={onAfterClose} closeLabel="Close">
+    <Modal open={pass !== null} title={t("build.pass.title")} onClose={() => { setCopied(null); onClose(); }} onAfterClose={onAfterClose} closeLabel={t("common.close")}>
       <div className="build-pass">
-        {replaced && <p className="notice"><span><strong>Your earlier pass has stopped working.</strong> If your AI was building, paste this new message into it to carry on.</span></p>}
-        <p className="notice"><span><strong>This pass is shown only once, so copy it before you close this.</strong> It lets an AI add to this one draft for 24 hours. It can't publish, or reach your library or rooms.</span></p>
+        {replaced && <p className="notice"><span><strong>{t("build.pass.replacedStrong")}</strong>{t("build.sentenceGap")}{t("build.pass.replaced")}</span></p>}
+        <p className="notice"><span><strong>{t("build.pass.onceStrong")}</strong>{t("build.sentenceGap")}{t("build.pass.once")}</span></p>
         <label>
-          Message to paste into your AI app
+          {t("build.pass.messageLabel")}
           <textarea readOnly rows={9} value={message} onFocus={(e) => e.currentTarget.select()} />
         </label>
         <div className="row">
-          <button type="button" className="primary" onClick={() => void copyText(message).then((ok) => setCopied(ok ? "done" : "failed"))}>Copy message</button>
-          <span role="status" className="muted">{copied === "done" ? "Copied" : copied === "failed" ? "Couldn't copy. Select the text and copy it yourself." : ""}</span>
+          <button type="button" className="primary" onClick={() => void copyText(message).then((ok) => setCopied(ok ? "done" : "failed"))}>{t("build.pass.copy")}</button>
+          <span role="status" className="muted">{copied === "done" ? t("build.pass.copied") : copied === "failed" ? t("build.pass.copyFailed") : ""}</span>
         </div>
         {children}
       </div>

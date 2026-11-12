@@ -39,6 +39,8 @@ import {
   type GridSpec,
 } from "@vtt/shared";
 import { planPublish } from "../domain/buildPublish";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 import { mapOverlay, type OverlayRegion } from "../domain/mapOverlay";
 import { hashToken } from "../domain/credentials";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
@@ -404,8 +406,13 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const file = await store.findBuildFile(build.id, map.fileId);
       if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
       const read = readMap(build, map, file);
-      const problems = mapSetupProblems(file.board, body.data.setup, read.grid ?? read.proposedGrid, file);
-      if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
+      const checked = draftMapBoard(file.board, body.data.setup, read.grid ?? read.proposedGrid, file);
+      if (!checked.ok) {
+        // English as it always read; another language in the owner's words (ADR 0055).
+        const locale = requestLocale(res);
+        const lines = locale === "en" ? checked.problems : checked.ownerProblems.map((p) => sharedText(locale, p));
+        return void res.status(422).json({ error: lines.join("\n") });
+      }
       await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup: body.data.setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
     })().catch(failed(res));
   });
@@ -476,7 +483,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (build.status !== "open") return void res.status(409).json({ error: "This build is closed." });
       try {
         const planned = await planPublish(store, build, selection.data, new Date(now()).toISOString());
-        if (!planned.ok) return void res.status(422).json({ error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems });
+        if (!planned.ok) {
+          const locale = requestLocale(res);
+          const lines = planned.problems.map((p) => (locale === "en" ? `${p.item}: ${p.message}` : sharedText(locale, p.text)));
+          return void res.status(422).json({ error: lines.join("\n"), problems: planned.problems.map(({ item, message }) => ({ item, message })) });
+        }
         res.json({ published: await store.publishBuild(planned.plan, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES) });
       } catch (err) {
         if (err instanceof UploadAllowanceError || err instanceof EncounterLimitError || err instanceof BuildClosedError || err instanceof BuildPublishConflictError) {

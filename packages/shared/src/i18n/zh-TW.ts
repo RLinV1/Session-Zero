@@ -1,5 +1,6 @@
 import type { Catalog } from "./core";
 import type { SharedEn } from "./en";
+import { buildZhTW } from "./messages/zh-TW/build";
 import { rejectionsZhTW } from "./messages/zh-TW/rejections";
 import { validationZhTW } from "./messages/zh-TW/validation";
 
@@ -11,4 +12,5 @@ export const sharedZhTW = {
   "common.unknownError": "發生錯誤",
   ...rejectionsZhTW,
   ...validationZhTW,
+  ...buildZhTW,
 } satisfies Catalog<SharedEn>;

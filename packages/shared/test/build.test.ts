@@ -396,7 +396,7 @@ describe("turning a draft encounter into a template (FR-GM-27)", () => {
       creatures: new Map([["goblin", { ...goblin, size }]]),
       tokens: [{ creatureKey: "goblin", name: "Scout", square, hidden: false }],
     }));
-    expect(result).toEqual({ ok: false, problems: [{ token: "Scout", message: expect.stringContaining("map") }] });
+    expect(result).toMatchObject({ ok: false, problems: [{ token: "Scout", message: expect.stringContaining("map") }] });
   });
 
   it("refuses a small token whose snapped center would hang off the map", () => {
@@ -419,7 +419,7 @@ describe("turning a draft encounter into a template (FR-GM-27)", () => {
 
   it("refuses a footprint across a wall", () => {
     const result = draftEncounterToTemplate(source({ board: { walls: [across], fog: [] } }));
-    expect(result).toEqual({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("wall") }] });
+    expect(result).toMatchObject({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("wall") }] });
   });
 
   it("refuses a footprint across a closed door", () => {
@@ -439,12 +439,12 @@ describe("turning a draft encounter into a template (FR-GM-27)", () => {
 
   it("reports a token with no square rather than dropping it", () => {
     const result = draftEncounterToTemplate(source({ tokens: [{ creatureKey: "goblin", square: null, hidden: false }] }));
-    expect(result).toEqual({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("square") }] });
+    expect(result).toMatchObject({ ok: false, problems: [{ token: "Goblin", message: expect.stringContaining("square") }] });
   });
 
   it("reports an unknown creature, even one named like an object's built-in property", () => {
     const result = draftEncounterToTemplate(source({ tokens: [{ creatureKey: "__proto__", square: { column: 0, row: 0 }, hidden: false }] }));
-    expect(result).toEqual({ ok: false, problems: [{ token: "__proto__", message: expect.stringContaining("creature") }] });
+    expect(result).toMatchObject({ ok: false, problems: [{ token: "__proto__", message: expect.stringContaining("creature") }] });
   });
 
   it("refuses HP above Max HP if library values changed since the draft", () => {
@@ -612,7 +612,7 @@ describe("AI-set grids and walls, by the owner's choice (FR-GM-26)", () => {
 
     it("refuses a number the map doesn't have", () => {
       const result = draftMapBoard(board, setup({ openings: [{ number: 3, kind: "door", state: "open" }] }), grid70, mapSize);
-      expect(result).toEqual({ ok: false, problems: ["Opening 3 isn't on this map. It has 2 openings."] });
+      expect(result).toMatchObject({ ok: false, problems: ["Opening 3 isn't on this map. It has 2 openings."] });
     });
   });
 
@@ -625,7 +625,7 @@ describe("AI-set grids and walls, by the owner's choice (FR-GM-26)", () => {
 
     it("refuses a corner off the map, naming the line", () => {
       const result = draftMapBoard(board, setup({ lines: [line([1, 1], [2, 1]), line([9, 9], [11, 9])] }), grid70, mapSize);
-      expect(result).toEqual({ ok: false, problems: ["Line 2 (a wall from column 9, row 9 to column 11, row 9) has a corner off the map."] });
+      expect(result).toMatchObject({ ok: false, problems: ["Line 2 (a wall from column 9, row 9 to column 11, row 9) has a corner off the map."] });
     });
 
     it("needs a grid", () => {

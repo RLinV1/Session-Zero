@@ -400,6 +400,63 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
     expect(results[0]).toMatchObject({ saved: false, error: expect.stringMatching(/published/) });
   });
 
+  describe("in the owner's language (FR-GM-27, ADR 0055)", () => {
+    const zhTW = { "accept-language": "zh-TW" };
+
+    it("says why publishing is refused in Traditional Chinese, and in English exactly as before", async () => {
+      const { pass, id, account } = await readyBuild();
+      await saveEncounter(pass, { tokens: [{ creatureKey: "goblin", name: "Goblin 2", square: null, hidden: false }, { creatureKey: "goblin", square: null, hidden: true }] });
+      const body = { encounters: ["ambush"], reviewed: await reviewedNow(account, id) };
+      const english = await account.request("POST", `/api/builds/${id}/publish`, body);
+      expect(english.status).toBe(422);
+      expect(await english.json()).toEqual({
+        error: "encounter ambush: Goblin 2: It has no square yet. Place it or remove it.\nencounter ambush: Goblin: It has no square yet. Place it or remove it.",
+        problems: [
+          { item: "encounter ambush", message: "Goblin 2: It has no square yet. Place it or remove it." },
+          { item: "encounter ambush", message: "Goblin: It has no square yet. Place it or remove it." },
+        ],
+      });
+      const chinese = await account.request("POST", `/api/builds/${id}/publish`, body, zhTW);
+      expect(chinese.status).toBe(422);
+      expect(chinese.headers.get("content-language")).toBe("zh-TW");
+      expect((await chinese.json() as { error: string }).error).toBe(
+        "遭遇 ambush：Goblin 2：它還沒有位置。請放置它，或將它移除。\n遭遇 ambush：Goblin：它還沒有位置。請放置它，或將它移除。",
+      );
+      expect(await encounters(account)).toEqual([]);
+    });
+
+    it("says a map's grid still needs confirming, naming the map as typed", async () => {
+      const { pass, id, account } = await startBuild();
+      const fileId = await upload(pass, "map", "cave.png", await png(700, 700));
+      await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Sea cave", fileId, proposedGrid: GRID });
+      await saveCreatures(pass, [goblin()]);
+      await saveEncounter(pass);
+      const res = await account.request("POST", `/api/builds/${id}/publish`, { encounters: ["ambush"], reviewed: await reviewedNow(account, id) }, zhTW);
+      expect((await res.json() as { error: string }).error).toBe("遭遇 ambush：它的地圖「Sea cave」需要先確認網格。");
+    });
+
+    it("says what changed since the owner looked, with each item's kind in Chinese", async () => {
+      const { account, id, pass } = await readyBuild();
+      const reviewed = await reviewedNow(account, id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await saveCreatures(pass, [goblin({ name: "Changed behind your back" })]);
+      const res = await account.request("POST", `/api/builds/${id}/publish`, { creatures: ["goblin"], reviewed }, zhTW);
+      expect(res.status).toBe(409);
+      expect((await res.json() as { error: string }).error).toBe("你查看之後，這些項目有了變更：生物 goblin。請重新確認，再發布一次。");
+    });
+
+    it("refuses the owner's map setup in their language", async () => {
+      const { account, id } = await readyBuild();
+      const updatedAt = (await account.json<{ items: { kind: string; updatedAt: string }[] }>("GET", `/api/builds/${id}`)).items.find((i) => i.kind === "map")!.updatedAt;
+      const body = { setup: { openings: [{ number: 1, kind: "door", state: "open" }], lines: [], marks: [] }, updatedAt };
+      const english = await account.request("PUT", `/api/builds/${id}/maps/cave/setup`, body);
+      expect(english.status).toBe(422);
+      expect(await english.json()).toEqual({ error: "Opening 1 isn't on this map. It has 0 openings." });
+      const chinese = await account.request("PUT", `/api/builds/${id}/maps/cave/setup`, body, zhTW);
+      expect(await chinese.json()).toEqual({ error: "這張地圖沒有開口 1，它只有 0 個開口。" });
+    });
+  });
+
   describe("the owner's edits", () => {
     it("fills in a value, clears its flag and marks the item edited", async () => {
       const { pass, id, account } = await startBuild();

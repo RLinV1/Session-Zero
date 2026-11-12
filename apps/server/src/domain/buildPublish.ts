@@ -5,13 +5,16 @@ import {
   EMPTY_LIBRARY_BOARD,
   draftEncounterToTemplate,
   draftMapBoard,
+  englishText,
   readDraftMap,
+  sharedMsg,
   squareSizeOf,
   type BuildCreatureValues,
   type DraftCreatureState,
   type DraftEncounterState,
   type DraftMapState,
   type LibraryMapBoard,
+  type MessageRef,
 } from "@vtt/shared";
 import { BuildPublishConflictError, type BuildFileRecord, type BuildItemKind, type BuildItemRecord, type BuildPublishPlan, type BuildRecord } from "../store/buildStore";
 import type { LibraryAssetRecord } from "../store/libraryStore";
@@ -29,6 +32,10 @@ export interface PublishProblem {
   /** What it is about, such as `encounter ambush`. */
   item: string;
   message: string;
+  /** The item `item` names, and the whole problem as a catalog ref, to say it in the owner's language (ADR 0055). */
+  kind: BuildItemKind;
+  key: string;
+  text: MessageRef;
 }
 
 export type PublishPlanResult = { ok: true; plan: BuildPublishPlan } | { ok: false; problems: PublishProblem[] };
@@ -46,10 +53,16 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
   const fileById = new Map(files.map((f) => [f.id, f]));
   const itemByKey = new Map(items.map((i) => [`${i.kind}/${i.key}`, i]));
   const problems: PublishProblem[] = [];
-  const problem = (item: string, message: string) => void problems.push({ item, message });
+  const problem = (kind: BuildItemKind, key: string, message: MessageRef) => void problems.push({
+    item: `${kind} ${key}`,
+    message: englishText(message),
+    kind,
+    key,
+    text: sharedMsg("buildCheck.publishProblem", { kind: sharedMsg(`buildCheck.kind.${kind}`), key, problem: message }),
+  });
   const find = (kind: BuildItemKind, key: string): BuildItemRecord | undefined => {
     const item = itemByKey.get(`${kind}/${key}`);
-    if (!item) problem(`${kind} ${key}`, "It isn't in this build.");
+    if (!item) problem(kind, key, sharedMsg("buildCheck.notInBuild"));
     return item;
   };
 
@@ -85,14 +98,14 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
   const assetForFile = new Map<string, LibraryAssetRecord>();
 
   /** The library row for a file: the one it already has, or a new one added to the plan. A map brings its grid and board. */
-  const assetOf = async (fileId: string, item: string, name: string, draft: { grid: DraftMapState["grid"]; board: LibraryMapBoard | null } | null): Promise<LibraryAssetRecord | null> => {
+  const assetOf = async (fileId: string, item: { kind: BuildItemKind; key: string }, name: string, draft: { grid: DraftMapState["grid"]; board: LibraryMapBoard | null } | null): Promise<LibraryAssetRecord | null> => {
     const planned = assetForFile.get(fileId);
     if (planned) return planned;
     const file = fileById.get(fileId);
-    if (!file) { problem(item, "Its file isn't in this build any more."); return null; }
+    if (!file) { problem(item.kind, item.key, sharedMsg("buildCheck.fileGone")); return null; }
     if (file.publishedAssetId) {
       const existing = await store.findAsset(file.publishedAssetId, build.ownerGmId);
-      if (!existing) { problem(item, "Its file was published and then deleted from the library."); return null; }
+      if (!existing) { problem(item.kind, item.key, sharedMsg("buildCheck.fileDeleted")); return null; }
       assetForFile.set(fileId, existing);
       return existing;
     }
@@ -132,13 +145,14 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     if (!item.publishedId && data.setup) {
       const file = fileById.get(data.fileId);
       // Lines are in squares, so they need the grid that will be published with them.
-      if (data.setup.lines.length > 0 && data.gridStatus !== "confirmed") { problem(`map ${key}`, "Its drawn walls need a confirmed grid first."); continue; }
+      if (data.setup.lines.length > 0 && data.gridStatus !== "confirmed") { problem("map", key, sharedMsg("buildCheck.drawnWallsNeedGrid")); continue; }
       // Marks are notes for the person and never go on the board, so they don't hold a map back.
       const built = file ? draftMapBoard(file.board, { ...data.setup, marks: [] }, data.grid, file) : null;
-      if (built && !built.ok) { for (const message of built.problems) problem(`map ${key}`, message); continue; }
+      // The owner's words: the AI's would name its tools.
+      if (built && !built.ok) { for (const message of built.ownerProblems) problem("map", key, message); continue; }
       if (built) board = built.board;
     }
-    const asset = await assetOf(data.fileId, `map ${key}`, data.name, { grid: data.grid, board });
+    const asset = await assetOf(data.fileId, { kind: "map", key }, data.name, { grid: data.grid, board });
     if (!asset) continue;
     mapAssets.set(key, asset);
     if (!item.publishedId) plan.maps.push({ key, assetId: asset.id });
@@ -150,12 +164,12 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     if (!item) continue;
     if (item.publishedId) {
       const existing = await store.findCreature(item.publishedId, build.ownerGmId);
-      if (!existing) { problem(`creature ${key}`, "It was published and then deleted from the library."); continue; }
+      if (!existing) { problem("creature", key, sharedMsg("buildCheck.publishedThenDeleted")); continue; }
       creatures.set(key, { ...existing, assetId: existing.imageAssetId });
       continue;
     }
     const data = item.data as unknown as DraftCreatureState;
-    const art = data.imageFileId ? await assetOf(data.imageFileId, `creature ${key}`, data.name, null) : null;
+    const art = data.imageFileId ? await assetOf(data.imageFileId, { kind: "creature", key }, data.name, null) : null;
     if (data.imageFileId && !art) continue;
     plan.creatures.push({
       key,
@@ -168,7 +182,6 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
   }
 
   for (const item of encounterItems) {
-    const label = `encounter ${item.key}`;
     const data = item.data as unknown as DraftEncounterState;
     const mapItem = itemByKey.get(`map/${data.mapKey}`);
     const asset = mapAssets.get(data.mapKey);
@@ -176,13 +189,13 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     const mapData = readMap(mapItem.data as unknown as DraftMapState);
     // Already published: the library's grid and walls, which the GM may since have changed.
     const grid = mapItem.publishedId ? asset.grid : mapData.gridStatus === "confirmed" ? mapData.grid : null;
-    if (!grid) { problem(label, `Its map "${mapData.name}" needs a confirmed grid first.`); continue; }
+    if (!grid) { problem("encounter", item.key, sharedMsg("buildCheck.mapNeedsGrid", { map: mapData.name })); continue; }
     const board: LibraryMapBoard = mapItem.publishedId
       ? await store.findAssetBoard(asset.id, build.ownerGmId) ?? EMPTY_LIBRARY_BOARD
       : asset.board ?? EMPTY_LIBRARY_BOARD;
     const built = draftEncounterToTemplate({ map: { assetId: asset.id, width: asset.width, height: asset.height }, grid, board, creatures, tokens: data.tokens });
     if (!built.ok) {
-      for (const p of built.problems) problem(label, `${p.token}: ${p.message}`);
+      for (const p of built.problems) problem("encounter", item.key, p.text);
       continue;
     }
     plan.encounters.push({

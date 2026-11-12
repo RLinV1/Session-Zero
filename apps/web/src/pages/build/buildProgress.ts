@@ -7,6 +7,7 @@ import {
   type DraftEncounterState,
   type DraftMapState,
 } from "@vtt/shared";
+import { t, type TextId } from "../../i18n/locale";
 
 /**
  * Where a build's draft stands, worked out the same way for its own page and for its card in
@@ -18,18 +19,22 @@ export const mapOf = (item: BuildItemView) => item.data as unknown as DraftMapSt
 export const encounterOf = (item: BuildItemView) => item.data as unknown as DraftEncounterState;
 /** Items with flags come first, so what needs a person is what they see first. */
 export const flaggedFirst = (a: BuildItemView, b: BuildItemView) => Number(b.flags.length > 0) - Number(a.flags.length > 0);
-export const KIND_WORD: Record<BuildItemView["kind"], string> = { creature: "creature", map: "map", encounter: "encounter" };
+/** What each kind of draft item is called. Shown with `t()`. */
+export const KIND_WORD: Record<BuildItemView["kind"], TextId> = { creature: "build.kind.creature", map: "build.kind.map", encounter: "build.kind.encounter" };
 
-/** "1 map, 2 creatures and 1 encounter". */
+/** "1 map, 2 creatures and 1 encounter", in the current language. */
 export function counted(items: readonly BuildItemView[]): string {
   const parts = (["map", "creature", "encounter"] as const).map((kind) => {
     const n = items.filter((i) => i.kind === kind).length;
-    return n === 0 ? null : `${n} ${KIND_WORD[kind]}${n === 1 ? "" : "s"}`;
+    return n === 0 ? null : t(`build.count.${kind}`, { n });
   }).filter((p): p is string => p !== null);
-  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+  return parts.length <= 1 ? parts.join("") : t("build.count.list", { list: parts.slice(0, -1).join(t("build.count.sep")), last: parts.at(-1)! });
 }
 
-/** The check, in the owner's words, over the draft in the order its page lists it. */
+/**
+ * The check, in the owner's words, over the draft in the order its page lists it. Each issue
+ * carries its words as catalog refs, so the page shows them in the reader's language (ADR 0055).
+ */
 export function ownerIssues(detail: BuildDetail): BuildCheckIssue[] {
   const ofKind = (kind: BuildItemView["kind"]) => detail.items.filter((i) => i.kind === kind).sort(flaggedFirst);
   return checkBuild({

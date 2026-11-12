@@ -1,7 +1,12 @@
-/** What a user is told about rights, when starting a build and when publishing one (FR-GM-26). */
-export const RIGHTS_NOTICE = "Only upload art and maps you have the right to use. Rooms share them with the people at your table.";
+import type { TextId } from "../../i18n/locale";
 
-/** The message a user pastes into their AI app to hand it this build (FR-GM-26). */
+/** What a user is told about rights, when starting a build and when publishing one (FR-GM-26). Shown with `t()`. */
+export const RIGHTS_NOTICE: TextId = "build.rightsNotice";
+
+/**
+ * The message a user pastes into their AI app to hand it this build (FR-GM-26). English in every
+ * language, like the Share dialog's AI messages: it is an instruction to the AI.
+ */
 export function buildMessage(origin: string, pass: string): string {
   return [
     "Please help me set up a tabletop game in Session Zero.",
