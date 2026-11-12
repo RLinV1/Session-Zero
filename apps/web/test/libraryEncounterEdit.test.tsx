@@ -85,7 +85,7 @@ describe("New encounter in the library (encounter-templates, ADR 0033)", () => {
 });
 
 describe("replace a template from a room (encounter-templates, ADR 0033)", () => {
-  it("offers a per-row Replace for templates on this room's map, disables the others, and confirms first", async () => {
+  it("offers a per-row Replace for templates on this room's map, disables the others, and replaces at once (remove-save-confirmations)", async () => {
     const state = emptyRoomState("room-1");
     state.scene = { map: { url: "/uploads/crypt.png", width: 800, height: 600, assetId: "m1" }, grid: DEFAULT_GRID };
     vi.spyOn(api.library.encounters, "list").mockResolvedValue([
@@ -101,10 +101,21 @@ describe("replace a template from a room (encounter-templates, ADR 0033)", () =>
     expect(own.disabled).toBe(false);
     expect((screen.getByRole("button", { name: "Replace Cave ambush" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(own);
-    const confirm = screen.getByRole("dialog", { name: "Replace encounter template?" });
-    expect(replaceFromRoom).not.toHaveBeenCalled();
-    fireEvent.click(within(confirm).getByRole("button", { name: "Replace Crypt guards" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(replaceFromRoom).toHaveBeenCalledWith("t1", "room-1"));
+    expect(replaceFromRoom).toHaveBeenCalledTimes(1);
+    const result = await screen.findByText(`Replaced encounter template "Crypt guards" with this room's board.`);
+    expect(result.className).not.toContain("sr-only");
     await screen.findByText(/5 tokens/);
+  });
+
+  it("still asks before applying a template to the room", async () => {
+    const state = emptyRoomState("room-1");
+    vi.spyOn(api.library.encounters, "list").mockResolvedValue([template()]);
+    const connection = { command: vi.fn() } as never;
+    render(<EncounterPanel connection={connection} state={state} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Apply Crypt guards" }));
+    expect(screen.getByRole("dialog", { name: "Apply encounter template?" })).toBeTruthy();
+    expect((connection as { command: ReturnType<typeof vi.fn> }).command).not.toHaveBeenCalled();
   });
 });

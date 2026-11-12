@@ -28,7 +28,6 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   const [status, setStatus] = useState("");
   const [confirming, setConfirming] = useState<EncounterSummary | null>(null);
   const [keepSetup, setKeepSetup] = useState(false);
-  const [confirmingReplace, setConfirmingReplace] = useState<EncounterSummary | null>(null);
   const maps = useLibraryMaps();
   const tokenCount = Object.keys(state.tokens).length;
   const roomMapId = state.scene.map?.assetId ?? null;
@@ -81,10 +80,10 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
       setError(null);
       setStatus(t("enc.replaced", { name: saved.name }));
     } catch (err) {
+      setStatus("");
       setError(err instanceof Error ? err.message : t("enc.replaceFailed"));
     } finally {
       setBusy(false);
-      setConfirmingReplace(null);
     }
   };
 
@@ -115,7 +114,8 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
         {preparing ? t("enc.applyToScene") : t("enc.reuse")}
       </p>
       {error && !saveOpen && <p role="alert" className="error">{error}</p>}
-      <p role="status" className="sr-only">{status}</p>
+      {/* Visible: Replace has no dialog, so this line is how the GM sees it happened. */}
+      <p role="status" className={status ? "muted small-print" : "sr-only"}>{status}</p>
       {templates === null ? (
         <p className="muted" aria-busy="true">{t("common.loading")}</p>
       ) : templates.length === 0 ? (
@@ -136,7 +136,8 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
                   disabled={busy || !sameMap(template)}
                   aria-label={t("enc.replaceNamed", { name: template.name })}
                   title={sameMap(template) ? t("enc.replaceWithBoard", { name: template.name }) : t("enc.sameMapOnly")}
-                  onClick={() => setConfirmingReplace(template)}
+                  // Replace saves at once, with no dialog (encounter-templates spec).
+                  onClick={() => void replace(template)}
                 >
                   <ArrowsClockwise size={16} aria-hidden="true" />
                 </button>
@@ -185,23 +186,6 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
             <button type="submit" className="primary" disabled={busy || !roomMapId || !name.trim()}>{t("common.save")}</button>
           </div>
         </form>
-      </Modal>
-      <Modal open={confirmingReplace !== null} title={t("enc.replaceQ")} onClose={() => setConfirmingReplace(null)}>
-        {confirmingReplace && (
-          <div className="stack">
-            <p>
-              {t("enc.replaceLead")} <strong>{confirmingReplace.name}</strong> {t("enc.replaceBody")}
-            </p>
-            <div className="row button-row">
-              <button className="primary" type="button" disabled={busy} onClick={() => void replace(confirmingReplace)}>
-                {t("enc.replace")} {confirmingReplace.name}
-              </button>
-              <button type="button" className="secondary" disabled={busy} onClick={() => setConfirmingReplace(null)}>
-                {t("common.cancel")}
-              </button>
-            </div>
-          </div>
-        )}
       </Modal>
       <Modal className="checkpoint-preview-modal" open={confirming !== null} title={t("enc.applyQ")} onClose={() => setConfirming(null)}>
         {confirming && (

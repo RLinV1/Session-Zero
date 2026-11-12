@@ -28,8 +28,9 @@ function editor(isGm: boolean, onSave = vi.fn(async (_changes: TokenUpdate) => {
 const attacksSection = () => screen.getByText("Attacks", { selector: "summary" }).closest("details") as HTMLDetailsElement;
 
 async function saveEditor() {
+  // Save applies at once (token-editor): no confirmation step.
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+  await Promise.resolve();
 }
 
 describe("Token editor: Attacks (shared-token-attacks, FR-TAC-07)", () => {
