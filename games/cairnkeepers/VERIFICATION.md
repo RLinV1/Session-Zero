@@ -106,3 +106,81 @@ Checked in the app, in the browser pane, signed in on 127.0.0.1:5173:
 - The Tokens panel lists Scene 1's four groups.
 - A private GM preview of Scene 4 showed the ice as locked windows, the Cairn-Taker and the
   cairns, and its groups. The view went back to the live scene; nothing was activated.
+
+## Ready for an AI build (2026-11-11)
+
+Two AI builds of this folder (Session Zero's `/mcp/build`) left the same gaps. Every fact below was
+copied from `scripts/cairnkeepers/setup-library.mjs` (`SCENES`, `GUIDES`, `PREGEN_TOKENS`,
+`BOARD_PIECES`) or from `art/maps/*.board.json`; nothing new was decided. The script and the text
+didn't disagree anywhere. Work was done on the branch `feat/cairnkeepers-build-ready`, in a worktree
+off `origin/main`.
+
+What changed:
+
+- **adventure.md**
+  - Each scene's *On the board* has a **Board setup** table. It has a row for every token the
+    script places, in its order: the four Guides (Sela, Tor, Wren, Mira), the foes, the survivors
+    by name, Brother Aldric, the numbered cairns, Warmth at (0, 0), and the Storm Clock at (1, 0),
+    hidden. Columns are Token, Square, Hidden and Art. *Hidden* is the script's flag, and *no*
+    where it has none.
+  - Scene 4 now says the Guides come down the stairs at (1–2, 1) and stand at their foot,
+    (1–2, 2–3), with Aldric beside them at (3, 2). These are the script's squares.
+  - *Before you play* lists every opening by square, from board.json:
+    - the Switchbacks has none;
+    - Greywater Tarn has 18 and the Ice Caves 20, all ice (locked windows);
+    - the Hospice has 10 doors and 8 windows, all closed except the chapel door (21, 4), which is
+      locked.
+
+    It also says how to read the board-setup tables.
+- **Warmth is 12/12** in step 5, because the pregens' party has a Hauler (rules §7, Packhorse). The
+  bestiary's board-piece table and `setup-library.mjs` now say 12 too; the script said 10.
+  - Rules §7 still gives 10 as the base and 12 with a Hauler, as before.
+- **bestiary.md** board pieces gained a Guard (AC) column, plus a line saying plainly that:
+  - a cairn has no HP and no Guard;
+  - Warmth and the Storm Clock have no Guard.
+- **pregens.json**: each Guide has `"size": 1` and `"art"` from the script's `PREGEN_TOKENS`:
+  `pathfinder-a`, `hauler-a`, `hunter-b`, `stonespeaker-b`.
+  - The sheet's *On the table* card (`sheet.html`, filled by `render-sheets.mjs`) gained **Size**
+    and **Token art** boxes, and `fillSheet` fills them.
+- The PDFs were regenerated with `node scripts/cairnkeepers/render-sheets.mjs`:
+  - the rulebook is 16 pages;
+  - the adventure went from 10 to 12 pages;
+  - the sheet and pregens are 2 pages each.
+
+  Maps and tokens weren't re-rendered.
+
+How it was checked:
+
+- **A check script in the scratchpad (187 checks, 0 failed)** compared the text against its
+  sources, not by eye. It evaluated the script's own tables from its source, and read the
+  bestiary's *Token art* rows through `names.mjs`.
+  - Every board-setup row (name, square, hidden, art, in order) matched what the script places.
+  - The survivors' prose names were paired with the script's squares, and so were Scene 4's
+    arrival squares.
+  - Every hospice door and window square was checked against board.json by kind. The only locked
+    opening is (21, 4).
+  - The Tarn has 18 and the Caves 20 openings, all locked windows; the Switchbacks has none.
+  - The named doors match Scene 3's text.
+  - The pregens' art and size were checked, and so was Warmth 12 in all three places.
+  - The bestiary's board-piece HP, Guard and Hidden cells were checked against `BOARD_PIECES`.
+- **Mutation test.** A copy with three planted errors failed exactly those three checks: a moved
+  White-coat, a moved hospice door, and Hesk shown as not hidden.
+- **PDF text**, read with PDFKit:
+  - no line in any of the 7 PDFs has an asterisk;
+  - no line has a repo path (`scripts/`, `games/`, `art/`, `/Users/`, `.md`, `.board.json`, URLs);
+  - every board-setup row, the openings list, Warmth 12/12, the bestiary's new line and each
+    pregen's art are all in the PDFs.
+
+  The only script name in any PDF is the existing mention of `setup-library.mjs` in the
+  adventure's step 2, a file name rather than a path.
+- **Pages read**:
+  - the adventure's *Before you play* page and its scene tables, which split cleanly across pages
+    with the header repeated;
+  - the bestiary's board-piece page;
+  - a pregen sheet, whose card shows Size 1 and the token art and still fits.
+- `npm run lint`, `npm run typecheck` and `npm test` pass on the branch: 3,630 tests passed and 54
+  were skipped.
+
+Not changed: the test account. Its library and room were made before this, so its Warmth creature
+and templates are still 10/10. Re-running `setup-library.mjs` leaves things that already exist as
+they are. No AI build was run.

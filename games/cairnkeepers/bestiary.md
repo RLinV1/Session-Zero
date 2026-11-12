@@ -241,8 +241,11 @@ is the point.
 
 These aren't creatures, but they're tokens, and their HP bar does the work.
 
-| Token | Size | HP / Max HP | Hidden? | Art | Use |
-|---|---|---|---|---|---|
-| **Warmth** | 1 | 10 / 10 | no | Warmth | the party's shared heat (rules §7); 12 with a Hauler |
-| **Storm Clock** | 1 | 0 / 6 | **yes** | Storm Clock | the GM's weather clock (rules §7) |
-| **Cairn** | 1 | — | no | Cairn (fallen) → Cairn (raised) | change the image when it's raised (rules §5.4) |
+| Token | Size | HP / Max HP | Guard (AC) | Hidden? | Art | Use |
+|---|---|---|---|---|---|---|
+| **Warmth** | 1 | 12 / 12 | none | no | Warmth | the party's shared heat (rules §7): 12 for the pregens' party, which has a Hauler (Packhorse) |
+| **Storm Clock** | 1 | 0 / 6 | none | **yes** | Storm Clock | the GM's weather clock (rules §7) |
+| **Cairn** | 1 | none | none | no | Cairn (fallen) → Cairn (raised) | change the image when it's raised (rules §5.4) |
+
+A cairn has **no HP and no Guard**: leave both empty. Warmth and the Storm Clock have **no Guard**:
+leave AC empty. None of the three has attacks.

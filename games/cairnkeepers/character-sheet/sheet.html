@@ -111,6 +111,8 @@
   .tag .hint { font-style: italic; font-size: 8pt; color: rgba(31,38,45,0.7); line-height: 1.15; margin: 2px 0 6px 10px; }
   .tag .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 6px 10px; }
   .tag .stats input { font-size: 14pt; text-align: center; }
+  .tag .stats .wide { grid-column: span 2; }
+  .tag .stats .wide input { font-size: 11pt; padding-top: 3px; }
   .tag table { width: calc(100% - 10px); margin-left: 10px; border-collapse: collapse; font-size: 8pt; }
   .tag th { font-family: var(--type); font-weight: normal; text-align: left; font-size: 7.5pt; text-transform: uppercase; }
   .tag td input { font-size: 11pt; border-bottom: 1px solid rgba(110,84,40,0.45); }
@@ -193,11 +195,13 @@
       </div>
       <div class="tag">
         <h3>On the table</h3>
-        <div class="hint">Type these into your token: HP, Max HP, AC (your Guard), and each named attack.</div>
+        <div class="hint">Type these into your token: HP, Max HP, AC (your Guard), its size and art, and each named attack.</div>
         <div class="stats">
           <label class="field"><span class="label">HP</span><input type="text" name="t-hp"></label>
           <label class="field"><span class="label">Max HP</span><input type="text" name="t-max"></label>
           <label class="field"><span class="label">AC</span><input type="text" name="t-ac"></label>
+          <label class="field"><span class="label">Size</span><input type="text" name="t-size"></label>
+          <label class="field wide"><span class="label">Token art</span><input type="text" name="t-art"></label>
         </div>
         <table><thead><tr><th style="width:46%">Named attack</th><th>To hit</th><th>Damage</th></tr></thead><tbody id="named"></tbody></table>
       </div>
@@ -340,7 +344,7 @@
     for (const k of d.knacks ?? []) set(`k-${k.toLowerCase()}`, true);
     for (let i = 1; i <= (Number(d.stones) || 0); i++) set(`stone-${i}`, true);
     (d.arts ?? []).forEach((a, i) => { set(`a${i}-name`, a.name); set(`a${i}-cost`, a.cost); set(`a${i}-hit`, a.hit); set(`a${i}-effect`, a.effect); });
-    set("t-hp", d.hp); set("t-max", d.maxHp); set("t-ac", d.guard);
+    set("t-hp", d.hp); set("t-max", d.maxHp); set("t-ac", d.guard); set("t-size", d.size); set("t-art", d.art);
     (d.named ?? []).forEach((a, i) => { set(`n${i}-name`, a.name); set(`n${i}-hit`, a.hit); set(`n${i}-dmg`, a.dmg); });
   };
 </script>

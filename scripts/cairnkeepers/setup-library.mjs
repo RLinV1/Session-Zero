@@ -30,9 +30,12 @@ if (!email || !password) throw new Error("Set CAIRNKEEPERS_EMAIL and CAIRNKEEPER
 const ROOM = "Cairnkeepers · The Winter Road";
 const CELL = 70;
 
-/** The board pieces from bestiary.md, kept as creatures so each is one click to place. */
+/**
+ * The board pieces from bestiary.md, kept as creatures so each is one click to place. Warmth starts
+ * at 12 because the pregens' party has a Hauler (rules §7, Packhorse).
+ */
 const BOARD_PIECES = [
-  { name: "Warmth", hp: 10, maxHp: 10, color: "#e0612b", art: "warmth" },
+  { name: "Warmth", hp: 12, maxHp: 12, color: "#e0612b", art: "warmth" },
   { name: "Storm Clock", hp: 0, maxHp: 6, color: "#5f7183", art: "storm-clock" },
   { name: "Cairn", hp: null, maxHp: null, color: "#7d7a73", art: "cairn-fallen" },
 ];

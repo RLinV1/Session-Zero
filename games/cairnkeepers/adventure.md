@@ -36,9 +36,8 @@ down under it to bring back the stones, before the pass closes.
 2. **Get the four maps into your library, with their ground.** The easy way is the setup script
    (`setup-library.mjs`), which also makes everything below. By hand:
    - **Library → Maps**, choose each map's `.dd2vtt`. Its grid, rock walls and openings come in.
-   - In the map's editor, **Walls**, **Door** tool: the hospice's openings are doors (the chapel
-     door at (21, 4) **locked**) and windows; every opening in the tarn and the caves is **ice**:
-     make it a **window** and **lock** it, so it can be seen through but never opened.
+   - In the map's editor, **Walls**, **Door** tool: make each opening what *The openings* below
+     says.
    - **Terrain**: paint Difficult and Blocked as the GM key shows.
    - **Fog**: lay a region over each obscuring stand the key outlines in green.
 3. **Make the library creatures** from [the bestiary](bestiary.md) at the back of the rulebook,
@@ -46,8 +45,9 @@ down under it to bring back the stones, before the pass closes.
 4. **Hand out the pregens** (the four ready-made Guides' sheets), or make Guides with the blank sheet.
    Each player's token needs its HP, Max HP, AC (its Guard) and named attacks from the sheet's
    *On the table* card.
-5. **Place the board pieces:** a **Warmth** token (10/10, or 12/12 with a Hauler) off to one side of
-   every map, and a hidden **Storm Clock** (0/6) that only you see.
+5. **Place the board pieces:** a **Warmth** token at **12/12** off to one side of every map (the
+   pregens' party has a Hauler, Tor, so it starts at 12: rules §7, Packhorse), and a hidden **Storm
+   Clock** (0/6) that only you see. Each scene's board setup puts them at (0, 0) and (1, 0).
 
 | Scene | Map | Weather | Fight | Threat |
 |---|---|---|---|---|
@@ -59,6 +59,28 @@ down under it to bring back the stones, before the pass closes.
 Roll the weather at the start of each outdoor scene (rules §5.1); the table above is what to use if
 you'd rather not. Each scene is one watch: Warmth goes down and the Storm Clock goes up as the rules
 say.
+
+**The openings.** Every door and window on each map, by its square:
+
+- **The Switchbacks:** none.
+- **Greywater Tarn:** 18 openings, and every one is **ice**: a **window**, **locked**, so it can be
+  seen through but never opened or passed.
+- **The Hospice of St. Brenn:** 18 openings, all **closed** except the chapel door, which is
+  **locked**.
+  - **10 doors:** dormitory to great hall (8, 4); great hall to chapel (21, 4), **locked**;
+    dormitory to kitchen (4, 9); great hall to stable (21, 11); kitchen to porch (8, 14); great hall
+    to porch, the **porch doors** (14, 13) and (15, 13); porch to courtyard, the **front doors**
+    (14, 17) and (15, 17); stable to courtyard, the **stable door** (27, 17).
+  - **8 windows:** in the great hall (10, 0) and (19, 0); the dormitory (0, 3) and (0, 6); the
+    chapel (29, 3) and (29, 6); the kitchen (0, 12); the stable (29, 13).
+- **The Ice Caves:** 20 openings, and every one is **ice**: a **window**, **locked**.
+
+**Board setup.** Each scene has a table of every token to place at the start: its name on the
+board, its square, whether it starts **hidden**, and its **Art**, the token image's file name
+without `.webp`. A token takes its values from its library creature. The four Guides are the
+pregens; Pell Marrow, Oskar, Jory and Hesk are **Caravan Survivors**; a numbered token (Cairn 1,
+White-coat 2) is its creature with a number. Every token is 1×1 except the Cairn-Taker, which is
+3×3, placed by its top-left square.
 
 ---
 
@@ -79,6 +101,25 @@ smaller ones.
   Raising one is an Action and Lore 8 (rules §5.4).
 - **4 White-coats**, **hidden** and **Invisible**, lying still in the snow at the edge of the **wolf
   pines [6]**: (14, 14), (14, 16), (16, 13) and (19, 13).
+
+**Board setup.**
+
+| Token | Square (column, row) | Hidden | Art |
+|---|---|---|---|
+| Sela Varn | (3, 18) | no | `pathfinder-a` |
+| Tor Breck | (4, 18) | no | `hauler-a` |
+| Wren Ashby | (3, 19) | no | `hunter-b` |
+| Mira Hale | (4, 19) | no | `stonespeaker-b` |
+| Cairn 1 | (4, 17) | no | `cairn-fallen` |
+| Cairn 2 | (13, 11) | no | `cairn-fallen` |
+| Cairn 3 | (17, 6) | no | `cairn-fallen` |
+| White-coat 1 | (14, 14) | **yes** | `white-coat` |
+| White-coat 2 | (14, 16) | **yes** | `white-coat` |
+| White-coat 3 | (16, 13) | **yes** | `white-coat` |
+| White-coat 4 | (19, 13) | **yes** | `white-coat` |
+| Scree Goat | (21, 3) | **yes** | `scree-goat` |
+| Warmth | (0, 0) | no | `warmth` |
+| Storm Clock | (1, 0) | **yes** | `storm-clock` |
 
 ### The ground
 
@@ -136,6 +177,27 @@ then it butts the nearest one toward the edge of the gap.
   (the daughter), Oskar the muleteer, and Jory, eleven.
 - **Three fallen cairns** along the shore trail, at (5, 19), (6, 8) and (26, 4). In Snowfall, a raised
   cairn makes it Haze within 6 squares (rules §5.4).
+
+**Board setup.**
+
+| Token | Square (column, row) | Hidden | Art |
+|---|---|---|---|
+| Sela Varn | (3, 20) | no | `pathfinder-a` |
+| Tor Breck | (4, 20) | no | `hauler-a` |
+| Wren Ashby | (3, 21) | no | `hunter-b` |
+| Mira Hale | (4, 21) | no | `stonespeaker-b` |
+| Rimehand 1 | (12, 10) | no | `rimehand` |
+| Rimehand 2 | (15, 11) | no | `rimehand` |
+| Rimehand 3 | (11, 7) | no | `rimehand` |
+| Rimehand 4 | (11, 8) | no | `rimehand` |
+| Pell Marrow | (16, 10) | no | `survivor` |
+| Oskar | (21, 10) | no | `survivor` |
+| Jory | (19, 12) | no | `survivor` |
+| Cairn 1 | (5, 19) | no | `cairn-fallen` |
+| Cairn 2 | (6, 8) | no | `cairn-fallen` |
+| Cairn 3 | (26, 4) | no | `cairn-fallen` |
+| Warmth | (0, 0) | no | `warmth` |
+| Storm Clock | (1, 0) | **yes** | `storm-clock` |
 
 ### The ground
 
@@ -203,6 +265,22 @@ the **courtyard [8]**, (14–15, 18–21). Doors are closed; the **chapel door [
 - **Brother Aldric**, locked in the **chapel [3]**, at (26, 3).
 - **Hesk**, a Caravan Survivor, **hidden** under a bunk in the **dormitory [2]** at (6, 6).
 
+**Board setup.**
+
+| Token | Square (column, row) | Hidden | Art |
+|---|---|---|---|
+| Sela Varn | (14, 19) | no | `pathfinder-a` |
+| Tor Breck | (15, 19) | no | `hauler-a` |
+| Wren Ashby | (14, 20) | no | `hunter-b` |
+| Mira Hale | (15, 20) | no | `stonespeaker-b` |
+| Kettle Varga | (14, 5) | no | `kettle-varga` |
+| Rimehand 1 | (10, 7) | no | `rimehand` |
+| Rimehand 2 | (19, 7) | no | `rimehand` |
+| Brother Aldric | (26, 3) | no | `brother-aldric` |
+| Hesk | (6, 6) | **yes** | `survivor` |
+| Warmth | (0, 0) | no | `warmth` |
+| Storm Clock | (1, 0) | **yes** | `storm-clock` |
+
 ### Talking
 
 Varga would rather talk. If the Guides knock, she opens the porch door herself and offers terms:
@@ -251,8 +329,9 @@ The chapel key is on Varga. Aldric is seventy and entirely unafraid. Once he's o
 > in it: ice with a cave in it, blue and clear and full of old air. A stream runs across the floor.
 > Somewhere deeper, stone grinds on stone, slowly, like something rearranging furniture.
 
-**On the board.** Line of sight on, **sight range 30 ft** (storm lanterns). The Guides arrive down
-the **cellar way [1]**, at (1–2, 1). Fog over the steam vents in the **ice maze [3]** and the
+**On the board.** Line of sight on, **sight range 30 ft** (storm lanterns). The Guides come down
+the stairs of the **cellar way [1]**, at (1–2, 1), and stand at their foot, (1–2, 2–3), with
+**Brother Aldric** beside them at (3, 2). Fog over the steam vents in the **ice maze [3]** and the
 **den [5]**.
 
 - **2 Ice-crawler Swarms**, **hidden**, *inside* the ice walls of **the maze [3]**: put their tokens on
@@ -262,6 +341,25 @@ the **cellar way [1]**, at (1–2, 1). Fog over the steam vents in the **ice maz
 - **Three fallen cairns** in the den at (21, 10), (25, 7) and (25, 15), and one at the **way out
   [6]**, (27, 19).
 - Its hoard, the **stolen stones**, heaped at (21–22, 6–7).
+
+**Board setup.**
+
+| Token | Square (column, row) | Hidden | Art |
+|---|---|---|---|
+| Sela Varn | (1, 2) | no | `pathfinder-a` |
+| Tor Breck | (2, 2) | no | `hauler-a` |
+| Wren Ashby | (1, 3) | no | `hunter-b` |
+| Mira Hale | (2, 3) | no | `stonespeaker-b` |
+| Brother Aldric | (3, 2) | no | `brother-aldric` |
+| Ice-crawler Swarm 1 | (6, 12) | **yes** | `ice-crawlers` |
+| Ice-crawler Swarm 2 | (10, 16) | **yes** | `ice-crawlers` |
+| The Cairn-Taker | (23, 10), top-left of its 3×3 | no | `cairn-taker` |
+| Cairn 1 | (21, 10) | no | `cairn-fallen` |
+| Cairn 2 | (25, 7) | no | `cairn-fallen` |
+| Cairn 3 | (25, 15) | no | `cairn-fallen` |
+| Cairn 4 | (27, 19) | no | `cairn-fallen` |
+| Warmth | (0, 0) | no | `warmth` |
+| Storm Clock | (1, 0) | **yes** | `storm-clock` |
 
 ### The ground
 
