@@ -128,7 +128,11 @@ describe("bringing an AI from the share modal (FR-PL-08, FR-PL-09)", () => {
 
   it("shows the connector address and copies it", async () => {
     const writeText = await openModal();
-    expect(screen.getByRole("heading", { name: "Play with your AI" })).toBeTruthy();
+    // A dropdown, closed until opened.
+    const section = screen.getByText("Play with your AI", { selector: "summary" }).closest("details")!;
+    expect(section.open).toBe(false);
+    fireEvent.click(screen.getByText("Play with your AI", { selector: "summary" }));
+    expect(section.open).toBe(true);
     expect((screen.getByLabelText("Add this address to your AI app as a connector") as HTMLInputElement).value).toBe(`${location.origin}/mcp`);
     fireEvent.click(screen.getByRole("button", { name: "Copy connector address" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${location.origin}/mcp`));
