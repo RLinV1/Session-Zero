@@ -50,7 +50,7 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     TokenHiddenSet: [{ type: "TokenHiddenSet", tokenId: token.id, hidden: true, previous: false }, "Mara hid Goblin"],
     TokenStatsSet: [{ type: "TokenStatsSet", tokenId: token.id, stats: { hp: 4, maxHp: 10, ac: 12 }, previous: token.stats }, "Mara updated Goblin's stats: HP 4/10, AC 12"],
     TokenConditionsSet: [{ type: "TokenConditionsSet", tokenId: token.id, conditions: ["prone"], previous: [] }, "Mara set Goblin's conditions to prone"],
-    TokenAttacksSet: [{ type: "TokenAttacksSet", tokenId: token.id, attacks: [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null }, { name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 1 } }], previous: [] }, "Mara set Goblin's attacks to Scimitar, Bite"],
+    TokenAttacksSet: [{ type: "TokenAttacksSet", tokenId: token.id, attacks: [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null }, { name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } }], previous: [] }, "Mara set Goblin's attacks to Scimitar, Bite"],
     InitiativeStarted: [{ type: "InitiativeStarted", initiative, previous: null }, "Mara started initiative: Goblin"],
     InitiativeAdvanced: [{ type: "InitiativeAdvanced", initiative: { ...initiative, round: 2 }, previous: initiative }, "Mara advanced to round 2, Goblin's turn"],
     InitiativeEnded: [{ type: "InitiativeEnded", previous: initiative }, "Mara ended initiative"],

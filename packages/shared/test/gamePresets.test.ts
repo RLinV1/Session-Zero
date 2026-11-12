@@ -121,7 +121,7 @@ describe("Server enforces a preset's features (KAN-63, FR-GM-15)", () => {
       { type: "token.setStats", tokenId: "g1", stats: { hp: 5, maxHp: 7, ac: 12 } },
       { type: "token.create", name: "Orc", position: { x: 35, y: 105 }, conditions: ["prone"] },
       { type: "token.create", name: "Orc", position: { x: 35, y: 105 }, stats: { hp: 15, maxHp: 15, ac: 13 } },
-      { type: "token.create", name: "Orc", position: { x: 35, y: 105 }, attacks: [{ name: "Axe", toHit: null, damage: { count: 1, sides: 12, modifier: 3 } }] },
+      { type: "token.create", name: "Orc", position: { x: 35, y: 105 }, attacks: [{ name: "Axe", toHit: null, damage: { terms: [{ count: 1, sides: 12 }], modifier: 3 } }] },
     ] satisfies CommandInput[];
     for (const input of refused) expect(attempt(free, gm, input)).toMatchObject({ ok: false, code: "invalid" });
   });
@@ -150,7 +150,7 @@ describe("Templates from another game (KAN-63)", () => {
         g1: {
           id: "g1", name: "Goblin", position: { x: 35, y: 35 }, size: 1, rotation: 0, color: "#336699", imageUrl: null,
           ownerIds: [], hidden: false, stats: { hp: 7, maxHp: 7, ac: 15 }, conditions: ["poisoned" as const],
-          attacks: [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null }],
+          attacks: [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null }],
         },
       },
       templates: {},

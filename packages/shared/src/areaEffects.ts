@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, RolledDice } from "./dice";
+import { MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MAX_GROUP_ROLL_TOKENS, RolledDice } from "./dice";
 
 /**
  * Area effects (ADR 0046): the GM rolls one formula for every token an effect catches, calls a
@@ -23,10 +23,10 @@ export const DamageMode = z.enum(["single", "perTarget"]);
 export type DamageMode = z.infer<typeof DamageMode>;
 
 export const AreaEffectDamage = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("single"), expression: z.string().min(1).max(32), byParticipantId: EntityId, ...RolledDice.shape }),
+  z.object({ mode: z.literal("single"), expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH), byParticipantId: EntityId, ...RolledDice.shape }),
   z.object({
     mode: z.literal("perTarget"),
-    expression: z.string().min(1).max(32),
+    expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
     byParticipantId: EntityId,
     /** One per target that still existed when rolled; a player's copy holds only the targets they can see. */
     results: z.array(z.object({ tokenId: EntityId, ...RolledDice.shape })).max(MAX_GROUP_ROLL_TOKENS),
@@ -38,7 +38,7 @@ export const AreaEffect = z.object({
   id: EntityId,
   label: z.string().min(1).max(MAX_ATTACK_LABEL).nullable(),
   /** The formula rolled for every target when the effect started. */
-  expression: z.string().min(1).max(32),
+  expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
   byParticipantId: EntityId,
   targets: z.array(AreaEffectTarget).max(MAX_GROUP_ROLL_TOKENS),
   /** Who is to roll the damage; null until the GM calls someone (themselves included). */

@@ -5,8 +5,6 @@ import {
   attackHeadline,
   rollHeadline,
   attackSectionChange,
-  clampCount,
-  clampModifier,
   damageAmount,
   isSettingsRecord,
   kindOf,
@@ -17,6 +15,7 @@ import {
   presetForRoll,
   presetRollLabel,
   presetSummary,
+  readAttackSettings,
   shouldPingTarget,
   targetsByDistance,
 } from "../src/panels/attackRoll";
@@ -28,34 +27,36 @@ const token = (id: string, name: string, x: number, y: number, hidden = false): 
 
 describe("attack section helpers (attack-targeting, FR-TAC-09)", () => {
   it("builds NdX±M for every die type", () => {
-    expect(attackExpression({ count: 1, sides: 20, modifier: 0 })).toBe("1d20");
-    expect(attackExpression({ count: 1, sides: 20, modifier: 5 })).toBe("1d20+5");
-    expect(attackExpression({ count: 2, sides: 6, modifier: -1 })).toBe("2d6-1");
-    expect(attackExpression({ count: 1, sides: 100, modifier: 0 })).toBe("1d100");
+    expect(attackExpression({ terms: [{ count: 1, sides: 20 }], modifier: 0 })).toBe("1d20");
+    expect(attackExpression({ terms: [{ count: 1, sides: 20 }], modifier: 5 })).toBe("1d20+5");
+    expect(attackExpression({ terms: [{ count: 2, sides: 6 }], modifier: -1 })).toBe("2d6-1");
+    expect(attackExpression({ terms: [{ count: 1, sides: 100 }], modifier: 0 })).toBe("1d100");
   });
 
-  it("keeps counts and modifiers within the picker's range", () => {
-    expect(clampCount(0)).toBe(1);
-    expect(clampCount(50)).toBe(20);
-    expect(clampModifier(250)).toBe(99);
-    expect(clampModifier(-250)).toBe(-99);
-    expect(clampModifier(3.7)).toBe(3);
-    expect(clampModifier(Number.NaN)).toBe(0);
-    expect(attackExpression({ count: 99, sides: 8, modifier: 500 })).toBe("20d8+99");
+  it("builds mixed dice in the order added (dice-pool)", () => {
+    expect(attackExpression({ terms: [{ count: 2, sides: 6 }, { count: 1, sides: 4 }], modifier: 3 })).toBe("2d6+1d4+3");
   });
 
   it("accepts only well-formed stored settings", () => {
-    const good = { count: 1, sides: 20, modifier: 5, label: "Longsword" };
+    const good = { terms: [{ count: 1, sides: 20 }, { count: 1, sides: 4 }], modifier: 5, label: "Longsword" };
     expect(isSettingsRecord({ "id-1": good })).toBe(true);
-    expect(isSettingsRecord({ "id-1": { ...good, sides: 7 } })).toBe(false);
-    expect(isSettingsRecord({ "id-1": { ...good, count: 0 } })).toBe(false);
+    expect(isSettingsRecord({ "id-1": { ...good, terms: [{ count: 1, sides: 7 }] } })).toBe(false);
+    expect(isSettingsRecord({ "id-1": { ...good, terms: [{ count: 0, sides: 20 }] } })).toBe(false);
+    expect(isSettingsRecord({ "id-1": { ...good, terms: [{ count: 1, sides: 6 }, { count: 1, sides: 6 }] } })).toBe(false);
+    expect(isSettingsRecord({ "id-1": { ...good, terms: [{ count: 15, sides: 6 }, { count: 6, sides: 8 }] } })).toBe(false);
     expect(isSettingsRecord({ "id-1": 5 })).toBe(false);
     expect(isSettingsRecord([good])).toBe(false);
   });
 
-  it("reads stored settings from before roll types as to hit (ADR 0011)", () => {
+  it("reads settings stored before mixed dice as one die type (dice-pool)", () => {
     const old = { count: 1, sides: 20, modifier: 5, label: "Longsword" };
     expect(isSettingsRecord({ "id-1": old })).toBe(true);
+    expect(readAttackSettings(old)).toEqual({ terms: [{ count: 1, sides: 20 }], modifier: 5, label: "Longsword" });
+    expect(readAttackSettings({ ...old, sides: 7 })).toBeNull();
+  });
+
+  it("reads stored settings from before roll types as to hit (ADR 0011)", () => {
+    const old = readAttackSettings({ count: 1, sides: 20, modifier: 5, label: "Longsword" })!;
     expect(isSettingsRecord({ "id-1": { ...old, kind: "damage" } })).toBe(true);
     expect(isSettingsRecord({ "id-1": { ...old, kind: "heal" } })).toBe(false);
     expect(kindOf(old)).toBe("toHit");
@@ -127,7 +128,7 @@ describe("GM rulings list (attack-rulings, FR-TAC-09)", () => {
 });
 
 describe("named attacks (attack-ux-polish, FR-TAC-09)", () => {
-  const d = (count: number, sides: number, modifier: number) => ({ count, sides, modifier });
+  const d = (count: number, sides: number, modifier: number) => ({ terms: [{ count, sides }], modifier });
   const longsword = { name: "Longsword", toHit: d(1, 20, 5), damage: d(1, 8, 3) };
 
   it("are the token's own, shared attacks, or none (shared-token-attacks, ADR 0034)", () => {

@@ -5,27 +5,40 @@ import type { Locale } from "./i18n/core";
 import { attackLabelZhTW, attackOutcomeZhTW, attackPartiesZhTW } from "./i18n/sentences.zh-TW";
 
 /**
- * Dice expressions of the form `NdX + M` (FR-TAC-09).
+ * Dice formulas: one or more die terms and a modifier, `2d6+1d4+3` (FR-TAC-09, ADR 0061).
  *
  * Deliberately small: the tabletop rolls people actually make in an encounter are
- * `1d20+5`, `2d6`, `4d6-1`. Anything larger is a calculator, not a VTT feature.
+ * `1d20+5`, `2d6+1d4+3`, `4d6-1`. Anything larger is a calculator, not a VTT feature.
  *
- * Parsing is pure and lives here so the client can validate the input box before
- * sending, while the server re-parses and rolls — the client's parse is a hint, the
- * server's is authoritative (FR-GM-15).
+ * Parsing is pure and lives here so the client can check a formula before sending,
+ * while the server re-parses and rolls — the client's parse is a hint, the server's
+ * is authoritative (FR-GM-15).
  */
 
+/** Most dice in one formula, across all its terms. */
 export const MAX_DICE = 20;
 export const MAX_SIDES = 1000;
+/** Longest formula text a roll, command or drop carries (ADR 0061). */
+export const MAX_EXPRESSION_LENGTH = 64;
 
-export const DiceExpression = z.object({
-  /** Number of dice; 1 when the expression omits it (`d20`). */
+/** One die term, `2d6`. */
+export const DiceTerm = z.object({
+  /** Number of dice; 1 when the formula omits it (`d20`). */
   count: z.number().int().min(1).max(MAX_DICE),
   /** Faces per die. */
   sides: z.number().int().min(2).max(MAX_SIDES),
+});
+export type DiceTerm = z.infer<typeof DiceTerm>;
+
+/** Dice summed across a formula's terms. */
+export const diceCount = (terms: readonly Pick<DiceTerm, "count">[]) => terms.reduce((n, t) => n + t.count, 0);
+
+export const DiceExpression = z.object({
+  /** In the order written; rolled in this order, so a roll's dice line up with them. */
+  terms: z.array(DiceTerm).min(1).max(MAX_DICE),
   /** Flat modifier, may be negative or zero. */
   modifier: z.number().int().min(-999).max(999),
-});
+}).refine((e) => diceCount(e.terms) <= MAX_DICE, { message: `At most ${MAX_DICE} dice` });
 export type DiceExpression = z.infer<typeof DiceExpression>;
 
 export const DiceVisibility = z.enum(["public", "gm"]);
@@ -74,7 +87,7 @@ export type AttackContext = z.infer<typeof AttackContext>;
 export const DiceRoll = z.object({
   id: z.string().min(1).max(64),
   /** The expression as typed, echoed back so the log reads the way the roller wrote it. */
-  expression: z.string().min(1).max(32),
+  expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
   /** Who rolled. */
   byParticipantId: z.string().min(1).max(64),
   /** Individual die results, in roll order. */
@@ -120,7 +133,7 @@ export type GroupRollEntry = z.infer<typeof GroupRollEntry>;
 export const GroupRoll = z.object({
   kind: z.literal("group"),
   id: z.string().min(1).max(64),
-  expression: z.string().min(1).max(32),
+  expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
   label: z.string().min(1).max(MAX_ATTACK_LABEL).nullable(),
   byParticipantId: z.string().min(1).max(64),
   visibility: DiceVisibility,
@@ -143,7 +156,10 @@ export const diceRollsOf = (rolls: readonly LoggedRoll[]): DiceRoll[] => rolls.f
 export const findDiceRoll = (rolls: readonly LoggedRoll[], id: string): DiceRoll | undefined =>
   rolls.find((r): r is DiceRoll => !isGroupRoll(r) && r.id === id);
 
-const PATTERN = /^\s*(\d*)\s*d\s*(\d+)\s*(?:([+-])\s*(\d+))?\s*$/i;
+/** A die term at the start of the rest of the formula: `2d6`, `d20`. */
+const TERM = /^(\d*)d(\d+)/;
+/** The modifier, which ends the formula: `+3`, `-1`. */
+const MODIFIER = /^([+-])(\d+)$/;
 
 export type ParseResult =
   | { ok: true; expression: DiceExpression }
@@ -152,37 +168,86 @@ export type ParseResult =
 
 const parseFailure = (text: MessageRef): ParseResult => ({ ok: false, message: englishText(text), text });
 
-/** `NdX`, `NdX+M`, `NdX-M`, or `dX`. Whitespace and case are ignored. */
+/**
+ * One or more die terms joined by `+`, then at most one `+M` or `-M`: `2d6+1d4+3`, `d20`,
+ * `1d8-1`. Whitespace and case are ignored. A repeated die type (`1d6+1d6`) stays two terms.
+ */
 export function parseDiceExpression(input: string): ParseResult {
-  const match = PATTERN.exec(input);
-  if (!match) return parseFailure(sharedMsg("reject.diceSyntax"));
-
-  const count = match[1] === "" ? 1 : Number(match[1]);
-  const sides = Number(match[2]);
-  const modifier = match[3] ? Number(match[4]) * (match[3] === "-" ? -1 : 1) : 0;
-
-  if (count < 1 || count > MAX_DICE) return parseFailure(sharedMsg("reject.diceCount", { max: MAX_DICE }));
-  if (sides < 2 || sides > MAX_SIDES) return parseFailure(sharedMsg("reject.diceSides", { max: MAX_SIDES }));
-
-  const parsed = DiceExpression.safeParse({ count, sides, modifier });
+  let rest = input.replace(/\s+/g, "").toLowerCase();
+  const terms: DiceTerm[] = [];
+  let modifier = 0;
+  for (;;) {
+    const term = TERM.exec(rest);
+    if (!term) return parseFailure(sharedMsg("reject.diceSyntax"));
+    const count = term[1] === "" ? 1 : Number(term[1]);
+    const sides = Number(term[2]);
+    if (count < 1 || count > MAX_DICE) return parseFailure(sharedMsg("reject.diceCount", { max: MAX_DICE }));
+    if (sides < 2 || sides > MAX_SIDES) return parseFailure(sharedMsg("reject.diceSides", { max: MAX_SIDES }));
+    terms.push({ count, sides });
+    rest = rest.slice(term[0].length);
+    if (rest === "") break;
+    // `+` then a die term continues the dice; anything else must be the closing modifier.
+    if (rest.startsWith("+") && TERM.test(rest.slice(1))) {
+      rest = rest.slice(1);
+      continue;
+    }
+    const mod = MODIFIER.exec(rest);
+    if (!mod) return parseFailure(sharedMsg("reject.diceSyntax"));
+    modifier = Number(mod[2]) * (mod[1] === "-" ? -1 : 1);
+    break;
+  }
+  if (diceCount(terms) > MAX_DICE) return parseFailure(sharedMsg("reject.diceCount", { max: MAX_DICE }));
+  const parsed = DiceExpression.safeParse({ terms, modifier });
   if (!parsed.success) return parseFailure(sharedMsg("reject.diceOutOfRange"));
   return { ok: true, expression: parsed.data };
 }
 
 /**
- * Rolls an expression. `random` must return a float in [0, 1) — it is injected rather than
- * taken from `Math.random` so `decide` stays deterministic and testable (CLAUDE.md §2).
+ * Rolls an expression, term by term in order. `random` must return a float in [0, 1) — it is
+ * injected rather than taken from `Math.random` so `decide` stays deterministic and testable
+ * (CLAUDE.md §2).
  */
 export function rollDice(expression: DiceExpression, random: () => number): { dice: number[]; total: number } {
-  const dice = Array.from({ length: expression.count }, () => 1 + Math.floor(random() * expression.sides));
+  const dice = expression.terms.flatMap((t) => Array.from({ length: t.count }, () => 1 + Math.floor(random() * t.sides)));
   const total = dice.reduce((sum, d) => sum + d, 0) + expression.modifier;
   return { dice, total };
 }
 
-/** Canonical text form, for the roll log. */
-export function formatExpression(e: DiceExpression): string {
-  const mod = e.modifier === 0 ? "" : e.modifier > 0 ? `+${e.modifier}` : `${e.modifier}`;
-  return `${e.count}d${e.sides}${mod}`;
+/** The modifier as it is written after the dice: "+3", "-1", or nothing for 0. */
+export const formatModifier = (modifier: number) => (modifier === 0 ? "" : modifier > 0 ? `+${modifier}` : `${modifier}`);
+
+/** Canonical text form, for the roll log: `2d6+1d4+3`. */
+export function formatExpression(e: Pick<DiceExpression, "terms" | "modifier">): string {
+  return e.terms.map((t) => `${t.count}d${t.sides}`).join("+") + formatModifier(e.modifier);
+}
+
+/** A roll's dice for one term of its formula: its die type and each die's result. */
+export interface DiceGroup {
+  count: number;
+  sides: number;
+  values: number[];
+}
+
+/**
+ * A roll's dice grouped by its formula's terms (ADR 0061): `rollDice` rolls terms in order, so
+ * the first `count₀` dice are the first term's, and so on. Null when the formula doesn't parse
+ * or doesn't account for exactly these dice (corrupted data); callers then show the plain dice.
+ */
+export function diceByTerm(expression: string, dice: readonly number[]): { groups: DiceGroup[]; modifier: number } | null {
+  const parsed = parseDiceExpression(expression);
+  if (!parsed.ok || diceCount(parsed.expression.terms) !== dice.length) return null;
+  let at = 0;
+  const groups = parsed.expression.terms.map((t) => {
+    const values = dice.slice(at, at + t.count);
+    at += t.count;
+    return { count: t.count, sides: t.sides, values };
+  });
+  return { groups, modifier: parsed.expression.modifier };
+}
+
+/** Each die's number of sides, in roll order, from the roll's formula; null as for `diceByTerm`. */
+export function sidesOfDice(expression: string, dice: readonly number[]): number[] | null {
+  return diceByTerm(expression, dice)?.groups.flatMap((g) => g.values.map(() => g.sides)) ?? null;
 }
 
 /** "Aria → Goblin 2"; a side blanked for this viewer reads "Unknown" (ADR 0010). */

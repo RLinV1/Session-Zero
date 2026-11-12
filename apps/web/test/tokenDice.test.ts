@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { layoutDice } from "../src/ui/Die3D";
 import { emptyRoomState, type AreaEffect, type DomainEvent, type Participant, type RoomState, type Token } from "@vtt/shared";
 import { addDrop, centroid, damageRollId, dropFor, MAX_DROP_DICE, savesRollId, type BoardDrop } from "../src/board/tokenDice";
 
@@ -27,8 +28,19 @@ describe("Dice dropped onto tokens (ADR 0046)", () => {
       { tokenId: "gone", name: "gone", hidden: false, dice: [2], total: 2 },
     ] } };
     const drop = dropFor(event, room(), player)!;
-    expect(drop).toMatchObject({ rollId: "g", sides: 20, gmOnly: false, totalsOnly: false });
+    expect(drop).toMatchObject({ rollId: "g", sides: [20], gmOnly: false, totalsOnly: false });
     expect(drop.groups).toEqual([{ key: "a", at: { x: 35, y: 35 }, dice: [7], total: 7 }]);
+  });
+
+  it("gives each die of a mixed roll its own shape (dice-pool)", () => {
+    const event: DomainEvent = { type: "GroupRolled", roll: { kind: "group", id: "g", expression: "1d20+1d4", label: null, byParticipantId: "gm", visibility: "public", entries: [
+      { tokenId: "a", name: "a", hidden: false, dice: [12, 3], total: 15 },
+    ] } };
+    const drop = dropFor(event, room(), player)!;
+    expect(drop.sides).toEqual([20, 4]);
+    const dice = layoutDice({ id: "g:a", sides: drop.sides, dice: drop.groups[0]!.dice }, 40);
+    expect(dice.map((d) => d.body)).toEqual([layoutDice({ id: "x", sides: 20, dice: [12] }, 40)[0]!.body, layoutDice({ id: "y", sides: 4, dice: [3] }, 40)[0]!.body]);
+    expect(dice[0]!.body).not.toBe(dice[1]!.body);
   });
 
   it("drops the saves for the GM only", () => {

@@ -265,8 +265,9 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
             {lockError && <p role="alert" className="error small">{lockError}</p>}
           </div>
           {link && (
-            <section className="share-actions" aria-labelledby={`${connectorFieldId}-title`}>
-              <h3 id={`${connectorFieldId}-title`} className="share-ai-title">{t("share.ai.title")}</h3>
+            // Closed by default: most people share the link, and the AI steps are long (FR-PL-08).
+            <details className="share-actions share-ai">
+              <summary id={`${connectorFieldId}-title`} className="share-ai-title">{t("share.ai.title")}</summary>
               <p className="muted share-hint">{t("share.ai.lead")}</p>
               <ol className="share-ai-steps">
                 <li>
@@ -319,7 +320,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                   <p className="muted share-hint">{t("share.ai.giveTokenHint")}</p>
                 </li>
               </ol>
-            </section>
+            </details>
           )}
           <span className="sr-only" role="status">
             {status}

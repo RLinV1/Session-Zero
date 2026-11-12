@@ -97,7 +97,10 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
   const nameOf = (id: string) => tokens[id]?.name ?? entry.tokenNames[id] ?? "一枚棋子";
   const rollOf = (id: string) => entry.rollLabels[id] ?? "一次擲骰";
   const applied = entry.events.find((e) => e.type === "RollDamageApplied");
-  if (applied) return { verb: cjk`${rollOf(applied.rollId)}的傷害`, noun: cjk`${rollOf(applied.rollId)}的${applied.amount}點傷害` };
+  if (applied) {
+    if (applied.amount < 0) return { verb: cjk`${rollOf(applied.rollId)}的治療`, noun: cjk`依${rollOf(applied.rollId)}治療的${-applied.amount}點` };
+    return { verb: cjk`${rollOf(applied.rollId)}的傷害`, noun: cjk`${rollOf(applied.rollId)}的${applied.amount}點傷害` };
+  }
   const nuked = entry.events.find((e) => e.type === "MapNuked");
   if (nuked) return { verb: cjk`核彈（${nuked.amount}）`, noun: cjk`${nuked.amount}點傷害的核彈` };
   const resolved = entry.events.find((e) => e.type === "AreaEffectResolved");
@@ -318,7 +321,12 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     }
     case "RollDamageApplied": {
       const roll = findRoll(event.rollId);
-      return cjk`${a}套用了${rollLabel(roll, "先前擲骰")}產生的${event.amount}點傷害` + gmOnly(roll?.visibility === "gm");
+      const gm = gmOnly(roll?.visibility === "gm");
+      // The GM's chosen amount (ADR 0062): a heal, or a part of the rolled damage.
+      if (event.amount < 0) return cjk`${a}依${rollLabel(roll, "先前擲骰")}治療了${-event.amount}點` + gm;
+      const rolled = roll ? Math.max(0, roll.total) : event.amount;
+      if (event.amount !== rolled) return cjk`${a}套用了${rollLabel(roll, "先前擲骰")}產生的${rolled}點傷害中的${event.amount}點` + gm;
+      return cjk`${a}套用了${rollLabel(roll, "先前擲骰")}產生的${event.amount}點傷害` + gm;
     }
     case "RollsDismissed": return cjk`${a}略過了裁定清單中的${event.rollIds.length}次攻擊檢定`;
     case "RollsRestored": return cjk`${a}將${event.rollIds.length}次攻擊檢定放回裁定清單`;
@@ -336,6 +344,7 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     case "MapNukeUndone": return cjk`${a}復原了核彈爆炸（${event.amount}點傷害）`;
     case "RollDamageUnapplied": {
       const roll = findRoll(event.rollId);
+      if (event.amount < 0) return cjk`${a}復原了依${rollLabel(roll, "先前擲骰")}治療的${-event.amount}點` + gmOnly(roll?.visibility === "gm");
       return cjk`${a}復原了${rollLabel(roll, "先前擲骰")}套用的${event.amount}點傷害` + gmOnly(roll?.visibility === "gm");
     }
     case "ChatMessageSent": {

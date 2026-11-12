@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import type { Participant, RoomState } from "@vtt/shared";
+import { useClientSettings } from "./clientSettings";
 import { t } from "../i18n/locale";
 
 /**
- * The token a player's banner names: the active token, when the viewer is a player who owns it.
- * Null for the GM, who runs every other turn anyway, and when a token hidden from the player has
- * the turn (their order then has no active entry) (turn-notice, ADR 0060).
+ * The token a banner names: the active token, when the viewer is a player who owns it. For the
+ * GM, every turn's token when they chose "Turn banner on every turn" in Settings, and none
+ * otherwise. Null when a token hidden from a player has the turn (their order then has no active
+ * entry) (turn-notice, ADR 0060).
  */
-export function turnBannerToken(state: RoomState, you: Participant): { id: string; name: string; round: number } | null {
+export function turnBannerToken(state: RoomState, you: Participant, gmEveryTurn = false): { id: string; name: string; round: number } | null {
   const init = state.initiative;
-  if (you.role === "gm" || !init) return null;
+  if (!init || (you.role === "gm" && !gmEveryTurn)) return null;
   const activeId = init.order[init.activeIndex];
   const token = activeId === undefined ? undefined : state.tokens[activeId];
-  return token && token.ownerIds.includes(you.id) ? { id: token.id, name: token.name, round: init.round } : null;
+  if (!token) return null;
+  return you.role === "gm" || token.ownerIds.includes(you.id) ? { id: token.id, name: token.name, round: init.round } : null;
 }
 
 /** What ending a turn answered: nothing to show, or the server's reason it refused. */
@@ -30,7 +33,8 @@ export function TurnBanner({ state, you, onFocusToken, onEndTurn }: {
   /** Ends the named token's turn; absent where the viewer can't act, e.g. a replay or a preview. */
   onEndTurn?: (tokenId: string) => Promise<EndTurnResult> | EndTurnResult;
 }) {
-  const turn = turnBannerToken(state, you);
+  const { gmTurnBanner } = useClientSettings();
+  const turn = turnBannerToken(state, you, gmTurnBanner);
   const key = turn ? `${turn.round}:${turn.id}` : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

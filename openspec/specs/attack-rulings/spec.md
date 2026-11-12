@@ -46,38 +46,67 @@ A player's attempt SHALL be refused as forbidden. Each ruling SHALL be recorded 
 - **THEN** the server refuses it as invalid
 
 ### Requirement: GM applies damage
-Only the GM SHALL be able to apply a damage roll to its target. Applying SHALL lower the target's current HP by the roll's total. A negative total SHALL count as zero, and the result SHALL not go below the lowest HP a token can hold. The server SHALL compute the new HP from the target's HP at the moment it applies the roll. It SHALL refuse the application when:
+Only the GM SHALL be able to resolve a damage roll against its target. Resolving SHALL apply an amount the GM chooses and SHALL add any conditions the GM chooses, in one action:
+- The amount SHALL be a whole number from −9999 to 9999. A positive amount SHALL lower the target's current HP, and the result SHALL NOT go below the lowest HP a token can hold. A negative amount SHALL heal, and healing SHALL NOT raise HP above the target's Max HP when it has one, nor lower HP. Zero SHALL leave HP unchanged.
+- A resolve that does not state an amount SHALL apply the roll's total, with a negative total counting as zero, exactly as before this change.
+- Conditions SHALL be added to the target's existing conditions and SHALL never remove one. Adding a condition the target already has SHALL change nothing for that condition. A token SHALL hold at most 12 conditions.
+
+The server SHALL compute the new HP from the target's HP at the moment it resolves the roll. It SHALL refuse the resolve when:
 - the roll is not a damage roll (invalid);
 - it has already been applied (invalid);
 - it is no longer in the recent roll log (not found);
+- it was made on another scene (invalid);
 - its target no longer exists (not found);
-- its target does not track HP (invalid).
+- its target does not track HP (invalid);
+- the amount is outside the bounds above (invalid);
+- it adds conditions while the room's game preset has conditions off (refused as for any other preset-disabled action);
+- it would give the target more than 12 conditions (invalid).
 
-A player's attempt SHALL be refused as forbidden. Applying SHALL record the HP change, carrying the previous stats, whenever HP actually changes, and SHALL always record that the roll was applied. The system SHALL NOT apply damage by itself.
+A player's attempt SHALL be refused as forbidden. Resolving SHALL record the HP change, carrying the previous stats, whenever HP actually changes; SHALL record the condition change, carrying the previous conditions, whenever conditions actually change; and SHALL always record that the roll was applied, with the amount applied. The system SHALL NOT apply damage by itself. The GM SHALL be able to undo a resolve from the activity log as one action, restoring HP, conditions, and the roll's unapplied state together.
 
 #### Scenario: Apply once
-- **WHEN** Goblin has 15 HP, Aria's owner rolls 7 damage against it, and the GM applies it
+- **WHEN** Goblin has 15 HP, Aria's owner rolls 7 damage against it, and the GM resolves it leaving the amount at 7
 - **THEN** Goblin has 8 HP, and the roll shows as applied to everyone who can see it
 
+#### Scenario: Half damage
+- **WHEN** Goblin has 15 HP, the damage roll is 9, and the GM presses Half and confirms
+- **THEN** Goblin has 11 HP (9 halved, rounded down, is 4) and the roll shows as applied
+
+#### Scenario: No damage, with a condition
+- **WHEN** the damage roll is 6, and the GM presses None, checks Poisoned, and confirms
+- **THEN** Goblin's HP is unchanged, Goblin gains Poisoned, and the roll shows as applied
+
+#### Scenario: Older client without an amount
+- **WHEN** a client sends a resolve for a 7-damage roll without an amount
+- **THEN** 7 is applied, as before this change
+
 #### Scenario: Double apply is refused
-- **WHEN** the GM applies the same damage roll a second time, e.g. from a second tap or a stale screen
-- **THEN** the server refuses it as invalid and Goblin's HP is unchanged
+- **WHEN** the GM resolves the same damage roll a second time, e.g. from a second tap or a stale screen
+- **THEN** the server refuses it as invalid and Goblin's HP and conditions are unchanged
 
 #### Scenario: Target without HP
-- **WHEN** the GM applies a damage roll whose target has no HP set
+- **WHEN** the GM resolves a damage roll whose target has no HP set
 - **THEN** the server refuses it as invalid
+
+#### Scenario: Conditions off
+- **WHEN** the room's preset has conditions off and a resolve adds Prone
+- **THEN** the server refuses it and nothing changes
+
+#### Scenario: Undo a resolve
+- **WHEN** the GM resolves 4 damage and Prone on Goblin, then undoes that action from the activity log
+- **THEN** Goblin's HP and conditions are back to what they were, and the roll is unapplied and back in the Rulings list
 
 ### Requirement: GM Rulings list
 The GM's Play tab SHALL show a **Rulings** list, and players SHALL NOT be shown it. The list SHALL show, newest first, the attack rolls in the recent roll log that still need the GM and that the GM hasn't ignored, and the open Area Effect, if there is one:
-- to-hit rolls without a verdict, each with the target's current AC and **Hit** and **Miss** controls;
-- damage rolls not yet applied whose target still tracks HP, each with the target's current HP and an **Apply −N** control, where N is the damage that would be applied;
+- to-hit rolls without a verdict, each with the target's current AC and **Hit** and **Miss** controls. When the target has an AC, the control the roll points to SHALL be shown in the main button colour: **Hit** when the total is equal to or greater than the AC, **Miss** otherwise. This is only a hint: nothing is ruled until the GM chooses, and with no AC neither control is marked;
+- damage rolls not yet applied whose target still tracks HP, each with the target's current HP, the rolled damage, an **Apply −N** control that applies the full damage at once (N being the roll's total, a negative total counting as 0), and a **Resolve** control that opens the damage resolve dialog for that roll;
 - the open Area Effect, at every stage until it is resolved or closed, with its label, its number of targets, its stage, and the controls for that stage:
   - **Call**, **Resolve** and **Skip** after its group roll;
   - "Waiting on <caller>", **Reassign** and **Take over** while a player holds the call;
   - **Roll damage** while the GM holds the call;
   - **Resolve** and **Skip** once the damage is rolled.
 
-**Resolve** in this row SHALL open the resolve dialog, and SHALL have the same appearance as **Skip** until damage has been rolled and the same appearance as **Call** afterwards. These controls SHALL be full-size buttons. A roll SHALL leave the list once it is ruled, applied or ignored. An Area Effect SHALL leave the list once it is resolved or closed. The GM SHALL also be able to set, change or clear a verdict from the roll log in the Dice tab.
+**Resolve** in the Area Effect row SHALL open the area effect's resolve dialog, and SHALL have the same appearance as **Skip** until damage has been rolled and the same appearance as **Call** afterwards. These controls SHALL be full-size buttons. A roll SHALL leave the list once it is ruled, applied or ignored. An Area Effect SHALL leave the list once it is resolved or closed. The GM SHALL also be able to set, change or clear a verdict from the roll log in the Dice tab.
 
 **Ignore and Clear all.** Each attack roll in the list SHALL have an **Ignore** control. While the list shows at least one attack roll, a **Clear all** control SHALL show at the top of the list. Clear all SHALL ignore every attack roll shown, and only those; a roll that arrives after the GM's list last updated SHALL stay. Neither control SHALL apply to the Area Effect row, which keeps its own controls. Only the GM SHALL be able to ignore rolls; a player's attempt SHALL be refused as forbidden. Ignoring a roll that isn't in the recent roll log SHALL be refused as not found, and ignoring one that is ruled, applied, already ignored, or not an attack roll SHALL be refused as invalid. When Clear all names several rolls, any that were ruled, applied or ignored in the meantime SHALL be skipped, and the request SHALL be refused only if none of its rolls can be ignored. Ignoring SHALL NOT change the roll's verdict, its total, or any token. An ignored roll SHALL stay in the roll log, where the GM can still rule on it. Ignoring SHALL be recorded as a new event, and the GM SHALL be able to undo it, which puts the rolls back in the list. Players SHALL NOT learn that a roll was ignored.
 
@@ -89,6 +118,18 @@ While any rolls or an Area Effect are pending:
 - **WHEN** Aria's owner rolls 17 to hit Goblin, whose AC is 13
 - **THEN** the GM's Rulings list shows "Aria → Goblin · 17" with "AC 13" and Hit and Miss controls
 
+#### Scenario: Pending damage shows Resolve
+- **WHEN** Aria's owner rolls 7 damage against Goblin, who has 15 HP
+- **THEN** the GM's Rulings list shows the roll with Goblin's HP, the damage 7, an Apply −7 control and a Resolve control
+
+#### Scenario: Quick apply
+- **WHEN** the GM presses Apply −7 on that roll
+- **THEN** Goblin loses 7 HP at once, no dialog opens, and the roll leaves the list
+
+#### Scenario: AC points to a verdict
+- **WHEN** Aria's owner rolls 13 to hit Goblin, whose AC is 13
+- **THEN** Hit is shown in the main button colour, Miss is not, and the roll stays unruled until the GM chooses one
+
 #### Scenario: Ruled roll leaves the list
 - **WHEN** the GM marks that roll Hit
 - **THEN** it leaves the Rulings list and shows as Hit in the roll log
@@ -99,7 +140,7 @@ While any rolls or an Area Effect are pending:
 
 #### Scenario: Players have no Rulings list
 - **WHEN** a player opens the Play tab
-- **THEN** there is no Rulings list, no pending count, and no ruling, apply, ignore or clear controls anywhere
+- **THEN** there is no Rulings list, no pending count, and no ruling, resolve, apply, ignore or clear controls anywhere
 
 #### Scenario: Area Effect waiting on a player counts
 - **WHEN** one to-hit roll is unruled and an Area Effect "Fireball" is waiting on Mira
@@ -143,9 +184,9 @@ The Attack section SHALL show the viewer's latest attack roll, at the top of the
 - If the roll was made with one of the attacker's named attacks and that named attack has a damage roll, the section SHALL offer **Roll damage** with that named attack's dice. Tapping it SHALL immediately roll that damage against the same target, labeled "<attack> damage", with the same visibility as the to-hit roll it follows. A GM-only attack's damage SHALL stay GM-only whatever the GM's current setting.
 - Otherwise **Roll damage** SHALL switch the Custom roll builder to Damage, open it and keep the same target, without rolling.
 
-**The GM's own rolls.** On their own latest attack roll, the GM SHALL also be offered **Hit** and **Miss** for a to-hit roll without a verdict, and **Apply −N** for an unapplied damage roll whose target tracks HP. These act exactly as in the Rulings list.
+**The GM's own rolls.** The GM SHALL rule on and resolve their own attack rolls from the Rulings list, as for any other roll; the Attack section SHALL NOT offer separate ruling or resolve controls.
 
-**Player tab indicator.** When the GM rules on, or applies, a player's latest attack roll while that player is on another tab, the player's Play tab SHALL show an indicator until they open it.
+**Player tab indicator.** When the GM rules on, or resolves, a player's latest attack roll while that player is on another tab, the player's Play tab SHALL show an indicator until they open it.
 
 The roll log SHALL show the verdict, or that damage was applied, on every attack roll.
 
@@ -167,7 +208,7 @@ The roll log SHALL show the verdict, or that damage was applied, on every attack
 
 #### Scenario: GM rules on their own roll
 - **WHEN** the GM rolls Goblin A's to-hit against Aria
-- **THEN** the top of the GM's Attack section offers Hit and Miss for that roll, and choosing Miss rules it without visiting the Rulings list
+- **THEN** the roll appears in the GM's Rulings list with Hit and Miss, and the Attack section shows no ruling controls
 
 ### Requirement: Rulings never reveal hidden information
 A player SHALL NOT receive a ruling or damage application for a GM-only roll, in any snapshot, live event or response. Ruling and application events SHALL NOT carry token IDs or names. An HP change from applying damage to a hidden target SHALL be withheld from players exactly as any other change to a hidden token. Where a roll names a hidden token, its verdict SHALL be shown to players with that token still shown as Unknown. Players SHALL NOT be told that damage was applied from a roll whose target they see as Unknown, because that would reveal the hidden token still exists and tracks HP, and would tie it to an HP change.
@@ -183,3 +224,31 @@ A player SHALL NOT receive a ruling or damage application for a GM-only roll, in
 #### Scenario: Target revealed before damage is applied
 - **WHEN** the GM makes a public damage roll against a hidden Shadow, reveals the Shadow, and then applies the roll
 - **THEN** players see the Shadow's HP change, but that roll stays Unknown and not Applied for them, so the two are never linked
+
+### Requirement: Damage resolve dialog
+**Resolve** on a damage roll SHALL open a dialog for that one roll. Its title SHALL be the target's name, with the attack's label beside it. It SHALL show, in large type, the rolled damage with its formula and the target's current HP with its Max HP. It SHALL show:
+- an amount field that starts at the roll's total (a negative total starts at 0), with **Half**, which sets it to the roll's total halved and rounded down, and **None**, which sets it to 0; a hint SHALL say that a negative amount heals;
+- when the room's preset has conditions on, the full conditions checklist used by the token editor, with the target's existing conditions checked and not uncheckable;
+- **Confirm**, with the primary appearance.
+
+The dialog SHALL use the same layout, controls and wording as the area effect resolve dialog, so the two read alike. An amount that is not a whole number within bounds SHALL keep Confirm from sending and SHALL show why. Closing the dialog (its Close button, Escape, or a click on the backdrop) SHALL send nothing; reopening Resolve on the same roll SHALL bring back what the GM had set. The dialog SHALL close by itself once the roll is applied, including from another device. A refused resolve SHALL keep the dialog open with the server's message.
+
+#### Scenario: Dialog starts at the rolled damage
+- **WHEN** the GM presses Resolve on an 8-damage roll against Goblin (12 / 15 HP)
+- **THEN** the dialog is titled Goblin and shows damage 8, HP 12 of 15, and an amount of 8
+
+#### Scenario: Half rounds down
+- **WHEN** the damage roll is 9 and the GM presses Half
+- **THEN** the amount reads 4
+
+#### Scenario: Closing keeps the draft
+- **WHEN** the GM sets the amount to 3, checks Prone, closes the dialog, and presses Resolve on the same roll again
+- **THEN** the amount reads 3 and Prone is checked, and nothing was sent
+
+#### Scenario: Applied elsewhere
+- **WHEN** the dialog is open on the GM's laptop and the GM resolves the same roll from their phone
+- **THEN** the laptop's dialog closes and the roll has left its Rulings list
+
+#### Scenario: Conditions hidden when off
+- **WHEN** the room's preset has conditions off
+- **THEN** the dialog shows the amount controls and no conditions checklist

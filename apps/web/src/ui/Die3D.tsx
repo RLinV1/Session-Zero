@@ -2,12 +2,17 @@ import { useId, type CSSProperties } from "react";
 import { getClientSettings } from "./clientSettings";
 import { apply, dot, faceLayout, labelDie, mul, rotateX, rotateY, rotateZ, rotationCss, seed, type BodyName, type Vec3 } from "./diceGeometry";
 import { faceArt, faceImageTransform, type DiceSkin } from "./diceSkin";
+import { sidesOfDice } from "@vtt/shared";
 
 /** What the dice need to know about a roll that has already been made. */
 export interface TrayRoll {
   /** Stable for the roll: it seeds the resting angles and the throw path. */
   id: string;
-  sides: number;
+  /**
+   * Each die's number of sides, in roll order, for a roll that mixes die types (ADR 0061); one
+   * number when every die is the same type.
+   */
+  sides: number | readonly number[];
   /** Each die's result, in roll order. */
   dice: number[];
   /** Thrown in the GM's private colours. */
@@ -17,6 +22,17 @@ export interface TrayRoll {
    * their own roll (shared-dice-looks). Absent or null draws classic dice.
    */
   skin?: DiceSkin | null;
+}
+
+/** One die's sides from a roll's `sides`; a list too short for the dice repeats its last. */
+export function dieSidesAt(sides: TrayRoll["sides"], index: number): number {
+  if (typeof sides === "number") return sides;
+  return sides[index] ?? sides[sides.length - 1] ?? 20;
+}
+
+/** Each die's sides for a roll's formula and dice; a formula that doesn't fit falls back to one type. */
+export function traySides(expression: string, dice: readonly number[], fallback = Math.max(20, ...dice)): TrayRoll["sides"] {
+  return sidesOfDice(expression, dice) ?? fallback;
 }
 
 /** Light from over the viewer's left shoulder, so the face turned to them is the brightest. */
@@ -52,11 +68,11 @@ export interface DieLayout {
  * seeded by the roll's id, so the tray and the board show the same dice the same way.
  */
 export function layoutDice(roll: TrayRoll, size: number): DieLayout[] {
-  const { sides } = roll;
   const radius = size / 2;
   const rng = seed(roll.id);
 
   return roll.dice.map((value, i) => {
+    const sides = dieSidesAt(roll.sides, i);
     const die = labelDie(sides, value, i);
     // Each die rests at its own slight angle, so a handful of them reads as thrown, not
     // printed. The tilt shows two side faces; the twist is small enough to read the number.

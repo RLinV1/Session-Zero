@@ -4,7 +4,7 @@ import { PaintRun, TerrainContext, MAX_TERRAIN_CELLS } from "./terrain";
 import { AttackStyle, MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
 import { TokenAttacks } from "./attackPresets";
 import { ConditionId, EMPTY_STATS, TokenStats } from "./conditions";
-import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
+import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
@@ -298,7 +298,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   /** Roll dice (FR-TAC-09). `gm` visibility is GM-only and never reaches players (FR-GM-22). */
   z.object({
     type: z.literal("dice.roll"),
-    expression: z.string().min(1).max(32),
+    expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
     visibility: DiceVisibility.default("public"),
     /** Makes this an attack roll: who attacks whom, and with what (ADR 0010). */
     attack: z
@@ -317,7 +317,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("dice.rollGroup"),
     tokenIds: z.array(Id).min(1).max(MAX_GROUP_ROLL_TOKENS),
-    expression: z.string().min(1).max(32),
+    expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
     label: z.string().trim().max(MAX_ATTACK_LABEL).optional(),
     visibility: DiceVisibility.default("public"),
   }).strict(),
@@ -325,7 +325,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("areaEffect.start"),
     tokenIds: z.array(Id).min(1).max(MAX_GROUP_ROLL_TOKENS),
-    expression: z.string().min(1).max(32),
+    expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
     label: z.string().trim().max(MAX_ATTACK_LABEL).optional(),
   }).strict(),
   /** GM only: call a participant (themselves included) to roll the damage, or move a pending call (ADR 0046). */
@@ -338,7 +338,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("areaEffect.rollDamage"),
     effectId: Id,
-    expression: z.string().min(1).max(32),
+    expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH),
     mode: DamageMode,
   }).strict(),
   /**
@@ -412,11 +412,16 @@ const BoardCommand = z.discriminatedUnion("type", [
     rollId: Id,
     verdict: Verdict.nullable(),
   }),
-  /** GM only: lower a damage roll's target's HP by the roll's total, once (ADR 0011). */
+  /**
+   * GM only: resolve a damage roll against its target, once (ADR 0011, ADR 0062): apply `amount`
+   * (negative heals; absent means the roll's total, floored at 0) and add `addConditions`.
+   */
   z.object({
     type: z.literal("roll.applyDamage"),
     rollId: Id,
-  }),
+    amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT).optional(),
+    addConditions: z.array(ConditionId).max(12).default([]),
+  }).strict(),
   /**
    * GM only: take attack rolls off the Rulings list without ruling on them (ADR 0060). Names the
    * rolls the GM saw, so a roll made since isn't swept away with them.

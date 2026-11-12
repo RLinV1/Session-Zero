@@ -407,7 +407,7 @@ export function TokenEditor({
   const [ownerId, setOwnerId] = useState(token.ownerIds[0] ?? "");
   const [hidden, setHidden] = useState(token.hidden);
   const [groupId, setGroupId] = useState(savedGroupId ?? "");
-  const [confirming, setConfirming] = useState<"save" | "delete" | null>(null);
+  const [confirming, setConfirming] = useState<"delete" | null>(null);
   /** Save as creature (KAN-70): the token as it is now, saved at once as a new library creature. */
   const [creatureStatus, setCreatureStatus] = useState("");
   const [savingCreature, setSavingCreature] = useState(false);
@@ -458,7 +458,6 @@ export function TokenEditor({
       await onSave(changes, groupChanged ? groupId || null : undefined);
     } finally {
       setBusy(false);
-      setConfirming(null);
     }
   };
 
@@ -490,7 +489,8 @@ export function TokenEditor({
       onInvalidCapture={(e) => (e.target as HTMLElement).closest("details")?.setAttribute("open", "")}
       onSubmit={(e) => {
         e.preventDefault();
-        if (hasChanges && !uploading) setConfirming("save");
+        // Save applies at once (token-editor spec); only Delete asks first.
+        if (hasChanges && !uploading && !busy) void save();
       }}
     >
       {isGm && <label>{t("common.name")}<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus /></label>}
@@ -594,28 +594,15 @@ export function TokenEditor({
 
       {(error || uploadError) && <p role="alert" className="error">{error || uploadError}</p>}
 
-      {confirming === "save" ? (
-        <div className="confirm" role="group" aria-label={t("roster.confirmChanges")}>
-          <p>
-            {t("roster.saveQ", { name: token.name })}
-          </p>
-          <div className="row">
-            <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(null)}>
-              {t("common.back")}
-            </button>
-            <button className="primary" type="button" disabled={busy || uploading} onClick={() => void save()} autoFocus>
-              {t("roster.confirm")}
-            </button>
-          </div>
-        </div>
-      ) : confirming === "delete" ? (
+      {confirming === "delete" ? (
         <div className="confirm" role="group" aria-label={t("roster.confirmDelete")}>
           <p>{t("roster.deleteQ", { name: token.name })}</p>
           <div className="row">
-            <button type="button" className="secondary" onClick={() => setConfirming(null)}>
+            {/* The safe choice has focus, as on the board's token card (token-editor spec). */}
+            <button type="button" className="secondary" onClick={() => setConfirming(null)} autoFocus>
               {t("common.keep")}
             </button>
-            <button type="button" className="danger-fill" onClick={onDelete} autoFocus>
+            <button type="button" className="danger-fill" onClick={onDelete}>
               {t("depart.deleteToken")}
             </button>
           </div>
@@ -643,7 +630,7 @@ export function TokenEditor({
               <Trash size={18} aria-hidden />
             </button>
           )}
-          <button type="submit" className="token-save primary" disabled={!hasChanges || uploading}>
+          <button type="submit" className="token-save primary" disabled={!hasChanges || uploading || busy}>
             {t("common.save")}
           </button>
         </div>

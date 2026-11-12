@@ -39,7 +39,7 @@ export function DiceTray({
   const faces = roll.dice.join(",");
   // Keyed on values, not identity: the room re-renders on every state change, and a roll
   // rebuilt from the same data must not re-lay out twenty dice.
-  const dice = useMemo(() => layoutDice(roll, size), [roll.id, roll.sides, faces, size]);
+  const dice = useMemo(() => layoutDice(roll, size), [roll.id, String(roll.sides), faces, size]);
 
   useEffect(armSound, []);
 

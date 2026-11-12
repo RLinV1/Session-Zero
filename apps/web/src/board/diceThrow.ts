@@ -1,4 +1,4 @@
-import { parseDiceExpression, type GridSpec, type MapImage, type Point } from "@vtt/shared";
+import { parseDiceExpression, type GridSpec, type MapImage, type Point, diceCount } from "@vtt/shared";
 import { seed, throwTurns, type ThrowPath } from "../ui/diceGeometry";
 
 import { t } from "../i18n/locale";
@@ -46,7 +46,7 @@ export function throwBlocker(expression: string, hasMap: boolean, privateRoll = 
   if (!parsed.ok) return t("board.throwNeedsExpr");
   if (!hasMap) return t("board.throwNeedsMap");
   if (privateRoll) return t("throw.private");
-  if (parsed.expression.count > BOARD_THROW_MAX_DICE) return t("throw.tooMany", { max: BOARD_THROW_MAX_DICE });
+  if (diceCount(parsed.expression.terms) > BOARD_THROW_MAX_DICE) return t("throw.tooMany", { max: BOARD_THROW_MAX_DICE });
   return null;
 }
 

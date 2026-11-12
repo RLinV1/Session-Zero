@@ -1,9 +1,12 @@
 import { useState, type FormEvent } from "react";
-import { attackLabel, formatAttackParties, formatAttackRoll, formatExpression, isGroupRoll, MAX_ATTACK_LABEL, parseDiceExpression, type DiceRoll, type DiceVisibility, type GroupRoll, type LoggedRoll, type Point, type RoomState } from "@vtt/shared";
+import { attackLabel, formatAttackParties, formatAttackRoll, isGroupRoll, MAX_ATTACK_LABEL, type DiceRoll, type DiceVisibility, type GroupRoll, type LoggedRoll, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
 import { DiceTray, type TrayRoll } from "../ui/DiceTray";
+import { traySides } from "../ui/Die3D";
+import { DicePoolInput } from "../ui/DicePoolInput";
+import { diceBreakdown, poolExpression, poolOf, type DicePool } from "../ui/dicePool";
 import type { DiceBoard } from "../board/Board";
 import type { DiceDrop } from "../board/diceDrops";
 import { throwBlocker } from "../board/diceThrow";
@@ -12,7 +15,6 @@ import { DiceLookPicker } from "./DiceLookPicker";
 import { GroupSelectionList, type GroupSelection } from "./GroupSelection";
 import { getLocale, t } from "../i18n/locale";
 
-const QUICK = ["1d20", "1d20+5", "2d6", "1d8+3", "4d6"];
 
 /**
  * Which rolls are still being thrown on this viewer's screen (throw-dice-on-board), held by the
@@ -71,20 +73,17 @@ export function DicePanel({
   /** GM: the tokens chosen on the board for a group roll (ADR 0046). */
   selection?: GroupSelection;
 }) {
-  const [expression, setExpression] = useState("1d20");
+  const [pool, setPool] = useState<DicePool>(poolOf(20));
+  const expression = poolExpression(pool);
   const [visibility, setVisibility] = useState<DiceVisibility>("public");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [who, setWho] = useState("");
 
-  const parsed = parseDiceExpression(expression);
-  const invalid = expression.trim() !== "" && !parsed.ok;
-
   const roll = async (e: FormEvent) => {
     e.preventDefault();
     if (rollThrow.rolling) return;
-    if (!parsed.ok) return setError(parsed.message);
     setBusy(true);
     const result = await connection.command(rollCommand(expression, visibility));
     setBusy(false);
@@ -98,11 +97,10 @@ export function DicePanel({
 
   /** Roll for a die let go over the map; true once the roll is made, and its dice are on their way. */
   const throwOnBoard = async (aim: { from: Point; to: Point }): Promise<boolean> => {
-    if (!parsed.ok) return false;
     setBusy(true);
     // Where the die was let go: kept here so the roll lands there when it arrives, and sent first
     // for everyone else to replay the throw there (ADR 0014). The roll is exactly what Roll sends.
-    const drop = { expression: formatExpression(parsed.expression), from: aim.from, to: aim.to };
+    const drop = { expression, from: aim.from, to: aim.to };
     const forget = rollThrow.expectDrop(drop);
     connection.ephemeral({ type: "diceDrop", ...drop });
     const result = await withTimeout(connection.command(rollCommand(expression, visibility)), THROW_ANSWER_MS);
@@ -119,40 +117,20 @@ export function DicePanel({
   return (
     <PanelSection id="dice" title={t("home.dice.title")}>
       <form onSubmit={roll} className="dice-form">
-        <label htmlFor="dice-expression">{t("dice.expression")}</label>
+        <DicePoolInput value={pool} onChange={(next) => { setPool(next); setError(null); }} />
         <div className="dice-row">
-          <input
-            id="dice-expression"
-            value={expression}
-            onChange={(e) => {
-              setExpression(e.target.value);
-              setError(null);
-            }}
-            placeholder="1d20+5"
-            aria-invalid={invalid}
-            aria-describedby={invalid ? "dice-error" : undefined}
-            autoComplete="off"
-          />
           <button className="primary"
             type="submit"
-            disabled={busy || rollThrow.rolling || !parsed.ok}
+            disabled={busy || rollThrow.rolling}
             title={rollThrow.rolling ? t("attack.diceOnBoard") : undefined}
           >
             {t("home.dice.roll")}
           </button>
         </div>
 
-        <div className="dice-quick">
-          {QUICK.map((q) => (
-            <button key={q} type="button" className="chip" onClick={() => setExpression(q)}>
-              {q}
-            </button>
-          ))}
-        </div>
-
         {board && (
           <DiceThrowHandle
-            sides={parsed.ok ? parsed.expression.sides : 20}
+            sides={pool.terms[0]!.sides}
             gmOnly={visibility === "gm"}
             blocker={throwBlocker(expression, state.scene.map !== null, visibility === "gm")}
             busy={busy || rollThrow.rolling}
@@ -173,9 +151,9 @@ export function DicePanel({
           </label>
         )}
 
-        {(invalid || error) && (
+        {error && (
           <p id="dice-error" role="alert" className="error">
-            {error ?? (parsed.ok ? "" : parsed.message)}
+            {error}
           </p>
         )}
       </form>
@@ -240,16 +218,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  * Uses the panel's GM-only choice, like any other roll.
  */
 function GroupRollForm({ connection, state, selection, visibility }: { connection: RoomConnection; state: RoomState; selection: GroupSelection; visibility: DiceVisibility }) {
-  const [expression, setExpression] = useState("1d20");
+  const [pool, setPool] = useState<DicePool>(poolOf(20));
+  const expression = poolExpression(pool);
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const parsed = parseDiceExpression(expression);
   const tokenIds = selection.tokenIds.filter((id) => state.tokens[id]);
 
   const roll = async (e: FormEvent) => {
     e.preventDefault();
-    if (!parsed.ok) return setError(parsed.message);
     setBusy(true);
     const result = await connection.command({ type: "dice.rollGroup", tokenIds, expression, label: label.trim() || undefined, visibility });
     setBusy(false);
@@ -260,12 +237,11 @@ function GroupRollForm({ connection, state, selection, visibility }: { connectio
     <form onSubmit={roll} className="stack group-roll-form" aria-labelledby="group-roll-heading">
       <h3 id="group-roll-heading" className="group-roll-heading">{t("dice.groupRoll")}</h3>
       <GroupSelectionList selection={selection} state={state} idPrefix="group-roll" />
+      <DicePoolInput value={pool} onChange={(next) => { setPool(next); setError(null); }} label={t("dice.groupExpression")} />
       <div className="dice-row">
-        <label htmlFor="group-roll-expression" className="sr-only">{t("dice.groupExpression")}</label>
-        <input id="group-roll-expression" value={expression} onChange={(e) => { setExpression(e.target.value); setError(null); }} placeholder="1d20+2" autoComplete="off" aria-invalid={expression.trim() !== "" && !parsed.ok} />
         <label htmlFor="group-roll-label" className="sr-only">{t("attack.label")}</label>
         <input id="group-roll-label" value={label} maxLength={MAX_ATTACK_LABEL} onChange={(e) => setLabel(e.target.value)} placeholder={t("attack.labelOptional")} autoComplete="off" />
-        <button type="submit" disabled={busy || tokenIds.length === 0 || !parsed.ok} title={tokenIds.length === 0 ? t("area.selectFirst") : undefined}>
+        <button type="submit" disabled={busy || tokenIds.length === 0} title={tokenIds.length === 0 ? t("area.selectFirst") : undefined}>
           {t("home.dice.roll")}
         </button>
       </div>
@@ -275,11 +251,9 @@ function GroupRollForm({ connection, state, selection, visibility }: { connectio
 }
 
 export function trayRoll(r: DiceRoll): TrayRoll {
-  const parsed = parseDiceExpression(r.expression);
-  // The server parsed this expression before rolling it; the fallback only guards a log
-  // entry written by some older build.
-  const sides = parsed.ok ? parsed.expression.sides : Math.max(20, ...r.dice);
-  return { id: r.id, sides, dice: r.dice, gmOnly: r.visibility === "gm" };
+  // Each die in its own shape (ADR 0061). The server parsed this formula before rolling it; the
+  // fallback only guards a log entry written by some older build.
+  return { id: r.id, sides: traySides(r.expression, r.dice), dice: r.dice, gmOnly: r.visibility === "gm" };
 }
 
 function RollRow({
@@ -319,7 +293,7 @@ function RollRow({
     <li className={className}>
       <span className="roll-box">
         <span className="roll-total">{r.total}</span>
-        <span className="roll-breakdown">({breakdown(r)})</span>
+        <span className="roll-breakdown">{diceBreakdown(r)}</span>
       </span>
       <span className="roll-detail">
         <span className="roll-title">
@@ -355,7 +329,7 @@ function GroupRollRow({ roll: r, who, className, rolling }: { roll: GroupRoll; w
             <li key={entry.tokenId}>
               <span>{entry.name}</span>{" "}
               {/* The totals wait for the dice dropping onto the tokens (ADR 0046). */}
-              {rolling ? <span className="muted">…</span> : <><strong>{entry.total}</strong> <span className="muted">({entry.dice.join(" + ")})</span></>}
+              {rolling ? <span className="muted">…</span> : <><strong>{entry.total}</strong> <span className="muted">{diceBreakdown({ expression: r.expression, dice: entry.dice, total: entry.total })}</span></>}
             </li>
           ))}
         </ul>
@@ -374,12 +348,6 @@ function rollTitle(r: DiceRoll, landed: boolean) {
   return [formatAttackParties(r.attack, getLocale()), attackLabel(r.attack, getLocale()), r.expression].filter(Boolean).join(" · ");
 }
 
-/** "12 + 5", "3 + 4 + 1 - 2": each die, then the modifier. */
-function breakdown(r: DiceRoll) {
-  const dice = r.dice.join(" + ");
-  if (r.modifier === 0) return dice;
-  return `${dice} ${r.modifier > 0 ? "+" : "-"} ${Math.abs(r.modifier)}`;
-}
 
 /** Every roll, newest first, filterable by who rolled it. */
 function RollHistory({

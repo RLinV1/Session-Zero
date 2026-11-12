@@ -12,7 +12,7 @@ const none: PresetFeatures = { attacks: false, conditions: false, armorClass: fa
 const goblin: LibraryCreature = {
   id: "c1", name: "Goblin", size: 1, maxHp: 7, ac: 15, color: "#2e7d32", conditions: ["prone"],
   imageAssetId: "a1", imageUrl: "/uploads/goblin.webp", createdAt: "2026-09-27T00:00:00.000Z",
-  attacks: [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } }],
+  attacks: [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }],
 };
 
 const mapRoom = (): RoomState => {

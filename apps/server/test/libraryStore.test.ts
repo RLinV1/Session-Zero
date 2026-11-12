@@ -201,7 +201,7 @@ for (const [label, store] of stores) {
 
     it("round-trips starting HP, colour and conditions, including legacy defaults (KAN-70)", async () => {
       const gm = await s().registerGm(randomUUID());
-      const attacks = [{ name: "Claws", toHit: null, damage: { count: 2, sides: 6, modifier: 1 } }];
+      const attacks = [{ name: "Claws", toHit: null, damage: { terms: [{ count: 2, sides: 6 }], modifier: 1 } }];
       const c = creature(gm, { hp: 3, attacks, color: "#2e7d32", conditions: ["prone"] });
       expect(await s().createCreature(c)).toMatchObject({ hp: 3, maxHp: 7, color: "#2e7d32", conditions: ["prone"] });
       expect(await s().findCreature(c.id, gm)).toMatchObject({ hp: 3, attacks, color: "#2e7d32", conditions: ["prone"] });

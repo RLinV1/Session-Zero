@@ -14,7 +14,7 @@ function withGoblin(overrides: { hidden?: boolean } = {}) {
     color: "#336699",
     ownerIds: [alice.id],
     hidden: overrides.hidden ?? false,
-    attacks: [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } }],
+    attacks: [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }],
   });
   const created = events[0];
   if (created?.type !== "TokenCreated") throw new Error("expected TokenCreated");

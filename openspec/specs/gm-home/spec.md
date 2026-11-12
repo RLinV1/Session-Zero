@@ -66,8 +66,8 @@ The home page SHALL show what the product does using the product's own behaviour
 - **THEN** a token marked hidden is present in one and absent from the other, and the caption states that its place in the turn order is withheld too
 
 #### Scenario: Dice run the real engine
-- **WHEN** a visitor submits a dice expression
-- **THEN** it is parsed and rolled by the same shared functions the table uses, every die is shown alongside the total, and an invalid expression shows the parser's own message
+- **WHEN** a visitor builds a roll with the dice builder, e.g. 2 × d6 and a modifier of 3, and rolls
+- **THEN** it is rolled by the same shared functions the table uses, every die is shown alongside the total grouped by die type, and the demo offers no text field for a formula
 
 #### Scenario: Tokens are drawn as the board draws them
 - **WHEN** a map on the home page shows a token that has character art

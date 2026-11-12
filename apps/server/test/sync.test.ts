@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isDiceRoll, type ServerMessage, type Token } from "@vtt/shared";
+import { diceByTerm, isDiceRoll, type ServerMessage, type Token } from "@vtt/shared";
 import { startServer, type TestClient, viewFor } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -239,6 +239,23 @@ describe("tactical panels (FR-GM-21, FR-GM-22, FR-TAC-07)", () => {
     expect(bob.state.rolls).toEqual(alice.state.rolls);
     expect(gm.state.rolls).toEqual(alice.state.rolls);
     expect(alice.state.rolls[0]!.expression).toBe("2d6+3");
+  });
+
+  it("rolls mixed dice, and another client groups them by die type (FR-TAC-09, ADR 0061)", async () => {
+    const { gm, alice, bob } = await setup();
+
+    await alice.command({ type: "dice.roll", expression: "2d6 + 1d4 + 3" });
+    await bob.waitForSeq(alice.seq);
+    await gm.waitForSeq(alice.seq);
+
+    const roll = bob.state.rolls.filter(isDiceRoll)[0]!;
+    expect(roll.expression).toBe("2d6+1d4+3");
+    const grouped = diceByTerm(roll.expression, roll.dice)!;
+    expect(grouped.groups.map((g) => [g.count, g.sides, g.values.length])).toEqual([[2, 6, 2], [1, 4, 1]]);
+    expect(grouped.groups[0]!.values.every((v) => v >= 1 && v <= 6)).toBe(true);
+    expect(grouped.groups[1]!.values[0]).toBeLessThanOrEqual(4);
+    expect(roll.total).toBe(roll.dice.reduce((a, b) => a + b, 0) + 3);
+    expect(gm.state.rolls).toEqual(bob.state.rolls);
   });
 
   it("keeps hidden tokens out of the turn order a player receives (FR-GM-21)", async () => {

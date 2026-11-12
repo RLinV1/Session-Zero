@@ -399,6 +399,30 @@ describe("undoing combat actions (FR-REC-02, ADR 0011)", () => {
     expect(decide(undone.state, gm, Command.parse({ type: "roll.applyDamage", rollId: damage.rollId }), ctx).ok).toBe(true);
   });
 
+  it("undoes a resolve with HP and a condition as one action (FR-TAC-07)", () => {
+    const { state: start, goblin, roll } = fight();
+    const damage = roll(start, "damage");
+    const resolved = act(damage.state, gm, { type: "roll.applyDamage", rollId: damage.rollId, amount: 4, addConditions: ["prone"] });
+    expect(resolved.state.tokens[goblin]!.stats.hp).toBe(11);
+    expect(describeUndo(undoableAction(resolved.state.undo, resolved.commandId)!, resolved.state.tokens).noun).toBe("the 4 damage applied from Aria → Goblin");
+
+    const undone = act(resolved.state, gm, { type: "history.undo", commandId: resolved.commandId });
+    expect(undone.events.map((e) => e.type)).toEqual(["RollDamageUnapplied", "TokenConditionsSet", "TokenStatsSet", "ActionUndone"]);
+    expect(undone.state.tokens[goblin]!.stats.hp).toBe(15);
+    expect(undone.state.tokens[goblin]!.conditions).toEqual([]);
+    expect(undone.state.rolls.filter(isDiceRoll).find((r) => r.id === damage.rollId)!.damageApplied).toBeUndefined();
+  });
+
+  it("undoes a None + condition resolve (FR-TAC-07)", () => {
+    const { state: start, goblin, roll } = fight();
+    const damage = roll(start, "damage");
+    const resolved = act(damage.state, gm, { type: "roll.applyDamage", rollId: damage.rollId, amount: 0, addConditions: ["poisoned"] });
+    expect(undoableAction(resolved.state.undo, resolved.commandId)).toBeDefined();
+    const undone = act(resolved.state, gm, { type: "history.undo", commandId: resolved.commandId });
+    expect(undone.state.tokens[goblin]!.conditions).toEqual([]);
+    expect(undone.state.rolls.filter(isDiceRoll).find((r) => r.id === damage.rollId)!.damageApplied).toBeUndefined();
+  });
+
   it("refuses to undo an apply once HP has been edited since", () => {
     const { state: start, goblin, roll } = fight();
     const damage = roll(start, "damage");

@@ -7,7 +7,7 @@ import { findMentions } from "./chatMentions";
 import { PreparationSave, type Command, type DepartureAction } from "./commands";
 import { reduce, reduceAll } from "./reducer";
 import { presetOf, tableForPreset } from "./gamePresets";
-import { MIN_HP, type ConditionId } from "./conditions";
+import { MIN_HP, type ConditionId, type TokenStats } from "./conditions";
 import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
 import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type DiceRoll, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
@@ -824,13 +824,22 @@ export function decide(
       const target = roll.attack.target ? state.tokens[roll.attack.target.tokenId] : undefined;
       if (!target) return notFound("token");
       if (target.stats.hp === null) return reject("invalid", sharedMsg("reject.noHp", { token: target.name }));
+      const conditionsOff = presetRefusal(state, { conditions: command.addConditions.length > 0 });
+      if (conditionsOff) return conditionsOff;
+      // The GM's chosen amount (ADR 0062); absent, the roll's total as before.
+      const amount = command.amount ?? Math.max(0, roll.total);
+      const changes: DomainEvent[] = [];
       // Worked out here from current HP, so a stale screen or a second tap can't apply twice.
-      const amount = Math.max(0, roll.total);
-      const hp = Math.max(MIN_HP, target.stats.hp - amount);
-      const applied: DomainEvent = { type: "RollDamageApplied", rollId: roll.id, amount };
-      // Nothing to change (no damage, or already at the floor): just mark the roll applied.
-      if (hp === target.stats.hp) return accept(applied);
-      return accept(...withDefeats(state, [{ type: "TokenStatsSet", tokenId: target.id, stats: { ...target.stats, hp }, previous: target.stats }, applied]));
+      const stats = statsAfterAmount(target.stats, amount);
+      if (stats !== target.stats) changes.push({ type: "TokenStatsSet", tokenId: target.id, stats, previous: target.stats });
+      const added = command.addConditions.filter((c) => !target.conditions.includes(c));
+      if (added.length > 0) {
+        const conditions: ConditionId[] = [...target.conditions, ...new Set(added)];
+        if (conditions.length > 12) return reject("invalid", sharedMsg("reject.tooManyConditions", { token: target.name }));
+        changes.push({ type: "TokenConditionsSet", tokenId: target.id, conditions, previous: target.conditions });
+      }
+      // Nothing changed (no damage, already at the floor): the roll is still marked applied.
+      return accept(...withDefeats(state, [...changes, { type: "RollDamageApplied", rollId: roll.id, amount }]));
     }
 
     case "roll.dismiss": {
@@ -945,15 +954,8 @@ export function decide(
       for (const row of command.rows) {
         const token = state.tokens[row.tokenId];
         if (!token) continue;
-        let stats = token.stats;
-        if (row.amount !== null && row.amount !== 0 && stats.hp !== null) {
-          const hp = stats.hp;
-          // Worked out here from current HP, like `roll.applyDamage`. Healing never lowers HP.
-          const next = row.amount > 0
-            ? Math.max(MIN_HP, hp - row.amount)
-            : Math.max(hp, stats.maxHp === null ? hp - row.amount : Math.min(stats.maxHp, hp - row.amount));
-          if (next !== hp) stats = { ...stats, hp: next };
-        }
+        // Worked out here from current HP, like `roll.applyDamage`.
+        const stats = row.amount === null ? token.stats : statsAfterAmount(token.stats, row.amount);
         if (stats !== token.stats) changes.push({ type: "TokenStatsSet", tokenId: token.id, stats, previous: token.stats });
         if (row.amount !== null && stats.hp !== null) amounts.push({ tokenId: token.id, amount: row.amount });
         const added = row.addConditions.filter((c) => !token.conditions.includes(c));
@@ -1693,6 +1695,20 @@ function rollForTokens(
     ...rollDice(expression, random),
   }));
   return { ok: true, expression: formatExpression(expression), entries };
+}
+
+/**
+ * A token's stats after the GM applies `amount` (ADR 0046, ADR 0062): damage lowers HP to no less
+ * than `MIN_HP`; a negative amount heals, never above Max HP and never lowering HP; zero, or a
+ * token without HP, changes nothing. Returns the same object when HP doesn't change.
+ */
+function statsAfterAmount(stats: TokenStats, amount: number): TokenStats {
+  const hp = stats.hp;
+  if (hp === null || amount === 0) return stats;
+  const next = amount > 0
+    ? Math.max(MIN_HP, hp - amount)
+    : Math.max(hp, stats.maxHp === null ? hp - amount : Math.min(stats.maxHp, hp - amount));
+  return next === hp ? stats : { ...stats, hp: next };
 }
 
 function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?: boolean; ac?: number | null }): Decision | null {

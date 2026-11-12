@@ -60,15 +60,10 @@ describe("the home page's copy (gm-home: The home page advertises only what the 
     fireEvent.click(screen.getByRole("button", { name: "GM view" }));
     check("GM view");
 
-    const roll = screen.getByLabelText("What to roll");
-    fireEvent.change(roll, { target: { value: "1d20+5" } });
+    // The dice builder only makes formulas the roller takes, so there is no invalid roll to show (dice-pool).
+    fireEvent.click(screen.getByRole("button", { name: "+ Die" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Roll" })));
-    check("after a valid roll");
-
-    fireEvent.change(roll, { target: { value: "roll a d20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Roll" }));
-    expect(screen.getByRole("alert").textContent).toBe("Use NdX, NdX+M or NdX-M, for example 1d20+5");
-    check("after an invalid roll");
+    check("after a roll");
   }, 30000);
 
   it("catches what it is meant to catch", () => {

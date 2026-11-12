@@ -11,6 +11,7 @@ import type { RejectionCode } from "./decide";
 import type { MessageParam } from "./i18n/core";
 import { RoomUploadPurpose } from "./gridDetection";
 import { MAX_ENCOUNTER_NAME } from "./encounters";
+import { MAX_EXPRESSION_LENGTH } from "./dice";
 import type { WallDetectionStatus } from "./wallDetection";
 import type { UvttIssue } from "./uvtt";
 
@@ -32,7 +33,7 @@ export const EphemeralPayload = z.discriminatedUnion("type", [
    * the throw at the same spot when that roll arrives. Presentation only: never persisted, and
    * `expression` (as the server formats it) only pairs it with that roll.
    */
-  z.object({ type: z.literal("diceDrop"), expression: z.string().min(1).max(32), from: Point, to: Point }),
+  z.object({ type: z.literal("diceDrop"), expression: z.string().min(1).max(MAX_EXPRESSION_LENGTH), from: Point, to: Point }),
   /**
    * An area template being aimed (KAN-35, ADR 0021), so the others watch it take shape. Null
    * clears it (placed or cancelled). One per sender; receivers also drop it a second after the

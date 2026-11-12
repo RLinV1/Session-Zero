@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { formatExpression, parseDiceExpression, rollDice, type DiceExpression } from "@vtt/shared";
+import { formatExpression, parseDiceExpression, rollDice, sidesOfDice, type DiceExpression } from "@vtt/shared";
 import { DiceTray } from "../../ui/DiceTray";
+import { DicePoolInput } from "../../ui/DicePoolInput";
+import { diceBreakdown, poolOf, type DicePool } from "../../ui/dicePool";
 import { t } from "../../i18n/locale";
 
 type Roll = { id: string; expression: DiceExpression; dice: number[]; total: number };
@@ -32,56 +34,39 @@ export function openingRoll(): Roll {
 
 /** The table's own parser and roller, imported from @vtt/shared and run right here. */
 export function DiceTile() {
-  const [input, setInput] = useState("2d6+3");
+  const [pool, setPool] = useState<DicePool>(poolOf(6, 2, 3));
   const [result, setResult] = useState<Roll>(openingRoll);
-  const [error, setError] = useState<string | null>(null);
   /** The roll whose dice have come to rest; until then its total is withheld. The opening roll starts at rest. */
   const [landed, setLanded] = useState<string>("opening");
 
   function roll(e: FormEvent) {
     e.preventDefault();
-    const parsed = parseDiceExpression(input);
-    if (!parsed.ok) return setError(parsed.message);
-    setError(null);
+    // The builder only makes formulas the table's parser takes (dice-pool).
+    const parsed = parseDiceExpression(formatExpression(pool));
+    if (!parsed.ok) return;
     // The real roll happens now, once. The throw is only how it is shown arriving, in the same
     // 3D tray the table throws its rolls into.
     setResult({ id: `demo-${Math.floor(cryptoRandom() * 2 ** 32)}`, expression: parsed.expression, ...rollDice(parsed.expression, cryptoRandom) });
   }
 
   const throwing = landed !== result.id;
-  const modifier = result.expression.modifier;
+  const formula = formatExpression(result.expression);
 
   return (
     <>
       <h4>{t("home.dice.title")}</h4>
       <p>{t("home.dice.body")}</p>
       <form className="dice-demo-form" onSubmit={roll}>
-        <label>
-          {t("home.dice.what")}
-          <input
-            id="home-dice-expression"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            maxLength={32}
-            spellCheck={false}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? "home-dice-error" : undefined}
-          />
-        </label>
+        <DicePoolInput value={pool} onChange={setPool} label={t("home.dice.what")} />
         <button type="submit" className="ui-button">
           {t("home.dice.roll")}
         </button>
-        {error && (
-          <p id="home-dice-error" role="alert" className="error">
-            {error}
-          </p>
-        )}
       </form>
       <div className="dice-result" aria-live="polite">
-        <p className="readout">{formatExpression(result.expression)}</p>
+        <p className="readout">{formula}</p>
         <DiceTray
           key={result.id}
-          roll={{ id: result.id, sides: result.expression.sides, dice: result.dice }}
+          roll={{ id: result.id, sides: sidesOfDice(formula, result.dice) ?? 20, dice: result.dice }}
           throwing={throwing}
           onLanded={() => setLanded(result.id)}
         />
@@ -90,10 +75,7 @@ export function DiceTile() {
         ) : (
           <p className="dice-line">
             <span className="dice-total">{result.total}</span>
-            <span className="muted small-print num">
-              {result.dice.join(" + ")}
-              {modifier !== 0 && ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}`}
-            </span>
+            <span className="muted small-print num">{diceBreakdown({ expression: formula, dice: result.dice, total: result.total })}</span>
           </p>
         )}
       </div>

@@ -165,7 +165,7 @@ describe("creature colour, conditions and adding several (KAN-70)", () => {
   it("copies starting HP and all template values into a batch; editing/deleting the template leaves it alone", async () => {
     const cookie = await newGm();
     const art = await upload(cookie, "token", "Wounded goblin art");
-    const attacks = [{ name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } }];
+    const attacks = [{ name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }];
     const template = (await (await create(cookie, {
       name: "Wounded goblin", hp: 3, maxHp: 7, ac: 15, size: 1.5,
       color: "#2e7d32", conditions: ["prone"], attacks, imageAssetId: art.id,

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { halfDamage, presetOf, rolledDamageFor, type AreaEffect, type RoomState } from "@vtt/shared";
+import { presetOf, rolledDamageFor, type AreaEffect, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
-import { ConditionPicker } from "./ConditionMarker";
+import { ResolveResults, ResolveTargetBody, type ResolveResult } from "./ResolveTarget";
 import { damageRollId, savesRollId } from "../board/tokenDice";
-import { amountText, applyToAll, parseAmount, resolveRows, resolveTargets, type ResolveDraft } from "./resolveDraft";
+import { amountText, applyToAll, resolveRows, resolveTargets, type ResolveDraft } from "./resolveDraft";
 import { t } from "../i18n/locale";
 
 /**
@@ -65,6 +65,10 @@ export function ResolveDialog({
   const damageShown = rolled === null ? null : airborne.has(damageRollId(effect.id)) ? "…" : String(rolled);
   const fieldId = target ? `resolve-amount-${target.tokenId}` : "resolve-amount";
   const text = target ? amountText(draft, effect, target.tokenId) : "";
+  const results: ResolveResult[] = [
+    ...(rollShown !== null ? [{ label: t("home.dice.roll"), value: rollShown, detail: effect.expression }] : []),
+    ...(damageShown !== null ? [{ label: t("resolve.damage"), value: damageShown, detail: effect.damage?.expression }] : []),
+  ];
 
   return (
     <Modal
@@ -75,69 +79,34 @@ export function ResolveDialog({
       // The roll, damage and HP sit beside the token's name, so they never scroll out of view.
       headerContent={
         <div className="resolve-head">
-          {target && token && (
-            <dl className="resolve-results">
-              {rollShown !== null && (
-                <div className="resolve-result">
-                  <dt>{t("home.dice.roll")}</dt>
-                  <dd>{rollShown}</dd>
-                  <dd className="resolve-result-detail">{effect.expression}</dd>
-                </div>
-              )}
-              {damageShown !== null && (
-                <div className="resolve-result">
-                  <dt>{t("resolve.damage")}</dt>
-                  <dd>{damageShown}</dd>
-                  <dd className="resolve-result-detail">{effect.damage?.expression}</dd>
-                </div>
-              )}
-              {token.stats.hp !== null && (
-                <div className="resolve-result">
-                  <dt>{t("creature.stat.hp")}</dt>
-                  <dd>{token.stats.hp}</dd>
-                  {token.stats.maxHp !== null && <dd className="resolve-result-detail">{t("resolve.ofMax", { n: token.stats.maxHp })}</dd>}
-                </div>
-              )}
-            </dl>
-          )}
+          {target && token && <ResolveResults results={results} token={token} />}
           <span className="resolve-position" aria-live="polite">{position}</span>
         </div>
       }
     >
       {target && token && (
-        <div className="resolve-target">
-
-          {token.stats.hp === null ? (
-            <p className="muted">{t("resolve.noHp", { name: target.name })}</p>
-          ) : (
-            <div className="resolve-amount">
-              <label htmlFor={fieldId}>{t("resolve.amount")}</label>
-              <input id={fieldId} inputMode="numeric" value={text} onChange={(e) => setAmount(e.target.value)} aria-invalid={parseAmount(text) === null} aria-describedby="resolve-amount-hint" />
-              <button type="button" className="secondary small" onClick={() => setAmount(String(halfDamage(rolled ?? 0)))}>{t("resolve.half")}</button>
-              <button type="button" className="secondary small" onClick={() => setAmount("0")}>{t("resolve.none")}</button>
-              <span id="resolve-amount-hint" className="muted small-print">{t("resolve.negativeHeals")}</span>
-            </div>
+        <ResolveTargetBody
+          name={target.name}
+          token={token}
+          fieldId={fieldId}
+          amount={text}
+          rolled={rolled ?? 0}
+          onAmount={setAmount}
+          conditionsOn={conditionsOn}
+          added={draft.added[target.tokenId] ?? []}
+          onAdded={(next) => onDraft({ ...draft, added: { ...draft.added, [target.tokenId]: next } })}
+        >
+          {targets.length > 1 && (
+            <button
+              type="button"
+              className="secondary small resolve-apply-all"
+              disabled={(draft.added[target.tokenId] ?? []).length === 0}
+              onClick={() => onDraft(applyToAll(draft, targets.map((t) => t.tokenId), target.tokenId, (id) => state.tokens[id]?.conditions ?? []))}
+            >
+              {t("resolve.applyConditions")}
+            </button>
           )}
-          {conditionsOn && (
-            <>
-              <ConditionPicker
-                value={draft.added[target.tokenId] ?? []}
-                locked={token.conditions}
-                onChange={(next) => onDraft({ ...draft, added: { ...draft.added, [target.tokenId]: next.filter((c) => !token.conditions.includes(c)) } })}
-              />
-              {targets.length > 1 && (
-                <button
-                  type="button"
-                  className="secondary small resolve-apply-all"
-                  disabled={(draft.added[target.tokenId] ?? []).length === 0}
-                  onClick={() => onDraft(applyToAll(draft, targets.map((t) => t.tokenId), target.tokenId, (id) => state.tokens[id]?.conditions ?? []))}
-                >
-                  {t("resolve.applyConditions")}
-                </button>
-              )}
-            </>
-          )}
-        </div>
+        </ResolveTargetBody>
       )}
       {error && <p role="alert" className="error">{error}</p>}
       <div className="resolve-actions">

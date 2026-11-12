@@ -342,7 +342,7 @@ Participants need to inspect the map, manipulate permitted pieces, communicate s
 | FR-TAC-06 | Both | **AoE templates, preview, and placement** | Provides circular bursts, cones, lines, and boxes that snap to grid units; participants can orient and scale an ephemeral preview before committing the final template. |
 | FR-TAC-07 | Both | **Token statistics and conditions** | Displays basic numeric resources and status conditions needed to understand the current tactical state of a token. |
 | FR-TAC-08 | Both | **Accessible condition markers** | Distinguishes conditions by shape or text in addition to color so status information is not color-dependent. |
-| FR-TAC-09 | Both | **Shared dice expressions** | Supports expressions of the form `NdX + M` so participants can make common tabletop rolls inside the encounter. |
+| FR-TAC-09 | Both | **Shared dice expressions** | Supports expressions of one or more die terms and a modifier, `NdX + NdY + … + M` (e.g. `2d6 + 1d4 + 3`), built with one dice builder, so participants can make common tabletop rolls inside the encounter. |
 
 ### 5.5 Player and GM Need — See the Same Current Encounter State
 

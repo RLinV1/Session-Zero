@@ -5,7 +5,7 @@ import { MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
 import { TokenAttacks } from "./attackPresets";
 import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
-import { AreaEffect, AreaEffectDamage } from "./areaEffects";
+import { AreaEffect, AreaEffectDamage, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, TemplateGeometry, Token, TokenGroup, Wall } from "./state";
 
@@ -274,7 +274,8 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RollDamageApplied"),
     rollId: Id,
-    amount: z.number().int().min(0),
+    /** Negative for a heal (ADR 0062); every event before it is 0 or more. */
+    amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT),
   }),
   /**
    * The GM took attack rolls off the Rulings list without ruling (ADR 0060). Carries no `previous`:
@@ -372,7 +373,8 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RollDamageUnapplied"),
     rollId: Id,
-    amount: z.number().int().min(0),
+    /** Negative for a heal (ADR 0062); every event before it is 0 or more. */
+    amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT),
   }),
   /**
    * Someone sent a chat message (KAN-75, ADR 0015). The sender is the acting participant, set by

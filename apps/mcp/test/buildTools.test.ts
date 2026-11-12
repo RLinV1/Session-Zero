@@ -152,10 +152,23 @@ describe("the build tools (FR-GM-26)", () => {
   it("names the die it refuses, and a blank retry works", async () => {
     const { pass } = await startBuild();
     const attack = (damage: unknown) => ({ name: "Sting", toHit: null, damage });
-    const refused = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [attack({ count: 1, sides: 3, modifier: 0 })] })] });
+    const refused = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [attack({ terms: [{ count: 1, sides: 3 }], modifier: 0 })] })] });
     expect(JSON.stringify(refused.json)).toContain("d3");
-    const retry = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [{ name: "Sting", toHit: { count: 1, sides: 20, modifier: 2 }, damage: null }], flags: [{ field: "damage", message: "d3 isn't available" }] })] });
+    const retry = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [{ name: "Sting", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 2 }, damage: null }], flags: [{ field: "damage", message: "d3 isn't available" }] })] });
     expect((retry.json.results as { saved: boolean }[])[0]?.saved).toBe(true);
+  });
+
+  it("saves mixed dice, and still takes an older client's one-die dice as one term (ADR 0061)", async () => {
+    const { pass } = await startBuild();
+    const mixed = { name: "Flame tongue", toHit: null, damage: { terms: [{ count: 2, sides: 6 }, { count: 1, sides: 8 }], modifier: 3 } };
+    const old = { name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: null };
+    const saved = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [mixed, old] })] });
+    expect((saved.json.results as { saved: boolean }[])[0]?.saved).toBe(true);
+    const { json } = await ai.call("get_build", { pass });
+    expect(json.items).toMatchObject([{ data: { attacks: [
+      { damage: { terms: [{ count: 2, sides: 6 }, { count: 1, sides: 8 }], modifier: 3 } },
+      { toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 } },
+    ] } }]);
   });
 
   it("saves a repeat by key rather than adding one", async () => {

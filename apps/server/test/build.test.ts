@@ -501,7 +501,7 @@ describe("draft items (FR-GM-26)", () => {
     const { results } = await save(pass, [
       goblin({ key: "a" }),
       goblin({ key: "b", maxHp: 20000 }),
-      goblin({ key: "c", attacks: [{ name: "Bite", toHit: null, damage: { count: 1, sides: 7, modifier: 0 } }] }),
+      goblin({ key: "c", attacks: [{ name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 7 }], modifier: 0 } }] }),
       goblin({ key: "d" }),
     ]);
     expect(results.map((r) => r.saved)).toEqual([true, false, false, true]);

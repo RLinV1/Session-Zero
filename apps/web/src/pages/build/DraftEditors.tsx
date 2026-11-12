@@ -1,20 +1,14 @@
 import { useState } from "react";
 import { Plus, Trash } from "@phosphor-icons/react";
-import { CONDITIONS, formatExpression, parseDiceExpression, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { CONDITIONS, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
 import { IconAction } from "../../ui/IconAction";
+import { DiceField } from "../../panels/AttackPanel";
+import { poolOf, type DicePool } from "../../ui/dicePool";
 import { tokenOrder } from "./buildOrder";
 
 const optionalNumber = (text: string): number | null => (text.trim() === "" ? null : Number(text));
-const diceText = (dice: { count: number; sides: number; modifier: number } | null) => (dice ? formatExpression(dice) : "");
-
-interface AttackRow { name: string; toHit: string; damage: string; maxTargets?: number }
-
-/** "" is a blank roll; anything else must read as dice. Sides are checked by the server. */
-function readDice(text: string) {
-  if (text.trim() === "") return { ok: true as const, dice: null };
-  const parsed = parseDiceExpression(text.trim());
-  return parsed.ok ? { ok: true as const, dice: parsed.expression } : { ok: false as const, message: parsed.message };
-}
+/** A draft attack: its rolls are built with the dice builder (dice-pool); null is a blank roll. */
+interface AttackRow { name: string; toHit: DicePool | null; damage: DicePool | null; maxTargets?: number }
 
 /** Everything a draft creature can hold. The server applies the same limits as for the AI. */
 export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
@@ -31,7 +25,7 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
   const [color, setColor] = useState(data.color);
   const [art, setArt] = useState(data.imageFileId ?? "");
   const [conditions, setConditions] = useState<ConditionId[]>(data.conditions);
-  const [attacks, setAttacks] = useState<AttackRow[]>(data.attacks.map((a) => ({ name: a.name, toHit: diceText(a.toHit), damage: diceText(a.damage), ...(a.maxTargets ? { maxTargets: a.maxTargets } : {}) })));
+  const [attacks, setAttacks] = useState<AttackRow[]>(data.attacks.map((a) => ({ name: a.name, toHit: a.toHit, damage: a.damage, ...(a.maxTargets ? { maxTargets: a.maxTargets } : {}) })));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const tokens = files.filter((f) => f.kind === "token");
@@ -40,22 +34,16 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const rolls = attacks.map((a) => ({ ...a, hit: readDice(a.toHit), dmg: readDice(a.damage) }));
-    const bad = rolls.find((r) => !r.hit.ok || !r.dmg.ok);
-    if (bad) {
-      setError(`${bad.name || "An attack"}: use dice such as 1d20+5, or leave it blank.`);
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
       await onSave({
         name, size: Number(size), hp: optionalNumber(hp), maxHp: optionalNumber(maxHp), ac: optionalNumber(ac), color, conditions,
         imageFileId: art || null,
-        attacks: rolls.map((r) => ({
+        attacks: attacks.map((r) => ({
           name: r.name,
-          toHit: r.hit.ok ? r.hit.dice : null,
-          damage: r.dmg.ok ? r.dmg.dice : null,
+          toHit: r.toHit,
+          damage: r.damage,
           ...(r.maxTargets ? { maxTargets: r.maxTargets } : {}),
         })),
       });
@@ -86,12 +74,12 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
         {attacks.map((attack, i) => (
           <div className="build-attack" key={i}>
             <input aria-label={`Attack ${i + 1} name`} placeholder="Name" value={attack.name} maxLength={40} onChange={(e) => setAttack(i, { name: e.target.value })} />
-            <input aria-label={`Attack ${i + 1} to-hit`} placeholder="To hit, 1d20+5" value={attack.toHit} onChange={(e) => setAttack(i, { toHit: e.target.value })} />
-            <input aria-label={`Attack ${i + 1} damage`} placeholder="Damage, 1d6+2" value={attack.damage} onChange={(e) => setAttack(i, { damage: e.target.value })} />
+            <DiceField label={`Attack ${i + 1} to-hit`} kind="toHit" value={attack.toHit} fallback={poolOf(20)} onChange={(toHit) => setAttack(i, { toHit })} />
+            <DiceField label={`Attack ${i + 1} damage`} kind="damage" value={attack.damage} fallback={poolOf(6)} onChange={(damage) => setAttack(i, { damage })} />
             <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove ${attack.name.trim() || `attack ${i + 1}`}`} danger onClick={() => setAttacks((all) => all.filter((_, n) => n !== i))} />
           </div>
         ))}
-        {attacks.length < 8 && <button type="button" className="link build-text-action" onClick={() => setAttacks((all) => [...all, { name: "", toHit: "", damage: "" }])}><Plus size={16} aria-hidden="true" />Add attack</button>}
+        {attacks.length < 8 && <button type="button" className="link build-text-action" onClick={() => setAttacks((all) => [...all, { name: "", toHit: null, damage: null }])}><Plus size={16} aria-hidden="true" />Add attack</button>}
       </fieldset>
       <fieldset>
         <legend>Conditions</legend>

@@ -100,7 +100,7 @@ describe("composite map undo (KAN-66, FR-REC-02, FR-REC-03)", () => {
     const edited = act(applied.state, { type: "token.configure", tokenId: free, changes: {
       name: "Renamed", size: 10, position, rotation: 45, hidden: true,
       stats: { hp: 2, maxHp: 8, ac: 13 }, ownerIds: [], conditions: ["prone"],
-      attacks: [{ name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 1 } }],
+      attacks: [{ name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } }],
     } });
     const added = act(edited.state, { type: "token.create", name: "New", position: { x: 200, y: 200 } });
     const undone = act(added.state, { type: "history.undo", commandId: applied.commandId });
