@@ -2884,7 +2884,6 @@ dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: va
   border: 2px solid rgba(0, 0, 0, 0.5);
 }
 .tool-swatch[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
-.tool-size select { width: 100%; }
 .tool-stepper { display: flex; align-items: stretch; gap: 2px; }
 .tool-stepper input { width: 3.25rem; min-width: 0; text-align: center; -moz-appearance: textfield; }
 .tool-stepper input::-webkit-inner-spin-button, .tool-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

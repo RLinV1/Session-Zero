@@ -167,6 +167,18 @@ export const AreaTemplate = z.object({
 });
 export type AreaTemplate = z.infer<typeof AreaTemplate>;
 
+/**
+ * The part of a placed area an edit may change (ADR 0058): where it is, where it points, how big
+ * it is and, for a line, how wide. Identity, owner, colour and GM-only never change.
+ */
+export const TemplateGeometry = AreaTemplate.pick({ origin: true, toward: true, size: true, width: true });
+export type TemplateGeometry = z.infer<typeof TemplateGeometry>;
+
+/** A template's current geometry, with `width` left out when it has none. */
+export function templateGeometry(t: TemplateGeometry): TemplateGeometry {
+  return { origin: t.origin, toward: t.toward, size: t.size, ...(t.width !== undefined && { width: t.width }) };
+}
+
 /** How a fog region was drawn (FR-GM-17, ADR 0016). Both are stored as polygons. */
 export const FogShape = z.enum(["rect", "polygon"]);
 export type FogShape = z.infer<typeof FogShape>;

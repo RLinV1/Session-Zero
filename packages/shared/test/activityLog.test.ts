@@ -77,6 +77,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     RollDamageApplied: [{ type: "RollDamageApplied", rollId: "gone", amount: 7 }, "Mara applied 7 damage from an earlier roll"],
     TokenImageSet: [{ type: "TokenImageSet", tokenId: token.id, imageUrl: "/uploads/new.png", assetId: null, previous: { imageUrl: null, assetId: null } }, "Mara changed Goblin's image"],
     TemplatePlaced: [{ type: "TemplatePlaced", template: areaTemplate }, "Mara placed a 20 ft cone"],
+    // An area the log no longer holds reads generically; the wording per kind is in areaTemplates.test.ts.
+    TemplateChanged: [{ type: "TemplateChanged", templateId: "gone", from: { origin: { x: 0, y: 0 }, toward: { x: 1, y: 0 }, size: 10 }, to: { origin: { x: 70, y: 0 }, toward: { x: 71, y: 0 }, size: 10 } }, "Mara changed an area"],
     TemplateRemoved: [{ type: "TemplateRemoved", template: { ...areaTemplate, gmOnly: true } }, "Mara removed a 20 ft cone (GM only)"],
     ReducedEffectsSet: [{ type: "ReducedEffectsSet", enabled: true, previous: false }, "Mara turned reduced animations on for the table"],
     JoinsLockSet: [{ type: "JoinsLockSet", locked: true, previous: false }, "Mara locked the room to new players"],

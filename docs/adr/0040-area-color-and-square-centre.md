@@ -1,6 +1,7 @@
 # ADR 0040: Area colours, hatched GM-only areas, and squares placed by their centre
 
 **Status:** Proposed — needs review by the Real-Time Architecture owner · **Amends:** `docs/adr/0007-shared-area-templates.md`, `docs/adr/0021-area-lines-and-aim.md`
+**Amended by:** `docs/adr/0058-edit-placed-area-templates.md` (a click places a 2-cell area; placed areas can be edited)
 **Owner:** Real-Time Architecture (Raymond) · **Changes:** `openspec/changes/aoe-tool-refinements` · **Requirement:** FR-TAC-06
 
 ## Context

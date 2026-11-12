@@ -25,6 +25,8 @@ export * from "./auth";
 export * from "./diceLooks";
 export * from "./membership";
 export * from "./activityLog";
+export * from "./templateChange";
+export * from "./areas";
 export * from "./gamePresets";
 
 export * from "./replay";

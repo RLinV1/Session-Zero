@@ -1,4 +1,4 @@
-import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type Token, type Wall } from "@vtt/shared";
+import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
 
@@ -19,8 +19,6 @@ export type BoardTool =
   | {
       kind: "area";
       shape: AreaShape;
-      /** Size for a click without a drag, in grid units, e.g. 20 (ft). */
-      size: number;
       /** A line's width in whole cells, 1 to `MAX_LINE_WIDTH_CELLS` (KAN-35, aoe-tool-refinements). */
       lineCells: number;
       /** The colour everyone sees it in (ADR 0040). */
@@ -125,8 +123,6 @@ export const DRAW_COLORS = [
   { name: "colour.blue", value: 0x3498db },
   { name: "colour.white", value: 0xecf0f1 },
 ] as const;
-/** Sizes offered for placing an area with a click, in grid units (the common 5e set). A drag sizes it instead. */
-export const AREA_SIZES = [5, 10, 15, 20, 30, 40, 60] as const;
 
 /** A mark as the viewer made it: raw points, so a grid change re-derives snapping and sizes. */
 export type Mark =
@@ -188,45 +184,7 @@ export function measure(from: Point, to: Point, grid: GridSpec, free: boolean, r
   return { from: a, to: b, units, label: formatDistance(units, grid) };
 }
 
-export type AreaGeometry =
-  | { kind: "circle"; center: Point; radius: number }
-  | { kind: "polygon"; points: Point[] };
-
-/**
- * An area's outline in board pixels. Size is in grid units. A circle's size is its radius; a
- * cone starts at the origin and is as wide as it is long at its far end; a box is a square
- * that starts at the origin (the middle of its near side) and extends toward `toward`, as a
- * 5e cube does. A zero-length aim points right.
- */
-export function areaShape(shape: AreaShape, origin: Point, toward: Point, size: number, grid: GridSpec, width?: number): AreaGeometry {
-  const length = (size / grid.unitsPerCell) * grid.cellSize;
-  if (shape === "circle") return { kind: "circle", center: origin, radius: length };
-
-  const dx = toward.x - origin.x;
-  const dy = toward.y - origin.y;
-  const angle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx);
-  const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-  const perp = { x: -dir.y, y: dir.x };
-  const at = (along: number, across: number): Point => ({
-    x: origin.x + dir.x * along + perp.x * across,
-    y: origin.y + dir.y * along + perp.y * across,
-  });
-
-  if (shape === "cone") return { kind: "polygon", points: [origin, at(length, -length / 2), at(length, length / 2)] };
-  if (shape === "line") {
-    // Starts at the origin and runs `size` toward the aim, `width` across (one cell by default) (KAN-35).
-    const half = (((width ?? grid.unitsPerCell) / grid.unitsPerCell) * grid.cellSize) / 2;
-    return { kind: "polygon", points: [at(0, -half), at(length, -half), at(length, half), at(0, half)] };
-  }
-  // A box is centred on its origin, turned to face the aim (ADR 0040).
-  const h = length / 2;
-  return { kind: "polygon", points: [at(-h, -h), at(h, -h), at(h, h), at(-h, h)] };
-}
-
-/** Where a placed template is on the board, as `areaShape` draws it. */
-export function templateArea(t: AreaTemplate, grid: GridSpec): AreaGeometry {
-  return areaShape(t.shape, t.origin, t.toward, t.size, grid, t.width);
-}
+export { areaShape, templateArea, type AreaGeometry };
 
 /**
  * The tokens whose footprint (their size in cells, a square centred on their position) overlaps
@@ -296,6 +254,90 @@ export function areaSizeFromDrag(origin: Point, to: Point, grid: GridSpec, free:
   if (free) return Math.max(0.1, Math.round(cells * grid.unitsPerCell * 10) / 10);
   return Math.max(1, Math.round(cells)) * grid.unitsPerCell;
 }
+
+/** How big an area placed with a click is, in cells of the room's grid (ADR 0058). A drag sizes it instead. */
+export const DEFAULT_AREA_CELLS = 2;
+
+/** The size of an area placed with a click, in the room's units: 10 ft on a 5 ft grid. */
+export function defaultAreaSize(grid: GridSpec): number {
+  return DEFAULT_AREA_CELLS * grid.unitsPerCell;
+}
+
+/** The shape and geometry of a placed area, as the handles need it. */
+export type EditableArea = Pick<AreaTemplate, "shape" | "origin" | "toward" | "size" | "width">;
+
+/**
+ * A grip on a selected area (ADR 0058). `aim` sets size and, but for a circle, direction: on a
+ * circle's rim, at a cone's or line's far end, at a square's front corner. `width` sits on each
+ * long edge of a line.
+ */
+export type TemplateHandle = { kind: "aim" | "width"; at: Point };
+
+/** How a selected area is being changed: dragged by its body from a point, or by one of its handles. */
+export type TemplateEdit = { kind: "body"; grab: Point } | { kind: "aim" } | { kind: "width" };
+
+/** An area's facing as a unit vector and its normal; a zero-length aim points right. */
+function facing(t: EditableArea): { dir: Point; perp: Point } {
+  const dx = t.toward.x - t.origin.x;
+  const dy = t.toward.y - t.origin.y;
+  const angle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx);
+  const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+  return { dir, perp: { x: -dir.y, y: dir.x } };
+}
+
+/** Where a selected area's handles are, in board pixels. */
+export function templateHandles(t: EditableArea, grid: GridSpec): TemplateHandle[] {
+  const length = (t.size / grid.unitsPerCell) * grid.cellSize;
+  const { dir, perp } = facing(t);
+  const at = (along: number, across: number): Point => ({
+    x: t.origin.x + dir.x * along + perp.x * across,
+    y: t.origin.y + dir.y * along + perp.y * across,
+  });
+  if (t.shape === "box") return [{ kind: "aim", at: at(length / 2, length / 2) }];
+  const handles: TemplateHandle[] = [{ kind: "aim", at: at(length, 0) }];
+  if (t.shape === "line") {
+    const half = (((t.width ?? grid.unitsPerCell) / grid.unitsPerCell) * grid.cellSize) / 2;
+    handles.push({ kind: "width", at: at(length / 2, -half) }, { kind: "width", at: at(length / 2, half) });
+  }
+  return handles;
+}
+
+/**
+ * The geometry an edit gives a placed area with the pointer at `pointer` (ADR 0058), snapped as
+ * placing is unless `free` (Alt):
+ * - body: moves the origin by the drag, snapped to half cells, and the aim with it, keeping its facing
+ * - aim: the size from the origin to the pointer, as a placement drag; a cone, line or square also
+ *   turns to face it (a square's handle is its corner, 45° off its facing)
+ * - width: a line's width, twice the pointer's distance from its centre line, in whole cells from 1
+ *   to `MAX_LINE_WIDTH_CELLS` even with Alt
+ */
+export function editedGeometry(t: EditableArea, edit: TemplateEdit, pointer: Point, grid: GridSpec, free: boolean): TemplateGeometry {
+  const same = { origin: t.origin, toward: t.toward, size: t.size, ...(t.width !== undefined && { width: t.width }) };
+  if (edit.kind === "body") {
+    const origin = areaOrigin({ x: t.origin.x + pointer.x - edit.grab.x, y: t.origin.y + pointer.y - edit.grab.y }, grid, free);
+    const dx = origin.x - t.origin.x, dy = origin.y - t.origin.y;
+    return { ...same, origin, toward: { x: t.toward.x + dx, y: t.toward.y + dy } };
+  }
+  const dx = pointer.x - t.origin.x, dy = pointer.y - t.origin.y;
+  if (edit.kind === "width") {
+    if (t.shape !== "line") return same;
+    const { perp } = facing(t);
+    const across = Math.abs(dx * perp.x + dy * perp.y);
+    const cells = Math.min(MAX_LINE_WIDTH_CELLS, Math.max(1, Math.round((2 * across) / grid.cellSize)));
+    return { ...same, width: cells * grid.unitsPerCell };
+  }
+  if (dx === 0 && dy === 0) return same;
+  if (t.shape === "circle") return { ...same, size: areaSizeFromDrag(t.origin, pointer, grid, free, "circle") };
+  if (t.shape !== "box") return { ...same, toward: pointer, size: areaSizeFromDrag(t.origin, pointer, grid, free, t.shape) };
+  // The corner is half a diagonal from the centre: side = distance × √2, facing 45° back from the pointer.
+  const cells = (Math.hypot(dx, dy) * Math.SQRT2) / grid.cellSize;
+  const size = free ? Math.max(0.1, Math.round(cells * grid.unitsPerCell * 10) / 10) : Math.max(1, Math.round(cells)) * grid.unitsPerCell;
+  const angle = Math.atan2(dy, dx) - Math.PI / 4;
+  return { ...same, size, toward: { x: t.origin.x + Math.cos(angle) * grid.cellSize, y: t.origin.y + Math.sin(angle) * grid.cellSize } };
+}
+
+/** Whether `p` is inside an area's outline: no edge reach, unlike the eraser's `hitMark`. */
+export const insideArea = pointInArea;
 
 /**
  * Points every `step` board pixels from `from` to `to`, both ends included, so a fast eraser

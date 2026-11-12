@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Ve
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, TemplateGeometry, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -421,6 +421,20 @@ const BoardCommand = z.discriminatedUnion("type", [
     /** One of the fixed area colours (ADR 0040); anything else fails to parse. */
     color: AreaColor.optional(),
     gmOnly: z.boolean().default(false),
+  }),
+  /**
+   * Move, resize, turn or widen a placed template (ADR 0058). Its owner or the GM. Always the full
+   * new geometry; `expected` is the geometry the edit was made from, so a stale edit is refused.
+   */
+  z.object({
+    type: z.literal("template.update"),
+    templateId: Id,
+    origin: Point,
+    toward: Point,
+    size: z.number().positive().max(1000),
+    /** A line's width in grid units; ignored for other shapes. */
+    width: z.number().positive().max(1000).optional(),
+    expected: TemplateGeometry,
   }),
   /** Remove a placed template. Its owner or the GM. */
   z.object({

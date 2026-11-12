@@ -55,6 +55,11 @@ export const EphemeralPayload = z.discriminatedUnion("type", [
      * Required on a clear: the server must never guess, or a GM's clear could reach players.
      */
     gmOnly: z.boolean().optional(),
+    /**
+     * Set while a placed template is being moved or resized rather than a new one aimed (ADR 0058):
+     * receivers hide that template while the preview lasts. The server checks the sender may edit it.
+     */
+    templateId: Id.optional(),
   }).refine((p) => p.preview !== null || p.gmOnly !== undefined, { message: "A cleared aim must say whether it was GM-only", path: ["gmOnly"] }),
 ]);
 export type EphemeralPayload = z.infer<typeof EphemeralPayload>;

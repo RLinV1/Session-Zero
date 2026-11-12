@@ -303,7 +303,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || isTyping(event.target) || document.querySelector("dialog[open]")) return;
-      if (viewRef.current?.cancelMovement()) event.preventDefault();
+      // An area edit, then the area's selection, before Escape leaves the tool (ADR 0058).
+      if (viewRef.current?.cancelMovement() || viewRef.current?.cancelTemplateEdit()) event.preventDefault();
       setRepositionId(null); repositionRef.current = null;
     };
     window.addEventListener("keydown", onKey);
@@ -411,8 +412,13 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       dragEnd: (tokenId, at) => { guarded.endPreview("movement-feedback", null); guarded.endPreview(`drag:${tokenId}`, at && { type: "tokenDragPreview", tokenId, at }); },
       ping: (at) => guarded.ephemeral({ type: "ping", at }),
       // Aiming is shared live and coalesced like drags (KAN-35, KAN-39); the clear goes at once.
-      aimPreview: (preview) => guarded.preview("aim", { type: "templatePreview", preview }),
-      aimEnd: (gmOnly) => guarded.endPreview("aim", { type: "templatePreview", preview: null, gmOnly }),
+      aimPreview: (preview, templateId) => guarded.preview("aim", { type: "templatePreview", preview, ...(templateId && { templateId }) }),
+      aimEnd: (gmOnly, templateId) => guarded.endPreview("aim", { type: "templatePreview", preview: null, gmOnly, ...(templateId && { templateId }) }),
+      updateTemplate: async (templateId, geometry, expected) => {
+        const result = await guarded.command({ type: "template.update", templateId, ...geometry, expected });
+        if (!result.ok) console.warn("Area edit rejected:", result.message);
+        return result.ok;
+      },
       placeTemplate: async (template) => {
         const result = await guarded.command({ type: "template.place", ...template });
         if (!result.ok) console.warn("Area rejected:", result.message);
@@ -485,7 +491,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       else if (payload.type === "tokenDragPreview") view.showDragPreview(payload.tokenId, payload.at);
       else if (payload.type === "tokenMoveFeedback" && _from === latest.current.you.id && payload.atSeq === connection.snapshot.seq && connection.snapshot.status === "open") view.showMovementFeedback(payload);
       else if (payload.type === "templatePreview") {
-        view.showAimPreview(_from, payload.preview, latest.current.state.participants[_from]?.displayName ?? "Someone");
+        view.showAimPreview(_from, payload.preview, latest.current.state.participants[_from]?.displayName ?? "Someone", payload.templateId);
       }
     });
 
@@ -881,7 +887,6 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           }} />}
         active={tool.kind}
         options={toolOptions}
-        unitLabel={state.scene.grid.unitLabel}
         isGm={you.role === "gm"}
         onSelect={(kind) => {
           setPlacing(null);

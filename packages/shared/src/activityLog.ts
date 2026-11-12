@@ -8,6 +8,7 @@ import type { Locale } from "./i18n/core";
 import { formatActivityZhTW } from "./i18n/sentences.zh-TW";
 import { DEFEAT_REMOVAL_LABELS, DIAGONAL_RULE_LABELS, DIFFICULT_TERRAIN_LABELS, emptyRoomState, type Participant, type RoomState } from "./state";
 import { filterEventForViewer, filterStateForViewer } from "./visibility";
+import { templateChangeKind } from "./templateChange";
 
 const Sequence = z.number().int().positive().safe();
 const QueryInteger = z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(Sequence);
@@ -205,6 +206,15 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} said: ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`;
     }
     case "TemplatePlaced": return `${actorName} placed ${withArticle(templateLabel(event.template))}${event.template.gmOnly ? " (GM only)" : ""}`;
+    case "TemplateChanged": {
+      const template = before.templates[event.templateId];
+      if (!template) return `${actorName} changed an area`;
+      const was = { ...template, ...event.from }, now = { ...template, ...event.to };
+      const gm = template.gmOnly ? " (GM only)" : "";
+      const kind = templateChangeKind(event.from, event.to);
+      if (kind === "changed") return `${actorName} changed ${withArticle(templateLabel(was))} to ${withArticle(templateLabel(now))}${gm}`;
+      return `${actorName} ${kind} ${withArticle(templateLabel(was))}${gm}`;
+    }
     case "TemplateRemoved": return `${actorName} removed ${withArticle(templateLabel(event.template))}${event.template.gmOnly ? " (GM only)" : ""}`;
     case "FogAdded": return `${actorName} added a fog ${fogLabel(event.region.shape)}`;
     case "FogRemoved": return `${actorName} removed a fog ${fogLabel(event.region.shape)}`;

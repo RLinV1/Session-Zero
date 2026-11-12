@@ -7,7 +7,7 @@ import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
 import { AreaEffect, AreaEffectDamage } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
-import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
+import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, TemplateGeometry, Token, TokenGroup, Wall } from "./state";
 
 /**
  * Events are FACTS the server has committed. They are append-only and never edited.
@@ -366,6 +366,16 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("TemplatePlaced"),
     template: AreaTemplate,
+  }),
+  /**
+   * A placed template was moved, resized, turned or widened (ADR 0058). `from` is its geometry
+   * before (invariant 6); identity, owner, colour and GM-only are unchanged.
+   */
+  z.object({
+    type: z.literal("TemplateChanged"),
+    templateId: Id,
+    from: TemplateGeometry,
+    to: TemplateGeometry,
   }),
   /** Carries the whole template as it was, so undo can restore it (invariant 6). */
   z.object({
