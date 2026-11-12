@@ -381,6 +381,18 @@ export interface RoomState {
    */
   autoRemoveDefeated: boolean;
   /**
+   * Which tokens leave the board at 0 HP or below (ADR 0054): every one, only those no player owns,
+   * or none. Public. Absent until the GM first sets it; read it with `defeatRemovalOf`, which falls
+   * back to `autoRemoveDefeated` so older rooms keep their choice.
+   */
+  defeatRemoval?: DefeatRemoval;
+  /** A player who owns no visible token sees nothing on the board (ADR 0054). Public. Absent reads as false. */
+  hideMapWithoutToken?: boolean;
+  /** Players get no HP or max HP for tokens they don't own (ADR 0054). Public. Absent reads as false. */
+  hideHp?: boolean;
+  /** Players get no AC for tokens they don't own (ADR 0054). Public. Absent reads as false. */
+  hideAc?: boolean;
+  /**
    * The GM has stopped new players joining by invite (ADR 0051). Seats already taken are untouched.
    * Public. Absent in older snapshots and logs, which read as false.
    */
@@ -403,6 +415,17 @@ export interface RoomState {
   boardEpoch?: number;
   /** Effective permitted cells only; never canonical. */
   terrainView?: TerrainView;
+}
+
+/** "npc": only tokens with no owner. */
+export const DEFEAT_REMOVALS = ["all", "npc", "off"] as const;
+export type DefeatRemoval = (typeof DEFEAT_REMOVALS)[number];
+/** How the Settings Table tab and the activity log name each mode. */
+export const DEFEAT_REMOVAL_LABELS: Record<DefeatRemoval, string> = { all: "All", npc: "Only NPC tokens", off: "Off" };
+
+/** The room's 0 HP removal mode; a room from before ADR 0054 reads from its on/off switch (absent = on). */
+export function defeatRemovalOf(state: Pick<RoomState, "defeatRemoval"> & { autoRemoveDefeated?: boolean }): DefeatRemoval {
+  return state.defeatRemoval ?? (state.autoRemoveDefeated === false ? "off" : "all");
 }
 
 export function emptyRoomState(roomId: Id): RoomState {

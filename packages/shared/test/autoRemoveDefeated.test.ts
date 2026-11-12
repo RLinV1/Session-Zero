@@ -14,6 +14,7 @@ import {
   type DomainEvent,
   type Participant,
   type RoomState,
+  defeatRemovalOf,
 } from "../src";
 import { alice, attempt, baseRoom, ctx, gm, resetRandom, run, withToken } from "./fixtures";
 
@@ -43,7 +44,7 @@ function table(on = true) {
   hp(aria.token.id, 20);
   hp(goblin.token.id, 3);
   hp(ogre.token.id, 3);
-  if (on) state = run(state, gm, { type: "room.setAutoRemoveDefeated", enabled: true }).state;
+  if (on) state = run(state, gm, { type: "room.setDefeatRemoval", mode: "all" }).state;
   return { state, aria: aria.token, goblin: goblin.token, ogre: ogre.token, sign: sign.token };
 }
 const stats = (hp: number | null) => ({ hp, maxHp: 20, ac: null });
@@ -69,27 +70,27 @@ describe("auto-remove defeated: the room option (FR-TAC-07, FR-GM-15)", () => {
     const absent = old as RoomState;
     const after = run(absent, gm, { type: "token.setStats", tokenId: goblin.id, stats: stats(-10) });
     expect(after.state.tokens[goblin.id]).toBeUndefined();
-    expect(attempt(absent, gm, { type: "room.setAutoRemoveDefeated", enabled: true })).toMatchObject({ ok: false, code: "invalid" });
-    expect(run(absent, gm, { type: "room.setAutoRemoveDefeated", enabled: false }).events).toEqual([
-      { type: "AutoRemoveDefeatedSet", enabled: false, previous: true },
+    expect(attempt(absent, gm, { type: "room.setDefeatRemoval", mode: "all" })).toMatchObject({ ok: false, code: "invalid" });
+    expect(run(absent, gm, { type: "room.setDefeatRemoval", mode: "off" }).events).toEqual([
+      { type: "DefeatRemovalSet", mode: "off", previous: "all" },
     ]);
   });
 
   it("lets only the GM change it, refuses an unchanged value, and shows it to everyone", () => {
     const { state } = table(false);
-    expect(attempt(state, alice, { type: "room.setAutoRemoveDefeated", enabled: true })).toMatchObject({ ok: false, code: "forbidden" });
-    expect(attempt(state, gm, { type: "room.setAutoRemoveDefeated", enabled: false })).toMatchObject({ ok: false, code: "invalid" });
-    const on = run(state, gm, { type: "room.setAutoRemoveDefeated", enabled: true });
-    expect(on.events).toEqual([{ type: "AutoRemoveDefeatedSet", enabled: true, previous: false }]);
-    expect(on.state.autoRemoveDefeated).toBe(true);
+    expect(attempt(state, alice, { type: "room.setDefeatRemoval", mode: "all" })).toMatchObject({ ok: false, code: "forbidden" });
+    expect(attempt(state, gm, { type: "room.setDefeatRemoval", mode: "off" })).toMatchObject({ ok: false, code: "invalid" });
+    const on = run(state, gm, { type: "room.setDefeatRemoval", mode: "all" });
+    expect(on.events).toEqual([{ type: "DefeatRemovalSet", mode: "all", previous: "off" }]);
+    expect(defeatRemovalOf(on.state)).toBe("all");
     expect(filterEventForViewer(committed(on.events[0]!), state, alice).kind).toBe("event");
-    expect(filterStateForViewer(on.state, alice).autoRemoveDefeated).toBe(true);
+    expect(filterStateForViewer(on.state, alice).defeatRemoval).toBe("all");
   });
 
   it("does not remove tokens already at 0 or below when turned on", () => {
     const { state, goblin } = table(false);
     const low = run(state, gm, { type: "token.setStats", tokenId: goblin.id, stats: stats(-2) }).state;
-    expect(run(low, gm, { type: "room.setAutoRemoveDefeated", enabled: true }).state.tokens[goblin.id]).toBeDefined();
+    expect(run(low, gm, { type: "room.setDefeatRemoval", mode: "all" }).state.tokens[goblin.id]).toBeDefined();
   });
 });
 

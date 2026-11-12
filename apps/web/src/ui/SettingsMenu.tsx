@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent } from "react";
-import type { Participant, RoomState } from "@vtt/shared";
+import { DEFEAT_REMOVAL_LABELS, DEFEAT_REMOVALS, defeatRemovalOf, type CommandInput, type DefeatRemoval, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
 import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
@@ -93,27 +93,39 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
     </Modal>
   );
 }
-/** GM only: a setting every player at the table shares (FR-TAC-07). The server decides; this is a hint. */
+/**
+ * GM only: the rules every player at the table shares (FR-TAC-07, FR-GM-23, ADR 0054). The server
+ * decides and enforces them; this only sends the GM's choice.
+ */
 function TableSection({ room }: { room: SettingsRoom }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hintId = useId();
-  const enabled = room.state.autoRemoveDefeated ?? true;
-  const toggle = async (next: boolean) => {
+  const state = room.state;
+  const send = async (command: CommandInput) => {
     setBusy(true);
     setError(null);
-    const result = await room.connection.command({ type: "room.setAutoRemoveDefeated", enabled: next });
+    const result = await room.connection.command(command);
     setBusy(false);
     if (!result.ok) setError(result.message);
   };
+  const rules: { label: string; on: boolean; command: (enabled: boolean) => CommandInput }[] = [
+    { label: "Hide map from players without a token", on: state.hideMapWithoutToken ?? false, command: (enabled) => ({ type: "room.setHideMapWithoutToken", enabled }) },
+    { label: "Hide HP from Players", on: state.hideHp ?? false, command: (enabled) => ({ type: "room.setHideHp", enabled }) },
+    { label: "Hide AC from Players", on: state.hideAc ?? false, command: (enabled) => ({ type: "room.setHideAc", enabled }) },
+  ];
   return (
     <div className="stack" aria-busy={busy}>
-      <p className="muted small-print">This setting is shared by everyone at the table.</p>
-      <label className="checkbox">
-        <input type="checkbox" role="switch" checked={enabled} disabled={busy} aria-describedby={hintId} onChange={(e) => void toggle(e.target.checked)} />
-        Remove tokens at 0 HP
+      <label>Remove tokens at 0 HP
+        <select value={defeatRemovalOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDefeatRemoval", mode: e.target.value as DefeatRemoval })}>
+          {DEFEAT_REMOVALS.map((mode) => <option key={mode} value={mode}>{DEFEAT_REMOVAL_LABELS[mode]}</option>)}
+        </select>
       </label>
-      <p id={hintId} className="muted small-print">Tokens are removed when their HP reaches 0 or below. Undo brings one back.</p>
+      {rules.map(({ label, on, command }) => (
+        <label key={label} className="checkbox">
+          <input type="checkbox" role="switch" checked={on} disabled={busy} onChange={(e) => void send(command(e.target.checked))} />
+          {label}
+        </label>
+      ))}
       {error && <p role="alert" className="error small">{error}</p>}
     </div>
   );

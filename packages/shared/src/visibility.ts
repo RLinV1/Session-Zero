@@ -8,6 +8,7 @@ import type { CommittedEvent } from "./events";
 import { inFogRegion, type Point } from "./geometry";
 import { wallMidpoint } from "./portals";
 import { inSight, viewerSight } from "./sight";
+import type { TokenStats } from "./conditions";
 import type { AreaTemplate, Initiative, Participant, RoomState, Token, Wall } from "./state";
 
 /** Whether a board point lies under any fog region (FR-GM-17, ADR 0016). */
@@ -22,7 +23,7 @@ export function isInFog(fog: RoomState["fog"], point: Point): boolean {
  */
 export type Concealment = { fog: RoomState["fog"]; sight: Point[][] | null };
 
-export function concealmentFor(state: Pick<RoomState, "fog" | "scene" | "walls" | "tokens">, viewer: Participant): Concealment {
+export function concealmentFor(state: Pick<RoomState, "fog" | "scene" | "walls" | "tokens" | "hideMapWithoutToken">, viewer: Participant): Concealment {
   return { fog: state.fog, sight: viewerSight(state, viewer) };
 }
 
@@ -97,7 +98,7 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // Hidden tokens, and tokens under fog or out of sight the viewer doesn't own, are withheld (FR-GM-17).
   const tokens = Object.fromEntries(
     Object.entries(state.tokens).filter(([, t]) => !concealedFrom(c, t, viewer))
-      .map(([id, token]) => [id, tokenForViewer(token, viewer)]),
+      .map(([id, token]) => [id, tokenForViewer(token, viewer, state)]),
   );
   // GM-only rolls never reach a player, not even as a redacted placeholder (FR-GM-22).
   const rolls = state.rolls.filter((r) => r.visibility === "public").flatMap((r): LoggedRoll[] => {
@@ -202,6 +203,25 @@ export function filterEventForViewer(
     }
   }
 
+  // "Hide map from players without a token" without line of sight: sight is all or nothing, so
+  // only owning a visible token can change it, never a move (ADR 0054).
+  if (before.hideMapWithoutToken && !before.scene.lineOfSight) {
+    switch (e.type) {
+      case "TokenCreated":
+        if (e.token.ownerIds.includes(viewer.id)) return { kind: "resync" };
+        break;
+      case "TokenDeleted":
+        if (e.token.ownerIds.includes(viewer.id)) {
+          if (e.reason !== "defeated") return { kind: "resync" };
+          thenResync = true;
+        }
+        break;
+      case "TokenOwnersSet":
+        if (before.tokens[e.tokenId]?.ownerIds.includes(viewer.id) || e.ownerIds.includes(viewer.id)) return { kind: "resync" };
+        break;
+    }
+  }
+
   switch (e.type) {
     case "TerrainPainted":
     case "TerrainEffectCreated":
@@ -231,7 +251,7 @@ export function filterEventForViewer(
     case "TokenCreated":
     case "TokenDeleted":
       return concealedFrom(conc(), e.token, viewer) ? redacted : {
-        kind: "event", committed: { ...withoutCommandId, event: { ...e, token: tokenForViewer(e.token, viewer) } },
+        kind: "event", committed: { ...withoutCommandId, event: { ...e, token: tokenForViewer(e.token, viewer, before) } },
         ...(thenResync && { thenResync: true }),
       };
     case "TokenMoved": {
@@ -244,12 +264,24 @@ export function filterEventForViewer(
       // Gaining or losing a token under fog reveals or withdraws it for that player (ADR 0016).
       const token = before.tokens[e.tokenId];
       if (!token) return redacted;
-      // Ownership also determines whether the copied named attacks are available.
-      if (token.attacks?.length && token.ownerIds.includes(viewer.id) !== e.ownerIds.includes(viewer.id)) return { kind: "resync" };
+      // Ownership also determines whether the copied named attacks are available, and whether
+      // hidden HP and AC are (ADR 0054).
+      const ownershipChanged = token.ownerIds.includes(viewer.id) !== e.ownerIds.includes(viewer.id);
+      if (ownershipChanged && (token.attacks?.length || before.hideHp || before.hideAc)) return { kind: "resync" };
       return byVisibility(concealedFrom(conc(), token, viewer), concealedFrom(conc(), { ...token, ownerIds: e.ownerIds }, viewer));
     }
+    case "TokenStatsSet": {
+      if (hiddenBefore(e.tokenId)) return redacted;
+      // Hidden HP and AC never leave the server, not even as the value a change replaced (ADR 0054).
+      const token = before.tokens[e.tokenId]!;
+      const stats = statsForViewer(e.stats, token, viewer, before);
+      const previous = statsForViewer(e.previous, token, viewer, before);
+      if (stats === e.stats) return pass;
+      // Only hidden fields changed: the player's copy is already right.
+      if (stats.hp === previous.hp && stats.maxHp === previous.maxHp && stats.ac === previous.ac) return redacted;
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...e, stats, previous } } };
+    }
     case "TokenAppearanceSet":
-    case "TokenStatsSet":
     case "TokenImageSet":
     case "TokenConditionsSet":
       return hiddenBefore(e.tokenId) ? redacted : pass;
@@ -272,6 +304,7 @@ export function filterEventForViewer(
     case "MapNukeUndone":
     case "ReducedEffectsSet":
     case "AutoRemoveDefeatedSet":
+    case "DefeatRemovalSet":
     case "JoinsLockSet":
       // Names no token and has no GM-only content: the blast is for the whole table (ADR 0038).
       return pass;
@@ -389,6 +422,11 @@ export function filterEventForViewer(
     case "SightRangeSet":
       // Sight changes for every player (ADR 0044).
       return { kind: "resync" };
+    case "HideMapWithoutTokenSet":
+    case "HideHpSet":
+    case "HideAcSet":
+      // What every player may see changes; a filtered snapshot carries it (ADR 0054).
+      return { kind: "resync" };
     case "RoomCreated":
     case "ParticipantJoined":
     case "ParticipantRenamed":
@@ -401,11 +439,28 @@ export function filterEventForViewer(
   }
 }
 
-/** Named attacks are private to the GM and the token's owners, including on deletion/undo. */
-function tokenForViewer(token: Token, viewer: Participant): Token {
+/** The room rules that withhold stats from players (ADR 0054). */
+type StatRules = Pick<RoomState, "hideHp" | "hideAc">;
+
+/**
+ * A token's stats as `viewer` may have them: with "Hide HP from Players" a player gets no HP or
+ * max HP, and with "Hide AC from Players" no AC, for any token they don't own (ADR 0054). The
+ * same object when nothing is withheld.
+ */
+export function statsForViewer(stats: TokenStats, token: Pick<Token, "ownerIds">, viewer: Participant, rules: StatRules): TokenStats {
+  if (viewer.role === "gm" || token.ownerIds.includes(viewer.id) || (!rules.hideHp && !rules.hideAc)) return stats;
+  return { ...stats, ...(rules.hideHp && { hp: null, maxHp: null }), ...(rules.hideAc && { ac: null }) };
+}
+
+/**
+ * Named attacks are private to the GM and the token's owners, including on deletion/undo; so are
+ * HP and AC when the room's rules say so (ADR 0054).
+ */
+function tokenForViewer(token: Token, viewer: Participant, rules: StatRules): Token {
   if (viewer.role === "gm" || token.ownerIds.includes(viewer.id)) return token;
   const { attacks: _attacks, ...visible } = token;
-  return visible;
+  const stats = statsForViewer(token.stats, token, viewer, rules);
+  return stats === token.stats ? visible : { ...visible, stats };
 }
 
 /**

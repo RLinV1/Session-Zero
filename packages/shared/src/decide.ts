@@ -22,7 +22,7 @@ import { blocksMovement } from "./portals";
 import { inverseOf, sameValue, undoableAction, undoConflict } from "./undo";
 import { concealedFrom, concealmentFor, fogConcealsSide, isInFog, portalConcealedFrom, templateConcealedFrom } from "./visibility";
 import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
-import { MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { defeatRemovalOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -920,11 +920,32 @@ export function decide(
       return accept({ type: "ReducedEffectsSet", enabled: command.enabled, previous });
     }
 
-    case "room.setAutoRemoveDefeated": {
+    case "room.setDefeatRemoval": {
       if (!can.administer(actor)) return forbidden();
-      const previous = state.autoRemoveDefeated ?? true;
-      if (previous === command.enabled) return reject("invalid", command.enabled ? "Automatic removal is already on" : "Automatic removal is already off");
-      return accept({ type: "AutoRemoveDefeatedSet", enabled: command.enabled, previous });
+      const previous = defeatRemovalOf(state);
+      if (previous === command.mode) return reject("invalid", "Remove tokens at 0 HP is already set to that");
+      return accept({ type: "DefeatRemovalSet", mode: command.mode, previous });
+    }
+
+    case "room.setHideMapWithoutToken": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideMapWithoutToken ?? false;
+      if (previous === command.enabled) return reject("invalid", command.enabled ? "The map is already hidden from players without a token" : "The map is already shown to players without a token");
+      return accept({ type: "HideMapWithoutTokenSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setHideHp": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideHp ?? false;
+      if (previous === command.enabled) return reject("invalid", command.enabled ? "HP is already hidden from players" : "HP is already shown to players");
+      return accept({ type: "HideHpSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setHideAc": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideAc ?? false;
+      if (previous === command.enabled) return reject("invalid", command.enabled ? "AC is already hidden from players" : "AC is already shown to players");
+      return accept({ type: "HideAcSet", enabled: command.enabled, previous });
     }
 
     case "room.setJoinsLocked": {
@@ -1577,18 +1598,21 @@ function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?:
 }
 
 /**
- * With the room option on, appends a defeat `TokenDeleted` for every token a command's stats
- * events leave at 0 HP or below, after that token's last event in the batch so nothing later
- * names a missing token (ADR 0049). Pure: the deleted token is folded from the batch.
+ * Appends a defeat `TokenDeleted` for every token a command's stats events leave at 0 HP or
+ * below, after that token's last event in the batch so nothing later names a missing token
+ * (ADR 0049). The room's mode decides which: all, only tokens no player owns, or none (ADR 0054).
+ * Pure: the deleted token, and so its owners, are folded from the batch.
  */
 function withDefeats(state: RoomState, events: DomainEvent[]): DomainEvent[] {
-  if (state.autoRemoveDefeated === false) return events;
+  const mode = defeatRemovalOf(state);
+  if (mode === "off") return events;
   const ids = [...new Set(events.flatMap((e) => (e.type === "TokenStatsSet" ? [e.tokenId] : [])))];
   const defeats = new Map<number, DomainEvent>();
   for (const id of ids) {
     const mine = events.filter((e) => "tokenId" in e && e.tokenId === id);
     const token = reduceAll(state, mine).tokens[id];
     if (!token || token.stats.hp === null || token.stats.hp > 0) continue;
+    if (mode === "npc" && token.ownerIds.length > 0) continue;
     defeats.set(events.lastIndexOf(mine[mine.length - 1]!), { type: "TokenDeleted", token, reason: "defeated" });
   }
   if (defeats.size === 0) return events;

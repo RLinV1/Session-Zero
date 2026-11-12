@@ -7,7 +7,7 @@ import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
 import { AreaEffect, AreaEffectDamage } from "./areaEffects";
 import { GridSpec, Point } from "./geometry";
-import { AreaTemplate, ChatMessage, Checkpoint, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
+import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
 
 /**
  * Events are FACTS the server has committed. They are append-only and never edited.
@@ -280,9 +280,36 @@ export const DomainEvent = z.discriminatedUnion("type", [
     enabled: z.boolean(),
     previous: z.boolean(),
   }),
-  /** The GM turned automatic removal of defeated tokens on or off (ADR 0049). */
+  /**
+   * The GM turned automatic removal of defeated tokens on or off (ADR 0049). No longer emitted:
+   * `DefeatRemovalSet` replaced it (ADR 0054). Kept so older logs replay.
+   */
   z.object({
     type: z.literal("AutoRemoveDefeatedSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM chose which tokens leave the board at 0 HP (ADR 0054). `previous` is the mode in effect before. */
+  z.object({
+    type: z.literal("DefeatRemovalSet"),
+    mode: z.enum(DEFEAT_REMOVALS),
+    previous: z.enum(DEFEAT_REMOVALS),
+  }),
+  /** The GM turned "Hide map from players without a token" on or off (ADR 0054). */
+  z.object({
+    type: z.literal("HideMapWithoutTokenSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM turned "Hide HP from Players" on or off (ADR 0054). */
+  z.object({
+    type: z.literal("HideHpSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM turned "Hide AC from Players" on or off (ADR 0054). */
+  z.object({
+    type: z.literal("HideAcSet"),
     enabled: z.boolean(),
     previous: z.boolean(),
   }),

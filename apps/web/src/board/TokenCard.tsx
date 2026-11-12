@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Copy, Eye, EyeSlash, PencilSimple, Trash } from "@phosphor-icons/react";
 import { can, conditionSpec, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
 import { Modal } from "../ui/Modal";
+import { statHidden } from "../ui/statHidden";
 
 /**
  * The details card for the token selected on the board, with Edit, Duplicate and a one-square
@@ -61,9 +62,14 @@ export function TokenCard({
       <dl>
         <dt>HP</dt>
         <dd className={token.stats.hp === null ? undefined : "num"}>
-          {token.stats.hp === null ? "Not tracked" : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}
+          {statHidden(state, you, token, "hp") ? "Hidden" : token.stats.hp === null ? "Not tracked" : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}
         </dd>
-        {token.stats.ac !== null && (
+        {statHidden(state, you, token, "ac") ? (
+          <>
+            <dt>AC</dt>
+            <dd>Hidden</dd>
+          </>
+        ) : token.stats.ac !== null && (
           <>
             <dt>AC</dt>
             <dd className="num">{token.stats.ac}</dd>

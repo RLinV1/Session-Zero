@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ServerMessage, Token } from "@vtt/shared";
+import { defeatRemovalOf, type ServerMessage, type Token } from "@vtt/shared";
 import { startServer, type TestClient } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -35,13 +35,13 @@ const eventTypes = (messages: ServerMessage[]) =>
 describe("auto-remove defeated tokens over the wire (FR-TAC-07, FR-GM-23, FR-REC-02)", () => {
   it("refuses a player's change to the option and shows the GM's change to everyone", async () => {
     const { gm, alice } = await setup();
-    expect(alice.state.autoRemoveDefeated).toBe(true); // on by default in a new room
-    expect(await alice.command({ type: "room.setAutoRemoveDefeated", enabled: false })).toMatchObject({ type: "rejected", code: "forbidden" });
-    expect(await gm.command({ type: "room.setAutoRemoveDefeated", enabled: true })).toMatchObject({ type: "rejected", code: "invalid" });
-    const ack = await gm.command({ type: "room.setAutoRemoveDefeated", enabled: false });
+    expect(defeatRemovalOf(alice.state)).toBe("all"); // on by default in a new room
+    expect(await alice.command({ type: "room.setDefeatRemoval", mode: "off" })).toMatchObject({ type: "rejected", code: "forbidden" });
+    expect(await gm.command({ type: "room.setDefeatRemoval", mode: "all" })).toMatchObject({ type: "rejected", code: "invalid" });
+    const ack = await gm.command({ type: "room.setDefeatRemoval", mode: "off" });
     expect(ack).toMatchObject({ type: "ack" });
     await alice.waitForSeq(seqOf(ack));
-    expect(alice.state.autoRemoveDefeated).toBe(false);
+    expect(defeatRemovalOf(alice.state)).toBe("off");
   });
 
   it("removes a visible defeated token for everyone, stats event first; reconnect lacks it; undo restores it", async () => {

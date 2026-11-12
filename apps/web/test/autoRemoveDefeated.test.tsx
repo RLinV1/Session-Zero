@@ -27,25 +27,57 @@ const connectionWith = (result: { ok: true; seq: number } | { ok: false; code: s
   return { connection: { command } as unknown as RoomConnection, command };
 };
 
-describe("Remove tokens at 0 HP setting (FR-TAC-07)", () => {
-  it("shows the switch to the GM in a room and sends the command", async () => {
-    const { connection, command } = connectionWith({ ok: true, seq: 1 });
-    render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
+describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
+  const openTable = (room: RoomState, you = gm) => {
+    const made = connectionWith({ ok: true, seq: 1 });
+    render(<SettingsMenu open onClose={() => {}} room={{ connection: made.connection, state: room, you }} />);
     fireEvent.click(screen.getByRole("tab", { name: "Table" }));
-    const toggle = screen.getByRole("switch", { name: "Remove tokens at 0 HP" });
-    expect((toggle as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(toggle);
-    expect(command).toHaveBeenCalledWith({ type: "room.setAutoRemoveDefeated", enabled: true });
-    await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
+    return made.command;
+  };
+
+  it("is offered to a GM in a room, last, with exactly the four rules and no hint text", () => {
+    const { connection } = connectionWith({ ok: true, seq: 1 });
+    render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Table"]);
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "End" });
+    const panel = screen.getByRole("tabpanel");
+    const select = screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(["All", "Only NPC tokens", "Off"]);
+    expect(screen.getAllByRole("switch").map((s) => s.closest("label")!.textContent)).toEqual(["Hide map from players without a token", "Hide HP from Players", "Hide AC from Players"]);
+    expect(panel.querySelector(".small-print")).toBeNull();
   });
 
-  it("reflects the room state and shows the server's refusal", async () => {
+  it("reflects the room's rules, including an older room's switch", () => {
+    openTable({ ...state(false), hideHp: true });
+    expect((screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement).value).toBe("off");
+    expect((screen.getByRole("switch", { name: "Hide HP from Players" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("switch", { name: "Hide AC from Players" }) as HTMLInputElement).checked).toBe(false);
+    cleanup();
+    openTable({ ...state(true), defeatRemoval: "npc" });
+    expect((screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement).value).toBe("npc");
+  });
+
+  it("sends each rule's own command", async () => {
+    const command = openTable(state());
+    fireEvent.change(screen.getByLabelText("Remove tokens at 0 HP"), { target: { value: "npc" } });
+    expect(command).toHaveBeenLastCalledWith({ type: "room.setDefeatRemoval", mode: "npc" });
+    await waitFor(() => expect((screen.getByRole("switch", { name: "Hide HP from Players" }) as HTMLInputElement).disabled).toBe(false));
+    for (const [name, type] of [
+      ["Hide map from players without a token", "room.setHideMapWithoutToken"],
+      ["Hide HP from Players", "room.setHideHp"],
+      ["Hide AC from Players", "room.setHideAc"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("switch", { name }));
+      expect(command).toHaveBeenLastCalledWith({ type, enabled: true });
+      await waitFor(() => expect((screen.getByRole("switch", { name }) as HTMLInputElement).disabled).toBe(false));
+    }
+  });
+
+  it("shows the server's refusal", async () => {
     const { connection } = connectionWith({ ok: false, code: "forbidden", message: "Only the GM can change this" });
-    render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(true), you: gm }} />);
+    render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
     fireEvent.click(screen.getByRole("tab", { name: "Table" }));
-    const toggle = screen.getByRole("switch", { name: "Remove tokens at 0 HP" });
-    expect((toggle as HTMLInputElement).checked).toBe(true);
-    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("switch", { name: "Hide AC from Players" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Only the GM can change this");
   });
 
@@ -55,20 +87,6 @@ describe("Remove tokens at 0 HP setting (FR-TAC-07)", () => {
     expect(screen.queryByRole("tab", { name: "Table" })).toBeNull();
     rerender(<SettingsMenu open onClose={() => {}} />);
     expect(screen.queryByRole("tab", { name: "Table" })).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Graphics" }));
-    expect(screen.getByRole("switch", { name: "Reduced animations" })).toBeTruthy();
-  });
-});
-
-describe("Table settings tab (FR-TAC-07)", () => {
-  it("is offered to a GM in a room, after Audio and Graphics, and holds the switch", () => {
-    const { connection } = connectionWith({ ok: true, seq: 1 });
-    render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Table"]);
-    expect(screen.queryByRole("switch", { name: "Remove tokens at 0 HP" })).toBeNull();
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Table" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("switch", { name: "Remove tokens at 0 HP" })).toBeTruthy();
   });
 });
 

@@ -4,7 +4,7 @@ import { CommittedEvent, type DomainEvent } from "./events";
 import { reduceCommitted } from "./reducer";
 import { describePortalChange } from "./portals";
 import { describeUndo } from "./undo";
-import { emptyRoomState, type Participant, type RoomState } from "./state";
+import { DEFEAT_REMOVAL_LABELS, emptyRoomState, type Participant, type RoomState } from "./state";
 import { filterEventForViewer, filterStateForViewer } from "./visibility";
 
 const Sequence = z.number().int().positive().safe();
@@ -174,6 +174,10 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
     }
     case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
+    case "DefeatRemovalSet": return `${actorName} set Remove tokens at 0 HP to ${DEFEAT_REMOVAL_LABELS[event.mode]}`;
+    case "HideMapWithoutTokenSet": return `${actorName} turned Hide map from players without a token ${event.enabled ? "on" : "off"}`;
+    case "HideHpSet": return `${actorName} turned Hide HP from Players ${event.enabled ? "on" : "off"}`;
+    case "HideAcSet": return `${actorName} turned Hide AC from Players ${event.enabled ? "on" : "off"}`;
     case "JoinsLockSet": return event.locked ? `${actorName} locked the room to new players` : `${actorName} unlocked the room`;
     case "ReducedEffectsSet": return `${actorName} turned reduced animations ${event.enabled ? "on" : "off"} for the table`;
     case "MapNuked": return `${actorName} detonated a nuke (${event.amount} damage)`;

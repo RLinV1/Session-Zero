@@ -897,7 +897,8 @@ export class BoardView {
     if (!state) return;
     const { width, height } = this.boardSize();
     const cell = state.scene.grid.cellSize;
-    const key = `${width}x${height}@${cell}:${this.fogBase?.join(",") ?? ""}`;
+    const hideMap = state.hideMapWithoutToken === true;
+    const key = `${width}x${height}@${cell}:${this.fogBase?.join(",") ?? ""}:${hideMap}`;
     if (state.sight === this.drawnSight && key === this.drawnSightKey) return;
     this.drawnSight = state.sight;
     this.drawnSightKey = key;
@@ -907,7 +908,7 @@ export class BoardView {
       next = new Sprite(Texture.from(canvas));
       next.eventMode = "none";
       next.scale.set(1 / scale);
-      next.alpha = sightMaskAlpha(state.sight);
+      next.alpha = sightMaskAlpha(state.sight, hideMap);
     }
     this.finishSightFade();
     const prev = this.sightSprite;

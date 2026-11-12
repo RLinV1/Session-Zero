@@ -35,6 +35,7 @@ import { groupedTokens } from "./tokenGroups";
 import { GroupMoveMenu } from "./GroupMoveMenu";
 import { hpLevel } from "../ui/palette";
 import { TokenDisc } from "../ui/TokenDisc";
+import { statHidden } from "../ui/statHidden";
 
 /**
  * Focusable token roster (FR-GM-24), showing stats and conditions (FR-TAC-07/08).
@@ -147,6 +148,7 @@ export function TokenRoster({
       key={token.id}
       token={token}
       you={you}
+      hidden={{ hp: statHidden(state, you, token, "hp"), ac: statHidden(state, you, token, "ac") }}
       isActive={token.id === activeId}
       onFocus={() => onFocusToken(token.id)}
       onEdit={() => {
@@ -261,6 +263,7 @@ export function TokenRoster({
 function RosterRow({
   token,
   you,
+  hidden,
   isActive,
   onFocus,
   onEdit,
@@ -269,6 +272,8 @@ function RosterRow({
 }: {
   token: Token;
   you: Participant;
+  /** The room's rules withhold this stat from the viewer (ADR 0054). */
+  hidden: { hp: boolean; ac: boolean };
   isActive: boolean;
   onFocus: () => void;
   onEdit: () => void;
@@ -291,13 +296,13 @@ function RosterRow({
           <span className="token-name">{token.name}</span>
           {token.hidden && <span className="badge">hidden</span>}
           {isActive && <span className="badge active-badge">active turn</span>}
-          {token.stats.hp !== null && (
+          {hidden.hp ? <span className="muted">HP hidden</span> : token.stats.hp !== null && (
             <span className="hp">
               {stats.hp}
               {token.stats.maxHp !== null && `/${token.stats.maxHp}`} HP
             </span>
           )}
-          {token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
+          {hidden.ac ? <span className="muted">AC hidden</span> : token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
         </button>
         {editable && (
           <button type="button" className="icon-button roster-edit" onClick={onEdit} aria-label={`Edit ${token.name}`} title="Edit">

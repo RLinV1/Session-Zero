@@ -406,6 +406,18 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "AutoRemoveDefeatedSet":
       return { ...state, autoRemoveDefeated: event.enabled };
 
+    case "DefeatRemovalSet":
+      return { ...state, defeatRemoval: event.mode };
+
+    case "HideMapWithoutTokenSet":
+      return { ...state, hideMapWithoutToken: event.enabled };
+
+    case "HideHpSet":
+      return { ...state, hideHp: event.enabled };
+
+    case "HideAcSet":
+      return { ...state, hideAc: event.enabled };
+
     case "JoinsLockSet":
       return { ...state, joinsLocked: event.locked };
 

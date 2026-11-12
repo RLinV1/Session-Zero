@@ -128,7 +128,7 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Turn order | `initiative.start`, `initiative.advance`, `initiative.end` |
 | Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.applyDamage`, `nuke.detonate` |
 | Area effects | `areaEffect.start`, `areaEffect.call`, `areaEffect.rollDamage`, `areaEffect.resolve`, `areaEffect.close` |
-| Room settings | `room.setReducedEffects`, `room.setAutoRemoveDefeated`, `room.setJoinsLocked` |
+| Room settings | `room.setReducedEffects`, `room.setDefeatRemoval`, `room.setHideMapWithoutToken`, `room.setHideHp`, `room.setHideAc`, `room.setJoinsLocked` |
 | Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.revokeMany`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
 | Chat | `chat.send` |
 | Recovery | `history.undo`, `checkpoint.create`, `checkpoint.restore`, `checkpoint.delete`, `encounter.apply` |

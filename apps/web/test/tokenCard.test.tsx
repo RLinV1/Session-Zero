@@ -71,3 +71,32 @@ describe("board token card actions (FR-GM-08, token-card-actions)", () => {
     expect(screen.queryByRole("button", { name: "Duplicate Fighter" })).toBeNull();
   });
 });
+
+describe("hidden HP and AC on the token card (FR-GM-23, table-rules)", () => {
+  const hiddenRoom: RoomState = { ...state, hideHp: true, hideAc: true };
+  // What the server sends a player who doesn't own the token: no HP, no AC.
+  const stripped: Token = { ...fighter, stats: { hp: null, maxHp: null, ac: null } };
+
+  it("says Hidden, not Not tracked, to a player who doesn't own the token", () => {
+    render(<TokenCard token={stripped} state={hiddenRoom} you={bob} onClose={() => {}} />);
+    const values = [...document.querySelectorAll("dt")].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    expect(values).toContainEqual(["HP", "Hidden"]);
+    expect(values).toContainEqual(["AC", "Hidden"]);
+    expect(screen.queryByText("Not tracked")).toBeNull();
+  });
+
+  it("shows the owner and the GM the real values", () => {
+    for (const you of [alice, gm]) {
+      render(<TokenCard token={fighter} state={hiddenRoom} you={you} onClose={() => {}} />);
+      expect(screen.getByText("12 / 12")).toBeTruthy();
+      expect(screen.getByText("16")).toBeTruthy();
+      expect(screen.queryByText("Hidden")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("still says Not tracked when no rule hides it", () => {
+    render(<TokenCard token={stripped} state={state} you={bob} onClose={() => {}} />);
+    expect(screen.getByText("Not tracked")).toBeTruthy();
+  });
+});

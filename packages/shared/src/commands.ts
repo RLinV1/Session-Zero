@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Ve
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -350,9 +350,24 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("room.setReducedEffects"),
     enabled: z.boolean(),
   }),
-  /** GM only: remove a token automatically when its HP reaches 0 or below (ADR 0049). */
+  /** GM only: which tokens leave the board at 0 HP or below (ADR 0049, ADR 0054). */
   z.object({
-    type: z.literal("room.setAutoRemoveDefeated"),
+    type: z.literal("room.setDefeatRemoval"),
+    mode: z.enum(DEFEAT_REMOVALS),
+  }),
+  /** GM only: players who own no visible token see nothing on the board (ADR 0054). */
+  z.object({
+    type: z.literal("room.setHideMapWithoutToken"),
+    enabled: z.boolean(),
+  }),
+  /** GM only: players get no HP for tokens they don't own (ADR 0054). */
+  z.object({
+    type: z.literal("room.setHideHp"),
+    enabled: z.boolean(),
+  }),
+  /** GM only: players get no AC for tokens they don't own (ADR 0054). */
+  z.object({
+    type: z.literal("room.setHideAc"),
     enabled: z.boolean(),
   }),
   /** GM only: stop or allow new players joining by invite, whoever holds the link (ADR 0051). */
