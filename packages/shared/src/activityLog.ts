@@ -209,7 +209,8 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "TemplateChanged": {
       const template = before.templates[event.templateId];
       if (!template) return `${actorName} changed an area`;
-      const was = { ...template, ...event.from }, now = { ...template, ...event.to };
+      // A destination without a width is back to the default one cell, not the template's old width.
+      const was = { ...template, ...event.from }, now = { ...template, ...event.to, width: event.to.width };
       const gm = template.gmOnly ? " (GM only)" : "";
       const kind = templateChangeKind(event.from, event.to);
       if (kind === "changed") return `${actorName} changed ${withArticle(templateLabel(was))} to ${withArticle(templateLabel(now))}${gm}`;

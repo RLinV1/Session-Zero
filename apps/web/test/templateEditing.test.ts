@@ -16,7 +16,8 @@ type Harness = {
   state: RoomState;
   selectedTemplate: string | null;
   templateEdit: unknown;
-  pendingEdits: Map<string, TemplateGeometry>;
+  pendingEdits: Map<string, { geometry: TemplateGeometry; acceptedSeq?: number | null }>;
+  shownSeq: number | null;
   gesture: unknown;
   pan: unknown;
   onBackgroundDown(e: unknown): void;
@@ -40,7 +41,7 @@ function board(you: Participant, templates: AreaTemplate[], tool: BoardTool = { 
   state.templates = Object.fromEntries(templates.map((t) => [t.id, t]));
   const callbacks = {
     aimPreview: vi.fn(), aimEnd: vi.fn(), selectToken: vi.fn(), dragEnd: vi.fn(),
-    updateTemplate: vi.fn((..._args: unknown[]) => Promise.resolve(true)),
+    updateTemplate: vi.fn((..._args: unknown[]): Promise<false | { seq: number | null }> => Promise.resolve({ seq: 5 })),
     placeTemplate: vi.fn((..._args: unknown[]) => Promise.resolve(true)),
   };
   // Constructed for its pointer handlers (arrow-function fields); not initialised, so nothing draws.
@@ -78,7 +79,7 @@ describe("selecting and moving a placed area with the Select tool (FR-TAC-06, AD
       { origin: { x: 840, y: 700 }, toward: { x: 841, y: 700 }, size: 20 },
       { origin: { x: 700, y: 700 }, toward: { x: 701, y: 700 }, size: 20 },
     );
-    expect(view.pendingEdits.get("c")).toMatchObject({ origin: { x: 840, y: 700 } });
+    expect(view.pendingEdits.get("c")?.geometry).toMatchObject({ origin: { x: 840, y: 700 } });
   });
 
   it("pans instead when the area belongs to another player", () => {
@@ -143,6 +144,50 @@ describe("selecting and moving a placed area with the Select tool (FR-TAC-06, AD
     await Promise.resolve();
     await Promise.resolve();
     expect(view.pendingEdits.has("c")).toBe(false);
+  });
+
+  it("drops an accepted edit once the shown state reaches its seq, even if a later change skipped its geometry", async () => {
+    const { view, drag } = board(alice, [circle(alice.id)]);
+    view.shownSeq = 4;
+    drag({ x: 700, y: 700 }, { x: 840, y: 700 });
+    await Promise.resolve();
+    await Promise.resolve();
+    // Accepted at seq 5, but the board still shows seq 4: keep drawing the edit.
+    expect(view.pendingEdits.get("c")?.acceptedSeq).toBe(5);
+    // The board jumps to seq 6, where someone else has already moved the area on.
+    view.state = { ...view.state, templates: { c: circle(alice.id, { origin: { x: 980, y: 700 }, toward: { x: 981, y: 700 } }) } };
+    view.shownSeq = 6;
+    view.settleTemplateEdits();
+    expect(view.pendingEdits.has("c")).toBe(false);
+  });
+
+  it("drops an accepted edit at once when the board already shows its seq", async () => {
+    const { view, drag } = board(alice, [circle(alice.id)]);
+    drag({ x: 700, y: 700 }, { x: 840, y: 700 });
+    view.shownSeq = 7;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(view.pendingEdits.has("c")).toBe(false);
+  });
+
+  it("keeps an edit not yet answered, whatever the shown seq", () => {
+    const { view, callbacks, drag } = board(alice, [circle(alice.id)]);
+    callbacks.updateTemplate.mockReturnValueOnce(new Promise(() => {}));
+    drag({ x: 700, y: 700 }, { x: 840, y: 700 });
+    view.shownSeq = 100;
+    view.state = { ...view.state, templates: { c: circle(alice.id) } };
+    view.settleTemplateEdits();
+    expect(view.pendingEdits.has("c")).toBe(true);
+  });
+
+  it("grabs the nearest handle when several are in reach", () => {
+    // A 1 ft line, 1 ft wide: its aim handle (714, 700) and width handle (707, 693) are both within reach of (708, 694).
+    const line: AreaTemplate = { ...circle(alice.id), shape: "line", size: 1, width: 1 };
+    const { callbacks, click, drag } = board(alice, [line]);
+    click({ x: 710, y: 700 });
+    drag({ x: 708, y: 694 }, { x: 708, y: 680 });
+    expect(callbacks.updateTemplate).toHaveBeenCalledWith("c", expect.objectContaining({ size: 1, toward: line.toward }), expect.anything());
+    expect((callbacks.updateTemplate.mock.calls[0]![1] as TemplateGeometry).width).toBeGreaterThan(1);
   });
 
   it("drops a pending edit once the room has it", () => {
@@ -284,6 +329,18 @@ describe("clipping areas the viewer may not edit (FR-GM-17, ADR 0059)", () => {
     const gmBoard = clippingBoard(gm);
     gmBoard.view.showAimPreview("alice", preview, "Alice");
     expect(gmBoard.fxLayer.addChild).toHaveBeenCalledOnce();
+  });
+
+  it("shows an edit preview of the viewer's own area whole, and someone else's behind the mask", () => {
+    const preview = { shape: "circle", origin: { x: 840, y: 700 }, toward: { x: 841, y: 700 }, size: 20, gmOnly: false };
+    const owner = clippingBoard(alice);
+    owner.view.showAimPreview("gm", preview, "GM", "c");
+    expect(owner.fxLayer.addChild).toHaveBeenCalledOnce();
+    expect(owner.clippedAims.addChild).not.toHaveBeenCalled();
+    const other = clippingBoard(bob);
+    other.view.showAimPreview("gm", preview, "GM", "c");
+    expect(other.clippedAims.addChild).toHaveBeenCalledOnce();
+    expect(other.fxLayer.addChild).not.toHaveBeenCalled();
   });
 
   it("rebuilds the mask when fog changes, not otherwise, and drops it for the GM's view", () => {

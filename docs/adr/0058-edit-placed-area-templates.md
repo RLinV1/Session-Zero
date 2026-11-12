@@ -10,7 +10,8 @@ ADR 0007 left editing out: "Editing a placed template: remove and place again." 
 ## Decision
 
 **A new command and event for a placed area's geometry.**
-- `template.update { templateId, origin, toward, size, width?, expected: { origin, toward, size, width? } }`. The command always carries the full new geometry, never a patch. `decide` checks, in order:
+- `template.update { templateId, origin, toward, size, width?, expected: { origin, toward, size, width? }, expectedSceneId? }`. The command always carries the full new geometry, never a patch. `decide` checks, in order:
+  0. An `expectedSceneId` other than the active scene is rejected as `invalid` (`reject.sceneChangedMove`), for owners and the GM alike, as for `token.move`.
   1. A missing template, or one the actor can't see (`templateConcealedFrom`), answers `not_found`, as `template.remove` does.
   2. `can.editTemplate` (owner or GM, the same rule as removal) fails with `forbidden`.
   3. If `expected` isn't the current geometry, the edit was made from stale geometry, and it is rejected as `invalid` (`reject.templateStale`). This mirrors `token.move`'s `expectedOrigin`.

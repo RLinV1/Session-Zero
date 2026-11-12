@@ -71,7 +71,7 @@ import { makeVisibleRegionCanvas } from "./areaMask";
 
 /** How long the old line-of-sight mask takes to fade out over the new one. */
 const SIGHT_FADE_MS = 160;
-import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit } from "./tools";
+import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
 import { aimExpiry, expiredAims } from "./aims";
 import { PING_MS, pingPulse } from "./ping";
 import { boardFontFamily, boardMonoFamily, relabelWhenFontsReady, relabelledFamily, waitForBoardFont } from "./boardFont";
@@ -114,8 +114,11 @@ export interface BoardCallbacks {
   aimPreview(preview: AimPreview, templateId?: string): void;
   /** Aiming or editing stopped (placed, committed or cancelled): clear it for the others. */
   aimEnd(gmOnly: boolean, templateId?: string): void;
-  /** Move, resize, turn or widen a placed area (ADR 0058). Resolves false if the server rejected it. */
-  updateTemplate(templateId: string, geometry: TemplateGeometry, expected: TemplateGeometry): Promise<boolean>;
+  /**
+   * Move, resize, turn or widen a placed area (ADR 0058). Resolves false if the server rejected it,
+   * otherwise with the seq it was committed at (null when unknown).
+   */
+  updateTemplate(templateId: string, geometry: TemplateGeometry, expected: TemplateGeometry): Promise<false | { seq: number | null }>;
   /** Resolves false if the server rejected the removal. */
   removeTemplate(templateId: string): Promise<boolean>;
   /** GM: fog a region (FR-GM-17). Resolves false if the server rejected it. */
@@ -461,8 +464,13 @@ export class BoardView {
   private selectedTemplate: string | null = null;
   /** A placed area this viewer is moving or resizing: what it was, and what the pointer makes it. */
   private templateEdit: { id: string; edit: TemplateEdit; start: AreaTemplate; current: TemplateGeometry; screenFrom: Point; dragged: boolean } | null = null;
-  /** Edits sent but not yet back in state, drawn so a release doesn't snap back. */
-  private pendingEdits = new Map<string, TemplateGeometry>();
+  /**
+   * Edits sent but not yet back in state, drawn so a release doesn't snap back. `acceptedSeq` is set
+   * once the server accepts one: state at or past it is authoritative, whatever geometry it shows.
+   */
+  private pendingEdits = new Map<string, { geometry: TemplateGeometry; acceptedSeq?: number | null }>();
+  /** The committed seq of the state last passed to `update`, or null when it isn't the live room's. */
+  private shownSeq: number | null = null;
   /** Areas this viewer placed, to select once they show up in state. */
   private selectOnArrival: Extract<Mark, { kind: "area" }>[] = [];
   /** Templates the eraser has asked to remove, so one sweep sends each only once. */
@@ -844,10 +852,11 @@ export class BoardView {
     this.invalidate();
   }
 
-  update(state: RoomState, you: Participant) {
+  update(state: RoomState, you: Participant, seq: number | null = null) {
     const before = this.state;
     this.state = state;
     this.you = you;
+    this.shownSeq = seq;
     // A different scene is a different board: nothing of the old one keeps playing.
     if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
     const table = state.reducedEffects ?? false;
@@ -1286,11 +1295,14 @@ export class BoardView {
       const view = new Container();
       view.addChild(new Graphics());
       view.addChild(new Text({ text: "", style: { fill: 0xffffff, fontSize: 13, fontFamily: boardMonoFamily(), fontWeight: "600", stroke: { color: 0x000000, width: 4 } } }));
-      // Someone else's aim reaches a player only where they can see (ADR 0059); the GM sees it whole.
-      (this.you?.role === "gm" ? this.fxLayer : this.clippedAims).addChild(view);
       aim = { view, expires: 0 };
       this.aims.set(from, aim);
     }
+    // Someone else's aim reaches a player only where they can see (ADR 0059). The GM sees it whole,
+    // and so does the owner of a placed area being edited, who sees that area whole too.
+    const whole = this.you?.role === "gm" || (templateId !== undefined && this.state.templates[templateId]?.ownerId === this.you?.id);
+    const layer = whole ? this.fxLayer : this.clippedAims;
+    if (aim.view.parent !== layer) layer.addChild(aim.view);
     const [g, text] = aim.view.children as [Graphics, Text];
     const grid = this.state.scene.grid;
     const px = 1 / this.world.scale.x;
@@ -1568,18 +1580,28 @@ export class BoardView {
   /** Drop edits state has caught up with, and a selection whose area has gone. */
   private settleTemplateEdits() {
     const templates = this.state?.templates ?? {};
-    for (const [id, geometry] of this.pendingEdits) {
+    for (const [id, pending] of this.pendingEdits) {
       const t = templates[id];
-      if (!t || sameGeometry(templateGeometry(t), geometry)) this.pendingEdits.delete(id);
+      if (!t || sameGeometry(templateGeometry(t), pending.geometry) || this.editSettled(pending)) this.pendingEdits.delete(id);
     }
     if (this.selectedTemplate && !templates[this.selectedTemplate]) this.selectedTemplate = null;
     if (this.templateEdit && !templates[this.templateEdit.id]) this.cancelTemplateEdit(false);
   }
 
+  /**
+   * An accepted edit is settled once the shown state reaches the seq it was committed at, even if
+   * a later change means that state never showed the sent geometry. An accept without a seq
+   * settles on the next live state.
+   */
+  private editSettled(pending: { acceptedSeq?: number | null }): boolean {
+    if (pending.acceptedSeq === undefined || this.shownSeq === null) return false;
+    return pending.acceptedSeq === null || this.shownSeq >= pending.acceptedSeq;
+  }
+
   /** The area as this board draws it: mid-drag, or as last sent, or as the room has it. */
   private shownTemplate(t: AreaTemplate): AreaTemplate {
     const edit = this.templateEdit;
-    const geometry = edit?.id === t.id && edit.dragged ? edit.current : this.pendingEdits.get(t.id);
+    const geometry = edit?.id === t.id && edit.dragged ? edit.current : this.pendingEdits.get(t.id)?.geometry;
     if (!geometry) return t;
     const { width: _width, ...rest } = t;
     return { ...rest, ...geometry };
@@ -1623,8 +1645,13 @@ export class BoardView {
     const selected = this.editableSelection();
     if (selected) {
       const reach = HANDLE_REACH_PX / this.world.scale.x;
-      const handle = templateHandles(this.shownTemplate(selected), grid).find((h) => Math.hypot(h.at.x - at.x, h.at.y - at.y) <= reach);
-      if (handle) [target, edit] = [selected, { kind: handle.kind }];
+      // The nearest handle, so overlapping reaches go to the one under the pointer.
+      let handle: TemplateHandle | null = null, nearest = Infinity;
+      for (const h of templateHandles(this.shownTemplate(selected), grid)) {
+        const d = Math.hypot(h.at.x - at.x, h.at.y - at.y);
+        if (d < nearest) [handle, nearest] = [h, d];
+      }
+      if (handle && nearest <= reach) [target, edit] = [selected, { kind: handle.kind }];
     }
     if (!target) {
       target = this.editableTemplateAt(at);
@@ -1658,15 +1685,23 @@ export class BoardView {
     this.callbacks.aimEnd(edit.start.gmOnly, edit.id);
     const expected = templateGeometry(edit.start);
     if (sameGeometry(expected, edit.current)) return this.redrawMarks();
-    const sent = edit.current;
-    this.pendingEdits.set(edit.id, sent);
+    const pending: { geometry: TemplateGeometry; acceptedSeq?: number | null } = { geometry: edit.current };
+    this.pendingEdits.set(edit.id, pending);
     // Refused (stale, or no longer allowed): show the area as the room has it.
     const refused = () => {
-      if (this.pendingEdits.get(edit.id) !== sent) return;
+      if (this.pendingEdits.get(edit.id) !== pending) return;
       this.pendingEdits.delete(edit.id);
       this.redrawMarks();
     };
-    this.callbacks.updateTemplate(edit.id, sent, expected).then((ok) => { if (!ok) refused(); }, refused);
+    // Accepted: drop it once the shown state has reached the commit (which may already be on screen).
+    const accepted = (seq: number | null) => {
+      if (this.pendingEdits.get(edit.id) !== pending) return;
+      pending.acceptedSeq = seq;
+      if (!this.editSettled(pending)) return;
+      this.pendingEdits.delete(edit.id);
+      this.redrawMarks();
+    };
+    this.callbacks.updateTemplate(edit.id, pending.geometry, expected).then((result) => (result ? accepted(result.seq) : refused()), refused);
     this.redrawMarks();
   }
 

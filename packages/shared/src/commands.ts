@@ -428,6 +428,8 @@ const BoardCommand = z.discriminatedUnion("type", [
    */
   z.object({
     type: z.literal("template.update"),
+    /** The scene the edit was made on; a different active scene refuses it, as for token moves. */
+    expectedSceneId: Id.optional(),
     templateId: Id,
     origin: Point,
     toward: Point,

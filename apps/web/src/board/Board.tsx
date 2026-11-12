@@ -216,8 +216,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const hasWalls = Object.values(state.walls).some((wall) => !wall.portal);
   /** Strikes waiting for their thrown dice to land, by roll id, oldest first (KAN-76). */
   const waitingStrikes = useRef(new Map<string, { effect: AttackEffect; timer: number }>());
-  const latest = useRef({ tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: false, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
-  latest.current = { tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
+  // The committed seq of `state` when it is the live room's, so the board knows when an edit it sent has landed.
+  const live = connection.snapshot as RoomConnection["snapshot"] | undefined; // absent on test doubles
+  const shownSeq = live && state === live.state ? live.seq : null;
+  const latest = useRef({ shownSeq, tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: false, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
+  latest.current = { shownSeq, tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
   // Sends nothing while previewing as a player, whatever the board is asked to do. Stable for as
   // long as the connection is, so entering and leaving a preview never rebuilds the board view.
   const guarded = useMemo(() => guardedConnection(connection, () => latest.current.readOnly), [connection]);
@@ -415,9 +418,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       aimPreview: (preview, templateId) => guarded.preview("aim", { type: "templatePreview", preview, ...(templateId && { templateId }) }),
       aimEnd: (gmOnly, templateId) => guarded.endPreview("aim", { type: "templatePreview", preview: null, gmOnly, ...(templateId && { templateId }) }),
       updateTemplate: async (templateId, geometry, expected) => {
-        const result = await guarded.command({ type: "template.update", templateId, ...geometry, expected });
-        if (!result.ok) console.warn("Area edit rejected:", result.message);
-        return result.ok;
+        const result = await guarded.command({ type: "template.update", templateId, ...geometry, expected, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID });
+        // The area snaps back; say why, e.g. someone else changed it first (ADR 0058).
+        if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
+        else if (result.ok) setRefusal(null);
+        return result.ok && { seq: result.seq };
       },
       placeTemplate: async (template) => {
         const result = await guarded.command({ type: "template.place", ...template });
@@ -479,7 +484,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setReadOnly(latest.current.readOnly);
       view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);
-      view.update(latest.current.boardState, latest.current.you);
+      view.update(latest.current.boardState, latest.current.you, latest.current.shownSeq);
       view.setMovementRuler(rulerRef.current.origin, rulerRef.current.tokenSize);
       view.setTool(toolRef.current);
       view.setPlacement(ghostRef.current);
@@ -552,8 +557,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [connection]);
 
   useEffect(() => {
-    viewRef.current?.update(boardState, you);
-  }, [boardState, you]);
+    viewRef.current?.update(boardState, you, shownSeq);
+  }, [boardState, you, shownSeq]);
 
   useEffect(() => {
     // Each replay step shows its state at once: any slide still running ends first (token-slide).

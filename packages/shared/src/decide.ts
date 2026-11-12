@@ -153,8 +153,8 @@ export function decide(
   command: Command,
   ctx: DecideContext,
 ): Decision {
-  // token.move / portal.setState are player commands: they only guard the scene, never require the GM.
-  const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState";
+  // token.move / portal.setState / template.update are player commands: they only guard the scene, never require the GM.
+  const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState" || command.type === "template.update";
   const sceneChanged = "expectedSceneId" in command && command.expectedSceneId !== undefined && command.expectedSceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID);
   if (playerSceneCommand && sceneChanged) return reject("invalid", sharedMsg("reject.sceneChangedMove"));
   if (!playerSceneCommand && "expectedSceneId" in command && command.expectedSceneId !== undefined) {

@@ -70,8 +70,14 @@ export function areaSamples(area: AreaGeometry, grid: GridSpec): Point[] {
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const step = Math.max(grid.cellSize / 2, Math.sqrt(((maxX - minX) * (maxY - minY)) / MAX_AREA_SAMPLES), 1);
   const inside: Point[] = [];
-  for (let y = minY + step / 2; y < maxY; y += step) {
-    for (let x = minX + step / 2; x < maxX; x += step) {
+  // Each coordinate from an integer index, so a step lost to rounding at a huge coordinate can't loop forever.
+  const cols = Math.ceil((maxX - minX) / step), rows = Math.ceil((maxY - minY) / step);
+  for (let j = 0; j < rows; j++) {
+    const y = minY + step / 2 + j * step;
+    if (!(y < maxY)) break;
+    for (let i = 0; i < cols; i++) {
+      const x = minX + step / 2 + i * step;
+      if (!(x < maxX)) break;
       const p = { x, y };
       if (pointInArea(area, p)) inside.push(p);
     }

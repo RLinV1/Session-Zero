@@ -3,6 +3,7 @@ import {
   AreaTemplate,
   EphemeralPayload,
   formatActivity,
+  INITIAL_SCENE_ID,
   filterEventForViewer,
   filterStateForViewer,
   MAX_AREA_TEMPLATES,
@@ -210,6 +211,15 @@ describe("editing placed areas (FR-TAC-06, ADR 0058)", () => {
     expect(attempt(state, bob, update(template, { size: 30 }))).toMatchObject({ ok: false, code: "forbidden" });
   });
 
+  it("refuses an edit made on another scene, for the owner and the GM alike", () => {
+    const { state, template } = placed(alice);
+    const stale = { ...update(template, { size: 30 }), expectedSceneId: "other-scene" } as CommandInput;
+    expect(attempt(state, alice, stale)).toMatchObject({ ok: false, code: "invalid" });
+    expect(attempt(state, gm, stale)).toMatchObject({ ok: false, code: "invalid" });
+    const current = { ...update(template, { size: 30 }), expectedSceneId: state.activeSceneId ?? INITIAL_SCENE_ID } as CommandInput;
+    expect(run(state, alice, current).state.templates[template.id]?.size).toBe(30);
+  });
+
   it("answers a player editing a GM-only area exactly as if it didn't exist (FR-GM-23)", () => {
     const { state, template } = placed(gm, { gmOnly: true });
     expect(attempt(state, alice, update(template, { size: 30 }))).toEqual(
@@ -268,6 +278,14 @@ describe("editing placed areas (FR-TAC-06, ADR 0058)", () => {
     const gmOnly = placed(gm, { gmOnly: true, size: 10, shape: "circle" });
     const grown = run(gmOnly.state, gm, update(gmOnly.template, { size: 20 })).events[0]!;
     expect(formatActivity(grown, "GM", gmOnly.state)).toBe("GM changed a 10 ft circle to a 20 ft circle (GM only)");
+  });
+
+  it("logs a line set back to the default one-cell width without its old width, in both languages", () => {
+    const { state, template } = placed(alice, { shape: "line", size: 60, width: 10 });
+    const narrowed = run(state, alice, { ...update(template, {}), width: undefined } as CommandInput).events[0]!;
+    expect(narrowed).toMatchObject({ type: "TemplateChanged", to: { size: 60 } });
+    expect(formatActivity(narrowed, "Pat", state)).toBe("Pat changed a 60 ft line, 10 ft wide to a 60 ft line");
+    expect(formatActivity(narrowed, "Pat", state, "zh-TW")).not.toMatch(/改為.*寬/);
   });
 });
 

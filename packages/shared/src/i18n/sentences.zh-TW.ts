@@ -338,7 +338,8 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     case "TemplateChanged": {
       const template = before.templates[event.templateId];
       if (!template) return cjk`${a}修改了一個範圍`;
-      const was = templateLabel({ ...template, ...event.from }), now = templateLabel({ ...template, ...event.to });
+      // A destination without a width is back to the default one cell, not the template's old width.
+      const was = templateLabel({ ...template, ...event.from }), now = templateLabel({ ...template, ...event.to, width: event.to.width });
       const kind = templateChangeKind(event.from, event.to);
       const sentence = kind === "moved" ? cjk`${a}移動了${was}` : kind === "turned" ? cjk`${a}轉動了${was}` : cjk`${a}將${was}改為${now}`;
       return sentence + gmOnly(!!template.gmOnly);
