@@ -33,5 +33,6 @@ A move is one straight leg: `token.move { to }` is checked by `movementBlocked` 
 - Cost stays advisory; the server checks obstacles, never budgets.
 - Until players hold walls (`visible-walls-for-players`), a player's path ignores walls and a path through one is refused at drop, as straight drags were.
 - Other boards animate a live `TokenMoved` along `via`, jumping across `gaps`; snapshots and replays jump.
+- *Amended by `openspec/changes/token-move-slide`:* every board slides a move, not only other participants': the mover's own board slides its drop at once (a faded copy follows the pointer while dragging, and a refused move slides back), their other tabs and devices slide the live event, and replays slide each move stepped forward to, fitted into the 800 ms step. Every slide starts from rest over 250 ms, then moves at 136 ms a square, so 6 squares take just under 1 s; live slides have no cap. Snapshots and jumps on the replay slider still jump.
 - The in-flight `terrain-tactical-movement` change's "Proportional private ruler" requirement is replaced; reconcile when both are archived.
 - Rolling back past this release would leave events an older server cannot parse.

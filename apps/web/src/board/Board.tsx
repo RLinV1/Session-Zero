@@ -1,12 +1,15 @@
 import { TerrainSetup } from "../pages/mapEditor/TerrainSetup";
 import { Modal } from "../ui/Modal";
 import { MovementControls, useRulerMode } from "./MovementControls";
+import { slidePointsFor } from "./slidePoints";
+import { REPLAY_SLIDE_MARGIN_MS } from "./tokenSlide";
+import { REPLAY_STEP_MS } from "../ui/replaySteps";
 import { movementReadout } from "./movementRuler";
 import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phosphor-icons/react";
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, visibleStretches, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
@@ -489,17 +492,13 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     // Live events only, already filtered for this viewer; a snapshot never gets here (KAN-76).
     const stopCommitted = connection.onCommitted((committed, _before, after) => {
       if (latest.current.suppressLiveEffects) return;
-      // Someone else's move slides here, along its path or straight (ADR 0055); only live events
-      // reach here. The server already cut a path to what this viewer sees; a straight move is cut
-      // here, from the fog and sight this board holds, so the token never slides through fog.
+      // Every move slides here, along its path or straight, cut to what this viewer may see
+      // (token-slide, ADR 0055): someone else's, and this account's from another tab or device.
+      // A move this board dropped is already sliding, so the board leaves it alone.
       const moved = committed.event;
-      if (moved.type === "TokenMoved" && committed.actorId !== latest.current.you.id) {
-        if (moved.via?.length) view.animateTokenPath(moved.tokenId, [moved.from, ...moved.via, moved.to], moved.gaps);
-        else if (latest.current.you.role === "gm") view.animateTokenPath(moved.tokenId, [moved.from, moved.to]);
-        else {
-          const seen = visibleStretches([moved.from, moved.to], { fog: after.fog, sight: after.sight ?? null });
-          view.animateTokenPath(moved.tokenId, seen.points, seen.gaps);
-        }
+      if (moved.type === "TokenMoved") {
+        const { points, gaps } = slidePointsFor(moved, latest.current.you, after);
+        view.slide(moved.tokenId, points, gaps);
       }
       const viewer = latest.current.you;
       const seen = attackEffectFor(committed.event, after, viewer);
@@ -547,7 +546,16 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [boardState, you]);
 
   useEffect(() => {
+    // Each replay step shows its state at once: any slide still running ends first (token-slide).
+    viewRef.current?.stopSlides();
     if (replayFrame?.kind !== "event") return;
+    // A move stepped forward to slides like a live one, cut to what this viewer may see, and ends
+    // before the next auto-play step.
+    const moved = replayFrame.committed.event;
+    if (moved.type === "TokenMoved") {
+      const { points, gaps } = slidePointsFor(moved, latest.current.you, latest.current.state);
+      viewRef.current?.slide(moved.tokenId, points, gaps, { capMs: REPLAY_STEP_MS - REPLAY_SLIDE_MARGIN_MS });
+    }
     const seen = attackEffectFor(replayFrame.committed.event, latest.current.state, latest.current.you);
     const effect = seen && effectToPlay(seen, getClientSettings().attackAnimations, latest.current.state);
     if (effect) playEffectRef.current(effect);

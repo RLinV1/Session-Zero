@@ -1,5 +1,6 @@
 import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun } from "@vtt/shared";
 import { plainWallLines } from "./wallLines";
+import { slideDistance, slideDuration } from "./tokenSlide";
 import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
 import {
   Application,
@@ -144,6 +145,7 @@ const MAX_MARKS = 100;
 const MIN_MARK_DRAG_PX = 4;
 /** Stand-in id for the token being placed; never a real token's id. */
 const GHOST_ID = "placement-ghost";
+const DRAG_GHOST_ID = "drag-ghost";
 /** How close (screen pixels) a click must be to a fog polygon's first corner to close it. */
 const FOG_CLOSE_PX = 12;
 /** The longest step the fog's clock takes in one frame, in seconds, so a stall does not jump it. */
@@ -406,6 +408,8 @@ export class BoardView {
   private gridKey = "";
 
   private drag: { tokenId: string; offset: Point; movable: boolean; origin: Point; epoch: number; target?: { at: Point; free: boolean } } | null = null;
+  /** The faded copy that follows the pointer while the viewer drags a token; the token stays on its square (token-slide). */
+  private dragGhost: TokenView | null = null;
   private movementRequest: MovementPreviewRequest | null = null;
   private movementPreviewId = 0;
   private localMovementPreview: DragPlan | null = null;
@@ -450,8 +454,14 @@ export class BoardView {
   private marksScale = Number.NaN;
   /** Moves sent but not yet reflected in state, so tokens don't snap back while waiting. */
   private pendingMoves = new Map<string, Point>();
-  /** Tokens travelling along a committed path on this board (ADR 0055); the sprite sync leaves them alone. */
-  private pathMoves = new Set<string>();
+  /**
+   * Tokens sliding on this board (ADR 0055, token-slide), each with the id of its current slide so a
+   * newer slide replaces an older one; the sprite sync leaves them alone.
+   */
+  private pathMoves = new Map<string, number>();
+  private slideIds = 0;
+  /** Tokens sliding for this board's own drop: the event that later confirms the move must not slide them again. */
+  private ownSlides = new Set<string>();
   /** The new token being placed (place-token-on-board); null when not placing. */
   private placement: PlacementGhost | null = null;
   /** Where the pointer is over the board while placing; null when it is off the canvas. */
@@ -864,10 +874,34 @@ export class BoardView {
     this.invalidate();
   }
 
+  /** Remove the dragged token's faded copy, if any. */
+  private clearDragGhost() {
+    if (!this.dragGhost) return;
+    if (!this.dragGhost.container.destroyed) this.dragGhost.container.destroy({ children: true });
+    this.dragGhost = null;
+    this.invalidate();
+  }
+
+  /** Draw the faded copy of the dragged token at `at`, creating it on the first move of a drag. */
+  private moveDragGhost(tokenId: string, at: Point) {
+    const token = this.state?.tokens[tokenId], grid = this.state?.scene.grid, you = this.you;
+    if (!token || !grid || !you) return;
+    if (!this.dragGhost) {
+      this.dragGhost = this.createTokenView(DRAG_GHOST_ID);
+      this.fxLayer.addChild(this.dragGhost.container);
+      this.drawToken(this.dragGhost, { ...token, id: DRAG_GHOST_ID }, grid, you);
+      // Never a target, and half there: the token itself still stands on its square.
+      this.dragGhost.container.eventMode = "none";
+      this.dragGhost.container.alpha = 0.5;
+    }
+    this.dragGhost.container.position.set(at.x, at.y);
+  }
+
   cancelMovement() {
     if (!this.drag) return false;
+    this.clearDragGhost();
     const token = this.state?.tokens[this.drag.tokenId];
-    if (token) { const view = this.tokens.get(token.id); view?.container.position.set(token.position.x, token.position.y); if (view) view.container.cursor = "grab"; }
+    if (token) { const view = this.tokens.get(token.id); if (view) view.container.cursor = "grab"; }
     this.callbacks.dragEnd(this.drag.tokenId, token?.position ?? null);
     this.drag = null; this.dragDownAt = null;
     this.overlayGraphics.clear(); this.measureLabel.visible = false; this.invalidate();
@@ -1249,6 +1283,8 @@ export class BoardView {
 
   /** Switch the active tool. Changing tool drops the last measurement and any drag in progress. */
   setTool(tool: BoardTool) {
+    // A tool change ends a drag in progress, and with it the dragged token's faded copy.
+    if (tool.kind !== this.tool.kind && this.drag) this.cancelMovement();
     if (tool.kind !== this.tool.kind || (tool.kind === "fog" && this.tool.kind === "fog" && tool.mode !== this.tool.mode) || (tool.kind === "measure" && this.tool.kind === "measure" && tool.mode !== this.tool.mode)) {
       if (this.gesture && this.tool.kind === "area") this.callbacks.aimEnd(this.tool.gmOnly);
       this.measurement = null;
@@ -2137,6 +2173,8 @@ export class BoardView {
         this.pendingMoves.delete(id);
         // A token back later (an undone delete, a reveal) must be placed again, not left mid-path.
         this.pathMoves.delete(id);
+        this.ownSlides.delete(id);
+        if (this.drag?.tokenId === id) { this.drag = null; this.clearDragGhost(); }
       }
     }
 
@@ -2152,7 +2190,8 @@ export class BoardView {
       if (pending && pending.x === token.position.x && pending.y === token.position.y) {
         this.pendingMoves.delete(token.id);
       }
-      if (this.drag?.tokenId !== token.id && !this.pendingMoves.has(token.id) && !this.pathMoves.has(token.id)) {
+      // A dragged token stays on its square: its faded copy follows the pointer (token-slide).
+      if (!this.pendingMoves.has(token.id) && !this.pathMoves.has(token.id)) {
         view.container.position.set(token.position.x, token.position.y);
       }
     }
@@ -2355,7 +2394,7 @@ export class BoardView {
     container.eventMode = "none";
     // Sound follows the volume setting, not reduced motion; a crowd past the effect cap stays quiet.
     if (this.dying.size < MAX_DEFEAT_EFFECTS) playDefeatSound();
-    if (this.drag?.tokenId === tokenId) this.drag = null;
+    if (this.drag?.tokenId === tokenId) { this.drag = null; this.clearDragGhost(); }
     const flecks = new Container();
     flecks.position.set(container.position.x, container.position.y);
     const bits = Array.from({ length: plan.particles }, (_, i) => {
@@ -2415,29 +2454,56 @@ export class BoardView {
     this.invalidate();
   }
 
+  /** Where a token rests on this board: a move sent from here but not yet in state, else where the room says. */
+  private restingPosition(tokenId: string): Point | undefined {
+    return this.pendingMoves.get(tokenId) ?? this.state?.tokens[tokenId]?.position;
+  }
+
   /**
-   * Another participant's move along a path (ADR 0055): the token travels through `points` at about
-   * 90 ms a square, at most 1.2 s, jumping across the stretches in `gaps`, then rests where the room says it is. Drawing only: the state
-   * already holds the new position. Reduced motion, or a token being dragged here, just jumps.
+   * Slide a token through `points` (token-slide, ADR 0055): from rest, speeding up over a quarter of
+   * a second, then about 136 ms a square, jumping across the stretches in `gaps`, then resting where
+   * this board says it is. Drawing only: state already holds, or is about to hold, the new position.
+   * `capMs` fits a replay slide into its step; `own` marks this board's own drop; `evenShort` slides a
+   * refused drop back even under a square. Reduced motion, a
+   * visible length under one square, or a token being dragged here, jumps instead. Returns whether
+   * it slides; a jump leaves the token at its resting position.
    */
-  animateTokenPath(tokenId: string, points: readonly Point[], gaps: readonly number[] = []) {
+  slide(tokenId: string, points: readonly Point[], gaps: readonly number[] = [], options: { capMs?: number; own?: boolean; evenShort?: boolean } = {}): boolean {
     const view = this.tokens.get(tokenId), grid = this.state?.scene.grid;
-    if (!view || !grid || points.length < 2 || this.reducedMotion || this.drag?.tokenId === tokenId || this.pendingMoves.has(tokenId)) return;
+    if (!view || !grid || this.drag?.tokenId === tokenId) return false;
+    // The event confirming this board's own drop changes nothing: the token is already sliding or resting there.
+    if (!options.own && (this.ownSlides.has(tokenId) || this.pendingMoves.has(tokenId))) return false;
+    const jump = () => {
+      this.pathMoves.delete(tokenId);
+      this.ownSlides.delete(tokenId);
+      const at = this.restingPosition(tokenId) ?? points.at(-1);
+      if (at && !view.container.destroyed) view.container.position.set(at.x, at.y);
+      this.invalidate();
+      return false;
+    };
+    if (points.length < 2 || this.reducedMotion) return jump();
     // A stretch the viewer can't see takes no time: the token jumps across it, never drawn inside fog.
     const hidden = new Set(gaps);
     const lengths = points.slice(1).map((p, i) => (hidden.has(i) ? 0 : Math.hypot(p.x - points[i]!.x, p.y - points[i]!.y)));
     const total = lengths.reduce((a, b) => a + b, 0);
-    if (total === 0) return;
-    const durationMs = Math.min(1200, 90 * total / grid.cellSize);
+    // A nudge jumps; a refused drop slides back however short its way (`evenShort`).
+    if (total === 0 || (total < grid.cellSize && !options.evenShort)) return jump();
+    const durationMs = slideDuration(total, grid.cellSize, options.capMs);
     const started = performance.now();
-    this.pathMoves.add(tokenId);
+    const id = ++this.slideIds;
+    this.pathMoves.set(tokenId, id);
+    if (options.own) this.ownSlides.add(tokenId); else this.ownSlides.delete(tokenId);
     const step = (now: number) => {
       const container = view.container;
-      if (container.destroyed || !this.pathMoves.has(tokenId)) { this.pathMoves.delete(tokenId); return false; }
-      let along = Math.min(1, (now - started) / durationMs) * total;
+      if (container.destroyed || this.pathMoves.get(tokenId) !== id) {
+        if (this.pathMoves.get(tokenId) === id) { this.pathMoves.delete(tokenId); this.ownSlides.delete(tokenId); }
+        return false;
+      }
+      let along = slideDistance(now - started, total, durationMs);
       if (along >= total) {
         this.pathMoves.delete(tokenId);
-        const at = this.state?.tokens[tokenId]?.position ?? points.at(-1)!;
+        this.ownSlides.delete(tokenId);
+        const at = this.restingPosition(tokenId) ?? points.at(-1)!;
         container.position.set(at.x, at.y);
         return false;
       }
@@ -2451,6 +2517,19 @@ export class BoardView {
     this.animations.add(step);
     this.schedule();
     this.invalidate();
+    return true;
+  }
+
+  /** End every slide at once, each token where this board says it rests (a replay step, token-slide). */
+  stopSlides() {
+    const sliding = [...this.pathMoves.keys()];
+    this.pathMoves.clear();
+    this.ownSlides.clear();
+    for (const tokenId of sliding) {
+      const view = this.tokens.get(tokenId), at = this.restingPosition(tokenId);
+      if (view && at && !view.container.destroyed) view.container.position.set(at.x, at.y);
+    }
+    if (sliding.length) this.invalidate();
   }
 
   private fxHost(): FxHost {
@@ -2752,6 +2831,7 @@ export class BoardView {
     this.movementRequest = null; this.movementFeedbackStatus = null;
     // Picking a token up ends any path it is still travelling here (ADR 0055).
     this.pathMoves.delete(tokenId);
+    this.ownSlides.delete(tokenId);
     this.drag = {
       tokenId,
       offset: { x: p.x - view.container.x, y: p.y - view.container.y },
@@ -2859,7 +2939,7 @@ export class BoardView {
       if (!view) return;
       const p = this.toBoard(e.global);
       const at = { x: p.x - this.drag.offset.x, y: p.y - this.drag.offset.y };
-      view.container.position.set(at.x, at.y);
+      this.moveDragGhost(this.drag.tokenId, at);
       this.callbacks.dragPreview(this.drag.tokenId, at);
       this.drag.target = { at, free: e.altKey };
       this.refreshMovementPreview(false);
@@ -2927,36 +3007,42 @@ export class BoardView {
     const token = this.state?.tokens[drag.tokenId];
     const view = this.tokens.get(drag.tokenId);
     if (!drag.movable) return;
+    const ghost = this.dragGhost;
+    const dropped = ghost ? { x: ghost.container.x, y: ghost.container.y } : null;
+    this.clearDragGhost();
     if (!this.state || !token || !view) return this.callbacks.dragEnd(drag.tokenId, null);
     view.container.cursor = "grab";
-    if (clicked) {
-      // A click never moves the token, even one placed off-centre: put it back and end the ghost.
-      view.container.position.set(token.position.x, token.position.y);
+    if (clicked || !dropped) {
+      // A click never moves the token, even one placed off-centre: it never left its square.
       this.invalidate();
       return this.callbacks.dragEnd(token.id, token.position);
     }
 
     this.invalidate();
-    const dropped = { x: view.container.x, y: view.container.y };
     // Snap by default; hold Alt for free placement (FR-TAC-02).
     const to = e.altKey ? dropped : snapTokenCenter(dropped, token.size, this.state.scene.grid);
     // The path the drag showed is the one committed (ADR 0055): the cached plan for this square, if any.
     const reposition = this.repositionToken === token.id;
     const cached = this.localMovementPreview && this.localPlanKey.startsWith(`${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${e.altKey}|${reposition}|`) ? this.localMovementPreview : null;
     const plan = cached ?? (this.you ? dragPlan(this.state, this.you, token, drag.origin, to, e.altKey, reposition) : null);
-    view.container.position.set(to.x, to.y);
     this.callbacks.dragEnd(token.id, to);
     if (to.x === token.position.x && to.y === token.position.y) return;
     this.pendingMoves.set(token.id, to);
+    // The token slides along the path it sends, at once, before the server answers (token-slide).
+    this.slide(token.id, plan?.points.length ? plan.points : [drag.origin, to], [], { own: true });
     this.callbacks.moveToken(token.id, to, drag.origin, drag.epoch, plan?.via.length ? plan.via : undefined).then((ok) => {
       if (ok) return;
       this.pendingMoves.delete(token.id);
+      const sprite = this.tokens.get(token.id);
       const current = this.state?.tokens[token.id];
-      if (current) {
-        this.tokens.get(token.id)?.container.position.set(current.position.x, current.position.y);
-        // Rejected: the others' ghost goes back to where the token still is.
-        this.callbacks.dragEnd(token.id, current.position);
-      }
+      if (!sprite || sprite.container.destroyed || !current) return this.invalidate();
+      // Refused: it slides back from wherever it got to, which the slow start keeps short.
+      const reached = { x: sprite.container.x, y: sprite.container.y };
+      this.pathMoves.delete(token.id);
+      this.ownSlides.delete(token.id);
+      this.slide(token.id, [reached, current.position], [], { own: true, evenShort: true });
+      // Rejected: the others' ghost goes back to where the token still is.
+      this.callbacks.dragEnd(token.id, current.position);
       this.invalidate();
     });
   };
@@ -3003,6 +3089,7 @@ export class BoardView {
       if (view && token) view.container.position.set(token.position.x, token.position.y);
       this.callbacks.dragEnd(this.drag.tokenId, token?.position ?? null);
       this.drag = null;
+      this.clearDragGhost();
       this.overlayGraphics.clear(); this.measureLabel.visible = false;
       this.invalidate();
     }
