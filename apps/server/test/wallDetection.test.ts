@@ -190,7 +190,7 @@ describe("automatic wall detection through the queue (FR-GM-11, ADR 0029)", () =
     expect(gm.state.walls).toEqual({});
   });
 
-  it("applies detected walls through the room command, hides them from players, and blocks tokens", async () => {
+  it("applies detected walls through the room command, gives players only bare pieces, and blocks tokens", async () => {
     const queue = new StandInQueue();
     const { room, gm, player, playerCreds, url } = await roomWithMap(queue);
     const [jobId] = queue.only();
@@ -202,7 +202,8 @@ describe("automatic wall detection through the queue (FR-GM-11, ADR 0029)", () =
     await gm.waitForSeq((applied as { seq: number }).seq);
     expect(Object.values(gm.state.walls).map(({ a, b }) => ({ a, b }))).toEqual([WALL]);
     await player.waitForSeq((applied as { seq: number }).seq);
-    expect(player.state.walls).toEqual({});
+    // In plain view, so it arrives in a resync as a bare piece, never as the GM's event (ADR 0056).
+    expect(player.state.walls).toEqual({ "seen:0": { id: "seen:0", ...WALL } });
     expect(player.rawLog.join(" ")).not.toContain('"WallsAdded"');
 
     // A player's token can't be dragged through the wall, or dropped on it.

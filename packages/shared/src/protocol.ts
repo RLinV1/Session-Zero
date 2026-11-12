@@ -4,7 +4,7 @@ import { GamePresetId } from "./gamePresets";
 import { TokenAttacks, type AttackPreset } from "./attackPresets";
 import { Command, DEFAULT_TOKEN_COLOR } from "./commands";
 import { CommittedEvent } from "./events";
-import { GridSpec, Point } from "./geometry";
+import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { TokenStats, type ConditionId } from "./conditions";
 import { AreaColor, AreaShape, Id, Participant, TableState, Token, type RoomState } from "./state";
 import type { RejectionCode } from "./decide";
@@ -25,7 +25,7 @@ export const EphemeralPayload = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), at: Point }),
   z.object({ type: z.literal("tokenDragPreview"), tokenId: Id, at: Point }),
   /** Private advisory request; never relayed. The server retains all wall geometry. */
-  z.object({ type: z.literal("tokenMovePreview"), requestId: Id, tokenId: Id, from: Point, to: Point, boardEpoch: z.number().int().nonnegative(), reposition: z.boolean().optional() }),
+  z.object({ type: z.literal("tokenMovePreview"), requestId: Id, tokenId: Id, from: Point, to: Point, via: z.array(Point).max(MAX_MOVE_VIA).optional(), boardEpoch: z.number().int().nonnegative(), reposition: z.boolean().optional() }),
   /**
    * A die let go over the map (ADR 0014): where it leaves the hand and where it lands, in board
    * coordinates. Sent just before the sender's `dice.roll`, so every other viewer can replay

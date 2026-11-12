@@ -117,18 +117,18 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
     expect(state.terrain).toBeUndefined();
     expect(planDraftSave(state, draft)).toEqual([expect.objectContaining({ type: "scene.savePreparation", context: { boardEpoch: 0, revision: 0 }, edits: [expect.objectContaining({ type: "terrain.paint", layerId: "base" })] })]);
   });
-  it("labels cost and unknown coverage without using hidden layouts or ghosts", () => {
+  it("labels a straight move with distance only, without using hidden layouts or ghosts (ADR 0055)", () => {
     const gm: Participant = { id: "g", role: "gm", displayName: "G" }, player: Participant = { id: "p", role: "player", displayName: "P" };
     const token: Token = { id: "t", name: "Hero", position: { x: 25, y: 25 }, size: 1, rotation: 0, color: "#445566", imageUrl: null, ownerIds: [player.id], hidden: false, conditions: [], stats: { hp: null, maxHp: null, ac: null } };
     const state = { ...emptyRoomState("r"), ...room(), tokens: { t: token }, terrain: { base: [{ row: 0, start: 1, end: 1, kind: "difficult" as const }], effects: [] } };
-    expect(movementPreview(state, gm, token, token.position, { x: 125, y: 25 })).toEqual({ label: "10 ft · Cost 20 ft", obstruction: "clear" });
+    expect(movementPreview(state, gm, token, token.position, { x: 125, y: 25 })).toEqual({ label: "10 ft", obstruction: "clear" });
     const blocked = { ...state, walls: { w: { id: "w", a: { x: 100, y: 0 }, b: { x: 100, y: 100 } } } };
     expect(movementPreview(blocked, gm, token, token.position, { x: 125, y: 25 }).obstruction).toBe("blocked");
-    expect(movementReadout(blocked, gm, token, token.position, { x: 125, y: 25 })).toBe("10 ft · Cost 20 ft");
+    expect(movementReadout(blocked, gm, token, token.position, { x: 125, y: 25 })).toBe("10 ft");
     const limited = { ...state, scene: { ...state.scene, lineOfSight: true, sightRange: 5 } };
     const visible = filterStateForViewer(limited, player);
     const before = JSON.stringify(visible);
-    expect(movementPreview(visible, player, token, token.position, { x: 225, y: 25 })).toEqual({ label: "20 ft · Cost unknown", obstruction: "unknown" });
+    expect(movementPreview(visible, player, token, token.position, { x: 225, y: 25 })).toEqual({ label: "20 ft", obstruction: "unknown" });
     expect(JSON.stringify(visible)).toBe(before);
   });
   it("keeps permitted owner fog routes uncertain, GM feedback accurate and Reposition destination checked", () => {
@@ -141,12 +141,12 @@ describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
       const fogged = { ...state, tokens: { t: current } }, target = { x: to!, y: 25 };
       expect(movementPreview(fogged, gm, current, current.position, target).obstruction).toBe("clear");
       expect(movementFeedbackForViewer(fogged, gm, { ...request, from: current.position, to: target })).toBe("clear");
-      expect(movementPreview(filterStateForViewer(fogged, player), player, current, current.position, target)).toEqual({ label: `${Math.abs(to! - from!) / 10} ft · Cost unknown`, obstruction: "unknown" });
+      expect(movementPreview(filterStateForViewer(fogged, player), player, current, current.position, target)).toEqual({ label: `${Math.abs(to! - from!) / 10} ft`, obstruction: "unknown" });
       expect(movementFeedbackForViewer(fogged, player, { ...request, from: current.position, to: target })).toBe("unknown");
     }
     const strip = { ...state, fog: { f: { ...state.fog.f!, points: [{ x: 99, y: 0 }, { x: 99.1, y: 0 }, { x: 99.1, y: 50 }, { x: 99, y: 50 }] } } };
-    expect(movementPreview(filterStateForViewer(strip, player), player, token, token.position, request.to)).toEqual({ label: "15 ft · Cost unknown", obstruction: "unknown" });
-    expect(movementReadout(state, gm, token, token.position, request.to)).toBe("15 ft · Cost 25 ft");
+    expect(movementPreview(filterStateForViewer(strip, player), player, token, token.position, request.to)).toEqual({ label: "15 ft", obstruction: "unknown" });
+    expect(movementReadout(state, gm, token, token.position, request.to)).toBe("15 ft");
     const wall = { id: "w", a: { x: 100, y: 0 }, b: { x: 100, y: 50 } };
     const obstacles: RoomState[] = [
       { ...state, terrain: { base: [{ row: 0, start: 1, end: 1, kind: "blocked" }], effects: [] } },

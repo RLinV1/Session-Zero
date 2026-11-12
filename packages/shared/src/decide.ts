@@ -1,4 +1,4 @@
-import { destinationBlocked, movementBlocked } from "./movement";
+import { destinationBlocked, movementBlocked, movementObstacles } from "./movement";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
 import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
@@ -24,7 +24,8 @@ import { concealedFrom, concealmentFor, fogConcealsSide, isInFog, portalConceale
 import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
-import { MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./i18n/ruleIds";
+import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -459,12 +460,22 @@ export function decide(
       if (!can.moveToken(actor, token)) return forbidden();
       if (command.reposition && !can.administer(actor)) return forbidden();
       if ((command.expectedOrigin && !sameValue(token.position, command.expectedOrigin)) || (command.boardEpoch !== undefined && command.boardEpoch !== (state.boardEpoch ?? 0))) return reject("invalid", sharedMsg("reject.moveStale"));
-      if (movementBlocked(state, token, command.to, command.reposition)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
+      // A path is checked leg by leg, each from where the last one ended (ADR 0055). Reposition
+      // skips the route entirely, so it has no path to carry.
+      const via = command.via ?? [];
+      const map = state.scene.map;
+      if (via.length && (command.reposition || !map || via.some((p) => p.x < 0 || p.y < 0 || p.x > map.width || p.y > map.height))) return reject("invalid", sharedMsg("reject.moveUnavailable"));
+      const points = [token.position, ...via, command.to];
+      const obstacles = movementObstacles(state);
+      for (let i = 1; i < points.length; i++) {
+        if (movementBlocked(state, { ...token, position: points[i - 1]! }, points[i]!, command.reposition, obstacles)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
+      }
       return accept({
         type: "TokenMoved",
         tokenId: token.id,
         from: token.position,
         to: command.to,
+        ...(via.length ? { via } : {}),
       });
     }
 
@@ -923,11 +934,46 @@ export function decide(
       return accept({ type: "ReducedEffectsSet", enabled: command.enabled, previous });
     }
 
-    case "room.setAutoRemoveDefeated": {
+    case "room.setDefeatRemoval": {
       if (!can.administer(actor)) return forbidden();
-      const previous = state.autoRemoveDefeated ?? true;
-      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.autoRemoveOn" : "reject.autoRemoveOff"));
-      return accept({ type: "AutoRemoveDefeatedSet", enabled: command.enabled, previous });
+      const previous = defeatRemovalOf(state);
+      if (previous === command.mode) return reject("invalid", sharedMsg("reject.defeatRemovalAlready"));
+      return accept({ type: "DefeatRemovalSet", mode: command.mode, previous });
+    }
+
+    case "room.setHideMapWithoutToken": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideMapWithoutToken ?? false;
+      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.hideMapOn" : "reject.hideMapOff"));
+      return accept({ type: "HideMapWithoutTokenSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setHideHp": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideHp ?? false;
+      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.hideHpOn" : "reject.hideHpOff"));
+      return accept({ type: "HideHpSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setDiagonalRule": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = diagonalRuleOf(state);
+      if (previous === command.rule) return reject("invalid", sharedMsg("reject.diagonalsAlready", { rule: sharedMsg(DIAGONAL_RULE_IDS[previous]) }));
+      return accept({ type: "DiagonalRuleSet", rule: command.rule, previous });
+    }
+
+    case "room.setDifficultTerrain": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = difficultTerrainOf(state);
+      if (previous === command.mode) return reject("invalid", sharedMsg("reject.difficultTerrainAlready", { mode: sharedMsg(DIFFICULT_TERRAIN_IDS[previous]) }));
+      return accept({ type: "DifficultTerrainSet", mode: command.mode, previous });
+    }
+
+    case "room.setHideAc": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = state.hideAc ?? false;
+      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.hideAcOn" : "reject.hideAcOff"));
+      return accept({ type: "HideAcSet", enabled: command.enabled, previous });
     }
 
     case "room.setJoinsLocked": {
@@ -1580,18 +1626,21 @@ function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?:
 }
 
 /**
- * With the room option on, appends a defeat `TokenDeleted` for every token a command's stats
- * events leave at 0 HP or below, after that token's last event in the batch so nothing later
- * names a missing token (ADR 0049). Pure: the deleted token is folded from the batch.
+ * Appends a defeat `TokenDeleted` for every token a command's stats events leave at 0 HP or
+ * below, after that token's last event in the batch so nothing later names a missing token
+ * (ADR 0049). The room's mode decides which: all, only tokens no player owns, or none (ADR 0057).
+ * Pure: the deleted token, and so its owners, are folded from the batch.
  */
 function withDefeats(state: RoomState, events: DomainEvent[]): DomainEvent[] {
-  if (state.autoRemoveDefeated === false) return events;
+  const mode = defeatRemovalOf(state);
+  if (mode === "off") return events;
   const ids = [...new Set(events.flatMap((e) => (e.type === "TokenStatsSet" ? [e.tokenId] : [])))];
   const defeats = new Map<number, DomainEvent>();
   for (const id of ids) {
     const mine = events.filter((e) => "tokenId" in e && e.tokenId === id);
     const token = reduceAll(state, mine).tokens[id];
     if (!token || token.stats.hp === null || token.stats.hp > 0) continue;
+    if (mode === "npc" && token.ownerIds.length > 0) continue;
     defeats.set(events.lastIndexOf(mine[mine.length - 1]!), { type: "TokenDeleted", token, reason: "defeated" });
   }
   if (defeats.size === 0) return events;

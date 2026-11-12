@@ -1,7 +1,10 @@
 import { TerrainSetup } from "../pages/mapEditor/TerrainSetup";
 import { Modal } from "../ui/Modal";
-import { MovementControls } from "./MovementControls";
-import { defaultMovementSettings, movementReadout, type MovementSettings } from "./movementRuler";
+import { MovementControls, useRulerMode } from "./MovementControls";
+import { slidePointsFor } from "./slidePoints";
+import { REPLAY_SLIDE_MARGIN_MS } from "./tokenSlide";
+import { REPLAY_STEP_MS } from "../ui/replaySteps";
+import { movementReadout } from "./movementRuler";
 import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phosphor-icons/react";
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
@@ -11,6 +14,7 @@ import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
 import { usePersistentState } from "../ui/usePersistentState";
+import { getClientSettings, useClientSettings } from "../ui/clientSettings";
 import { BoardFilters } from "./BoardFilters";
 import { gmSightPolygons, sightKey, viewedTokenIds } from "./gmSightView";
 import { canAnimateDice, type TrayRoll } from "../ui/Die3D";
@@ -21,11 +25,11 @@ import type { DiceSkin } from "../ui/diceSkin";
 import { BoardView, type GmFogView } from "./boardView";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
-import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectiveReducedMotion, type AttackEffect } from "./effects";
+import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
 import type { OverlayEffect } from "./EffectsOverlay";
 import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type BoardThrow, type BoardTransform } from "./diceThrow";
 import { cursorSquare, moveCursor, placementCommand, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
-import type { BoardTool } from "./tools";
+import type { BoardTool, MeasureMode } from "./tools";
 import { TokenCard } from "./TokenCard";
 import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../ui/MoveControl";
 
@@ -136,7 +140,7 @@ interface Placing {
 
 const HINTS: Record<BoardTool["kind"], TextId | null> = {
   select: "board.hint.select",
-  measure: "board.hint.measure",
+  measure: null,
   draw: "board.hint.draw",
   area: "board.hint.area",
   erase: "board.hint.erase",
@@ -144,6 +148,12 @@ const HINTS: Record<BoardTool["kind"], TextId | null> = {
   pickTemplate: "board.hint.pickTemplate",
   fog: null,
 };
+
+/** Measure hints by mode (ruler-modes). */
+const MEASURE_HINTS = {
+  range: "board.hint.measure",
+  movement: "board.hint.measureRoute",
+} as const satisfies Record<MeasureMode, TextId>;
 
 /** Fog hints by mode (FR-GM-17). Players never get the Fog tool. */
 const FOG_HINTS = {
@@ -223,11 +233,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   /** Closing the card deselects the token and drops the eye's narrowing: back to all tokens, or off if the eye alone turned Token view on. */
   const deselect = () => { setSelectedId(null); setViewedIds([]); if (eyeStarted) setTokenView(false); };
   const selected = selectedId ? renderedState.tokens[selectedId] ?? null : null;
-  const [movementSettings, setMovementSettings] = useState<MovementSettings>(() => defaultMovementSettings(state.scene.grid));
   const [movementFeedback, setMovementFeedback] = useState("");
   const rulerOrigin = selected && can.moveToken(you, selected) ? selected.position : null;
-  const rulerRef = useRef({ settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
-  rulerRef.current = { settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
+  const rulerRef = useRef({ origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
+  rulerRef.current = { origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
   // Token view with no narrowing (viewedIds empty) is "all tokens": the union of every token's sight, hidden ones included.
   // Only a card's eye narrows it to that token; the eye again or closing the card returns to all tokens (or off, if the eye started it).
   const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds.length > 0 ? viewedIds : Object.keys(state.tokens)) : [];
@@ -239,7 +248,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   latest.current.viewing = viewing;
   useEffect(() => viewRef.current?.setViewedTokens(viewing), [viewing.join(",")]);
   const [tool, setTool] = useState<BoardTool>({ kind: "select" });
-  const [toolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
+  // The ruler's mode is remembered in this browser (ruler-modes); the other options last the visit.
+  const [measureMode, setMeasureMode] = useRulerMode();
+  const [otherToolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
+  const toolOptions = useMemo(() => ({ ...otherToolOptions, measure: { mode: measureMode } }), [otherToolOptions, measureMode]);
   const toolRef = useRef(tool);
   toolRef.current = tool;
   /** The tool to go back to once an attack's target is picked or cancelled. */
@@ -251,8 +263,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   placingRef.current = placing;
   const source = placing?.source ?? null;
 
-  /** Arrow keys move the selected token one square while the token card's switch is on (WCAG 2.1.1, 2.5.7). */
-  const [arrowKeys, setArrowKeys] = usePersistentState<boolean>("vtt.ui.arrowKeyMove", true, (v): v is boolean => typeof v === "boolean");
+  /** Arrow keys move the selected token one square while Settings allows it (WCAG 2.1.1, 2.5.7; client-settings). */
+  const arrowKeys = useClientSettings().arrowKeyMove;
   // One move at a time for the buttons and the keys together: a second step must start from the landed square.
   const movePending = useRef(false);
   const moveToken = useCallback(async (tokenId: string, to: Point) => {
@@ -385,10 +397,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     const view = new BoardView(hostRef.current!, {
       movementFeedback: setMovementFeedback,
       nukeImpact: () => latest.current.onNukeImpact?.(),
-      moveToken: async (tokenId, to, origin, boardEpoch) => {
+      moveToken: async (tokenId, to, origin, boardEpoch, via) => {
         const reposition = latest.current.you.role === "gm" && repositionRef.current === tokenId;
         setRepositionId(null); repositionRef.current = null;
-        const result = await guarded.command({ type: "token.move", tokenId, to, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
+        const result = await guarded.command({ type: "token.move", tokenId, to, ...(via?.length ? { via } : {}), expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
         // The token snaps back; say why, so a wall the player can't see isn't a mystery (ADR 0029).
         if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
         else if (result.ok) setRefusal(null);
@@ -462,7 +474,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);
       view.update(latest.current.boardState, latest.current.you);
-      view.setMovementRuler(rulerRef.current.settings, rulerRef.current.origin, rulerRef.current.tokenSize);
+      view.setMovementRuler(rulerRef.current.origin, rulerRef.current.tokenSize);
       view.setTool(toolRef.current);
       view.setPlacement(ghostRef.current);
       view.setGroupSelection(latest.current.groupSelection ?? []);
@@ -484,8 +496,18 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     // Live events only, already filtered for this viewer; a snapshot never gets here (KAN-76).
     const stopCommitted = connection.onCommitted((committed, _before, after) => {
       if (latest.current.suppressLiveEffects) return;
+      // Every move slides here, along its path or straight, cut to what this viewer may see
+      // (token-slide, ADR 0055): someone else's, and this account's from another tab or device.
+      // A move this board dropped is already sliding, so the board leaves it alone.
+      const moved = committed.event;
+      if (moved.type === "TokenMoved") {
+        const { points, gaps } = slidePointsFor(moved, latest.current.you, after);
+        view.slide(moved.tokenId, points, gaps);
+      }
       const viewer = latest.current.you;
-      const effect = attackEffectFor(committed.event, after, viewer);
+      const seen = attackEffectFor(committed.event, after, viewer);
+      // The viewer's Attack animations choice, decided now, against the turn as it stands (board-attack-effects).
+      const effect = seen && effectToPlay(seen, getClientSettings().attackAnimations, after);
       if (!effect) return;
       if (effect.kind === "strike") view.focusStrike(effect);
       // Every public roll is thrown over the board first: the strike leaves when the dice land.
@@ -528,8 +550,18 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [boardState, you]);
 
   useEffect(() => {
+    // Each replay step shows its state at once: any slide still running ends first (token-slide).
+    viewRef.current?.stopSlides();
     if (replayFrame?.kind !== "event") return;
-    const effect = attackEffectFor(replayFrame.committed.event, latest.current.state, latest.current.you);
+    // A move stepped forward to slides like a live one, cut to what this viewer may see, and ends
+    // before the next auto-play step.
+    const moved = replayFrame.committed.event;
+    if (moved.type === "TokenMoved") {
+      const { points, gaps } = slidePointsFor(moved, latest.current.you, latest.current.state);
+      viewRef.current?.slide(moved.tokenId, points, gaps, { capMs: REPLAY_STEP_MS - REPLAY_SLIDE_MARGIN_MS });
+    }
+    const seen = attackEffectFor(replayFrame.committed.event, latest.current.state, latest.current.you);
+    const effect = seen && effectToPlay(seen, getClientSettings().attackAnimations, latest.current.state);
     if (effect) playEffectRef.current(effect);
   }, [replayFrame]);
 
@@ -567,8 +599,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [gridPreview]);
 
   useEffect(() => {
-    viewRef.current?.setMovementRuler(movementSettings, rulerOrigin, selected?.size ?? 1);
-  }, [movementSettings, rulerOrigin?.x, rulerOrigin?.y, selected?.size]);
+    viewRef.current?.setMovementRuler(rulerOrigin, selected?.size ?? 1);
+  }, [rulerOrigin?.x, rulerOrigin?.y, selected?.size]);
 
   useEffect(() => {
     viewRef.current?.setTool(tool);
@@ -631,8 +663,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       // The Fog polygon takes Enter to close and Backspace to drop a corner; Escape abandons it first.
       if (toolRef.current.kind === "fog" && e.key === "Enter" && viewRef.current?.closeFogPolygon()) return e.preventDefault();
       if (toolRef.current.kind === "fog" && e.key === "Backspace" && viewRef.current?.undoFogPoint()) return e.preventDefault();
+      // A Movement-mode ruler route: Enter finishes, Backspace drops a point, Escape clears it first (ruler-modes).
+      if (toolRef.current.kind === "measure" && e.key === "Enter" && viewRef.current?.closeRoute()) return e.preventDefault();
+      if (toolRef.current.kind === "measure" && e.key === "Backspace" && viewRef.current?.dropRoutePoint()) return e.preventDefault();
       if (e.key !== "Escape") return;
       if (viewRef.current?.cancelFogPolygon()) return;
+      if (toolRef.current.kind === "measure" && viewRef.current?.cancelRoute()) return;
       if (toolRef.current.kind === "attack") endAttack();
       else setTool({ kind: "select" });
     };
@@ -837,7 +873,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {gridPreview && <p className="grid-preview-label" role="status">{t("board.previewNotApplied")}</p>}
       {!readOnly && !selectOnly && (
       <ToolRail
-        movementControls={<MovementControls key={state.roomId} roomId={state.roomId} grid={state.scene.grid} onChange={setMovementSettings} />}
+        movementControls={<MovementControls
+          mode={measureMode}
+          onMode={(mode) => {
+            setMeasureMode(mode);
+            setTool((current) => (current.kind === "measure" ? { kind: "measure", mode } : current));
+          }} />}
         active={tool.kind}
         options={toolOptions}
         unitLabel={state.scene.grid.unitLabel}
@@ -848,6 +889,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         }}
         onOptions={(options) => {
           setToolOptions(options);
+          setMeasureMode(options.measure.mode);
           setTool((current) => (current.kind === "attack" ? current : toolFor(current.kind, options)));
         }}
         onClear={() => viewRef.current?.clearMarks()}
@@ -877,7 +919,6 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           onMove={(to) => moveToken(selected.id, to)}
           movementReadout={movementNotice}
           reposition={you.role === "gm" && !readOnly ? { on: repositionId === selected.id, toggle: () => setRepositionId((id) => id === selected.id ? null : selected.id) } : undefined}
-          arrowKeys={{ on: arrowKeys, onToggle: setArrowKeys }}
           sight={gmCanSee && losOn ? (() => {
             const on = tokenView && viewedIds.includes(selected.id);
             return {
@@ -915,7 +956,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {/* Read-only boards (a player preview, a checkpoint preview) can't ping or place, so no hint. */}
       {!readOnly && (
         <p className="board-hint" aria-live={placing ? "off" : "polite"}>
-          {(() => { const hint = placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : HINTS[tool.kind]; return hint ? t(hint) : ""; })()}
+          {(() => { const hint = placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : tool.kind === "measure" ? MEASURE_HINTS[tool.mode] : HINTS[tool.kind]; return hint ? t(hint) : ""; })()}
         </p>
       )}
     </div>

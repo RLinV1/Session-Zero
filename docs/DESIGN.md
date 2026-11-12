@@ -120,7 +120,7 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Sight and style | `scene.setLineOfSight`, `scene.setSightRange`, `scene.setIsometric` |
 | Scenes | `scene.create`, `scene.prepare`, `scene.copyCurrent`, `scene.rename`, `scene.switch`, `scene.delete` |
 | Terrain | `terrain.paint`, `terrain.effect.create`, `terrain.effect.rename`, `terrain.effect.remove` |
-| Tokens | `token.create`, `token.duplicate`, `token.move`, `token.setAppearance`, `token.configure`, `token.setImage`, `token.setStats`, `token.setConditions`, `token.setOwners`, `token.setHidden`, `token.delete` |
+| Tokens | `token.create`, `token.duplicate`, `token.move` (optional `via` path, ADR 0055), `token.setAppearance`, `token.configure`, `token.setImage`, `token.setStats`, `token.setConditions`, `token.setOwners`, `token.setHidden`, `token.delete` |
 | Groups | `group.create`, `group.rename`, `group.delete`, `group.assign` |
 | Walls and portals | `wall.add`, `wall.update`, `wall.remove`, `wall.clear`, `wall.applyDetected`, `portal.set`, `portal.setState` |
 | Fog | `fog.add`, `fog.replace`, `fog.remove` |
@@ -128,7 +128,7 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Turn order | `initiative.start`, `initiative.advance`, `initiative.end` |
 | Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.applyDamage`, `nuke.detonate` |
 | Area effects | `areaEffect.start`, `areaEffect.call`, `areaEffect.rollDamage`, `areaEffect.resolve`, `areaEffect.close` |
-| Room settings | `room.setReducedEffects`, `room.setAutoRemoveDefeated`, `room.setJoinsLocked` |
+| Room settings | `room.setReducedEffects`, `room.setDefeatRemoval`, `room.setHideMapWithoutToken`, `room.setHideHp`, `room.setHideAc`, `room.setDiagonalRule`, `room.setDifficultTerrain`, `room.setJoinsLocked` |
 | Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.revokeMany`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
 | Chat | `chat.send` |
 | Recovery | `history.undo`, `checkpoint.create`, `checkpoint.restore`, `checkpoint.delete`, `encounter.apply` |

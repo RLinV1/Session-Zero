@@ -12,6 +12,8 @@ import type { AttackContext, DiceRoll } from "../dice";
 import type { DomainEvent } from "../events";
 import type { ConditionId } from "../conditions";
 import type { Portal, PortalState, RoomState } from "../state";
+import { DEFEAT_REMOVAL_IDS, DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./ruleIds";
+import { rejectionsZhTW } from "./messages/zh-TW/rejections";
 import type { UndoEntry } from "../undo";
 
 /** The parts of a roll an activity sentence reads; the lookup lives with the English builder. */
@@ -312,6 +314,13 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       return cjk`${a}套用了${rollLabel(roll, "先前擲骰")}產生的${event.amount}點傷害` + gmOnly(roll?.visibility === "gm");
     }
     case "AutoRemoveDefeatedSet": return cjk`${a}${event.enabled ? "開啟" : "關閉"}了「自動移除被擊敗棋子」功能`;
+    // Table rules (ADR 0057) and movement rules (ADR 0055), named as the Settings menu names them.
+    case "DefeatRemovalSet": return cjk`${a}將「HP 歸零時移除棋子」設為「${rejectionsZhTW[DEFEAT_REMOVAL_IDS[event.mode]]}」`;
+    case "HideMapWithoutTokenSet": return cjk`${a}${event.enabled ? "開啟" : "關閉"}了「對沒有棋子的玩家隱藏地圖」`;
+    case "HideHpSet": return cjk`${a}${event.enabled ? "開啟" : "關閉"}了「對玩家隱藏 HP」`;
+    case "HideAcSet": return cjk`${a}${event.enabled ? "開啟" : "關閉"}了「對玩家隱藏 AC」`;
+    case "DiagonalRuleSet": return cjk`${a}將斜向移動設為「${rejectionsZhTW[DIAGONAL_RULE_IDS[event.rule]]}」`;
+    case "DifficultTerrainSet": return cjk`${a}將困難地形的計算方式設為「${rejectionsZhTW[DIFFICULT_TERRAIN_IDS[event.mode]]}」`;
     case "JoinsLockSet": return event.locked ? cjk`${a}鎖定了房間，禁止新玩家加入` : cjk`${a}解鎖了房間`;
     case "ReducedEffectsSet": return cjk`${a}為整張遊戲桌${event.enabled ? "啟用" : "關閉"}了減少動畫效果`;
     case "MapNuked": return cjk`${a}引爆核彈，造成${event.amount}點傷害`;

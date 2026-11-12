@@ -69,7 +69,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
       await player.waitForSeq(gm.seq);
       const raw = player.rawLog.slice(offsets[i]).join("\n");
       for (const secret of [prep.id, "Secret dragon", '"wallChange"', '"portal"', '"previous"', '"tokenChanges"', '"commandId"']) expect(raw).not.toContain(secret);
-      expect(player.state).toEqual(viewFor(gm.state, player)); expect(player.state.walls).toEqual({});
+      expect(player.state).toEqual(viewFor(gm.state, player)); expect(Object.values(player.state.walls).every((w) => /^seen:\d+$/.test(w.id) && Object.keys(w).sort().join() === "a,b,id")).toBe(true);
     }
     expect(gm.state.tokens[hero.id]?.position).toEqual({ x: 121.5, y: 81.5 });
     expect(gm.state.fog).toEqual({});

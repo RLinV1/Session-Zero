@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Copy, Eye, EyeSlash, PencilSimple, Trash } from "@phosphor-icons/react";
 import { can, conditionLabel, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
 import { Modal } from "../ui/Modal";
+import { statHidden } from "../ui/statHidden";
 
 import { getLocale, t } from "../i18n/locale";
 /**
@@ -19,7 +20,6 @@ export function TokenCard({
   onDuplicate,
   onDelete,
   onMove,
-  arrowKeys,
   reposition,
   sight,
   movementReadout,
@@ -38,8 +38,6 @@ export function TokenCard({
   onDelete?: () => Promise<boolean>;
   /** Sends `token.move` to a board point; the alternative to dragging. */
   onMove?: (to: Point) => Promise<unknown>;
-  /** The switch that lets the arrow keys move this token; the board listens while it's on. */
-  arrowKeys?: { on: boolean; onToggle: (on: boolean) => void };
   reposition?: { on: boolean; toggle: () => void };
   /** GM Token view: the eye that narrows the board to this token's sight (gm-token-sight-view). Omit to hide the button. */
   sight?: { on: boolean; onToggle: () => void };
@@ -65,9 +63,14 @@ export function TokenCard({
       <dl>
         <dt>{t("creature.stat.hp")}</dt>
         <dd className={token.stats.hp === null ? undefined : "num"}>
-          {token.stats.hp === null ? t("card.notTracked") : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}
+          {statHidden(state, you, token, "hp") ? t("card.hidden") : token.stats.hp === null ? t("card.notTracked") : token.stats.maxHp === null ? token.stats.hp : `${token.stats.hp} / ${token.stats.maxHp}`}
         </dd>
-        {token.stats.ac !== null && (
+        {statHidden(state, you, token, "ac") ? (
+          <>
+            <dt>{t("creature.ac")}</dt>
+            <dd>{t("card.hidden")}</dd>
+          </>
+        ) : token.stats.ac !== null && (
           <>
             <dt>{t("creature.ac")}</dt>
             <dd className="num">{token.stats.ac}</dd>
@@ -108,13 +111,6 @@ export function TokenCard({
         >
           {t("card.reposition")}
         </button>
-      )}
-      {showMove && arrowKeys && (
-        // A switch, not a single-letter shortcut: the arrow keys are claimed only when asked for.
-        <label className="checkbox arrow-keys-switch">
-          <input type="checkbox" role="switch" checked={arrowKeys.on} onChange={(e) => arrowKeys.onToggle(e.target.checked)} />
-          {t("card.arrows")}
-        </label>
       )}
       {(showEdit || showDuplicate || showDelete || !!sight) && (
         <div className="row token-card-actions">

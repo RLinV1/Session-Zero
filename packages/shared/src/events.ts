@@ -6,8 +6,8 @@ import { TokenAttacks } from "./attackPresets";
 import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
 import { AreaEffect, AreaEffectDamage } from "./areaEffects";
-import { GridSpec, Point } from "./geometry";
-import { AreaTemplate, ChatMessage, Checkpoint, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
+import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
+import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, Token, TokenGroup, Wall } from "./state";
 
 /**
  * Events are FACTS the server has committed. They are append-only and never edited.
@@ -97,6 +97,13 @@ export const DomainEvent = z.discriminatedUnion("type", [
     tokenId: Id,
     from: Point,
     to: Point,
+    /** The path's turning points, when it had any (ADR 0055). Drawing only: the token ends at `to`. */
+    via: z.array(Point).max(MAX_MOVE_VIA).optional(),
+    /**
+     * Players' copies only: indices i into [from, ...via, to] where the stretch to i + 1 is hidden
+     * from them, so their board jumps across it (ADR 0055). Never recorded.
+     */
+    gaps: z.array(z.number().int().nonnegative()).max(MAX_MOVE_VIA + 1).optional(),
   }),
   z.object({
     type: z.literal("TokenAppearanceSet"),
@@ -280,11 +287,50 @@ export const DomainEvent = z.discriminatedUnion("type", [
     enabled: z.boolean(),
     previous: z.boolean(),
   }),
-  /** The GM turned automatic removal of defeated tokens on or off (ADR 0049). */
+  /**
+   * The GM turned automatic removal of defeated tokens on or off (ADR 0049). No longer emitted:
+   * `DefeatRemovalSet` replaced it (ADR 0057). Kept so older logs replay.
+   */
   z.object({
     type: z.literal("AutoRemoveDefeatedSet"),
     enabled: z.boolean(),
     previous: z.boolean(),
+  }),
+  /** The GM chose which tokens leave the board at 0 HP (ADR 0057). `previous` is the mode in effect before. */
+  z.object({
+    type: z.literal("DefeatRemovalSet"),
+    mode: z.enum(DEFEAT_REMOVALS),
+    previous: z.enum(DEFEAT_REMOVALS),
+  }),
+  /** The GM turned "Hide map from players without a token" on or off (ADR 0057). */
+  z.object({
+    type: z.literal("HideMapWithoutTokenSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM turned "Hide HP from Players" on or off (ADR 0057). */
+  z.object({
+    type: z.literal("HideHpSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM turned "Hide AC from Players" on or off (ADR 0057). */
+  z.object({
+    type: z.literal("HideAcSet"),
+    enabled: z.boolean(),
+    previous: z.boolean(),
+  }),
+  /** The GM chose how diagonal steps cost (ADR 0055). `previous` is the rule in effect before. */
+  z.object({
+    type: z.literal("DiagonalRuleSet"),
+    rule: z.enum(DIAGONAL_RULES),
+    previous: z.enum(DIAGONAL_RULES),
+  }),
+  /** The GM chose when Difficult terrain doubles a step (ADR 0055). */
+  z.object({
+    type: z.literal("DifficultTerrainSet"),
+    mode: z.enum(DIFFICULT_TERRAIN_MODES),
+    previous: z.enum(DIFFICULT_TERRAIN_MODES),
   }),
   /** The GM stopped or allowed new joins by invite (ADR 0051). */
   z.object({

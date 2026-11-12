@@ -6,7 +6,7 @@ import { describePortalChange } from "./portals";
 import { describeUndo } from "./undo";
 import type { Locale } from "./i18n/core";
 import { formatActivityZhTW } from "./i18n/sentences.zh-TW";
-import { emptyRoomState, type Participant, type RoomState } from "./state";
+import { DEFEAT_REMOVAL_LABELS, DIAGONAL_RULE_LABELS, DIFFICULT_TERRAIN_LABELS, emptyRoomState, type Participant, type RoomState } from "./state";
 import { filterEventForViewer, filterStateForViewer } from "./visibility";
 
 const Sequence = z.number().int().positive().safe();
@@ -118,7 +118,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "TerrainEffectCreated": return `${actorName} created terrain effect "${event.effect.name}"`;
     case "TerrainEffectRemoved": return `${actorName} removed terrain effect "${event.effect.name}"`;
     case "TerrainEffectRenamed": return `${actorName} renamed a terrain effect`;
-    case "TokenMoved": return `${actorName} moved ${tokenName(event.tokenId)} from ${formatPoint(event.from)} to ${formatPoint(event.to)}`;
+    case "TokenMoved": return `${actorName} moved ${tokenName(event.tokenId)} from ${formatPoint(event.from)} to ${formatPoint(event.to)}${event.via?.length ? " along a path" : ""}`;
     case "TokenAppearanceSet": return `${actorName} updated ${event.previous.name} to ${event.name} (size ${event.size}, rotation ${event.rotation}°)`;
     case "TokenDeleted": return event.reason === "defeated" ? `${event.token.name} was defeated and removed` : `${actorName} deleted ${event.token.name}`;
     case "TokenOwnersSet": return `${actorName} assigned ${tokenName(event.tokenId)} to ${event.ownerIds.length ? event.ownerIds.map(participantName).join(", ") : "no players"}`;
@@ -186,6 +186,12 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
     }
     case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
+    case "DefeatRemovalSet": return `${actorName} set Remove tokens at 0 HP to ${DEFEAT_REMOVAL_LABELS[event.mode]}`;
+    case "HideMapWithoutTokenSet": return `${actorName} turned Hide map from players without a token ${event.enabled ? "on" : "off"}`;
+    case "HideHpSet": return `${actorName} turned Hide HP from Players ${event.enabled ? "on" : "off"}`;
+    case "HideAcSet": return `${actorName} turned Hide AC from Players ${event.enabled ? "on" : "off"}`;
+    case "DiagonalRuleSet": return `${actorName} set Diagonals to ${DIAGONAL_RULE_LABELS[event.rule]}`;
+    case "DifficultTerrainSet": return `${actorName} set Difficult terrain applies to ${DIFFICULT_TERRAIN_LABELS[event.mode]}`;
     case "JoinsLockSet": return event.locked ? `${actorName} locked the room to new players` : `${actorName} unlocked the room`;
     case "ReducedEffectsSet": return `${actorName} turned reduced animations ${event.enabled ? "on" : "off"} for the table`;
     case "MapNuked": return `${actorName} detonated a nuke (${event.amount} damage)`;

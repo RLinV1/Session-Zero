@@ -6,9 +6,9 @@ import { TokenAttacks } from "./attackPresets";
 import { ConditionId, EMPTY_STATS, TokenStats } from "./conditions";
 import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
-import { GridSpec, Point } from "./geometry";
+import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -218,6 +218,8 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("token.move"), expectedSceneId: Id.optional(),
     tokenId: Id,
     to: Point,
+    /** Where the path turns, start and end excluded; each leg is checked like a straight move (ADR 0055). */
+    via: z.array(Point).max(MAX_MOVE_VIA).optional(),
     expectedOrigin: Point.optional(),
     boardEpoch: z.number().int().nonnegative().optional(),
     reposition: z.boolean().optional(),
@@ -350,10 +352,35 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("room.setReducedEffects"),
     enabled: z.boolean(),
   }),
-  /** GM only: remove a token automatically when its HP reaches 0 or below (ADR 0049). */
+  /** GM only: which tokens leave the board at 0 HP or below (ADR 0049, ADR 0057). */
   z.object({
-    type: z.literal("room.setAutoRemoveDefeated"),
+    type: z.literal("room.setDefeatRemoval"),
+    mode: z.enum(DEFEAT_REMOVALS),
+  }),
+  /** GM only: players who own no visible token see nothing on the board (ADR 0057). */
+  z.object({
+    type: z.literal("room.setHideMapWithoutToken"),
     enabled: z.boolean(),
+  }),
+  /** GM only: players get no HP for tokens they don't own (ADR 0057). */
+  z.object({
+    type: z.literal("room.setHideHp"),
+    enabled: z.boolean(),
+  }),
+  /** GM only: players get no AC for tokens they don't own (ADR 0057). */
+  z.object({
+    type: z.literal("room.setHideAc"),
+    enabled: z.boolean(),
+  }),
+  /** GM only: how diagonal steps cost for everyone (ADR 0055). */
+  z.object({
+    type: z.literal("room.setDiagonalRule"),
+    rule: z.enum(DIAGONAL_RULES),
+  }),
+  /** GM only: when Difficult terrain doubles a step (ADR 0055). */
+  z.object({
+    type: z.literal("room.setDifficultTerrain"),
+    mode: z.enum(DIFFICULT_TERRAIN_MODES),
   }),
   /** GM only: stop or allow new players joining by invite, whoever holds the link (ADR 0051). */
   z.object({

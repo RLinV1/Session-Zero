@@ -1,17 +1,17 @@
 import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Globe } from "@phosphor-icons/react";
-import type { Participant, RoomState } from "@vtt/shared";
+import { DEFEAT_REMOVAL_IDS, DEFEAT_REMOVALS, DIAGONAL_RULE_IDS, DIAGONAL_RULES, DIFFICULT_TERRAIN_IDS, DIFFICULT_TERRAIN_MODES, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, type CommandInput, type DefeatRemoval, type DiagonalRule, type DifficultTerrainMode, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
-import { useT } from "../i18n/locale";
+import { useT, type TextId } from "../i18n/locale";
 import { LANGUAGE_CHOICE_ENABLED } from "../i18n/rollout";
 import { LanguageSettings } from "./LanguageMenu";
 import { Modal } from "./Modal";
-import { setClientSettings, useClientSettings, type GraphicsQuality } from "./clientSettings";
+import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
 
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
 export interface SettingsRoom { connection: RoomConnection; state: RoomState; you: Participant }
 
-type SettingsTab = "audio" | "graphics" | "language" | "table";
+type SettingsTab = "audio" | "graphics" | "controls" | "language" | "table";
 
 export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: boolean; onClose: () => void; onAfterClose?: () => void; room?: SettingsRoom }) {
   const t = useT();
@@ -22,8 +22,10 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
   const tabs: { key: SettingsTab; label: ReactNode }[] = [
     { key: "audio", label: t("settings.tab.audio") },
     { key: "graphics", label: t("settings.tab.graphics") },
-    ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
+    { key: "controls", label: t("settings.tab.controls") },
     ...(showTable ? [{ key: "table" as const, label: t("settings.tab.table") }] : []),
+    // Language is always last, so a reader looking for it finds it in the same place with or without Table.
+    ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
   ];
   const [chosen, setChosen] = useState<SettingsTab>("audio");
   useEffect(() => { if (open) setChosen("audio"); }, [open]);
@@ -77,6 +79,22 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
                 {t("settings.focusAttacks")}
               </label>
               <p className="muted small-print">{t("settings.focusAttacksHint")}</p>
+              <label>{t("settings.attackAnimations")}
+                <select value={settings.attackAnimations} onChange={(e) => setClientSettings({ attackAnimations: e.target.value as AttackAnimations })}>
+                  <option value="all">{t("settings.attackAnimations.all")}</option>
+                  <option value="turn">{t("settings.attackAnimations.turn")}</option>
+                  <option value="none">{t("settings.attackAnimations.none")}</option>
+                </select>
+              </label>
+            </>
+          )}
+          {tab === "controls" && (
+            <>
+              {browserNote}
+              <label className="checkbox">
+                <input type="checkbox" role="switch" checked={settings.arrowKeyMove} onChange={(e) => setClientSettings({ arrowKeyMove: e.target.checked })} />
+                {t("settings.arrowKeyMove")}
+              </label>
             </>
           )}
           {tab === "language" && <LanguageSettings atTable={!!room} />}
@@ -87,28 +105,50 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
     </Modal>
   );
 }
-/** GM only: a setting every player at the table shares (FR-TAC-07). The server decides; this is a hint. */
+/**
+ * GM only: the rules every player at the table shares (FR-TAC-07, FR-GM-23, ADR 0057, ADR 0055). The server
+ * decides and enforces them; this only sends the GM's choice.
+ */
 function TableSection({ room }: { room: SettingsRoom }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hintId = useId();
-  const enabled = room.state.autoRemoveDefeated ?? true;
-  const toggle = async (next: boolean) => {
+  const state = room.state;
+  const send = async (command: CommandInput) => {
     setBusy(true);
     setError(null);
-    const result = await room.connection.command({ type: "room.setAutoRemoveDefeated", enabled: next });
+    const result = await room.connection.command(command);
     setBusy(false);
     if (!result.ok) setError(result.message);
   };
+  const rules: { label: TextId; on: boolean; command: (enabled: boolean) => CommandInput }[] = [
+    { label: "settings.hideMap", on: state.hideMapWithoutToken ?? false, command: (enabled) => ({ type: "room.setHideMapWithoutToken", enabled }) },
+    { label: "settings.hideHp", on: state.hideHp ?? false, command: (enabled) => ({ type: "room.setHideHp", enabled }) },
+    { label: "settings.hideAc", on: state.hideAc ?? false, command: (enabled) => ({ type: "room.setHideAc", enabled }) },
+  ];
   return (
     <div className="stack" aria-busy={busy}>
-      <p className="muted small-print">{t("settings.tableShared")}</p>
-      <label className="checkbox">
-        <input type="checkbox" role="switch" checked={enabled} disabled={busy} aria-describedby={hintId} onChange={(e) => void toggle(e.target.checked)} />
-        {t("settings.removeAtZero")}
+      <label>{t("settings.removeAtZero")}
+        <select value={defeatRemovalOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDefeatRemoval", mode: e.target.value as DefeatRemoval })}>
+          {DEFEAT_REMOVALS.map((mode) => <option key={mode} value={mode}>{t(DEFEAT_REMOVAL_IDS[mode])}</option>)}
+        </select>
       </label>
-      <p id={hintId} className="muted small-print">{t("settings.removeAtZeroHint")}</p>
+      {rules.map(({ label, on, command }) => (
+        <label key={label} className="checkbox">
+          <input type="checkbox" role="switch" checked={on} disabled={busy} onChange={(e) => void send(command(e.target.checked))} />
+          {t(label)}
+        </label>
+      ))}
+      <label>{t("settings.diagonals")}
+        <select value={diagonalRuleOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDiagonalRule", rule: e.target.value as DiagonalRule })}>
+          {DIAGONAL_RULES.map((rule) => <option key={rule} value={rule}>{t(DIAGONAL_RULE_IDS[rule])}</option>)}
+        </select>
+      </label>
+      <label>{t("settings.difficultTerrain")}
+        <select value={difficultTerrainOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDifficultTerrain", mode: e.target.value as DifficultTerrainMode })}>
+          {DIFFICULT_TERRAIN_MODES.map((mode) => <option key={mode} value={mode}>{t(DIFFICULT_TERRAIN_IDS[mode])}</option>)}
+        </select>
+      </label>
       {error && <p role="alert" className="error small">{error}</p>}
     </div>
   );

@@ -266,17 +266,17 @@ describe("the table's panels (localization)", () => {
 describe("the board's own words (localization)", () => {
   it("captions the ruler, names placement squares and labels damage rolls in the current language", async () => {
     const { DEFAULT_GRID } = await import("@vtt/shared");
-    const { budgetLabel } = await import("../src/board/movementRuler");
+    const { costLabel } = await import("../src/board/movementRuler");
     const { cursorSquare } = await import("../src/board/placement");
     const { presetRollLabel } = await import("../src/panels/attackRoll");
     const grid = { ...DEFAULT_GRID, offsetX: 0, offsetY: 0 };
     const size = grid.cellSize;
     const preset = { name: "Longsword", toHit: null, damage: null } as never;
-    expect(budgetLabel(10, 30, grid)).toBe(`10 / 30 ${grid.unitLabel} · 20 ${grid.unitLabel} remaining`);
+    expect(costLabel(25, 2, grid)).toBe(`25 ${grid.unitLabel} · 2 difficult`);
     expect(cursorSquare({ x: 2.5 * size, y: 1.5 * size }, 1, grid)).toBe("column 3, row 2");
     expect(presetRollLabel(preset, "damage")).toBe("Longsword damage");
     await chooseLocale("zh-TW");
-    expect(budgetLabel(40, 30, grid)).toBe(`40 / 30 ${grid.unitLabel} · 超出 10 ${grid.unitLabel}`);
+    expect(costLabel(25, 2, grid)).toBe(`25 ${grid.unitLabel} · 2 格困難地形`);
     expect(cursorSquare({ x: 2.5 * size, y: 1.5 * size }, 1, grid)).toBe("第 3 欄、第 2 列");
     expect(presetRollLabel(preset, "damage")).toBe("Longsword 傷害");
     expect(presetRollLabel({ name: "x".repeat(60) } as never, "damage").length).toBeLessThanOrEqual(40);

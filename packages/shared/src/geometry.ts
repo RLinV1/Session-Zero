@@ -206,6 +206,9 @@ export function spreadPositions(
 }
 
 /** A straight segment in board coordinates: a wall, or the path of a move (ADR 0029). */
+/** At most this many turning points travel with a move (ADR 0055). */
+export const MAX_MOVE_VIA = 64;
+
 export interface Segment {
   a: Point;
   b: Point;

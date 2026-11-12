@@ -2,6 +2,7 @@ import { formatRef, messageRefs, type Entry, type MessageRef } from "./core";
 import { sharedEn, type SharedEn } from "./en";
 
 export * from "./core";
+export * from "./ruleIds";
 export { sharedEn, type SharedEn } from "./en";
 export { validationConflicts, validationMessage, validationRef } from "./validation";
 

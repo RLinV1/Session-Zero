@@ -682,10 +682,14 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
         expect(placed.type).toBe("ack");
         expect(Object.values(gm.state.walls ?? {})).toHaveLength(4);
         await player.waitForSeq(gm.seq);
-        // The plain walls and the opening left for the GM stay with the GM.
-        expect(Object.values(player.state.walls ?? {})).toEqual([expect.objectContaining({ a: { x: 150, y: 100 }, b: { x: 200, y: 100 }, portal: { kind: "door", state: "closed" } })]);
+        // The only portal is the AI's door; plain walls in view arrive as bare pieces, and the
+        // opening left for the GM keeps its metadata and real id with the GM (ADR 0056).
+        const playerWalls = Object.values(player.state.walls ?? {});
+        expect(playerWalls.filter((w) => w.portal)).toEqual([expect.objectContaining({ a: { x: 150, y: 100 }, b: { x: 200, y: 100 }, portal: { kind: "door", state: "closed" } })]);
+        expect(playerWalls.filter((w) => !w.portal).every((w) => /^seen:\d+$/.test(w.id) && Object.keys(w).sort().join() === "a,b,id")).toBe(true);
         const messages = player.rawLog.slice(offset).join("\n");
-        for (const secret of ["uvttPortal", "line_of_sight", "archway", '"x":300']) expect(messages).not.toContain(secret);
+        for (const secret of ["uvttPortal", "line_of_sight", "archway"]) expect(messages).not.toContain(secret);
+        for (const w of Object.values(gm.state.walls ?? {}).filter((w) => !w.portal)) expect(messages).not.toContain(w.id);
       } finally {
         gm.close();
         player.close();

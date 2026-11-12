@@ -350,8 +350,6 @@ a.tool-button { text-decoration: none; }
 .token-card-sight.is-on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .token-card-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 .token-card-delete:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.token-card .arrow-keys-switch { margin-top: var(--space-2); }
-.token-card .arrow-keys-switch + .small-print { margin: var(--space-1) 0 0; }
 
 /* Placing a new token (place-token-on-board): top centre, clear of the toolbar and notices. */
 .placement-bar {
@@ -811,17 +809,12 @@ label.checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-siz
 .nuke-confirm-actions, .settings-actions { justify-content: flex-end; }
 .client-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .client-settings legend { font-weight: 700; padding: 0 0 .75rem; }
-.client-settings-modal { width: min(34rem, calc(100vw - 2rem)); }
+dialog.modal.client-settings-modal { width: min(38rem, calc(100vw - 2rem)); }
 .client-settings { gap: var(--space-5); }
-/* Tabs share the row evenly; one whose label needs more room (Language with its globe) keeps its natural
-   width and the others split the rest, so no label spills out of its box in any language. */
-.client-settings .settings-tabs { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); }
-.client-settings .settings-tabs .map-editor-step { white-space: nowrap; }
-/* Phones: four English tabs don't fit one row, so two columns; an odd last tab spans both. */
-@media (max-width: 480px) {
-  .client-settings .settings-tabs { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .client-settings .settings-tabs .map-editor-step:last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
+/* Every tab is always in view, never behind a sideways scroll: the tabs share the row, and when a language or a
+   narrow screen leaves too little width they wrap onto a second row and stretch to fill it. */
+.client-settings .settings-tabs { flex: none; display: flex; flex-wrap: wrap; overflow: visible; min-width: 0; }
+.client-settings .settings-tabs .map-editor-step { flex: 1 1 auto; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
 /* Fixed to the tallest panel (Graphics) so the dialog does not jump between tabs. */
 .client-settings .settings-panel { min-height: 15rem; align-content: start; }
 .client-settings p { margin: 0; }
@@ -2884,6 +2877,7 @@ dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: va
   background: rgba(18, 20, 23, 0.85); border: 1px solid var(--border); border-radius: var(--radius-surface);
 }
 .tool-segmented { display: flex; gap: var(--space-1); }
+.ruler-modes .tool-button.rail-button { flex: 1; width: auto; padding: 0 var(--space-2); white-space: nowrap; }
 .tool-swatches { display: flex; gap: var(--space-1); }
 .tool-swatch {
   width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border-radius: 50%;

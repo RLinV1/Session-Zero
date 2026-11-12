@@ -1,6 +1,6 @@
 import { diceRollsOf, findDiceRoll, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "./effectPresets";
-import { getClientSettings, QUALITY, type GraphicsQuality } from "../ui/clientSettings";
+import { getClientSettings, QUALITY, type AttackAnimations, type GraphicsQuality } from "../ui/clientSettings";
 
 /**
  * What the board draws for attacks and conditions (KAN-76). Pure: no Pixi, no DOM beyond
@@ -14,7 +14,8 @@ import { getClientSettings, QUALITY, type GraphicsQuality } from "../ui/clientSe
 export type AttackEffect =
   | { kind: "strike"; fromId: string; toId: string; animation: AnimationDef }
   | { kind: "nuke"; animation: AnimationDef; origin: Point; amount: number; tokenIds: string[] }
-  | { kind: "hit" | "miss"; tokenId: string }
+  /** `fromId`: the attacker, when the viewer can see it, so "Current turn" can tell whose ruling it is. */
+  | { kind: "hit" | "miss"; tokenId: string; fromId?: string }
   | { kind: "damage"; tokenId: string; amount: number }
   /** An area effect resolved (ADR 0046): each damaged target's number, all at once. */
   | { kind: "damages"; hits: { tokenId: string; amount: number }[] }
@@ -45,7 +46,8 @@ export function attackEffectFor(event: DomainEvent, after: RoomState, viewer: Pa
     case "RollRuled": {
       if (!event.verdict) return null;
       const tokenId = targetOf(after, event.rollId, visible);
-      return tokenId ? { kind: event.verdict, tokenId } : null;
+      const fromId = findDiceRoll(after.rolls, event.rollId)?.attack?.actor?.tokenId;
+      return tokenId ? { kind: event.verdict, tokenId, ...(fromId && { fromId }) } : null;
     }
     case "RollDamageApplied": {
       const tokenId = targetOf(after, event.rollId, visible);
@@ -121,6 +123,33 @@ function targetOf(state: RoomState, rollId: string, visible: (tokenId: string) =
   const attack = findDiceRoll(state.rolls, rollId)?.attack;
   if (!attack?.actor || !attack.target || !visible(attack.actor.tokenId)) return null;
   return visible(attack.target.tokenId) ? attack.target.tokenId : null;
+}
+
+/**
+ * What of an effect this viewer's Attack animations choice lets play (board-attack-effects), or
+ * null for nothing. Never adds anything: only drops, or keeps a nuke's numbers without its blast.
+ * "Current turn" plays a strike or ruling only from the active token, and a nuke only on an NPC's
+ * turn (or one the viewer can't see); damage numbers always play, and with no encounter it is "All".
+ * A defeat always plays, so a removed token never just vanishes.
+ */
+export function effectToPlay(effect: AttackEffect, mode: AttackAnimations, state: Pick<RoomState, "initiative" | "tokens">): AttackEffect | null {
+  if (mode === "all" || effect.kind === "defeat") return effect;
+  if (mode === "none") return null;
+  const initiative = state.initiative;
+  if (!initiative) return effect;
+  const activeId: string | undefined = initiative.order[initiative.activeIndex];
+  switch (effect.kind) {
+    case "strike": return effect.fromId === activeId ? effect : null;
+    case "hit":
+    case "miss": return effect.fromId !== undefined && effect.fromId === activeId ? effect : null;
+    case "nuke": {
+      const active = activeId === undefined ? undefined : state.tokens[activeId];
+      if (!active || active.ownerIds.length === 0) return effect;
+      const hits = effect.amount > 0 ? effect.tokenIds.map((tokenId) => ({ tokenId, amount: effect.amount })) : [];
+      return hits.length > 0 ? { kind: "damages", hits } : null;
+    }
+    default: return effect;
+  }
 }
 
 /** Attack effects playing at once; past this the oldest is dropped. */

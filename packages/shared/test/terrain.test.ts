@@ -335,7 +335,8 @@ describe("terrain privacy (FR-GM-23)", () => {
     const request: MovementPreviewRequest = { type: "tokenMovePreview", requestId: "move1", tokenId: token.id, from: token.position, to: { x: 35, y: 5 }, boardEpoch: 0 };
     expect(movementFeedbackForViewer(blocked, alice, request)).toBe("blocked");
     expect(movementFeedbackForViewer(state, alice, request)).toBe("clear");
-    expect(filterStateForViewer(blocked, alice).walls).toEqual({});
+    // The wall is in view, so the player holds it only as an opaque piece (ADR 0056).
+    expect(filterStateForViewer(blocked, alice).walls).toEqual({ "seen:0": { id: "seen:0", a: wall.a, b: wall.b } });
     expect(movementFeedbackForViewer(blocked, alice, { ...request, from: { x: 6, y: 5 } })).toBe("unknown");
     expect(movementFeedbackForViewer(blocked, alice, { ...request, boardEpoch: 1 })).toBe("unknown");
     expect(movementFeedbackForViewer(blocked, alice, { ...request, reposition: true })).toBe("unknown");

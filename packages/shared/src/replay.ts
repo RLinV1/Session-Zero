@@ -116,15 +116,28 @@ export function replayFrom(
   for (const { event } of events) {
     if (event.type === "ParticipantJoined") joinedNames.set(event.participant.id, event.participant.displayName);
   }
+  // What the GM hides now stays hidden in every frame, even from before they hid it: a player
+  // joining later must not read it from the history (ADR 0057).
+  let hideHp = false;
+  let hideAc = false;
+  let hideMap = false;
+  for (const { event } of events) {
+    if (event.type === "HideHpSet") hideHp = event.enabled;
+    else if (event.type === "HideAcSet") hideAc = event.enabled;
+    else if (event.type === "HideMapWithoutTokenSet") hideMap = event.enabled;
+  }
+  const withRulesNow = (s: RoomState): RoomState => (hideHp && !s.hideHp) || (hideAc && !s.hideAc) || (hideMap && !s.hideMapWithoutToken)
+    ? { ...s, hideHp: s.hideHp || hideHp, hideAc: s.hideAc || hideAc, hideMapWithoutToken: s.hideMapWithoutToken || hideMap }
+    : s;
   let state = emptyRoomState(roomId);
   let index = 0;
   for (; index < events.length && events[index]!.seq <= point.seq; index++) state = reduceCommitted(state, events[index]!);
-  const start = filterStateForViewer(state, viewer);
+  const start = filterStateForViewer(withRulesNow(state), viewer);
   const frames: ReplayFrame[] = [];
   let truncated = false;
   for (; index < events.length; index++) {
     const committed = events[index]!;
-    const filtered = filterEventForViewer(committed, state, viewer);
+    const filtered = filterEventForViewer(committed, withRulesNow(state), viewer);
     const next = reduceCommitted(state, committed);
     if (filtered.kind !== "redacted") {
       if (frames.length === limit) {
@@ -135,10 +148,10 @@ export function replayFrom(
       const actorName = committed.actorId === null ? ACTOR_NAMES[locale].system
         : state.participants[committed.actorId]?.displayName ?? joinedNames.get(committed.actorId) ?? ACTOR_NAMES[locale].someone;
       if (filtered.kind === "event") {
-        const visibleBefore = filterStateForViewer(state, viewer);
+        const visibleBefore = filterStateForViewer(withRulesNow(state), viewer);
         frames.push({ kind: "event", committed: filtered.committed, sentence: formatActivity(filtered.committed.event, actorName, visibleBefore, locale) });
       } else {
-        const visibleAfter = filterStateForViewer(next, viewer);
+        const visibleAfter = filterStateForViewer(withRulesNow(next), viewer);
         frames.push({
           kind: "table",
           seq: committed.seq,

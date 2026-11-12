@@ -51,12 +51,13 @@ describe("line of sight over the wire (FR-GM-19)", () => {
     expect(Object.keys(alice.state.tokens)).toContain(goblin.id);
     expect(sightOf(alice)).toBeUndefined();
 
-    // On: the next snapshot drops the goblin and the plain walls, and carries `sight`.
+    // On: the next snapshot drops the goblin, keeps only the wall pieces in sight, and carries `sight`.
     const on = await gm.command({ type: "scene.setLineOfSight", enabled: true });
     await alice.waitForSeq(seqOf(on));
     expect(mentionsGoblin(JSON.stringify(alice.state), goblin)).toBe(false);
     expect(Array.isArray(sightOf(alice))).toBe(true);
-    expect((Object.values(alice.state.walls) as Wall[]).every((w) => w.portal)).toBe(true);
+    // Only the faces of the x = 350 wall the fighter looks at arrive, as opaque pieces (ADR 0056).
+    expect((Object.values(alice.state.walls) as Wall[]).every((w) => w.portal || (w.id.startsWith("seen:") && w.a.x === 350 && w.b.x === 350))).toBe(true);
 
     // A fresh connection gets the same filtered welcome.
     const fresh = await server!.connect({ roomId: alice.state.roomId, guestToken: aliceCreds.guestToken });
@@ -113,8 +114,9 @@ describe("line of sight over the wire (FR-GM-19)", () => {
   it("does not leak the position of a secret wall through the sight polygon (FR-GM-23)", async () => {
     const { gm, alice } = await setup();
     const secret = { a: { x: 613.25, y: 277.75 }, b: { x: 660.25, y: 322.75 } };
-    await gm.command({ type: "wall.add", walls: [secret] });
-    const on = await gm.command({ type: "scene.setLineOfSight", enabled: true });
+    // Line of sight first: with it off, a wall on open ground is in plain view (ADR 0056).
+    await gm.command({ type: "scene.setLineOfSight", enabled: true });
+    const on = await gm.command({ type: "wall.add", walls: [secret] });
     await alice.waitForSeq(seqOf(on));
     const raw = alice.rawLog.join("\n");
     for (const n of ["613.25", "277.75", "660.25", "322.75"]) expect(raw).not.toContain(n);
@@ -166,9 +168,10 @@ describe("line of sight over the wire (FR-GM-19)", () => {
       { a: { x: 401.37, y: 101.73 }, b: { x: 501.37, y: 101.73 } },
       { a: { x: 501.37, y: 101.73 }, b: { x: 501.37, y: 201.73 } },
     ];
+    // Fog first: walls drawn on open ground are in plain view (ADR 0056).
+    await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 380, y: 80 }, to: { x: 520, y: 220 } } });
     await gm.command({ type: "wall.add", walls: room });
-    await gm.command({ type: "scene.setLineOfSight", enabled: true });
-    const fogged = await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 380, y: 80 }, to: { x: 520, y: 220 } } });
+    const fogged = await gm.command({ type: "scene.setLineOfSight", enabled: true });
     await alice.waitForSeq(seqOf(fogged));
     const raw = alice.rawLog.join("\n");
     for (const n of ["401.37", "101.73", "501.37", "201.73"]) expect(raw).not.toContain(n);
@@ -223,8 +226,9 @@ describe("line of sight over the wire (FR-GM-19)", () => {
       { a: { x: 4300.123456, y: 5400.456789 }, b: { x: 5200.789012, y: 5600.321098 } },
       { a: { x: 5000.512345, y: 6000.251234 }, b: { x: 5100.754321, y: 8000.125678 } },
     ];
-    const added = await gm.command({ type: "wall.add", walls: [blocker, ...hidden] });
+    // Line of sight first: with it off, walls on open ground are in plain view (ADR 0056).
     const on = await gm.command({ type: "scene.setLineOfSight", enabled: true });
+    const added = await gm.command({ type: "wall.add", walls: [blocker, ...hidden] });
     await alice.waitForSeq(Math.max(seqOf(added), seqOf(on)));
     const raw = alice.rawLog.join("\n");
     for (const w of hidden) for (const v of [w.a.x, w.a.y, w.b.x, w.b.y]) expect(raw).not.toContain(String(v));

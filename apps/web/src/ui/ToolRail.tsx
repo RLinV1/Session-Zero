@@ -3,7 +3,7 @@ import { AreaColor, MAX_LINE_WIDTH_CELLS } from "@vtt/shared";
 import { isBoolean, usePersistentState } from "./usePersistentState";
 import { usePhone } from "./usePhone";
 import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
-import { AREA_SHADES, AREA_SIZES, DRAW_COLORS, type AreaShape, type BoardTool, type DrawShape, type FogMode } from "../board/tools";
+import { AREA_SHADES, AREA_SIZES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
 import { t, type TextId } from "../i18n/locale";
 
 /** The options each tool remembers while another tool is active. */
@@ -11,12 +11,15 @@ export interface ToolOptions {
   draw: { shape: DrawShape; color: number };
   area: { shape: AreaShape; size: number; lineCells: number; color: AreaColor; gmOnly: boolean };
   fog: { mode: FogMode };
+  /** The ruler's mode (ruler-modes); remembered in this browser by the board. */
+  measure: { mode: MeasureMode };
 }
 
 export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   draw: { shape: "brush", color: DRAW_COLORS[0].value },
   area: { shape: "circle", size: 20, lineCells: 1, color: "orange", gmOnly: false },
   fog: { mode: "rect" },
+  measure: { mode: "range" },
 };
 
 /** Tools the rail offers; Attack starts from a token instead (attack-targeting). */
@@ -57,6 +60,8 @@ export function toolFor(kind: ToolKind, options: ToolOptions): BoardTool {
   if (kind === "draw") return { kind, ...options.draw };
   if (kind === "area") return { kind, ...options.area };
   if (kind === "fog") return { kind, ...options.fog };
+  // Options saved before the ruler had modes have no `measure`: Range.
+  if (kind === "measure") return { kind, mode: isMeasureMode(options.measure?.mode) ? options.measure.mode : "range" };
   return { kind };
 }
 

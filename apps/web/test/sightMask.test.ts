@@ -39,4 +39,14 @@ describe("sight mask helpers (line-of-sight, FR-GM-19)", () => {
     s.tokens = { t: token(["p"]) };
     expect(sightMaskAlpha(viewerSight(s, player)!)).toBe(1);
   });
+
+  it("blacks the map out for a player with no token when the GM hides it, with or without line of sight (table-rules)", () => {
+    const player: Participant = { id: "p", role: "player", displayName: "New player" };
+    const s = { ...room({ walls: [] }), hideMapWithoutToken: true };
+    expect(s.scene.lineOfSight).not.toBe(true);
+    expect(viewerSight(s, player)).toEqual([]);
+    expect(sightMaskAlpha(viewerSight(s, player)!, true)).toBe(1);
+    s.scene = { ...s.scene, lineOfSight: true };
+    expect(sightMaskAlpha(viewerSight(s, player)!, true)).toBe(1);
+  });
 });

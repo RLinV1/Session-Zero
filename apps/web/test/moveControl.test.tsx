@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, type Participant, type RoomState, type Token } from "@vtt/shared";
 import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../src/ui/MoveControl";
@@ -23,21 +23,15 @@ const state: RoomState = {
 
 afterEach(cleanup);
 
-describe("the token card has no on-screen move pad (FR-PL-04)", () => {
-  it("shows the arrow-key switch, not Move buttons, to the owner and the GM only", () => {
-    const onMove = vi.fn();
-    for (const [you, shown] of [[alice, true], [gm, true], [bob, false]] as const) {
-      render(<TokenCard token={fighter} state={state} you={you} onClose={() => {}} onMove={onMove} arrowKeys={{ on: true, onToggle: () => {} }} />);
-      expect(!!screen.queryByRole("switch", { name: "Move with arrow keys" }), you.displayName).toBe(shown);
+describe("the token card has no on-screen move pad or arrow-key switch (FR-PL-04, client-settings)", () => {
+  it("shows neither Move buttons nor the arrow-key switch, which lives in Settings", () => {
+    for (const you of [alice, gm, bob]) {
+      render(<TokenCard token={fighter} state={state} you={you} onClose={() => {}} onMove={vi.fn()} />);
+      expect(screen.queryByRole("switch", { name: /arrow keys/i }), you.displayName).toBeNull();
       expect(screen.queryByRole("group", { name: "Move Fighter" })).toBeNull();
       expect(screen.queryByRole("button", { name: /Move Fighter .* one square/ })).toBeNull();
       cleanup();
     }
-  });
-
-  it("is not offered while previewing or replaying", () => {
-    render(<TokenCard token={fighter} state={state} you={gm} readOnly onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: true, onToggle: () => {} }} />);
-    expect(screen.queryByRole("switch", { name: "Move with arrow keys" })).toBeNull();
   });
 });
 
@@ -60,27 +54,9 @@ describe("moving the selected token with the arrow keys (FR-PL-04, WCAG 2.1.1)",
     expect(ownsArrowKeys(text)).toBe(true);
     expect(ownsArrowKeys(document.createElement("textarea"))).toBe(true);
     expect(ownsArrowKeys(tab)).toBe(true);
-    // The card's own switch and Move buttons don't use the arrows, so the keys still move the token there.
+    // Checkboxes and plain buttons don't use the arrows, so the keys still move the token from them.
     expect(ownsArrowKeys(box)).toBe(false);
     expect(ownsArrowKeys(plain)).toBe(false);
     expect(ownsArrowKeys(document.body)).toBe(false);
-  });
-
-  it("is switched on and off from the token card, for anyone who may move the token", () => {
-    const onToggle = vi.fn();
-    render(<TokenCard token={fighter} state={state} you={alice} onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: false, onToggle }} />);
-    const toggle = screen.getByRole("switch", { name: "Move with arrow keys" }) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
-    fireEvent.click(toggle);
-    expect(onToggle).toHaveBeenCalledWith(true);
-    cleanup();
-    render(<TokenCard token={fighter} state={state} you={bob} onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: true, onToggle }} />);
-    expect(screen.queryByRole("switch", { name: "Move with arrow keys" })).toBeNull();
-  });
-
-  it("shows the switch on with no caption under it", () => {
-    render(<TokenCard token={fighter} state={state} you={alice} onClose={() => {}} onMove={vi.fn()} arrowKeys={{ on: true, onToggle: () => {} }} />);
-    expect((screen.getByRole("switch", { name: "Move with arrow keys" }) as HTMLInputElement).checked).toBe(true);
-    expect(screen.queryByText(/Arrow keys move/)).toBeNull();
   });
 });
