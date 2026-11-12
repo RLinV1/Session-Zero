@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "@phosphor-icons/react";
 import { areaEffectStage, attackLabel, formatAttackParties, isActive, type AreaEffect, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { PanelSection } from "../ui/PanelSection";
@@ -52,24 +53,24 @@ export function RulingsPanel({
   };
 
   return (
-    <PanelSection id="rulings" title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}>
+    <PanelSection
+      id="rulings"
+      title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}
+      // Every attack roll shown, by id, so one made since isn't swept away; never the area effect (ADR 0060).
+      actions={pending.length > 0 && (
+        <button
+          type="button"
+          className="small secondary"
+          disabled={busy.has(CLEAR_ALL)}
+          onClick={() => send(CLEAR_ALL, { type: "roll.dismiss", rollIds: pending.map((item) => item.roll.id) })}
+        >
+          {t("ruling.clearAll")}
+        </button>
+      )}
+    >
       {count === 0 ? (
         <p className="muted">{t("ruling.nothing")}</p>
       ) : (
-        <>
-        {/* Every attack roll shown, by id, so one made since isn't swept away; never the area effect (ADR 0060). */}
-        {pending.length > 0 && (
-          <div className="rulings-toolbar">
-            <button
-              type="button"
-              className="small secondary"
-              disabled={busy.has(CLEAR_ALL)}
-              onClick={() => send(CLEAR_ALL, { type: "roll.dismiss", rollIds: pending.map((item) => item.roll.id) })}
-            >
-              {t("ruling.clearAll")}
-            </button>
-          </div>
-        )}
         <ul className="plain rulings">
           {effect && (
             <AreaEffectRow
@@ -94,7 +95,6 @@ export function RulingsPanel({
             />
           ))}
         </ul>
-        </>
       )}
       {error && (
         <p role="alert" className="error">
@@ -197,8 +197,8 @@ function RulingRow({
         </span>
         {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
         {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onApply={onApply} />}
-        <button type="button" className="small secondary ruling-ignore" disabled={busy} onClick={onIgnore} aria-label={t("ruling.ignoreNamed", { what: description })}>
-          {t("ruling.ignore")}
+        <button type="button" className="icon-button ruling-ignore" disabled={busy} onClick={onIgnore} aria-label={t("ruling.ignoreNamed", { what: description })} title={t("ruling.ignore")}>
+          <X size={14} aria-hidden="true" />
         </button>
       </span>
     </li>

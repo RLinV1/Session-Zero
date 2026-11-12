@@ -1131,8 +1131,11 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 
 /* GM Rulings list (attack-rulings). */
 .rulings { display: flex; flex-direction: column; gap: var(--space-2); }
-/* Clear all sits above the list, at its end (ADR 0060). */
-.rulings-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
+/* Ignore: a small X set a little apart from Hit / Miss / Apply (ADR 0060). */
+.ruling-actions .ruling-ignore { width: 1.75rem; height: 1.75rem; margin-left: var(--space-2); }
+@media (pointer: coarse) {
+  .ruling-actions .ruling-ignore { width: 36px; height: 36px; }
+}
 .ruling { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
 .ruling:last-child { border-bottom: none; padding-bottom: 0; }
 .ruling-line { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
