@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
@@ -34,6 +34,9 @@ export function InitiativeTracker({
   /** Tokens whose typed score the last Start refused, so their fields can say so. */
   const [invalidIds, setInvalidIds] = useState<string[]>([]);
   const [setupOpen, setSetupOpen] = useState(false);
+  // End encounter can't be undone, so it asks first (ADR 0060).
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const cancelEndRef = useRef<HTMLButtonElement>(null);
   /** Groups the encounter starts from (KAN-82); none means every token is included. */
   const [fromGroups, setFromGroups] = useState<string[]>([]);
   /** Tokens the GM left out by hand, on top of what the chosen groups include. */
@@ -215,16 +218,47 @@ export function InitiativeTracker({
 
       {isGm && (
         <div className="init-controls">
-          <button className="primary" onClick={() => send({ type: "initiative.advance" })}>{t("init.next")}</button>
+          <div className="init-turn-buttons">
+            {/* Takes back an accidental end turn; the server refuses it on round 1's first turn (ADR 0060). */}
+            <button
+              type="button"
+              className="secondary"
+              disabled={init.round <= 1 && init.activeIndex === 0}
+              onClick={() => send({ type: "initiative.previous" })}
+            >
+              {t("init.previous")}
+            </button>
+            <button type="button" className="primary" onClick={() => send({ type: "initiative.advance" })}>{t("init.next")}</button>
+          </div>
           {/* A reminder, not a gate: the GM may move on with rulings open (attack-ux-polish). */}
           {pending > 0 && (
             <span className="muted init-pending" role="status">
               {t("init.pending", { n: pending })}
             </span>
           )}
-          <button className="secondary" onClick={() => send({ type: "initiative.end" })}>
-            {t("init.end")}
-          </button>
+          <div className="init-end-row">
+            <button type="button" className="secondary danger" onClick={() => setConfirmEnd(true)}>
+              {t("init.end")}
+            </button>
+          </div>
+          <Modal open={confirmEnd} title={t("init.endConfirmTitle")} onClose={() => setConfirmEnd(false)} initialFocus={cancelEndRef}>
+            <p>{t("init.endConfirmBody")}</p>
+            <div className="row modal-actions">
+              <button ref={cancelEndRef} type="button" className="secondary" onClick={() => setConfirmEnd(false)}>
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => {
+                  setConfirmEnd(false);
+                  void send({ type: "initiative.end" });
+                }}
+              >
+                {t("init.end")}
+              </button>
+            </div>
+          </Modal>
         </div>
       )}
       {error && <p role="alert" className="error">{error}</p>}

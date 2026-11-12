@@ -166,6 +166,10 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
   if (first.type === "RollRuled" || first.type === "RollDamageApplied") {
     return { verb: cjk`對${rollOf(first.rollId)}的裁定`, noun: cjk`對${rollOf(first.rollId)}的裁定` };
   }
+  if (first.type === "RollsDismissed") {
+    const what = cjk`略過${first.rollIds.length}次攻擊檢定`;
+    return { verb: what, noun: what };
+  }
   const name = nameOf(first.tokenId);
   if (entry.events.length > 1) return { verb: cjk`編輯${name}`, noun: cjk`對${name}的編輯` };
   switch (first.type) {
@@ -259,6 +263,8 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     case "InitiativeStarted": return cjk`${a}開始了先攻排序：${list(event.initiative.order.map(tokenName)) || "沒有棋子"}`;
     case "InitiativeAdvanced":
       return cjk`${a}將戰鬥推進至第${event.initiative.round}輪，輪到${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}`;
+    case "InitiativeRewound":
+      return cjk`${a}將回合退回第${event.initiative.round}輪，輪到${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}`;
     case "InitiativeEnded": return cjk`${a}結束了先攻順序`;
     case "InitiativeStartUndone": return cjk`${a}復原了開始先攻的操作`;
     case "GroupCreated": return cjk`${a}建立了群組「${event.group.name}」`;
@@ -314,6 +320,8 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       const roll = findRoll(event.rollId);
       return cjk`${a}套用了${rollLabel(roll, "先前擲骰")}產生的${event.amount}點傷害` + gmOnly(roll?.visibility === "gm");
     }
+    case "RollsDismissed": return cjk`${a}略過了裁定清單中的${event.rollIds.length}次攻擊檢定`;
+    case "RollsRestored": return cjk`${a}將${event.rollIds.length}次攻擊檢定放回裁定清單`;
     case "AutoRemoveDefeatedSet": return cjk`${a}${event.enabled ? "開啟" : "關閉"}了「自動移除被擊敗棋子」功能`;
     // Table rules (ADR 0057) and movement rules (ADR 0055), named as the Settings menu names them.
     case "DefeatRemovalSet": return cjk`${a}將「HP 歸零時移除棋子」設為「${rejectionsZhTW[DEFEAT_REMOVAL_IDS[event.mode]]}」`;
@@ -371,6 +379,7 @@ export function neutralSentenceZhTW(event: DomainEvent, actorName: string): stri
   switch (event.type) {
     case "InitiativeStarted": return cjk`${actorName}開始了先攻`;
     case "InitiativeAdvanced": return cjk`${actorName}推進了回合`;
+    case "InitiativeRewound": return cjk`${actorName}退回了回合`;
     case "FogAdded":
     case "FogRemoved": return cjk`${actorName}變更了迷霧`;
     case "DiceRolled":

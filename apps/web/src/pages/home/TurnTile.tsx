@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { TokenDisc } from "../../ui/TokenDisc";
-import { TurnNotice } from "../../ui/TurnNotice";
+import { TurnBanner } from "../../ui/TurnBanner";
 import { fightRoom, nextTurn, scoreOf, turnPlayer } from "./turnDemo";
 import { t } from "../../i18n/locale";
 
 /**
  * The turn order, from a room whose fight `decide` started and Next turn advances. Under it is
- * the table's own turn notice, as the player who owns Mara gets it when Mara's turn comes up.
+ * the table's own turn banner, as the player who owns Mara gets it when Mara's turn comes up.
  */
 export default function TurnTile() {
   const [state, setState] = useState(fightRoom);
@@ -38,7 +38,15 @@ export default function TurnTile() {
         </button>
       </div>
       <div className="turn-notice-slot">
-        <TurnNotice state={state} you={you} onFocusToken={(id) => setShown(id)} />
+        <TurnBanner
+          state={state}
+          you={you}
+          onFocusToken={(id) => setShown(id)}
+          onEndTurn={() => {
+            setState(nextTurn);
+            return { ok: true };
+          }}
+        />
       </div>
       <p className="turn-hint muted small-print">{t("home.turn.help", { name: "Mara" })}</p>
     </>

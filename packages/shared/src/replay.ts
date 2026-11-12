@@ -179,6 +179,7 @@ function neutralSentence(event: DomainEvent, actorName: string): string {
   switch (event.type) {
     case "InitiativeStarted": return `${actorName} started initiative`;
     case "InitiativeAdvanced": return `${actorName} advanced the turn`;
+    case "InitiativeRewound": return `${actorName} stepped the turn back`;
     case "FogAdded":
     case "FogRemoved": return `${actorName} changed the fog`;
     case "DiceRolled":

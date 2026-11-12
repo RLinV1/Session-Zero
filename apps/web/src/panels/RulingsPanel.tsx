@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "@phosphor-icons/react";
 import { areaEffectStage, attackLabel, formatAttackParties, isActive, type AreaEffect, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { PanelSection } from "../ui/PanelSection";
@@ -14,6 +15,9 @@ import { getLocale, t } from "../i18n/locale";
  * afterwards, and the app never decides for them (README §7). Rendered for the GM only; the
  * server refuses these commands from anyone else regardless.
  */
+/** The busy key for Clear all, which names no single roll. */
+const CLEAR_ALL = "clear-all";
+
 export function RulingsPanel({
   connection,
   state,
@@ -49,7 +53,21 @@ export function RulingsPanel({
   };
 
   return (
-    <PanelSection id="rulings" title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}>
+    <PanelSection
+      id="rulings"
+      title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}
+      // Every attack roll shown, by id, so one made since isn't swept away; never the area effect (ADR 0060).
+      actions={pending.length > 0 && (
+        <button
+          type="button"
+          className="small secondary"
+          disabled={busy.has(CLEAR_ALL)}
+          onClick={() => send(CLEAR_ALL, { type: "roll.dismiss", rollIds: pending.map((item) => item.roll.id) })}
+        >
+          {t("ruling.clearAll")}
+        </button>
+      )}
+    >
       {count === 0 ? (
         <p className="muted">{t("ruling.nothing")}</p>
       ) : (
@@ -73,6 +91,7 @@ export function RulingsPanel({
               rolling={airborne.has(item.roll.id)}
               onRule={(verdict) => send(item.roll.id, { type: "roll.rule", rollId: item.roll.id, verdict })}
               onApply={() => send(item.roll.id, { type: "roll.applyDamage", rollId: item.roll.id })}
+              onIgnore={() => send(item.roll.id, { type: "roll.dismiss", rollIds: [item.roll.id] })}
             />
           ))}
         </ul>
@@ -145,6 +164,7 @@ function RulingRow({
   rolling,
   onRule,
   onApply,
+  onIgnore,
 }: {
   item: PendingRuling;
   busy: boolean;
@@ -152,6 +172,8 @@ function RulingRow({
   rolling: boolean;
   onRule: (verdict: "hit" | "miss") => void;
   onApply: () => void;
+  /** Takes it off the list without ruling; it stays in the roll log (ADR 0060). */
+  onIgnore: () => void;
 }) {
   const { roll } = item;
   const attack = roll.attack!;
@@ -175,6 +197,9 @@ function RulingRow({
         </span>
         {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
         {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onApply={onApply} />}
+        <button type="button" className="icon-button ruling-ignore" disabled={busy} onClick={onIgnore} aria-label={t("ruling.ignoreNamed", { what: description })} title={t("ruling.ignore")}>
+          <X size={14} aria-hidden="true" />
+        </button>
       </span>
     </li>
   );

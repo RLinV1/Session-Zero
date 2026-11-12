@@ -244,6 +244,20 @@ label.inline { flex-direction: row; align-items: center; gap: 0.35rem; color: va
   background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .room > .board, .room > .panel { grid-row: 2; }
+/* The viewer's turn, across the top bar's full width, for the whole turn (turn-notice, ADR 0060). */
+.turn-banner {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-soft); border: 1px solid var(--accent); border-left-width: 3px;
+  border-radius: var(--radius-surface);
+}
+.turn-banner-text { margin: 0; flex: 1 1 12rem; min-width: 0; }
+.turn-banner-error { margin: 0; flex-basis: 100%; order: 3; font-size: var(--fs-sm); }
+.turn-banner-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .turn-banner { animation: modal-in 0.16s ease-out; }
+}
 .topbar-start, .topbar-end { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .topbar-end { justify-content: flex-end; }
 .topbar-center { display: flex; justify-content: center; }
@@ -960,8 +974,13 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .init-entry.active .init-focus { font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
 .init-turn { width: 1.2rem; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .init-entry.active .init-turn { color: var(--accent); }
-.init-controls { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.init-controls button { flex: 1; }
+/* Previous and Next side by side, the reminder under them, End encounter apart (ADR 0060). */
+.init-controls { display: flex; flex-direction: column; gap: var(--space-2); }
+.init-turn-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.init-end-row { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+/* `secondary` would otherwise win over `danger` (same specificity, later rule), as on the account page. */
+.init-end-row button.danger { color: var(--danger); }
+:root[data-theme="light"] .init-end-row button.danger { color: var(--danger-strong); }
 
 /* --- Roster --- */
 .roster { display: flex; flex-direction: column; max-height: 22rem; overflow-y: auto; }
@@ -1105,13 +1124,18 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .attack-warning { margin: 0; font-size: var(--fs-sm); color: var(--text); border-left: 3px solid var(--accent); padding-left: 0.5rem; }
 .ruling-buttons { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }
 .ruling-buttons button { min-height: 36px; min-width: 4.5rem; }
-.init-pending { font-size: var(--fs-sm); align-self: center; }
+.init-pending { font-size: var(--fs-sm); align-self: flex-start; }
 .tab-badge { display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 0.3rem; margin-left: 0.3rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.7rem; font-weight: 700; line-height: 1; }
 .tab.selected .tab-badge { background: var(--accent-ink); color: var(--accent); }
 .tab-badge.dot { min-width: 0.55rem; width: 0.55rem; height: 0.55rem; padding: 0; }
 
 /* GM Rulings list (attack-rulings). */
 .rulings { display: flex; flex-direction: column; gap: var(--space-2); }
+/* Ignore: a small X set a little apart from Hit / Miss / Apply (ADR 0060). */
+.ruling-actions .ruling-ignore { width: 1.75rem; height: 1.75rem; margin-left: var(--space-2); }
+@media (pointer: coarse) {
+  .ruling-actions .ruling-ignore { width: 36px; height: 36px; }
+}
 .ruling { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
 .ruling:last-child { border-bottom: none; padding-bottom: 0; }
 .ruling-line { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
@@ -2779,7 +2803,6 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
     100% { opacity: 0; transform: translateX(calc(100% + var(--space-3))); }
   }
 }
-.turn-notice { border-left-color: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
   .board-notice { animation: modal-in 0.16s ease-out; }
 }
@@ -3811,8 +3834,7 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .turn-name { flex: 1; min-width: 0; }
 .turn-score { color: var(--muted); }
 .turn-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.turn-notice-slot .board-notice { box-shadow: none; }
-.turn-notice-slot:not(:empty) + .turn-hint { display: none; }
+.turn-notice-slot:has(.turn-banner) + .turn-hint { display: none; }
 .turn-hint { margin: 0; }
 .turn-slot { display: flex; flex-direction: column; gap: var(--space-3); min-height: 15rem; }
 
@@ -4078,6 +4100,10 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   /* Top bar: home, title, scene, people, menu. Share, tabs and board options live elsewhere. */
   /* Above the chat button, so the More menu opens over it. */
   .room-topbar { position: relative; z-index: 60; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); }
+  /* The turn banner takes a row of its own under the controls; the title still gives way first. */
+  .room-topbar:has(> .turn-banner) { flex-wrap: wrap; }
+  .room-topbar:has(> .turn-banner) .topbar-start { flex-basis: 0; }
+  .room-topbar .turn-banner { flex: 1 0 100%; order: 10; }
   .room-topbar .topbar-start, .room-topbar .topbar-start:has(.scene-switcher) { flex: 1 1 auto; min-width: 0; gap: var(--space-2); }
   .room-topbar .topbar-center { flex: none; }
   .room-topbar .topbar-end { flex: none; flex-wrap: nowrap; gap: var(--space-2); }

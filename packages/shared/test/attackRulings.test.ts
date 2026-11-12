@@ -239,3 +239,60 @@ describe("ruling text (FR-TAC-09, FR-REC-01)", () => {
       .toBe(`Dana applied ${damage.roll.total} damage from Aria → Goblin (1d8+3: ${damage.roll.total})`);
   });
 });
+
+describe("ignoring rulings (attack-rulings, ADR 0060)", () => {
+  function pending() {
+    const t = table();
+    const a = rolled(t.state, alice, attack(t.aria.id, t.goblin.id, "toHit"));
+    const b = rolled(a.state, alice, attack(t.aria.id, t.goblin.id, "toHit"));
+    const c = rolled(b.state, alice, attack(t.aria.id, t.goblin.id, "damage"));
+    return { ...t, state: c.state, rolls: [a.roll, b.roll, c.roll] };
+  }
+
+  it("marks one roll ignored without touching its verdict or any token", () => {
+    const { state, rolls } = pending();
+    const { state: next, events } = run(state, gm, { type: "roll.dismiss", rollIds: [rolls[0]!.id] });
+    expect(events).toEqual([{ type: "RollsDismissed", rollIds: [rolls[0]!.id] }]);
+    expect(rollIn(next, rolls[0]!.id)).toEqual({ ...rolls[0], dismissed: true });
+    expect(next.tokens).toEqual(state.tokens);
+  });
+
+  it("skips rolls settled since the GM's list updated, and refuses when none are left", () => {
+    const { state, rolls } = pending();
+    const ruled = run(state, gm, { type: "roll.rule", rollId: rolls[0]!.id, verdict: "hit" }).state;
+    const all = rolls.map((r) => r.id);
+    expect(run(ruled, gm, { type: "roll.dismiss", rollIds: all }).events).toEqual([{ type: "RollsDismissed", rollIds: all.slice(1) }]);
+    const cleared = run(ruled, gm, { type: "roll.dismiss", rollIds: all }).state;
+    expect(attempt(cleared, gm, { type: "roll.dismiss", rollIds: all })).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("gives a single roll its reason", () => {
+    const { state, rolls } = pending();
+    const plain = rolled(state, alice, { type: "dice.roll", expression: "1d6" });
+    expect(attempt(plain.state, gm, { type: "roll.dismiss", rollIds: [plain.roll.id] })).toMatchObject({ ok: false, code: "invalid" });
+    expect(attempt(state, gm, { type: "roll.dismiss", rollIds: ["gone"] })).toMatchObject({ ok: false, code: "not_found" });
+    const ruled = run(state, gm, { type: "roll.rule", rollId: rolls[0]!.id, verdict: "miss" }).state;
+    expect(attempt(ruled, gm, { type: "roll.dismiss", rollIds: [rolls[0]!.id] })).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("forbids players", () => {
+    const { state, rolls } = pending();
+    expect(attempt(state, alice, { type: "roll.dismiss", rollIds: [rolls[0]!.id] })).toMatchObject({ ok: false, code: "forbidden" });
+  });
+
+  it("can still be ruled from the roll log", () => {
+    const { state, rolls } = pending();
+    const ignored = run(state, gm, { type: "roll.dismiss", rollIds: [rolls[0]!.id] }).state;
+    const ruled = run(ignored, gm, { type: "roll.rule", rollId: rolls[0]!.id, verdict: "hit" }).state;
+    expect(rollIn(ruled, rolls[0]!.id)?.verdict).toBe("hit");
+  });
+
+  it("never tells players a roll was ignored", () => {
+    const { state, rolls } = pending();
+    const { state: next, events } = run(state, gm, { type: "roll.dismiss", rollIds: rolls.map((r) => r.id) });
+    expect(filterEventForViewer(committed(events[0]!), state, alice)).toEqual({ kind: "redacted", seq: 10 });
+    expect(filterEventForViewer(committed({ type: "RollsRestored", rollIds: [rolls[0]!.id] }), next, alice)).toEqual({ kind: "redacted", seq: 10 });
+    expect(JSON.stringify(filterStateForViewer(next, alice).rolls)).not.toContain("dismissed");
+    expect(filterStateForViewer(next, gm).rolls.filter(isDiceRoll).every((r) => r.dismissed)).toBe(true);
+  });
+});
