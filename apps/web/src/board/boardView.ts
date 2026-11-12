@@ -24,6 +24,8 @@ import {
   hpFraction,
   pointInPolygon,
   snapTokenCenter,
+  overlapsToken,
+  isDowned,
   type ConditionId,
   type ConditionShape,
   type GridSpec,
@@ -95,6 +97,8 @@ export interface BoardCallbacks {
   /** Commit a move. Resolves false if the server rejected it. */
   /** `via`: the path's turning points, when the drag followed one (ADR 0055). */
   moveToken(tokenId: string, to: Point, origin?: Point, boardEpoch?: number, via?: Point[]): Promise<boolean>;
+  /** A drop the board refused itself, never sent: say why (token-no-stacking). */
+  dropRefused?(message: string): void;
   /** Every pointer move of a token drag; the connection coalesces them (KAN-39). */
   dragPreview(tokenId: string, at: Point): void;
   /** Private advisory query; geometry and feedback are never relayed to other viewers. */
@@ -1484,12 +1488,15 @@ export class BoardView {
     }
     const grid = state.scene.grid;
     const at = placementPoint(hover.at, placement.size, grid, hover.free);
-    // Alt places freely, so there is no square to highlight.
-    if (!hover.free) {
+    // A new token never goes on another: the server refuses it, so the squares show blocked (token-no-stacking).
+    const occupied = overlapsToken(state.tokens, at, placement.size, grid);
+    // Alt places freely, so there is no square to highlight, unless it is taken.
+    if (!hover.free || occupied) {
       const r = footprint(at, placement.size, grid);
+      const color = occupied ? 0xf08b8b : 0xffffff;
       g.rect(r.x, r.y, r.width, r.height)
-        .fill({ color: 0xffffff, alpha: 0.18 })
-        .stroke({ width: 2 / this.world.scale.x, color: 0xffffff, alpha: 0.9 });
+        .fill({ color, alpha: occupied ? 0.28 : 0.18 })
+        .stroke({ width: (occupied ? 2.5 : 2) / this.world.scale.x, color, alpha: 0.9 });
     }
     if (!this.ghost) {
       this.ghost = this.createTokenView(GHOST_ID);
@@ -2570,9 +2577,10 @@ export class BoardView {
     view.label.position.set(0, r + 2);
     this.sharpenLabel(view.label);
 
-    this.drawDecor(view, token, r, focused, active, owned, viewed, grouped);
+    const downed = isDowned(token);
+    this.drawDecor(view, token, r, focused, active, owned, viewed, grouped, downed);
     this.drawConditions(view, token.conditions, r);
-    this.drawConditionLook(view, token.conditions);
+    this.drawConditionLook(view, token.conditions, downed);
   }
 
   /**
@@ -2580,17 +2588,17 @@ export class BoardView {
    * decoration in the effects layer. Looping ones are redrawn by `conditionLoop`; with reduced
    * motion, or while the loop is not running, they show their still pose.
    */
-  private drawConditionLook(view: TokenView, conditions: ConditionId[]) {
+  private drawConditionLook(view: TokenView, conditions: ConditionId[], downed = false) {
     view.conditions = conditions;
     view.looping = !this.reducedMotion && loopingConditions(conditions).length > 0;
-    const style = artStyleFor(conditions, this.reducedMotion);
+    const style = artStyleFor(conditions, this.reducedMotion, downed);
     const { art } = view;
     art.alpha = style.alpha;
     art.rotation = (style.tilt * Math.PI) / 180;
     art.scale.set(1, style.squash);
-    if (style.greyscale) {
+    if (style.grey > 0) {
       view.grey ??= new ColorMatrixFilter();
-      view.grey.greyscale(0.6, false);
+      view.grey.greyscale(style.grey, false);
       art.filters = [view.grey];
     } else {
       art.filters = null;
@@ -3020,8 +3028,16 @@ export class BoardView {
   }
 
   /** Focus ring, active-turn ring, and the HP bar (FR-TAC-07, FR-GM-21, FR-GM-24). */
-  private drawDecor(view: TokenView, token: Token, r: number, focused: boolean, active: boolean, owned: boolean, viewed: boolean, grouped = false) {
+  private drawDecor(view: TokenView, token: Token, r: number, focused: boolean, active: boolean, owned: boolean, viewed: boolean, grouped = false, downed = false) {
     const g = view.decor.clear();
+    // Down at 0 HP or below: a red X with a dark edge over the art, a shape so it never rests on the grey alone
+    // (downed-token-marker). In the decoration, so Prone's tilt and squash never bend it.
+    if (downed) {
+      const arm = r * 0.45;
+      for (const [width, color] of [[Math.max(4, r * 0.16), 0x1f1f1f], [Math.max(2, r * 0.09), 0xdc2626]] as const) {
+        g.moveTo(-arm, -arm).lineTo(arm, arm).moveTo(arm, -arm).lineTo(-arm, arm).stroke({ width, color, cap: "round", alpha: 0.9 });
+      }
+    }
     // Direction remains visible even when the token has no art; labels and HP stay upright.
     const angle = (token.rotation - 90) * Math.PI / 180;
     const x = Math.cos(angle) * (r - 5);
@@ -3344,6 +3360,13 @@ export class BoardView {
     this.invalidate();
     // Snap by default; hold Alt for free placement (FR-TAC-02).
     const to = e.altKey ? dropped : snapTokenCenter(dropped, token.size, this.state.scene.grid);
+    // A snapped drop never stacks on a token this board holds; Alt and the arrow keys still may (token-no-stacking).
+    if (!e.altKey && overlapsToken(this.state.tokens, to, token.size, this.state.scene.grid, token.id)) {
+      // The token never left its square, so it simply stays there: no slide back.
+      this.callbacks.dragEnd(token.id, token.position);
+      this.callbacks.dropRefused?.(t("board.squareOccupied"));
+      return;
+    }
     // The path the drag showed is the one committed (ADR 0055): the cached plan for this square, if any.
     const reposition = this.repositionToken === token.id;
     const cached = this.localMovementPreview && this.localPlanKey.startsWith(`${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${e.altKey}|${reposition}|`) ? this.localMovementPreview : null;

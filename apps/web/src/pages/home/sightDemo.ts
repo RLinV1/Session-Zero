@@ -1,7 +1,7 @@
 import {
   DEFAULT_GRID,
-  footprintCrossesWall,
-  pathCrossesWall,
+  clearanceSweepTouchesWall,
+  clearanceTouchesWall,
   sightPolygon,
   snapTokenCenter,
   type GridSpec,
@@ -44,9 +44,9 @@ export function moveTo(walls: readonly Segment[], from: Point, to: Point): { at:
   const { col, row } = squareOf(target);
   if (col < 0 || row < 0 || col >= COLS || row >= ROWS) return { at: from, refused: "edge" };
   if (target.x === from.x && target.y === from.y) return { at: from, refused: null };
-  if (footprintCrossesWall(target, 1, CROP_GRID, walls)) return { at: from, refused: "wall" };
-  const ahead = walls.filter((w) => !footprintCrossesWall(from, 1, CROP_GRID, [w]));
-  if (pathCrossesWall(from, target, ahead)) return { at: from, refused: "wall" };
+  if (clearanceTouchesWall(target, 1, CROP_GRID, walls)) return { at: from, refused: "wall" };
+  const ahead = walls.filter((w) => !clearanceTouchesWall(from, 1, CROP_GRID, [w]));
+  if (clearanceSweepTouchesWall(from, target, 1, CROP_GRID, ahead)) return { at: from, refused: "wall" };
   return { at: target, refused: null };
 }
 

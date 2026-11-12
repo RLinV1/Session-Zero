@@ -133,3 +133,39 @@ describe("the mover's token slides on drop (token-slide)", () => {
     expect({ x: real.x, y: real.y }).toEqual(at(1, 1));
   });
 });
+
+describe("a snapped drop doesn't stack tokens (FR-TAC-02, token-no-stacking)", () => {
+  const withBram = (hp: number | null = null) => {
+    const b = board();
+    b.view.state.tokens.bram = { ...b.token, id: "bram", name: "Bram", ownerIds: [], position: at(3, 1), stats: { hp, maxHp: null, ac: null } };
+    const dropRefused = vi.fn();
+    Object.assign(b.callbacks, { dropRefused });
+    return { ...b, dropRefused };
+  };
+
+  it("sends nothing for a snapped drop onto another token, stays put without sliding, and says why", () => {
+    const { view, real, callbacks, pointer, dropRefused, frame } = withBram();
+    view.onPointerMove(pointer(at(3, 1)));
+    view.onPointerUp(pointer(at(3, 1)));
+    expect(callbacks.moveToken).not.toHaveBeenCalled();
+    expect(dropRefused).toHaveBeenCalledWith("Another token is already there.");
+    frame(10_000);
+    expect(real.history).toEqual([]);
+    expect(view.animations.size).toBe(0);
+  });
+
+  it("still sends an Alt (free) drop onto another token", () => {
+    const { view, callbacks, pointer, dropRefused } = withBram();
+    view.onPointerMove(pointer(at(3, 1), true));
+    view.onPointerUp(pointer(at(3, 1), true));
+    expect(callbacks.moveToken).toHaveBeenCalledOnce();
+    expect(dropRefused).not.toHaveBeenCalled();
+  });
+
+  it("sends a snapped drop onto a downed token", () => {
+    const { view, callbacks, pointer } = withBram(0);
+    view.onPointerMove(pointer(at(3, 1)));
+    view.onPointerUp(pointer(at(3, 1)));
+    expect(callbacks.moveToken).toHaveBeenCalledOnce();
+  });
+});

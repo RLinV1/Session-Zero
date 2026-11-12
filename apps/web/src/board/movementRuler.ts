@@ -1,4 +1,4 @@
-import { MAX_MOVE_VIA, blocksMovement, cheapestPath, diagonalRuleOf, effectiveTerrain, emptyTerrain, footprintCrossesWall, isSnapped, movementRouteKnown, movementTerrain, routeCost, stepRulesOf, sweptCrossesWalls, terrainCells, type GridSpec, type Participant, type Point, type RoomState, type TerrainRun, type Token } from "@vtt/shared";
+import { MAX_MOVE_VIA, blocksMovement, cheapestPath, diagonalRuleOf, effectiveTerrain, emptyTerrain, clearanceSweepTouchesWall, clearanceTouchesWall, isSnapped, movementRouteKnown, overlapsToken, movementTerrain, routeCost, stepRulesOf, terrainCells, type GridSpec, type Participant, type Point, type RoomState, type TerrainRun, type Token } from "@vtt/shared";
 import { formatDistance, measure } from "./tools";
 
 /** The terrain a viewer may cost with: effective terrain for the GM, their filtered view otherwise. */
@@ -20,8 +20,8 @@ export function movementPreview(state: RoomState, you: Participant, token: Token
   const result = movementTerrain(from, to, token.size, grid, runs, free);
   const unknown = you.role !== "gm" && !movementRouteKnown(state, from, to, token.size);
   const walls = Object.values(state.walls).filter(blocksMovement);
-  const destination = movementTerrain(to, to, token.size, grid, runs).blocked || footprintCrossesWall(to, token.size, grid, walls);
-  const obstruction = destination || (!reposition && (result.blocked || sweptCrossesWalls(from, to, token.size, grid, walls.filter((w) => !footprintCrossesWall(from, token.size, grid, [w])))));
+  const destination = movementTerrain(to, to, token.size, grid, runs).blocked || clearanceTouchesWall(to, token.size, grid, walls);
+  const obstruction = destination || (!reposition && (result.blocked || clearanceSweepTouchesWall(from, to, token.size, grid, walls.filter((w) => !clearanceTouchesWall(from, token.size, grid, [w])))));
   // A straight move shows distance only: terrain cost belongs to grid paths (ADR 0055).
   return { label: `${formatDistance(result.distance, grid)}${reposition ? t("move.reposition") : ""}`, obstruction: obstruction ? "blocked" : unknown ? "unknown" : "clear" };
 }
@@ -41,6 +41,12 @@ export interface DragPlan {
  * rules ("25 ft"). Anything else, or a path the search can't find, is a straight line showing distance only.
  */
 export function dragPlan(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free: boolean, reposition: boolean): DragPlan {
+  const plan = routePlanFor(state, you, token, from, to, free, reposition);
+  // A snapped drop onto a token this board holds is refused on drop, so it shows blocked (token-no-stacking).
+  return !free && overlapsToken(state.tokens, to, token.size, state.scene.grid, token.id) ? { ...plan, obstruction: "blocked" } : plan;
+}
+
+function routePlanFor(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free: boolean, reposition: boolean): DragPlan {
   const grid = state.scene.grid, map = state.scene.map, size = token.size;
   const pathed = !free && !reposition && !!map && Number.isInteger(size) && size >= 1 && isSnapped(from, size, grid);
   const straight = (): DragPlan => {

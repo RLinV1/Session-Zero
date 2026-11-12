@@ -3,7 +3,7 @@ import {
   Command, decide, decideJoin, isActive, isDisplayNameTaken, isTokenNameTaken, normalizeDisplayName, reduceAll,
   uniqueName, uniqueTokenName, type Participant, type RoomState,
 } from "../src";
-import { alice, attempt, baseRoom, bob, ctx, gm, run, withToken } from "./fixtures";
+import { alice, attempt, baseRoom, bob, ctx, firstFreeSquare, gm, run, withToken } from "./fixtures";
 
 describe("authorization (FR-GM-15, FR-PL-04)", () => {
   const withToken = () =>
@@ -109,7 +109,7 @@ describe("token name uniqueness (KAN-62)", () => {
     names.reduce((s: RoomState, name) => withToken(s, { name }).state, baseRoom());
   const names = (s: RoomState) => Object.values(s.tokens).map((t) => t.name).sort();
   const create = (s: RoomState, name: string, hidden = false) =>
-    run(s, gm, { type: "token.create", name, position: { x: 0, y: 0 }, hidden });
+    run(s, gm, { type: "token.create", name, position: firstFreeSquare(s), hidden });
   const idOf = (s: RoomState, name: string) => Object.values(s.tokens).find((t) => t.name === name)!.id;
 
   it("treats case and surrounding whitespace as the same name", () => {

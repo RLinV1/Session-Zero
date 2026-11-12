@@ -23,6 +23,8 @@ export const rejectionsEn = {
 
   // Scenes, maps and preparation.
   "reject.wallBlocked": "That spot is blocked by a wall.",
+  "reject.squareOccupied": "Another token is already there.",
+  "reject.noEmptySquare": "There's no empty square nearby.",
   "reject.sceneChangedMove": "The scene changed. Refresh the board before moving.",
   "reject.sceneChangedSave": "The scene changed. Reopen the editor before saving.",
   "reject.mapChangedSave": "The map changed. Reopen the editor before saving.",

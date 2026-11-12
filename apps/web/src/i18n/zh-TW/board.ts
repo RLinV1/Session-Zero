@@ -18,6 +18,7 @@ export const boardZhTW = {
   "board.gmOnlyAreaHint": "拖曳調整大小與方向 · 按一下放置預設大小 · 僅 GM 可見，其他玩家看不到這些範圍效果",
   "board.token": "棋子",
   "board.aToken": "一枚棋子",
+  "board.squareOccupied": "那裡已經有另一枚棋子。",
   "board.placedSaid": ({ name, n }) => cjk`已放置${name}，目前共${n}枚棋子。`,
   "board.cursorSaid": ({ name, square }) => cjk`${name}位於${square}。`,
   "board.cursorEdge": ({ name, square }) => cjk`${name}位於${square}，已到達地圖邊界。`,

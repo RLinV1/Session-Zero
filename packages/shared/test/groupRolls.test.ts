@@ -93,7 +93,7 @@ describe("Group roll visibility (FR-GM-22, FR-GM-23, ADR 0046)", () => {
 
   it("leaves out unowned tokens under fog", () => {
     const { state, one, two } = table();
-    const fogged = run(state, gm, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 70, y: 70 } } }).state;
+    const fogged = run(state, gm, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 210, y: 70 } } }).state;
     const after = run(fogged, gm, { type: "dice.rollGroup", tokenIds: [one.id, two.id], expression: "1d20" }).state;
     // Every token sits under the fog, so the player gets no entry at all.
     expect(groupRolls(filterStateForViewer(after, alice))).toHaveLength(0);

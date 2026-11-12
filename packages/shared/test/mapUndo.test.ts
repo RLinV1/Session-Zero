@@ -102,7 +102,7 @@ describe("composite map undo (KAN-66, FR-REC-02, FR-REC-03)", () => {
       stats: { hp: 2, maxHp: 8, ac: 13 }, ownerIds: [], conditions: ["prone"],
       attacks: [{ name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } }],
     } });
-    const added = act(edited.state, { type: "token.create", name: "New", position: { x: 200, y: 200 } });
+    const added = act(edited.state, { type: "token.create", name: "New", position: { x: 2000, y: 2000 } });
     const undone = act(added.state, { type: "history.undo", commandId: applied.commandId });
     expect(undone.state.tokens[free]).toEqual({ ...edited.state.tokens[free], position: state.tokens[free]!.position });
     expect(Object.values(undone.state.tokens).find((t) => t.name === "New")).toEqual(Object.values(added.state.tokens).find((t) => t.name === "New"));

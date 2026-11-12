@@ -30,8 +30,8 @@ async function setup() {
   const alice = await connect(aliceCreds);
   const aliceTab2 = await connect(aliceCreds);
   const bob = await connect(bobCreds);
-  for (const name of ["Aria", "Wolf"]) {
-    await gm.command({ type: "token.create", name, position: { x: 0, y: 0 }, ownerIds: [alice.participantId] });
+  for (const [i, name] of ["Aria", "Wolf"].entries()) {
+    await gm.command({ type: "token.create", name, position: { x: 35 + 70 * i, y: 35 }, ownerIds: [alice.participantId] });
   }
   const tokenId = (name: string) => Object.values(gm.state.tokens).find((t) => t.name === name)!.id;
   return { gm, alice, aliceTab2, bob, gmCreds, aliceCreds, tokenId };
@@ -141,8 +141,8 @@ describe("leaving the table (KAN-58)", () => {
 
   it("never sends a resolved hidden token to other players (FR-GM-23)", async () => {
     const { gm, alice, bob } = await setup();
-    for (const name of ["Moonblade", "Nightshade"]) {
-      await gm.command({ type: "token.create", name, position: { x: 0, y: 0 }, ownerIds: [alice.participantId], hidden: true });
+    for (const [i, name] of ["Moonblade", "Nightshade"].entries()) {
+      await gm.command({ type: "token.create", name, position: { x: 35 + 70 * i, y: 175 }, ownerIds: [alice.participantId], hidden: true });
     }
     const secret = (name: string) => Object.values(gm.state.tokens).find((t) => t.name === name)!.id;
     const [moonblade, nightshade] = [secret("Moonblade"), secret("Nightshade")];

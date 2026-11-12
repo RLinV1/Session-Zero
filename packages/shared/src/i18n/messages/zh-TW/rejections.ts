@@ -18,6 +18,8 @@ export const rejectionsZhTW = {
   "reject.notFound.wall": "找不到這面牆",
 
   "reject.wallBlocked": "這個位置有牆壁阻擋。",
+  "reject.squareOccupied": "那裡已經有另一枚棋子。",
+  "reject.noEmptySquare": "附近沒有空的格子。",
   "reject.sceneChangedMove": "場景已更新，請重新整理棋盤後再移動。",
   "reject.sceneChangedSave": "場景已變更。請重新開啟編輯器後再儲存。",
   "reject.mapChangedSave": "地圖已變更。請重新開啟編輯器後再儲存。",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { polygonArea, WALL_FOOTPRINT_INSET, type GridSpec, type Point, type Segment } from "./geometry";
+import { polygonArea, type GridSpec, type Point } from "./geometry";
 import { sharedMsg, type MessageRef } from "./i18n";
 
 export const MAX_TERRAIN_CELLS = 10_000;
@@ -148,21 +148,6 @@ export function footprintInterval(from: Point, to: Point, half: number, rect: Re
     if (high <= low) return null;
   }
   return [low, high];
-}
-export function sweptCrossesWalls(from: Point, to: Point, size: number, grid: GridSpec, walls: Iterable<Segment>): boolean {
-  const polygon = sweptSquare(from, to, size * grid.cellSize / 2 * (1 - 2 * WALL_FOOTPRINT_INSET));
-  for (const wall of walls) {
-    let low = 0, high = 1, valid = true;
-    for (let i = 0; i < polygon.length; i++) {
-      const a = polygon[i]!, b = polygon[(i + 1) % polygon.length]!;
-      const p = cross(a, b, wall.a), q = cross(a, b, wall.b), d = q - p;
-      if (d === 0) { if (p <= 0) { valid = false; break; } }
-      else { const t = -p / d; if (d > 0) low = Math.max(low, t); else high = Math.min(high, t); }
-      if (low >= high) { valid = false; break; }
-    }
-    if (valid) return true;
-  }
-  return false;
 }
 export function movementTerrain(from: Point, to: Point, size: number, grid: GridSpec, runs: readonly TerrainRun[], free = false): { distance: number; cost: number; blocked: boolean; affected: number } {
   const dx = Math.abs(to.x - from.x), dy = Math.abs(to.y - from.y);

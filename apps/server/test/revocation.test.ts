@@ -35,9 +35,9 @@ describe("guest revocation (FR-GM-20)", () => {
     const sam = await connect(samCreds);
     const samTab2 = await connect(samCreds);
     const alex = await connect(alexCreds);
-    await gm.command({ type: "token.create", name: "Rogue", position: { x: 0, y: 0 }, ownerIds: [sam.participantId] });
+    await gm.command({ type: "token.create", name: "Rogue", position: { x: 35, y: 35 }, ownerIds: [sam.participantId] });
     await gm.command({
-      type: "token.create", name: "Wolf", position: { x: 0, y: 0 }, ownerIds: [sam.participantId, alex.participantId],
+      type: "token.create", name: "Wolf", position: { x: 105, y: 35 }, ownerIds: [sam.participantId, alex.participantId],
     });
     const tokenId = (name: string) => Object.values(gm.state.tokens).find((t) => t.name === name)!.id;
     return { gm, sam, samTab2, alex, gmCreds, samCreds, tokenId };
@@ -119,7 +119,7 @@ describe("guest revocation (FR-GM-20)", () => {
 
   it("never sends another player a hidden token the removed player owned (FR-GM-23)", async () => {
     const { gm, sam, alex } = await setup();
-    await gm.command({ type: "token.create", name: "Moonblade", position: { x: 0, y: 0 }, ownerIds: [sam.participantId], hidden: true });
+    await gm.command({ type: "token.create", name: "Moonblade", position: { x: 175, y: 175 }, ownerIds: [sam.participantId], hidden: true });
     const moonblade = Object.values(gm.state.tokens).find((t) => t.name === "Moonblade")!.id;
     await gm.command({ type: "participant.revoke", participantId: sam.participantId });
     await gm.command({

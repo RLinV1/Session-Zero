@@ -29,7 +29,7 @@ The GM SHALL be able to make any wall a door or a window with a state of open, c
 - **THEN** the server refuses it as not found
 
 ### Requirement: Portal state controls movement
-A closed or locked portal SHALL block tokens exactly as a wall does: no token's footprint may cross it, and a player may not move a token straight through it. An open portal SHALL NOT block tokens.
+A closed or locked portal SHALL block tokens exactly as a wall does, under the clearance rule of the `token-wall-clearance` capability: no token may stand where it touches the clearance circle at any of the token's sample points, and a player may not move a token so that a sample point's circle sweeps across it. An open portal SHALL NOT block tokens.
 
 #### Scenario: Walk through an open door
 - **WHEN** a player moves their token straight through an open door
@@ -37,11 +37,11 @@ A closed or locked portal SHALL block tokens exactly as a wall does: no token's 
 
 #### Scenario: A closed door is in the way
 - **WHEN** a player moves their token straight through a closed door
-- **THEN** the server refuses it with "A wall is in the way."
+- **THEN** the server refuses it with "That move is unavailable."
 
 #### Scenario: Locked blocks like closed
 - **WHEN** a player moves their token straight through a locked window
-- **THEN** the server refuses it with "A wall is in the way."
+- **THEN** the server refuses it with "That move is unavailable."
 
 ### Requirement: Who may change a portal's state
 The GM SHALL be able to set any portal to any state. A player SHALL be able to open a closed portal and close an open one, but only one they can see. A player SHALL NOT be able to lock a portal, or to unlock or open a locked one. Setting a portal to the state it already has SHALL be refused. A plain wall, a missing wall and a portal the player cannot see SHALL all be refused with the same answer.

@@ -2,6 +2,7 @@ import {
   Command,
   decide,
   emptyRoomState,
+  overlapsToken,
   reduceAll,
   type CommandInput,
   type DomainEvent,
@@ -51,6 +52,15 @@ export function attempt(state: RoomState, actor: Participant, input: CommandInpu
   return decide(state, actor, Command.parse(input), ctx);
 }
 
+/** The first square along the top row that no token occupies, starting at (35, 35) (token-no-stacking). */
+export function firstFreeSquare(state: RoomState) {
+  const size = state.scene.grid.cellSize;
+  for (let i = 0; ; i++) {
+    const at = { x: size / 2 + i * size, y: size / 2 };
+    if (!overlapsToken(state.tokens, at, 1, state.scene.grid)) return at;
+  }
+}
+
 /** Creates a token and returns the new state plus the token that was created. */
 export function withToken(
   state: RoomState,
@@ -59,7 +69,7 @@ export function withToken(
   const { state: next, events } = run(state, gm, {
     type: "token.create",
     name: overrides.name ?? "Fighter",
-    position: { x: 35, y: 35 },
+    position: firstFreeSquare(state),
     ownerIds: overrides.ownerIds ?? [],
     hidden: overrides.hidden ?? false,
   });

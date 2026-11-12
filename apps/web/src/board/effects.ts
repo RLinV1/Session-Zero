@@ -234,6 +234,10 @@ export function watchReducedMotion(listener: (reduced: boolean) => void): () => 
 
 // ---------- conditions ----------
 
+/** The greyscale strengths of the Unconscious look and of a downed token (downed-token-marker). */
+export const UNCONSCIOUS_GREY = 0.6;
+export const DOWNED_GREY = 0.75;
+
 /** How a condition changes the token's art (the wrapper inside the token, never its position). */
 export interface ArtStyle {
   alpha: number;
@@ -241,7 +245,8 @@ export interface ArtStyle {
   tilt: number;
   /** Vertical squash of the art; 1 is none. */
   squash: number;
-  greyscale: boolean;
+  /** How grey the art is drawn: 0 none, 0.6 Unconscious, 0.75 downed (downed-token-marker). */
+  grey: number;
   /** Jitter amplitude as a share of the radius; 0 is none. */
   tremble: number;
 }
@@ -268,7 +273,7 @@ export const CONDITION_EFFECTS: Record<ConditionId, ConditionEffectSpec> = {
   prone: { art: { tilt: 70, squash: 0.8 } },
   restrained: { art: {} },
   stunned: { art: {} },
-  unconscious: { art: { greyscale: true } },
+  unconscious: { art: { grey: UNCONSCIOUS_GREY } },
   concentrating: { art: {} },
 };
 
@@ -278,14 +283,15 @@ export function loopingConditions(conditions: readonly ConditionId[]): Condition
 }
 
 /** The combined art style for a token's conditions. Under reduced motion nothing trembles. */
-export function artStyleFor(conditions: readonly ConditionId[], reducedMotion: boolean): ArtStyle {
-  const style: ArtStyle = { alpha: 1, tilt: 0, squash: 1, greyscale: false, tremble: 0 };
+export function artStyleFor(conditions: readonly ConditionId[], reducedMotion: boolean, downed = false): ArtStyle {
+  // A downed token (HP 0 or below) is greyer than Unconscious, though not fully (downed-token-marker).
+  const style: ArtStyle = { alpha: 1, tilt: 0, squash: 1, grey: downed ? DOWNED_GREY : 0, tremble: 0 };
   for (const id of conditions) {
     const art = CONDITION_EFFECTS[id].art;
     style.alpha = Math.min(style.alpha, art.alpha ?? 1);
     style.tilt = art.tilt ?? style.tilt;
     style.squash = Math.min(style.squash, art.squash ?? 1);
-    style.greyscale ||= art.greyscale ?? false;
+    style.grey = Math.max(style.grey, art.grey ?? 0);
     style.tremble = Math.max(style.tremble, art.tremble ?? 0);
   }
   if (reducedMotion) style.tremble = 0;
