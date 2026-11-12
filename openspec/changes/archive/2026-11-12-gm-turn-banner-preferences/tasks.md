@@ -13,4 +13,4 @@
 ## 3. Verify
 
 - [x] 3.1 `npm run lint && npm run typecheck && npm test`.
-- [ ] 3.2 In the running app: as GM, open Settings, see Preferences and the switch; turn it on, start an encounter and see the banner on a goblin's turn; End turn from it; as a player, see no switch and no banner on others' turns.
+- [x] 3.2 In the running app: as GM, open Settings, see Preferences and the switch; turn it on, start an encounter and see the banner on a goblin's turn; End turn from it; as a player, see no switch and no banner on others' turns.
