@@ -16,7 +16,7 @@ describe("the path from an AI app to a room (FR-PL-08)", () => {
   it("offers every planned tool, with zod 4 schemas turned into JSON Schema", async () => {
     const { tools } = await stack.ai.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "check_move", "get_map_image", "get_view", "join_room", "leave_room", "move_token",
+      "check_move", "end_turn", "get_map_image", "get_view", "join_room", "leave_room", "move_token",
       "roll_attack", "roll_dice", "send_chat", "set_door", "wait_for_turn",
     ]);
     const join = tools.find((t) => t.name === "join_room")!;

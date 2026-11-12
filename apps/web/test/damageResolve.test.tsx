@@ -54,7 +54,7 @@ afterEach(() => {
   vi.mocked(presetOf).mockRestore();
 });
 
-describe("damage resolve dialog (FR-TAC-07, ADR 0060)", () => {
+describe("damage resolve dialog (FR-TAC-07, ADR 0062)", () => {
   it("offers Apply −N, which applies the full damage at once, beside Resolve", async () => {
     const { command } = panel(room());
     expect(screen.getByRole("button", { name: "Resolve damage: Aria → Goblin · Longsword damage, 8" }).textContent).toBe("Resolve");

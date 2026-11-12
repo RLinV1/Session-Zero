@@ -194,7 +194,7 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   );
   // GM-only rolls never reach a player, not even as a redacted placeholder (FR-GM-22).
   const rolls = state.rolls.filter((r) => r.visibility === "public").flatMap((r): LoggedRoll[] => {
-    if (!isGroupRoll(r)) return [hideAttackSides(r, state, tokens)];
+    if (!isGroupRoll(r)) return [hideAttackSides(withoutDismissed(r), state, tokens)];
     const visible = groupRollForViewer(r, state, c, viewer);
     return visible ? [visible] : [];
   });
@@ -467,8 +467,13 @@ export function filterEventForViewer(
       if (e.type !== "RollRuled" && target && (target.hidden || hiddenBefore(target.tokenId))) return redacted;
       return pass;
     }
+    case "RollsDismissed":
+    case "RollsRestored":
+      // The GM's Rulings bookkeeping; a player learns only that something happened (ADR 0060).
+      return redacted;
     case "InitiativeStarted":
     case "InitiativeAdvanced":
+    case "InitiativeRewound":
     case "InitiativeStartUndone":
       // The order may name hidden tokens, so the player gets a filtered snapshot instead
       // of the raw event — same reasoning as a reveal.
@@ -638,6 +643,13 @@ function tokenForViewer(token: Token, viewer: Participant, rules: StatRules): To
  * (see `reduce`), so it stays null after a reveal, rename or delete. A token only ever visible,
  * even once deleted, keeps its name, which the player already saw.
  */
+/** Whether the GM took a roll off the Rulings list is the GM's bookkeeping (ADR 0060). */
+function withoutDismissed(roll: DiceRoll): DiceRoll {
+  if (!roll.dismissed) return roll;
+  const { dismissed: _dismissed, ...rest } = roll;
+  return rest;
+}
+
 function hideAttackSides(roll: DiceRoll, state: RoomState, visible: RoomState["tokens"]): DiceRoll {
   if (!roll.attack) return roll;
   // A side whose token still exists but is not in the viewer's tokens is hidden or under fog.

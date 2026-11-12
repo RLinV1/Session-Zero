@@ -7,7 +7,7 @@ import { parseAmount } from "./resolveDraft";
 import { getLocale, t } from "../i18n/locale";
 
 /**
- * What the GM has set for one damage roll so far (ADR 0060). Kept by the caller while the dialog
+ * What the GM has set for one damage roll so far (ADR 0062). Kept by the caller while the dialog
  * is closed, so reopening Resolve brings it back; dropped once the roll is applied. `amount` is
  * kept only once the GM touches it; until then the field shows the rolled damage.
  */
@@ -22,7 +22,7 @@ export const emptyDamageDraft: DamageDraft = { added: [] };
 const rolledDamage = (roll: DiceRoll) => Math.max(0, roll.total);
 
 /**
- * Resolving one attack damage roll (ADR 0060): the same body as the area effect's resolve dialog
+ * Resolving one attack damage roll (ADR 0062): the same body as the area effect's resolve dialog
  * (amount with Half / None, conditions to add), for a single target, with one Confirm. Closing
  * sends nothing; the caller closes it once the roll is applied, from this device or another.
  */

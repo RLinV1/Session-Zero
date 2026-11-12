@@ -1,4 +1,4 @@
-# ADR 0060 — Resolving attack damage with a chosen amount and conditions
+# ADR 0062 — Resolving attack damage with a chosen amount and conditions
 
 **Status:** Proposed — awaiting review by the Real-Time Architecture owner · **Amends:** `docs/adr/0011-attack-rulings.md` (damage) · **Extends:** `docs/adr/0046-area-effects.md`
 **Change:** `openspec/changes/resolve-attack-damage` · **Requirements:** FR-TAC-07, FR-GM-22

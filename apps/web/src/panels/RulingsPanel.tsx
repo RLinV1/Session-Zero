@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "@phosphor-icons/react";
 import { areaEffectStage, attackLabel, formatAttackParties, isActive, type AreaEffect, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { PanelSection } from "../ui/PanelSection";
@@ -11,10 +12,13 @@ import { getLocale, t } from "../i18n/locale";
 
 /**
  * The GM's queue of attack rolls to rule on (attack-rulings, ADR 0011): to-hit rolls waiting for
- * Hit or Miss, and damage rolls waiting to be resolved (ADR 0060). Players roll without asking; the GM rules
+ * Hit or Miss, and damage rolls waiting to be resolved (ADR 0062). Players roll without asking; the GM rules
  * afterwards, and the app never decides for them (README §7). Rendered for the GM only; the
  * server refuses these commands from anyone else regardless.
  */
+/** The busy key for Clear all, which names no single roll. */
+const CLEAR_ALL = "clear-all";
+
 export function RulingsPanel({
   connection,
   state,
@@ -37,7 +41,7 @@ export function RulingsPanel({
   // One request per roll at a time; the server refuses a second apply anyway.
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  // The damage roll whose resolve dialog is open, and what the GM has set per roll (ADR 0060).
+  // The damage roll whose resolve dialog is open, and what the GM has set per roll (ADR 0062).
   const [resolving, setResolving] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Readonly<Record<string, DamageDraft>>>({});
   const damageIds = pending.flatMap((item) => (item.kind === "damage" ? [item.roll.id] : []));
@@ -65,7 +69,21 @@ export function RulingsPanel({
   };
 
   return (
-    <PanelSection id="rulings" title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}>
+    <PanelSection
+      id="rulings"
+      title={count ? t("ruling.title", { n: count }) : t("ruling.titlePlain")}
+      // Every attack roll shown, by id, so one made since isn't swept away; never the area effect (ADR 0060).
+      actions={pending.length > 0 && (
+        <button
+          type="button"
+          className="small secondary"
+          disabled={busy.has(CLEAR_ALL)}
+          onClick={() => send(CLEAR_ALL, { type: "roll.dismiss", rollIds: pending.map((item) => item.roll.id) })}
+        >
+          {t("ruling.clearAll")}
+        </button>
+      )}
+    >
       {count === 0 ? (
         <p className="muted">{t("ruling.nothing")}</p>
       ) : (
@@ -90,6 +108,7 @@ export function RulingsPanel({
               onRule={(verdict) => send(item.roll.id, { type: "roll.rule", rollId: item.roll.id, verdict })}
               onApply={() => send(item.roll.id, { type: "roll.applyDamage", rollId: item.roll.id })}
               onResolve={() => setResolving(item.roll.id)}
+              onIgnore={() => send(item.roll.id, { type: "roll.dismiss", rollIds: [item.roll.id] })}
             />
           ))}
         </ul>
@@ -174,6 +193,7 @@ function RulingRow({
   onRule,
   onApply,
   onResolve,
+  onIgnore,
 }: {
   item: PendingRuling;
   busy: boolean;
@@ -183,6 +203,8 @@ function RulingRow({
   /** Take the roll's full damage off at once, with no dialog. */
   onApply: () => void;
   onResolve: () => void;
+  /** Takes it off the list without ruling; it stays in the roll log (ADR 0060). */
+  onIgnore: () => void;
 }) {
   const { roll } = item;
   // Equal to or above the target's AC points to Hit; below it, to Miss. A hint only: the GM rules.
@@ -206,8 +228,11 @@ function RulingRow({
             ? item.ac === null ? t("ruling.noAc") : t("ruling.ac", { n: item.ac })
             : t("ruling.hp", { hp: `${item.hp}${item.maxHp !== null ? `/${item.maxHp}` : ""}` })}
         </span>
-        {/* Not even disabled: the buttons' names would give the total away. */}
+        {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
         {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} suggested={suggested} onRule={onRule} onApply={onApply} onResolve={onResolve} />}
+        <button type="button" className="icon-button ruling-ignore" disabled={busy} onClick={onIgnore} aria-label={t("ruling.ignoreNamed", { what: description })} title={t("ruling.ignore")}>
+          <X size={14} aria-hidden="true" />
+        </button>
       </span>
     </li>
   );

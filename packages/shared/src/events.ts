@@ -208,6 +208,12 @@ export const DomainEvent = z.discriminatedUnion("type", [
     initiative: Initiative,
     previous: Initiative,
   }),
+  /** The GM stepped the turn back one (ADR 0060). Players receive a filtered snapshot instead. */
+  z.object({
+    type: z.literal("InitiativeRewound"),
+    initiative: Initiative,
+    previous: Initiative,
+  }),
   z.object({
     type: z.literal("InitiativeEnded"),
     previous: Initiative,
@@ -268,8 +274,21 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RollDamageApplied"),
     rollId: Id,
-    /** Negative for a heal (ADR 0060); every event before it is 0 or more. */
+    /** Negative for a heal (ADR 0062); every event before it is 0 or more. */
     amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT),
+  }),
+  /**
+   * The GM took attack rolls off the Rulings list without ruling (ADR 0060). Carries no `previous`:
+   * `decide` admits only rolls that weren't dismissed. GM-only; players receive just the seq.
+   */
+  z.object({
+    type: z.literal("RollsDismissed"),
+    rollIds: z.array(Id).min(1),
+  }),
+  /** Undo of `RollsDismissed` (ADR 0060): the rolls are back on the Rulings list. Only undo emits it. */
+  z.object({
+    type: z.literal("RollsRestored"),
+    rollIds: z.array(Id).min(1),
   }),
   /**
    * The GM detonated a map-wide nuke (ADR 0038). Follows the `TokenStatsSet` for every token it
@@ -354,7 +373,7 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RollDamageUnapplied"),
     rollId: Id,
-    /** Negative for a heal (ADR 0060); every event before it is 0 or more. */
+    /** Negative for a heal (ADR 0062); every event before it is 0 or more. */
     amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT),
   }),
   /**

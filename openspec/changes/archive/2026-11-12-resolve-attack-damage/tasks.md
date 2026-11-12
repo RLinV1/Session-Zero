@@ -2,7 +2,7 @@
 
 ## 1. Contract (ADR first)
 
-- [x] 1.1 Write `docs/adr/0060-resolve-attack-damage.md` (Status: Proposed, amends ADR 0011; Requirements FR-TAC-07, FR-GM-22): `roll.applyDamage` gains optional `amount` and `addConditions`; `RollDamageApplied.amount` allows negatives; no new events. Verify: the file exists and is linked from the change's proposal; request review from the Real-Time Architecture owner.
+- [x] 1.1 Write `docs/adr/0062-resolve-attack-damage.md` (Status: Proposed, amends ADR 0011; Requirements FR-TAC-07, FR-GM-22): `roll.applyDamage` gains optional `amount` and `addConditions`; `RollDamageApplied.amount` allows negatives; no new events. Verify: the file exists and is linked from the change's proposal; request review from the Real-Time Architecture owner.
 - [x] 1.2 In `packages/shared/src/commands.ts`, add `amount` (int, ±`MAX_AREA_AMOUNT`, optional) and `addConditions` (`ConditionId[]`, max 12, default `[]`) to `roll.applyDamage`, `.strict()`. In `events.ts`, relax `RollDamageApplied.amount` / `RollDamageUnapplied.amount` to an int within the same bounds. Verify: `npm run typecheck`, and a schema test that `{ type, rollId }` still parses.
 
 ## 2. Decide

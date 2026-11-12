@@ -37,6 +37,7 @@ export const REVERSIBLE_EVENT_TYPES = [
   "TokenStatsSet",
   "RollRuled",
   "RollDamageApplied",
+  "RollsDismissed", // ADR 0060
   "MapNuked",
   "FogAdded",
   "FogRemoved",
@@ -288,6 +289,8 @@ function inverseOfOne(event: SingleInverse): DomainEvent {
       return { type: "RollRuled", rollId: event.rollId, verdict: event.previous, previous: event.verdict };
     case "RollDamageApplied":
       return { type: "RollDamageUnapplied", rollId: event.rollId, amount: event.amount };
+    case "RollsDismissed":
+      return { type: "RollsRestored", rollIds: event.rollIds };
     case "MapNuked":
       return { type: "MapNukeUndone", amount: event.amount, origin: event.origin, ...(event.animation && { animation: event.animation }) };
     case "FogAdded":
@@ -457,6 +460,11 @@ export function undoConflict(state: RoomState, entry: UndoEntry): MessageRef | n
     // The blast has no value of its own to compare: the stats changes in the same action are checked.
     // Nor does a resolve's closing mark (ADR 0046).
     if (event.type === "MapNuked" || event.type === "AreaEffectResolved") continue;
+    // Rolls that aged out of the log or were ruled since just stay as they are; one still ignored is enough (ADR 0060).
+    if (event.type === "RollsDismissed") {
+      if (!event.rollIds.some((id) => findDiceRoll(state.rolls, id)?.dismissed)) return sharedMsg("undo.rollsSettled");
+      continue;
+    }
     if (!("tokenId" in event)) {
       // Rulings and applications only exist on rolls still in the state window (ADR 0011).
       const roll = findDiceRoll(state.rolls, event.rollId);
@@ -685,6 +693,11 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
   }
   if (first.type === "RollRuled" || first.type === "RollDamageApplied") {
     return { verb: `ruling on ${rollOf(first.rollId)}`, noun: `the ruling on ${rollOf(first.rollId)}` };
+  }
+  if (first.type === "RollsDismissed") {
+    const n = first.rollIds.length;
+    const what = `${n} ignored attack ${n === 1 ? "roll" : "rolls"}`;
+    return { verb: what, noun: `ignoring ${n} attack ${n === 1 ? "roll" : "rolls"}` };
   }
   const name = nameOf(first.tokenId);
   if (entry.events.length > 1) return { verb: `edit ${name}`, noun: `the edit to ${name}` };

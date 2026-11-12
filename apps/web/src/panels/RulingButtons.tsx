@@ -4,7 +4,7 @@ import { t } from "../i18n/locale";
 /**
  * The GM's controls on one attack roll (attack-rulings, attack-ux-polish): Hit and Miss on a
  * to-hit roll; on a damage roll, Apply −N, which takes the full damage off at once, and Resolve,
- * which opens its resolve dialog to choose the amount and conditions (ADR 0060). Full-size
+ * which opens its resolve dialog to choose the amount and conditions (ADR 0062). Full-size
  * buttons: these are the GM's most frequent taps.
  *
  * `suggested` marks the verdict the target's AC points to, in the main button colour. It is only a hint: the GM

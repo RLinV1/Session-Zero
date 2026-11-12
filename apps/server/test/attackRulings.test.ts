@@ -118,7 +118,7 @@ describe("GM rulings over the wire (FR-TAC-09, FR-GM-22, FR-GM-23, ADR 0011)", (
   });
 });
 
-describe("resolving attack damage over the wire (FR-TAC-07, ADR 0060)", () => {
+describe("resolving attack damage over the wire (FR-TAC-07, ADR 0062)", () => {
   it("applies the GM's half damage and a condition, and players see both on a visible token", async () => {
     const { gm, alice, bob, aria, goblin } = await setup();
     const rolled = await alice.command({ type: "dice.roll", expression: "1d8+3", attack: { actorTokenId: aria.id, targetTokenId: goblin.id, kind: "damage" } });

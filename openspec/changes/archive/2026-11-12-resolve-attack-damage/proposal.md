@@ -29,5 +29,5 @@ An attack's damage roll can only be applied in full. **Apply −N** lowers the t
 - **`packages/shared`:** `commands.ts` (`roll.applyDamage` fields), `decide.ts` (amount and conditions, conditions-off refusal), `activityLog.ts`; tests in `attackRulings.test.ts`, `undo.test.ts`, `gamePresets.test.ts`.
 - **`apps/web`:** `panels/RulingButtons.tsx`, `panels/RulingsPanel.tsx`, the resolve dialog (shared body extracted from `panels/ResolveDialog.tsx`), i18n strings in English and zh-TW.
 - **`apps/server`:** an integration test that a resolve with conditions on a hidden target reaches players only as the existing filters allow.
-- **Docs:** a new ADR, [`docs/adr/0060-resolve-attack-damage.md`](../../../docs/adr/0060-resolve-attack-damage.md), amending ADR 0011 (attack rulings), since an existing command schema changes; needs review by the Real-Time Architecture owner.
+- **Docs:** a new ADR, [`docs/adr/0062-resolve-attack-damage.md`](../../../docs/adr/0062-resolve-attack-damage.md), amending ADR 0011 (attack rulings), since an existing command schema changes; needs review by the Real-Time Architecture owner.
 - **Visibility:** unchanged rules. `RollDamageApplied` still names no token, and HP and condition changes on hidden targets are withheld as today.

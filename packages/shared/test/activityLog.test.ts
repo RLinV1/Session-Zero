@@ -54,6 +54,7 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     InitiativeStarted: [{ type: "InitiativeStarted", initiative, previous: null }, "Mara started initiative: Goblin"],
     InitiativeAdvanced: [{ type: "InitiativeAdvanced", initiative: { ...initiative, round: 2 }, previous: initiative }, "Mara advanced to round 2, Goblin's turn"],
     InitiativeEnded: [{ type: "InitiativeEnded", previous: initiative }, "Mara ended initiative"],
+    InitiativeRewound: [{ type: "InitiativeRewound", initiative, previous: { ...initiative, round: 2 } }, "Mara stepped the turn back to round 1, Goblin's turn"],
     InitiativeStartUndone: [{ type: "InitiativeStartUndone", initiative: null, previous: initiative, scores: [] }, "Mara took back the start of initiative"],
     GroupCreated: [{ type: "GroupCreated", group: { id: "g1", name: "Gate guards" } }, 'Mara created group "Gate guards"'],
     GroupRenamed: [{ type: "GroupRenamed", groupId: "g1", name: "Patrol", previous: "Gate guards" }, 'Mara renamed group "Gate guards" to "Patrol"'],
@@ -92,6 +93,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     MapNuked: [{ type: "MapNuked", amount: 12, origin: { x: 50, y: 50 } }, "Mara detonated a nuke (12 damage)"],
     MapNukeUndone: [{ type: "MapNukeUndone", amount: 12, origin: { x: 50, y: 50 } }, "Mara took back a nuke (12 damage)"],
     RollDamageUnapplied: [{ type: "RollDamageUnapplied", rollId: "gone", amount: 7 }, "Mara took back 7 damage from an earlier roll"],
+    RollsDismissed: [{ type: "RollsDismissed", rollIds: ["a", "b"] }, "Mara ignored 2 attack rolls on the Rulings list"],
+    RollsRestored: [{ type: "RollsRestored", rollIds: ["a"] }, "Mara put 1 attack roll back on the Rulings list"],
     ChatMessageSent: [{ type: "ChatMessageSent", message: { id: "m1", senderId: alice.id, senderName: "Alice", text: "Watch the door" } }, "Mara said: Watch the door"],
     // An action no longer in the undo history; undo.test.ts covers the named form (ADR 0013).
     FogAdded: [{ type: "FogAdded", region: fogRect }, "Mara added a fog rectangle"],

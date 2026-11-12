@@ -161,15 +161,17 @@ describe("attacks load the board's renderer only near the viewport (gm-home: The
 });
 
 describe("turn order runs the table's rules (gm-home, FR-GM-21)", () => {
-  it("advances with Next turn through decide, and gives Mara's player the table's turn notice", () => {
+  it("advances with Next turn through decide, and gives Mara's player the table's turn banner", () => {
     render(<TurnTile />);
     const active = () => document.querySelector(".turn-order [aria-current='true'] .turn-name")!.textContent;
     expect(active()).toBe("Goblin boss");
-    expect(screen.queryByText(/turn\.$/)).toBeNull();
+    expect(document.querySelector(".turn-banner")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next turn" }));
     expect(active()).toBe("Mara");
-    expect(document.querySelector(".turn-notice")!.textContent).toContain("It's Mara's turn.");
-    fireEvent.click(screen.getByRole("button", { name: "Next turn" }));
+    expect(document.querySelector(".turn-banner")!.textContent).toContain("It's Mara's turn · Round 1");
+    // End turn in the banner hands the turn on, as Next turn does.
+    fireEvent.click(screen.getByRole("button", { name: "End Mara's turn" }));
+    expect(document.querySelector(".turn-banner")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next turn" }));
     fireEvent.click(screen.getByRole("button", { name: "Next turn" }));
     expect(active()).toBe("Goblin boss");

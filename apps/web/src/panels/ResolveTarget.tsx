@@ -12,7 +12,7 @@ export interface ResolveResult {
 }
 
 /**
- * The results a resolve dialog shows beside the target's name (ADR 0046, ADR 0060): the rolls,
+ * The results a resolve dialog shows beside the target's name (ADR 0046, ADR 0062): the rolls,
  * then the token's HP and Max HP, so they never scroll out of view. Shared by the area effect and
  * attack damage dialogs so the two read alike.
  */
