@@ -169,12 +169,49 @@ export function* placementCandidates(
   }
 }
 
+/** Something with a footprint: a token, or where one would go. */
+export interface Footprint { position: Point; size: number }
+
+/**
+ * Whether two square footprints share any area (token-no-stacking): both axis distances under the
+ * summed half-sides. Sharing only an edge or a corner is not overlap.
+ */
+export function footprintsOverlap(a: Footprint, b: Footprint, grid: GridSpec): boolean {
+  const reach = ((a.size + b.size) * grid.cellSize) / 2;
+  return Math.abs(a.position.x - b.position.x) < reach && Math.abs(a.position.y - b.position.y) < reach;
+}
+
+/** A token at 0 HP or below is down (downed-token-marker); a token with no HP never is. */
+export function isDowned(token: { stats: { hp: number | null } }): boolean {
+  return token.stats.hp !== null && token.stats.hp <= 0;
+}
+
+/** The tokens that occupy their squares: every one but the downed (token-no-stacking). */
+export function occupyingTokens<T extends Footprint & { stats: { hp: number | null } }>(tokens: Iterable<T>): T[] {
+  return [...tokens].filter((t) => !isDowned(t));
+}
+
+/**
+ * Whether a token of `size` at `at` would overlap a token that occupies its squares, other than
+ * the one with id `exceptId` (token-no-stacking).
+ */
+export function overlapsToken(
+  tokens: Record<string, Footprint & { id: string; stats: { hp: number | null } }>,
+  at: Point,
+  size: number,
+  grid: GridSpec,
+  exceptId?: string,
+): boolean {
+  return occupyingTokens(Object.values(tokens)).some((t) => t.id !== exceptId && footprintsOverlap(t, { position: at, size }, grid));
+}
+
 /**
  * Where `count` tokens of `sizeInCells` go when placed together on `origin` (KAN-70): the first on
  * `origin`, the rest on the nearest free spots, ring by ring outward in a fixed order (row by row
  * within a ring), one footprint apart. A spot is free when its footprint overlaps no token in
  * `occupied` (or an earlier copy), whatever their size, and its whole footprint lies on the map
- * when there is one. When space or the search budget runs out, remaining copies share `origin`. Pure, so
+ * when there is one. When space or the search budget runs out, remaining copies share `origin`, or
+ * with `shareOrigin` false are left out. Pure, so
  * `decide` can call it.
  */
 export function spreadPositions(
@@ -186,22 +223,23 @@ export function spreadPositions(
   occupied: readonly { position: Point; size: number }[],
   /** Spots a copy may not take, e.g. a footprint crossing a wall (ADR 0029). Never asked of `origin`. */
   blocked: (p: Point) => boolean = () => false,
+  /** Whether copies that find no free spot share `origin`; without it the result is just shorter. */
+  shareOrigin = true,
 ): Point[] {
   const step = sizeInCells * grid.cellSize;
-  const taken = occupied.map((o) => ({ p: o.position, half: (o.size * grid.cellSize) / 2 }));
-  // Footprints are squares; they overlap when both axis distances are under the summed half-sides.
-  const free = (p: Point) => !taken.some((o) => Math.abs(o.p.x - p.x) < o.half + step / 2 && Math.abs(o.p.y - p.y) < o.half + step / 2);
+  const taken = occupied.map((o) => ({ position: o.position, size: o.size }));
+  const free = (p: Point) => !taken.some((o) => footprintsOverlap(o, { position: p, size: sizeInCells }, grid));
   const onMap = (p: Point) =>
     !map || (p.x - step / 2 >= 0 && p.y - step / 2 >= 0 && p.x + step / 2 <= map.width && p.y + step / 2 <= map.height);
   const out: Point[] = [origin];
-  taken.push({ p: origin, half: step / 2 });
+  taken.push({ position: origin, size: sizeInCells });
   for (const p of placementCandidates(origin, step, map)) {
     if (out.length >= count) break;
     if (!onMap(p) || !free(p) || blocked(p)) continue;
     out.push(p);
-    taken.push({ p, half: step / 2 });
+    taken.push({ position: p, size: sizeInCells });
   }
-  while (out.length < count) out.push(origin);
+  while (shareOrigin && out.length < count) out.push(origin);
   return out;
 }
 
@@ -255,16 +293,71 @@ export function segmentCrossesRect(s: Segment, rect: { minX: number; minY: numbe
 }
 
 /**
- * Share of a token's width trimmed from each side before testing it against walls (ADR 0029), so
- * a token may stand in the cell beside a wall drawn along the cell's edge.
+ * Radius of the clearance circle walls are tested against, as a share of a grid square (ADR 0063):
+ * the circle is a tenth of a square across, whatever the token's size.
  */
-export const WALL_FOOTPRINT_INSET = 0.1;
+export const WALL_CLEARANCE = 0.05;
 
-/** Whether any wall crosses the footprint of a token of `sizeInCells` centred on `center`. */
-export function footprintCrossesWall(center: Point, sizeInCells: number, grid: GridSpec, walls: Iterable<Segment>): boolean {
-  const half = (sizeInCells * grid.cellSize / 2) * (1 - 2 * WALL_FOOTPRINT_INSET);
-  const rect = { minX: center.x - half, minY: center.y - half, maxX: center.x + half, maxY: center.y + half };
-  for (const wall of walls) if (segmentCrossesRect(wall, rect)) return true;
+/** The shortest distance from `p` to the segment `s`. */
+export function distanceToSegment(p: Point, s: Segment): number {
+  const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 > 0 ? Math.max(0, Math.min(1, ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / length2)) : 0;
+  return Math.hypot(p.x - (s.a.x + t * dx), p.y - (s.a.y + t * dy));
+}
+
+/** The shortest distance between two segments: 0 when they cross or touch. */
+export function segmentDistance(p: Segment, q: Segment): number {
+  if (segmentsCross(p, q)) return 0;
+  return Math.min(distanceToSegment(p.a, q), distanceToSegment(p.b, q), distanceToSegment(q.a, p), distanceToSegment(q.b, p));
+}
+
+/**
+ * Offsets from a token's center to the points walls are tested at (ADR 0063): the center for a
+ * token of a square or less; otherwise `ceil(size)` per side, evenly spread with the outermost half
+ * a square inside its edge, which for a whole size are the centers of the squares it covers.
+ */
+export function clearanceOffsets(sizeInCells: number, grid: GridSpec): Point[] {
+  if (sizeInCells <= 1) return [{ x: 0, y: 0 }];
+  const n = Math.ceil(sizeInCells);
+  const along = Array.from({ length: n }, (_, i) => (-(sizeInCells - 1) / 2 + (i * (sizeInCells - 1)) / (n - 1)) * grid.cellSize);
+  return along.flatMap((y) => along.map((x) => ({ x, y })));
+}
+
+/** The points walls are tested at for a token of `sizeInCells` centred on `center` (ADR 0063). */
+export function clearancePoints(center: Point, sizeInCells: number, grid: GridSpec): Point[] {
+  return clearanceOffsets(sizeInCells, grid).map((o) => ({ x: center.x + o.x, y: center.y + o.y }));
+}
+
+/** Whether the segment's bounding box comes within `pad` of the box spanned by `a` and `b`. */
+function nearBox(s: Segment, a: Point, b: Point, pad: number): boolean {
+  return Math.max(s.a.x, s.b.x) >= Math.min(a.x, b.x) - pad && Math.min(s.a.x, s.b.x) <= Math.max(a.x, b.x) + pad &&
+    Math.max(s.a.y, s.b.y) >= Math.min(a.y, b.y) - pad && Math.min(s.a.y, s.b.y) <= Math.max(a.y, b.y) + pad;
+}
+
+/**
+ * Whether a wall touches the clearance circle at any of the sample points of a token of
+ * `sizeInCells` centred on `center` (ADR 0063): where it may not stand.
+ */
+export function clearanceTouchesWall(center: Point, sizeInCells: number, grid: GridSpec, walls: Iterable<Segment>): boolean {
+  return clearanceSweepTouchesWall(center, center, sizeInCells, grid, walls);
+}
+
+/**
+ * Whether the clearance circle at any sample point, moved in a straight line with the token from
+ * `from` to `to`, touches a wall (ADR 0063).
+ */
+export function clearanceSweepTouchesWall(from: Point, to: Point, sizeInCells: number, grid: GridSpec, walls: Iterable<Segment>): boolean {
+  const r = WALL_CLEARANCE * grid.cellSize;
+  const offsets = clearanceOffsets(sizeInCells, grid);
+  const reach = Math.max(sizeInCells - 1, 0) * grid.cellSize / 2 + r;
+  for (const wall of walls) {
+    if (!nearBox(wall, from, to, reach)) continue;
+    for (const o of offsets) {
+      const a = { x: from.x + o.x, y: from.y + o.y }, b = { x: to.x + o.x, y: to.y + o.y };
+      if (segmentDistance({ a, b }, wall) <= r) return true;
+    }
+  }
   return false;
 }
 

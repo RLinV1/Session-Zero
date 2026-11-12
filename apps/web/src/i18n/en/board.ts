@@ -17,6 +17,7 @@ export const board = {
   "board.gmOnlyAreaHint": "Drag to size and aim · click to place the chosen size · GM only: players won't see these areas",
   "board.token": "Token",
   "board.aToken": "a token",
+  "board.squareOccupied": "Another token is already there.",
   "board.placedSaid": ({ name, n }: { name: string; n: number }) => `${name} placed, ${n} so far.`,
   "board.cursorSaid": ({ name, square }: { name: string; square: string }) => `${name} at ${square}.`,
   "board.cursorEdge": ({ name, square }: { name: string; square: string }) => `${name} at ${square}, the edge of the map.`,

@@ -410,6 +410,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         else if (result.ok) setRefusal(null);
         return result.ok;
       },
+      dropRefused: (message) => setRefusal({ message, at: Date.now() }),
       dragPreview: (tokenId, at) => guarded.preview(`drag:${tokenId}`, { type: "tokenDragPreview", tokenId, at }),
       requestMovementPreview: (request) => guarded.preview("movement-feedback", request, 100),
       dragEnd: (tokenId, at) => { guarded.endPreview("movement-feedback", null); guarded.endPreview(`drag:${tokenId}`, at && { type: "tokenDragPreview", tokenId, at }); },

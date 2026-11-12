@@ -89,7 +89,7 @@ describe("committed channel", () => {
   it("assigns gap-free, strictly increasing seqs to concurrent commands (FR-SYNC-04)", async () => {
     const { gm, alice, bob } = await setup();
     await gm.command({ type: "token.create", name: "A", position: { x: 0, y: 0 }, ownerIds: [alice.participantId] });
-    await gm.command({ type: "token.create", name: "B", position: { x: 0, y: 0 }, ownerIds: [bob.participantId] });
+    await gm.command({ type: "token.create", name: "B", position: { x: 105, y: 35 }, ownerIds: [bob.participantId] });
     await Promise.all([alice.waitForSeq(gm.seq), bob.waitForSeq(gm.seq)]);
     const a = tokens(alice).find((t) => t.name === "A")!;
     const b = tokens(bob).find((t) => t.name === "B")!;
@@ -415,8 +415,8 @@ describe("unique display names (KAN-61)", () => {
 describe("unique token names (KAN-62)", () => {
   it("numbers two concurrent creates of the same name instead of duplicating it", async () => {
     const { gm, alice } = await setup();
-    const goblin = { type: "token.create" as const, name: "Goblin", position: { x: 0, y: 0 } };
-    const results = await Promise.all([gm.command(goblin), gm.command(goblin)]);
+    const goblin = (x: number) => ({ type: "token.create" as const, name: "Goblin", position: { x, y: 35 } });
+    const results = await Promise.all([gm.command(goblin(35)), gm.command(goblin(105))]);
     expect(results.map((r) => r.type)).toEqual(["ack", "ack"]);
 
     await alice.waitForSeq(gm.seq);

@@ -32,6 +32,8 @@ Two constraints shape the contract:
 
 ### Blocking
 
+> Amended by `docs/adr/0063-token-wall-clearance.md`: walls are tested against a small clearance circle at each of a token's sample points, not the inset footprint below.
+
 - **Footprint.** The footprint is the token's square inset by 10% on each side. Creating, moving or repositioning a token so that a wall crosses its footprint is `invalid` ("That spot is blocked by a wall."), for everyone. The inset lets a token stand beside a wall drawn on a cell edge.
 - **Crossing.** A player's `token.move` whose straight path crosses a wall is `invalid` ("A wall is in the way."). The GM is exempt from this check, so detection noise never strands a token.
 - **Exemptions.** Grid re-snaps and resizes are not checked.

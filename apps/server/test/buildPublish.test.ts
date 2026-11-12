@@ -277,7 +277,7 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
     const file = JSON.stringify({
       format: 0.3, image: (await png(400, 300)).toString("base64"),
       resolution: { pixels_per_grid: 50, map_size: { x: 8, y: 6 }, map_origin: { x: 0, y: 0 } },
-      line_of_sight: [[{ x: 1, y: 0 }, { x: 1, y: 6 }]], portals: [],
+      line_of_sight: [[{ x: 1.5, y: 0 }, { x: 1.5, y: 6 }]], portals: [],
     });
     const fileId = await upload(pass, "uvtt", "crypt.uvtt", file);
     await withPass(pass, "POST", "/api/build/current/maps", { key: "cave", name: "Crypt", fileId });

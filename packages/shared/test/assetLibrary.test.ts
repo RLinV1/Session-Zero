@@ -92,14 +92,14 @@ describe("library tokens (asset-library)", () => {
 describe("referencedAssetIds (asset-library: Warn before deleting an asset in use)", () => {
   it("collects the map and every token, hidden ones included", () => {
     let s = run(baseRoom(), gm, { type: "scene.setMap", map: libraryMap }).state;
-    s = run(s, gm, { type: "token.create", name: "A", position: { x: 0, y: 0 }, assetId: "asset-a" }).state;
-    s = run(s, gm, { type: "token.create", name: "B", position: { x: 0, y: 0 }, assetId: "asset-b", hidden: true }).state;
-    s = run(s, gm, { type: "token.create", name: "Plain", position: { x: 0, y: 0 } }).state;
+    s = run(s, gm, { type: "token.create", name: "A", position: { x: 35, y: 35 }, assetId: "asset-a" }).state;
+    s = run(s, gm, { type: "token.create", name: "B", position: { x: 105, y: 35 }, assetId: "asset-b", hidden: true }).state;
+    s = run(s, gm, { type: "token.create", name: "Plain", position: { x: 175, y: 35 } }).state;
     expect([...referencedAssetIds(s)].sort()).toEqual(["asset-a", "asset-b", "asset-map"]);
   });
 
   it("drops an asset once its only token is deleted", () => {
-    const s = run(baseRoom(), gm, { type: "token.create", name: "A", position: { x: 0, y: 0 }, assetId: "asset-a" }).state;
+    const s = run(baseRoom(), gm, { type: "token.create", name: "A", position: { x: 35, y: 35 }, assetId: "asset-a" }).state;
     const token = Object.values(s.tokens)[0]!;
     const after = run(s, gm, { type: "token.delete", tokenId: token.id }).state;
     expect(referencedAssetIds(after).size).toBe(0);

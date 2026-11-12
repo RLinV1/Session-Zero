@@ -209,8 +209,8 @@ describe("condition effects (KAN-76, FR-TAC-08)", () => {
   it("styles the art: invisible fades, prone tilts, unconscious greys", () => {
     expect(artStyleFor(["invisible"], false).alpha).toBeLessThan(0.5);
     expect(artStyleFor(["prone"], false).tilt).toBe(70);
-    expect(artStyleFor(["unconscious"], false).greyscale).toBe(true);
-    expect(artStyleFor([], false)).toEqual({ alpha: 1, tilt: 0, squash: 1, greyscale: false, tremble: 0 });
+    expect(artStyleFor(["unconscious"], false).grey).toBe(0.6);
+    expect(artStyleFor([], false)).toEqual({ alpha: 1, tilt: 0, squash: 1, grey: 0, tremble: 0 });
     expect(artStyleFor(["stunned", "prone"], false).tilt).toBe(70);
   });
 

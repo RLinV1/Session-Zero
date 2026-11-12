@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Command, Terrain, englishText, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, sweptCrossesWalls, tableOf, terrainCellKnown, undoConflict, type CommandInput, type MovementPreviewRequest, type RoomState, type TerrainRun, type Token } from "../src";
+import { Command, Terrain, englishText, TerrainRuns, cellRect, effectiveTerrain, emptyTerrain, filterEventForViewer, filterStateForViewer, isReversible, inverseOf, movementFeedbackForViewer, movementTerrain, paintTerrain, reduce, reduceCommitted, sweptCrossesPolygon, clearanceSweepTouchesWall, tableOf, terrainCellKnown, undoConflict, type CommandInput, type MovementPreviewRequest, type RoomState, type TerrainRun, type Token } from "../src";
 import { alice, attempt, baseRoom, gm, run, withToken } from "./fixtures";
 const grid = { cellSize: 10, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" };
 const one = (kind: "blocked" | "difficult", col = 1, row = 0): TerrainRun[] => [{ row, start: col, end: col, kind }];
@@ -126,9 +126,9 @@ describe("terrain geometry (FR-TAC-03, FR-PL-04)", () => {
     expect(movementTerrain({ x: 5, y: 15 }, { x: 25, y: 15 }, 1, grid, one("difficult")).cost).toBe(10);
     expect(movementTerrain({ x: 5, y: 5 }, { x: 25, y: 25 }, 2, grid, one("blocked", 2, 0)).blocked).toBe(true);
   });
-  it("catches swept sides at walls with centre path clear", () => {
-    expect(sweptCrossesWalls({ x: 5, y: 5 }, { x: 35, y: 5 }, 2, grid, [{ a: { x: 20, y: 9 }, b: { x: 20, y: 20 } }])).toBe(true);
-    expect(sweptCrossesWalls({ x: 5, y: 5 }, { x: 35, y: 5 }, 1, grid, [{ a: { x: 20, y: 10 }, b: { x: 20, y: 20 } }])).toBe(false);
+  it("catches a large token's off-centre sample points at walls with the centre path clear (ADR 0063)", () => {
+    expect(clearanceSweepTouchesWall({ x: 5, y: 5 }, { x: 35, y: 5 }, 2, grid, [{ a: { x: 20, y: 9 }, b: { x: 20, y: 20 } }])).toBe(true);
+    expect(clearanceSweepTouchesWall({ x: 5, y: 5 }, { x: 35, y: 5 }, 1, grid, [{ a: { x: 20, y: 10 }, b: { x: 20, y: 20 } }])).toBe(false);
   });
   it("catches a thin fog polygon between clear endpoints and handles concavity", () => {
     const fog = [{ x: 19, y: 0 }, { x: 19.1, y: 0 }, { x: 19.1, y: 10 }, { x: 19, y: 10 }];

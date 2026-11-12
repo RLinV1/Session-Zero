@@ -12,7 +12,7 @@ import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaE
 import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type DiceRoll, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
 import { encounterTable, sameMapAndGrid, type ResolvedEncounter } from "./encounters";
-import { footprintCrossesWall, isSnapped, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
+import { clearanceTouchesWall, isSnapped, occupyingTokens, overlapsToken, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
 import { canRenderGrid } from "./gridRenderLimit";
 import { adjustMapTokens } from "./mapTokenAdjustment";
 import { libraryBoardProblem, type ResolvedLibraryMap } from "./libraryBoard";
@@ -134,6 +134,7 @@ const samePortal = (a: Portal | null, b: Portal | null) => a?.kind === b?.kind &
 
 /** The same words for every viewer, so a refusal tells a player nothing about walls they can't see. */
 const wallBlocked = (): Decision => reject("invalid", sharedMsg("reject.wallBlocked"));
+const squareOccupied = (): Decision => reject("invalid", sharedMsg("reject.squareOccupied"));
 
 /**
  * Where a token goes when its size changes (KAN-74): a grid-aligned token keeps its top-left
@@ -343,7 +344,8 @@ export function decide(
         return reject("invalid", sharedMsg("reject.hpOverMax"));
       }
       if (new Set(command.conditions).size !== command.conditions.length) return reject("invalid", sharedMsg("reject.conditionTwice"));
-      if (footprintCrossesWall(command.position, command.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
+      if (clearanceTouchesWall(command.position, command.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
+      if (overlapsToken(state.tokens, command.position, command.size, state.scene.grid)) return squareOccupied();
       if (command.groupId !== undefined && !state.groups[command.groupId]) return notFound("group");
       const made = createTokens(state, {
         name: command.name,
@@ -372,7 +374,8 @@ export function decide(
       const { id: _id, initiative: _initiative, ...copy } = original;
       // At the GM's chosen square, as token.create places (ADR 0033); otherwise beside the
       // original, never on it: its own square is the first spot the spread offers.
-      if (command.position && footprintCrossesWall(command.position, copy.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
+      if (command.position && clearanceTouchesWall(command.position, copy.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
+      if (command.position && overlapsToken(state.tokens, command.position, copy.size, state.scene.grid)) return squareOccupied();
       const created = command.position
         ? createTokens(state, { ...copy, position: command.position }, command.count, ctx)
         : createTokens(state, copy, command.count, ctx, { besideOrigin: true });
@@ -1518,12 +1521,16 @@ function createTokens(
 ): Decision {
   const spread = spreadPositions(
     base.position, base.size, besideOrigin ? count + 1 : count, state.scene.grid, state.scene.map,
-    Object.values(state.tokens).map((t) => ({ position: t.position, size: t.size })),
+    // Downed tokens don't occupy their squares (token-no-stacking).
+    occupyingTokens(Object.values(state.tokens)),
     // No copy lands across a wall (ADR 0029).
-    (p) => footprintCrossesWall(p, base.size, state.scene.grid, blockingWalls(state)),
+    (p) => clearanceTouchesWall(p, base.size, state.scene.grid, blockingWalls(state)),
+    // Copies never stack: too few empty squares refuses the whole command (token-no-stacking).
+    false,
   );
   const positions = besideOrigin ? spread.slice(1) : spread;
-  if (positions.some((p) => footprintCrossesWall(p, base.size, state.scene.grid, blockingWalls(state)))) return wallBlocked();
+  if (positions.length < count) return reject("invalid", sharedMsg("reject.noEmptySquare"));
+  if (positions.some((p) => clearanceTouchesWall(p, base.size, state.scene.grid, blockingWalls(state)))) return wallBlocked();
   let named = state;
   return accept(...positions.map((position) => {
     // Duplicates are numbered, not rejected: placing five goblins is routine (KAN-62).

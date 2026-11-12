@@ -38,8 +38,9 @@ async function setup(first = false) {
   if (!first) await ok(gm, { type: "scene.setMap", map: oldMap, grid });
   await ok(gm, { type: "token.create", name: "Hero", position: { x: 241, y: 161 }, ownerIds: [alice.participantId] });
   await ok(gm, { type: "token.create", name: "Secret dragon", position: { x: 877.123, y: 733.456 }, size: 2, hidden: true });
-  await ok(gm, { type: "token.create", name: "Foe", position: { x: 240, y: 160 } });
-  await ok(gm, { type: "token.create", name: "Ally", position: { x: 260, y: 180 }, ownerIds: [alice.participantId] });
+  // Squares apart, so they don't stack (token-no-stacking): 20 px with the map's grid, 70 px without a map.
+  await ok(gm, { type: "token.create", name: "Foe", position: first ? { x: 340, y: 160 } : { x: 270, y: 160 } });
+  await ok(gm, { type: "token.create", name: "Ally", position: first ? { x: 241, y: 240 } : { x: 241, y: 190 }, ownerIds: [alice.participantId] });
   const id = (name: string) => Object.values(gm.state.tokens).find((t) => t.name === name)!.id;
   const hero = id("Hero"), secret = id("Secret dragon"), foe = id("Foe"), ally = id("Ally");
   if (!first) {

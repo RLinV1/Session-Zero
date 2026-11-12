@@ -20,7 +20,7 @@ describe("portal scene application and undo (FR-GM-06/09, FR-REC-02, FR-GM-23)",
     const edited = act(state, { type: "wall.update", wall: { ...wall, uvttPortal: { ...wall.uvttPortal, closed: false } } });
     expect(edited.events).toEqual([{ type: "WallUpdated", wall: { ...wall, uvttPortal: { ...wall.uvttPortal, closed: false } }, previous: wall }]);
     expect(decide(edited.state, alice, Command.parse({ type: "token.move", tokenId, to: { x: 175, y: 105 } }), ctx).ok).toBe(true);
-    expect(decide(edited.state, gm, Command.parse({ type: "token.create", name: "Across", position: { x: 140, y: 105 } }), ctx).ok).toBe(true);
+    expect(decide(edited.state, gm, Command.parse({ type: "token.create", name: "Across", position: { x: 140, y: 175 } }), ctx).ok).toBe(true);
     expect(decide(state, alice, Command.parse({ type: "wall.update", wall }), ctx)).toMatchObject({ ok: false, code: "forbidden" });
     expect(act(edited.state, { type: "history.undo", commandId: "edit" }).state.walls).toEqual(state.walls);
   });

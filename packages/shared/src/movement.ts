@@ -1,10 +1,10 @@
-import { cellAt, footprintCrossesWall, type GridSpec, type Point, type Segment } from "./geometry";
+import { cellAt, clearanceSweepTouchesWall, clearanceTouchesWall, type GridSpec, type Point, type Segment } from "./geometry";
 import { blocksMovement } from "./portals";
-import { effectiveTerrain, emptyTerrain, movementTerrain, sweptCrossesWalls, terrainCells, type TerrainKind, type TerrainRun } from "./terrain";
+import { effectiveTerrain, emptyTerrain, movementTerrain, terrainCells, type TerrainKind, type TerrainRun } from "./terrain";
 import { diagonalRuleOf, difficultTerrainOf, type DiagonalRule, type DifficultTerrainMode, type RoomState, type Token, type Wall } from "./state";
 
 function footprintBlocked(grid: GridSpec, walls: Wall[], terrain: TerrainRun[], size: number, to: Point): boolean {
-  return footprintCrossesWall(to, size, grid, walls) || movementTerrain(to, to, size, grid, terrain).blocked;
+  return clearanceTouchesWall(to, size, grid, walls) || movementTerrain(to, to, size, grid, terrain).blocked;
 }
 
 /** A resize or Reposition must end clear of physical obstructions, regardless of its origin. */
@@ -28,8 +28,8 @@ export function movementBlocked(state: RoomState, token: Token, to: Point, repos
   if (footprintBlocked(grid, walls, terrain, token.size, to)) return true;
   if (reposition) return false;
   if (movementTerrain(token.position, to, token.size, grid, terrain).blocked) return true;
-  const ahead = walls.filter((w) => !footprintCrossesWall(token.position, token.size, grid, [w]));
-  return sweptCrossesWalls(token.position, to, token.size, grid, ahead);
+  const ahead = walls.filter((w) => !clearanceTouchesWall(token.position, token.size, grid, [w]));
+  return clearanceSweepTouchesWall(token.position, to, token.size, grid, ahead);
 }
 
 /** The room's movement rules a step is costed under (ADR 0055). */
@@ -190,8 +190,8 @@ export function cheapestPath(from: Point, to: Point, size: number, grid: GridSpe
       const walls = near(min, max);
       if (walls.length) {
         const pa = centre(a), pb = centre(b);
-        const ahead = walls.filter((w) => !footprintCrossesWall(pa, size, grid, [w]));
-        ok = !footprintCrossesWall(pb, size, grid, walls) && !sweptCrossesWalls(pa, pb, size, grid, ahead);
+        const ahead = walls.filter((w) => !clearanceTouchesWall(pa, size, grid, [w]));
+        ok = !clearanceTouchesWall(pb, size, grid, walls) && !clearanceSweepTouchesWall(pa, pb, size, grid, ahead);
       }
     }
     passable.set(key, ok);

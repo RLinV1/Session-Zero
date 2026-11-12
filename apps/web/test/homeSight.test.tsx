@@ -39,8 +39,9 @@ describe("the home page's line of sight runs the table's rules (gm-home, FR-GM-1
 
   it("refuses a move onto a wall, as the table refuses a player's", () => {
     const walls = cropWalls("sun-tomb", "movement");
-    // Row 4 is the hall's north wall.
-    expect(moveTo(walls, squareCenter(16, 5), squareCenter(16, 4))).toEqual({ at: squareCenter(16, 5), refused: "wall" });
+    // The hall's north wall runs through row 4 above its centres: a token may step up to them, no further (ADR 0063).
+    expect(moveTo(walls, squareCenter(16, 5), squareCenter(16, 4))).toEqual({ at: squareCenter(16, 4), refused: null });
+    expect(moveTo(walls, squareCenter(16, 4), squareCenter(16, 3))).toEqual({ at: squareCenter(16, 4), refused: "wall" });
     expect(moveTo(walls, squareCenter(16, 5), squareCenter(16, 6))).toEqual({ at: squareCenter(16, 6), refused: null });
   });
 });
@@ -58,9 +59,12 @@ describe("the line-of-sight stage (gm-home: Line of sight is operable, Visibilit
 
   it("says so when a wall stops the move, and stays put", () => {
     render(<SightStage />);
-    fireEvent.keyDown(lead(), { key: "ArrowUp" }); // (16, 4) is the hall's north wall
+    fireEvent.keyDown(lead(), { key: "ArrowUp" }); // (16, 4): the hall's north wall passes above its centre
+    const top = parseFloat(lead().style.top);
+    fireEvent.keyDown(lead(), { key: "ArrowUp" }); // (16, 3) is behind the wall
     expect(screen.getByRole("status").textContent).toBe("A wall is in the way.");
     expect(parseFloat(lead().style.left)).toBeCloseTo(82.5, 6);
+    expect(parseFloat(lead().style.top)).toBe(top);
   });
 
   it("dims the map outside sight with the board's own darkness for that map, and only in the player view", () => {

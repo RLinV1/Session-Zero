@@ -8,8 +8,8 @@ const commit = (seq: number, event: CommittedEvent["event"]): CommittedEvent => 
 
 describe("player-safe filtering (FR-GM-23)", () => {
   const room = () => {
-    let s = run(baseRoom(), gm, { type: "token.create", name: "Visible", position: { x: 0, y: 0 } }).state;
-    s = run(s, gm, { type: "token.create", name: "Hidden", position: { x: 0, y: 0 }, hidden: true }).state;
+    let s = run(baseRoom(), gm, { type: "token.create", name: "Visible", position: { x: 35, y: 35 } }).state;
+    s = run(s, gm, { type: "token.create", name: "Hidden", position: { x: 105, y: 35 }, hidden: true }).state;
     return s;
   };
 
@@ -85,7 +85,7 @@ describe("initiative visibility (FR-GM-21, FR-GM-23)", () => {
     });
     s = visible.state;
     const secret = run(s, gm, {
-      type: "token.create", name: "Ambusher", position: { x: 1, y: 1 }, ownerIds: [], hidden: true,
+      type: "token.create", name: "Ambusher", position: { x: 105, y: 105 }, ownerIds: [], hidden: true,
     });
     s = secret.state;
     const ids = Object.keys(s.tokens);
@@ -106,7 +106,7 @@ describe("initiative visibility (FR-GM-21, FR-GM-23)", () => {
     let s = baseRoom();
     const ids: Record<string, string> = {};
     for (const [name, hidden] of [["Ambusher", true], ["Aria", false], ["Bram", false]] as const) {
-      const r = run(s, gm, { type: "token.create", name, position: { x: 0, y: 0 }, hidden });
+      const r = run(s, gm, { type: "token.create", name, position: { x: 35 + 70 * Object.keys(s.tokens).length, y: 35 }, hidden });
       s = r.state;
       ids[name] = r.events[0]!.type === "TokenCreated" ? r.events[0]!.token.id : "";
     }

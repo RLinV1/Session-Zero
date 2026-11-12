@@ -4,7 +4,7 @@ import { MAX_DICE } from "./dice";
 import { DEFAULT_TOKEN_COLOR } from "./commands";
 import type { ConditionId } from "./conditions";
 import { EncounterTemplateData, MAX_ENCOUNTER_NAME, type TemplateToken } from "./encounters";
-import { DEFAULT_GRID, GridSpec, footprintCrossesWall, snapTokenCenter, type Point, type Segment } from "./geometry";
+import { DEFAULT_GRID, GridSpec, clearanceTouchesWall, distanceToSegment, snapTokenCenter, type Point } from "./geometry";
 import { EMPTY_LIBRARY_BOARD, libraryBoardProblem, type LibraryMapBoard } from "./libraryBoard";
 import { blocksMovement } from "./portals";
 import { CreatureFields, LibraryUploadFields } from "./protocol";
@@ -501,13 +501,6 @@ export const cornerPoint = (corner: DraftCorner, grid: GridNumbers): Point =>
 export const describeDraftLine = (line: DraftLine, index: number) =>
   `Line ${index + 1} (a ${line.kind} from column ${line.from.column}, row ${line.from.row} to column ${line.to.column}, row ${line.to.row})`;
 
-function distanceToSegment(p: Point, s: Segment): number {
-  const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
-  const length2 = dx * dx + dy * dy;
-  const t = length2 > 0 ? Math.max(0, Math.min(1, ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / length2)) : 0;
-  return Math.hypot(p.x - (s.a.x + t * dx), p.y - (s.a.y + t * dy));
-}
-
 export type DraftMapBoardResult =
   | { ok: true; board: LibraryMapBoard; blockedLines: number[] }
   | { ok: false; problems: string[] };
@@ -778,7 +771,7 @@ export function draftEncounterToTemplate(source: DraftEncounterSource): DraftEnc
     if (!draft.square) { refuse("It has no square yet. Place it or remove it."); continue; }
     const position = footprintCenter(draft.square, creature.size, grid, map);
     if (!position) { refuse("Its square is off the map."); continue; }
-    if (footprintCrossesWall(position, creature.size, grid, walls)) { refuse("It would stand across a wall. Move it or remove it."); continue; }
+    if (clearanceTouchesWall(position, creature.size, grid, walls)) { refuse("It would stand across a wall. Move it or remove it."); continue; }
     const hp = creature.hp ?? creature.maxHp;
     if (hp !== null && creature.maxHp !== null && hp > creature.maxHp) { refuse("Its HP is more than its Max HP."); continue; }
 

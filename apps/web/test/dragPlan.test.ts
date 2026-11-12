@@ -70,3 +70,39 @@ describe("token drag plans (FR-TAC-03, ADR 0055)", () => {
     expect(plan(room(), at(3, 1)).label).toBe("15 ft");
   });
 });
+
+describe("drag plans against walls (token-wall-clearance, ADR 0063)", () => {
+  const withWalls = (...walls: { a: { x: number; y: number }; b: { x: number; y: number } }[]) =>
+    room([], { walls: Object.fromEntries(walls.map((w, i) => [`w${i}`, { id: `w${i}`, ...w }])) });
+
+  it("lets a drag end on a square with a wall stub in its corner", () => {
+    // Square (1, 1) spans 70-140 by 70-140; the stub sits in its top-left corner.
+    const result = plan(withWalls({ a: { x: 70, y: 70 }, b: { x: 82, y: 82 } }), at(1, 1));
+    expect(result.obstruction).toBe("clear");
+    expect(result.points.at(-1)).toEqual(at(1, 1));
+  });
+
+  it("shows a square with a wall through its centre as blocked", () => {
+    expect(plan(withWalls({ a: { x: 90, y: 105 }, b: { x: 120, y: 105 } }), at(1, 1)).obstruction).toBe("blocked");
+  });
+});
+
+describe("drag plans onto other tokens (FR-TAC-02, token-no-stacking)", () => {
+  const other = (hp: number | null, hidden = false): Token => ({ ...hero, id: "o", name: "Other", ownerIds: [], position: at(3, 1), hidden, stats: { hp, maxHp: null, ac: null } });
+
+  it("shows a square another token holds as blocked, unless dragged with Alt", () => {
+    const state = room([], { tokens: { t: hero, o: other(null) } });
+    expect(plan(state, at(3, 1)).obstruction).toBe("blocked");
+    expect(plan(state, at(3, 1), gm, false, true).obstruction).toBe("blocked");
+    expect(plan(state, at(3, 1), gm, true).obstruction).toBe("clear");
+  });
+
+  it("shows a downed token's square as clear", () => {
+    expect(plan(room([], { tokens: { t: hero, o: other(0) } }), at(3, 1)).obstruction).toBe("clear");
+  });
+
+  it("doesn't count a token hidden from the player", () => {
+    const state = filterStateForViewer(room([], { tokens: { t: hero, o: other(null, true) } }), player);
+    expect(plan(state, at(3, 1), player).obstruction).toBe("clear");
+  });
+});

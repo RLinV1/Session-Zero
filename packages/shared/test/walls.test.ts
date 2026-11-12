@@ -7,7 +7,9 @@ import {
   filterEventForViewer,
   filterStateForViewer,
   DOUBTFUL_WALL_CONFIDENCE,
-  footprintCrossesWall,
+  clearancePoints,
+  clearanceSweepTouchesWall,
+  clearanceTouchesWall,
   isDoubtfulWall,
   MAX_WALLS,
   pathCrossesWall,
@@ -81,13 +83,47 @@ describe("wall geometry (FR-GM-11, ADR 0029)", () => {
   });
 
   it("lets a token stand beside a wall on its cell edge, but not across it", () => {
-    expect(footprintCrossesWall({ x: 105, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(false);
-    expect(footprintCrossesWall({ x: 175, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(false);
-    expect(footprintCrossesWall({ x: 140, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(true);
-    // A large token centred on an intersection spans the edge.
-    expect(footprintCrossesWall({ x: 140, y: 140 }, 2, DEFAULT_GRID, [EDGE_WALL])).toBe(true);
+    expect(clearanceTouchesWall({ x: 105, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(false);
+    expect(clearanceTouchesWall({ x: 175, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(false);
+    expect(clearanceTouchesWall({ x: 140, y: 105 }, 1, DEFAULT_GRID, [EDGE_WALL])).toBe(true);
+    // A Large token centred on an intersection straddles the edge: no square's centre is touched (ADR 0063).
+    expect(clearanceTouchesWall({ x: 140, y: 140 }, 2, DEFAULT_GRID, [EDGE_WALL])).toBe(false);
     expect(pathCrossesWall({ x: 105, y: 105 }, { x: 175, y: 105 }, [EDGE_WALL])).toBe(true);
     expect(pathCrossesWall({ x: 105, y: 105 }, { x: 105, y: 175 }, [EDGE_WALL])).toBe(false);
+  });
+
+  it("tests walls at one point per occupied square (ADR 0063)", () => {
+    const at = { x: 140, y: 140 };
+    expect(clearancePoints(at, 0.5, DEFAULT_GRID)).toEqual([at]);
+    expect(clearancePoints(at, 1, DEFAULT_GRID)).toEqual([at]);
+    expect(clearancePoints(at, 2, DEFAULT_GRID)).toEqual([{ x: 105, y: 105 }, { x: 175, y: 105 }, { x: 105, y: 175 }, { x: 175, y: 175 }]);
+    expect(clearancePoints(at, 1.5, DEFAULT_GRID)).toEqual([{ x: 122.5, y: 122.5 }, { x: 157.5, y: 122.5 }, { x: 122.5, y: 157.5 }, { x: 157.5, y: 157.5 }]);
+    expect(clearancePoints(at, 3, DEFAULT_GRID)).toHaveLength(9);
+  });
+
+  it("is blocked only by walls touching the small clearance circle (ADR 0063)", () => {
+    const center = { x: 245, y: 245 };
+    // A stub reaching a third of the way from the corner of the square toward its centre.
+    const stub = { a: { x: 210, y: 210 }, b: { x: 222, y: 222 } };
+    expect(clearanceTouchesWall(center, 1, DEFAULT_GRID, [stub])).toBe(false);
+    expect(clearanceTouchesWall(center, 1, DEFAULT_GRID, [CELL_WALL])).toBe(true);
+    // The circle's radius is 3.5 px on a 70 px grid: touching blocks, 4 px away doesn't.
+    expect(clearanceTouchesWall(center, 1, DEFAULT_GRID, [{ a: { x: 220, y: 248.5 }, b: { x: 270, y: 248.5 } }])).toBe(true);
+    expect(clearanceTouchesWall(center, 1, DEFAULT_GRID, [{ a: { x: 220, y: 249 }, b: { x: 270, y: 249 } }])).toBe(false);
+    // A size 1.5 token with a wall through its own centre, a quarter square from each sample point.
+    expect(clearanceTouchesWall(center, 1.5, DEFAULT_GRID, [{ a: { x: 240, y: 240 }, b: { x: 250, y: 250 } }])).toBe(false);
+  });
+
+  it("sweeps the clearance circle along a move (ADR 0063)", () => {
+    // A wall across x = 280, with a gap from y = 210 to y = 280: one square wide.
+    const doorway = [{ a: { x: 280, y: 0 }, b: { x: 280, y: 210 } }, { a: { x: 280, y: 280 }, b: { x: 280, y: 700 } }];
+    expect(clearanceSweepTouchesWall({ x: 245, y: 245 }, { x: 315, y: 245 }, 1, DEFAULT_GRID, doorway)).toBe(false);
+    // A Large token at the doorway: one row of its squares runs into the wall.
+    expect(clearanceSweepTouchesWall({ x: 210, y: 280 }, { x: 350, y: 280 }, 2, DEFAULT_GRID, doorway)).toBe(true);
+    // A 4 px crack between two detected segments is too narrow for the circle.
+    const cracked = [{ a: { x: 280, y: 0 }, b: { x: 280, y: 243 } }, { a: { x: 280, y: 247 }, b: { x: 280, y: 700 } }];
+    expect(clearanceSweepTouchesWall({ x: 245, y: 245 }, { x: 315, y: 245 }, 1, DEFAULT_GRID, cracked)).toBe(true);
+    expect(clearanceSweepTouchesWall({ x: 245, y: 245 }, { x: 315, y: 245 }, 1, DEFAULT_GRID, [])).toBe(false);
   });
 
   it("skips blocked squares when spreading copies", () => {
@@ -266,14 +302,14 @@ describe("applying and clearing walls (FR-GM-11)", () => {
 });
 
 describe("walls block tokens (FR-GM-11, ADR 0029)", () => {
-  it.each(["horizontal", "vertical"])("rejects fallback copies across a %s wall and preserves clear stacking", (direction) => {
+  it.each(["horizontal", "vertical"])("rejects fallback copies across a %s wall, and copies with no empty square (token-no-stacking)", (direction) => {
     const small = { ...MAP, width: 70, height: 70 };
     const state = must(act(baseRoom(), gm, { type: "scene.setMap", map: small })).state;
     const created = must(act(state, gm, { type: "token.create", name: "Aria", position: { x: 35, y: 35 } }));
     const tokenId = Object.keys(created.state.tokens)[0]!;
     const duplicate: CommandInput = { type: "token.duplicate", tokenId, count: 2 };
-    const stacked = must(act(created.state, gm, duplicate));
-    expect(Object.values(stacked.state.tokens).map((t) => t.position)).toEqual(Array(3).fill({ x: 35, y: 35 }));
+    // A one-square map has no room for copies: they never stack on the original.
+    expect(act(created.state, gm, duplicate)).toMatchObject({ ok: false, code: "invalid", message: "There's no empty square nearby." });
     const wall = direction === "horizontal"
       ? { a: { x: 0, y: 35 }, b: { x: 70, y: 35 } }
       : { a: { x: 35, y: 0 }, b: { x: 35, y: 70 } };
@@ -313,12 +349,41 @@ describe("walls block tokens (FR-GM-11, ADR 0029)", () => {
     expect(act(state, alice, { type: "token.move", tokenId: token.id, to: { x: 105, y: 175 } }).ok).toBe(true);
   });
 
+  describe("clearance circle (token-wall-clearance, ADR 0063)", () => {
+    it("lets a token onto a square with a wall stub in its corner", () => {
+      const { state, token } = roomWithWalls([{ a: { x: 140, y: 70 }, b: { x: 152, y: 82 } }]);
+      expect(act(state, alice, { type: "token.move", tokenId: token.id, to: { x: 175, y: 105 } }).ok).toBe(true);
+    });
+
+    it("refuses a square with a wall through its centre", () => {
+      const { state, token } = roomWithWalls([{ a: { x: 160, y: 105 }, b: { x: 190, y: 105 } }]);
+      expect(act(state, alice, { type: "token.move", tokenId: token.id, to: { x: 175, y: 105 } })).toMatchObject({ ok: false, message: "That move is unavailable." });
+    });
+
+    it("lets a Large token straddle a wall on the grid line between its squares", () => {
+      const { state } = roomWithWalls([{ a: { x: 420, y: 280 }, b: { x: 420, y: 490 } }]);
+      const placed = must(act(state, gm, { type: "token.create", name: "Ogre", size: 2, position: { x: 420, y: 210 } }));
+      const ogre = Object.values(placed.state.tokens).find((t) => t.name === "Ogre")!;
+      expect(act(placed.state, gm, { type: "token.move", tokenId: ogre.id, to: { x: 420, y: 350 } }).ok).toBe(true);
+    });
+
+    it("refuses a Large token whose lower-right square's centre is on a wall", () => {
+      const { state } = roomWithWalls([{ a: { x: 160, y: 175 }, b: { x: 190, y: 175 } }]);
+      expect(act(state, gm, { type: "token.create", name: "Ogre", size: 2, position: { x: 140, y: 140 } })).toMatchObject({ ok: false, message: "That spot is blocked by a wall." });
+    });
+
+    it("places a size 1.5 token with a wall through its centre only", () => {
+      const { state } = roomWithWalls([{ a: { x: 240, y: 240 }, b: { x: 250, y: 250 } }]);
+      expect(act(state, gm, { type: "token.create", name: "Imp", size: 1.5, position: { x: 245, y: 245 } }).ok).toBe(true);
+    });
+  });
+
   it("spreads copies onto squares clear of walls", () => {
     const { state } = roomWithWalls([CELL_WALL]);
     const created = must(act(state, gm, { type: "token.create", name: "Goblin", position: { x: 175, y: 245 }, count: 5 }));
     for (const e of created.events) {
       if (e.type !== "TokenCreated") continue;
-      expect(footprintCrossesWall(e.token.position, 1, DEFAULT_GRID, Object.values(state.walls))).toBe(false);
+      expect(clearanceTouchesWall(e.token.position, 1, DEFAULT_GRID, Object.values(state.walls))).toBe(false);
     }
   });
 });
