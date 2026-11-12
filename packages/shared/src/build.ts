@@ -615,8 +615,16 @@ const FIELD_LABELS: Record<string, string> = {
   hp: "HP", maxhp: "Max HP", ac: "AC", attacks: "Attacks", conditions: "Conditions", size: "Size", name: "Name",
   color: "Colour", imagefileid: "Art", grid: "Grid", proposedgrid: "Grid", square: "Square", tokens: "Tokens",
   unitspercell: "Square size", unitlabel: "Square size", features: "Features", notes: "Notes",
+  armorclass: "AC", hitpoints: "HP", ishidden: "Hidden", hidden: "Hidden", mapkey: "Map", creaturekey: "Creature",
 };
-export const buildFieldLabel = (field: string) => FIELD_LABELS[field.toLowerCase()] ?? field;
+/** A field the AI named in its own words, such as "terrain" or "tokenArt", reads as "Terrain" or "Token art". */
+const plainWords = (field: string) => {
+  // Words already written for people ("Hot Broth"), or an acronym ("UVTT"), stay as they are.
+  if (/\s/.test(field) || !/[a-z]/.test(field)) return field;
+  const words = field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+export const buildFieldLabel = (field: string) => FIELD_LABELS[field.toLowerCase()] ?? plainWords(field);
 
 export interface BuildCheckInput {
   profile: GameProfile | null;
