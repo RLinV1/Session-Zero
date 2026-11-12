@@ -29,4 +29,4 @@
 ## 5. Verify
 
 - [x] 5.1 `npm run lint && npm run typecheck && npm test`.
-- [ ] 5.2 In the running app: build `2d6+1d4+3` in the Dice panel and throw it on the board (two shapes land, pop-up shows the grouped breakdown); give a token a mixed-dice named attack and roll it; start an area effect and roll mixed damage; confirm the activity log reads formula and total only; check a phone-width viewport for the builder and pop-up.
+- [x] 5.2 In the running app: build `2d6+1d4+3` in the Dice panel and throw it on the board (two shapes land, pop-up shows the grouped breakdown); give a token a mixed-dice named attack and roll it; start an area effect and roll mixed damage; confirm the activity log reads formula and total only; check a phone-width viewport for the builder and pop-up.

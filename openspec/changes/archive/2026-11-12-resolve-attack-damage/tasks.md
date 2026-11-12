@@ -27,4 +27,4 @@
 ## 5. Verify
 
 - [x] 5.1 `npm run lint && npm run typecheck && npm test`.
-- [ ] 5.2 In the running app, GM and player in two tabs: player rolls damage at a goblin, GM resolves Half with Prone; the player sees the halved HP and Prone; GM undoes from the activity log and both revert.
+- [x] 5.2 In the running app, GM and player in two tabs: player rolls damage at a goblin, GM resolves Half with Prone; the player sees the halved HP and Prone; GM undoes from the activity log and both revert.
