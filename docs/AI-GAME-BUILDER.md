@@ -80,7 +80,9 @@ Nothing your AI sets is used until you publish, and you see every wall, door and
 
 ## Reviewing and publishing
 
-The build page shows flags first. There you can:
+The build page keeps a rail beside the draft: one bar showing what needs a fix, what's ready and what's published, then a link to each part of the page, marking the part you're reading. **Review** lists what to fix, or your AI's notes, one row per item with its picture. Maps show one at a time, picked from a strip of thumbnails. Creatures are a roster beside the one you're reading. Each encounter is drawn on its own map, with its tokens where they stand. The files, the game's notes and your AI's access are folded away until you open them. Your AI is asked to write its notes in ASD-STE100 Simplified Technical English, one short labelled line per topic.
+
+Tick **Choose** on anything, or use **Choose what's ready**. A bar then appears to publish what you chose or remove it from the draft. There you can:
 
 - change any value, which also stops your AI from overwriting that item;
 - confirm or correct each map's grid;

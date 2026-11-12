@@ -1445,10 +1445,6 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-pass { display: flex; flex-direction: column; gap: var(--space-2); min-width: min(32rem, 100%); }
 .build-pass label { display: flex; flex-direction: column; gap: var(--space-1); }
 .build-pass textarea { width: 100%; resize: vertical; font-family: var(--font-mono, monospace); font-size: 0.85rem; }
-.build-issues { display: flex; flex-direction: column; gap: var(--space-1); }
-.build-issues li { padding: var(--space-1) var(--space-2); border-left: 3px solid var(--warn); background: var(--raised); border-radius: var(--radius-control); font-size: 0.9rem; }
-.build-issues li.build-problem { border-left-color: var(--danger); }
-.build-issue-item { font-weight: 600; }
 .build-drops { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-2); }
 .build-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); min-height: 6rem; padding: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-surface); cursor: pointer; text-align: center; position: relative; }
 .build-drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1468,8 +1464,7 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-check { display: inline-flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 0.3rem; font-size: 0.85rem; white-space: nowrap; }
 .build-check input { width: auto; min-height: 0; }
 .build-stats { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 0.9rem; }
-.build-flags { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; border-left: 3px solid var(--warn); padding-left: var(--space-2); }
-.build-carried { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.85rem; }
+.build-flags { font-size: 0.85rem; padding: var(--space-2) var(--space-3); background: var(--raised); border-radius: var(--radius-control); }
 .build-blocked { color: var(--warn); font-size: 0.85rem; }
 .build-map { position: relative; line-height: 0; border-radius: var(--radius-control); overflow: hidden; background: var(--raised); }
 .build-map img { width: 100%; height: auto; display: block; }
@@ -1478,7 +1473,10 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-fields label, .build-form > label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.85rem; min-width: 0; }
 .build-fields input { width: 100%; min-width: 0; }
 .build-tokens { display: flex; flex-direction: column; gap: var(--space-1); }
-.build-tokens li { display: flex; flex-wrap: wrap; gap: 0.15rem var(--space-2); align-items: center; font-size: 0.9rem; }
+/* Name, square and visibility line up down the list, so a missing square stands out. */
+.build-tokens li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.15rem var(--space-2); align-items: center; font-size: 0.9rem; }
+.build-tokens .chip { justify-self: end; }
+.build-unplaced { color: var(--warn); font-weight: 600; }
 .build-published { display: flex; flex-direction: column; gap: var(--space-1); }
 .build-published li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .build-usage { margin: 0; padding-left: 1.1rem; }
@@ -1488,8 +1486,36 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-attack { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: var(--space-1); }
 .build-attack input, .build-token-row input { min-width: 0; width: 100%; }
 .build-conditions { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--space-1); }
-.build-token-row { display: grid; grid-template-columns: 1fr 1.2fr 3.5rem 3.5rem auto auto; gap: var(--space-1); align-items: center; }
-.build-token-of { font-size: 0.85rem; min-width: 0; }
+.build-attack { align-items: center; }
+/* The token editor as a table: headings said once, a creature's name once above its tokens. */
+.build-token-row { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(8rem, 1.4fr) 4rem 4rem 3.25rem 2.1rem; gap: var(--space-1) var(--space-2); align-items: center; }
+.build-token-head { font-size: 0.8rem; color: var(--muted); }
+.build-token-head span:nth-child(5) { text-align: center; }
+.build-token-first:not(.build-token-head + .build-token-first) { border-top: 1px solid var(--border); padding-top: var(--space-2); margin-top: var(--space-1); }
+.build-token-of { font-size: 0.85rem; font-weight: 600; min-width: 0; }
+.build-token-hidden { display: flex; align-items: center; justify-content: center; gap: 0.3rem; font-size: 0.85rem; }
+.build-token-hidden input { width: auto; min-height: 0; }
+.build-token-hidden-word { display: none; }
+.build-token-field { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.build-token-field input { width: 100%; min-width: 0; }
+.build-token-field-word { display: none; font-size: 0.75rem; color: var(--muted); }
+/* Per-card and per-row actions are icons, set apart at the card's foot; text actions read as links. */
+.build-card-tools { display: flex; justify-content: flex-end; gap: var(--space-1); margin-top: auto; margin-left: auto; }
+.build-text-action { display: inline-flex; align-items: center; gap: 0.35rem; align-self: flex-start; }
+/* A section's lone button, such as Discard this build, sits at its own width, not the page's. */
+.build-section > button, .build-fold-body > button { align-self: flex-start; }
+/* What a build published, by kind: a heading with its count, then names in columns. */
+.build-published-group { display: flex; flex-direction: column; gap: var(--space-1); }
+.build-published-group h3 { margin: 0; font-size: 0.95rem; }
+.build-published-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); gap: 0.15rem var(--space-4); }
+.build-published-grid li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); min-width: 0; padding-left: var(--space-2); border-radius: var(--radius-control); }
+.build-published-grid li:hover { background: var(--hover); }
+.build-published-groups { display: flex; flex-direction: column; gap: var(--space-3); }
+.build-published-grid li { min-height: 2rem; }
+/* Choosing what to remove: the whole name is the target, and the heading chooses its kind. */
+.build-pick { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; min-height: 2rem; cursor: pointer; }
+.build-pick input { width: auto; min-height: 0; margin: 0; }
+.build-published-group h3 .build-pick { display: inline-flex; flex: none; }
 /* A tab list that scrolls fades out at an edge with tabs past it, so they're seen to exist. The
    padding keeps a tab scrolled into view clear of the fade. */
 .library-toolbar .tabs { scroll-padding-inline: 40px; }
@@ -1497,8 +1523,45 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .library-toolbar .tabs[data-hidden-start] { mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
 .library-toolbar .tabs[data-hidden-start][data-hidden-end] { mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
 .build-summary { margin: 0; font-size: 1rem; }
-.build-issues-title { margin: var(--space-1) 0 0; font-size: 0.95rem; }
-a.build-issue-item { font-weight: 600; }
+/* The draft at a glance: each count is a link to its section. */
+/* A section the person can fold away. Its heading stays one line, with what's inside beside it. */
+.build-fold { border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-4); }
+.build-fold > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.15rem var(--space-3); cursor: pointer; list-style: none; }
+.build-fold > summary::-webkit-details-marker { display: none; }
+.build-fold > summary::before { content: ""; flex: none; align-self: center; width: 0.45rem; height: 0.45rem; margin-right: 0.15rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s ease; }
+.build-fold[open] > summary::before { transform: rotate(45deg); }
+.build-fold > summary h2 { margin: 0; }
+.build-fold > summary:hover h2 { color: var(--accent-text); }
+.build-fold-summary { color: var(--muted); font-size: 0.9rem; }
+.build-fold-body { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); min-width: 0; }
+.build-fold-body > p { margin: 0; }
+/* Fixes and notes, one card per item. */
+/* The review queue: one panel, a row per item with its picture, divided rather than boxed. */
+.build-groups { display: flex; flex-direction: column; margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden; }
+.build-group { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); gap: var(--space-3); padding: var(--space-3); min-width: 0; }
+.build-group + .build-group { border-top: 1px solid var(--border); }
+.build-group-thumb { width: 2.75rem; height: 2.75rem; border-radius: var(--radius-control); object-fit: cover; background: var(--raised); display: block; }
+.build-group-body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.build-group-title { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: var(--space-2); }
+.build-group-count { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600; line-height: 1; padding: 0.2rem 0.4rem; border-radius: 999px; background: var(--raised); color: var(--muted); }
+.build-group.build-problem .build-group-count { color: var(--danger); }
+.build-group-list { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.build-group .small-print { margin: 0; }
+.build-queue .seg { margin-bottom: 0; }
+.build-seg-count { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); margin-left: 0.3rem; }
+/* The AI's words as label and text, so a long block can be scanned down its left edge. */
+.build-facts { display: grid; grid-template-columns: fit-content(11rem) minmax(0, 1fr); gap: 0.35rem var(--space-3); margin: 0; font-size: 0.9rem; line-height: 1.45; }
+.build-facts > div { display: contents; }
+.build-facts dt { font-weight: 600; }
+.build-facts dd { margin: 0; }
+.build-fact-plain dd { grid-column: 1 / -1; }
+.build-fold-body > .build-facts, .build-fold-body > .build-text { max-width: 78ch; }
+.build-carried { font-size: 0.85rem; }
+.build-carried .build-facts { font-size: 0.85rem; }
+@media (max-width: 480px) {
+  .build-facts { grid-template-columns: minmax(0, 1fr); gap: 0 var(--space-3); }
+  .build-facts dd { margin-bottom: 0.35rem; }
+}
 /* The selection stays in view while ticking items far up the page. */
 .build-publish-bar { position: sticky; bottom: var(--space-2); z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface); box-shadow: 0 16px 48px rgb(15 20 24 / 45%); }
 @media (pointer: coarse) {
@@ -1526,6 +1589,11 @@ a.build-issue-item { font-weight: 600; }
 @media (pointer: coarse) {
   /* Padding rather than flex, so a summary keeps its open/closed marker. */
   .build-walls summary, .build-disclosure > summary { box-sizing: border-box; min-height: 44px; padding-block: var(--space-3); }
+  .build-fold > summary { min-height: 44px; align-items: center; }
+  .build-card-tools .icon-button, .build-wall-list .icon-button, .build-form .icon-button { width: 44px; height: 44px; }
+  .build-pick, .build-published-grid li { min-height: 44px; }
+  .build-text-action { min-height: 44px; }
+  .build-group-title a { display: inline-flex; align-items: center; min-height: 44px; }
   .build-card h3 a, .build-closed li a, .build-card-actions .link { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .build-wall-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
@@ -1537,9 +1605,182 @@ a.build-issue-item { font-weight: 600; }
 @media (max-width: 640px) {
   .build-attack { grid-template-columns: 1fr 1fr; }
   .build-attack input:first-child { grid-column: 1 / -1; }
-  .build-token-row { grid-template-columns: 1fr 1fr; }
-  .build-token-of { grid-column: 1 / -1; font-weight: 600; }
+  .build-token-row { grid-template-columns: 1fr 1fr auto auto; }
+  .build-token-head { display: none; }
+  .build-token-of { grid-column: 1 / -1; }
+  .build-token-row:not(.build-token-first) .build-token-of { display: none; }
   .build-token-row input:nth-of-type(1) { grid-column: 1 / -1; }
+  .build-token-hidden-word { display: inline; }
+  .build-token-field-word { display: block; }
+  .build-token-row { align-items: end; }
+}
+
+/* ---- AI build page, laid out as a workspace (FR-GM-27, build page layout 2026-11-12) ---- */
+.build-layout { display: grid; gap: var(--space-5); margin-top: var(--space-4); min-width: 0; }
+.build-main { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.build-main > .build-section, .build-main > .build-fold { margin-top: 0; }
+.build-section-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.build-section-head h2 { margin: 0; }
+.build-section-sum { color: var(--muted); font-size: 0.9rem; }
+
+/* The rail: the draft as one bar, then the page's parts. */
+.build-rail { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.build-meter { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.build-meter-bar { display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; background: var(--raised); }
+.build-meter-bar > span { flex-basis: 0; }
+.build-meter-fix { background: var(--danger); }
+.build-meter-ready { background: var(--accent); }
+.build-meter-published { background: var(--muted); }
+.build-meter-legend { display: flex; flex-direction: column; gap: 0.2rem; margin: 0; font-size: 0.85rem; }
+.build-meter-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.build-meter-row dt { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); }
+.build-meter-row dd { margin: 0; font-family: var(--font-mono); font-weight: 600; }
+.build-meter-swatch { width: 0.55rem; height: 0.55rem; border-radius: 2px; background: currentColor; }
+.build-meter-row-fix .build-meter-swatch { color: var(--danger); }
+.build-meter-row-ready .build-meter-swatch { color: var(--accent); }
+.build-meter-row-published .build-meter-swatch { color: var(--muted); }
+.build-rail-pass { margin: 0; }
+.build-rail-pass a { color: var(--muted); }
+.build-rail-links { display: flex; flex-direction: column; gap: 1px; margin: 0; }
+.build-rail-links a { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); min-height: 2rem; padding: 0.3rem 0.6rem; border-radius: var(--radius-control); color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: background-color 0.2s, color 0.2s; }
+.build-rail-links a:hover { background: var(--hover); color: var(--text); }
+.build-rail-links a[aria-current] { background: var(--hover); color: var(--text); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.build-rail-count { font-family: var(--font-mono); font-size: 0.78rem; }
+.build-rail-urgent { color: var(--danger); font-weight: 600; }
+@media (min-width: 1100px) {
+  .build-layout { grid-template-columns: 13.5rem minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+  .build-rail { position: sticky; top: var(--space-4); max-height: calc(100dvh - 2rem); overflow: auto; }
+}
+@media (max-width: 1099px) {
+  /* Above the content on narrower screens: the bar, then the parts as one row that scrolls sideways. */
+  .build-rail-links { flex-direction: row; flex-wrap: nowrap; gap: var(--space-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+  .build-rail-links a { border: 1px solid var(--border); white-space: nowrap; }
+  .build-rail-links li:last-child { padding-right: 32px; }
+}
+/* The chosen bar never breaks a word: on a phone its buttons go to a second line instead. */
+.build-publish-bar { flex-wrap: wrap; }
+.build-publish-bar > span, .build-publish-bar button { white-space: nowrap; }
+.build-publish-bar .row { flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
+
+/* Maps: a strip of thumbnails over one map at full size. */
+.build-viewer { gap: var(--space-3); }
+.build-strip { display: flex; gap: var(--space-2); overflow-x: auto; padding: 2px 2px var(--space-1); scroll-snap-type: x proximity; }
+.build-strip [role="tab"] { flex: 0 0 11.5rem; display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; min-height: 0; padding: 0.4rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); text-align: left; scroll-snap-align: start; font-weight: 500; }
+.build-strip [role="tab"]:hover { border-color: var(--border-strong); }
+.build-strip [role="tab"][aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.build-strip img, .build-strip-blank { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: var(--radius-control); background: var(--raised); }
+.build-strip-name { font-weight: 600; font-size: 0.9rem; padding: 0 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.build-strip-status { font-size: 0.78rem; color: var(--muted); padding: 0 0.15rem; }
+.build-strip-status.is-warn { color: var(--warn); }
+/* One map fits the window: as tall as the screen allows, the walls drawn over it at the same size. */
+.build-viewer [role="tabpanel"] .build-map { display: inline-block; max-width: 100%; align-self: flex-start; }
+.build-viewer [role="tabpanel"] .build-map img { width: auto; max-width: 100%; max-height: 72dvh; }
+
+/* Tabs along a line, for the encounters. */
+.build-tabs { display: flex; gap: var(--space-1); overflow-x: auto; border-bottom: 1px solid var(--border); }
+.build-tabs [role="tab"] { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; min-height: 0; padding: 0.55rem 0.8rem; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); white-space: nowrap; font-weight: 500; margin-bottom: -1px; }
+.build-tabs [role="tab"]:hover { color: var(--text); background: none; }
+.build-tabs [role="tab"][aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.build-tab-note { font-size: 0.75rem; color: var(--warn); font-weight: 500; }
+
+/* An encounter: its map with the tokens on it, and the list as the map's key. */
+.build-board-panel { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); }
+.build-board-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.build-board-head h3 { margin: 0; }
+.build-board-head p { margin: 0.15rem 0 0; }
+.build-board-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.build-board-body { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(15rem, 1fr); gap: var(--space-4); align-items: start; }
+.build-plot { position: relative; line-height: 0; border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden; background: var(--raised); }
+.build-plot img { display: block; width: 100%; height: auto; }
+.build-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.build-plot-note { position: absolute; left: var(--space-2); bottom: var(--space-2); margin: 0; line-height: 1.35; padding: 0.25rem 0.5rem; border-radius: var(--radius-control); background: var(--panel); color: var(--text); }
+/* A dark halo keeps a token readable on snow and on stone alike. */
+.build-mark { transition: opacity 0.2s; filter: drop-shadow(0 0 1.5px rgba(10, 12, 15, 0.85)); }
+.build-mark circle, .build-mark rect { fill: rgba(244, 246, 248, 0.92); stroke: #15171b; }
+.build-mark-character circle { fill: var(--accent); stroke: #fff8f3; }
+.build-mark-piece rect { fill: rgba(213, 218, 226, 0.95); }
+.build-mark-hidden circle, .build-mark-hidden rect { fill: rgba(21, 23, 27, 0.45); stroke: #fff8f3; }
+.build-mark .build-mark-ring { fill: none; stroke: #fff8f3; opacity: 0.95; }
+/* Pointing at a token in the list brings it forward and lets the rest fall back. */
+.build-plot svg:has(.is-lit) .build-mark:not(.is-lit) { opacity: 0.35; }
+.build-board-list { display: flex; flex-direction: column; gap: 0.15rem; max-height: 34rem; overflow: auto; }
+.build-board-list h4 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.build-board-list .build-board-bench { margin-top: var(--space-3); }
+.build-board-token { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto 1.25rem; align-items: center; gap: var(--space-2); min-height: 2rem; padding: 0.2rem 0.5rem; border-radius: var(--radius-control); font-size: 0.9rem; }
+.build-board-token.is-lit { background: var(--hover); }
+.build-board-square { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+.build-board-seen { display: inline-flex; color: var(--muted); }
+.build-board-seen.is-visible { color: var(--warn); }
+.build-glyph { width: 1rem; height: 1rem; display: block; }
+.build-glyph circle, .build-glyph rect { fill: none; stroke: var(--text); stroke-width: 1.6; }
+.build-glyph.build-mark-character circle { fill: var(--accent); stroke: var(--accent); }
+.build-glyph.build-mark-hidden circle, .build-glyph.build-mark-hidden rect { stroke-dasharray: 2.5 2; stroke: var(--muted); fill: none; }
+@media (max-width: 900px) { .build-board-body { grid-template-columns: minmax(0, 1fr); } .build-board-list { max-height: none; } }
+
+/* Creatures: a roster beside the one being read. */
+.build-roster-body { display: grid; grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.build-roster-list { display: flex; flex-direction: column; gap: var(--space-3); max-height: 42rem; overflow: auto; padding-right: var(--space-1); }
+.build-roster-group h3 { margin: 0 0 0.25rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.build-roster-group ul { display: flex; flex-direction: column; gap: 1px; }
+.build-roster-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+.build-roster-row .build-check span { display: none; }
+.build-roster-row .build-check { padding-left: 0.4rem; }
+.build-roster-pick { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; grid-template-areas: "art name flag" "art stats flag"; align-items: center; column-gap: var(--space-2); padding: 0.35rem 0.5rem; background: none; border: 1px solid transparent; border-radius: var(--radius-control); text-align: left; font-weight: 500; }
+.build-roster-pick:hover { background: var(--hover); }
+.build-roster-row.is-current .build-roster-pick { background: var(--panel); border-color: var(--border-strong); }
+.build-roster-art { grid-area: art; width: 2rem; height: 2rem; border-radius: 50%; object-fit: cover; display: block; }
+.build-roster-name { grid-area: name; font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.build-roster-stats { grid-area: stats; display: flex; gap: 0.6rem; font-family: var(--font-mono); font-size: 0.75rem; }
+.build-roster-flag { grid-area: flag; font-size: 0.75rem; color: var(--muted); }
+.build-roster-flag.is-warn { color: var(--danger); font-weight: 600; }
+.build-roster-row > .build-roster-detail { flex-basis: 100%; margin: var(--space-1) 0 var(--space-2); }
+.build-detail { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); min-width: 0; }
+.build-detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.build-detail-head .build-card-title { flex: 1; min-width: 10rem; }
+.build-detail-head h3 { margin: 0; font-size: 1.25rem; }
+.build-detail-art { flex: none; display: block; width: 4.5rem; height: 4.5rem; border-radius: 50%; object-fit: cover; }
+.build-plates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); margin: 0; }
+.build-plate { display: flex; flex-direction: column; gap: 0.1rem; padding: var(--space-2) var(--space-3); background: var(--raised); border-radius: var(--radius-control); }
+.build-plate dt { font-size: 0.75rem; color: var(--muted); }
+.build-plate dd { margin: 0; font-family: var(--font-mono); font-size: 1.35rem; font-weight: 600; line-height: 1.2; }
+.build-plate dd.is-blank { font-size: 0.95rem; font-weight: 500; color: var(--muted); padding-top: 0.2rem; }
+.build-attacks { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.build-attacks th, .build-attacks td { text-align: left; padding: 0.35rem 0.5rem; }
+.build-attacks thead th { font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+.build-attacks tbody tr + tr { border-top: 1px solid var(--border); }
+.build-attacks tbody th { font-weight: 600; }
+.build-attacks td { font-family: var(--font-mono); font-size: 0.85rem; }
+.build-attacks td.is-blank { color: var(--muted); font-family: var(--font-ui); }
+@media (max-width: 900px) { .build-roster-body { grid-template-columns: minmax(0, 1fr); } .build-roster-list { max-height: none; } }
+@media (max-width: 480px) { .build-plates { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* After publishing: the encounters as scenes to start a room from, each with its map. */
+.build-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(13rem, 100%), 1fr)); gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.build-scenes legend { padding: 0; margin-bottom: var(--space-2); font-size: 0.85rem; color: var(--muted); }
+.build-scene { position: relative; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.4rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-surface); cursor: pointer; transition: border-color 0.2s, transform 0.2s; }
+.build-scene:hover { border-color: var(--border-strong); }
+.build-scene:active { transform: translateY(1px); }
+.build-scene.is-chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.build-scene:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.build-scene img, .build-scene-blank { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: var(--radius-control); background: var(--raised); }
+.build-scene-name { padding: 0 0.2rem 0.2rem; font-weight: 600; font-size: 0.9rem; }
+.build-scene-tick { position: absolute; top: 0.75rem; right: 0.75rem; width: 1.6rem; height: 1.6rem; padding: 0.25rem; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
+.build-end { padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.build-published-name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.build-published-thumb { flex: none; width: 2.25rem; height: 1.5rem; object-fit: cover; border-radius: 4px; background: var(--raised); }
+.build-published-thumb.is-round { width: 1.5rem; border-radius: 50%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .build-swap { animation: build-swap 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .build-meter-bar > span { transform-origin: left center; animation: build-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .build-mark .build-mark-ring { transform-box: fill-box; transform-origin: center; animation: build-ring 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+}
+@keyframes build-swap { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes build-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes build-ring { from { opacity: 0; transform: scale(0.6); } to { opacity: 0.95; transform: scale(1); } }
+@media (pointer: coarse) {
+  .build-rail-links a, .build-roster-pick, .build-board-token { min-height: 44px; }
+  .build-strip [role="tab"], .build-tabs [role="tab"] { min-height: 44px; }
 }
 
 .builtin-assets { margin-top: var(--space-4); }
@@ -1656,6 +1897,8 @@ dialog.modal {
 dialog.modal::backdrop { background: rgba(6, 8, 11, 0.62); }
 /* Both room and library use the same focused sample editor. */
 dialog.modal.grid-editor-modal { width: min(68rem, calc(100vw - 2rem)); }
+/* Room for the token table: a name column wide enough to read. */
+dialog.modal.build-editor-modal { width: min(46rem, calc(100vw - 2rem)); }
 /* Preparing a new map (KAN-59): aligning a grid is a comparison that needs width (contract §13.3). */
 dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .grid-editor { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
