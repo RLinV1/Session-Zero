@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Cairnkeepers token: scree-goat. Drawn by scripts/cairnkeepers/render-tokens.mjs. -->
+  <defs>
+    <radialGradient id="field" cx="256" cy="140" r="430" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e2d8c6"/><stop offset="0.45" stop-color="#7a6e60"/><stop offset="1" stop-color="#17130f"/></radialGradient>
+    <radialGradient id="key" cx="256" cy="140" r="300" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.6"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.18"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="halo"><stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.3"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="vignette" cx="256" cy="256" r="232" gradientUnits="userSpaceOnUse"><stop offset="0.6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.5"/></radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.2 0.9"/></filter>
+    <clipPath id="disc"><circle cx="256" cy="256" r="228"/></clipPath>
+    <g id="sil"><path d="M196 160 C226 140 286 140 316 160 L340 260 C330 330 300 400 256 430 C212 400 182 330 172 260 Z"/><path d="M226 430 C240 470 272 470 286 430 L276 492 L236 492 Z"/><path d="M150 214 L196 196 L196 230 Z M362 214 L316 196 L316 230 Z"/></g><clipPath id="silclip"><path d="M196 160 C226 140 286 140 316 160 L340 260 C330 330 300 400 256 430 C212 400 182 330 172 260 Z"/><path d="M226 430 C240 470 272 470 286 430 L276 492 L236 492 Z"/><path d="M150 214 L196 196 L196 230 Z M362 214 L316 196 L316 230 Z"/></clipPath>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a7aeb6"/><stop offset="0.55" stop-color="#3a3f46"/><stop offset="1" stop-color="#a7aeb6"/></linearGradient>
+  </defs>
+  <g clip-path="url(#disc)">
+    <rect width="512" height="512" fill="url(#field)"/>
+    
+    <path d="M206 150 C140 110 92 160 120 230 C132 260 160 262 168 240" fill="none" stroke="#d9cdb2" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" /><path d="M306 150 C372 110 420 160 392 230 C380 260 352 262 344 240" fill="none" stroke="#d9cdb2" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" /><path d="M206 150 C140 110 92 160 120 230 C132 260 160 262 168 240 M306 150 C372 110 420 160 392 230 C380 260 352 262 344 240" fill="none" stroke="#121820" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <use href="#sil" fill="#000" opacity="0.4" filter="url(#soft)" transform="translate(8 10)"/>
+    <use href="#sil" fill="#c8b48a"/>
+    <g clip-path="url(#silclip)"><rect width="512" height="512" fill="url(#key)"/></g>
+    <use href="#sil" fill="none" stroke="#121820" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="214" y="236" width="24" height="14" rx="5" fill="#e3c25a" stroke="#121820" stroke-width="3"/><rect x="274" y="236" width="24" height="14" rx="5" fill="#e3c25a" stroke="#121820" stroke-width="3"/>
+      <path d="M220 243 L232 243 M280 243 L292 243" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+      <ellipse cx="256" cy="396" rx="26" ry="16" fill="#5a4a36"/><path d="M236 292 L256 330 L276 292" fill="none" stroke="#7a6648" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <rect width="512" height="512" filter="url(#grain)" opacity="0.2"/>
+    <rect width="512" height="512" fill="url(#vignette)"/>
+  </g>
+  <circle cx="256" cy="256" r="240" fill="none" stroke="#121820" stroke-width="26"/>
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#rim)" stroke-width="18"/>
+  <line x1="486.0" y1="256.0" x2="502.0" y2="256.0" stroke="#121820" stroke-width="4"/><line x1="484.0" y1="317.1" x2="493.6" y2="319.7" stroke="#121820" stroke-width="2"/><line x1="460.4" y1="374.0" x2="469.0" y2="379.0" stroke="#121820" stroke-width="2"/><line x1="422.9" y1="422.9" x2="429.9" y2="429.9" stroke="#121820" stroke-width="2"/><line x1="374.0" y1="460.4" x2="379.0" y2="469.0" stroke="#121820" stroke-width="2"/><line x1="317.1" y1="484.0" x2="319.7" y2="493.6" stroke="#121820" stroke-width="2"/><line x1="256.0" y1="486.0" x2="256.0" y2="502.0" stroke="#121820" stroke-width="4"/><line x1="194.9" y1="484.0" x2="192.3" y2="493.6" stroke="#121820" stroke-width="2"/><line x1="138.0" y1="460.4" x2="133.0" y2="469.0" stroke="#121820" stroke-width="2"/><line x1="89.1" y1="422.9" x2="82.1" y2="429.9" stroke="#121820" stroke-width="2"/><line x1="51.6" y1="374.0" x2="43.0" y2="379.0" stroke="#121820" stroke-width="2"/><line x1="28.0" y1="317.1" x2="18.4" y2="319.7" stroke="#121820" stroke-width="2"/><line x1="26.0" y1="256.0" x2="10.0" y2="256.0" stroke="#121820" stroke-width="4"/><line x1="28.0" y1="194.9" x2="18.4" y2="192.3" stroke="#121820" stroke-width="2"/><line x1="51.6" y1="138.0" x2="43.0" y2="133.0" stroke="#121820" stroke-width="2"/><line x1="89.1" y1="89.1" x2="82.1" y2="82.1" stroke="#121820" stroke-width="2"/><line x1="138.0" y1="51.6" x2="133.0" y2="43.0" stroke="#121820" stroke-width="2"/><line x1="194.9" y1="28.0" x2="192.3" y2="18.4" stroke="#121820" stroke-width="2"/><line x1="256.0" y1="26.0" x2="256.0" y2="10.0" stroke="#121820" stroke-width="4"/><line x1="317.1" y1="28.0" x2="319.7" y2="18.4" stroke="#121820" stroke-width="2"/><line x1="374.0" y1="51.6" x2="379.0" y2="43.0" stroke="#121820" stroke-width="2"/><line x1="422.9" y1="89.1" x2="429.9" y2="82.1" stroke="#121820" stroke-width="2"/><line x1="460.4" y1="138.0" x2="469.0" y2="133.0" stroke="#121820" stroke-width="2"/><line x1="484.0" y1="194.9" x2="493.6" y2="192.3" stroke="#121820" stroke-width="2"/>
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#121820" stroke-width="3"/>
+</svg>

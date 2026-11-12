@@ -1,0 +1,103 @@
+[
+  {
+    "slug": "sela-varn",
+    "name": "Sela Varn",
+    "calling": "Pathfinder",
+    "background": "Guild-born",
+    "level": "1",
+    "grit": "+0", "footing": "+3", "sense": "+1", "lore": "+0",
+    "hp": "10", "maxHp": "10", "guard": "10", "move": "6", "init": "2d6+3", "artDc": "—", "stones": "—",
+    "knacks": ["Cairn-lore", "Climbing"],
+    "arts": [
+      { "name": "Ice axe", "cost": "Action", "hit": "2d6+3", "effect": "1d6+3; Edge on climbing" },
+      { "name": "Sling", "cost": "Action", "hit": "2d6+1", "effect": "1d4+1, range 10" },
+      { "name": "Mark", "cost": "Quick", "hit": "—", "effect": "Edge for all against it" },
+      { "name": "Spyglass", "cost": "Action", "hit": "Sense 8", "effect": "reveal hidden in your sight" },
+      { "name": "Find the Line", "cost": "Action", "hit": "—", "effect": "6 Difficult sq. cost 1" },
+      { "name": "Read the Weather", "cost": "once a watch", "hit": "Sense 8", "effect": "GM rolls twice, you choose" }
+    ],
+    "named": [
+      { "name": "Ice axe", "hit": "2d6+3", "dmg": "1d6+3" },
+      { "name": "Sling", "hit": "2d6+1", "dmg": "1d4+1" }
+    ],
+    "gear": "Ice axe, sling and twenty stones, spyglass, crampons, snow-goggles, rope (50 ft), storm lantern, bedroll, three days' food",
+    "bonds": "Tor carried me down off the Needle when I was twelve. I've never said thank you.\nWren used to be a Rimehand. I watch where she puts her feet."
+  },
+  {
+    "slug": "tor-breck",
+    "name": "Tor Breck",
+    "calling": "Hauler",
+    "background": "Hill farmer",
+    "level": "1",
+    "grit": "+3", "footing": "+1", "sense": "+0", "lore": "+0",
+    "hp": "20", "maxHp": "20", "guard": "9", "move": "6", "init": "2d6+1", "artDc": "—", "stones": "—",
+    "knacks": ["Hauling", "Ropework"],
+    "arts": [
+      { "name": "Mattock", "cost": "Action", "hit": "2d6+3", "effect": "1d8+3, two hands" },
+      { "name": "Shove", "cost": "Action", "hit": "2d6+3", "effect": "push 1 sq. (2 if smaller)" },
+      { "name": "Anchor", "cost": "Action", "hit": "2d6+3", "effect": "reach 2: Restrained" },
+      { "name": "Belay", "cost": "Reaction", "hit": "—", "effect": "ally in 3 sq. won't fall" },
+      { "name": "Packhorse", "cost": "feature", "hit": "—", "effect": "party Warmth is 12" }
+    ],
+    "named": [
+      { "name": "Mattock", "hit": "2d6+3", "dmg": "1d8+3" },
+      { "name": "Shove", "hit": "2d6+3", "dmg": "—" },
+      { "name": "Anchor", "hit": "2d6+3", "dmg": "—" }
+    ],
+    "gear": "Mattock, heavy coat (+1 Guard), camp kettle, two tonics of hot gin, rope (100 ft), crampons, lantern, bedroll, food for everyone",
+    "bonds": "Mira patched me up after the Long Slide. She thinks I don't remember. I do.\nSela goes first. I go right behind her, with the rope."
+  },
+  {
+    "slug": "wren-ashby",
+    "name": "Wren Ashby",
+    "calling": "Hunter",
+    "background": "Reformed Rimehand",
+    "level": "1",
+    "grit": "+0", "footing": "+1", "sense": "+3", "lore": "+0",
+    "hp": "10", "maxHp": "10", "guard": "8", "move": "6", "init": "2d6+1", "artDc": "—", "stones": "—",
+    "knacks": ["Stealth", "Hunting"],
+    "arts": [
+      { "name": "Bow", "cost": "Action", "hit": "2d6+3", "effect": "1d8+3, range 16" },
+      { "name": "Twin Shot", "cost": "Action", "hit": "2d6+2", "effect": "1d8+3 each, 2 targets" },
+      { "name": "Spear", "cost": "Action", "hit": "2d6+1", "effect": "1d6+1, reach 2" },
+      { "name": "Snare", "cost": "Action", "hit": "2d6+3", "effect": "range 6: Restrained" },
+      { "name": "White Hide", "cost": "Action", "hit": "—", "effect": "hidden in snow, no roll" },
+      { "name": "Ambush", "cost": "feature", "hit": "—", "effect": "+1d6 if it can't see you" }
+    ],
+    "named": [
+      { "name": "Bow", "hit": "2d6+3", "dmg": "1d8+3" },
+      { "name": "Twin Shot ×2", "hit": "2d6+2", "dmg": "1d8+3" },
+      { "name": "Spear", "hit": "2d6+1", "dmg": "1d6+1" },
+      { "name": "Snare", "hit": "2d6+3", "dmg": "—" },
+      { "name": "Ambush", "hit": "—", "dmg": "1d6" }
+    ],
+    "gear": "Bow and twenty arrows, spear, white hide cloak, three snares, knife, crampons, rope (50 ft), storm lantern, bedroll, three days' food",
+    "bonds": "Kettle Varga taught me to read the ice. I owe her that, and nothing else.\nTor trusts me. I'm still working out why."
+  },
+  {
+    "slug": "mira-hale",
+    "name": "Mira Hale",
+    "calling": "Stonespeaker",
+    "background": "Hospice orphan",
+    "level": "1",
+    "grit": "+1", "footing": "+0", "sense": "+0", "lore": "+3",
+    "hp": "10", "maxHp": "10", "guard": "8", "move": "6", "init": "2d6+0", "artDc": "10", "stones": "3",
+    "knacks": ["Medicine", "Cairn-lore"],
+    "arts": [
+      { "name": "Stone Fist", "cost": "Action, free", "hit": "2d6+3", "effect": "1d6+3, range 8" },
+      { "name": "Rime Lash", "cost": "Action, 1 Stone", "hit": "Grit save", "effect": "15 ft cone, 2d6, half" },
+      { "name": "Ice Wall", "cost": "Action, 1 Stone", "hit": "—", "effect": "4 sq. of clear ice, Blocked" },
+      { "name": "Churn the Snow", "cost": "Action, 1 Stone", "hit": "—", "effect": "3 × 3 becomes Difficult" },
+      { "name": "Cairnsong", "cost": "Action, 1 Stone", "hit": "—", "effect": "heal 1d6+3" },
+      { "name": "Staff", "cost": "Action", "hit": "2d6+1", "effect": "1d4+1" }
+    ],
+    "named": [
+      { "name": "Stone Fist", "hit": "2d6+3", "dmg": "1d6+3" },
+      { "name": "Rime Lash", "hit": "—", "dmg": "2d6" },
+      { "name": "Cairnsong", "hit": "—", "dmg": "1d6+3" },
+      { "name": "Staff", "hit": "2d6+1", "dmg": "1d4+1" }
+    ],
+    "gear": "Staff, heavy coat (+1 Guard), a pouch of cairn-stones, a hearth-stone that stays warm, crampons, rope (50 ft), storm lantern, bedroll, three days' food",
+    "bonds": "I grew up at St. Brenn. Brother Aldric taught me my letters and my first art.\nWren saved my life on the Tarn last spring. She says it was an accident."
+  }
+]

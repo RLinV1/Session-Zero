@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cairnkeepers Guide's Field Record</title>
+<!-- Fill it in the browser, then print (Letter, margins none, background graphics on), or use the
+     PDFs next to this file. scripts/cairnkeepers/render-sheets.mjs renders them from this page. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Kalam:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=block" rel="stylesheet">
+<style>
+  @page { size: Letter; margin: 0; }
+  :root {
+    --paper: #edeedd; --ink: #1f262d; --pencil: rgba(31, 38, 45, 0.5); --pen: #1b4a73;
+    --signal: #e0612b; --rule: rgba(60, 120, 120, 0.2); --margin: rgba(224, 97, 43, 0.5);
+    --hand: "Kalam", "Bradley Hand", "Segoe Print", cursive;
+    --type: "Special Elite", "American Typewriter", "Courier New", monospace;
+    --body: "Crimson Pro", "Hoefler Text", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: #26303a; }
+  body { margin: 0; padding: 24px 0; color: var(--ink); font-family: var(--body); font-size: 10.5pt; line-height: 1.25; }
+  .page {
+    position: relative; width: 8.5in; height: 11in; margin: 0 auto 24px; overflow: hidden;
+    background: var(--paper); box-shadow: 0 10px 40px rgba(0,0,0,0.55); padding: 0.78in 0.5in 0.45in 0.62in;
+  }
+  .page > .paper { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  .page > .grid { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px),
+      linear-gradient(rgba(60,120,120,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(60,120,120,0.12) 1px, transparent 1px);
+    background-size: 1in 1in, 1in 1in, 0.2in 0.2in, 0.2in 0.2in; background-position: 0 0.6in; }
+  .page > .grid::after { content: ""; position: absolute; left: 0; right: 0; top: 0.62in; height: 1.5px; background: var(--margin); }
+  /* The spiral binding across the top. */
+  .spiral { position: absolute !important; top: 0.08in; left: 0.45in; right: 0.45in; height: 0.42in; z-index: 4 !important; display: flex; justify-content: space-between; }
+  .spiral i { width: 0.14in; height: 0.42in; border-radius: 0.07in; background: linear-gradient(90deg, #5d666f, #c9d0d6 45%, #6a737c); box-shadow: 1px 2px 2px rgba(0,0,0,0.35); }
+  .spiral i::after { content: ""; display: block; width: 0.1in; height: 0.1in; margin: 0.28in auto 0; border-radius: 50%; background: #1b2229; }
+  .page > *:not(.paper):not(.grid) { position: relative; z-index: 2; }
+
+  h1, h2, h3 { font-family: var(--type); font-weight: normal; margin: 0; }
+  .label { font-family: var(--type); font-size: 7.6pt; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(31,38,45,0.78); }
+  .hand { font-family: var(--hand); color: var(--pen); }
+  input[type=text], textarea {
+    font-family: var(--hand); font-weight: 700; color: var(--pen); font-size: 13.5pt; background: transparent;
+    border: 0; border-bottom: 1.2px solid var(--pencil); outline: none; padding: 0 2px; width: 100%; line-height: 1.1;
+  }
+  textarea { resize: none; border: 0; line-height: 0.25in; font-size: 11pt; padding-top: 0.02in;
+    background-image: linear-gradient(transparent calc(0.25in - 1.2px), var(--pencil) calc(0.25in - 1.2px), var(--pencil) 0.25in);
+    background-size: 100% 0.25in; }
+  input::placeholder, textarea::placeholder { color: rgba(31,38,45,0.25); font-weight: 400; }
+  .box { border: 1.6px solid var(--ink); border-radius: 3px; padding: 6px 9px 8px; background: rgba(255,255,248,0.4); }
+  .box > h2 { font-size: 11pt; margin-bottom: 4px; display: flex; align-items: baseline; gap: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .box > h2 small { font-family: var(--body); font-style: italic; font-size: 9pt; color: rgba(31,38,45,0.7); letter-spacing: 0; text-transform: none; }
+  .field { display: flex; flex-direction: column; gap: 1px; }
+
+  /* Header: the signal band */
+  .band { position: absolute !important; left: 0; right: 0; top: 0.62in; height: 0.08in; background: var(--signal); opacity: 0.85; }
+  .masthead { display: flex; align-items: flex-end; gap: 14px; margin: 0.14in 0 10px; }
+  .emblem { width: 58px; height: 64px; flex: none; }
+  .title h1 { font-size: 27pt; line-height: 0.95; letter-spacing: 0.03em; }
+  .title .sub { font-family: var(--hand); font-size: 15pt; color: var(--signal); margin-top: 2px; transform: rotate(-1.5deg); display: inline-block; }
+  .masthead .who { flex: 1; display: grid; grid-template-columns: 1.6fr 1fr; gap: 6px 12px; }
+  .stamp { position: absolute !important; right: 0.5in; top: 0.86in; transform: rotate(7deg); border: 2.5px solid rgba(224,97,43,0.75); color: rgba(224,97,43,0.85);
+    font-family: var(--type); font-size: 8.5pt; padding: 3px 8px; border-radius: 3px; letter-spacing: 0.12em; mix-blend-mode: multiply; }
+
+  .ident { display: grid; grid-template-columns: 1.2fr 1.4fr 0.5fr; gap: 12px; margin-bottom: 12px; }
+  .main { display: grid; grid-template-columns: 2.4in 1fr; gap: 12px; }
+
+  /* Traits */
+  .trait { display: grid; grid-template-columns: 1fr 0.62in; align-items: center; gap: 6px; padding: 3px 0 4px; border-bottom: 1px dashed var(--pencil); }
+  .trait:last-child { border-bottom: 0; }
+  .trait b { font-family: var(--type); font-weight: normal; font-size: 12.5pt; }
+  .trait span { display: block; font-style: italic; font-size: 8.5pt; color: rgba(31,38,45,0.75); line-height: 1.1; }
+  .mod { width: 0.46in; height: 0.46in; border: 1.6px solid var(--ink); display: grid; place-items: center; transform: rotate(45deg); border-radius: 4px; }
+  .mod input { border: 0; text-align: center; font-size: 16pt; width: 0.42in; transform: rotate(-45deg); }
+
+  .knacks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-top: 2px; }
+  .knack { display: flex; align-items: center; gap: 6px; font-size: 10pt; padding: 0.5px 0; }
+  .tick { appearance: none; -webkit-appearance: none; width: 12px; height: 12px; border: 1.4px solid var(--ink); border-radius: 2px; margin: 0; position: relative; flex: none; }
+  .tick:checked::after { content: "✕"; position: absolute; inset: -7px 0 0 -1px; font-family: var(--hand); font-size: 16px; color: var(--pen); font-weight: 700; }
+
+  /* Vitals */
+  .vitals { display: grid; grid-template-columns: 1.35fr 0.85fr 0.7fr 0.95fr 0.85fr; gap: 9px; align-items: stretch; }
+  .vital { text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
+  .vital input { text-align: center; font-size: 18pt; border-bottom: 0; }
+  .hp { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; }
+  .hp .slash { font-family: var(--type); font-size: 18pt; color: var(--pencil); }
+
+  .tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .pips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-height: 38px; }
+  .pip { position: relative; cursor: pointer; }
+  .pip input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .pip svg { width: 34px; height: 34px; display: block; }
+  .pip svg .fill { fill: transparent; transition: fill 0.15s; }
+  .pip.frost input:checked + svg .fill { fill: #7fb4d1; }
+  .pip.stone input:checked + svg .fill { fill: #9aa0a6; }
+  .mini { font-style: italic; font-size: 8.6pt; margin-top: 3px; line-height: 1.15; }
+
+  table.arts { width: 100%; border-collapse: collapse; margin-top: 2px; }
+  table.arts th { font-family: var(--type); font-weight: normal; font-size: 7.8pt; text-transform: uppercase; text-align: left; border-bottom: 1.4px solid var(--ink); padding: 2px 4px; }
+  table.arts td { border-bottom: 1px solid var(--pencil); padding: 0 3px; height: 0.29in; vertical-align: bottom; }
+  table.arts td input { border: 0; font-size: 9.6pt; }
+  table.arts td + td { border-left: 1px dotted var(--pencil); }
+
+  .gb { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+
+  /* The weatherproof tag tied on with string */
+  .tag { background: #f6e9c8; padding: 10px 12px 10px 16px; position: relative; margin-top: 16px; transform: rotate(-1deg);
+    box-shadow: 2px 4px 10px rgba(0,0,0,0.25); clip-path: polygon(0 12%, 7% 0, 100% 0, 100% 100%, 7% 100%, 0 88%); }
+  .tag::before { content: ""; position: absolute; left: 7px; top: 50%; width: 9px; height: 9px; border-radius: 50%; background: var(--paper); box-shadow: inset 0 0 0 2px #b9925a; transform: translateY(-50%); }
+  .tag h3 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 10px; }
+  .tag .hint { font-style: italic; font-size: 8pt; color: rgba(31,38,45,0.7); line-height: 1.15; margin: 2px 0 6px 10px; }
+  .tag .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 6px 10px; }
+  .tag .stats input { font-size: 14pt; text-align: center; }
+  .tag table { width: calc(100% - 10px); margin-left: 10px; border-collapse: collapse; font-size: 8pt; }
+  .tag th { font-family: var(--type); font-weight: normal; text-align: left; font-size: 7.5pt; text-transform: uppercase; }
+  .tag td input { font-size: 11pt; border-bottom: 1px solid rgba(110,84,40,0.45); }
+
+  /* Page 2: quick reference */
+  .qr { columns: 2; column-gap: 0.3in; font-size: 9.4pt; line-height: 1.2; }
+  .qr section { break-inside: avoid; margin-bottom: 8px; }
+  .qr h2 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1.4px solid var(--ink); margin-bottom: 3px; padding-bottom: 1px; }
+  .qr p { margin: 0 0 3px; }
+  .qr ul { margin: 0 0 3px; padding-left: 14px; }
+  .qr li { margin-bottom: 1px; }
+  .qr table { width: 100%; border-collapse: collapse; font-size: 8.9pt; }
+  .qr td, .qr th { border-bottom: 1px solid var(--pencil); padding: 1.2px 3px; text-align: left; vertical-align: top; }
+  .qr th { font-family: var(--type); font-weight: normal; font-size: 8pt; text-transform: uppercase; }
+  .qr .note { font-family: var(--hand); color: var(--signal); font-size: 11.5pt; line-height: 1.05; transform: rotate(-1deg); display: block; margin: 3px 0; }
+  .qrhead { display: flex; justify-content: space-between; align-items: flex-end; margin: 0.14in 0 9px; }
+  .qrhead h1 { font-size: 20pt; }
+
+  .screen-only { font-family: var(--type); color: #e3e8ec; text-align: center; font-size: 10pt; margin: 0 auto 14px; max-width: 8.5in; opacity: 0.85; }
+  @media print { html, body { background: none; padding: 0; } .page { margin: 0; box-shadow: none; break-after: page; } .screen-only { display: none; } }
+  @media screen and (max-width: 8.6in) { body { zoom: 0.5; } }
+</style>
+</head>
+<body>
+<p class="screen-only">Fill in your Guide, then print: Letter, margins <i>none</i>, background graphics <i>on</i>.</p>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" id="p1">
+  <div class="grid"></div>
+  <div class="spiral"></div>
+  <div class="band"></div>
+  <div class="stamp">CAIRNKEEPERS' GUILD · BRENNFORD</div>
+
+  <header class="masthead">
+    <svg class="emblem" viewBox="0 0 58 64" aria-hidden="true">
+      <ellipse cx="29" cy="56" rx="24" ry="6" fill="#8d9096" stroke="#1f262d" stroke-width="2.2"/>
+      <ellipse cx="29" cy="45" rx="19" ry="6" fill="#7a7d82" stroke="#1f262d" stroke-width="2.2"/>
+      <ellipse cx="28" cy="35" rx="14" ry="5" fill="#9a9da2" stroke="#1f262d" stroke-width="2.2"/>
+      <ellipse cx="30" cy="26" rx="10" ry="4.5" fill="#868a90" stroke="#1f262d" stroke-width="2.2"/>
+      <path d="M29 22 V4" stroke="#4f3b2a" stroke-width="2.4"/><path d="M29 5 L45 9 L29 13 Z" fill="#e0612b" stroke="#1f262d" stroke-width="1.6"/>
+    </svg>
+    <div class="title"><h1>Cairnkeepers</h1><span class="sub">a Guide's field record</span></div>
+    <div class="who">
+      <label class="field"><span class="label">Guide's name</span><input type="text" name="name" placeholder=" "></label>
+      <label class="field"><span class="label">Player</span><input type="text" name="player" placeholder=" "></label>
+    </div>
+  </header>
+
+  <div class="ident">
+    <label class="field"><span class="label">Calling</span><input type="text" name="calling"></label>
+    <label class="field"><span class="label">Background</span><input type="text" name="background"></label>
+    <label class="field"><span class="label">Level</span><input type="text" name="level" style="text-align:center"></label>
+  </div>
+
+  <div class="main">
+    <div>
+      <div class="box">
+        <h2>Traits <small>2d6 + trait vs 8 · 10 · 12</small></h2>
+        <div class="trait"><div><b>Grit</b><span>strength, cold, carrying, hitting hard</span></div><div class="mod"><input type="text" name="grit"></div></div>
+        <div class="trait"><div><b>Footing</b><span>balance, climbing, ice, light weapons</span></div><div class="mod"><input type="text" name="footing"></div></div>
+        <div class="trait"><div><b>Sense</b><span>spotting, tracking, weather, aiming</span></div><div class="mod"><input type="text" name="sense"></div></div>
+        <div class="trait"><div><b>Lore</b><span>rope-work, medicine, the old arts</span></div><div class="mod"><input type="text" name="lore"></div></div>
+      </div>
+      <div class="box" style="margin-top:10px">
+        <h2>Knacks <small>+1 when it fits</small></h2>
+        <div class="knacks">
+          <label class="knack"><input class="tick" type="checkbox" name="k-climbing">Climbing</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-ropework">Ropework</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-tracking">Tracking</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-weather-wise">Weather-wise</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-medicine">Medicine</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-stealth">Stealth</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-cairn-lore">Cairn-lore</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-hauling">Hauling</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-ice-craft">Ice-craft</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-hunting">Hunting</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-cooking">Cooking</label>
+          <label class="knack"><input class="tick" type="checkbox" name="k-haggling">Haggling</label>
+        </div>
+      </div>
+      <div class="tag">
+        <h3>On the table</h3>
+        <div class="hint">Type these into your token: HP, Max HP, AC (your Guard), and each named attack.</div>
+        <div class="stats">
+          <label class="field"><span class="label">HP</span><input type="text" name="t-hp"></label>
+          <label class="field"><span class="label">Max HP</span><input type="text" name="t-max"></label>
+          <label class="field"><span class="label">AC</span><input type="text" name="t-ac"></label>
+        </div>
+        <table><thead><tr><th style="width:46%">Named attack</th><th>To hit</th><th>Damage</th></tr></thead><tbody id="named"></tbody></table>
+      </div>
+    </div>
+
+    <div>
+      <div class="vitals">
+        <div class="box vital"><span class="label">Hit Points</span>
+          <div class="hp"><input type="text" name="hp"><span class="slash">/</span><input type="text" name="maxHp"></div>
+          <span class="label" style="font-size:6.5pt">now · max</span></div>
+        <div class="box vital"><span class="label">Guard</span><input type="text" name="guard"><span class="label" style="font-size:6.5pt">7 + Footing + armour</span></div>
+        <div class="box vital"><span class="label">Move</span><input type="text" name="move"><span class="label" style="font-size:6.5pt">squares</span></div>
+        <div class="box vital"><span class="label">Initiative</span><input type="text" name="init"><span class="label" style="font-size:6.5pt">2d6 + Footing</span></div>
+        <div class="box vital"><span class="label">Art DC</span><input type="text" name="artDc"><span class="label" style="font-size:6.5pt">7 + Lore</span></div>
+      </div>
+
+      <div class="tracks">
+        <div class="box"><h2>Frost <small>at 0 HP</small></h2>
+          <div class="pips" id="frost"></div>
+          <div class="mini">2d6 each turn: 2–6 a Frost, 7–11 hold on, 12 up with 1 HP. Three Frost and the mountain takes you.</div>
+        </div>
+        <div class="box"><h2>Stones <small>Stonespeakers · back after a rest</small></h2>
+          <div class="pips" id="stones"></div>
+          <div class="mini">Warmth is the party's: on the Warmth token, 10 (12 with a Hauler).</div>
+        </div>
+      </div>
+
+      <div class="box" style="margin-top:10px">
+        <h2>Arts &amp; attacks <small>weapons, arts, features</small></h2>
+        <table class="arts">
+          <thead><tr><th style="width:24%">Name</th><th style="width:20%">Action · cost</th><th style="width:15%">Roll</th><th>Damage · effect</th></tr></thead>
+          <tbody id="arts"></tbody>
+        </table>
+      </div>
+      <div class="gb">
+        <div class="box"><h2>Gear &amp; rope</h2><textarea name="gear" rows="6"></textarea></div>
+        <div class="box"><h2>Bonds &amp; looks</h2><textarea name="bonds" rows="6"></textarea></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" id="p2">
+  <div class="grid"></div>
+  <div class="spiral"></div>
+  <div class="band"></div>
+  <div class="qrhead"><h1>The Guide's quick reference</h1><span class="hand" style="font-size:14pt;color:var(--signal);transform:rotate(-2deg);display:inline-block">mind the white</span></div>
+  <div class="qr">
+    <section><h2>Your turn</h2>
+      <ul><li><b>Move</b> 6 squares, at the ground's cost. Split it around your action.</li>
+        <li><b>Action</b>: attack, Dash, an art, raise a cairn, Haul Out, help, hide, search.</li>
+        <li><b>Quick</b>: a door, draw or stow, a tonic, Mark, call out.</li>
+        <li><b>Reaction</b>, once a round, when something gives you one.</li></ul></section>
+    <section><h2>Rolls</h2>
+      <p><b>Check:</b> 2d6 + trait (+1 with a Knack).</p>
+      <table><tr><th>Standard</th><th>Hard</th><th>Extreme</th></tr><tr><td>8</td><td>10</td><td>12</td></tr></table>
+      <p style="margin-top:3px"><b>Attack:</b> 2d6 + trait vs Guard: melee Grit (light weapons Footing), ranged Sense, arts Lore. A <b>12</b> hits and adds a die; a <b>2</b> misses.</p>
+      <p><b>Save:</b> 2d6 + the trait named vs the DC. <b>Edge</b> +1, <b>Snag</b> −1, up to ±2.</p></section>
+    <section><h2>The ground</h2>
+      <table><tr><th>Ground</th><th>Is</th><th>Costs</th></tr>
+        <tr><td><b>Normal</b></td><td>trail, floors, safe ice</td><td>1</td></tr>
+        <tr><td><b>Difficult</b></td><td>deep snow, scree, streams, thin ice, drifts</td><td>2</td></tr>
+        <tr><td><b>Blocked</b></td><td>crevasses, open water, chasms, rubble</td><td>—</td></tr></table>
+      <ul style="margin-top:3px"><li><b>Dash</b> over ice or scree: Footing 8 or Prone.</li>
+        <li><b>Shoved off</b> an edge: Footing 8 to catch it, or fall: 2d6, out until hauled up.</li>
+        <li><b>Roped</b>: no Footing rolls; within 2 squares; catch a faller with Grit 8.</li></ul>
+      <span class="note">The ruler counts it for you. Say what the ground is before you step.</span></section>
+    <section><h2>Sight</h2>
+      <table><tr><th>Weather</th><th>You see</th></tr>
+        <tr><td>Clear</td><td>the whole map</td></tr><tr><td>Haze</td><td>60 ft</td></tr><tr><td>Snowfall</td><td>30 ft · far shots Snag</td></tr>
+        <tr><td>Squall</td><td>15 ft</td></tr><tr><td>Whiteout</td><td>10 ft · Snag on Sense</td></tr>
+        <tr><td>Lantern underground</td><td>30 ft</td></tr></table>
+      <ul style="margin-top:3px"><li><b>Rock, walls, closed doors</b> block sight. <b>Ice</b> doesn't: see through, can't pass.</li>
+        <li><b>Pines and steam</b>: nobody sees in; you see out.</li>
+        <li><b>Still in the snow</b>: Sense 8 to spot it. <b>Hide</b>: unseen, in cover, Footing 8.</li>
+        <li><b>Raised cairn</b> within 6 squares: weather one step better.</li></ul></section>
+    <section><h2>Conditions</h2>
+      <table>
+        <tr><td><b>Blinded</b> <i>snow-blind</i></td><td>Snag 2 to hit; Edge vs you</td></tr>
+        <tr><td><b>Frightened</b> <i>shaken</i></td><td>Snag while it's in sight</td></tr>
+        <tr><td><b>Grappled</b> <i>held</i></td><td>Move 0</td></tr>
+        <tr><td><b>Restrained</b> <i>snowbound</i></td><td>Move 0, Snag to hit, Edge vs you</td></tr>
+        <tr><td><b>Prone</b> <i>lost footing</i></td><td>Stand: 3 squares. Edge vs you adjacent</td></tr>
+        <tr><td><b>Invisible</b> <i>white on white</i></td><td>hidden</td></tr>
+        <tr><td><b>Poisoned</b> <i>frost-sick</i></td><td>Snag on every check</td></tr>
+        <tr><td><b>Stunned</b> <i>winded</i></td><td>no Action or Reaction, half Move</td></tr>
+        <tr><td><b>Concentrating</b></td><td>hit: Grit 8 or the art ends</td></tr>
+      </table></section>
+    <section><h2>Down, warmth, rest</h2>
+      <p>At <b>0 HP</b>: Unconscious, roll for Frost each turn. <b>Haul Out</b>: an Action and Lore 8, up with 1 HP.</p>
+      <p><b>Warmth</b> (the party's token): 1 a watch outside, 2 in a squall or whiteout, 1 a short rest. At 0: Snag on everything, 1d6 cold a watch.</p>
+      <p><b>Short rest</b>: an hour, half your HP back, your Stones. <b>Long rest</b>: the hospice or the guildhouse.</p></section>
+    <section><h2>On the board</h2>
+      <ul><li>Your token holds HP, Max HP, <b>AC</b> (your Guard), conditions and named attacks.</li>
+        <li>Roll named attacks from the <b>Play</b> tab; the GM rules the hit.</li>
+        <li>Drag your token: the ruler counts squares, double on Difficult ground.</li>
+        <li>You see what your token sees. The GM sets the sight range to the weather.</li></ul></section>
+  </div>
+  <div class="box" style="margin-top:6px"><h2>Notes <small>routes, cairns, who owes you a drink</small></h2><textarea name="notes" rows="5"></textarea></div>
+</div>
+
+<script>
+  // Waterproof field-book paper: faintly mottled, with a water mark or two.
+  const paper = (seed, marks) => `
+<svg class="paper" viewBox="0 0 850 1100" preserveAspectRatio="none" aria-hidden="true">
+  <defs>
+    <filter id="m${seed}" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="4" seed="${seed}"/>
+      <feColorMatrix values="0 0 0 0 0.4  0 0 0 0 0.46  0 0 0 0 0.36  0 0 0 1.4 -0.6"/></filter>
+    <filter id="g${seed}" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="${seed + 3}"/>
+      <feColorMatrix values="0 0 0 0 0.2  0 0 0 0 0.22  0 0 0 0 0.2  0 0 0 -1.4 0.8"/></filter>
+    <filter id="w${seed}" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="${seed + 7}" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="18"/><feGaussianBlur stdDeviation="1.4"/></filter>
+    <radialGradient id="a${seed}" cx="0.5" cy="0.5" r="0.75"><stop offset="0.7" stop-color="#4a5a50" stop-opacity="0"/><stop offset="1" stop-color="#3a4a40" stop-opacity="0.3"/></radialGradient>
+  </defs>
+  <rect width="850" height="1100" fill="#edeedd"/>
+  <rect width="850" height="1100" filter="url(#m${seed})" opacity="0.4"/>
+  <rect width="850" height="1100" filter="url(#g${seed})" opacity="0.3"/>
+  ${marks}
+  <rect width="850" height="1100" fill="url(#a${seed})"/>
+</svg>`;
+  const waterMark = (x, y, r, seed) => `<g filter="url(#w${seed})"><circle cx="${x}" cy="${y}" r="${r}" fill="#7fa4b9" opacity="0.08"/>
+    <circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="#5a8099" stroke-width="3" opacity="0.25"/></g>`;
+  document.querySelector("#p1").insertAdjacentHTML("afterbegin", paper(3, waterMark(760, 960, 70, 3)));
+  document.querySelector("#p2").insertAdjacentHTML("afterbegin", paper(6, waterMark(90, 1000, 56, 6) + waterMark(780, 140, 34, 6)));
+  for (const s of document.querySelectorAll(".spiral")) s.innerHTML = "<i></i>".repeat(22);
+
+  // Snowflake pips for Frost, stone pips for Stones.
+  const frostPip = (n) => `<label class="pip frost" title="Frost ${n}"><input type="checkbox" name="frost-${n}"><svg viewBox="0 0 34 34"><circle class="fill" cx="17" cy="17" r="14"/><circle cx="17" cy="17" r="14" fill="none" stroke="#1f262d" stroke-width="1.6"/><g stroke="#1f262d" stroke-width="1.8" stroke-linecap="round"><path d="M17 6 V28 M7.5 11.5 L26.5 22.5 M7.5 22.5 L26.5 11.5"/></g></svg></label>`;
+  const stonePip = (n) => `<label class="pip stone" title="Stone ${n}"><input type="checkbox" name="stone-${n}"><svg viewBox="0 0 34 34"><path class="fill" d="M5 20 C4 11 12 6 19 7 C27 8 31 14 29 21 C27 28 12 30 5 20 Z"/><path d="M5 20 C4 11 12 6 19 7 C27 8 31 14 29 21 C27 28 12 30 5 20 Z" fill="none" stroke="#1f262d" stroke-width="1.8"/><path d="M11 15 L22 15" stroke="#e0612b" stroke-width="2.2"/></svg></label>`;
+  document.querySelector("#frost").innerHTML = [1, 2, 3].map(frostPip).join("");
+  document.querySelector("#stones").innerHTML = [1, 2, 3, 4].map(stonePip).join("");
+  document.querySelector("#arts").innerHTML = Array.from({ length: 8 }, (_, i) => `<tr><td><input type="text" name="a${i}-name"></td><td><input type="text" name="a${i}-cost"></td><td><input type="text" name="a${i}-hit"></td><td><input type="text" name="a${i}-effect"></td></tr>`).join("");
+  document.querySelector("#named").innerHTML = Array.from({ length: 5 }, (_, i) => `<tr><td><input type="text" name="n${i}-name"></td><td><input type="text" name="n${i}-hit"></td><td><input type="text" name="n${i}-dmg"></td></tr>`).join("");
+
+  /** Fills the sheet from a pregen in pregens.json (used by render-sheets.mjs; also handy by hand). */
+  window.fillSheet = (d) => {
+    const set = (name, value) => { const el = document.querySelector(`[name="${name}"]`); if (!el) return; if (el.type === "checkbox") el.checked = !!value; else el.value = value ?? ""; };
+    for (const key of ["name", "player", "calling", "background", "level", "grit", "footing", "sense", "lore", "hp", "maxHp", "guard", "move", "init", "artDc", "gear", "bonds", "notes"]) set(key, d[key]);
+    for (const k of d.knacks ?? []) set(`k-${k.toLowerCase()}`, true);
+    for (let i = 1; i <= (Number(d.stones) || 0); i++) set(`stone-${i}`, true);
+    (d.arts ?? []).forEach((a, i) => { set(`a${i}-name`, a.name); set(`a${i}-cost`, a.cost); set(`a${i}-hit`, a.hit); set(`a${i}-effect`, a.effect); });
+    set("t-hp", d.hp); set("t-max", d.maxHp); set("t-ac", d.guard);
+    (d.named ?? []).forEach((a, i) => { set(`n${i}-name`, a.name); set(`n${i}-hit`, a.hit); set(`n${i}-dmg`, a.dmg); });
+  };
+</script>
+</body>
+</html>
