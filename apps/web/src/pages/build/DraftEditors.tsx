@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { Plus, Trash } from "@phosphor-icons/react";
 import { CONDITIONS, formatExpression, parseDiceExpression, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { IconAction } from "../../ui/IconAction";
+import { tokenOrder } from "./buildOrder";
 
 const optionalNumber = (text: string): number | null => (text.trim() === "" ? null : Number(text));
 const diceText = (dice: { count: number; sides: number; modifier: number } | null) => (dice ? formatExpression(dice) : "");
@@ -85,10 +88,10 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
             <input aria-label={`Attack ${i + 1} name`} placeholder="Name" value={attack.name} maxLength={40} onChange={(e) => setAttack(i, { name: e.target.value })} />
             <input aria-label={`Attack ${i + 1} to-hit`} placeholder="To hit, 1d20+5" value={attack.toHit} onChange={(e) => setAttack(i, { toHit: e.target.value })} />
             <input aria-label={`Attack ${i + 1} damage`} placeholder="Damage, 1d6+2" value={attack.damage} onChange={(e) => setAttack(i, { damage: e.target.value })} />
-            <button type="button" aria-label={`Remove attack ${i + 1}`} onClick={() => setAttacks((all) => all.filter((_, n) => n !== i))}>Remove</button>
+            <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove ${attack.name.trim() || `attack ${i + 1}`}`} danger onClick={() => setAttacks((all) => all.filter((_, n) => n !== i))} />
           </div>
         ))}
-        {attacks.length < 8 && <button type="button" onClick={() => setAttacks((all) => [...all, { name: "", toHit: "", damage: "" }])}>Add attack</button>}
+        {attacks.length < 8 && <button type="button" className="link build-text-action" onClick={() => setAttacks((all) => [...all, { name: "", toHit: "", damage: "" }])}><Plus size={16} aria-hidden="true" />Add attack</button>}
       </fieldset>
       <fieldset>
         <legend>Conditions</legend>
@@ -116,13 +119,20 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
 
 interface TokenRow { creatureKey: string; name: string; column: string; row: string; hidden: boolean }
 
-/** A draft encounter's name and tokens. Squares are the top-left square a token covers. */
-export function DraftEncounterEditor({ data, onSave, onCancel, creatureName }: {
+/**
+ * A draft encounter's name and tokens. Squares are the top-left square a token covers.
+ *
+ * Tokens are listed in the page's order (buildOrder.ts), with each creature's tokens together and
+ * its name said once. Column headings are said once too, and Remove is an icon, so a long list
+ * reads as a table rather than a wall of repeated words. Saving keeps the AI's own order.
+ */
+export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
   data: DraftEncounterState;
-  creatureName: (key: string) => string;
+  creature: (key: string) => DraftCreatureState | undefined;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
+  const creatureName = (key: string) => creature(key)?.name ?? key;
   const [name, setName] = useState(data.name);
   const [tokens, setTokens] = useState<TokenRow[]>(data.tokens.map((t) => ({
     creatureKey: t.creatureKey, name: t.name ?? "", column: t.square ? String(t.square.column) : "", row: t.square ? String(t.square.row) : "", hidden: t.hidden,
@@ -156,17 +166,40 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creatureName }: {
       <label>Name<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
       <fieldset>
         <legend>Tokens</legend>
-        <p className="muted small-print">A square is the top-left square the token covers. Leave both blank to place it later.</p>
-        {tokens.map((token, i) => (
-          <div className="build-token-row" key={i}>
-            <span className="build-token-of">{creatureName(token.creatureKey)}</span>
-            <input aria-label={`Token ${i + 1} name`} placeholder="Name on the board" value={token.name} maxLength={60} onChange={(e) => setToken(i, { name: e.target.value })} />
-            <input aria-label={`Token ${i + 1} column`} placeholder="Col" inputMode="numeric" value={token.column} onChange={(e) => setToken(i, { column: e.target.value })} />
-            <input aria-label={`Token ${i + 1} row`} placeholder="Row" inputMode="numeric" value={token.row} onChange={(e) => setToken(i, { row: e.target.value })} />
-            <label className="build-check"><input type="checkbox" checked={token.hidden} onChange={(e) => setToken(i, { hidden: e.target.checked })} />Hidden</label>
-            <button type="button" aria-label={`Remove token ${i + 1}`} onClick={() => setTokens((all) => all.filter((_, n) => n !== i))}>Remove</button>
+        <p className="muted small-print">A square is the top-left square the token covers. Leave column and row blank to place it later.</p>
+        {tokens.length > 0 && (
+          <div className="build-token-row build-token-head" aria-hidden="true">
+            <span>Creature</span><span>Name on the board</span><span>Column</span><span>Row</span><span>Hidden</span><span />
           </div>
-        ))}
+        )}
+        {tokenOrder(tokens, creature).map((i, n, order) => {
+          const token = tokens[i]!;
+          const of = creatureName(token.creatureKey);
+          // A creature's name is said on its first token only; the rest of its tokens follow under it.
+          const firstOfCreature = n === 0 || tokens[order[n - 1]!]!.creatureKey !== token.creatureKey;
+          const who = token.name.trim() || of;
+          return (
+            <div className={firstOfCreature ? "build-token-row build-token-first" : "build-token-row"} key={i}>
+              <span className="build-token-of">{firstOfCreature ? of : ""}</span>
+              <input aria-label={`${who}: name on the board`} placeholder={of} value={token.name} maxLength={60} onChange={(e) => setToken(i, { name: e.target.value })} />
+              {/* The words show only on a phone, where the table's headings are gone. */}
+              <label className="build-token-field">
+                <span className="build-token-field-word" aria-hidden="true">Column</span>
+                <input aria-label={`${who}: column`} placeholder="Column" inputMode="numeric" value={token.column} onChange={(e) => setToken(i, { column: e.target.value })} />
+              </label>
+              <label className="build-token-field">
+                <span className="build-token-field-word" aria-hidden="true">Row</span>
+                <input aria-label={`${who}: row`} placeholder="Row" inputMode="numeric" value={token.row} onChange={(e) => setToken(i, { row: e.target.value })} />
+              </label>
+              <label className="build-token-hidden">
+                <input type="checkbox" checked={token.hidden} onChange={(e) => setToken(i, { hidden: e.target.checked })} />
+                <span className="build-token-hidden-word" aria-hidden="true">Hidden</span>
+                <span className="sr-only">{who} is hidden</span>
+              </label>
+              <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove ${who}`} danger onClick={() => setTokens((all) => all.filter((_, x) => x !== i))} />
+            </div>
+          );
+        })}
       </fieldset>
       {error && <p role="alert" className="error build-error">{error}</p>}
       <div className="row build-form-actions">
