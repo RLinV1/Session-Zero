@@ -18,7 +18,8 @@ function apply(state: RoomState, command: CommandInput, id: string, actor = gm, 
 describe("UVTT reconciled with native portals and fog (FR-GM-06/12/18/23, FR-REC-02)", () => {
   it("keeps generic imports private and preserves metadata while native designation uses existing player controls", () => {
     const state = initial();
-    expect(filterStateForViewer(state, alice).walls).toEqual({});
+    // A closed import in view arrives as a bare piece: no metadata, no real id (ADR 0041, ADR 0056).
+    expect(filterStateForViewer(state, alice).walls).toEqual({ "seen:0": { id: "seen:0", a: imported.a, b: imported.b } });
     expect(decide(state, alice, Command.parse({ type: "portal.setState", wallId: "p", state: "open" }), ctx)).toMatchObject({ ok: false, code: "not_found" });
     const designated = apply(state, { type: "portal.set", wallId: "p", portal: { kind: "door", state: "closed" } }, "designate").state;
     expect(designated.walls.p!.uvttPortal).toEqual(imported.uvttPortal);
@@ -32,7 +33,7 @@ describe("UVTT reconciled with native portals and fog (FR-GM-06/12/18/23, FR-REC
     expect(exported.line_of_sight).toEqual([]); expect(exported.objects_line_of_sight).toEqual([]);
     expect(apply(opened.state, { type: "history.undo", commandId: "open" }, "undo").state.walls).toEqual(designated.walls);
   });
-  it("resyncs visible endpoint updates and hides metadata; fog conceals a native portal by bounds midpoint", () => {
+  it("resyncs visible endpoint updates and hides metadata; fog conceals a native portal only when it covers all of it", () => {
     const state = initial(); state.walls.p = { ...imported, portal: { kind: "window", state: "locked" } };
     const edited = { ...state.walls.p, b: { x: 150, y: 210 } };
     const event = { type: "WallUpdated" as const, wall: edited, previous: state.walls.p };
@@ -40,7 +41,10 @@ describe("UVTT reconciled with native portals and fog (FR-GM-06/12/18/23, FR-REC
     expect(filterEventForViewer(committed, state, alice)).toEqual({ kind: "resync" });
     const next = reduce(state, event);
     expect(JSON.stringify(filterStateForViewer(next, alice).walls)).not.toMatch(/uvttPortal|source|freestanding|rotation/);
-    const fogged = apply(next, { type: "fog.add", region: { shape: "rect", from: { x: 130, y: 100 }, to: { x: 170, y: 180 } } }, "fog").state;
+    // Partly outside fog: the whole portal still arrives (ADR 0056).
+    const partly = apply(next, { type: "fog.add", region: { shape: "rect", from: { x: 130, y: 100 }, to: { x: 170, y: 180 } } }, "partly").state;
+    expect(Object.keys(filterStateForViewer(partly, alice).walls)).toEqual(["p"]);
+    const fogged = apply(next, { type: "fog.add", region: { shape: "rect", from: { x: 100, y: 50 }, to: { x: 200, y: 250 } } }, "fog").state;
     expect(filterStateForViewer(fogged, alice).walls).toEqual({});
     expect(decide(fogged, alice, Command.parse({ type: "portal.setState", wallId: "p", state: "open" }), ctx)).toMatchObject({ ok: false, code: "not_found" });
     expect(serializeUvtt(map, state.scene.grid, [state.walls.p], "image").portals[0]?.closed).toBe(true);

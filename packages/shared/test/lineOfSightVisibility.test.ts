@@ -104,9 +104,9 @@ describe("line of sight in player snapshots (FR-GM-19)", () => {
   });
 
   it("withholds a portal outside sight and keeps the one on the sight edge", () => {
-    const view = filterStateForViewer(room(true), alice);
-    expect(Object.keys(view.walls)).toEqual(["door"]);
-    expect(Object.keys(filterStateForViewer(room(false), alice).walls).sort()).toEqual(["door", "farDoor"]);
+    const portals = (s: RoomState) => Object.values(filterStateForViewer(s, alice).walls).filter((w) => w.portal).map((w) => w.id).sort();
+    expect(portals(room(true))).toEqual(["door"]);
+    expect(portals(room(false))).toEqual(["door", "farDoor"]);
   });
 
   it("withholds another player's template outside sight but keeps one's own", () => {
@@ -202,7 +202,10 @@ describe("line of sight in live events (FR-GM-19)", () => {
 
   it("keeps today's behaviour with line of sight off", () => {
     const off = room(false);
-    expect(filterEventForViewer(commit(1, { type: "WallsAdded", walls: [wall("w9", 1, 1, 2, 2)] }), off, alice)).toEqual({ kind: "redacted", seq: 1 });
+    // A wall in plain view resyncs; one under fog stays a redacted step (ADR 0056).
+    expect(filterEventForViewer(commit(1, { type: "WallsAdded", walls: [wall("w9", 1, 1, 2, 2)] }), off, alice)).toEqual({ kind: "resync" });
+    const fogged = { ...off, fog: { f: { id: "f", shape: "rect", points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] } } } as RoomState;
+    expect(filterEventForViewer(commit(1, { type: "WallsAdded", walls: [wall("w9", 1, 1, 2, 2)] }), fogged, alice)).toEqual({ kind: "redacted", seq: 1 });
     expect(filterEventForViewer(commit(2, { type: "TokenMoved", tokenId: "hero", from, to: { x: 5, y: 5 } }), off, alice)).toMatchObject({ kind: "event" });
     expect(filterEventForViewer(commit(3, { type: "TokenMoved", tokenId: "goblin", from, to: { x: 300, y: 300 } }), off, alice)).toMatchObject({ kind: "event" });
   });

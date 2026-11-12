@@ -164,12 +164,13 @@ describe("who may change a portal's state (FR-GM-18, ADR 0030)", () => {
 });
 
 describe("players see the portals in front of them (FR-GM-18, FR-GM-23, ADR 0030)", () => {
-  it("sends players portals outside fog and no plain walls", () => {
+  it("sends players portals outside fog and plain walls only as visible pieces", () => {
     const { state, doorwayId } = room();
-    expect(Object.keys(filterStateForViewer(state, alice).walls)).toEqual([doorwayId]);
+    expect(Object.keys(filterStateForViewer(state, alice).walls)).toEqual([doorwayId, "seen:0"]);
     expect(filterStateForViewer(state, alice).walls[doorwayId]!.portal).toEqual(door("closed"));
+    expect(filterStateForViewer(state, alice).walls["seen:0"]).toEqual({ id: "seen:0", ...FAR_WALL });
     const fogged = must(act(state, gm, { type: "fog.add", region: { shape: "rect", from: { x: 100, y: 0 }, to: { x: 200, y: 200 } } })).state;
-    expect(filterStateForViewer(fogged, alice).walls).toEqual({});
+    expect(Object.keys(filterStateForViewer(fogged, alice).walls)).toEqual(["seen:0"]);
     expect(Object.keys(filterStateForViewer(fogged, gm).walls)).toHaveLength(2);
   });
 
@@ -190,7 +191,9 @@ describe("players see the portals in front of them (FR-GM-18, FR-GM-23, ADR 0030
     const removed = committed({ type: "WallsRemoved", walls: [withDoor.state.walls[withDoor.doorwayId]!] });
     expect(filterEventForViewer(removed, withDoor.state, alice).kind).toBe("resync");
     const farOnly = committed({ type: "WallsRemoved", walls: [withDoor.state.walls[withDoor.farId]!] });
-    expect(filterEventForViewer(farOnly, withDoor.state, alice).kind).toBe("redacted");
+    expect(filterEventForViewer(farOnly, withDoor.state, alice).kind).toBe("resync");
+    const farFogged = must(act(withDoor.state, gm, { type: "fog.add", region: { shape: "rect", from: { x: 500, y: 500 }, to: { x: 700, y: 700 } } })).state;
+    expect(filterEventForViewer(farOnly, farFogged, alice).kind).toBe("redacted");
     const fogged = must(act(withDoor.state, gm, { type: "fog.add", region: { shape: "rect", from: { x: 100, y: 0 }, to: { x: 200, y: 200 } } })).state;
     const hiddenOpen = committed({ type: "PortalChanged", wallId: withDoor.doorwayId, from: door("closed"), to: door("open") });
     expect(filterEventForViewer(hiddenOpen, fogged, alice).kind).toBe("redacted");

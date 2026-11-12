@@ -230,7 +230,8 @@ describe("terrain over the ordered wire (FR-PL-04, FR-GM-23, FR-REC-02)", () => 
     expect(await gm.command({ ...move, to: { x: 315, y: 35 }, expectedOrigin: move.to })).toMatchObject({ type: "rejected", message: "The board or token changed. Try the move again." });
     expect(gm.seq).toBe(changedSeq);
     await player.waitForSeq(gm.seq);
-    expect(player.state.walls).toEqual({});
+    // Half the door lies below the fog, so the player gets the whole door (ADR 0056).
+    expect(Object.keys(player.state.walls)).toEqual([wallId]);
   });
   it("revalidates owner drags after fog-only edits, new physical restrictions and stale positions/epochs", async () => {
     const { gm, player, token } = await setup();
@@ -275,7 +276,8 @@ describe("terrain over the ordered wire (FR-PL-04, FR-GM-23, FR-REC-02)", () => 
     const observer = await server!.connect(await server!.join(gmCreds.inviteCode, "Observer")); clients.push(observer);
     const added = await gm.command({ type: "wall.add", walls: [{ a: { x: 140, y: 0 }, b: { x: 140, y: 280 } }] });
     await player.waitForSeq(seq(added)); await observer.waitForSeq(seq(added));
-    expect(player.state.walls).toEqual({});
+    // The wall is in plain view, so the player holds it as a bare piece (ADR 0056).
+    expect(player.state.walls).toEqual({ "seen:0": { id: "seen:0", a: { x: 140, y: 0 }, b: { x: 140, y: 280 } } });
     const initialSeq = player.seq, original = JSON.stringify(player.state);
     let id = 0;
     const preview = async (change: Partial<MovementPreviewRequest> = {}) => {

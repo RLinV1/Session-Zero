@@ -36,15 +36,16 @@ async function setup() {
 }
 
 describe("portals over the wire (FR-GM-18, FR-GM-09, ADR 0030)", () => {
-  it("shows a player the door but not the walls, and lets them open it and walk through", async () => {
+  it("shows a player the door and the walls in view as bare pieces, and lets them open it and walk through", async () => {
     const { gm, alice, doorway, aria } = await setup();
-    expect(walls(alice)).toEqual([]);
+    // Plain walls in view arrive as opaque pieces (ADR 0056).
+    expect(walls(alice)).toEqual([{ id: "seen:0", ...DOORWAY }, { id: "seen:1", ...FAR_WALL }]);
 
     const marked = await gm.command({ type: "portal.set", wallId: doorway.id, portal: { kind: "door", state: "closed" } });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(marked))));
-    expect(walls(alice)).toEqual([{ ...doorway, portal: { kind: "door", state: "closed" } }]);
-    // The plain wall's geometry never reaches the player.
-    expect(alice.rawLog.join(" ")).not.toContain('"x":630');
+    expect(walls(alice)).toEqual([{ ...doorway, portal: { kind: "door", state: "closed" } }, { id: "seen:0", ...FAR_WALL }]);
+    // The plain wall's real id never reaches the player.
+    expect(alice.rawLog.join(" ")).not.toContain(walls(gm).find((w) => w.a.x === 560)!.id);
 
     const through = { type: "token.move", tokenId: aria.id, to: { x: 175, y: 105 } } as const;
     expect(await alice.command(through)).toMatchObject({ type: "rejected", message: "That move is unavailable." });
@@ -75,7 +76,7 @@ describe("portals over the wire (FR-GM-18, FR-GM-09, ADR 0030)", () => {
     await gm.waitForSeq(seqOf(await gm.command({ type: "portal.set", wallId: doorway.id, portal: { kind: "window", state: "closed" } })));
     const fogged = await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 100, y: 0 }, to: { x: 200, y: 200 } } });
     await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(fogged))));
-    expect(walls(alice)).toEqual([]);
+    expect(walls(alice).filter((w) => w.portal)).toEqual([]);
     expect(await alice.command({ type: "portal.setState", wallId: doorway.id, state: "open" }))
       .toMatchObject({ type: "rejected", code: "not_found" });
   });

@@ -367,9 +367,11 @@ describe("drawing walls by hand (FR-GM-09, wall-editing)", () => {
   });
 });
 
-describe("walls are GM-only (FR-GM-23, ADR 0029)", () => {
-  it("withholds walls from player snapshots and redacts their events", () => {
-    const { state } = roomWithWalls();
+describe("walls players can't see are GM-only (FR-GM-23, ADR 0029, ADR 0056)", () => {
+  it("withholds fogged walls from player snapshots and redacts their events", () => {
+    const { state: open } = roomWithWalls();
+    // Fog over the whole map: no part of the wall is visible to the player.
+    const state = must(act(open, gm, { type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 700, y: 700 } } })).state;
     expect(filterStateForViewer(state, alice).walls).toEqual({});
     expect(filterStateForViewer(state, gm).walls).toEqual(state.walls);
     const committed: CommittedEvent = {
@@ -379,5 +381,8 @@ describe("walls are GM-only (FR-GM-23, ADR 0029)", () => {
     expect(filterEventForViewer({ ...committed, event: { type: "WallsRemoved", walls: Object.values(state.walls) } }, state, alice))
       .toEqual({ kind: "redacted", seq: 9 });
     expect(filterEventForViewer(committed, state, gm).kind).toBe("event");
+    // Without fog a new wall is in view, so adding it resyncs the player.
+    const fresh = { ...Object.values(open.walls)[0]!, id: "new-wall", a: { x: 280, y: 0 } };
+    expect(filterEventForViewer({ ...committed, event: { type: "WallsAdded", walls: [fresh] } }, open, alice)).toEqual({ kind: "resync" });
   });
 });

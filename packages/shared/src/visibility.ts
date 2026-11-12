@@ -6,7 +6,7 @@ import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type Logge
 import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
 import { inFogRegion, MAX_MOVE_VIA, type Point } from "./geometry";
-import { wallMidpoint } from "./portals";
+import { blocksMovement } from "./portals";
 import { inSight, viewerSight } from "./sight";
 import type { TokenStats } from "./conditions";
 import type { AreaTemplate, Initiative, Participant, RoomState, Token, Wall } from "./state";
@@ -62,14 +62,60 @@ export function templateConcealedFrom(c: Concealment, template: AreaTemplate, vi
 }
 
 /**
- * Whether `viewer` may not see `wall` (ADR 0030). Plain walls are GM-only (ADR 0029); a portal
- * is concealed when its midpoint is under fog or outside sight, as a token is by its centre.
+ * Whether `viewer` may not see the portal `wall` (ADR 0030, ADR 0056). A portal is sent whole as
+ * soon as any part of it lies outside fog and, with line of sight on, inside sight; it is concealed
+ * only when all of it is hidden. Plain walls are never portals: they reach players as pieces.
  */
 export function portalConcealedFrom(c: Concealment, wall: Pick<Wall, "a" | "b" | "portal">, viewer: Participant): boolean {
   if (viewer.role === "gm") return false;
   if (!wall.portal) return true;
-  const mid = wallMidpoint(wall);
-  return isInFog(c.fog, mid) || outOfSight(c, mid);
+  return visibleParts(c, wall).length === 0;
+}
+
+/** The stretches of segment a-b the viewer can see: cut at fog and sight edges, hidden parts dropped. */
+function visibleParts(c: Concealment, wall: Pick<Wall, "a" | "b">): [Point, Point][] {
+  const { points, gaps } = visibleStretches([wall.a, wall.b], c);
+  const out: [Point, Point][] = [];
+  for (let i = 0; i + 1 < points.length; i++) if (!gaps.includes(i)) out.push([points[i]!, points[i + 1]!]);
+  return out;
+}
+
+/**
+ * The stretches of a plain blocking wall the viewer can see (ADR 0056): the wall cut at fog and,
+ * with line of sight on, sight edges, keeping only the visible parts. Empty for portals and for
+ * walls that don't block movement (an open imported portal).
+ */
+function plainWallStretches(c: Concealment, wall: Pick<Wall, "a" | "b" | "portal" | "uvttPortal">): [Point, Point][] {
+  if (wall.portal || !blocksMovement(wall)) return [];
+  return visibleParts(c, wall);
+}
+
+/**
+ * The plain-wall pieces a player receives (ADR 0056): only the visible stretches, each with an
+ * opaque per-snapshot id (`seen:n`) that names no source wall and links no two pieces. Numbered in
+ * geometric order, not storage order, so re-splitting a wall out of view changes nothing they hold.
+ * The GM gets no pieces; they hold the walls themselves.
+ */
+export function wallPiecesForViewer(state: Pick<RoomState, "walls">, viewer: Participant, c: Concealment): Wall[] {
+  if (viewer.role === "gm") return [];
+  const stretches = Object.values(state.walls).flatMap((wall) => plainWallStretches(c, wall));
+  stretches.sort(([a1, b1], [a2, b2]) => a1.x - a2.x || a1.y - a2.y || b1.x - b2.x || b1.y - b2.y);
+  return stretches.map(([a, b], i) => ({ id: `seen:${i}`, a, b }));
+}
+
+/** A player's `walls`: the portals they can see under their real ids, then the plain-wall pieces (ADR 0030, ADR 0056). */
+function wallsForViewer(state: Pick<RoomState, "walls">, viewer: Participant, c: Concealment): RoomState["walls"] {
+  const portals = Object.entries(state.walls).filter(([, w]) => w.portal && !portalConcealedFrom(c, w, viewer)).map(([id, w]): [string, Wall] => [id, { id: w.id, a: w.a, b: w.b, portal: w.portal }]);
+  return Object.fromEntries([...portals, ...wallPiecesForViewer(state, viewer, c).map((w): [string, Wall] => [w.id, w])]);
+}
+
+/**
+ * Whether any part of `wall` reaches the viewer (ADR 0056): a plain blocking wall or a portal with
+ * a visible stretch. The GM sees every wall.
+ */
+export function wallSeen(c: Concealment, wall: Pick<Wall, "a" | "b" | "portal" | "uvttPortal">, viewer: Participant): boolean {
+  if (viewer.role === "gm") return true;
+  return wall.portal ? !portalConcealedFrom(c, wall, viewer) : plainWallStretches(c, wall).length > 0;
 }
 
 /** Private, geometry-free advisory feedback. Concealed routes never become an obstacle oracle. */
@@ -123,9 +169,10 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // ids and public display names of participants every viewer already has in `participants`. If
   // `participants` is ever filtered for players, filter `chat[].mentions` with it (ADR 0035).
   // Undo is GM-only, and its entries name hidden tokens and their old values (ADR 0013).
-  // Plain walls are GM-only: inside fog they would draw rooms the players haven't seen (ADR 0029).
-  // Portals outside fog stay, so players can see and use them (ADR 0030).
-  const walls = Object.fromEntries(Object.entries(state.walls).filter(([, w]) => !portalConcealedFrom(c, w, viewer)).map(([id, w]) => [id, { id: w.id, a: w.a, b: w.b, portal: w.portal }]));
+  // Portals outside fog stay, so players can see and use them (ADR 0030). Plain walls arrive only
+  // as the pieces the player can already see, clipped at fog and sight edges, with opaque ids:
+  // whole walls inside fog would outline rooms the players haven't seen (ADR 0029, ADR 0056).
+  const walls = wallsForViewer(state, viewer, c);
   // Groups are the GM's organisation and would say which group a hidden token is in (KAN-82, ADR 0026).
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
@@ -168,6 +215,10 @@ export function filterEventForViewer(
   /** Same before and after: as-is or redacted. Changed: the token appears or vanishes, so resync. */
   const byVisibility = (wasConcealed: boolean, isConcealed: boolean): FilteredEvent =>
     wasConcealed !== isConcealed ? { kind: "resync" } : isConcealed ? redacted : pass;
+
+  /** Resync when the event changes the walls the viewer holds, otherwise a redacted step (ADR 0056). */
+  const wallsChanged = (): FilteredEvent =>
+    JSON.stringify(wallsForViewer(before, viewer, conc())) === JSON.stringify(wallsForViewer(reduce(before, e), viewer, conc())) ? redacted : { kind: "resync" };
 
   /** Set when the event is delivered and the viewer's sight must then be resynced. */
   let thenResync = false;
@@ -236,22 +287,23 @@ export function filterEventForViewer(
       return JSON.stringify(terrainForViewer(before, conc())) === JSON.stringify(terrainForViewer(after, conc())) ? redacted : { kind: "resync" };
     }
     case "GridSet": return e.terrainChange || before.terrain ? { kind: "resync" } : pass;
-    // Plain walls are GM-only geometry (ADR 0029): players learn only that a seq happened. A
-    // portal they can see appears or vanishes, which a snapshot does without the plain walls (ADR 0030).
+    // A wall change that alters what the player holds resyncs them with freshly clipped pieces; one
+    // they can't see, or that leaves their walls exactly as they were (a wall re-split out of view),
+    // is a redacted step (ADR 0029, ADR 0030, ADR 0056). Line of sight is off here (resynced above),
+    // so the concealment before the event holds after it too.
     case "WallUpdated":
-      return !portalConcealedFrom(conc(), e.previous, viewer) || !portalConcealedFrom(conc(), e.wall, viewer) ? { kind: "resync" } : redacted;
+      return wallSeen(conc(), e.previous, viewer) || wallSeen(conc(), e.wall, viewer) ? wallsChanged() : redacted;
     case "WallsAdded":
     case "WallsRemoved":
-      return e.walls.some((w) => !portalConcealedFrom(conc(), w, viewer)) ? { kind: "resync" } : redacted;
+      return e.walls.some((w) => wallSeen(conc(), w, viewer)) ? wallsChanged() : redacted;
     case "PortalChanged": {
-      // Seen before and after: a state change the player's copy can apply. Otherwise the wall's
-      // geometry must arrive or leave with it, so resync (ADR 0030).
+      // Seen as a portal before and after: a state change the player's copy can apply. Otherwise
+      // the wall's geometry must arrive or leave with it, so resync if any part was or becomes seen.
       const wall = before.walls[e.wallId];
       if (!wall) return redacted;
-      return byVisibility(
-        portalConcealedFrom(conc(), { ...wall, portal: e.from ?? undefined }, viewer),
-        portalConcealedFrom(conc(), { ...wall, portal: e.to ?? undefined }, viewer),
-      );
+      const from = { ...wall, portal: e.from ?? undefined }, to = { ...wall, portal: e.to ?? undefined };
+      if (from.portal && to.portal && !portalConcealedFrom(conc(), from, viewer) && !portalConcealedFrom(conc(), to, viewer)) return pass;
+      return wallSeen(conc(), from, viewer) || wallSeen(conc(), to, viewer) ? wallsChanged() : redacted;
     }
     case "TokenCreated":
     case "TokenDeleted":

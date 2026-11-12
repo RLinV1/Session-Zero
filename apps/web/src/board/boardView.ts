@@ -1,4 +1,5 @@
 import { effectiveTerrain, emptyTerrain, cellRect, rulerPathCost, stepRulesOf, type StepRules, type TerrainRun } from "@vtt/shared";
+import { plainWallLines } from "./wallLines";
 import { budgetLabel, defaultMovementSettings, dragPlan, type DragPlan, type MovementPreview, type MovementSettings } from "./movementRuler";
 import {
   Application,
@@ -376,6 +377,7 @@ export class BoardView {
   private repositionToken: string | null = null;
   private wallGraphics = new Graphics();
   private drawnWalls: RoomState["walls"] | null = null;
+  private drawnWallsRole: Participant["role"] | null = null;
   /** Doors and windows, over the walls; redrawn on zoom so they stay thick enough to find (ADR 0030). */
   private portalGraphics = new Graphics();
   private portalsScale = 0;
@@ -817,7 +819,7 @@ export class BoardView {
     this.invalidate();
   }
 
-  /** Re-query even redacted edits: the player does not hold plain walls locally. */
+  /** Re-query even redacted edits: the player holds only the wall pieces they can see (ADR 0056). */
   refreshMovementPreview(force = true) {
     const drag = this.drag, state = this.state, you = this.you;
     if (!drag?.target || !drag.movable || !state || !you || this.readOnly) return;
@@ -968,10 +970,12 @@ export class BoardView {
    */
   private syncWalls() {
     const state = this.state;
-    if (!state || state.walls === this.drawnWalls) return;
+    const role = this.you?.role ?? null;
+    if (!state || (state.walls === this.drawnWalls && role === this.drawnWallsRole)) return;
     this.drawnWalls = state.walls;
+    this.drawnWallsRole = role;
     const g = this.wallGraphics.clear();
-    const plain = Object.values(state.walls).filter((w) => !w.portal);
+    const plain = plainWallLines(state.walls, this.you);
     if (plain.length > 0) {
       const width = Math.max(2, state.scene.grid.cellSize * 0.05);
       for (const wall of plain) {

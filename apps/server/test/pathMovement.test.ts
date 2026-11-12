@@ -47,10 +47,10 @@ describe("path movement over the wire (FR-TAC-02, FR-GM-23, ADR 0055)", () => {
     expect(alice.state.tokens[aria.id]!.position).toEqual(at(4, 1));
   });
 
-  it("refuses a player's path whose leg crosses a wall their client never held", async () => {
+  it("refuses a player's path whose leg crosses a wall", async () => {
     const { alice, aria } = await setup();
-    // Alice holds no plain walls; the straight middle leg along row 1 crosses one.
-    expect(alice.state.walls).toEqual({});
+    // Alice holds the wall in view only as an opaque piece (ADR 0056); the straight middle leg along row 1 crosses it.
+    expect(Object.values(alice.state.walls)).toEqual([{ id: "seen:0", a: { x: 210, y: 0 }, b: { x: 210, y: 210 } }]);
     const refused = await alice.command({ type: "token.move", tokenId: aria.id, to: at(4, 2), via: [at(1, 2)] });
     expect(refused).toMatchObject({ type: "rejected", message: "That move is unavailable." });
     expect(alice.state.tokens[aria.id]!.position).toEqual(at(1, 1));
