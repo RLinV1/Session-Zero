@@ -4,7 +4,8 @@ An attack's damage roll can only be applied in full. **Apply −N** lowers the t
 
 ## What Changes
 
-- **Resolve replaces Apply −N.** In the GM's Rulings list, the control becomes **Resolve**; the Rulings list is the one place the GM rules on and resolves attack rolls, their own included. It opens a resolve dialog for that one roll.
+- **Resolve joins Apply −N.** In the GM's Rulings list, each damage roll keeps **Apply −N** for applying the full damage in one tap, and gains **Resolve** beside it; the Rulings list is the one place the GM rules on and resolves attack rolls, their own included.
+- **The AC points to a verdict.** On a to-hit roll whose target has an AC, the Rulings list shows **Hit** in the main button colour when the total is equal to or greater than the AC, and **Miss** in it otherwise. The GM still makes the call. It opens a resolve dialog for that one roll.
 - **The resolve dialog** shows the target's name, the rolled damage and its formula, and the target's current HP, then:
   - an amount field starting at the roll's total, with **Half** (rounded down, as for area effects) and **None** (0); a negative amount heals, as in area effects;
   - when the room's preset has conditions on, the conditions checklist, adding to the target's conditions and never removing any;

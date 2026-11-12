@@ -88,6 +88,7 @@ export function RulingsPanel({
               busy={busy.has(item.roll.id)}
               rolling={airborne.has(item.roll.id)}
               onRule={(verdict) => send(item.roll.id, { type: "roll.rule", rollId: item.roll.id, verdict })}
+              onApply={() => send(item.roll.id, { type: "roll.applyDamage", rollId: item.roll.id })}
               onResolve={() => setResolving(item.roll.id)}
             />
           ))}
@@ -171,6 +172,7 @@ function RulingRow({
   busy,
   rolling,
   onRule,
+  onApply,
   onResolve,
 }: {
   item: PendingRuling;
@@ -178,9 +180,13 @@ function RulingRow({
   /** The dice are still landing: the total and the controls wait for them. */
   rolling: boolean;
   onRule: (verdict: "hit" | "miss") => void;
+  /** Take the roll's full damage off at once, with no dialog. */
+  onApply: () => void;
   onResolve: () => void;
 }) {
   const { roll } = item;
+  // Equal to or above the target's AC points to Hit; below it, to Miss. A hint only: the GM rules.
+  const suggested = item.kind === "toHit" && item.ac !== null ? (roll.total >= item.ac ? "hit" : "miss") : null;
   const attack = roll.attack!;
   const label = attackLabel(attack, getLocale());
   const description = `${formatAttackParties(attack, getLocale())}${label ? ` · ${label}` : ""}`;
@@ -194,14 +200,14 @@ function RulingRow({
         </span>
       </span>
       <span className="ruling-actions">
-        {/* A reference for the GM's own call; nothing here compares it to the roll. */}
+        {/* A reference for the GM's own call; the suggested verdict is only highlighted, never ruled. */}
         <span className="muted">
           {item.kind === "toHit"
             ? item.ac === null ? t("ruling.noAc") : t("ruling.ac", { n: item.ac })
             : t("ruling.hp", { hp: `${item.hp}${item.maxHp !== null ? `/${item.maxHp}` : ""}` })}
         </span>
         {/* Not even disabled: the buttons' names would give the total away. */}
-        {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onResolve={onResolve} />}
+        {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} suggested={suggested} onRule={onRule} onApply={onApply} onResolve={onResolve} />}
       </span>
     </li>
   );

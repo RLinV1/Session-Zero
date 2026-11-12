@@ -55,8 +55,8 @@ A player's attempt SHALL be refused as forbidden. Resolving SHALL record the HP 
 
 ### Requirement: GM Rulings list
 The GM's Play tab SHALL show a **Rulings** list, and players SHALL NOT be shown it. The list SHALL show, newest first, the attack rolls in the recent roll log that still need the GM, and the open Area Effect, if there is one:
-- to-hit rolls without a verdict, each with the target's current AC and **Hit** and **Miss** controls;
-- damage rolls not yet applied whose target still tracks HP, each with the target's current HP, the rolled damage, and a **Resolve** control that opens the damage resolve dialog for that roll;
+- to-hit rolls without a verdict, each with the target's current AC and **Hit** and **Miss** controls. When the target has an AC, the control the roll points to SHALL be shown in the main button colour: **Hit** when the total is equal to or greater than the AC, **Miss** otherwise. This is only a hint: nothing is ruled until the GM chooses, and with no AC neither control is marked;
+- damage rolls not yet applied whose target still tracks HP, each with the target's current HP, the rolled damage, an **Apply −N** control that applies the full damage at once (N being the roll's total, a negative total counting as 0), and a **Resolve** control that opens the damage resolve dialog for that roll;
 - the open Area Effect, at every stage until it is resolved or closed, with its label, its number of targets, its stage, and the controls for that stage:
   - **Call**, **Resolve** and **Skip** after its group roll;
   - "Waiting on <caller>", **Reassign** and **Take over** while a player holds the call;
@@ -75,7 +75,15 @@ While any rolls or an Area Effect are pending:
 
 #### Scenario: Pending damage shows Resolve
 - **WHEN** Aria's owner rolls 7 damage against Goblin, who has 15 HP
-- **THEN** the GM's Rulings list shows the roll with Goblin's HP, the damage 7, and a Resolve control, and no Apply −7 control
+- **THEN** the GM's Rulings list shows the roll with Goblin's HP, the damage 7, an Apply −7 control and a Resolve control
+
+#### Scenario: Quick apply
+- **WHEN** the GM presses Apply −7 on that roll
+- **THEN** Goblin loses 7 HP at once, no dialog opens, and the roll leaves the list
+
+#### Scenario: AC points to a verdict
+- **WHEN** Aria's owner rolls 13 to hit Goblin, whose AC is 13
+- **THEN** Hit is shown in the main button colour, Miss is not, and the roll stays unruled until the GM chooses one
 
 #### Scenario: Ruled roll leaves the list
 - **WHEN** the GM marks that roll Hit

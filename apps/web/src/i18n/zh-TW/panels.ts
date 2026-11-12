@@ -259,6 +259,8 @@ export const panelsZhTW = {
   "ruling.missNamed": ({ what }) => `未命中：${what}`,
   "ruling.title": ({ n }) => `裁定（${n}）`,
   "ruling.titlePlain": "裁定",
+  "ruling.applyDamage": ({ n, what }) => cjk`套用${n}點傷害：${what}`,
+  "ruling.applyMinus": ({ n }) => `套用 −${n}`,
   "ruling.nothing": "目前沒有待裁定的項目。",
   "ruling.rolled": "已擲骰",
   "ruling.damageRolled": "已擲傷害骰",

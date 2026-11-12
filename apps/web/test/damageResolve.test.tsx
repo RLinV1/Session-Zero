@@ -55,10 +55,14 @@ afterEach(() => {
 });
 
 describe("damage resolve dialog (FR-TAC-07, ADR 0060)", () => {
-  it("offers Resolve, not Apply −N, on a pending damage roll", () => {
-    panel(room());
+  it("offers Apply −N, which applies the full damage at once, beside Resolve", async () => {
+    const { command } = panel(room());
     expect(screen.getByRole("button", { name: "Resolve damage: Aria → Goblin · Longsword damage, 8" }).textContent).toBe("Resolve");
-    expect(screen.queryByText(/Apply −/)).toBeNull();
+    const apply = screen.getByRole("button", { name: "Apply 8 damage: Aria → Goblin · Longsword damage, 8" });
+    expect(apply.textContent).toBe("Apply −8");
+    await act(async () => fireEvent.click(apply));
+    expect(command).toHaveBeenCalledWith({ type: "roll.applyDamage", rollId: "d1" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens titled with the target, showing the damage, HP and an amount at the rolled damage", () => {
@@ -127,5 +131,34 @@ describe("damage resolve dialog (FR-TAC-07, ADR 0060)", () => {
     openResolve();
     expect(within(dialog()).queryByRole("checkbox")).toBeNull();
     expect(amount()).toBeTruthy();
+  });
+});
+
+describe("Hit and Miss point to the verdict the AC suggests (attack-rulings)", () => {
+  /** Aria's to-hit roll of `total` at Goblin, whose AC is `ac`. */
+  function toHit(total: number, ac: number | null): RoomState {
+    const state = room();
+    state.tokens.goblin = { ...state.tokens.goblin!, stats: { hp: 12, maxHp: 15, ac } };
+    state.rolls = [{
+      id: "h1", expression: "1d20+5", byParticipantId: gm.id, dice: [Math.max(1, total - 5)], modifier: 5, total, visibility: "public",
+      attack: { actor: { tokenId: "aria", name: "Aria", hidden: false }, target: { tokenId: "goblin", name: "Goblin", hidden: false }, label: "Longsword", kind: "toHit" },
+    }];
+    return state;
+  }
+  const hit = () => screen.getByRole("button", { name: /^Hit: / });
+  const miss = () => screen.getByRole("button", { name: /^Miss: / });
+
+  it.each([[13, 13, "hit"], [17, 13, "hit"], [12, 13, "miss"]] as const)("a %i against AC %i marks %s in the main colour", (total, ac, verdict) => {
+    panel(toHit(total, ac));
+    expect(hit().classList.contains("ruling-suggested")).toBe(verdict === "hit");
+    expect(miss().classList.contains("ruling-suggested")).toBe(verdict === "miss");
+  });
+
+  it("marks neither when the target has no AC, and rules only when the GM taps", async () => {
+    const { command } = panel(toHit(15, null));
+    expect(document.querySelector(".ruling-suggested")).toBeNull();
+    expect(command).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(miss()));
+    expect(command).toHaveBeenCalledWith({ type: "roll.rule", rollId: "h1", verdict: "miss" });
   });
 });

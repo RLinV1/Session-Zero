@@ -33,7 +33,7 @@ Alternative considered: keep `amount ≥ 0` and forbid healing from an attack re
 
 **Dialog: split the body out of `ResolveDialog`.** Extract a `ResolveTargetBody` component (header results, amount with Half / None and the hint, the conditions picker) used by both dialogs. The area dialog keeps Previous / Next / Apply-to-all / Skip around it; the damage dialog has one target, so it shows only Confirm. The damage dialog's draft (`{ rollId, amount, added }`) lives in `RulingsPanel` state keyed by roll id, so closing and reopening keeps it; it is dropped when the roll becomes applied, which also closes the dialog.
 
-**Where Resolve appears.** `RulingButtons` changes its damage branch from "Apply −N" to "Resolve" with an `onResolve` callback. Its only caller is the Rulings list: the GM's own latest-roll card no longer offers rulings, and the GM resolves their own rolls from the list like any other.
+**Where Resolve appears.** `RulingButtons`'s damage branch keeps "Apply −N" (`roll.applyDamage { rollId }`, the full total) and adds "Resolve" with an `onResolve` callback. Its only caller is the Rulings list: the GM's own latest-roll card no longer offers rulings, and the GM resolves their own rolls from the list like any other.
 
 ## Risks / Trade-offs
 

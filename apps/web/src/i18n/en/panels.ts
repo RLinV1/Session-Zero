@@ -258,6 +258,8 @@ export const panels = {
   "ruling.missNamed": ({ what }: { what: string }) => `Miss: ${what}`,
   "ruling.title": ({ n }: { n: number }) => `Rulings (${n})`,
   "ruling.titlePlain": "Rulings",
+  "ruling.applyDamage": ({ n, what }: { n: number; what: string }) => `Apply ${n} damage: ${what}`,
+  "ruling.applyMinus": ({ n }: { n: number }) => `Apply −${n}`,
   "ruling.nothing": "Nothing to rule on.",
   "ruling.rolled": "Rolled",
   "ruling.damageRolled": "Damage rolled",
