@@ -304,8 +304,9 @@ The **Storm Clock** is the GM's: six segments that fill as the weather closes in
 Each filled segment adds 1 to the weather roll. **At six**, the pass closes: Whiteout for the rest
 of the day, and an avalanche wherever the GM likes.
 
-> **On the board.** Two tokens with an HP bar: **Warmth** (10/10), where everyone can see it, and
-> the **Storm Clock** (0/6), **hidden**. Change their HP as they go up and down.
+> **On the board.** Two tokens with an HP bar: **Warmth** (10/10, or **12/12** with a Hauler in the
+> party: §9.2, Packhorse), where everyone can see it, and the **Storm Clock** (0/6), **hidden**.
+> Change their HP as they go up and down.
 
 ## 8. Rest and advancement
 

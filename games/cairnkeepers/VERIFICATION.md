@@ -134,7 +134,10 @@ What changed:
     It also says how to read the board-setup tables.
 - **Warmth is 12/12** in step 5, because the pregens' party has a Hauler (rules §7, Packhorse). The
   bestiary's board-piece table and `setup-library.mjs` now say 12 too; the script said 10.
-  - Rules §7 still gives 10 as the base and 12 with a Hauler, as before.
+  - Rules §7 still gives 10 as the base. Its *On the board* note now reads "10/10, or 12/12 with a
+    Hauler in the party: §9.2, Packhorse", so an AI build reading the rules sees 12 too. This was
+    asked for after the first pass. Only the rulebook PDF was regenerated for it: the other six
+    re-rendered PDFs had the same text as before, so their committed copies were kept.
 - **bestiary.md** board pieces gained a Guard (AC) column, plus a line saying plainly that:
   - a cairn has no HP and no Guard;
   - Warmth and the Storm Clock have no Guard.
@@ -151,7 +154,7 @@ What changed:
 
 How it was checked:
 
-- **A check script in the scratchpad (187 checks, 0 failed)** compared the text against its
+- **A check script in the scratchpad (190 checks, 0 failed)** compared the text against its
   sources, not by eye. It evaluated the script's own tables from its source, and read the
   bestiary's *Token art* rows through `names.mjs`.
   - Every board-setup row (name, square, hidden, art, in order) matched what the script places.
@@ -162,6 +165,8 @@ How it was checked:
   - The Tarn has 18 and the Caves 20 openings, all locked windows; the Switchbacks has none.
   - The named doors match Scene 3's text.
   - The pregens' art and size were checked, and so was Warmth 12 in all three places.
+  - Rules §7's board note gives 12/12 with a Hauler, and Packhorse in §9.2 says 12; the rulebook
+    PDF has the new note, on the same page as before.
   - The bestiary's board-piece HP, Guard and Hidden cells were checked against `BOARD_PIECES`.
 - **Mutation test.** A copy with three planted errors failed exactly those three checks: a moved
   White-coat, a moved hospice door, and Hesk shown as not hidden.
@@ -177,6 +182,7 @@ How it was checked:
   - the adventure's *Before you play* page and its scene tables, which split cleanly across pages
     with the header repeated;
   - the bestiary's board-piece page;
+  - the rulebook's §7 page, with the new board note;
   - a pregen sheet, whose card shows Size 1 and the token art and still fits.
 - `npm run lint`, `npm run typecheck` and `npm test` pass on the branch: 3,630 tests passed and 54
   were skipped.
