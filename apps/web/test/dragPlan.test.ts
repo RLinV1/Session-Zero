@@ -60,9 +60,9 @@ describe("token drag plans (FR-TAC-03, ADR 0055)", () => {
     expect(plan(room(crossing), at(3, 1), gm, false, true)).toMatchObject({ via: [], label: "15 ft · Reposition" });
   });
 
-  it("says the cost is unknown for a player whose path leaves what they can see", () => {
+  it("prices a player's path through fog from what they hold, never \"Cost unknown\"", () => {
     const fogged = room([], { fog: { f: { id: "f", shape: "rect", points: [{ x: 140, y: 0 }, { x: 280, y: 0 }, { x: 280, y: 700 }, { x: 140, y: 700 }] } } });
     const seen = filterStateForViewer(fogged, player);
-    expect(plan(seen, at(5, 1), player)).toMatchObject({ label: "Cost unknown", obstruction: "unknown" });
+    expect(plan(seen, at(5, 1), player)).toMatchObject({ label: "25 / 30 ft · 5 ft remaining", obstruction: "clear" });
   });
 });

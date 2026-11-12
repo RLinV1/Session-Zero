@@ -45,10 +45,9 @@ export function dragPlan(state: RoomState, you: Participant, token: Token, from:
   let path = cheapestPath(from, to, size, grid, rules, knowledge, "line");
   if (path && path.via.length > MAX_MOVE_VIA) path = cheapestPath(from, to, size, grid, rules, knowledge, "turns");
   if (!path || path.via.length > MAX_MOVE_VIA) return straight();
+  // The cost of the path shown, priced from what this viewer holds: a player's unseen fog, walls
+  // and terrain are not counted. The server still judges the move on drop.
   const points = [from, ...path.via, to];
-  const legs = points.slice(1).map((end, i) => [points[i]!, end] as const);
-  const uncertain = you.role !== "gm" && legs.some(([a, b]) => !movementRouteKnown(state, a, b, size));
-  if (uncertain) return { points, via: path.via, label: "Cost unknown", obstruction: "unknown" };
   return { points, via: path.via, label: budgetLabel(path.cost, allowance, grid) + (path.difficult ? ` · ${path.difficult} difficult` : ""), obstruction: "clear" };
 }
 
