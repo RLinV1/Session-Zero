@@ -14,13 +14,15 @@ export interface ClientSettings {
   /** The arrow keys move the selected token one square (client-settings). */
   arrowKeyMove: boolean;
   attackAnimations: AttackAnimations;
+  /** GM only: show the turn banner, with End turn, on every token's turn, not just their own (turn-notice). */
+  gmTurnBanner: boolean;
 }
 export const CLIENT_SETTINGS_KEY = "vtt.ui.settings";
 /** Where the token card's arrow-key switch was saved before it moved into Settings; read once, then removed. */
 export const LEGACY_ARROW_KEY_MOVE_KEY = "vtt.ui.arrowKeyMove";
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   graphicsQuality: "balanced", reducedAnimations: false, autoFocusAttacks: true, musicVolume: 70, soundVolume: 80,
-  arrowKeyMove: true, attackAnimations: "all",
+  arrowKeyMove: true, attackAnimations: "all", gmTurnBanner: false,
 };
 export const QUALITY = {
   high: { resolution: 2, frameMs: 1000 / 30, particles: 80, emitters: 12, conditions: 32, glow: true, blurQuality: 2, arcSegments: 30, fogPuffs: 1200 },
@@ -36,6 +38,7 @@ const isVolume = (v: unknown): v is number => typeof v === "number" && Number.is
 const FIELD_CHECKS: { [K in keyof ClientSettings]: (v: unknown) => v is ClientSettings[K] } = {
   graphicsQuality: isQuality, reducedAnimations: isBoolean, autoFocusAttacks: isBoolean,
   musicVolume: isVolume, soundVolume: isVolume, arrowKeyMove: isBoolean, attackAnimations: isAttackAnimations,
+  gmTurnBanner: isBoolean,
 };
 const FIELDS = Object.keys(FIELD_CHECKS) as (keyof ClientSettings)[];
 

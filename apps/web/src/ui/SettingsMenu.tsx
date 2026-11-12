@@ -11,7 +11,7 @@ import { setClientSettings, useClientSettings, type AttackAnimations, type Graph
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
 export interface SettingsRoom { connection: RoomConnection; state: RoomState; you: Participant }
 
-type SettingsTab = "audio" | "graphics" | "controls" | "language" | "table";
+type SettingsTab = "audio" | "graphics" | "preferences" | "language" | "table";
 
 export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: boolean; onClose: () => void; onAfterClose?: () => void; room?: SettingsRoom }) {
   const t = useT();
@@ -22,7 +22,7 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
   const tabs: { key: SettingsTab; label: ReactNode }[] = [
     { key: "audio", label: t("settings.tab.audio") },
     { key: "graphics", label: t("settings.tab.graphics") },
-    { key: "controls", label: t("settings.tab.controls") },
+    { key: "preferences", label: t("settings.tab.preferences") },
     ...(showTable ? [{ key: "table" as const, label: t("settings.tab.table") }] : []),
     // Language is always last, so a reader looking for it finds it in the same place with or without Table.
     ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
@@ -88,13 +88,22 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
               </label>
             </>
           )}
-          {tab === "controls" && (
+          {tab === "preferences" && (
             <>
               {browserNote}
               <label className="checkbox">
                 <input type="checkbox" role="switch" checked={settings.arrowKeyMove} onChange={(e) => setClientSettings({ arrowKeyMove: e.target.checked })} />
                 {t("settings.arrowKeyMove")}
               </label>
+              {room?.you.role === "gm" && (
+                <>
+                  <label className="checkbox">
+                    <input type="checkbox" role="switch" checked={settings.gmTurnBanner} onChange={(e) => setClientSettings({ gmTurnBanner: e.target.checked })} />
+                    {t("settings.gmTurnBanner")}
+                  </label>
+                  <p className="muted small-print">{t("settings.gmTurnBannerHint")}</p>
+                </>
+              )}
             </>
           )}
           {tab === "language" && <LanguageSettings atTable={!!room} />}

@@ -45,4 +45,15 @@ describe("turn banner (turn-notice, FR-GM-21)", () => {
     expect(turnBannerToken(withTurn(2, ["goblin", "aria"]), player)).toBeNull();
     expect(turnBannerToken({ ...withTurn(1), initiative: null }, player)).toBeNull();
   });
+
+  it("names every turn's token for the GM who turned on Turn banner on every turn (turn-notice)", () => {
+    expect(turnBannerToken(withTurn(0), gm, true)).toEqual({ id: "goblin", name: "Goblin", round: 2 });
+    expect(turnBannerToken(withTurn(1), gm, true)?.name).toBe("Aria");
+    expect(turnBannerToken({ ...withTurn(1), initiative: null }, gm, true)).toBeNull();
+  });
+
+  it("never widens a player's banner, whatever the setting says", () => {
+    expect(turnBannerToken(withTurn(0), player, true)).toBeNull();
+    expect(turnBannerToken(withTurn(1), other, true)).toBeNull();
+  });
 });
