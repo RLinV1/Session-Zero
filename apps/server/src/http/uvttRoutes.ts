@@ -103,12 +103,14 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
       let libraryAsset: LibraryAssetRecord | undefined;
       let retained = false;
       let validationCode = "rejected";
+      // A refusal is sent only after the cleanup below, so a client never sees a refused upload still on disk.
+      let refusal: (() => void) | undefined;
       const started = deps.now();
       try {
         const { validated, filename } = await receiveUvtt(req, res, deps.pool, baseline.grid);
         // Authorization can end while the worker runs; do not retain an orphaned upload.
-        if (!await authorize(req)) { validationCode = "credential_ended"; res.status(403).json({ error: "Your GM credential ended during validation." }); return; }
-        if (account && !await deps.sessions.isLive(account.session.tokenHash)) { validationCode = "credential_ended"; res.status(401).json({ error: "Your sign-in ended during validation." }); return; }
+        if (!await authorize(req)) { validationCode = "credential_ended"; refusal = () => res.status(403).json({ error: "Your GM credential ended during validation." }); return; }
+        if (account && !await deps.sessions.isLive(account.session.tokenHash)) { validationCode = "credential_ended"; refusal = () => res.status(401).json({ error: "Your sign-in ended during validation." }); return; }
         let url: string;
         if (account) {
           libraryAsset = await createUvttLibraryMap(deps.store, deps.assets, deps.uploadDir, account.user.ownerId, filename, validated);
@@ -127,11 +129,12 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
         res.status(201).json(preparation);
       } catch (error) {
         validationCode = failureCode(error);
-        failure(res, error);
+        refusal = () => failure(res, error);
       } finally {
         if (!retained && libraryAsset) await deps.store.deleteAsset(libraryAsset.id, libraryAsset.ownerGmId).catch(() => {});
         if (!retained && key) await deps.assets.delete(key).catch(() => {});
-        if (!retained && imagePath) await rm(imagePath, { force: true });
+        if (!retained && imagePath) await rm(imagePath, { force: true }).catch(() => {});
+        refusal?.();
         // Bounded operational metadata only; no names, paths, JSON or image data.
         console.info("[vtt] uvtt validation", { code: retained ? "prepared" : validationCode, durationMs: Math.max(0, deps.now() - started) });
       }
