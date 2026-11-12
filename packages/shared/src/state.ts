@@ -392,6 +392,10 @@ export interface RoomState {
   hideHp?: boolean;
   /** Players get no AC for tokens they don't own (ADR 0054). Public. Absent reads as false. */
   hideAc?: boolean;
+  /** How diagonal steps cost (ADR 0055). Public. Absent reads as "equal"; read it with `diagonalRuleOf`. */
+  diagonalRule?: DiagonalRule;
+  /** When Difficult terrain doubles a step (ADR 0055). Public. Absent reads as "entry"; read it with `difficultTerrainOf`. */
+  difficultTerrain?: DifficultTerrainMode;
   /**
    * The GM has stopped new players joining by invite (ADR 0051). Seats already taken are untouched.
    * Public. Absent in older snapshots and logs, which read as false.
@@ -422,6 +426,18 @@ export const DEFEAT_REMOVALS = ["all", "npc", "off"] as const;
 export type DefeatRemoval = (typeof DEFEAT_REMOVALS)[number];
 /** How the Settings Table tab and the activity log name each mode. */
 export const DEFEAT_REMOVAL_LABELS: Record<DefeatRemoval, string> = { all: "All", npc: "Only NPC tokens", off: "Off" };
+
+/** How a diagonal step costs: always 1, alternately 1 and 2, or √2 (ADR 0055). */
+export const DIAGONAL_RULES = ["equal", "alternating", "euclidean"] as const;
+export type DiagonalRule = (typeof DIAGONAL_RULES)[number];
+export const DIAGONAL_RULE_LABELS: Record<DiagonalRule, string> = { equal: "Equal cost", alternating: "Alternating (1, 2)", euclidean: "Euclidean" };
+/** When Difficult terrain doubles a step: entering it, leaving it, or either (once) (ADR 0055). */
+export const DIFFICULT_TERRAIN_MODES = ["entry", "exit", "both"] as const;
+export type DifficultTerrainMode = (typeof DIFFICULT_TERRAIN_MODES)[number];
+export const DIFFICULT_TERRAIN_LABELS: Record<DifficultTerrainMode, string> = { entry: "On entry", exit: "On exit", both: "Both" };
+
+export const diagonalRuleOf = (state: Pick<RoomState, "diagonalRule">): DiagonalRule => state.diagonalRule ?? "equal";
+export const difficultTerrainOf = (state: Pick<RoomState, "difficultTerrain">): DifficultTerrainMode => state.difficultTerrain ?? "entry";
 
 /** The room's 0 HP removal mode; a room from before ADR 0054 reads from its on/off switch (absent = on). */
 export function defeatRemovalOf(state: Pick<RoomState, "defeatRemoval"> & { autoRemoveDefeated?: boolean }): DefeatRemoval {

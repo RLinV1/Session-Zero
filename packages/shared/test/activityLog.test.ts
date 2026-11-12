@@ -85,6 +85,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     HideMapWithoutTokenSet: [{ type: "HideMapWithoutTokenSet", enabled: true, previous: false }, "Mara turned Hide map from players without a token on"],
     HideHpSet: [{ type: "HideHpSet", enabled: true, previous: false }, "Mara turned Hide HP from Players on"],
     HideAcSet: [{ type: "HideAcSet", enabled: false, previous: true }, "Mara turned Hide AC from Players off"],
+    DiagonalRuleSet: [{ type: "DiagonalRuleSet", rule: "alternating", previous: "equal" }, "Mara set Diagonals to Alternating (1, 2)"],
+    DifficultTerrainSet: [{ type: "DifficultTerrainSet", mode: "both", previous: "entry" }, "Mara set Difficult terrain applies to Both"],
     MapNuked: [{ type: "MapNuked", amount: 12, origin: { x: 50, y: 50 } }, "Mara detonated a nuke (12 damage)"],
     MapNukeUndone: [{ type: "MapNukeUndone", amount: 12, origin: { x: 50, y: 50 } }, "Mara took back a nuke (12 damage)"],
     RollDamageUnapplied: [{ type: "RollDamageUnapplied", rollId: "gone", amount: 7 }, "Mara took back 7 damage from an earlier roll"],

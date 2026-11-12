@@ -1,4 +1,4 @@
-import { destinationBlocked, movementBlocked } from "./movement";
+import { destinationBlocked, movementBlocked, movementObstacles } from "./movement";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
 import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
@@ -22,7 +22,7 @@ import { blocksMovement } from "./portals";
 import { inverseOf, sameValue, undoableAction, undoConflict } from "./undo";
 import { concealedFrom, concealmentFor, fogConcealsSide, isInFog, portalConcealedFrom, templateConcealedFrom } from "./visibility";
 import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
-import { defeatRemovalOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, DIAGONAL_RULE_LABELS, DIFFICULT_TERRAIN_LABELS, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -456,12 +456,22 @@ export function decide(
       if (!can.moveToken(actor, token)) return forbidden();
       if (command.reposition && !can.administer(actor)) return forbidden();
       if ((command.expectedOrigin && !sameValue(token.position, command.expectedOrigin)) || (command.boardEpoch !== undefined && command.boardEpoch !== (state.boardEpoch ?? 0))) return reject("invalid", "The board or token changed. Try the move again.");
-      if (movementBlocked(state, token, command.to, command.reposition)) return reject("invalid", "That move is unavailable.");
+      // A path is checked leg by leg, each from where the last one ended (ADR 0055). Reposition
+      // skips the route entirely, so it has no path to carry.
+      const via = command.via ?? [];
+      const map = state.scene.map;
+      if (via.length && (command.reposition || !map || via.some((p) => p.x < 0 || p.y < 0 || p.x > map.width || p.y > map.height))) return reject("invalid", "That move is unavailable.");
+      const points = [token.position, ...via, command.to];
+      const obstacles = movementObstacles(state);
+      for (let i = 1; i < points.length; i++) {
+        if (movementBlocked(state, { ...token, position: points[i - 1]! }, points[i]!, command.reposition, obstacles)) return reject("invalid", "That move is unavailable.");
+      }
       return accept({
         type: "TokenMoved",
         tokenId: token.id,
         from: token.position,
         to: command.to,
+        ...(via.length ? { via } : {}),
       });
     }
 
@@ -939,6 +949,20 @@ export function decide(
       const previous = state.hideHp ?? false;
       if (previous === command.enabled) return reject("invalid", command.enabled ? "HP is already hidden from players" : "HP is already shown to players");
       return accept({ type: "HideHpSet", enabled: command.enabled, previous });
+    }
+
+    case "room.setDiagonalRule": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = diagonalRuleOf(state);
+      if (previous === command.rule) return reject("invalid", `Diagonals are already ${DIAGONAL_RULE_LABELS[previous]}`);
+      return accept({ type: "DiagonalRuleSet", rule: command.rule, previous });
+    }
+
+    case "room.setDifficultTerrain": {
+      if (!can.administer(actor)) return forbidden();
+      const previous = difficultTerrainOf(state);
+      if (previous === command.mode) return reject("invalid", `Difficult terrain already applies ${DIFFICULT_TERRAIN_LABELS[previous]}`);
+      return accept({ type: "DifficultTerrainSet", mode: command.mode, previous });
     }
 
     case "room.setHideAc": {

@@ -44,6 +44,9 @@ describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
     const select = screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement;
     expect([...select.options].map((o) => o.textContent)).toEqual(["All", "Only NPC tokens", "Off"]);
     expect(screen.getAllByRole("switch").map((s) => s.closest("label")!.textContent)).toEqual(["Hide map from players without a token", "Hide HP from Players", "Hide AC from Players"]);
+    expect([...(screen.getByLabelText("Diagonals") as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["Equal cost", "Alternating (1, 2)", "Euclidean"]);
+    expect([...(screen.getByLabelText("Difficult terrain applies") as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["On entry", "On exit", "Both"]);
+    expect(screen.getAllByRole("combobox").map((c) => c.closest("label")!.firstChild!.textContent)).toEqual(["Remove tokens at 0 HP", "Diagonals", "Difficult terrain applies"]);
     expect(panel.querySelector(".small-print")).toBeNull();
   });
 
@@ -62,6 +65,12 @@ describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
     fireEvent.change(screen.getByLabelText("Remove tokens at 0 HP"), { target: { value: "npc" } });
     expect(command).toHaveBeenLastCalledWith({ type: "room.setDefeatRemoval", mode: "npc" });
     await waitFor(() => expect((screen.getByRole("switch", { name: "Hide HP from Players" }) as HTMLInputElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Diagonals"), { target: { value: "alternating" } });
+    expect(command).toHaveBeenLastCalledWith({ type: "room.setDiagonalRule", rule: "alternating" });
+    await waitFor(() => expect((screen.getByLabelText("Diagonals") as HTMLSelectElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Difficult terrain applies"), { target: { value: "both" } });
+    expect(command).toHaveBeenLastCalledWith({ type: "room.setDifficultTerrain", mode: "both" });
+    await waitFor(() => expect((screen.getByLabelText("Difficult terrain applies") as HTMLSelectElement).disabled).toBe(false));
     for (const [name, type] of [
       ["Hide map from players without a token", "room.setHideMapWithoutToken"],
       ["Hide HP from Players", "room.setHideHp"],

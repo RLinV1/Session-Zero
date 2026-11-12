@@ -418,6 +418,12 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "HideAcSet":
       return { ...state, hideAc: event.enabled };
 
+    case "DiagonalRuleSet":
+      return { ...state, diagonalRule: event.rule };
+
+    case "DifficultTerrainSet":
+      return { ...state, difficultTerrain: event.mode };
+
     case "JoinsLockSet":
       return { ...state, joinsLocked: event.locked };
 

@@ -1,5 +1,4 @@
-import type { DistanceRule } from "./movementRuler";
-import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type FogRegion, type GridSpec, type Point, type Token, type Wall } from "@vtt/shared";
+import { DEFAULT_AREA_COLOR, pointInPolygon, snapTokenCenter, type AreaColor, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
 
@@ -168,7 +167,7 @@ export function formatDistance(units: number, grid: GridSpec): string {
 }
 
 /** Existing callers retain equal-cost cell-centre measurement; a ruler may preserve a token's exact centre. */
-export function measure(from: Point, to: Point, grid: GridSpec, free: boolean, rule: DistanceRule = "equal", tokenSize?: number) {
+export function measure(from: Point, to: Point, grid: GridSpec, free: boolean, rule: DiagonalRule = "equal", tokenSize?: number) {
   const a = free || tokenSize !== undefined ? from : snapToCellCenter(from, grid);
   // Match token.move's destination snapping without shifting an off-grid origin.
   const b = free ? to : snapTokenCenter(to, tokenSize ?? 1, grid);

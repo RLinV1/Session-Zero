@@ -6,7 +6,7 @@ import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phospho
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, visibleStretches, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
@@ -382,10 +382,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     const view = new BoardView(hostRef.current!, {
       movementFeedback: setMovementFeedback,
       nukeImpact: () => latest.current.onNukeImpact?.(),
-      moveToken: async (tokenId, to, origin, boardEpoch) => {
+      moveToken: async (tokenId, to, origin, boardEpoch, via) => {
         const reposition = latest.current.you.role === "gm" && repositionRef.current === tokenId;
         setRepositionId(null); repositionRef.current = null;
-        const result = await guarded.command({ type: "token.move", tokenId, to, expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
+        const result = await guarded.command({ type: "token.move", tokenId, to, ...(via?.length ? { via } : {}), expectedSceneId: latest.current.state.activeSceneId ?? INITIAL_SCENE_ID, expectedOrigin: origin, boardEpoch, ...(reposition ? { reposition: true } : {}) });
         // The token snaps back; say why, so a wall the player can't see isn't a mystery (ADR 0029).
         if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
         else if (result.ok) setRefusal(null);
@@ -481,6 +481,18 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     // Live events only, already filtered for this viewer; a snapshot never gets here (KAN-76).
     const stopCommitted = connection.onCommitted((committed, _before, after) => {
       if (latest.current.suppressLiveEffects) return;
+      // Someone else's move slides here, along its path or straight (ADR 0055); only live events
+      // reach here. The server already cut a path to what this viewer sees; a straight move is cut
+      // here, from the fog and sight this board holds, so the token never slides through fog.
+      const moved = committed.event;
+      if (moved.type === "TokenMoved" && committed.actorId !== latest.current.you.id) {
+        if (moved.via?.length) view.animateTokenPath(moved.tokenId, [moved.from, ...moved.via, moved.to], moved.gaps);
+        else if (latest.current.you.role === "gm") view.animateTokenPath(moved.tokenId, [moved.from, moved.to]);
+        else {
+          const seen = visibleStretches([moved.from, moved.to], { fog: after.fog, sight: after.sight ?? null });
+          view.animateTokenPath(moved.tokenId, seen.points, seen.gaps);
+        }
+      }
       const viewer = latest.current.you;
       const seen = attackEffectFor(committed.event, after, viewer);
       // The viewer's Attack animations choice, decided now, against the turn as it stands (board-attack-effects).

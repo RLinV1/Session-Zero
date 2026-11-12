@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { DEFEAT_REMOVAL_LABELS, DEFEAT_REMOVALS, defeatRemovalOf, type CommandInput, type DefeatRemoval, type Participant, type RoomState } from "@vtt/shared";
+import { DEFEAT_REMOVAL_LABELS, DEFEAT_REMOVALS, DIAGONAL_RULE_LABELS, DIAGONAL_RULES, DIFFICULT_TERRAIN_LABELS, DIFFICULT_TERRAIN_MODES, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, type CommandInput, type DefeatRemoval, type DiagonalRule, type DifficultTerrainMode, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
 import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
@@ -94,7 +94,7 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
   );
 }
 /**
- * GM only: the rules every player at the table shares (FR-TAC-07, FR-GM-23, ADR 0054). The server
+ * GM only: the rules every player at the table shares (FR-TAC-07, FR-GM-23, ADR 0054, ADR 0055). The server
  * decides and enforces them; this only sends the GM's choice.
  */
 function TableSection({ room }: { room: SettingsRoom }) {
@@ -126,6 +126,16 @@ function TableSection({ room }: { room: SettingsRoom }) {
           {label}
         </label>
       ))}
+      <label>Diagonals
+        <select value={diagonalRuleOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDiagonalRule", rule: e.target.value as DiagonalRule })}>
+          {DIAGONAL_RULES.map((rule) => <option key={rule} value={rule}>{DIAGONAL_RULE_LABELS[rule]}</option>)}
+        </select>
+      </label>
+      <label>Difficult terrain applies
+        <select value={difficultTerrainOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDifficultTerrain", mode: e.target.value as DifficultTerrainMode })}>
+          {DIFFICULT_TERRAIN_MODES.map((mode) => <option key={mode} value={mode}>{DIFFICULT_TERRAIN_LABELS[mode]}</option>)}
+        </select>
+      </label>
       {error && <p role="alert" className="error small">{error}</p>}
     </div>
   );

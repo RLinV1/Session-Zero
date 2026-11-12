@@ -20,16 +20,6 @@ export function MovementControls({ roomId, grid, onChange }: { roomId: string; g
         }} />
     </label>
     {invalid && <p id={errorId} role="alert">Enter a positive value up to 100,000.</p>}
-    <label>Diagonals
-      <select value={settings.rule} onChange={(e) => {
-        const next = { ...settings, rule: e.target.value };
-        if (isMovementSettings(next)) setSettings(next);
-      }}>
-        <option value="equal">Equal cost</option>
-        <option value="alternating">Alternating (1, 2)</option>
-        <option value="euclidean">Euclidean</option>
-      </select>
-    </label>
     <small>Private preview.</small>
   </div>;
 }

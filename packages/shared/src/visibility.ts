@@ -1,11 +1,11 @@
 import { movementRouteKnown, terrainForViewer } from "./terrainVisibility";
-import { movementBlocked } from "./movement";
+import { movementBlocked, movementObstacles } from "./movement";
 import type { MovementPreviewFeedback, MovementPreviewRequest } from "./protocol";
 import { reduce } from "./reducer";
 import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type LoggedRoll } from "./dice";
 import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
-import { inFogRegion, type Point } from "./geometry";
+import { inFogRegion, MAX_MOVE_VIA, type Point } from "./geometry";
 import { wallMidpoint } from "./portals";
 import { inSight, viewerSight } from "./sight";
 import type { TokenStats } from "./conditions";
@@ -77,10 +77,15 @@ export function movementFeedbackForViewer(state: RoomState, viewer: Participant,
   const token = state.tokens[request.tokenId];
   if (!token || (viewer.role !== "gm" && !token.ownerIds.includes(viewer.id)) || concealedFrom(c, token, viewer)) return null;
   if (token.position.x !== request.from.x || token.position.y !== request.from.y || (state.boardEpoch ?? 0) !== request.boardEpoch || (request.reposition && viewer.role !== "gm")) return "unknown";
-  const map = state.scene.map, to = request.to;
-  if (!map || to.x < 0 || to.y < 0 || to.x > map.width || to.y > map.height) return "unknown";
-  if (viewer.role !== "gm" && !movementRouteKnown(state, request.from, to, token.size, c)) return "unknown";
-  return movementBlocked(state, token, to, request.reposition) ? "blocked" : "clear";
+  const map = state.scene.map;
+  // A path is judged as a whole: one status, never which leg or why (ADR 0055).
+  const points = [request.from, ...(request.via ?? []), request.to];
+  if (!map || points.some((p) => p.x < 0 || p.y < 0 || p.x > map.width || p.y > map.height)) return "unknown";
+  if (request.via?.length && request.reposition) return "unknown";
+  const legs = points.slice(1).map((to, i) => ({ from: points[i]!, to }));
+  if (viewer.role !== "gm" && !legs.every((leg) => movementRouteKnown(state, leg.from, leg.to, token.size, c))) return "unknown";
+  const obstacles = movementObstacles(state);
+  return legs.some((leg) => movementBlocked(state, { ...token, position: leg.from }, leg.to, request.reposition, obstacles)) ? "blocked" : "clear";
 }
 
 /**
@@ -258,7 +263,17 @@ export function filterEventForViewer(
       // Moving into or out of fog changes what the viewer may see (ADR 0016).
       const token = before.tokens[e.tokenId];
       if (!token) return redacted;
-      return byVisibility(concealedFrom(conc(), token, viewer), concealedFrom(conc(), { ...token, position: e.to }, viewer));
+      const shown = byVisibility(concealedFrom(conc(), token, viewer), concealedFrom(conc(), { ...token, position: e.to }, viewer));
+      // A path reaches a player only where they can see it: hidden stretches become gaps their
+      // board jumps across, and no point inside fog or out of sight is sent (ADR 0055).
+      if (shown.kind !== "event" || !e.via?.length) return shown;
+      const seen = visibleStretches([e.from, ...e.via, e.to], conc());
+      if (!seen.gaps.length && seen.points.length === e.via.length + 2) return shown;
+      const { via: _via, gaps: _gaps, ...plain } = e;
+      const via = seen.points.slice(1, -1);
+      // Nothing but a jump, or more points than a move may carry: start and end alone.
+      if (!via.length || via.length > MAX_MOVE_VIA) return { kind: "event", committed: { ...withoutCommandId, event: plain } };
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...plain, via, ...(seen.gaps.length ? { gaps: seen.gaps } : {}) } } };
     }
     case "TokenOwnersSet": {
       // Gaining or losing a token under fog reveals or withdraws it for that player (ADR 0016).
@@ -305,6 +320,8 @@ export function filterEventForViewer(
     case "ReducedEffectsSet":
     case "AutoRemoveDefeatedSet":
     case "DefeatRemovalSet":
+    case "DiagonalRuleSet":
+    case "DifficultTerrainSet":
     case "JoinsLockSet":
       // Names no token and has no GM-only content: the blast is for the whole table (ADR 0038).
       return pass;
@@ -437,6 +454,58 @@ export function filterEventForViewer(
       // dice look is pictures the whole table sees on that person's rolls, and names no account (ADR 0018).
       return pass;
   }
+}
+
+/** Where segment a-b crosses the polygon's edges, as fractions of the way from a to b. */
+function crossings(a: Point, b: Point, polygon: readonly Point[], out: number[]) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const p = polygon[j]!, q = polygon[i]!;
+    const ex = q.x - p.x, ey = q.y - p.y, den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((p.x - a.x) * ey - (p.y - a.y) * ex) / den, u = ((p.x - a.x) * dy - (p.y - a.y) * dx) / den;
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) out.push(t);
+  }
+}
+
+/**
+ * The parts of a path a viewer can see (ADR 0055): each leg cut at fog edges and, with line of sight
+ * on, sight edges. `points` starts and ends with the path's own ends; `gaps` lists the indices i
+ * where the stretch from points[i] to points[i + 1] is hidden. No returned point but the two ends
+ * lies where the viewer can't see.
+ */
+export function visibleStretches(path: readonly Point[], c: Concealment): { points: Point[]; gaps: number[] } {
+  const visible = (p: Point) => !isInFog(c.fog, p) && !outOfSight(c, p);
+  const same = (p: Point, q: Point) => Math.abs(p.x - q.x) < 1e-6 && Math.abs(p.y - q.y) < 1e-6;
+  const edges = [...Object.values(c.fog).map((f) => f.points), ...(c.sight ?? [])];
+  const points: Point[] = [path[0]!], gaps: number[] = [];
+  let hidden = false;
+  for (let leg = 1; leg < path.length; leg++) {
+    const a = path[leg - 1]!, b = path[leg]!;
+    const ts = [0, 1];
+    for (const polygon of edges) crossings(a, b, polygon, ts);
+    ts.sort((x, y) => x - y);
+    const at = (t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    for (let i = 0; i + 1 < ts.length; i++) {
+      const t0 = ts[i]!, t1 = ts[i + 1]!;
+      if (t1 - t0 < 1e-9) continue;
+      if (!visible(at((t0 + t1) / 2))) { hidden = true; continue; }
+      const start = at(t0), end = at(t1);
+      if (!same(points.at(-1)!, start)) {
+        if (hidden) gaps.push(points.length - 1);
+        points.push(start);
+      }
+      hidden = false;
+      if (!same(points.at(-1)!, end)) points.push(end);
+    }
+  }
+  const last = path.at(-1)!;
+  if (!same(points.at(-1)!, last)) {
+    if (hidden) gaps.push(points.length - 1);
+    points.push(last);
+  }
+  points[points.length - 1] = last;
+  return { points, gaps };
 }
 
 /** The room rules that withhold stats from players (ADR 0054). */

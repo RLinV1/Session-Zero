@@ -1,5 +1,5 @@
-import { effectiveTerrain, emptyTerrain, cellRect, rulerPathCost, type TerrainRun } from "@vtt/shared";
-import { budgetLabel, defaultMovementSettings, movementPreview, type MovementPreview, type MovementSettings } from "./movementRuler";
+import { effectiveTerrain, emptyTerrain, cellRect, rulerPathCost, stepRulesOf, type StepRules, type TerrainRun } from "@vtt/shared";
+import { budgetLabel, defaultMovementSettings, dragPlan, type DragPlan, type MovementPreview, type MovementSettings } from "./movementRuler";
 import {
   Application,
   Assets,
@@ -87,7 +87,8 @@ const MAX_FX_RUNS = 4;
 export interface BoardCallbacks {
   nukeImpact?: () => void;
   /** Commit a move. Resolves false if the server rejected it. */
-  moveToken(tokenId: string, to: Point, origin?: Point, boardEpoch?: number): Promise<boolean>;
+  /** `via`: the path's turning points, when the drag followed one (ADR 0055). */
+  moveToken(tokenId: string, to: Point, origin?: Point, boardEpoch?: number, via?: Point[]): Promise<boolean>;
   /** Every pointer move of a token drag; the connection coalesces them (KAN-39). */
   dragPreview(tokenId: string, at: Point): void;
   /** Private advisory query; geometry and feedback are never relayed to other viewers. */
@@ -308,6 +309,8 @@ interface AttackFx {
  * Imperative PixiJS renderer. React owns the panels; this owns the canvas.
  * All positions it reports are board coordinates; each viewer's pan/zoom is local (FR-TAC-01).
  */
+const samePoints = (a: readonly Point[], b: readonly Point[]) => a.length === b.length && a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y);
+
 export class BoardView {
   private app = new Application();
   /** Token highlighted from the roster (FR-GM-24). */
@@ -403,7 +406,8 @@ export class BoardView {
   private drag: { tokenId: string; offset: Point; movable: boolean; origin: Point; epoch: number; target?: { at: Point; free: boolean } } | null = null;
   private movementRequest: MovementPreviewRequest | null = null;
   private movementPreviewId = 0;
-  private localMovementPreview: MovementPreview | null = null;
+  private localMovementPreview: DragPlan | null = null;
+  private localPlanKey = "";
   private movementFeedbackStatus: MovementPreview["obstruction"] | null = null;
   /** Screen position where the token press began, to tell a click from a drag. */
   private dragDownAt: Point | null = null;
@@ -443,6 +447,8 @@ export class BoardView {
   private marksScale = Number.NaN;
   /** Moves sent but not yet reflected in state, so tokens don't snap back while waiting. */
   private pendingMoves = new Map<string, Point>();
+  /** Tokens travelling along a committed path on this board (ADR 0055); the sprite sync leaves them alone. */
+  private pathMoves = new Set<string>();
   /** The new token being placed (place-token-on-board); null when not placing. */
   private placement: PlacementGhost | null = null;
   /** Where the pointer is over the board while placing; null when it is off the canvas. */
@@ -818,11 +824,19 @@ export class BoardView {
     const token = state.tokens[drag.tokenId];
     if (!token) return;
     const to = drag.target.free ? drag.target.at : snapTokenCenter(drag.target.at, token.size, state.scene.grid);
-    const local = movementPreview(state, you, token, drag.origin, to, drag.target.free, this.repositionToken === token.id);
+    const allowance = (this.movementSettings ?? defaultMovementSettings(state.scene.grid)).allowance;
+    const reposition = this.repositionToken === token.id;
+    // The cheapest path for a snapped grid token, a straight line otherwise (ADR 0055). The search
+    // runs again only when the target square, the mode or the board changes, not on every pixel.
+    const planKey = `${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${drag.target.free}|${reposition}|${allowance}`;
+    const local = !force && this.localMovementPreview && this.localPlanKey === planKey
+      ? this.localMovementPreview
+      : dragPlan(state, you, token, drag.origin, to, drag.target.free, reposition, allowance);
     this.localMovementPreview = local;
+    this.localPlanKey = planKey;
     const previous = this.movementRequest;
-    if (!force && you.role === "player" && local.obstruction === "clear" && previous && previous.tokenId === token.id && previous.to.x === to.x && previous.to.y === to.y && previous.boardEpoch === drag.epoch) {
-      this.drawMovementLine(drag.origin, to, this.movementFeedbackStatus ?? "unknown");
+    if (!force && you.role === "player" && local.obstruction === "clear" && previous && previous.tokenId === token.id && previous.to.x === to.x && previous.to.y === to.y && previous.boardEpoch === drag.epoch && samePoints(previous.via ?? [], local.via)) {
+      this.drawMovementLine(local.points, this.movementFeedbackStatus ?? "unknown");
       this.showLabel(local.label, to);
       this.invalidate();
       return;
@@ -830,10 +844,10 @@ export class BoardView {
     this.movementRequest = null;
     this.movementFeedbackStatus = null;
     // Until the server has checked walls, an otherwise clear player route stays tentative.
-    this.drawMovementLine(drag.origin, to, you.role === "player" && local.obstruction === "clear" ? "unknown" : local.obstruction);
+    this.drawMovementLine(local.points, you.role === "player" && local.obstruction === "clear" ? "unknown" : local.obstruction);
     this.showLabel(local.label, to);
     if (you.role === "player" && local.obstruction === "clear") {
-      const request: MovementPreviewRequest = { type: "tokenMovePreview", requestId: `move${++this.movementPreviewId}`, tokenId: token.id, from: drag.origin, to, boardEpoch: drag.epoch };
+      const request: MovementPreviewRequest = { type: "tokenMovePreview", requestId: `move${++this.movementPreviewId}`, tokenId: token.id, from: drag.origin, to, ...(local.via.length ? { via: local.via } : {}), boardEpoch: drag.epoch };
       this.movementRequest = request;
       this.callbacks.requestMovementPreview?.(request);
     }
@@ -844,7 +858,7 @@ export class BoardView {
     const request = this.movementRequest;
     if (!this.drag || !request || feedback.requestId !== request.requestId || !this.localMovementPreview || this.readOnly) return;
     this.movementFeedbackStatus = feedback.status;
-    this.drawMovementLine(request.from, request.to, feedback.status);
+    this.drawMovementLine(this.localMovementPreview.points, feedback.status);
     this.invalidate();
   }
 
@@ -1884,10 +1898,12 @@ export class BoardView {
     switch (mark.kind) {
       case "measure": {
         const settings = this.movementSettings ?? defaultMovementSettings(grid);
-        const m = measure(mark.from, mark.to, grid, mark.free, settings.rule, mark.tokenSize);
+        // The room's Diagonals and Difficult terrain rules (ADR 0055); the Alt ruler stays straight-line.
+        const rules: StepRules = mark.free ? { diagonal: "euclidean", difficult: "entry" } : stepRulesOf(this.state ?? {});
+        const m = measure(mark.from, mark.to, grid, mark.free, rules.diagonal, mark.tokenSize);
         // Terrain is the viewer's filtered view: effective for the GM, terrainView for players.
         const runs = this.you?.role === "gm" ? effectiveTerrain(this.state?.terrain ?? emptyTerrain()) : this.state?.terrainView?.runs ?? [];
-        const path = rulerPathCost(m.from, m.to, grid, mark.free ? "euclidean" : settings.rule, runs);
+        const path = rulerPathCost(m.from, m.to, grid, rules, runs);
         const units = path.difficult ? path.cost : m.units; // off Difficult ground keep the exact existing distance
         const color = path.blocked || units > settings.allowance + 1e-9 ? 0xffa570 : MEASURE_COLOR;
         g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color });
@@ -2049,6 +2065,8 @@ export class BoardView {
         view.container.destroy({ children: true });
         this.tokens.delete(id);
         this.pendingMoves.delete(id);
+        // A token back later (an undone delete, a reveal) must be placed again, not left mid-path.
+        this.pathMoves.delete(id);
       }
     }
 
@@ -2064,7 +2082,7 @@ export class BoardView {
       if (pending && pending.x === token.position.x && pending.y === token.position.y) {
         this.pendingMoves.delete(token.id);
       }
-      if (this.drag?.tokenId !== token.id && !this.pendingMoves.has(token.id)) {
+      if (this.drag?.tokenId !== token.id && !this.pendingMoves.has(token.id) && !this.pathMoves.has(token.id)) {
         view.container.position.set(token.position.x, token.position.y);
       }
     }
@@ -2322,6 +2340,44 @@ export class BoardView {
     };
     this.dying.set(tokenId, finish);
     timer = window.setTimeout(finish, plan.durationMs + 300);
+    this.animations.add(step);
+    this.schedule();
+    this.invalidate();
+  }
+
+  /**
+   * Another participant's move along a path (ADR 0055): the token travels through `points` at about
+   * 90 ms a square, at most 1.2 s, jumping across the stretches in `gaps`, then rests where the room says it is. Drawing only: the state
+   * already holds the new position. Reduced motion, or a token being dragged here, just jumps.
+   */
+  animateTokenPath(tokenId: string, points: readonly Point[], gaps: readonly number[] = []) {
+    const view = this.tokens.get(tokenId), grid = this.state?.scene.grid;
+    if (!view || !grid || points.length < 2 || this.reducedMotion || this.drag?.tokenId === tokenId || this.pendingMoves.has(tokenId)) return;
+    // A stretch the viewer can't see takes no time: the token jumps across it, never drawn inside fog.
+    const hidden = new Set(gaps);
+    const lengths = points.slice(1).map((p, i) => (hidden.has(i) ? 0 : Math.hypot(p.x - points[i]!.x, p.y - points[i]!.y)));
+    const total = lengths.reduce((a, b) => a + b, 0);
+    if (total === 0) return;
+    const durationMs = Math.min(1200, 90 * total / grid.cellSize);
+    const started = performance.now();
+    this.pathMoves.add(tokenId);
+    const step = (now: number) => {
+      const container = view.container;
+      if (container.destroyed || !this.pathMoves.has(tokenId)) { this.pathMoves.delete(tokenId); return false; }
+      let along = Math.min(1, (now - started) / durationMs) * total;
+      if (along >= total) {
+        this.pathMoves.delete(tokenId);
+        const at = this.state?.tokens[tokenId]?.position ?? points.at(-1)!;
+        container.position.set(at.x, at.y);
+        return false;
+      }
+      let i = 0;
+      while (along > lengths[i]! || lengths[i] === 0) along -= lengths[i++]!;
+      const a = points[i]!, b = points[i + 1]!, t = lengths[i] ? along / lengths[i]! : 1;
+      container.position.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+      return true;
+    };
+    view.container.position.set(points[0]!.x, points[0]!.y);
     this.animations.add(step);
     this.schedule();
     this.invalidate();
@@ -2624,6 +2680,8 @@ export class BoardView {
     const movable = !this.readOnly && can.moveToken(this.you, token);
     const p = this.toBoard(e.global);
     this.movementRequest = null; this.movementFeedbackStatus = null;
+    // Picking a token up ends any path it is still travelling here (ADR 0055).
+    this.pathMoves.delete(tokenId);
     this.drag = {
       tokenId,
       offset: { x: p.x - view.container.x, y: p.y - view.container.y },
@@ -2742,11 +2800,14 @@ export class BoardView {
     }
   };
 
-  private drawMovementLine(from: Point, to: Point, obstruction: MovementPreview["obstruction"]) {
+  /** The drag's route through `points` (one leg for a straight move, one per turn for a path). */
+  private drawMovementLine(points: readonly Point[], obstruction: MovementPreview["obstruction"]) {
     const g = this.overlayGraphics.clear(), px = 1 / this.world.scale.x;
-    if (obstruction === "clear") g.moveTo(from.x, from.y).lineTo(to.x, to.y);
-    else {
+    for (let i = 1; i < points.length; i++) {
+      const from = points[i - 1]!, to = points[i]!;
+      if (obstruction === "clear") { g.moveTo(from.x, from.y).lineTo(to.x, to.y); continue; }
       const dx = to.x - from.x, dy = to.y - from.y, length = Math.hypot(dx, dy);
+      if (length === 0) continue;
       // Keep dashes legible at every zoom and bound work for very long off-map gestures.
       const period = Math.max(12 * px, length / 512);
       for (let start = 0; start < length; start += period) {
@@ -2799,11 +2860,15 @@ export class BoardView {
     const dropped = { x: view.container.x, y: view.container.y };
     // Snap by default; hold Alt for free placement (FR-TAC-02).
     const to = e.altKey ? dropped : snapTokenCenter(dropped, token.size, this.state.scene.grid);
+    // The path the drag showed is the one committed (ADR 0055): the cached plan for this square, if any.
+    const reposition = this.repositionToken === token.id;
+    const cached = this.localMovementPreview && this.localPlanKey.startsWith(`${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${e.altKey}|${reposition}|`) ? this.localMovementPreview : null;
+    const plan = cached ?? (this.you ? dragPlan(this.state, this.you, token, drag.origin, to, e.altKey, reposition, (this.movementSettings ?? defaultMovementSettings(this.state.scene.grid)).allowance) : null);
     view.container.position.set(to.x, to.y);
     this.callbacks.dragEnd(token.id, to);
     if (to.x === token.position.x && to.y === token.position.y) return;
     this.pendingMoves.set(token.id, to);
-    this.callbacks.moveToken(token.id, to, drag.origin, drag.epoch).then((ok) => {
+    this.callbacks.moveToken(token.id, to, drag.origin, drag.epoch, plan?.via.length ? plan.via : undefined).then((ok) => {
       if (ok) return;
       this.pendingMoves.delete(token.id);
       const current = this.state?.tokens[token.id];
