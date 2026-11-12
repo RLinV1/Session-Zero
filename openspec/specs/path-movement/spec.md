@@ -81,7 +81,7 @@ When a viewer drags a grid-snapped token whose size is a whole number of squares
 - **THEN** the label reads "15 ft"
 
 ### Requirement: Moves carry their path
-A move SHALL be able to carry the points where its path turns. The server SHALL check every leg between consecutive points with the same route checks as a straight move today (Blocked terrain, walls, closed or locked doors and windows, wall clearance) and SHALL refuse the whole move, recording nothing, if any leg fails or if the path is longer than its limit. Every point SHALL be on the map. A GM Reposition SHALL carry no path. Other participants' boards SHALL show every live move's token sliding from its start to its end, along its path or in a straight line, where they may see it. Undoing a move SHALL return the token to where it started without retracing the path.
+A move SHALL be able to carry the points where its path turns. The server SHALL check every leg between consecutive points with the same route checks as a straight move today (Blocked terrain, walls, closed or locked doors and windows, wall clearance) and SHALL refuse the whole move, recording nothing, if any leg fails or if the path is longer than its limit. Every point SHALL be on the map. A GM Reposition SHALL carry no path. Every board SHALL show every move's token sliding from its start to its end, along its path or in a straight line, where that viewer may see it: other participants' boards, the mover's own board and their other tabs and devices, and replays, as the `token-slide` capability defines. Undoing a move SHALL return the token to where it started without retracing the path.
 
 #### Scenario: A leg crosses a hidden wall
 - **WHEN** a player commits a path whose second leg crosses a wall their client didn't know about
@@ -93,7 +93,7 @@ A move SHALL be able to carry the points where its path turns. The server SHALL 
 
 #### Scenario: Straight moves slide too
 - **WHEN** a player moves their token three squares in a straight line
-- **THEN** every other participant's board shows it sliding there, not jumping
+- **THEN** every board, the player's own included, shows it sliding there, not jumping
 
 #### Scenario: Forged path
 - **WHEN** a client sends a move whose path has a point off the map
