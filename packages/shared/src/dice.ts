@@ -91,6 +91,8 @@ export const DiceRoll = z.object({
   sceneId: z.string().max(64).optional(),
   /** Set once the GM has applied a damage roll to its target (ADR 0011). */
   damageApplied: z.boolean().optional(),
+  /** The GM took it off the Rulings list without ruling (ADR 0060). GM-only: never sent to players. */
+  dismissed: z.literal(true).optional(),
 });
 export type DiceRoll = z.infer<typeof DiceRoll>;
 

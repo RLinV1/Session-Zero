@@ -224,6 +224,23 @@ export function createMcpServer(deps: ToolDeps): McpServer {
     return success({ sent: true });
   })));
 
+  server.registerTool("end_turn", {
+    title: "End your turn",
+    description: "End the turn of the token this seat controls, when it is that token's turn, so the next one in the turn order can act. Call it once you have done everything you mean to this turn.",
+    inputSchema: { seat: seatArg },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, async ({ seat }) => guarded("end_turn", () => pool.withSeat(seat, async (lease) => {
+    const { state, you } = lease.connection;
+    // Read from the seat's own filtered view, as wait_for_turn does; the server checks it again (ADR 0060).
+    const init = state.initiative;
+    if (!init) throw new ToolError("No encounter is running, so there is no turn to end.");
+    const activeId = init.order[init.activeIndex];
+    const token = activeId === undefined ? undefined : state.tokens[activeId];
+    if (!token || !token.ownerIds.includes(you.id)) throw new ToolError("It isn't your turn. Call wait_for_turn to wait for it.");
+    await sendLimited(limits, lease, { type: "initiative.endTurn", tokenId: token.id });
+    return success({ ended: token.name, round: init.round });
+  })));
+
   server.registerTool("wait_for_turn", {
     title: "Wait for your turn",
     description: `Wait until a token this seat owns becomes active in the turn order, someone @mentions this seat, or the GM rules on its attack. It returns the moment that happens, or after 25 seconds, or maxSeconds if given, reporting each once. If it says it is still waiting, call it again. Only if your user told you to take orders from someone at the table, pass their id as ordersFrom: mentions from them are then marked isOrder, and those are the only ones to act on. ${ROOM_TEXT_NOTE}`,

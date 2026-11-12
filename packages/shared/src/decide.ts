@@ -9,7 +9,7 @@ import { reduce, reduceAll } from "./reducer";
 import { presetOf, tableForPreset } from "./gamePresets";
 import { MIN_HP, type ConditionId } from "./conditions";
 import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaEffects";
-import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type GroupRollEntry } from "./dice";
+import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type DiceRoll, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
 import { encounterTable, sameMapAndGrid, type ResolvedEncounter } from "./encounters";
 import { footprintCrossesWall, isSnapped, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
@@ -94,6 +94,9 @@ export const can = {
     actor.role === "gm" || template.ownerId === actor.id,
   /** Only the GM rules on attack rolls and applies damage (ADR 0011). */
   ruleRolls: (actor: Participant) => actor.role === "gm",
+  /** Who may end this token's turn: its owners and the GM (ADR 0060). */
+  endTurn: (actor: Participant, token: Token) =>
+    actor.role === "gm" || token.ownerIds.includes(actor.id),
   /** Who may roll an attack as this token: its owners and the GM (ADR 0010). */
   attackWith: (actor: Participant, token: Token) =>
     actor.role === "gm" || token.ownerIds.includes(actor.id),
@@ -710,6 +713,28 @@ export function decide(
       });
     }
 
+    case "initiative.endTurn": {
+      // Authorization first. A token the actor can't see is answered as a missing one (ADR 0010).
+      const token = state.tokens[command.tokenId];
+      if (!token || concealedFrom(concealmentFor(state, actor), token, actor)) return notFound("token");
+      if (!can.endTurn(actor, token)) return forbidden();
+      const current = state.initiative;
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
+      // Names the turn it ends, so one that crosses Next turn is refused instead of skipping
+      // the next token (ADR 0060).
+      if (current.order[current.activeIndex] !== token.id) return reject("invalid", sharedMsg("reject.turnAlreadyEnded"));
+      return accept({ type: "InitiativeAdvanced", initiative: advance(current), previous: current });
+    }
+
+    case "initiative.previous": {
+      if (!can.administer(actor)) return forbidden();
+      const current = state.initiative;
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
+      const initiative = retreat(current);
+      if (!initiative) return reject("invalid", sharedMsg("reject.firstTurn"));
+      return accept({ type: "InitiativeRewound", initiative, previous: current });
+    }
+
     case "initiative.end": {
       if (!can.administer(actor)) return forbidden();
       if (!state.initiative) return { ok: true, events: [] };
@@ -806,6 +831,24 @@ export function decide(
       // Nothing to change (no damage, or already at the floor): just mark the roll applied.
       if (hp === target.stats.hp) return accept(applied);
       return accept(...withDefeats(state, [{ type: "TokenStatsSet", tokenId: target.id, stats: { ...target.stats, hp }, previous: target.stats }, applied]));
+    }
+
+    case "roll.dismiss": {
+      if (!can.ruleRolls(actor)) return forbidden();
+      const dismissOff = presetRefusal(state, { attacks: true });
+      if (dismissOff) return dismissOff;
+      const ids = [...new Set(command.rollIds)];
+      const rolls = ids.map((id) => findDiceRoll(state.rolls, id));
+      if (ids.length === 1) {
+        // One roll gets a reason; Clear all skips what was settled since the GM's list updated.
+        const roll = rolls[0];
+        if (!roll) return reject("not_found", sharedMsg("reject.rollTooOldToRule"));
+        const problem = dismissProblem(roll);
+        if (problem) return reject("invalid", sharedMsg(problem));
+      }
+      const rollIds = rolls.flatMap((roll) => (roll && !dismissProblem(roll) ? [roll.id] : []));
+      if (rollIds.length === 0) return reject("invalid", sharedMsg("reject.nothingToIgnore"));
+      return accept({ type: "RollsDismissed", rollIds });
     }
 
     case "dice.rollGroup": {
@@ -1599,6 +1642,21 @@ function advance(current: Initiative): Initiative {
   return next >= current.order.length
     ? { ...current, activeIndex: 0, round: current.round + 1 }
     : { ...current, activeIndex: next };
+}
+
+/** One turn back, into the previous round from the first token; null on round 1's first turn (ADR 0060). */
+function retreat(current: Initiative): Initiative | null {
+  if (current.activeIndex > 0) return { ...current, activeIndex: current.activeIndex - 1 };
+  if (current.round <= 1 || current.order.length === 0) return null;
+  return { ...current, activeIndex: current.order.length - 1, round: current.round - 1 };
+}
+
+/** Why an attack roll can't be taken off the Rulings list: only unsettled ones can (ADR 0060). */
+function dismissProblem(roll: DiceRoll) {
+  if (!roll.attack) return "reject.ignoreNeedsAttack" as const;
+  if (roll.dismissed) return "reject.alreadyIgnored" as const;
+  if (roll.attack.kind === "toHit" ? roll.verdict : roll.damageApplied) return "reject.alreadySettled" as const;
+  return null;
 }
 
 /**

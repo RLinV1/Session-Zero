@@ -493,3 +493,24 @@ describe("combat undo visibility with a hidden target (FR-GM-23, ADR 0011)", () 
     expect(deliver(undo.events, ruled.state).map((f) => f.kind)).toEqual(["redacted", "redacted"]);
   });
 });
+
+describe("undoing ignored rulings (attack-rulings, ADR 0060)", () => {
+  it("puts every roll of a Clear all back with one undo", () => {
+    const { state: room, token: target } = withToken(baseRoom(), { name: "Goblin" });
+    const { state: armed, token: aria } = withToken(room, { name: "Aria", ownerIds: [alice.id] });
+    let state = armed;
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const r = act(state, alice, { type: "dice.roll", expression: "1d20", attack: { actorTokenId: aria.id, targetTokenId: target.id, kind: "toHit" } });
+      state = r.state;
+      const e = r.events[0];
+      if (e?.type === "DiceRolled") ids.push(e.roll.id);
+    }
+    const cleared = act(state, gm, { type: "roll.dismiss", rollIds: ids });
+    expect(newest(cleared.state)).toBe(cleared.commandId);
+    expect(describeUndo(cleared.state.undo.at(-1)!, cleared.state.tokens).verb).toBe("3 ignored attack rolls");
+    const undone = act(cleared.state, gm, { type: "history.undo", commandId: cleared.commandId });
+    expect(undone.events.filter((e) => e.type === "RollsRestored")).toEqual([{ type: "RollsRestored", rollIds: ids }]);
+    expect(undone.state.rolls.filter(isDiceRoll).some((r) => r.dismissed)).toBe(false);
+  });
+});

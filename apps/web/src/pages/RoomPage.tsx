@@ -36,7 +36,7 @@ import { gridsEqual, parseGridDraft, toGridDraft, type GridDraft } from "./gridD
 import { LeaveTable } from "../panels/LeaveTable";
 import { ResolveDepartureModal } from "../panels/ResolveDeparture";
 import { DepartureNotices } from "../ui/DepartureNotice";
-import { TurnNotice } from "../ui/TurnNotice";
+import { TurnBanner } from "../ui/TurnBanner";
 import { RollCard } from "../ui/RollCard";
 import { SectionCollapseProvider } from "../ui/PanelSection";
 import { ParticipantsButton } from "../ui/ParticipantsButton";
@@ -715,6 +715,18 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           {/* Last, in the top-right corner: visible with the sidebar shown or hidden. */}
           {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} yourName={you.displayName} connection={connection} joinsLocked={state.joinsLocked ?? false} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
         </div>
+        {/* Across the top, for the whole of the viewer's turn (turn-notice, ADR 0060). */}
+        {features.notices && (
+          <TurnBanner
+            state={shownState!}
+            you={shownYou!}
+            onFocusToken={focusToken}
+            onEndTurn={readOnly ? undefined : async (tokenId) => {
+              const result = await connection.command({ type: "initiative.endTurn", tokenId });
+              return result.ok ? { ok: true } : { ok: false, message: result.message };
+            }}
+          />
+        )}
       </header>
       {/* Same element, same position in both states: collapsing must never remount the
           canvas or reset the viewer's zoom and pan. */}
@@ -740,7 +752,6 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           // Always mounted, so screen readers register the live region before a notice lands in it.
           <div className="board-notices" role="status" aria-live="polite">
             {!readOnly && <DepartureNotices state={state} onReview={you.role === "gm" ? setReviewing : undefined} />}
-            <TurnNotice state={shownState!} you={shownYou!} onFocusToken={focusToken} />
             <KeepSeatNotice roomId={roomId} token={token} name={you.displayName} />
           </div>
         )}

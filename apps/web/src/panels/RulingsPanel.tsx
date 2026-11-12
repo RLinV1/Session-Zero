@@ -14,6 +14,9 @@ import { getLocale, t } from "../i18n/locale";
  * afterwards, and the app never decides for them (README §7). Rendered for the GM only; the
  * server refuses these commands from anyone else regardless.
  */
+/** The busy key for Clear all, which names no single roll. */
+const CLEAR_ALL = "clear-all";
+
 export function RulingsPanel({
   connection,
   state,
@@ -53,6 +56,20 @@ export function RulingsPanel({
       {count === 0 ? (
         <p className="muted">{t("ruling.nothing")}</p>
       ) : (
+        <>
+        {/* Every attack roll shown, by id, so one made since isn't swept away; never the area effect (ADR 0060). */}
+        {pending.length > 0 && (
+          <div className="rulings-toolbar">
+            <button
+              type="button"
+              className="small secondary"
+              disabled={busy.has(CLEAR_ALL)}
+              onClick={() => send(CLEAR_ALL, { type: "roll.dismiss", rollIds: pending.map((item) => item.roll.id) })}
+            >
+              {t("ruling.clearAll")}
+            </button>
+          </div>
+        )}
         <ul className="plain rulings">
           {effect && (
             <AreaEffectRow
@@ -73,9 +90,11 @@ export function RulingsPanel({
               rolling={airborne.has(item.roll.id)}
               onRule={(verdict) => send(item.roll.id, { type: "roll.rule", rollId: item.roll.id, verdict })}
               onApply={() => send(item.roll.id, { type: "roll.applyDamage", rollId: item.roll.id })}
+              onIgnore={() => send(item.roll.id, { type: "roll.dismiss", rollIds: [item.roll.id] })}
             />
           ))}
         </ul>
+        </>
       )}
       {error && (
         <p role="alert" className="error">
@@ -145,6 +164,7 @@ function RulingRow({
   rolling,
   onRule,
   onApply,
+  onIgnore,
 }: {
   item: PendingRuling;
   busy: boolean;
@@ -152,6 +172,8 @@ function RulingRow({
   rolling: boolean;
   onRule: (verdict: "hit" | "miss") => void;
   onApply: () => void;
+  /** Takes it off the list without ruling; it stays in the roll log (ADR 0060). */
+  onIgnore: () => void;
 }) {
   const { roll } = item;
   const attack = roll.attack!;
@@ -175,6 +197,9 @@ function RulingRow({
         </span>
         {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
         {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onApply={onApply} />}
+        <button type="button" className="small secondary ruling-ignore" disabled={busy} onClick={onIgnore} aria-label={t("ruling.ignoreNamed", { what: description })}>
+          {t("ruling.ignore")}
+        </button>
       </span>
     </li>
   );

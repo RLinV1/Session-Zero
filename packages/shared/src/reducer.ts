@@ -238,6 +238,7 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     }
 
     case "InitiativeAdvanced":
+    case "InitiativeRewound":
       return { ...state, initiative: event.initiative };
 
     case "InitiativeEnded":
@@ -326,6 +327,19 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
         const { damageApplied: _applied, ...rest } = roll;
         return rest;
       });
+
+    case "RollsDismissed":
+      return event.rollIds.reduce((s, id) => updateRoll(s, id, (roll) => ({ ...roll, dismissed: true as const })), state);
+
+    case "RollsRestored":
+      return event.rollIds.reduce(
+        (s, id) =>
+          updateRoll(s, id, (roll) => {
+            const { dismissed: _dismissed, ...rest } = roll;
+            return rest;
+          }),
+        state,
+      );
 
     // Newest last, oldest dropped; the full history stays in the event log. The time comes from
     // the commit metadata because `reduce` cannot read a clock (ADR 0015).

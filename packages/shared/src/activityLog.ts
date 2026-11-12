@@ -45,6 +45,7 @@ export const ACTOR_NAMES: Readonly<Record<Locale, { system: string; unknown: str
 
 /** "1 wall", "42 walls" (ADR 0029). */
 const wallCount = (n: number) => `${n} ${n === 1 ? "wall" : "walls"}`;
+const rollCount = (n: number) => `${n} attack ${n === 1 ? "roll" : "rolls"}`;
 
 /** A board point for a sentence: at most 2 decimals, so float noise like 829.1000000000001 reads 829.1. */
 const formatPoint = (p: { x: number; y: number }) => `(${Number(p.x.toFixed(2))}, ${Number(p.y.toFixed(2))})`;
@@ -131,6 +132,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "TokenAttacksSet": return `${actorName} set ${tokenName(event.tokenId)}'s attacks to ${event.attacks.length ? event.attacks.map((a) => a.name).join(", ") : "none"}`;
     case "InitiativeStarted": return `${actorName} started initiative: ${event.initiative.order.map(tokenName).join(", ") || "no tokens"}`;
     case "InitiativeAdvanced": return `${actorName} advanced to round ${event.initiative.round}, ${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}'s turn`;
+    case "InitiativeRewound": return `${actorName} stepped the turn back to round ${event.initiative.round}, ${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}'s turn`;
     case "InitiativeEnded": return `${actorName} ended initiative`;
     case "InitiativeStartUndone": return `${actorName} took back the start of initiative`;
     case "GroupCreated": return `${actorName} created group "${event.group.name}"`;
@@ -186,6 +188,8 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       const roll = rolledEarlier(event.rollId);
       return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
     }
+    case "RollsDismissed": return `${actorName} ignored ${rollCount(event.rollIds.length)} on the Rulings list`;
+    case "RollsRestored": return `${actorName} put ${rollCount(event.rollIds.length)} back on the Rulings list`;
     case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
     case "DefeatRemovalSet": return `${actorName} set Remove tokens at 0 HP to ${DEFEAT_REMOVAL_LABELS[event.mode]}`;
     case "HideMapWithoutTokenSet": return `${actorName} turned Hide map from players without a token ${event.enabled ? "on" : "off"}`;

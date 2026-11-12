@@ -110,7 +110,8 @@ export function pendingRulings(state: RoomState): PendingRuling[] {
   const pending: PendingRuling[] = [];
   for (const roll of diceRollsOf(state.rolls).reverse()) {
     const attack = roll.attack;
-    if (!attack) continue;
+    // The GM took it off the list without ruling (ADR 0060); it can still be ruled from the roll log.
+    if (!attack || roll.dismissed) continue;
     const target = attack.target ? state.tokens[attack.target.tokenId] : undefined;
     if (attack.kind === "toHit") {
       if (!roll.verdict) pending.push({ kind: "toHit", roll, ac: target?.stats.ac ?? null });

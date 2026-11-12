@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_GROUP_ROLL_TOKENS, Ve
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, TemplateGeometry, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -283,6 +283,18 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("initiative.end"),
   }),
+  /**
+   * End `tokenId`'s turn (FR-GM-21, ADR 0060). Any owner of the token, or the GM. Refused unless
+   * `tokenId` is the active token, so an end turn that crosses Next turn can't skip anyone.
+   */
+  z.object({
+    type: z.literal("initiative.endTurn"),
+    tokenId: Id,
+  }),
+  /** GM only: step the turn back one, into the previous round from its first token (ADR 0060). */
+  z.object({
+    type: z.literal("initiative.previous"),
+  }),
   /** Roll dice (FR-TAC-09). `gm` visibility is GM-only and never reaches players (FR-GM-22). */
   z.object({
     type: z.literal("dice.roll"),
@@ -404,6 +416,14 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("roll.applyDamage"),
     rollId: Id,
+  }),
+  /**
+   * GM only: take attack rolls off the Rulings list without ruling on them (ADR 0060). Names the
+   * rolls the GM saw, so a roll made since isn't swept away with them.
+   */
+  z.object({
+    type: z.literal("roll.dismiss"),
+    rollIds: z.array(Id).min(1).max(ROLL_LOG_LIMIT),
   }),
   z.object({
     type: z.literal("participant.rename"),
