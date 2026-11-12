@@ -38,19 +38,19 @@ Layered Difficult terrain SHALL count once. A move's cost SHALL be the sum of it
 - **WHEN** "Difficult terrain applies" is On entry and a two-square token steps so that one of the four squares it lands on is Difficult
 - **THEN** that step costs twice its base length
 
-### Requirement: Diagonals and Difficult terrain are room rules
-"Diagonals" and "Difficult terrain applies" SHALL be room rules set by the GM on the Settings Table tab, and SHALL be the same for every participant. The movement planner SHALL no longer offer a private Diagonals choice; each viewer's movement allowance SHALL stay personal to their browser. Line-of-sight range, area templates and the free-hand (Alt) ruler SHALL NOT change.
+### Requirement: Movement rules belong to the room
+"Diagonals" and "Difficult terrain applies" SHALL be room rules set by the GM on the Settings Table tab, and SHALL be the same for every participant. The movement planner SHALL offer no private Diagonals choice and no personal movement allowance. Line-of-sight range, area templates and the free-hand (Alt) ruler SHALL NOT change.
 
 #### Scenario: Everyone sees the same cost
 - **WHEN** the GM sets "Diagonals" to Alternating (1, 2) and two players drag their tokens three squares diagonally
 - **THEN** both see a cost of 20 ft on a 5 ft grid
 
-#### Scenario: Allowance stays personal
-- **WHEN** a player sets their movement allowance to 25 ft
-- **THEN** other participants' allowances are unchanged, and the planner shows no Diagonals choice
+#### Scenario: No movement budget
+- **WHEN** a player picks the Measure tool
+- **THEN** its options offer Range and Movement, with no Diagonals choice and no movement allowance to set
 
 ### Requirement: Cheapest-path drag
-When a viewer drags a grid-snapped token whose size is a whole number of squares, without holding Alt, the board SHALL show the cheapest path from the token's square to the square under the pointer, using the step cost above, and the path's cost against the viewer's movement allowance. The path SHALL avoid Blocked terrain, walls, and closed or locked doors and windows that the viewer knows about: the GM knows every wall; a player knows the doors and windows they can see, and any walls the room sends them. Among paths of equal cost, the board SHALL prefer the one that stays closest to the straight line from start to end; if that path turns more often than a move may carry, the one with the fewest turns; if that also can't be carried, the straight drag. The cost SHALL be that of the path shown, priced from what the viewer holds: for a player, fog, walls and terrain they cannot see SHALL NOT be counted, and the board SHALL NOT show the cost as unknown. When the board finds no path to the square (none exists for what the viewer knows, or the search gives up on a very long drag), it SHALL fall back to the straight drag, and dropping SHALL send the straight move for the server to decide. Otherwise dropping SHALL commit the path that was shown. A token that is free-placed, has a fractional size, or is dragged with Alt held SHALL keep the straight drag, showing straight-line distance without terrain cost.
+When a viewer drags a grid-snapped token whose size is a whole number of squares, without holding Alt, the board SHALL show the cheapest path from the token's square to the square under the pointer, using the step cost above, and the path's cost as a plain distance, for example "25 ft", followed by " · N difficult" when it crosses Difficult squares. The label SHALL show length only: there is no movement allowance. The path SHALL avoid Blocked terrain, walls, and closed or locked doors and windows that the viewer knows about: the GM knows every wall; a player knows the doors and windows they can see, and any walls the room sends them. Among paths of equal cost, the board SHALL prefer the one that stays closest to the straight line from start to end; if that path turns more often than a move may carry, the one with the fewest turns; if that also can't be carried, the straight drag. The cost SHALL be that of the path shown, priced from what the viewer holds: for a player, fog, walls and terrain they cannot see SHALL NOT be counted, and the board SHALL NOT show the cost as unknown. When the board finds no path to the square (none exists for what the viewer knows, or the search gives up on a very long drag), it SHALL fall back to the straight drag, and dropping SHALL send the straight move for the server to decide. Otherwise dropping SHALL commit the path that was shown. A token that is free-placed, has a fractional size, or is dragged with Alt held SHALL keep the straight drag, showing straight-line distance without terrain cost.
 
 #### Scenario: Around a Blocked patch
 - **WHEN** a player drags their token to a square directly behind a Blocked patch they can see
@@ -75,6 +75,10 @@ When a viewer drags a grid-snapped token whose size is a whole number of squares
 #### Scenario: Alt drag
 - **WHEN** a viewer drags a token with Alt held
 - **THEN** the board shows a straight line and its straight-line distance, with no path and no terrain cost
+
+#### Scenario: Drag label
+- **WHEN** a viewer drags a token three squares across open ground on a 5 ft grid
+- **THEN** the label reads "15 ft"
 
 ### Requirement: Moves carry their path
 A move SHALL be able to carry the points where its path turns. The server SHALL check every leg between consecutive points with the same route checks as a straight move today (Blocked terrain, walls, closed or locked doors and windows, wall clearance) and SHALL refuse the whole move, recording nothing, if any leg fails or if the path is longer than its limit. Every point SHALL be on the map. A GM Reposition SHALL carry no path. Other participants' boards SHALL show every live move's token sliding from its start to its end, along its path or in a straight line, where they may see it. Undoing a move SHALL return the token to where it started without retracing the path.

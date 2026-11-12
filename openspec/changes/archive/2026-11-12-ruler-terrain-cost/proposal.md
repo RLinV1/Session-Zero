@@ -1,3 +1,5 @@
+> **Superseded** by `ruler-range-and-movement-modes`: terrain cost moved from the single-line ruler into its Movement mode, Range mode ignores terrain, and `rulerPathCost` is now `routeCost([from, to], …)`. Archive this change without syncing; it has no spec deltas.
+
 ## Why
 
 The Measure ruler showed plain distance and ignored painted terrain, so it disagreed with what a move costs (FR-TAC-03).

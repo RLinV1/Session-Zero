@@ -1,3 +1,5 @@
+> Superseded by `ruler-range-and-movement-modes`: task 3.2 checks a ruler that no longer exists (single-line terrain cost now lives in Movement mode), so it is closed by that change's browser check.
+
 ## 1. Shared
 - [x] 1.1 Add `rulerPathCost` (pure, deterministic) to `movement.ts` with unit tests (FR-TAC-03)
 
