@@ -400,11 +400,16 @@ const BoardCommand = z.discriminatedUnion("type", [
     rollId: Id,
     verdict: Verdict.nullable(),
   }),
-  /** GM only: lower a damage roll's target's HP by the roll's total, once (ADR 0011). */
+  /**
+   * GM only: resolve a damage roll against its target, once (ADR 0011, ADR 0060): apply `amount`
+   * (negative heals; absent means the roll's total, floored at 0) and add `addConditions`.
+   */
   z.object({
     type: z.literal("roll.applyDamage"),
     rollId: Id,
-  }),
+    amount: z.number().int().min(-MAX_AREA_AMOUNT).max(MAX_AREA_AMOUNT).optional(),
+    addConditions: z.array(ConditionId).max(12).default([]),
+  }).strict(),
   z.object({
     type: z.literal("participant.rename"),
     displayName: z.string().min(1).max(40),

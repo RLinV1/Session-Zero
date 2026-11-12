@@ -604,6 +604,7 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
   // An Apply is a stats change plus the roll's mark; it reads as the damage, not the HP edit.
   const applied = entry.events.find((e) => e.type === "RollDamageApplied");
   if (applied) {
+    if (applied.amount < 0) return { verb: `healing ${rollOf(applied.rollId)}`, noun: `the ${-applied.amount} healing applied from ${rollOf(applied.rollId)}` };
     return { verb: `damage ${rollOf(applied.rollId)}`, noun: `the ${applied.amount} damage applied from ${rollOf(applied.rollId)}` };
   }
   const nuked = entry.events.find((e) => e.type === "MapNuked");

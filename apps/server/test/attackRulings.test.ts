@@ -117,3 +117,36 @@ describe("GM rulings over the wire (FR-TAC-09, FR-GM-22, FR-GM-23, ADR 0011)", (
     expect(alice.rawLog.join("\n")).not.toContain("RollDamageApplied");
   });
 });
+
+describe("resolving attack damage over the wire (FR-TAC-07, ADR 0060)", () => {
+  it("applies the GM's half damage and a condition, and players see both on a visible token", async () => {
+    const { gm, alice, bob, aria, goblin } = await setup();
+    const rolled = await alice.command({ type: "dice.roll", expression: "1d8+3", attack: { actorTokenId: aria.id, targetTokenId: goblin.id, kind: "damage" } });
+    await gm.waitForSeq(seqOf(rolled));
+    const roll = lastRoll(gm);
+    const half = Math.floor(roll.total / 2);
+
+    const resolved = await gm.command({ type: "roll.applyDamage", rollId: roll.id, amount: half, addConditions: ["prone"] });
+    expect(resolved).toMatchObject({ type: "ack" });
+    await Promise.all([alice, bob].map((c) => c.waitForSeq(seqOf(resolved))));
+    for (const c of [gm, alice, bob]) {
+      expect(c.state.tokens[goblin.id]?.stats.hp).toBe(15 - half);
+      expect(c.state.tokens[goblin.id]?.conditions).toEqual(["prone"]);
+      expect(lastRoll(c).damageApplied).toBe(true);
+    }
+  });
+
+  it("never sends a hidden target's new condition to players", async () => {
+    const { gm, alice, aria, shadow } = await setup();
+    const rolled = await gm.command({ type: "dice.roll", expression: "1d8+3", attack: { actorTokenId: aria.id, targetTokenId: shadow.id, kind: "damage" } });
+    await gm.waitForSeq(seqOf(rolled));
+    const resolved = await gm.command({ type: "roll.applyDamage", rollId: lastRoll(gm).id, amount: 0, addConditions: ["prone"] });
+    await alice.waitForSeq(seqOf(resolved));
+
+    expect(gm.state.tokens[shadow.id]?.conditions).toEqual(["prone"]);
+    const traffic = alice.rawLog.join("\n");
+    expect(traffic).not.toContain("TokenConditionsSet");
+    expect(traffic).not.toContain("RollDamageApplied");
+    expect(traffic).not.toContain(shadow.id);
+  });
+});

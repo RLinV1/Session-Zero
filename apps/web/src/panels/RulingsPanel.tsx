@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { areaEffectStage, attackLabel, formatAttackParties, isActive, type AreaEffect, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { PanelSection } from "../ui/PanelSection";
 import { pendingRulingCount, pendingRulings, type PendingRuling } from "./attackRoll";
 import { ResolveButton, useGoToAreaEffect } from "./AreaEffectPanel";
 import { RulingButtons } from "./RulingButtons";
+import { DamageResolveDialog, emptyDamageDraft, type DamageDraft } from "./DamageResolveDialog";
 import { useDisplayedHealth } from "../board/nukeHealth";
 import { getLocale, t } from "../i18n/locale";
 
 /**
  * The GM's queue of attack rolls to rule on (attack-rulings, ADR 0011): to-hit rolls waiting for
- * Hit or Miss, and damage rolls waiting to be applied. Players roll without asking; the GM rules
+ * Hit or Miss, and damage rolls waiting to be resolved (ADR 0060). Players roll without asking; the GM rules
  * afterwards, and the app never decides for them (README §7). Rendered for the GM only; the
  * server refuses these commands from anyone else regardless.
  */
@@ -36,6 +37,21 @@ export function RulingsPanel({
   // One request per roll at a time; the server refuses a second apply anyway.
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  // The damage roll whose resolve dialog is open, and what the GM has set per roll (ADR 0060).
+  const [resolving, setResolving] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Readonly<Record<string, DamageDraft>>>({});
+  const damageIds = pending.flatMap((item) => (item.kind === "damage" ? [item.roll.id] : []));
+  const resolvingItem = pending.find((item) => item.kind === "damage" && item.roll.id === resolving);
+  const damageKey = damageIds.join(",");
+  // A roll applied here or on another device leaves the list: close its dialog and drop its draft.
+  useEffect(() => {
+    const open = new Set(damageKey ? damageKey.split(",") : []);
+    setResolving((id) => (id && open.has(id) ? id : null));
+    setDrafts((all) => {
+      const kept = Object.entries(all).filter(([id]) => open.has(id));
+      return kept.length === Object.keys(all).length ? all : Object.fromEntries(kept);
+    });
+  }, [damageKey]);
 
   const send = async (rollId: string, command: Parameters<RoomConnection["command"]>[0]) => {
     setBusy((s) => new Set(s).add(rollId));
@@ -72,7 +88,7 @@ export function RulingsPanel({
               busy={busy.has(item.roll.id)}
               rolling={airborne.has(item.roll.id)}
               onRule={(verdict) => send(item.roll.id, { type: "roll.rule", rollId: item.roll.id, verdict })}
-              onApply={() => send(item.roll.id, { type: "roll.applyDamage", rollId: item.roll.id })}
+              onResolve={() => setResolving(item.roll.id)}
             />
           ))}
         </ul>
@@ -81,6 +97,17 @@ export function RulingsPanel({
         <p role="alert" className="error">
           {error}
         </p>
+      )}
+      {resolvingItem && (
+        <DamageResolveDialog
+          key={resolvingItem.roll.id}
+          connection={connection}
+          state={state}
+          roll={resolvingItem.roll}
+          draft={drafts[resolvingItem.roll.id] ?? emptyDamageDraft}
+          onDraft={(next) => setDrafts((all) => ({ ...all, [resolvingItem.roll.id]: next }))}
+          onClose={() => setResolving(null)}
+        />
       )}
     </PanelSection>
   );
@@ -144,14 +171,14 @@ function RulingRow({
   busy,
   rolling,
   onRule,
-  onApply,
+  onResolve,
 }: {
   item: PendingRuling;
   busy: boolean;
   /** The dice are still landing: the total and the controls wait for them. */
   rolling: boolean;
   onRule: (verdict: "hit" | "miss") => void;
-  onApply: () => void;
+  onResolve: () => void;
 }) {
   const { roll } = item;
   const attack = roll.attack!;
@@ -173,8 +200,8 @@ function RulingRow({
             ? item.ac === null ? t("ruling.noAc") : t("ruling.ac", { n: item.ac })
             : t("ruling.hp", { hp: `${item.hp}${item.maxHp !== null ? `/${item.maxHp}` : ""}` })}
         </span>
-        {/* Not even disabled: Apply −N and the buttons' names would give the total away. */}
-        {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onApply={onApply} />}
+        {/* Not even disabled: the buttons' names would give the total away. */}
+        {!rolling && <RulingButtons item={item} description={`${description}, ${roll.total}`} busy={busy} onRule={onRule} onResolve={onResolve} />}
       </span>
     </li>
   );

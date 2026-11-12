@@ -7,6 +7,7 @@ import {
   filterStateForViewer,
   formatActivity,
   formatAttackRoll,
+  GAME_PRESETS,
   reduce,
   type CommandInput,
   type CommittedEvent,
@@ -153,6 +154,99 @@ describe("applying damage (FR-TAC-07, ADR 0011)", () => {
   });
 });
 
+describe("resolve attack damage (FR-TAC-07)", () => {
+  /** Goblin at 15/15 HP, and a damage roll of `expression` from Aria at it. */
+  function damageAt(expression = "1d8+3") {
+    const { state, aria, goblin } = table();
+    const { state: s0, roll } = rolled(state, alice, attack(aria.id, goblin.id, "damage", { expression }));
+    return { state: s0, roll, goblin };
+  }
+  const resolve = (rollId: string, extra: { amount?: number; addConditions?: string[] } = {}) =>
+    ({ type: "roll.applyDamage", rollId, ...extra }) as CommandInput;
+
+  it("applies the full amount the GM leaves in place", () => {
+    const { state, roll, goblin } = damageAt();
+    const result = run(state, gm, resolve(roll.id, { amount: roll.total }));
+    expect(result.state.tokens[goblin.id]?.stats.hp).toBe(15 - roll.total);
+    expect(result.events.at(-1)).toEqual({ type: "RollDamageApplied", rollId: roll.id, amount: roll.total });
+  });
+
+  it("applies half, as the GM chose, not the roll's total", () => {
+    const { state, roll, goblin } = damageAt("1d8+8");
+    const half = Math.floor(roll.total / 2);
+    expect(half).not.toBe(roll.total);
+    const result = run(state, gm, resolve(roll.id, { amount: half }));
+    expect(result.state.tokens[goblin.id]?.stats.hp).toBe(15 - half);
+    expect(result.events.at(-1)).toEqual({ type: "RollDamageApplied", rollId: roll.id, amount: half });
+  });
+
+  it("applies no damage and adds a condition, in one action and in order", () => {
+    const { state, roll, goblin } = damageAt();
+    const result = run(state, gm, resolve(roll.id, { amount: 0, addConditions: ["poisoned"] }));
+    expect(result.events).toEqual([
+      { type: "TokenConditionsSet", tokenId: goblin.id, conditions: ["poisoned"], previous: [] },
+      { type: "RollDamageApplied", rollId: roll.id, amount: 0 },
+    ]);
+    expect(result.state.tokens[goblin.id]?.stats.hp).toBe(15);
+    expect(rollIn(result.state, roll.id)?.damageApplied).toBe(true);
+  });
+
+  it("orders HP before conditions, and adds only conditions the target lacks", () => {
+    const { state: s0, roll, goblin } = damageAt();
+    const state = run(s0, gm, { type: "token.setConditions", tokenId: goblin.id, conditions: ["prone"] }).state;
+    const result = run(state, gm, resolve(roll.id, { amount: 2, addConditions: ["prone", "poisoned"] }));
+    expect(result.events.map((e) => e.type)).toEqual(["TokenStatsSet", "TokenConditionsSet", "RollDamageApplied"]);
+    expect(result.state.tokens[goblin.id]?.conditions).toEqual(["prone", "poisoned"]);
+  });
+
+  it("heals on a negative amount, never above Max HP", () => {
+    const { state: s0, roll, goblin } = damageAt();
+    const hurt = run(s0, gm, { type: "token.setStats", tokenId: goblin.id, stats: { hp: 10, maxHp: 15, ac: 13 } }).state;
+    const result = run(hurt, gm, resolve(roll.id, { amount: -20 }));
+    expect(result.state.tokens[goblin.id]?.stats.hp).toBe(15);
+    expect(result.events.at(-1)).toEqual({ type: "RollDamageApplied", rollId: roll.id, amount: -20 });
+    expect(DomainEvent.parse(result.events.at(-1))).toMatchObject({ amount: -20 });
+  });
+
+  it("applies the roll's total when the command states no amount, as an older client sends it", () => {
+    const { state, roll, goblin } = damageAt();
+    const parsed = Command.parse({ type: "roll.applyDamage", rollId: roll.id });
+    expect(parsed).toEqual({ type: "roll.applyDamage", rollId: roll.id, addConditions: [] });
+    expect(run(state, gm, resolve(roll.id)).state.tokens[goblin.id]?.stats.hp).toBe(15 - roll.total);
+  });
+
+  it("refuses an amount out of bounds or not whole, and unknown fields", () => {
+    for (const amount of [10000, -10000, 2.5]) {
+      expect(Command.safeParse({ type: "roll.applyDamage", rollId: "r1", amount }).success).toBe(false);
+    }
+    expect(Command.safeParse({ type: "roll.applyDamage", rollId: "r1", amount: 9999 }).success).toBe(true);
+    expect(Command.safeParse({ type: "roll.applyDamage", rollId: "r1", tokenId: "t1" }).success).toBe(false);
+    expect(Command.safeParse({ type: "roll.applyDamage", rollId: "r1", addConditions: ["glowing"] }).success).toBe(false);
+  });
+
+  it("refuses adding conditions while the room's preset has conditions off, and changes nothing", () => {
+    const registry = GAME_PRESETS as unknown as { push: (p: unknown) => void; pop: () => void };
+    registry.push({ ...GAME_PRESETS[0], id: "no-conditions", name: "No conditions", features: { attacks: true, conditions: false, armorClass: true }, conditions: [] });
+    try {
+      const { state, roll } = damageAt();
+      const off = { ...state, preset: "no-conditions" };
+      expect(attempt(off, gm, resolve(roll.id, { amount: 3, addConditions: ["prone"] }))).toMatchObject({ ok: false, code: "invalid" });
+      // Damage alone is still fine there.
+      expect(attempt(off, gm, resolve(roll.id, { amount: 3 })).ok).toBe(true);
+    } finally {
+      registry.pop();
+    }
+  });
+
+  it("refuses a second resolve and a player's resolve", () => {
+    const { state, roll, goblin } = damageAt();
+    expect(attempt(state, alice, resolve(roll.id, { amount: 1 }))).toMatchObject({ ok: false, code: "forbidden" });
+    const once = run(state, gm, resolve(roll.id, { amount: 2, addConditions: ["prone"] })).state;
+    expect(attempt(once, gm, resolve(roll.id, { amount: 2, addConditions: ["poisoned"] }))).toMatchObject({ ok: false, code: "invalid" });
+    expect(once.tokens[goblin.id]?.conditions).toEqual(["prone"]);
+  });
+});
+
 describe("rulings never reveal hidden information (FR-GM-23, ADR 0011)", () => {
   it("withholds rulings on GM-only rolls and passes public ones without token details", () => {
     const { state, aria, goblin, shadow } = table();
@@ -205,6 +299,29 @@ describe("rulings never reveal hidden information (FR-GM-23, ADR 0011)", () => {
     expect(filterStateForViewer(result.state, alice).rolls.filter(isDiceRoll).at(-1)).not.toHaveProperty("damageApplied");
   });
 
+  it("a resolve adding Prone to a hidden target sends players neither the condition nor the applied mark (FR-TAC-07)", () => {
+    const { state, aria, shadow } = table();
+    const { state: s0, roll } = rolled(state, gm, attack(aria.id, shadow.id, "damage"));
+    const events = run(s0, gm, { type: "roll.applyDamage", rollId: roll.id, amount: 0, addConditions: ["prone"] }).events;
+    expect(events.map((e) => e.type)).toEqual(["TokenConditionsSet", "RollDamageApplied"]);
+    let before = s0;
+    events.forEach((event, i) => {
+      expect(filterEventForViewer(committed(event, 70 + i), before, alice)).toEqual({ kind: "redacted", seq: 70 + i });
+      before = reduce(before, event);
+    });
+    expect(JSON.stringify(filterStateForViewer(before, alice))).not.toContain("prone");
+  });
+
+  it("a resolve adding Prone to a visible target reaches players (FR-TAC-07)", () => {
+    const { state, aria, goblin } = table();
+    const { state: s0, roll } = rolled(state, alice, attack(aria.id, goblin.id, "damage"));
+    const [conditions, applied] = run(s0, gm, { type: "roll.applyDamage", rollId: roll.id, amount: 0, addConditions: ["prone"] }).events;
+    const event = committed(conditions!, 80);
+    expect(filterEventForViewer(event, s0, bob)).toEqual({ kind: "event", committed: event });
+    const mark = committed(applied!, 81);
+    expect(filterEventForViewer(mark, reduce(s0, conditions!), bob)).toEqual({ kind: "event", committed: mark });
+  });
+
   it("still shows Applied to players when the target is visible", () => {
     const { state, aria, goblin } = table();
     const { state: s0, roll } = rolled(state, alice, attack(aria.id, goblin.id, "damage"));
@@ -237,5 +354,12 @@ describe("ruling text (FR-TAC-09, FR-REC-01)", () => {
     const damage = rolled(s0, alice, attack(aria.id, goblin.id, "damage"));
     expect(formatActivity({ type: "RollDamageApplied", rollId: damage.roll.id, amount: damage.roll.total }, "Dana", damage.state))
       .toBe(`Dana applied ${damage.roll.total} damage from Aria → Goblin (1d8+3: ${damage.roll.total})`);
+    // The GM's chosen amount (ADR 0060): part of the roll, or a heal.
+    expect(formatActivity({ type: "RollDamageApplied", rollId: damage.roll.id, amount: 1 }, "Dana", damage.state))
+      .toBe(`Dana applied 1 of ${damage.roll.total} damage from Aria → Goblin (1d8+3: ${damage.roll.total})`);
+    expect(formatActivity({ type: "RollDamageApplied", rollId: damage.roll.id, amount: -3 }, "Dana", damage.state))
+      .toBe(`Dana healed 3 from Aria → Goblin (1d8+3: ${damage.roll.total})`);
+    expect(formatActivity({ type: "RollDamageUnapplied", rollId: damage.roll.id, amount: -3 }, "Dana", damage.state))
+      .toBe(`Dana took back 3 healing from Aria → Goblin (1d8+3: ${damage.roll.total})`);
   });
 });

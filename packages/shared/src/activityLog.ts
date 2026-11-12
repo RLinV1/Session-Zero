@@ -184,7 +184,12 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     }
     case "RollDamageApplied": {
       const roll = rolledEarlier(event.rollId);
-      return `${actorName} applied ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
+      const gmOnly = roll?.visibility === "gm" ? " (GM only)" : "";
+      // The GM's chosen amount (ADR 0060): a heal, or a part of the rolled damage.
+      if (event.amount < 0) return `${actorName} healed ${-event.amount} from ${rollLabel(roll)}${gmOnly}`;
+      const rolledDamage = roll ? Math.max(0, roll.total) : event.amount;
+      const of = event.amount === rolledDamage ? "" : ` of ${rolledDamage}`;
+      return `${actorName} applied ${event.amount}${of} damage from ${rollLabel(roll)}${gmOnly}`;
     }
     case "AutoRemoveDefeatedSet": return `${actorName} turned automatic removal of defeated tokens ${event.enabled ? "on" : "off"}`;
     case "DefeatRemovalSet": return `${actorName} set Remove tokens at 0 HP to ${DEFEAT_REMOVAL_LABELS[event.mode]}`;
@@ -199,7 +204,9 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "MapNukeUndone": return `${actorName} took back a nuke (${event.amount} damage)`;
     case "RollDamageUnapplied": {
       const roll = rolledEarlier(event.rollId);
-      return `${actorName} took back ${event.amount} damage from ${rollLabel(roll)}${roll?.visibility === "gm" ? " (GM only)" : ""}`;
+      const gmOnly = roll?.visibility === "gm" ? " (GM only)" : "";
+      if (event.amount < 0) return `${actorName} took back ${-event.amount} healing from ${rollLabel(roll)}${gmOnly}`;
+      return `${actorName} took back ${event.amount} damage from ${rollLabel(roll)}${gmOnly}`;
     }
     case "ChatMessageSent": {
       const { text } = event.message;
