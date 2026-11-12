@@ -1,7 +1,7 @@
 import { TerrainSetup } from "../pages/mapEditor/TerrainSetup";
 import { Modal } from "../ui/Modal";
-import { MovementControls } from "./MovementControls";
-import { defaultMovementSettings, movementReadout, type MovementSettings } from "./movementRuler";
+import { MovementControls, useRulerMode } from "./MovementControls";
+import { movementReadout } from "./movementRuler";
 import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phosphor-icons/react";
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
@@ -136,7 +136,7 @@ interface Placing {
 
 const HINTS: Record<BoardTool["kind"], string> = {
   select: "Drag to pan · scroll to zoom · double-click to ping · hold Alt to place freely",
-  measure: "Drag to measure · Alt: straight line · Esc: stop",
+  measure: "",
   draw: "Drag to draw · only you can see drawings · Esc to stop",
   area: "Drag to size and aim · click to place the chosen size · hold Alt to place freely · everyone at the table sees areas",
   erase: "Click or drag over your marks and areas to erase them · Esc to stop",
@@ -144,6 +144,12 @@ const HINTS: Record<BoardTool["kind"], string> = {
   pickTemplate: "Click an area to select every token it touches · Esc or right-click to cancel",
   fog: "",
 };
+
+/** Measure hints by mode (ruler-modes). */
+const MEASURE_HINTS = {
+  range: "Drag to measure · Alt: straight line · Esc: stop",
+  movement: "Click to add points · Enter to finish · Backspace removes a point · Esc cancels · Alt: straight line",
+} as const;
 
 /** Fog hints by mode (FR-GM-17). Players never get the Fog tool. */
 const FOG_HINTS = {
@@ -220,11 +226,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   /** Closing the card deselects the token and drops the eye's narrowing: back to all tokens, or off if the eye alone turned Token view on. */
   const deselect = () => { setSelectedId(null); setViewedIds([]); if (eyeStarted) setTokenView(false); };
   const selected = selectedId ? renderedState.tokens[selectedId] ?? null : null;
-  const [movementSettings, setMovementSettings] = useState<MovementSettings>(() => defaultMovementSettings(state.scene.grid));
   const [movementFeedback, setMovementFeedback] = useState("");
   const rulerOrigin = selected && can.moveToken(you, selected) ? selected.position : null;
-  const rulerRef = useRef({ settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
-  rulerRef.current = { settings: movementSettings, origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
+  const rulerRef = useRef({ origin: rulerOrigin, tokenSize: selected?.size ?? 1 });
+  rulerRef.current = { origin: rulerOrigin, tokenSize: selected?.size ?? 1 };
   // Token view with no narrowing (viewedIds empty) is "all tokens": the union of every token's sight, hidden ones included.
   // Only a card's eye narrows it to that token; the eye again or closing the card returns to all tokens (or off, if the eye started it).
   const viewing = tokenView && gmCanSee ? viewedTokenIds(state, viewedIds.length > 0 ? viewedIds : Object.keys(state.tokens)) : [];
@@ -236,7 +241,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   latest.current.viewing = viewing;
   useEffect(() => viewRef.current?.setViewedTokens(viewing), [viewing.join(",")]);
   const [tool, setTool] = useState<BoardTool>({ kind: "select" });
-  const [toolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
+  // The ruler's mode is remembered in this browser (ruler-modes); the other options last the visit.
+  const [measureMode, setMeasureMode] = useRulerMode();
+  const [otherToolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
+  const toolOptions = useMemo(() => ({ ...otherToolOptions, measure: { mode: measureMode } }), [otherToolOptions, measureMode]);
   const toolRef = useRef(tool);
   toolRef.current = tool;
   /** The tool to go back to once an attack's target is picked or cancelled. */
@@ -459,7 +467,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);
       view.update(latest.current.boardState, latest.current.you);
-      view.setMovementRuler(rulerRef.current.settings, rulerRef.current.origin, rulerRef.current.tokenSize);
+      view.setMovementRuler(rulerRef.current.origin, rulerRef.current.tokenSize);
       view.setTool(toolRef.current);
       view.setPlacement(ghostRef.current);
       view.setGroupSelection(latest.current.groupSelection ?? []);
@@ -579,8 +587,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, [gridPreview]);
 
   useEffect(() => {
-    viewRef.current?.setMovementRuler(movementSettings, rulerOrigin, selected?.size ?? 1);
-  }, [movementSettings, rulerOrigin?.x, rulerOrigin?.y, selected?.size]);
+    viewRef.current?.setMovementRuler(rulerOrigin, selected?.size ?? 1);
+  }, [rulerOrigin?.x, rulerOrigin?.y, selected?.size]);
 
   useEffect(() => {
     viewRef.current?.setTool(tool);
@@ -643,8 +651,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       // The Fog polygon takes Enter to close and Backspace to drop a corner; Escape abandons it first.
       if (toolRef.current.kind === "fog" && e.key === "Enter" && viewRef.current?.closeFogPolygon()) return e.preventDefault();
       if (toolRef.current.kind === "fog" && e.key === "Backspace" && viewRef.current?.undoFogPoint()) return e.preventDefault();
+      // A Movement-mode ruler route: Enter finishes, Backspace drops a point, Escape clears it first (ruler-modes).
+      if (toolRef.current.kind === "measure" && e.key === "Enter" && viewRef.current?.closeRoute()) return e.preventDefault();
+      if (toolRef.current.kind === "measure" && e.key === "Backspace" && viewRef.current?.dropRoutePoint()) return e.preventDefault();
       if (e.key !== "Escape") return;
       if (viewRef.current?.cancelFogPolygon()) return;
+      if (toolRef.current.kind === "measure" && viewRef.current?.cancelRoute()) return;
       if (toolRef.current.kind === "attack") endAttack();
       else setTool({ kind: "select" });
     };
@@ -849,7 +861,12 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {gridPreview && <p className="grid-preview-label" role="status">Preview · Not applied</p>}
       {!readOnly && !selectOnly && (
       <ToolRail
-        movementControls={<MovementControls key={state.roomId} roomId={state.roomId} grid={state.scene.grid} onChange={setMovementSettings} />}
+        movementControls={<MovementControls
+          mode={measureMode}
+          onMode={(mode) => {
+            setMeasureMode(mode);
+            setTool((current) => (current.kind === "measure" ? { kind: "measure", mode } : current));
+          }} />}
         active={tool.kind}
         options={toolOptions}
         unitLabel={state.scene.grid.unitLabel}
@@ -860,6 +877,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         }}
         onOptions={(options) => {
           setToolOptions(options);
+          setMeasureMode(options.measure.mode);
           setTool((current) => (current.kind === "attack" ? current : toolFor(current.kind, options)));
         }}
         onClear={() => viewRef.current?.clearMarks()}
@@ -926,7 +944,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {/* Read-only boards (a player preview, a checkpoint preview) can't ping or place, so no hint. */}
       {!readOnly && (
         <p className="board-hint" aria-live={placing ? "off" : "polite"}>
-          {placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : HINTS[tool.kind]}
+          {placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : tool.kind === "measure" ? MEASURE_HINTS[tool.mode] : HINTS[tool.kind]}
         </p>
       )}
     </div>

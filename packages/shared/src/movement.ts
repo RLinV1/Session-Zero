@@ -81,19 +81,34 @@ const MAX_RULER_STEPS = 5000;
  * counts its base length. `runs` must already be viewer-filtered (effective terrain for the GM,
  * `terrainView.runs` otherwise). `difficult` counts the doubled steps.
  */
-export function rulerPathCost(from: Point, to: Point, grid: GridSpec, rules: StepRules, runs: readonly TerrainRun[]): { cells: number; cost: number; difficult: number; blocked: boolean } {
-  const a = cellAt(from, grid), b = cellAt(to, grid);
-  const dc = b.col - a.col, dr = b.row - a.row, n = Math.min(Math.max(Math.abs(dc), Math.abs(dr)), MAX_RULER_STEPS);
+export function rulerPathCost(from: Point, to: Point, grid: GridSpec, rules: StepRules, runs: readonly TerrainRun[]): RouteCost {
+  return routeCost([from, to], grid, rules, runs);
+}
+
+export interface RouteCost { cells: number; cost: number; difficult: number; blocked: boolean }
+
+/**
+ * The cost of a placed route (ruler Movement mode): a straight run of squares between each pair of
+ * points, every step costed as `rulerPathCost` does, with one Alternating diagonal count across the
+ * whole route so it continues around turns. Each run is capped at the ruler's step limit.
+ */
+export function routeCost(points: readonly Point[], grid: GridSpec, rules: StepRules, runs: readonly TerrainRun[]): RouteCost {
   const kinds = terrainCells(runs);
-  const out = { cells: n, cost: 0, difficult: 0, blocked: false };
-  let at: Cell = a, diagonals = 0;
-  for (let i = 1; i <= n; i++) {
-    const next = { col: a.col + Math.round(dc * i / n), row: a.row + Math.round(dr * i / n) };
-    if (next.col !== at.col && next.row !== at.row) diagonals++;
-    const cost = stepCost({ from: at, to: next, diagonalIndex: diagonals }, 1, rules, kinds);
-    const base = stepCost({ from: at, to: next, diagonalIndex: diagonals }, 1, rules, NO_TERRAIN)!;
-    if (cost === null) { out.blocked = true; out.cost += base; } else { if (cost > base + 1e-9) out.difficult++; out.cost += cost; }
-    at = next;
+  const out = { cells: 0, cost: 0, difficult: 0, blocked: false };
+  let diagonals = 0;
+  for (let leg = 1; leg < points.length; leg++) {
+    const a = cellAt(points[leg - 1]!, grid), b = cellAt(points[leg]!, grid);
+    const dc = b.col - a.col, dr = b.row - a.row, n = Math.min(Math.max(Math.abs(dc), Math.abs(dr)), MAX_RULER_STEPS);
+    let at: Cell = a;
+    for (let i = 1; i <= n; i++) {
+      const next = { col: a.col + Math.round(dc * i / n), row: a.row + Math.round(dr * i / n) };
+      if (next.col !== at.col && next.row !== at.row) diagonals++;
+      const cost = stepCost({ from: at, to: next, diagonalIndex: diagonals }, 1, rules, kinds);
+      const base = stepCost({ from: at, to: next, diagonalIndex: diagonals }, 1, rules, NO_TERRAIN)!;
+      if (cost === null) { out.blocked = true; out.cost += base; } else { if (cost > base + 1e-9) out.difficult++; out.cost += cost; }
+      at = next;
+    }
+    out.cells += n;
   }
   out.cost *= grid.unitsPerCell;
   return out;

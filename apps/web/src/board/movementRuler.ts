@@ -1,11 +1,21 @@
-import { MAX_MOVE_VIA, blocksMovement, cheapestPath, effectiveTerrain, emptyTerrain, footprintCrossesWall, isSnapped, movementRouteKnown, movementTerrain, stepRulesOf, sweptCrossesWalls, terrainCells, type GridSpec, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
-import { formatDistance } from "./tools";
+import { MAX_MOVE_VIA, blocksMovement, cheapestPath, diagonalRuleOf, effectiveTerrain, emptyTerrain, footprintCrossesWall, isSnapped, movementRouteKnown, movementTerrain, routeCost, stepRulesOf, sweptCrossesWalls, terrainCells, type GridSpec, type Participant, type Point, type RoomState, type TerrainRun, type Token } from "@vtt/shared";
+import { formatDistance, measure } from "./tools";
+
+/** The terrain a viewer may cost with: effective terrain for the GM, their filtered view otherwise. */
+function viewerRuns(state: RoomState, you: Participant): readonly TerrainRun[] {
+  return you.role === "gm" ? effectiveTerrain(state.terrain ?? emptyTerrain()) : state.terrainView?.runs ?? [];
+}
+
+/** A cost as the board shows it: plain distance, plus how many steps Difficult terrain doubled. */
+export function costLabel(cost: number, difficult: number, grid: GridSpec): string {
+  return formatDistance(cost, grid) + (difficult ? ` · ${difficult} difficult` : "");
+}
 
 export type MovementPreview = { label: string; obstruction: "blocked" | "unknown" | "clear" };
 
 export function movementPreview(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free = false, reposition = false): MovementPreview {
   const grid = state.scene.grid;
-  const runs = you.role === "gm" ? effectiveTerrain(state.terrain ?? emptyTerrain()) : state.terrainView?.runs ?? [];
+  const runs = viewerRuns(state, you);
   const result = movementTerrain(from, to, token.size, grid, runs, free);
   const unknown = you.role !== "gm" && !movementRouteKnown(state, from, to, token.size);
   const walls = Object.values(state.walls).filter(blocksMovement);
@@ -26,10 +36,10 @@ export interface DragPlan {
 
 /**
  * A drag's plan (ADR 0055). A grid-snapped token of whole-number size, dragged without Alt and not
- * Repositioned, follows the cheapest path the viewer knows of, costed under the room's rules against
- * their allowance. Anything else, or a path the search can't find, is a straight line showing distance only.
+ * Repositioned, follows the cheapest path the viewer knows of, labelled with its cost under the room's
+ * rules ("25 ft"). Anything else, or a path the search can't find, is a straight line showing distance only.
  */
-export function dragPlan(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free: boolean, reposition: boolean, allowance: number): DragPlan {
+export function dragPlan(state: RoomState, you: Participant, token: Token, from: Point, to: Point, free: boolean, reposition: boolean): DragPlan {
   const grid = state.scene.grid, map = state.scene.map, size = token.size;
   const pathed = !free && !reposition && !!map && Number.isInteger(size) && size >= 1 && isSnapped(from, size, grid);
   const straight = (): DragPlan => {
@@ -37,7 +47,7 @@ export function dragPlan(state: RoomState, you: Participant, token: Token, from:
     return { points: [from, to], via: [], label: preview.label, obstruction: preview.obstruction };
   };
   if (!pathed) return straight();
-  const runs = you.role === "gm" ? effectiveTerrain(state.terrain ?? emptyTerrain()) : state.terrainView?.runs ?? [];
+  const runs = viewerRuns(state, you);
   const walls = Object.values(state.walls).filter(blocksMovement);
   const knowledge = { kinds: terrainCells(runs), walls, map }, rules = stepRulesOf(state);
   // Among equal costs, the path hugging the straight line; if it turns more than a move may carry,
@@ -48,23 +58,24 @@ export function dragPlan(state: RoomState, you: Participant, token: Token, from:
   // The cost of the path shown, priced from what this viewer holds: a player's unseen fog, walls
   // and terrain are not counted. The server still judges the move on drop.
   const points = [from, ...path.via, to];
-  return { points, via: path.via, label: budgetLabel(path.cost, allowance, grid) + (path.difficult ? ` · ${path.difficult} difficult` : ""), obstruction: "clear" };
+  return { points, via: path.via, label: costLabel(path.cost, path.difficult, grid), obstruction: "clear" };
 }
 
 export function movementReadout(...args: Parameters<typeof movementPreview>): string {
   return movementPreview(...args).label;
 }
 
-/** The viewer's own movement budget. Diagonals are a room rule now (ADR 0055); an old stored `rule` is ignored. */
-export interface MovementSettings { allowance: number }
-export const validAllowance = (value: number) => Number.isFinite(value) && value > 0 && value <= 100000;
-export const defaultMovementSettings = (grid: GridSpec): MovementSettings => ({ allowance: Math.min(100000, grid.unitsPerCell * 6) });
-export function isMovementSettings(value: unknown): value is MovementSettings {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Partial<MovementSettings>;
-  return typeof v.allowance === "number" && validAllowance(v.allowance);
+/**
+ * A Range-mode measurement (ruler-modes): one straight line under the room's Diagonals rule,
+ * ignoring terrain, labelled with plain distance. The Alt ruler stays free-hand straight-line.
+ */
+export function rangeMeasure(state: Pick<RoomState, "scene" | "diagonalRule">, from: Point, to: Point, free: boolean, tokenSize?: number) {
+  return measure(from, to, state.scene.grid, free, free ? "euclidean" : diagonalRuleOf(state), tokenSize);
 }
-export function budgetLabel(distance: number, allowance: number, grid: GridSpec): string {
-  const difference = allowance - distance;
-  return `${formatDistance(distance, grid).replace(` ${grid.unitLabel}`, "")} / ${formatDistance(allowance, grid)} · ${formatDistance(Math.abs(difference), grid)} ${difference < -1e-9 ? "over" : "remaining"}`;
+
+/** A Movement-mode route's cost and label (ruler-modes): "30 ft", " · N difficult", or "Blocked". */
+export function routePlan(state: RoomState, you: Participant, points: readonly Point[]) {
+  const grid = state.scene.grid;
+  const route = routeCost(points, grid, stepRulesOf(state), viewerRuns(state, you));
+  return { ...route, label: route.blocked ? "Blocked" : costLabel(route.cost, route.difficult, grid) };
 }

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_GRID } from "@vtt/shared";
 import { measure } from "../src/board/tools";
-import { budgetLabel, defaultMovementSettings, isMovementSettings } from "../src/board/movementRuler";
-import { MovementControls } from "../src/board/MovementControls";
-import { readStored } from "../src/ui/usePersistentState";
+import { emptyRoomState, filterStateForViewer, type Participant, type RoomState, type TerrainRun } from "@vtt/shared";
+import { costLabel, rangeMeasure, routePlan } from "../src/board/movementRuler";
+import { MovementControls, useRulerMode } from "../src/board/MovementControls";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 const grid = { ...DEFAULT_GRID, offsetX: 10, offsetY: 20 };
@@ -44,44 +44,69 @@ describe("personal movement ruler (FR-TAC-03)", () => {
     }
     expect(measure(a, b(2, 0), { ...grid, unitsPerCell: 1.5, unitLabel: "m" }, false).label).toBe("3 m");
   });
-  it("describes remaining, exact and excess budgets in text", () => {
-    expect(budgetLabel(20, 30, grid)).toBe("20 / 30 ft · 10 ft remaining");
-    expect(budgetLabel(30, 30, grid)).toBe("30 / 30 ft · 0 ft remaining");
-    expect(budgetLabel(40, 30, grid)).toBe("40 / 30 ft · 10 ft over");
+  it("labels a cost as plain distance, never against the allowance", () => {
+    expect(costLabel(20, 0, grid)).toBe("20 ft");
+    expect(costLabel(40, 2, grid)).toBe("40 ft · 2 difficult");
   });
-  it("validates persisted preferences and recovers from malformed storage", () => {
-    const fallback = defaultMovementSettings(grid);
-    expect(fallback).toEqual({ allowance: 30 });
-    for (const allowance of [0, -1, NaN, Infinity, 100001, "30"]) expect(isMovementSettings({ allowance, rule: "equal" })).toBe(false);
-    expect(isMovementSettings({ allowance: 100000, rule: "alternating" })).toBe(true);
-    for (const raw of ["{", '{"allowance":0,"rule":"equal"}', '{"rule":"equal"}']) {
-      expect(readStored({ getItem: () => raw, setItem: () => {} }, "room", fallback, isMovementSettings)).toEqual(fallback);
-    }
-    // Settings saved when Diagonals was a private choice keep their allowance; the rule is ignored (ADR 0055).
-    expect(readStored({ getItem: () => '{"allowance":45,"rule":"alternating"}', setItem: () => {} }, "room", fallback, isMovementSettings).allowance).toBe(45);
-  });
-  it("keeps the last valid allowance while explaining invalid input", () => {
-    const onChange = vi.fn();
-    render(<MovementControls roomId="one" grid={grid} onChange={onChange} />);
-    const input = screen.getByRole("spinbutton", { name: "Movement (ft)" });
-    fireEvent.change(input, { target: { value: "45" } });
-    expect(onChange).toHaveBeenLastCalledWith({ allowance: 45 });
-    fireEvent.change(input, { target: { value: "0" } });
-    expect(screen.getByRole("alert").textContent).toContain("positive");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(onChange).toHaveBeenLastCalledWith({ allowance: 45 });
-    // Diagonals are the GM's room rule now, not a personal choice (ADR 0055).
-    expect(screen.queryByRole("combobox", { name: "Diagonals" })).toBeNull();
-  });
-  it("remembers valid settings only in their room", () => {
-    const onChange = vi.fn();
-    const { unmount } = render(<MovementControls roomId="one" grid={grid} onChange={onChange} />);
-    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "50" } });
+});
+
+/** The board's wiring: the remembered mode, passed to the controls. */
+function Controls() {
+  const [mode, setMode] = useRulerMode();
+  return <MovementControls mode={mode} onMode={setMode} />;
+}
+
+describe("ruler modes (ruler-modes)", () => {
+  it("starts in Range, switches to Movement, and remembers it after a remount", () => {
+    const { unmount } = render(<Controls />);
+    expect(screen.getByRole("button", { name: "Range" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Movement" }));
+    expect(screen.getByRole("button", { name: "Movement" }).getAttribute("aria-pressed")).toBe("true");
     unmount();
-    const second = render(<MovementControls roomId="two" grid={grid} onChange={onChange} />);
-    expect(screen.getByRole("spinbutton")).toHaveProperty("value", "30");
-    second.unmount();
-    render(<MovementControls roomId="one" grid={grid} onChange={onChange} />);
-    expect(screen.getByRole("spinbutton")).toHaveProperty("value", "50");
+    render(<Controls />);
+    expect(screen.getByRole("button", { name: "Movement" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("offers no movement budget in either mode: rulers show length only", () => {
+    render(<Controls />);
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Movement" }));
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+  });
+});
+
+const gm: Participant = { id: "g", role: "gm", displayName: "G" };
+const player: Participant = { id: "p", role: "player", displayName: "P" };
+const square = (col: number, row: number) => ({ x: col * 70 + 35, y: row * 70 + 35 });
+const runs = (kind: "blocked" | "difficult", ...cells: [number, number][]): TerrainRun[] => cells.map(([col, row]) => ({ row, start: col, end: col, kind }));
+function board(terrain: TerrainRun[] = [], extra: Partial<RoomState> = {}): RoomState {
+  const base = emptyRoomState("r");
+  return { ...base, scene: { ...base.scene, map: { url: "/m.png", width: 700, height: 700 } }, terrain: { base: terrain, effects: [] }, ...extra };
+}
+
+describe("Range mode labels (ruler-modes)", () => {
+  it("ignores terrain: three squares across two Difficult squares read 15 ft", () => {
+    const s = board(runs("difficult", [1, 0], [2, 0]));
+    expect(rangeMeasure(s, square(0, 0), square(3, 0), false).label).toBe("15 ft");
+  });
+  it("follows the Diagonals rule: three Alternating diagonals read 20 ft", () => {
+    expect(rangeMeasure(board([], { diagonalRule: "alternating" }), square(0, 0), square(3, 3), false).label).toBe("20 ft");
+  });
+});
+
+describe("Movement mode route labels (ruler-modes)", () => {
+  it("reads 30 ft for right 3 then down 3 on open ground", () => {
+    expect(routePlan(board(), gm, [square(0, 0), square(3, 0), square(3, 3)]).label).toBe("30 ft");
+  });
+  it("counts Difficult squares on a run", () => {
+    expect(routePlan(board(runs("difficult", [1, 0], [2, 0])), gm, [square(0, 0), square(3, 0)]).label).toBe("25 ft · 2 difficult");
+  });
+  it("reads Blocked when a run steps onto Blocked ground", () => {
+    expect(routePlan(board(runs("blocked", [2, 0])), gm, [square(0, 0), square(3, 0)]).label).toBe("Blocked");
+  });
+  it("costs fogged Difficult squares as Normal for a player", () => {
+    const fog = { f: { id: "f", shape: "rect" as const, points: [{ x: 70, y: 0 }, { x: 210, y: 0 }, { x: 210, y: 70 }, { x: 70, y: 70 }] } };
+    const s = board(runs("difficult", [1, 0], [2, 0]), { fog, participants: { p: player } });
+    expect(routePlan(filterStateForViewer(s, player), player, [square(0, 0), square(3, 0)]).label).toBe("15 ft");
   });
 });

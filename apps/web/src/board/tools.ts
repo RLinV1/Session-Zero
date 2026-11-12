@@ -13,7 +13,8 @@ export type DrawShape = "brush" | "line" | "rect" | "circle";
 
 export type BoardTool =
   | { kind: "select" }
-  | { kind: "measure" }
+  /** Range: one straight line, plain distance. Movement: a clicked route, costed like a drag. */
+  | { kind: "measure"; mode: MeasureMode }
   | { kind: "draw"; shape: DrawShape; color: number }
   | {
       kind: "area";
@@ -34,6 +35,10 @@ export type BoardTool =
   | { kind: "attack"; attackerId: string }
   /** GM only: picking a placed template whose tokens to select (ADR 0046). Started from From template, not the rail. */
   | { kind: "pickTemplate" };
+
+/** What the Measure tool measures: plain range, or a route's movement cost (ruler-modes). */
+export type MeasureMode = "range" | "movement";
+export const isMeasureMode = (v: unknown): v is MeasureMode => v === "range" || v === "movement";
 
 /** What the Fog tool does: drag a rectangle, click out a polygon, or click a region to remove it. */
 export type FogMode = "rect" | "polygon" | "reveal";
@@ -128,6 +133,8 @@ export type Mark =
   | { kind: "measure"; from: Point; to: Point; free: boolean; tokenSize?: number }
   | { kind: "draw"; shape: Exclude<DrawShape, "brush">; color: number; from: Point; to: Point }
   | { kind: "stroke"; color: number; points: Point[] }
+  /** A Movement-mode ruler route: square centres, start first; `done` once Enter finishes it. */
+  | { kind: "route"; points: Point[]; done: boolean }
   | { kind: "area"; shape: AreaShape; size: number; origin: Point; toward: Point; free: boolean; gmOnly?: boolean; width?: number; color?: AreaColor };
 
 /** A placed, shared template as a mark, for drawing and hit testing. Its origin is already snapped. */
@@ -334,6 +341,7 @@ export function hitMark(mark: Mark, p: Point, tolerance: number, grid: GridSpec)
       );
     }
     case "stroke":
+    case "route":
       return mark.points.some((a, i) => distanceToSegment(p, a, mark.points[i + 1] ?? a) <= tolerance);
     case "area": {
       const shape = areaShape(mark.shape, areaOrigin(mark.origin, grid, mark.free), mark.toward, mark.size, grid, mark.width);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveTerrain, rulerPathCost, type DiagonalRule, type DifficultTerrainMode, type TerrainRun } from "../src";
+import { effectiveTerrain, routeCost, rulerPathCost, type DiagonalRule, type DifficultTerrainMode, type TerrainRun } from "../src";
 
 const rules = (diagonal: DiagonalRule, difficult: DifficultTerrainMode = "entry") => ({ diagonal, difficult });
 
@@ -43,5 +43,23 @@ describe("ruler cost under the Difficult terrain rule (FR-TAC-03, ADR 0055)", ()
     expect(rulerPathCost(at(0, 0), at(3, 0), grid, rules("equal", "entry"), crossing)).toMatchObject({ cost: 25, difficult: 2 });
     expect(rulerPathCost(at(0, 0), at(3, 0), grid, rules("equal", "exit"), crossing)).toMatchObject({ cost: 25, difficult: 2 });
     expect(rulerPathCost(at(0, 0), at(3, 0), grid, rules("equal", "both"), crossing)).toMatchObject({ cost: 30, difficult: 3 });
+  });
+});
+
+describe("route cost over placed points (FR-TAC-03, ruler Movement mode)", () => {
+  it("sums two runs of three squares", () => {
+    expect(routeCost([at(0, 0), at(3, 0), at(3, 3)], grid, rules("equal"), [])).toEqual({ cells: 6, cost: 30, difficult: 0, blocked: false });
+  });
+  it("continues Alternating diagonals across a turn", () => {
+    expect(routeCost([at(0, 0), at(1, 1), at(2, 0)], grid, rules("alternating"), []).cost).toBe(15);
+  });
+  it("counts Difficult and Blocked squares on the second run", () => {
+    const terrain = [run("difficult", 1, 1, 3), run("difficult", 2, 2, 3), run("blocked", 3, 3, 3)];
+    const r = routeCost([at(0, 0), at(0, 3), at(3, 3)], grid, rules("equal"), terrain);
+    expect(r).toMatchObject({ difficult: 2, blocked: true });
+  });
+  it("matches rulerPathCost for a single run", () => {
+    const terrain = [run("difficult", 0, 2)];
+    expect(routeCost([at(0, 0), at(4, 0)], grid, rules("equal"), terrain)).toEqual(rulerPathCost(at(0, 0), at(4, 0), grid, rules("equal"), terrain));
   });
 });

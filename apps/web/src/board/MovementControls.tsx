@@ -1,25 +1,26 @@
-import { useEffect, useId, useState } from "react";
-import type { GridSpec } from "@vtt/shared";
 import { usePersistentState } from "../ui/usePersistentState";
-import { defaultMovementSettings, isMovementSettings, validAllowance, type MovementSettings } from "./movementRuler";
+import { isMeasureMode, type MeasureMode } from "./tools";
 
-/** Mount keyed by room so preferences never carry across rooms. All settings stay in this browser. */
-export function MovementControls({ roomId, grid, onChange }: { roomId: string; grid: GridSpec; onChange: (value: MovementSettings) => void }) {
-  const [settings, setSettings] = usePersistentState(`vtt.movement.${roomId}`, defaultMovementSettings(grid), isMovementSettings);
-  const [draft, setDraft] = useState(String(settings.allowance));
-  const errorId = useId();
-  const invalid = draft.trim() === "" || !validAllowance(Number(draft));
-  useEffect(() => onChange(settings), [settings, onChange]);
-  return <div className="tool-options movement-options" role="group" aria-label="Personal movement planner">
-    <label>Movement ({grid.unitLabel})
-      <input type="number" min="0" max="100000" step="any" value={draft} aria-invalid={invalid} aria-describedby={invalid ? errorId : undefined}
-        onChange={(e) => {
-          const value = e.target.value;
-          setDraft(value);
-          if (value.trim() && validAllowance(Number(value))) setSettings({ ...settings, allowance: Number(value) });
-        }} />
-    </label>
-    {invalid && <p id={errorId} role="alert">Enter a positive value up to 100,000.</p>}
+/** The ruler's Range/Movement mode, remembered in this browser for every room (ruler-modes). */
+export function useRulerMode() {
+  return usePersistentState<MeasureMode>("vtt.ruler.mode", "range", isMeasureMode);
+}
+
+const MODES: { mode: MeasureMode; label: string }[] = [
+  { mode: "range", label: "Range" },
+  { mode: "movement", label: "Movement" },
+];
+
+/** The Measure tool's options: Range or Movement. Measurements show their length only and stay in this browser. */
+export function MovementControls({ mode, onMode }: { mode: MeasureMode; onMode: (mode: MeasureMode) => void }) {
+  return <div className="tool-options movement-options" role="group" aria-label="Measure options">
+    <div className="tool-segmented ruler-modes" role="group" aria-label="Ruler mode">
+      {MODES.map((m) => (
+        <button key={m.mode} type="button" className="tool-button rail-button" aria-pressed={mode === m.mode} onClick={() => onMode(m.mode)}>
+          {m.label}
+        </button>
+      ))}
+    </div>
     <small>Private preview.</small>
   </div>;
 }

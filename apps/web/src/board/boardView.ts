@@ -1,6 +1,6 @@
-import { effectiveTerrain, emptyTerrain, cellRect, rulerPathCost, stepRulesOf, type StepRules, type TerrainRun } from "@vtt/shared";
+import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun } from "@vtt/shared";
 import { plainWallLines } from "./wallLines";
-import { budgetLabel, defaultMovementSettings, dragPlan, type DragPlan, type MovementPreview, type MovementSettings } from "./movementRuler";
+import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
 import {
   Application,
   Assets,
@@ -440,7 +440,8 @@ export class BoardView {
   private lastPickAt = 0;
   /** The last measurement; stays until the next one starts, the tool changes, or Clear. */
   private measurement: Mark | null = null;
-  private movementSettings: MovementSettings | null = null;
+  /** The square under the pointer while a Movement-mode route is being clicked out: its live run. */
+  private routeHover: Point | null = null;
   private movementOrigin: Point | null = null;
   private movementTokenSize = 1;
   /** A Measure/Draw/Area/Eraser drag in progress, in board coordinates. */
@@ -826,14 +827,13 @@ export class BoardView {
     const token = state.tokens[drag.tokenId];
     if (!token) return;
     const to = drag.target.free ? drag.target.at : snapTokenCenter(drag.target.at, token.size, state.scene.grid);
-    const allowance = (this.movementSettings ?? defaultMovementSettings(state.scene.grid)).allowance;
     const reposition = this.repositionToken === token.id;
     // The cheapest path for a snapped grid token, a straight line otherwise (ADR 0055). The search
     // runs again only when the target square, the mode or the board changes, not on every pixel.
-    const planKey = `${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${drag.target.free}|${reposition}|${allowance}`;
+    const planKey = `${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${drag.target.free}|${reposition}|`;
     const local = !force && this.localMovementPreview && this.localPlanKey === planKey
       ? this.localMovementPreview
-      : dragPlan(state, you, token, drag.origin, to, drag.target.free, reposition, allowance);
+      : dragPlan(state, you, token, drag.origin, to, drag.target.free, reposition);
     this.localMovementPreview = local;
     this.localPlanKey = planKey;
     const previous = this.movementRequest;
@@ -1249,12 +1249,13 @@ export class BoardView {
 
   /** Switch the active tool. Changing tool drops the last measurement and any drag in progress. */
   setTool(tool: BoardTool) {
-    if (tool.kind !== this.tool.kind || (tool.kind === "fog" && this.tool.kind === "fog" && tool.mode !== this.tool.mode)) {
+    if (tool.kind !== this.tool.kind || (tool.kind === "fog" && this.tool.kind === "fog" && tool.mode !== this.tool.mode) || (tool.kind === "measure" && this.tool.kind === "measure" && tool.mode !== this.tool.mode)) {
       if (this.gesture && this.tool.kind === "area") this.callbacks.aimEnd(this.tool.gmOnly);
       this.measurement = null;
       this.gesture = null;
       this.fogPoints = [];
       this.fogHover = null;
+      this.routeHover = null;
     }
     this.attackHover = null;
     this.tool = tool;
@@ -1263,8 +1264,8 @@ export class BoardView {
     this.redrawOverlay();
   }
 
-  setMovementRuler(settings: MovementSettings, origin: Point | null, tokenSize = 1) {
-    this.movementSettings = settings;
+  /** Where the ruler starts: the selected token the viewer may move, and its size. */
+  setMovementRuler(origin: Point | null, tokenSize = 1) {
     this.movementOrigin = origin;
     this.movementTokenSize = tokenSize;
     this.redrawOverlay();
@@ -1430,6 +1431,58 @@ export class BoardView {
       this.redrawMarks();
     };
     this.callbacks.addFog(region).then(done, done);
+  }
+
+  // ---------- ruler Movement mode (ruler-modes) ----------
+
+  /** The route being clicked out or last finished, if any. */
+  private get route(): Extract<Mark, { kind: "route" }> | null {
+    return this.measurement?.kind === "route" ? this.measurement : null;
+  }
+
+  /** A Movement-mode click: start a route (from the selected token, if any) or add a snapped point to it. */
+  private routeClick(at: Point) {
+    const grid = this.state?.scene.grid;
+    if (!grid) return;
+    const point = snapTokenCenter(at, 1, grid);
+    const route = this.route;
+    if (route && !route.done) {
+      const last = route.points[route.points.length - 1]!;
+      if (last.x !== point.x || last.y !== point.y) this.measurement = { ...route, points: [...route.points, point] };
+    } else {
+      const origin = this.movementOrigin;
+      this.measurement = { kind: "route", points: origin && (origin.x !== point.x || origin.y !== point.y) ? [origin, point] : [origin ?? point], done: false };
+    }
+    this.routeHover = point;
+    this.redrawOverlay();
+  }
+
+  /** Enter: finish the route, keeping it on screen. False when there is no route in progress to finish. */
+  closeRoute(): boolean {
+    const route = this.route;
+    if (!route || route.done || route.points.length < 2) return false;
+    this.measurement = { ...route, done: true };
+    this.routeHover = null;
+    this.redrawOverlay();
+    return true;
+  }
+
+  /** Backspace: drop the route's last point; the start stays. False when there is none to drop. */
+  dropRoutePoint(): boolean {
+    const route = this.route;
+    if (!route || route.done || route.points.length < 2) return false;
+    this.measurement = { ...route, points: route.points.slice(0, -1) };
+    this.redrawOverlay();
+    return true;
+  }
+
+  /** Escape: clear the route. False when there is none, so Escape can leave the tool. */
+  cancelRoute(): boolean {
+    if (!this.route) return false;
+    this.measurement = null;
+    this.routeHover = null;
+    this.redrawOverlay();
+    return true;
   }
 
   /** Close the polygon being clicked out and send it. False when it has too few corners. */
@@ -1901,20 +1954,33 @@ export class BoardView {
     const px = 1 / this.world.scale.x;
     switch (mark.kind) {
       case "measure": {
-        const settings = this.movementSettings ?? defaultMovementSettings(grid);
-        // The room's Diagonals and Difficult terrain rules (ADR 0055); the Alt ruler stays straight-line.
-        const rules: StepRules = mark.free ? { diagonal: "euclidean", difficult: "entry" } : stepRulesOf(this.state ?? {});
-        const m = measure(mark.from, mark.to, grid, mark.free, rules.diagonal, mark.tokenSize);
-        // Terrain is the viewer's filtered view: effective for the GM, terrainView for players.
-        const runs = this.you?.role === "gm" ? effectiveTerrain(this.state?.terrain ?? emptyTerrain()) : this.state?.terrainView?.runs ?? [];
-        const path = rulerPathCost(m.from, m.to, grid, rules, runs);
-        const units = path.difficult ? path.cost : m.units; // off Difficult ground keep the exact existing distance
-        const color = path.blocked || units > settings.allowance + 1e-9 ? 0xffa570 : MEASURE_COLOR;
-        g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color });
-        g.circle(m.from.x, m.from.y, 4 * px).circle(m.to.x, m.to.y, 4 * px).fill({ color });
-        const label = path.blocked ? "Blocked" : budgetLabel(units, settings.allowance, grid) + (path.difficult ? ` · ${path.difficult} difficult` : "");
-        this.showLabel(label, m.to);
-        this.callbacks.movementFeedback?.(label);
+        // Range (and the Alt ruler): plain distance under the room's Diagonals rule, no terrain (ruler-modes).
+        const m = rangeMeasure(this.state!, mark.from, mark.to, mark.free, mark.tokenSize);
+        g.moveTo(m.from.x, m.from.y).lineTo(m.to.x, m.to.y).stroke({ width: 3 * px, color: MEASURE_COLOR });
+        g.circle(m.from.x, m.from.y, 4 * px).circle(m.to.x, m.to.y, 4 * px).fill({ color: MEASURE_COLOR });
+        this.showLabel(m.label, m.to);
+        this.callbacks.movementFeedback?.(m.label);
+        return;
+      }
+      case "route": {
+        // Movement: placed runs plus the live one, costed like a drag from what this viewer holds.
+        const hover = !mark.done ? this.routeHover : null;
+        const last = mark.points[mark.points.length - 1]!;
+        const points = hover && (hover.x !== last.x || hover.y !== last.y) ? [...mark.points, hover] : mark.points;
+        if (!this.you || points.length === 0) return;
+        const plan = routePlan(this.state!, this.you, points);
+        const color = plan.blocked ? 0xffa570 : MEASURE_COLOR;
+        const [first, ...rest] = points;
+        g.moveTo(first!.x, first!.y);
+        for (const p of rest) g.lineTo(p.x, p.y);
+        g.stroke({ width: 3 * px, color, join: "round" });
+        for (const p of mark.points) g.circle(p.x, p.y, 4 * px);
+        g.fill({ color });
+        const end = points[points.length - 1]!;
+        if (points.length > 1) {
+          this.showLabel(plan.label, end);
+          this.callbacks.movementFeedback?.(plan.label);
+        }
         return;
       }
       case "draw": {
@@ -2729,6 +2795,9 @@ export class BoardView {
     if (this.tool.kind === "fog" && this.tool.mode !== "rect" && e.button === 0) {
       return this.fogClick(this.toBoard(e.global), { x: e.global.x, y: e.global.y });
     }
+    if (this.tool.kind === "measure" && this.tool.mode === "movement" && !e.altKey && e.button === 0) {
+      return this.routeClick(this.toBoard(e.global));
+    }
     if (this.tool.kind !== "select" && e.button === 0) {
       const at = this.toBoard(e.global);
       const origin = this.tool.kind === "measure" ? this.movementOrigin : null;
@@ -2756,6 +2825,13 @@ export class BoardView {
     if (this.tool.kind === "fog" && this.tool.mode === "polygon" && this.fogPoints.length > 0) {
       this.fogHover = this.toBoard(e.global);
       this.redrawOverlay();
+    }
+    if (this.tool.kind === "measure" && this.route && !this.route.done && this.state) {
+      const hover = snapTokenCenter(this.toBoard(e.global), 1, this.state.scene.grid);
+      if (hover.x !== this.routeHover?.x || hover.y !== this.routeHover?.y) {
+        this.routeHover = hover;
+        this.redrawOverlay();
+      }
     }
     if (this.gesture) {
       const gesture = this.gesture;
@@ -2867,7 +2943,7 @@ export class BoardView {
     // The path the drag showed is the one committed (ADR 0055): the cached plan for this square, if any.
     const reposition = this.repositionToken === token.id;
     const cached = this.localMovementPreview && this.localPlanKey.startsWith(`${token.id}|${drag.origin.x},${drag.origin.y}|${to.x},${to.y}|${e.altKey}|${reposition}|`) ? this.localMovementPreview : null;
-    const plan = cached ?? (this.you ? dragPlan(this.state, this.you, token, drag.origin, to, e.altKey, reposition, (this.movementSettings ?? defaultMovementSettings(this.state.scene.grid)).allowance) : null);
+    const plan = cached ?? (this.you ? dragPlan(this.state, this.you, token, drag.origin, to, e.altKey, reposition) : null);
     view.container.position.set(to.x, to.y);
     this.callbacks.dragEnd(token.id, to);
     if (to.x === token.position.x && to.y === token.position.y) return;

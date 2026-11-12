@@ -42,7 +42,7 @@ describe("players' boards never draw plain walls (FR-GM-23, ADR 0056)", () => {
 
   it("routes a player's drag around a wall they can see", () => {
     const view = filterStateForViewer(room(), alice);
-    const plan = dragPlan(view, alice, view.tokens.aria!, at(1, 1), at(4, 1), false, false, 30);
+    const plan = dragPlan(view, alice, view.tokens.aria!, at(1, 1), at(4, 1), false, false);
     expect(plan.via.length).toBeGreaterThan(0);
     expect(plan.via.some((p) => p.y >= at(0, 3).y)).toBe(true);
   });
