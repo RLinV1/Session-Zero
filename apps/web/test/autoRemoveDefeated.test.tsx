@@ -35,11 +35,12 @@ describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
     return made.command;
   };
 
-  it("is offered to a GM in a room, last, with exactly the four rules and no hint text", () => {
+  it("is offered to a GM in a room, just before Language, with exactly the four rules and no hint text", () => {
     const { connection } = connectionWith({ ok: true, seq: 1 });
     render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Language", "Table"]);
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "End" });
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Table", "Language"]);
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Language" }), { key: "ArrowLeft" });
     const panel = screen.getByRole("tabpanel");
     const select = screen.getByLabelText("Remove tokens at 0 HP") as HTMLSelectElement;
     expect([...select.options].map((o) => o.textContent)).toEqual(["All", "Only NPC tokens", "Off"]);

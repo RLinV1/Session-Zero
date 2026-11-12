@@ -23,8 +23,9 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
     { key: "audio", label: t("settings.tab.audio") },
     { key: "graphics", label: t("settings.tab.graphics") },
     { key: "controls", label: t("settings.tab.controls") },
-    ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
     ...(showTable ? [{ key: "table" as const, label: t("settings.tab.table") }] : []),
+    // Language is always last, so a reader looking for it finds it in the same place with or without Table.
+    ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
   ];
   const [chosen, setChosen] = useState<SettingsTab>("audio");
   useEffect(() => { if (open) setChosen("audio"); }, [open]);
