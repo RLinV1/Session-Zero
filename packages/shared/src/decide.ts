@@ -25,7 +25,7 @@ import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
 import { DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./i18n/ruleIds";
-import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -89,6 +89,9 @@ export const can = {
   /** Whoever placed a template may remove it; the GM may remove any (ADR 0007). */
   removeTemplate: (actor: Participant, template: AreaTemplate) =>
     actor.role === "gm" || template.ownerId === actor.id,
+  /** The same people may move, resize, turn or widen it (ADR 0058). */
+  editTemplate: (actor: Participant, template: AreaTemplate) =>
+    actor.role === "gm" || template.ownerId === actor.id,
   /** Only the GM rules on attack rolls and applies damage (ADR 0011). */
   ruleRolls: (actor: Participant) => actor.role === "gm",
   /** Who may roll an attack as this token: its owners and the GM (ADR 0010). */
@@ -150,8 +153,8 @@ export function decide(
   command: Command,
   ctx: DecideContext,
 ): Decision {
-  // token.move / portal.setState are player commands: they only guard the scene, never require the GM.
-  const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState";
+  // token.move / portal.setState / template.update are player commands: they only guard the scene, never require the GM.
+  const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState" || command.type === "template.update";
   const sceneChanged = "expectedSceneId" in command && command.expectedSceneId !== undefined && command.expectedSceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID);
   if (playerSceneCommand && sceneChanged) return reject("invalid", sharedMsg("reject.sceneChangedMove"));
   if (!playerSceneCommand && "expectedSceneId" in command && command.expectedSceneId !== undefined) {
@@ -1033,6 +1036,23 @@ export function decide(
           gmOnly: command.gmOnly,
         },
       });
+    }
+
+    case "template.update": {
+      const template = state.templates[command.templateId];
+      // Answers like a missing one when the actor can't see it, as removal does (FR-GM-23).
+      if (!template || templateConcealedFrom(concealmentFor(state, actor), template, actor)) return notFound("template");
+      if (!can.editTemplate(actor, template)) return forbidden();
+      const from = templateGeometry(template);
+      // Made from geometry someone else has since changed: refuse rather than overwrite it (ADR 0058).
+      if (!sameValue(from, templateGeometry(command.expected))) return reject("invalid", sharedMsg("reject.templateStale"));
+      const width = template.shape === "line" ? command.width : undefined;
+      if (width !== undefined && width > MAX_LINE_WIDTH_CELLS * state.scene.grid.unitsPerCell) {
+        return reject("invalid", sharedMsg("reject.lineTooWide", { width: MAX_LINE_WIDTH_CELLS * state.scene.grid.unitsPerCell, unit: state.scene.grid.unitLabel }));
+      }
+      const to = templateGeometry({ origin: command.origin, toward: command.toward, size: command.size, width });
+      if (sameValue(from, to)) return reject("invalid", sharedMsg("reject.templateUnchanged"));
+      return accept({ type: "TemplateChanged", templateId: template.id, from, to });
     }
 
     case "template.remove": {

@@ -5,7 +5,7 @@ import type { BoardTool } from "../src/board/tools";
 
 const render = (isGm: boolean, active: BoardTool["kind"] = "select", options: ToolOptions = DEFAULT_TOOL_OPTIONS) =>
   renderToStaticMarkup(
-    <ToolRail active={active} options={options} unitLabel="ft" isGm={isGm} onSelect={() => {}} onOptions={() => {}} onClear={() => {}} />,
+    <ToolRail active={active} options={options} isGm={isGm} onSelect={() => {}} onOptions={() => {}} onClear={() => {}} />,
   );
 
 describe("board Fog tool on the tool rail (FR-GM-17)", () => {
@@ -26,5 +26,13 @@ describe("board Fog tool on the tool rail (FR-GM-17)", () => {
   it("starts in Rectangle mode and keeps the chosen mode", () => {
     expect(toolFor("fog", DEFAULT_TOOL_OPTIONS)).toEqual({ kind: "fog", mode: "rect" });
     expect(toolFor("fog", { ...DEFAULT_TOOL_OPTIONS, fog: { mode: "reveal" } })).toEqual({ kind: "fog", mode: "reveal" });
+  });
+});
+
+describe("the Area tool's options (FR-TAC-06, ADR 0058)", () => {
+  it("offers shape, colour and, for lines, width, but no size", () => {
+    const html = render(false, "area");
+    expect(html).not.toContain("<select");
+    expect(render(false, "area", { ...DEFAULT_TOOL_OPTIONS, area: { ...DEFAULT_TOOL_OPTIONS.area, shape: "line" } })).toContain('type="number"');
   });
 });

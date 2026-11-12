@@ -185,9 +185,10 @@ describe("content under fog is not sent to players (FR-GM-17, FR-GM-23)", () => 
     expect(filterEventForViewer(committed(give), state, bob)).toEqual({ kind: "redacted", seq: 10 });
   });
 
-  it("withholds other people's templates under fog", () => {
+  it("withholds other people's templates wholly under fog", () => {
     const { state: fogged } = addFog(baseRoom());
-    const placed = run(fogged, bob, { type: "template.place", shape: "circle", origin: { x: 35, y: 35 }, toward: { x: 35, y: 35 }, size: 10 });
+    // A 1 ft circle fits inside the one-cell fog; one reaching out of it is sent (ADR 0059).
+    const placed = run(fogged, bob, { type: "template.place", shape: "circle", origin: { x: 35, y: 35 }, toward: { x: 35, y: 35 }, size: 1 });
     const event = placed.events[0]!;
     if (event.type !== "TemplatePlaced") throw new Error("expected TemplatePlaced");
     expect(filterStateForViewer(placed.state, alice).templates[event.template.id]).toBeUndefined();
@@ -281,7 +282,7 @@ describe("fog review fixes (FR-GM-17, FR-GM-23)", () => {
     expect(attempt(state, alice, { type: "token.move", reposition: true, tokenId: goblin.id, to: { x: 0, y: 0 } })).toMatchObject({ code: "not_found" });
     expect(attempt(state, alice, { type: "dice.roll", expression: "1d20", attack: { actorTokenId: hero.id, targetTokenId: goblin.id } }))
       .toMatchObject({ code: "not_found" });
-    const placed = run(state, bob, { type: "template.place", shape: "circle", origin: { x: 35, y: 35 }, toward: { x: 35, y: 35 }, size: 10 }).events[0]!;
+    const placed = run(state, bob, { type: "template.place", shape: "circle", origin: { x: 35, y: 35 }, toward: { x: 35, y: 35 }, size: 1 }).events[0]!;
     const id = placed.type === "TemplatePlaced" ? placed.template.id : "";
     const withTemplate = reduce(state, placed);
     expect(attempt(withTemplate, alice, { type: "template.remove", templateId: id })).toMatchObject({ code: "not_found" });

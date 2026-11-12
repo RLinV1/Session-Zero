@@ -40,7 +40,7 @@ describe("template-editing mode shows only map, fog and token tools (encounter-t
 
   it("puts only Select on the tool rail, with nothing to clear", () => {
     const rail = (selectOnly: boolean) => render(
-      <ToolRail active="select" options={DEFAULT_TOOL_OPTIONS} unitLabel="ft" isGm onSelect={() => {}} onOptions={() => {}} onClear={() => {}} selectOnly={selectOnly} />,
+      <ToolRail active="select" options={DEFAULT_TOOL_OPTIONS} isGm onSelect={() => {}} onOptions={() => {}} onClear={() => {}} selectOnly={selectOnly} />,
     );
     rail(true);
     const tools = within(screen.getByRole("toolbar", { name: "Board tools" }));

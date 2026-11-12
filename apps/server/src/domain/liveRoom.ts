@@ -31,6 +31,8 @@ import {
   type EphemeralPayload,
   type JoinDecision,
   type Participant,
+  type AreaTemplate,
+  type Concealment,
   type Point,
   type RejectionCode,
   type ResolvedEncounter,
@@ -455,6 +457,13 @@ export class LiveRoom {
     });
   }
 
+  /** One viewer's fog and sight, cached until the next commit clears `concealments`. */
+  private concealmentOf(viewer: Participant): Concealment {
+    let concealment = this.concealments.get(viewer.id);
+    if (!concealment) this.concealments.set(viewer.id, (concealment = concealmentFor(this.state, viewer)));
+    return concealment;
+  }
+
   /** Ephemeral channel (FR-SYNC-03): relayed to other clients, never persisted, no seq. */
   relayEphemeral(from: RoomClient, payload: EphemeralPayload) {
     if (this.isClosed) return;
@@ -477,11 +486,24 @@ export class LiveRoom {
     if (payload.type === "diceDrop" && !onMap(this.state.scene.map, payload.from, payload.to)) return;
     // A ping points at the map: one off it, or with no map yet, has nothing to point at (KAN-34).
     if (payload.type === "ping" && !onMap(this.state.scene.map, payload.at)) return;
+    // An edit preview names the placed template being moved or resized (ADR 0058): only someone who
+    // can see and edit it may send one, and whether it is GM-only comes from the template, never
+    // from the payload.
+    let edited: AreaTemplate | undefined;
+    if (payload.type === "templatePreview" && payload.templateId !== undefined) {
+      edited = this.state.templates[payload.templateId];
+      if (!edited || !can.editTemplate(sender, edited)) return;
+      if (templateConcealedFrom(this.concealmentOf(sender), edited, sender)) return;
+      const gmOnly = edited.gmOnly;
+      payload = { ...payload, ...(payload.preview ? { preview: { ...payload.preview, gmOnly } } : { gmOnly }) };
+    }
     // An aim preview (KAN-35): only the GM aims GM-only areas, and one off the map is forged.
     const preview = payload.type === "templatePreview" ? payload.preview : null;
     const gmOnlyAim = payload.type === "templatePreview" && (payload.preview?.gmOnly ?? payload.gmOnly ?? false);
     if (gmOnlyAim && !can.administer(sender)) return;
     if (preview && !onMap(this.state.scene.map, preview.origin)) return;
+    // An edit is seen by the template's owner as well as its editor.
+    const previewOwner = edited?.ownerId ?? sender.id;
     for (const client of this.clients) {
       if (client === from) continue;
       const viewer = this.state.participants[client.participantId];
@@ -494,7 +516,9 @@ export class LiveRoom {
       if (token && payload.type === "tokenDragPreview" && concealedFrom(concealment, { ...token, position: payload.at }, viewer)) continue;
       // An aim follows the rules for the area it would place: GM-only reaches GMs only (ADR 0007),
       // and one aimed from under fog reaches no player but its sender (ADR 0016).
-      if (preview && templateConcealedFrom(concealment, { ...preview, id: "", ownerId: sender.id }, viewer)) continue;
+      if (preview && templateConcealedFrom(concealment, { ...preview, ownerId: previewOwner }, viewer)) continue;
+      // A cleared edit reaches only those who may see the template, so its id can't leak.
+      if (!preview && edited && templateConcealedFrom(concealment, edited, viewer)) continue;
       if (gmOnlyAim && viewer.role !== "gm") continue;
       // A dice drop is one message per throw, not pointer chatter, and a lost one shows the throw
       // in the wrong place: it is delivered reliably, still unsequenced (ADR 0014).

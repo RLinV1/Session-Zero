@@ -335,6 +335,13 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "TemplatePlaced":
       return { ...state, templates: { ...state.templates, [event.template.id]: event.template } };
 
+    case "TemplateChanged": {
+      const template = required(state.templates[event.templateId], event);
+      // The whole geometry is replaced, so a width that went away goes away (ADR 0058).
+      const { width: _width, ...rest } = template;
+      return { ...state, templates: { ...state.templates, [template.id]: { ...rest, ...event.to } } };
+    }
+
     case "TemplateRemoved": {
       required(state.templates[event.template.id], event);
       const { [event.template.id]: _removed, ...rest } = state.templates;

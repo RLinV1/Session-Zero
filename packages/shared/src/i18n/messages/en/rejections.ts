@@ -136,6 +136,8 @@ export const rejectionsEn = {
   "reject.nukeOffMap": "Aim the nuke at a point on the map",
 
   // Area templates, fog and walls.
+  "reject.templateStale": "Someone changed that area first. Try again.",
+  "reject.templateUnchanged": "That area is already there.",
   "reject.tooManyTemplates": ({ max }: Max) => `A room can hold at most ${max} area templates. Remove some first.`,
   "reject.lineTooWide": ({ width, unit }: { width: number; unit: string }) => `A line is at most ${width} ${unit} wide.`,
   "reject.tooManyFog": ({ max }: Max) => `A room can hold at most ${max} fog regions. Remove some first.`,

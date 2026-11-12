@@ -12,6 +12,7 @@ import type { AttackContext, DiceRoll } from "../dice";
 import type { DomainEvent } from "../events";
 import type { ConditionId } from "../conditions";
 import type { Portal, PortalState, RoomState } from "../state";
+import { templateChangeKind } from "../templateChange";
 import { DEFEAT_REMOVAL_IDS, DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./ruleIds";
 import { rejectionsZhTW } from "./messages/zh-TW/rejections";
 import type { UndoEntry } from "../undo";
@@ -334,6 +335,15 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       return cjk`${a}傳送訊息：` + (text.length > 80 ? `${text.slice(0, 79)}…` : text);
     }
     case "TemplatePlaced": return cjk`${a}放置了${templateLabel(event.template)}` + gmOnly(!!event.template.gmOnly);
+    case "TemplateChanged": {
+      const template = before.templates[event.templateId];
+      if (!template) return cjk`${a}修改了一個範圍`;
+      // A destination without a width is back to the default one cell, not the template's old width.
+      const was = templateLabel({ ...template, ...event.from }), now = templateLabel({ ...template, ...event.to, width: event.to.width });
+      const kind = templateChangeKind(event.from, event.to);
+      const sentence = kind === "moved" ? cjk`${a}移動了${was}` : kind === "turned" ? cjk`${a}轉動了${was}` : cjk`${a}將${was}改為${now}`;
+      return sentence + gmOnly(!!template.gmOnly);
+    }
     case "TemplateRemoved": return cjk`${a}移除了${templateLabel(event.template)}` + gmOnly(!!event.template.gmOnly);
     case "FogAdded": return cjk`${a}新增了${event.region.shape === "rect" ? "矩形" : "多邊形"}迷霧區域`;
     case "FogRemoved": return cjk`${a}移除了${event.region.shape === "rect" ? "矩形" : "多邊形"}迷霧區域`;

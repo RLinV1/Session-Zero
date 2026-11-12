@@ -3,13 +3,13 @@ import { AreaColor, MAX_LINE_WIDTH_CELLS } from "@vtt/shared";
 import { isBoolean, usePersistentState } from "./usePersistentState";
 import { usePhone } from "./usePhone";
 import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
-import { AREA_SHADES, AREA_SIZES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
+import { AREA_SHADES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
 import { t, type TextId } from "../i18n/locale";
 
 /** The options each tool remembers while another tool is active. */
 export interface ToolOptions {
   draw: { shape: DrawShape; color: number };
-  area: { shape: AreaShape; size: number; lineCells: number; color: AreaColor; gmOnly: boolean };
+  area: { shape: AreaShape; lineCells: number; color: AreaColor; gmOnly: boolean };
   fog: { mode: FogMode };
   /** The ruler's mode (ruler-modes); remembered in this browser by the board. */
   measure: { mode: MeasureMode };
@@ -17,7 +17,7 @@ export interface ToolOptions {
 
 export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   draw: { shape: "brush", color: DRAW_COLORS[0].value },
-  area: { shape: "circle", size: 20, lineCells: 1, color: "orange", gmOnly: false },
+  area: { shape: "circle", lineCells: 1, color: "orange", gmOnly: false },
   fog: { mode: "rect" },
   measure: { mode: "range" },
 };
@@ -77,7 +77,6 @@ const AREA_COLOUR_NAMES: Record<AreaColor, TextId> = {
 export function ToolRail({
   active,
   options,
-  unitLabel,
   isGm,
   onSelect,
   onOptions,
@@ -89,8 +88,6 @@ export function ToolRail({
 }: {
   active: BoardTool["kind"];
   options: ToolOptions;
-  /** The room grid's unit label, for the area sizes. */
-  unitLabel: string;
   /** The GM can place areas only they can see (ADR 0007), and gets the Fog tool (FR-GM-17). */
   isGm: boolean;
   onSelect: (kind: ToolKind) => void;
@@ -165,19 +162,6 @@ export function ToolRail({
             value={options.area.shape}
             onChange={(shape) => onOptions({ ...options, area: { ...options.area, shape } })}
           />
-          <label className="tool-size">
-            <span className="sr-only">{t("rail.clickSize")}</span>
-            <select title={t("rail.sizeHint")}
-              value={options.area.size}
-              onChange={(e) => onOptions({ ...options, area: { ...options.area, size: Number(e.target.value) } })}
-            >
-              {AREA_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size} {unitLabel}
-                </option>
-              ))}
-            </select>
-          </label>
           {options.area.shape === "line" && (
             <LineWidthField value={options.area.lineCells} onChange={(lineCells) => onOptions({ ...options, area: { ...options.area, lineCells } })} />
           )}

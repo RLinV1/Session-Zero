@@ -32,6 +32,8 @@ import {
   type RoomState,
   type Token,
   type AreaTemplate,
+  type TemplateGeometry,
+  templateGeometry,
   type MovementPreviewRequest,
   type MovementPreviewFeedback,
 } from "@vtt/shared";
@@ -65,10 +67,11 @@ import { WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "./fogPuffs"
 import { fogArt, loadFogArt } from "./fogArt";
 import { FogBody } from "./fogShader";
 import { makeSightMaskCanvas, sightColor, sightMaskAlpha } from "./sightMask";
+import { makeVisibleRegionCanvas } from "./areaMask";
 
 /** How long the old line-of-sight mask takes to fade out over the new one. */
 const SIGHT_FADE_MS = 160;
-import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, fogDraftPoints, fogRegionAt, formatDistance, hitMark, measure, portalAt, sweepPoints, templateArea, templateMark, type BoardTool, type FogDraft, type Mark } from "./tools";
+import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
 import { aimExpiry, expiredAims } from "./aims";
 import { PING_MS, pingPulse } from "./ping";
 import { boardFontFamily, boardMonoFamily, relabelWhenFontsReady, relabelledFamily, waitForBoardFont } from "./boardFont";
@@ -104,10 +107,18 @@ export interface BoardCallbacks {
   ping(at: Point): void;
   /** Place a shared area template (ADR 0007). Resolves false if the server rejected it. */
   placeTemplate(template: { shape: AreaTemplate["shape"]; origin: Point; toward: Point; size: number; width?: number; color?: AreaTemplate["color"]; gmOnly: boolean }): Promise<boolean>;
-  /** The area being aimed, as others should see it (KAN-35); the connection coalesces these. */
-  aimPreview(preview: AimPreview): void;
-  /** Aiming stopped (placed or cancelled): clear it for the others. */
-  aimEnd(gmOnly: boolean): void;
+  /**
+   * The area being aimed, as others should see it (KAN-35); the connection coalesces these. With
+   * `templateId`, a placed area being moved or resized (ADR 0058).
+   */
+  aimPreview(preview: AimPreview, templateId?: string): void;
+  /** Aiming or editing stopped (placed, committed or cancelled): clear it for the others. */
+  aimEnd(gmOnly: boolean, templateId?: string): void;
+  /**
+   * Move, resize, turn or widen a placed area (ADR 0058). Resolves false if the server rejected it,
+   * otherwise with the seq it was committed at (null when unknown).
+   */
+  updateTemplate(templateId: string, geometry: TemplateGeometry, expected: TemplateGeometry): Promise<false | { seq: number | null }>;
   /** Resolves false if the server rejected the removal. */
   removeTemplate(templateId: string): Promise<boolean>;
   /** GM: fog a region (FR-GM-17). Resolves false if the server rejected it. */
@@ -170,6 +181,10 @@ const LOCK_COLOR = 0xc0392b;
 const PORTAL_MIN_PX = 6;
 /** How close (screen pixels) the eraser has to come to a line to erase it. */
 const ERASER_REACH_PX = 12;
+/** How close, in screen pixels, a press must be to a selected area's handle to grab it (ADR 0058). */
+const HANDLE_REACH_PX = 12;
+/** A handle's radius on screen. */
+const HANDLE_RADIUS_PX = 6;
 /** A brush stroke adds a point once the pointer has moved this far (screen pixels). */
 const BRUSH_STEP_PX = 2;
 /**
@@ -313,6 +328,14 @@ interface AttackFx {
  * Imperative PixiJS renderer. React owns the panels; this owns the canvas.
  * All positions it reports are board coordinates; each viewer's pan/zoom is local (FR-TAC-01).
  */
+/** Whether a placement this board sent is the template that came back (it has no id until then). */
+const sameArea = (a: Extract<Mark, { kind: "area" }>, t: AreaTemplate) =>
+  a.shape === t.shape && a.size === t.size && a.gmOnly === t.gmOnly &&
+  a.origin.x === t.origin.x && a.origin.y === t.origin.y &&
+  a.toward.x === t.toward.x && a.toward.y === t.toward.y;
+const sameGeometry = (a: TemplateGeometry, b: TemplateGeometry) =>
+  a.size === b.size && a.width === b.width &&
+  a.origin.x === b.origin.x && a.origin.y === b.origin.y && a.toward.x === b.toward.x && a.toward.y === b.toward.y;
 const samePoints = (a: readonly Point[], b: readonly Point[]) => a.length === b.length && a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y);
 
 export class BoardView {
@@ -388,6 +411,14 @@ export class BoardView {
   /** The viewer's own measure, draw and area marks (KAN-69); never sent anywhere. */
   private markLayer = new Container();
   private marksGraphics = new Graphics();
+  /**
+   * Areas and others' aims this viewer may not edit, drawn only where they can see: outside fog
+   * and inside sight (ADR 0059). Masked by sprites of one visible-region texture.
+   */
+  private clippedAreas = new Container();
+  private clippedGraphics = new Graphics();
+  private clippedAims = new Container();
+  private visibleRegion: { fog: RoomState["fog"]; sight: RoomState["sight"]; key: string; texture: Texture; areaMask: Sprite; aimMask: Sprite } | null = null;
   /** The measurement and the shape being dragged out. */
   private overlayGraphics = new Graphics();
   private measureLabel = new Text({
@@ -398,7 +429,8 @@ export class BoardView {
   private tokens = new Map<string, TokenView>();
   private ghosts = new Map<string, { g: Graphics; expires: number }>();
   /** Other participants' areas being aimed, by sender (KAN-35). Each fades 1 s after its last update. */
-  private aims = new Map<string, { view: Container; expires: number }>();
+  /** Others' live aims by sender; `templateId` when it is a placed area being edited, hidden meanwhile (ADR 0058). */
+  private aims = new Map<string, { view: Container; expires: number; templateId?: string }>();
 
   private state: RoomState | null = null;
   private you: Participant | null = null;
@@ -428,6 +460,19 @@ export class BoardView {
    * removed once its template shows up in state.
    */
   private cancelledAreas: Extract<Mark, { kind: "area" }>[] = [];
+  /** The placed area showing its handles (ADR 0058). Kept between the Select and Area tools. */
+  private selectedTemplate: string | null = null;
+  /** A placed area this viewer is moving or resizing: what it was, and what the pointer makes it. */
+  private templateEdit: { id: string; edit: TemplateEdit; start: AreaTemplate; current: TemplateGeometry; screenFrom: Point; dragged: boolean } | null = null;
+  /**
+   * Edits sent but not yet back in state, drawn so a release doesn't snap back. `acceptedSeq` is set
+   * once the server accepts one: state at or past it is authoritative, whatever geometry it shows.
+   */
+  private pendingEdits = new Map<string, { geometry: TemplateGeometry; acceptedSeq?: number | null }>();
+  /** The committed seq of the state last passed to `update`, or null when it isn't the live room's. */
+  private shownSeq: number | null = null;
+  /** Areas this viewer placed, to select once they show up in state. */
+  private selectOnArrival: Extract<Mark, { kind: "area" }>[] = [];
   /** Templates the eraser has asked to remove, so one sweep sends each only once. */
   private removing = new Set<string>();
   private drawnTemplates: RoomState["templates"] | null = null;
@@ -559,7 +604,9 @@ export class BoardView {
 
     this.measureLabel.anchor.set(0.5, 1.2);
     this.measureLabel.visible = false;
-    this.markLayer.addChild(this.marksGraphics, this.overlayGraphics, this.measureLabel);
+    this.clippedAreas.addChild(this.clippedGraphics);
+    this.markLayer.addChild(this.clippedAreas, this.marksGraphics, this.overlayGraphics, this.measureLabel);
+    this.fxLayer.addChild(this.clippedAims);
     // Marks and areas are drawn over the tokens but take no input (the eraser and From template
     // test their geometry), so a token under an area can still be clicked (ADR 0046).
     this.markLayer.eventMode = "none";
@@ -761,6 +808,7 @@ export class BoardView {
 
   destroy() {
     if (!this.initialized) return;
+    this.dropVisibleRegion();
     cancelAnimationFrame(this.cameraTween);
     this.cameraTween = 0;
     cancelAnimationFrame(this.frame);
@@ -804,10 +852,11 @@ export class BoardView {
     this.invalidate();
   }
 
-  update(state: RoomState, you: Participant) {
+  update(state: RoomState, you: Participant, seq: number | null = null) {
     const before = this.state;
     this.state = state;
     this.you = you;
+    this.shownSeq = seq;
     // A different scene is a different board: nothing of the old one keeps playing.
     if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
     const table = state.reducedEffects ?? false;
@@ -821,11 +870,14 @@ export class BoardView {
     this.syncWalls();
     this.drawTerrain();
     this.syncSight();
+    this.syncVisibleRegion();
     this.syncTokens();
     if (state.templates !== this.drawnTemplates || state.fog !== this.drawnFog) {
       for (const id of this.removing) if (!state.templates[id]) this.removing.delete(id);
       for (const id of this.removingFog) if (!state.fog[id]) this.removingFog.delete(id);
+      this.settleTemplateEdits();
       this.removeCancelledAreas();
+      this.selectArrivedAreas();
       this.redrawMarks();
     }
     // Tokens may have moved or gone while a target is being picked.
@@ -952,6 +1004,52 @@ export class BoardView {
     };
     if (this.showTerrain) draw(runs, false);
     draw(temporary, true);
+  }
+
+  /**
+   * The mask for areas this viewer may not edit (ADR 0059): what they can see, rebuilt when fog,
+   * sight, the board's size or their role changes. The GM sees every area whole and gets none.
+   */
+  private syncVisibleRegion() {
+    const state = this.state, you = this.you;
+    if (!state || !you) return;
+    const clip = you.role !== "gm";
+    const { width, height } = this.boardSize();
+    const key = `${width}x${height}`;
+    const current = this.visibleRegion;
+    if (clip && current && current.fog === state.fog && current.sight === state.sight && current.key === key) return;
+    if (!clip && !current) return;
+    this.dropVisibleRegion();
+    if (!clip) return;
+    const { texture, areaMask, aimMask } = this.createRegionMasks(state, width, height);
+    this.markLayer.addChild(areaMask);
+    this.fxLayer.addChild(aimMask);
+    this.clippedAreas.mask = areaMask;
+    this.clippedAims.mask = aimMask;
+    this.visibleRegion = { fog: state.fog, sight: state.sight, key, texture, areaMask, aimMask };
+  }
+
+  /** One visible-region texture, and a sprite of it for each clipped container (a mask has one owner). */
+  private createRegionMasks(state: RoomState, width: number, height: number) {
+    const { canvas, scale } = makeVisibleRegionCanvas(state.fog, state.sight, width, height);
+    const texture = Texture.from(canvas);
+    const areaMask = new Sprite(texture), aimMask = new Sprite(texture);
+    for (const mask of [areaMask, aimMask]) {
+      mask.scale.set(1 / scale);
+      mask.eventMode = "none";
+    }
+    return { texture, areaMask, aimMask };
+  }
+
+  private dropVisibleRegion() {
+    const current = this.visibleRegion;
+    if (!current) return;
+    this.visibleRegion = null;
+    this.clippedAreas.mask = null;
+    this.clippedAims.mask = null;
+    current.areaMask.destroy();
+    current.aimMask.destroy();
+    current.texture.destroy(true);
   }
 
   /** Darkens everything outside the viewer's sight polygons; draws nothing when `sight` is absent. */
@@ -1085,6 +1183,9 @@ export class BoardView {
   setReadOnly(readOnly: boolean) {
     if (this.readOnly === readOnly) return;
     this.readOnly = readOnly;
+    // Read-only boards send nothing: an area edit in progress ends, and handles go (ADR 0058).
+    if (readOnly) this.cancelTemplateEdit(false);
+    this.redrawMarks();
     for (const view of this.tokens.values()) view.drawnKey = "";
     if (this.initialized && this.state && this.you) this.syncTokens();
     this.invalidate();
@@ -1187,17 +1288,21 @@ export class BoardView {
     g.fill({ texture: this.hatchTexture(), matrix: new Matrix().scale(scale, scale), textureSpace: "global", color, alpha: Math.min(1, alpha * 2.5) });
   }
 
-  showAimPreview(from: string, preview: AimPreview | null, label: string) {
+  showAimPreview(from: string, preview: AimPreview | null, label: string, templateId?: string) {
     if (!preview || !this.state) return this.clearAim(from);
     let aim = this.aims.get(from);
     if (!aim) {
       const view = new Container();
       view.addChild(new Graphics());
       view.addChild(new Text({ text: "", style: { fill: 0xffffff, fontSize: 13, fontFamily: boardMonoFamily(), fontWeight: "600", stroke: { color: 0x000000, width: 4 } } }));
-      this.fxLayer.addChild(view);
       aim = { view, expires: 0 };
       this.aims.set(from, aim);
     }
+    // Someone else's aim reaches a player only where they can see (ADR 0059). The GM sees it whole,
+    // and so does the owner of a placed area being edited, who sees that area whole too.
+    const whole = this.you?.role === "gm" || (templateId !== undefined && this.state.templates[templateId]?.ownerId === this.you?.id);
+    const layer = whole ? this.fxLayer : this.clippedAims;
+    if (aim.view.parent !== layer) layer.addChild(aim.view);
     const [g, text] = aim.view.children as [Graphics, Text];
     const grid = this.state.scene.grid;
     const px = 1 / this.world.scale.x;
@@ -1212,6 +1317,11 @@ export class BoardView {
     text.scale.set(px);
     text.position.set(preview.origin.x + 6 * px, preview.origin.y + 6 * px);
     aim.expires = aimExpiry(performance.now());
+    // Someone else moving a placed area: their preview stands in for it until it clears (ADR 0058).
+    if (aim.templateId !== templateId) {
+      aim.templateId = templateId;
+      this.redrawMarks();
+    }
     this.invalidate();
   }
 
@@ -1220,6 +1330,7 @@ export class BoardView {
     if (!aim) return;
     aim.view.destroy({ children: true });
     this.aims.delete(from);
+    if (aim.templateId) this.redrawMarks();
     this.dirty = true;
     this.invalidate();
   }
@@ -1298,6 +1409,11 @@ export class BoardView {
   setTool(tool: BoardTool) {
     // A tool change ends a drag in progress, and with it the dragged token's faded copy.
     if (tool.kind !== this.tool.kind && this.drag) this.cancelMovement();
+    // An edit in progress ends with the tool; the selection stays only between Select and Area (ADR 0058).
+    if (tool.kind !== this.tool.kind) {
+      this.cancelTemplateEdit(false);
+      if (tool.kind !== "select" && tool.kind !== "area") this.selectedTemplate = null;
+    }
     if (tool.kind !== this.tool.kind || (tool.kind === "fog" && this.tool.kind === "fog" && tool.mode !== this.tool.mode) || (tool.kind === "measure" && this.tool.kind === "measure" && tool.mode !== this.tool.mode)) {
       if (this.gesture && this.tool.kind === "area") this.callbacks.aimEnd(this.tool.gmOnly);
       this.measurement = null;
@@ -1437,16 +1553,175 @@ export class BoardView {
     if (!you || this.cancelledAreas.length === 0) return;
     for (const t of Object.values(this.state?.templates ?? {})) {
       if (t.ownerId !== you.id || this.removing.has(t.id)) continue;
-      const i = this.cancelledAreas.findIndex(
-        (a) =>
-          a.shape === t.shape && a.size === t.size && a.gmOnly === t.gmOnly &&
-          a.origin.x === t.origin.x && a.origin.y === t.origin.y &&
-          a.toward.x === t.toward.x && a.toward.y === t.toward.y,
-      );
+      const i = this.cancelledAreas.findIndex((a) => sameArea(a, t));
       if (i === -1) continue;
       this.cancelledAreas.splice(i, 1);
       this.requestRemove(t);
     }
+  }
+
+  // ---------- editing placed areas (ADR 0058) ----------
+
+  /** Select the area this viewer just placed, once it shows up in state. */
+  private selectArrivedAreas() {
+    const you = this.you;
+    if (!you || this.selectOnArrival.length === 0) return;
+    const templates = Object.values(this.state?.templates ?? {});
+    for (let i = templates.length - 1; i >= 0; i--) {
+      const t = templates[i]!;
+      if (t.ownerId !== you.id) continue;
+      const j = this.selectOnArrival.findIndex((a) => sameArea(a, t));
+      if (j === -1) continue;
+      this.selectOnArrival.splice(j, 1);
+      this.selectedTemplate = t.id;
+    }
+  }
+
+  /** Drop edits state has caught up with, and a selection whose area has gone. */
+  private settleTemplateEdits() {
+    const templates = this.state?.templates ?? {};
+    for (const [id, pending] of this.pendingEdits) {
+      const t = templates[id];
+      if (!t || sameGeometry(templateGeometry(t), pending.geometry) || this.editSettled(pending)) this.pendingEdits.delete(id);
+    }
+    if (this.selectedTemplate && !templates[this.selectedTemplate]) this.selectedTemplate = null;
+    if (this.templateEdit && !templates[this.templateEdit.id]) this.cancelTemplateEdit(false);
+  }
+
+  /**
+   * An accepted edit is settled once the shown state reaches the seq it was committed at, even if
+   * a later change means that state never showed the sent geometry. An accept without a seq
+   * settles on the next live state.
+   */
+  private editSettled(pending: { acceptedSeq?: number | null }): boolean {
+    if (pending.acceptedSeq === undefined || this.shownSeq === null) return false;
+    return pending.acceptedSeq === null || this.shownSeq >= pending.acceptedSeq;
+  }
+
+  /** The area as this board draws it: mid-drag, or as last sent, or as the room has it. */
+  private shownTemplate(t: AreaTemplate): AreaTemplate {
+    const edit = this.templateEdit;
+    const geometry = edit?.id === t.id && edit.dragged ? edit.current : this.pendingEdits.get(t.id)?.geometry;
+    if (!geometry) return t;
+    const { width: _width, ...rest } = t;
+    return { ...rest, ...geometry };
+  }
+
+  /** The placed area the viewer may edit at `at`, newest first, inside its outline; or null. */
+  private editableTemplateAt(at: Point): AreaTemplate | null {
+    const you = this.you, grid = this.state?.scene.grid;
+    if (!you || !grid || this.readOnly) return null;
+    const templates = Object.values(this.state?.templates ?? {});
+    for (let i = templates.length - 1; i >= 0; i--) {
+      const t = templates[i]!;
+      if (this.removing.has(t.id) || !can.editTemplate(you, t)) continue;
+      if (insideArea(templateArea(this.shownTemplate(t), grid), at)) return t;
+    }
+    return null;
+  }
+
+  /** The selected area, when this viewer may edit it and it is still in the room. */
+  private editableSelection(): AreaTemplate | null {
+    const t = this.selectedTemplate ? this.state?.templates[this.selectedTemplate] : undefined;
+    return t && this.you && !this.readOnly && can.editTemplate(this.you, t) ? t : null;
+  }
+
+  /** Select a placed area, showing its handles, or clear the selection with null. */
+  selectTemplate(templateId: string | null) {
+    if (this.selectedTemplate === templateId) return;
+    this.selectedTemplate = templateId;
+    this.redrawMarks();
+  }
+
+  /**
+   * A press with the Select or Area tool: grab a handle of the selected area, or the body of an
+   * area this viewer may edit. False when it hit neither, so the press pans or places as before.
+   */
+  private startTemplateEdit(screen: Point, at: Point): boolean {
+    if (!this.state || this.placement) return false;
+    const grid = this.state.scene.grid;
+    let target: AreaTemplate | null = null;
+    let edit: TemplateEdit | null = null;
+    const selected = this.editableSelection();
+    if (selected) {
+      const reach = HANDLE_REACH_PX / this.world.scale.x;
+      // The nearest handle, so overlapping reaches go to the one under the pointer.
+      let handle: TemplateHandle | null = null, nearest = Infinity;
+      for (const h of templateHandles(this.shownTemplate(selected), grid)) {
+        const d = Math.hypot(h.at.x - at.x, h.at.y - at.y);
+        if (d < nearest) [handle, nearest] = [h, d];
+      }
+      if (handle && nearest <= reach) [target, edit] = [selected, { kind: handle.kind }];
+    }
+    if (!target) {
+      target = this.editableTemplateAt(at);
+      if (target) edit = { kind: "body", grab: at };
+    }
+    if (!target || !edit) return false;
+    const start = this.shownTemplate(target);
+    this.templateEdit = { id: target.id, edit, start, current: templateGeometry(start), screenFrom: { x: screen.x, y: screen.y }, dragged: false };
+    this.selectTemplate(target.id);
+    return true;
+  }
+
+  /** The pointer moved while editing: reshape the area and show the others. */
+  private moveTemplateEdit(screen: Point, at: Point, free: boolean) {
+    const edit = this.templateEdit, grid = this.state?.scene.grid;
+    if (!edit || !grid) return;
+    edit.dragged ||= Math.hypot(screen.x - edit.screenFrom.x, screen.y - edit.screenFrom.y) >= MIN_MARK_DRAG_PX;
+    if (!edit.dragged) return;
+    edit.current = editedGeometry(edit.start, edit.edit, at, grid, free);
+    const { shape, color, gmOnly } = edit.start;
+    this.callbacks.aimPreview({ shape, ...edit.current, ...(color !== undefined && { color }), gmOnly }, edit.id);
+    this.redrawMarks();
+  }
+
+  /** Released: send the edit, and keep drawing it until the room has it or refuses it. A click only selects. */
+  private finishTemplateEdit() {
+    const edit = this.templateEdit;
+    this.templateEdit = null;
+    if (!edit) return;
+    if (!edit.dragged) return this.redrawMarks();
+    this.callbacks.aimEnd(edit.start.gmOnly, edit.id);
+    const expected = templateGeometry(edit.start);
+    if (sameGeometry(expected, edit.current)) return this.redrawMarks();
+    const pending: { geometry: TemplateGeometry; acceptedSeq?: number | null } = { geometry: edit.current };
+    this.pendingEdits.set(edit.id, pending);
+    // Refused (stale, or no longer allowed): show the area as the room has it.
+    const refused = () => {
+      if (this.pendingEdits.get(edit.id) !== pending) return;
+      this.pendingEdits.delete(edit.id);
+      this.redrawMarks();
+    };
+    // Accepted: drop it once the shown state has reached the commit (which may already be on screen).
+    const accepted = (seq: number | null) => {
+      if (this.pendingEdits.get(edit.id) !== pending) return;
+      pending.acceptedSeq = seq;
+      if (!this.editSettled(pending)) return;
+      this.pendingEdits.delete(edit.id);
+      this.redrawMarks();
+    };
+    this.callbacks.updateTemplate(edit.id, pending.geometry, expected).then((result) => (result ? accepted(result.seq) : refused()), refused);
+    this.redrawMarks();
+  }
+
+  /**
+   * Escape (ADR 0058): end an edit in progress, putting the area back; otherwise clear the
+   * selection. False when there was neither, so Escape can leave the tool.
+   */
+  cancelTemplateEdit(clearSelection = true): boolean {
+    const edit = this.templateEdit;
+    if (edit) {
+      this.templateEdit = null;
+      if (edit.dragged) this.callbacks.aimEnd(edit.start.gmOnly, edit.id);
+      this.redrawMarks();
+      return true;
+    }
+    if (clearSelection && this.selectedTemplate) {
+      this.selectTemplate(null);
+      return true;
+    }
+    return false;
   }
 
   private finishGesture() {
@@ -1774,7 +2049,12 @@ export class BoardView {
         (ok) => {
           // Refused: nothing will arrive to clear, so stop waiting for it.
           if (!ok) this.cancelledAreas = this.cancelledAreas.filter((a) => a !== pending);
-          else this.removeCancelledAreas();
+          else {
+            this.removeCancelledAreas();
+            // Selected once it arrives, so it can be stretched or turned straight away (ADR 0058).
+            if (!this.cancelledAreas.includes(pending)) this.selectOnArrival.push(pending);
+            this.selectArrivedAreas();
+          }
         },
         () => {
           this.cancelledAreas = this.cancelledAreas.filter((a) => a !== pending);
@@ -1788,14 +2068,14 @@ export class BoardView {
 
   /**
    * The area a gesture describes. A drag sets its size (the pointer is on the far edge) and
-   * aims it; a click places the tool's chosen size, pointing right.
+   * aims it; a click places a 2-cell area pointing right (ADR 0058).
    */
   private areaFromGesture(gesture: NonNullable<BoardView["gesture"]>, tool: Extract<BoardTool, { kind: "area" }>): Mark | null {
     const grid = this.state?.scene.grid;
     if (!grid) return null;
     const { from, to, free, dragged } = gesture;
     const origin = areaOrigin(from, grid, free);
-    const size = dragged ? areaSizeFromDrag(origin, to, grid, free, tool.shape) : tool.size;
+    const size = dragged ? areaSizeFromDrag(origin, to, grid, free, tool.shape) : defaultAreaSize(grid);
     // A click aims right from the snapped origin, not at the raw press point beside it.
     const toward = dragged ? to : { x: origin.x + 1, y: origin.y };
     const width = tool.shape === "line" ? tool.lineCells * grid.unitsPerCell : undefined;
@@ -1848,13 +2128,33 @@ export class BoardView {
     this.marksScale = this.world.scale.x;
     this.drawnTemplates = this.state?.templates ?? null;
     const g = this.marksGraphics.clear();
+    const clipped = this.clippedGraphics.clear();
+    const you = this.you;
+    // An area someone else is moving shows as their preview instead, until it clears (ADR 0058).
+    const editedElsewhere = new Set<string>();
+    for (const aim of this.aims.values()) if (aim.templateId) editedElsewhere.add(aim.templateId);
     for (const t of Object.values(this.state?.templates ?? {})) {
-      if (!this.removing.has(t.id)) this.drawMark(g, templateMark(t));
+      if (this.removing.has(t.id) || (editedElsewhere.has(t.id) && this.templateEdit?.id !== t.id)) continue;
+      // One the viewer may not edit is drawn only where they can see (ADR 0059).
+      this.drawMark(you && !can.editTemplate(you, t) ? clipped : g, templateMark(this.shownTemplate(t)));
     }
     for (const area of this.pendingAreas) this.drawMark(g, area);
     for (const mark of this.marks) this.drawMark(g, mark);
+    this.drawTemplateHandles(g);
     this.redrawFog();
     this.redrawOverlay();
+  }
+
+  /** The selected area's grips, white with a dark rim so they read on any map (ADR 0058). */
+  private drawTemplateHandles(g: Graphics) {
+    const selected = this.editableSelection(), grid = this.state?.scene.grid;
+    if (!selected || !grid || this.removing.has(selected.id)) return;
+    const px = 1 / this.world.scale.x;
+    for (const handle of templateHandles(this.shownTemplate(selected), grid)) {
+      g.circle(handle.at.x, handle.at.y, HANDLE_RADIUS_PX * px)
+        .fill({ color: 0xffffff })
+        .stroke({ width: 2 * px, color: 0x1f2933 });
+    }
   }
 
   private redrawOverlay() {
@@ -2893,6 +3193,8 @@ export class BoardView {
     if (this.tool.kind === "measure" && this.tool.mode === "movement" && !e.altKey && e.button === 0) {
       return this.routeClick(this.toBoard(e.global));
     }
+    // A placed area the viewer may edit takes the press before placing or panning does (ADR 0058).
+    if ((this.tool.kind === "select" || this.tool.kind === "area") && e.button === 0 && this.startTemplateEdit(e.global, this.toBoard(e.global))) return;
     if (this.tool.kind !== "select" && e.button === 0) {
       const at = this.toBoard(e.global);
       const origin = this.tool.kind === "measure" ? this.movementOrigin : null;
@@ -2928,7 +3230,9 @@ export class BoardView {
         this.redrawOverlay();
       }
     }
-    if (this.gesture) {
+    if (this.templateEdit) {
+      this.moveTemplateEdit(e.global, this.toBoard(e.global), e.altKey);
+    } else if (this.gesture) {
       const gesture = this.gesture;
       const previous = gesture.to;
       gesture.to = this.toBoard(e.global);
@@ -2996,11 +3300,15 @@ export class BoardView {
   private onPointerUp = (e: FederatedPointerEvent) => {
     const pan = this.pan;
     this.pan = null;
+    if (this.templateEdit) return this.finishTemplateEdit();
     if (pan && pan.button === 0 && !this.placement && !this.gesture && this.tool.kind === "select" && !exceedsPanThreshold(pan.start, e.global)) {
       // A click on a door or window uses it (FR-GM-18); anywhere else on the map clears the selection.
       const portal = this.portalUnder(e.global);
       if (portal) this.callbacks.togglePortal(portal.id, e.shiftKey);
-      else this.callbacks.selectToken(null);
+      else {
+        this.callbacks.selectToken(null);
+        this.selectTemplate(null);
+      }
     }
     const down = this.placeDown;
     this.placeDown = null;
@@ -3094,6 +3402,7 @@ export class BoardView {
     // leaves half a drawing behind, or drops the token being placed.
     this.pan = null;
     this.placeDown = null;
+    this.cancelTemplateEdit(false);
     if (this.gesture) {
       this.gesture = null;
       this.redrawOverlay();

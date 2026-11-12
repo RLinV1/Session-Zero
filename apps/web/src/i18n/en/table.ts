@@ -97,7 +97,6 @@ export const table = {
   "rail.drawOptions": "Draw options",
   "rail.colour": "Colour",
   "rail.areaOptions": "Area options",
-  "rail.clickSize": "Size when placed with a click",
   "rail.areaColour": "Area colour",
   "rail.gmOnlyHint": "Players won't see areas placed while this is on",
   "rail.gmOnly": "GM only",
@@ -302,5 +301,4 @@ export const table = {
   "share.ai.copyFailed": "Couldn't copy. Select this message and copy it yourself.",
   "share.ai.giveToken": "Once it has joined, give it a token",
   "share.ai.giveTokenHint": "Open the token's editor and set Controlled by to your AI. Remove it from the table like any other player.",
-  "rail.sizeHint": "Size when placed with a click; drag to size it instead",
 } as const satisfies CatalogSource;

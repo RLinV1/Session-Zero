@@ -98,7 +98,6 @@ export const tableZhTW = {
   "rail.drawOptions": "繪製選項",
   "rail.colour": "顏色",
   "rail.areaOptions": "範圍選項",
-  "rail.clickSize": "按一下放置時的大小",
   "rail.areaColour": "範圍顏色",
   "rail.gmOnlyHint": "開啟後，新放置的範圍效果只有 GM 看得到。",
   "rail.gmOnly": "僅 GM 可見",
@@ -299,5 +298,4 @@ export const tableZhTW = {
   "share.ai.copyFailed": "無法複製，請手動選取這段訊息並複製。",
   "share.ai.giveToken": "AI 加入後，指派一枚棋子給它",
   "share.ai.giveTokenHint": "開啟棋子編輯器，將「控制者」設為你的 AI。要讓它離開遊戲桌，操作方式和移除其他玩家相同。",
-  "rail.sizeHint": "按一下放置時使用此大小；也可以直接拖曳，自訂範圍大小。",
 } satisfies Catalog<typeof table>;

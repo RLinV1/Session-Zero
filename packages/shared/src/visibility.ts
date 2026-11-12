@@ -5,26 +5,51 @@ import { reduce } from "./reducer";
 import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type LoggedRoll } from "./dice";
 import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
-import { inFogRegion, MAX_MOVE_VIA, type Point } from "./geometry";
+import { inFogRegion, MAX_MOVE_VIA, type GridSpec, type Point } from "./geometry";
+import { areaSamples, templateArea, type AreaGeometry } from "./areas";
 import { blocksMovement } from "./portals";
 import { inSight, viewerSight } from "./sight";
 import type { TokenStats } from "./conditions";
 import type { AreaTemplate, Initiative, Participant, RoomState, Token, Wall } from "./state";
 
-/** Whether a board point lies under any fog region (FR-GM-17, ADR 0016). */
+/** Each fog region with its bounding box grown by the 1 px edge allowance, cached per fog object. */
+type FogBox = { points: readonly Point[]; minX: number; minY: number; maxX: number; maxY: number };
+const fogBoxes = new WeakMap<RoomState["fog"], FogBox[]>();
+function fogIndex(fog: RoomState["fog"]): FogBox[] {
+  let boxes = fogBoxes.get(fog);
+  if (!boxes) {
+    boxes = Object.values(fog).map(({ points }) => ({
+      points,
+      minX: Math.min(...points.map((q) => q.x)) - 1, maxX: Math.max(...points.map((q) => q.x)) + 1,
+      minY: Math.min(...points.map((q) => q.y)) - 1, maxY: Math.max(...points.map((q) => q.y)) + 1,
+    }));
+    fogBoxes.set(fog, boxes);
+  }
+  return boxes;
+}
+
+/**
+ * Whether a board point lies under any fog region (FR-GM-17, ADR 0016). A region's box rules out
+ * most points before its edges are walked, which area sampling relies on (ADR 0059); the answer is
+ * the same, since a point in a region or within 1 px of it is inside its grown box.
+ */
 export function isInFog(fog: RoomState["fog"], point: Point): boolean {
-  for (const region of Object.values(fog)) if (inFogRegion(region.points, point)) return true;
+  for (const box of fogIndex(fog)) {
+    if (point.x < box.minX || point.x > box.maxX || point.y < box.minY || point.y > box.maxY) continue;
+    if (inFogRegion(box.points, point)) return true;
+  }
   return false;
 }
 
 /**
  * What hides things from one viewer (ADR 0016, ADR 0044): fog regions, and the viewer's line of
- * sight (null = no limit). Build once per viewer with `concealmentFor`.
+ * sight (null = no limit). Build once per viewer with `concealmentFor`. `grid` lets an area's
+ * outline be tested (ADR 0059); without it, an area is judged by its origin alone.
  */
-export type Concealment = { fog: RoomState["fog"]; sight: Point[][] | null };
+export type Concealment = { fog: RoomState["fog"]; sight: Point[][] | null; grid?: GridSpec; map?: { width: number; height: number } | null };
 
 export function concealmentFor(state: Pick<RoomState, "fog" | "scene" | "walls" | "tokens" | "hideMapWithoutToken">, viewer: Participant): Concealment {
-  return { fog: state.fog, sight: viewerSight(state, viewer) };
+  return { fog: state.fog, sight: viewerSight(state, viewer), grid: state.scene.grid, map: state.scene.map };
 }
 
 /** Whether a reference point lies outside the viewer's line of sight (always false with no limit). */
@@ -54,11 +79,27 @@ export function fogConcealsSide(state: Pick<RoomState, "fog">, token: Pick<Token
   return token.ownerIds.length === 0 && isInFog(state.fog, token.position);
 }
 
-/** Whether `viewer` may not see a template: GM-only, or placed by someone else under fog (ADR 0007, ADR 0016). */
-export function templateConcealedFrom(c: Concealment, template: AreaTemplate, viewer: Participant): boolean {
+/**
+ * Whether any part of an area on the map lies outside every fog region and inside sight
+ * (ADR 0059), by sampling it. Off the map there is nothing to see, so fogging a map to its edges
+ * hides an area that pokes past them.
+ */
+export function areaVisibleTo(c: Concealment, area: AreaGeometry, grid: GridSpec): boolean {
+  const onMap = (p: Point) => !c.map || (p.x >= 0 && p.y >= 0 && p.x <= c.map.width && p.y <= c.map.height);
+  return areaSamples(area, grid).some((p) => onMap(p) && !isInFog(c.fog, p) && !outOfSight(c, p));
+}
+
+/**
+ * Whether `viewer` may not see a template (ADR 0007, ADR 0016, ADR 0059): GM-only, or someone
+ * else's with no part of it outside fog and in sight. A partly visible area is sent whole; the
+ * board clips it.
+ */
+export function templateConcealedFrom(c: Concealment, template: Pick<AreaTemplate, "shape" | "origin" | "toward" | "size" | "width" | "ownerId" | "gmOnly">, viewer: Participant): boolean {
   if (viewer.role === "gm") return false;
   if (template.gmOnly) return true;
-  return template.ownerId !== viewer.id && (isInFog(c.fog, template.origin) || outOfSight(c, template.origin));
+  if (template.ownerId === viewer.id) return false;
+  if (!c.grid) return isInFog(c.fog, template.origin) || outOfSight(c, template.origin);
+  return !areaVisibleTo(c, templateArea(template, c.grid), c.grid);
 }
 
 /**
@@ -436,6 +477,13 @@ export function filterEventForViewer(
       // `previous` is the GM's whole order: strip concealed tokens from it, as a snapshot would.
       const visible = filterStateForViewer(before, viewer).tokens;
       return { kind: "event", committed: { ...withoutCommandId, event: { ...e, previous: initiativeForPlayer(e.previous, visible) } } };
+    }
+    case "TemplateChanged": {
+      // Moving an area into or out of fog changes what the viewer may see, as a token's move does (ADR 0058).
+      const template = before.templates[e.templateId];
+      if (!template) return redacted;
+      const { width: _width, ...rest } = template;
+      return byVisibility(templateConcealedFrom(conc(), template, viewer), templateConcealedFrom(conc(), { ...rest, ...e.to }, viewer));
     }
     case "TemplatePlaced":
     case "TemplateRemoved":

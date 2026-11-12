@@ -123,6 +123,8 @@ export const rejectionsZhTW = {
   "reject.roomAlreadyUnlocked": "房間已經解鎖",
   "reject.nukeOffMap": "請選擇地圖上的位置作為核彈目標。",
 
+  "reject.templateStale": "已有其他人先修改了這個範圍，請再試一次。",
+  "reject.templateUnchanged": "這個範圍已經在那裡了。",
   "reject.tooManyTemplates": ({ max }) => cjk`每個房間最多可放置${max}個範圍範本，請先移除多餘的範本。`,
   "reject.lineTooWide": ({ width, unit }) => cjk`直線最寬為${width} ${unit}。`,
   "reject.tooManyFog": ({ max }) => cjk`每個房間最多可建立${max}個迷霧區域，請先移除多餘的區域。`,
