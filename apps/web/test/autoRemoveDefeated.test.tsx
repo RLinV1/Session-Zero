@@ -64,7 +64,7 @@ describe("Table settings tab (FR-TAC-07)", () => {
   it("is offered to a GM in a room, after Audio and Graphics, and holds the switch", () => {
     const { connection } = connectionWith({ ok: true, seq: 1 });
     render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Table"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls", "Table"]);
     expect(screen.queryByRole("switch", { name: "Remove tokens at 0 HP" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("tab", { name: "Audio" }), { key: "End" });
     expect(screen.getByRole("tab", { name: "Table" }).getAttribute("aria-selected")).toBe("true");

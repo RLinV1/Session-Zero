@@ -11,6 +11,7 @@ import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
 import { usePersistentState } from "../ui/usePersistentState";
+import { getClientSettings, useClientSettings } from "../ui/clientSettings";
 import { BoardFilters } from "./BoardFilters";
 import { gmSightPolygons, sightKey, viewedTokenIds } from "./gmSightView";
 import { canAnimateDice, type TrayRoll } from "../ui/Die3D";
@@ -21,7 +22,7 @@ import type { DiceSkin } from "../ui/diceSkin";
 import { BoardView, type GmFogView } from "./boardView";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
-import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectiveReducedMotion, type AttackEffect } from "./effects";
+import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
 import type { OverlayEffect } from "./EffectsOverlay";
 import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type BoardThrow, type BoardTransform } from "./diceThrow";
 import { cursorSquare, moveCursor, placementCommand, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
@@ -247,8 +248,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   placingRef.current = placing;
   const source = placing?.source ?? null;
 
-  /** Arrow keys move the selected token one square while the token card's switch is on (WCAG 2.1.1, 2.5.7). */
-  const [arrowKeys, setArrowKeys] = usePersistentState<boolean>("vtt.ui.arrowKeyMove", true, (v): v is boolean => typeof v === "boolean");
+  /** Arrow keys move the selected token one square while Settings allows it (WCAG 2.1.1, 2.5.7; client-settings). */
+  const arrowKeys = useClientSettings().arrowKeyMove;
   // One move at a time for the buttons and the keys together: a second step must start from the landed square.
   const movePending = useRef(false);
   const moveToken = useCallback(async (tokenId: string, to: Point) => {
@@ -481,7 +482,9 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     const stopCommitted = connection.onCommitted((committed, _before, after) => {
       if (latest.current.suppressLiveEffects) return;
       const viewer = latest.current.you;
-      const effect = attackEffectFor(committed.event, after, viewer);
+      const seen = attackEffectFor(committed.event, after, viewer);
+      // The viewer's Attack animations choice, decided now, against the turn as it stands (board-attack-effects).
+      const effect = seen && effectToPlay(seen, getClientSettings().attackAnimations, after);
       if (!effect) return;
       if (effect.kind === "strike") view.focusStrike(effect);
       // Every public roll is thrown over the board first: the strike leaves when the dice land.
@@ -525,7 +528,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
 
   useEffect(() => {
     if (replayFrame?.kind !== "event") return;
-    const effect = attackEffectFor(replayFrame.committed.event, latest.current.state, latest.current.you);
+    const seen = attackEffectFor(replayFrame.committed.event, latest.current.state, latest.current.you);
+    const effect = seen && effectToPlay(seen, getClientSettings().attackAnimations, latest.current.state);
     if (effect) playEffectRef.current(effect);
   }, [replayFrame]);
 
@@ -873,7 +877,6 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           onMove={(to) => moveToken(selected.id, to)}
           movementReadout={movementNotice}
           reposition={you.role === "gm" && !readOnly ? { on: repositionId === selected.id, toggle: () => setRepositionId((id) => id === selected.id ? null : selected.id) } : undefined}
-          arrowKeys={{ on: arrowKeys, onToggle: setArrowKeys }}
           sight={gmCanSee && losOn ? (() => {
             const on = tokenView && viewedIds.includes(selected.id);
             return {

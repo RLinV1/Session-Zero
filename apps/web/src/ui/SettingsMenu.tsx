@@ -2,19 +2,19 @@ import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent } fr
 import type { Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
-import { setClientSettings, useClientSettings, type GraphicsQuality } from "./clientSettings";
+import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
 
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
 export interface SettingsRoom { connection: RoomConnection; state: RoomState; you: Participant }
 
-type SettingsTab = "audio" | "graphics" | "table";
+type SettingsTab = "audio" | "graphics" | "controls" | "table";
 
 export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: boolean; onClose: () => void; onAfterClose?: () => void; room?: SettingsRoom }) {
   const settings = useClientSettings();
   const baseId = useId();
   const showTable = !!room && room.you.role === "gm";
   const tabs: { key: SettingsTab; label: string }[] = [
-    { key: "audio", label: "Audio" }, { key: "graphics", label: "Graphics" }, ...(showTable ? [{ key: "table" as const, label: "Table" }] : []),
+    { key: "audio", label: "Audio" }, { key: "graphics", label: "Graphics" }, { key: "controls", label: "Controls" }, ...(showTable ? [{ key: "table" as const, label: "Table" }] : []),
   ];
   const [chosen, setChosen] = useState<SettingsTab>("audio");
   useEffect(() => { if (open) setChosen("audio"); }, [open]);
@@ -30,7 +30,7 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
     setChosen(key);
     document.getElementById(`${baseId}-${key}`)?.focus();
   };
-  const browserNote = <p className="muted small-print">Audio and graphics are saved in this browser. Changes apply immediately.</p>;
+  const browserNote = <p className="muted small-print">Audio, graphics and controls are saved in this browser. Changes apply immediately.</p>;
   return (
     <Modal open={open} title="Settings" className="client-settings-modal" onClose={onClose} onAfterClose={onAfterClose}>
       <div className="stack client-settings">
@@ -68,6 +68,22 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
                 Focus on attacks
               </label>
               <p className="muted small-print">Zoom the board to the fight.</p>
+              <label>Attack animations
+                <select value={settings.attackAnimations} onChange={(e) => setClientSettings({ attackAnimations: e.target.value as AttackAnimations })}>
+                  <option value="all">All</option>
+                  <option value="turn">Current turn</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+            </>
+          )}
+          {tab === "controls" && (
+            <>
+              {browserNote}
+              <label className="checkbox">
+                <input type="checkbox" role="switch" checked={settings.arrowKeyMove} onChange={(e) => setClientSettings({ arrowKeyMove: e.target.checked })} />
+                Arrow keys move selected token
+              </label>
             </>
           )}
           {tab === "table" && room && <TableSection room={room} />}

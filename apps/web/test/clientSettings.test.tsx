@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SettingsMenu } from "../src/ui/SettingsMenu";
-import { CLIENT_SETTINGS_KEY, DEFAULT_CLIENT_SETTINGS, getClientSettings, graphicsBudget, isClientSettings, setClientSettings, subscribeGraphicsSettings } from "../src/ui/clientSettings";
+import { CLIENT_SETTINGS_KEY, DEFAULT_CLIENT_SETTINGS, LEGACY_ARROW_KEY_MOVE_KEY, getClientSettings, graphicsBudget, isClientSettings, setClientSettings, subscribeClientSettings, subscribeGraphicsSettings } from "../src/ui/clientSettings";
 import { effectiveReducedMotion } from "../src/board/effects";
 
 beforeEach(() => {
@@ -46,6 +46,31 @@ describe("browser settings (FR-TAC-06)", () => {
     fireEvent(window, new StorageEvent("storage", { key: CLIENT_SETTINGS_KEY }));
     expect((screen.getByRole("slider", { name: /Music volume/ }) as HTMLInputElement).value).toBe("13");
   });
+  /** Stores `saved` and has the settings re-read it, as on a fresh load. */
+  const reload = (saved: unknown) => {
+    localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(saved));
+    const stop = subscribeClientSettings(() => {});
+    window.dispatchEvent(new StorageEvent("storage", { key: CLIENT_SETTINGS_KEY }));
+    stop();
+    return getClientSettings();
+  };
+  it("keeps saved settings when new ones are added (client-settings)", () => {
+    const { arrowKeyMove: _a, attackAnimations: _b, ...older } = { ...DEFAULT_CLIENT_SETTINGS, musicVolume: 30 };
+    expect(reload(older)).toEqual({ ...DEFAULT_CLIENT_SETTINGS, musicVolume: 30, attackAnimations: "all" });
+  });
+  it("falls back for one bad saved value without resetting the rest (client-settings)", () => {
+    const read = reload({ ...DEFAULT_CLIENT_SETTINGS, soundVolume: 250, graphicsQuality: "low" });
+    expect(read.soundVolume).toBe(DEFAULT_CLIENT_SETTINGS.soundVolume);
+    expect(read.graphicsQuality).toBe("low");
+    expect(reload("not settings")).toEqual(DEFAULT_CLIENT_SETTINGS);
+  });
+  it("carries the token card's arrow-key choice over once (client-settings)", () => {
+    localStorage.setItem(LEGACY_ARROW_KEY_MOVE_KEY, "false");
+    const { arrowKeyMove: _a, ...older } = DEFAULT_CLIENT_SETTINGS;
+    expect(reload(older).arrowKeyMove).toBe(false);
+    expect(localStorage.getItem(LEGACY_ARROW_KEY_MOVE_KEY)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(CLIENT_SETTINGS_KEY)!)).toMatchObject({ arrowKeyMove: false });
+  });
   it("keeps audio changes from restarting graphical effects", () => {
     let changes = 0;
     const stop = subscribeGraphicsSettings(() => changes++);
@@ -60,9 +85,9 @@ describe("browser settings (FR-TAC-06)", () => {
 });
 
 describe("settings tabs (FR-TAC-06)", () => {
-  it("shows Audio and Graphics to everyone, Audio first, and switches panels", () => {
+  it("shows Audio, Graphics and Controls to everyone, Audio first, and switches panels", () => {
     render(<SettingsMenu open onClose={() => {}} />);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Audio", "Graphics", "Controls"]);
     expect(screen.getByRole("tab", { name: "Audio" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Audio" }).id);
     expect(screen.queryByLabelText("Graphics quality")).toBeNull();
@@ -80,12 +105,31 @@ describe("settings tabs (FR-TAC-06)", () => {
     expect(audio.tabIndex).toBe(-1);
     expect(document.activeElement).toBe(graphics);
     fireEvent.keyDown(graphics, { key: "ArrowRight" });
+    const controls = screen.getByRole("tab", { name: "Controls" });
+    expect(controls.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(controls, { key: "ArrowRight" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "ArrowLeft" });
-    expect(graphics.getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(graphics, { key: "Home" });
+    expect(controls.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(controls, { key: "Home" });
     expect(audio.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(audio, { key: "End" });
-    expect(graphics.getAttribute("aria-selected")).toBe("true");
+    expect(controls.getAttribute("aria-selected")).toBe("true");
+  });
+  it("saves the arrow-key switch from the Controls tab (client-settings)", () => {
+    render(<SettingsMenu open onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
+    const toggle = screen.getByRole("switch", { name: "Arrow keys move selected token" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    expect(getClientSettings().arrowKeyMove).toBe(false);
+  });
+  it("saves the attack animations choice from the Graphics tab (board-attack-effects)", () => {
+    render(<SettingsMenu open onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Graphics" }));
+    const select = screen.getByLabelText("Attack animations") as HTMLSelectElement;
+    expect(select.value).toBe("all");
+    fireEvent.change(select, { target: { value: "none" } });
+    expect(JSON.parse(localStorage.getItem(CLIENT_SETTINGS_KEY)!)).toMatchObject({ attackAnimations: "none" });
   });
 });

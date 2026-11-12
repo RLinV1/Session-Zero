@@ -337,8 +337,6 @@ a.tool-button { text-decoration: none; }
 .token-card-sight.is-on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .token-card-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 .token-card-delete:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.token-card .arrow-keys-switch { margin-top: var(--space-2); }
-.token-card .arrow-keys-switch + .small-print { margin: var(--space-1) 0 0; }
 
 /* Placing a new token (place-token-on-board): top centre, clear of the toolbar and notices. */
 .placement-bar {

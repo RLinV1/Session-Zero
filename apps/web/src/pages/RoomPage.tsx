@@ -1,6 +1,6 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { House } from "@phosphor-icons/react";
+import { GearSix, House } from "@phosphor-icons/react";
 import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
 import { templateArea, tokensTouchingArea } from "../board/tools";
@@ -44,6 +44,7 @@ import { PreviewBanner } from "../ui/PreviewBanner";
 import { previewConnection, replayConnection } from "../net/previewConnection";
 import { ReplayBar } from "../ui/ReplayBar";
 import { ShareButton } from "../ui/ShareButton";
+import { SettingsMenu } from "../ui/SettingsMenu";
 import { GuideTour } from "../ui/GuideTour";
 import { RoomMenu } from "../ui/RoomMenu";
 import { motionReduced } from "../ui/motion";
@@ -377,6 +378,9 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   const [guideOpen, setGuideOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const guideButtonRef = useRef<HTMLButtonElement>(null);
+  /** Settings opens from the gear on desktop and from "More" on phones; focus goes back to whichever (client-settings). */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   /** The token whose editor is open in the Tokens tab: here, so the board's token card can open it too (token-card-actions). */
   const [editingTokenId, setEditingTokenId] = useState<string | null>(null);
   // Forget a token that's gone, or undoing its deletion would bring it back with its editor open.
@@ -681,9 +685,14 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
               }}
             />
           )}
+          {features.tableChrome && !compact && (
+            <button ref={settingsButtonRef} type="button" className="tool-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}>
+              <GearSix size={16} aria-hidden="true" />
+            </button>
+          )}
           {features.tableChrome && <RoomMenu
             buttonRef={guideButtonRef}
-            room={readOnly ? undefined : { connection, state, you }}
+            onSettings={compact ? () => setSettingsOpen(true) : undefined}
             onActivityLog={you.role === "gm" && !readOnly ? () => setLogOpen(true) : undefined}
             // Everyone may replay what they could see (FR-PL-07); not while previewing as a player.
             onReplay={preview ? undefined : () => (replaying ? exitReplay() : setReplaying(true))}
@@ -692,6 +701,14 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             onGuide={() => openSidebar(() => setGuideOpen(true))}
             onShare={compact && you.role === "gm" && !readOnly ? () => setShareOpen(true) : undefined}
           />}
+          {features.tableChrome && (
+            <SettingsMenu
+              room={readOnly ? undefined : { connection, state, you }}
+              open={settingsOpen}
+              onClose={() => setSettingsOpen(false)}
+              onAfterClose={() => (compact ? guideButtonRef : settingsButtonRef).current?.focus()}
+            />
+          )}
           {features.tableChrome && you.role === "gm" && !readOnly && (
             <ActivityLog open={logOpen} onClose={() => setLogOpen(false)} roomId={state.roomId} token={token} seq={seq} state={state} connection={connection} />
           )}

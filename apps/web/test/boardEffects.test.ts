@@ -6,7 +6,9 @@ import {
   artStyleFor,
   attackEffectFor,
   attackPlan,
+  effectToPlay,
   effectiveReducedMotion,
+  type AttackEffect,
   conditionLoopWanted,
   loopFrameDue,
   loopingConditions,
@@ -85,7 +87,7 @@ describe("attackEffectFor: which events animate (KAN-76)", () => {
     expect(attackEffectFor(rolled(roll()), hiddenTarget, player)).toBeNull();
     expect(attackEffectFor(ruled("hit"), hiddenTarget, player)).toBeNull();
     expect(attackEffectFor(applied(), hiddenTarget, player)).toBeNull();
-    expect(attackEffectFor(ruled("hit"), hiddenTarget, gm)).toEqual({ kind: "hit", tokenId: "b" });
+    expect(attackEffectFor(ruled("hit"), hiddenTarget, gm)).toEqual({ kind: "hit", tokenId: "b", fromId: "a" });
   });
 });
 
@@ -152,8 +154,9 @@ describe("attackEffectFor: GM-only rolls (KAN-76, FR-GM-22)", () => {
 
 describe("attackEffectFor: rulings and damage (KAN-76)", () => {
   it("plays hit and miss on the roll's target, and nothing when the verdict is cleared", () => {
-    expect(attackEffectFor(ruled("hit"), room(), player)).toEqual({ kind: "hit", tokenId: "b" });
-    expect(attackEffectFor(ruled("miss"), room(), player)).toEqual({ kind: "miss", tokenId: "b" });
+    // The attacker rides along so "Current turn" can tell whose ruling it is (board-attack-effects).
+    expect(attackEffectFor(ruled("hit"), room(), player)).toEqual({ kind: "hit", tokenId: "b", fromId: "a" });
+    expect(attackEffectFor(ruled("miss"), room(), player)).toEqual({ kind: "miss", tokenId: "b", fromId: "a" });
     expect(attackEffectFor(ruled(null), room(), gm)).toBeNull();
   });
 
@@ -335,5 +338,59 @@ describe("table-wide reduced animations (ADR 0038)", () => {
 
   it("moves normally when neither asks for reduced motion", () => {
     expect(effectiveReducedMotion({ reducedEffects: false }, false)).toBe(false);
+  });
+});
+
+describe("the viewer's Attack animations choice (board-attack-effects)", () => {
+  const aria = { ...token("aria"), ownerIds: ["p1"] };
+  const bram = { ...token("bram"), ownerIds: ["p2"] };
+  const goblin = token("goblin");
+  /** An encounter on `activeId`'s turn; undefined is a turn the viewer can't see (past the end of their order). */
+  const turn = (activeId: string | undefined) => ({
+    tokens: { aria, bram, goblin },
+    initiative: { order: ["aria", "bram", "goblin"], activeIndex: activeId === undefined ? 3 : ["aria", "bram", "goblin"].indexOf(activeId), round: 1 },
+  });
+  const noEncounter = { tokens: { aria, bram, goblin }, initiative: null };
+  const strike = (fromId: string): AttackEffect => ({ kind: "strike", fromId, toId: "goblin", animation: ATTACK_STYLE_PRESETS.melee });
+  const hit = (fromId?: string): AttackEffect => ({ kind: "hit", tokenId: "goblin", ...(fromId && { fromId }) });
+  const miss = (fromId: string): AttackEffect => ({ kind: "miss", tokenId: "goblin", fromId });
+  const damage: AttackEffect = { kind: "damage", tokenId: "goblin", amount: 5 };
+  const damages: AttackEffect = { kind: "damages", hits: [{ tokenId: "goblin", amount: 3 }] };
+  const defeat: AttackEffect = { kind: "defeat", tokenId: "goblin" };
+  const nuke: AttackEffect = { kind: "nuke", animation: NUKE_PRESET, origin: { x: 0, y: 0 }, amount: 4, tokenIds: ["aria", "goblin"] };
+  const every = [strike("bram"), hit("bram"), miss("bram"), damage, damages, defeat, nuke];
+
+  it("plays everything on All", () => {
+    for (const effect of every) expect(effectToPlay(effect, "all", turn("aria"))).toBe(effect);
+  });
+
+  it("plays only a defeat on None", () => {
+    for (const effect of every) expect(effectToPlay(effect, "none", turn("aria"))).toBe(effect.kind === "defeat" ? effect : null);
+  });
+
+  it("plays everything on Current turn with no encounter running", () => {
+    for (const effect of every) expect(effectToPlay(effect, "turn", noEncounter)).toBe(effect);
+  });
+
+  it("plays the active token's strike, hit and miss, and skips another token's", () => {
+    expect(effectToPlay(strike("aria"), "turn", turn("aria"))).not.toBeNull();
+    expect(effectToPlay(hit("aria"), "turn", turn("aria"))).not.toBeNull();
+    expect(effectToPlay(miss("aria"), "turn", turn("aria"))).not.toBeNull();
+    expect(effectToPlay(strike("bram"), "turn", turn("aria"))).toBeNull();
+    expect(effectToPlay(hit("bram"), "turn", turn("aria"))).toBeNull();
+    expect(effectToPlay(miss("bram"), "turn", turn("aria"))).toBeNull();
+    // A ruling whose attacker the viewer can't see names no one, so it can't be the active token's.
+    expect(effectToPlay(hit(), "turn", turn("aria"))).toBeNull();
+  });
+
+  it("always plays damage numbers and defeats on Current turn", () => {
+    for (const effect of [damage, damages, defeat]) expect(effectToPlay(effect, "turn", turn("aria"))).toBe(effect);
+  });
+
+  it("plays a nuke on an NPC's or an unseen turn, and only its numbers on a player's", () => {
+    expect(effectToPlay(nuke, "turn", turn("goblin"))).toBe(nuke);
+    expect(effectToPlay(nuke, "turn", turn(undefined))).toBe(nuke);
+    expect(effectToPlay(nuke, "turn", turn("aria"))).toEqual({ kind: "damages", hits: [{ tokenId: "aria", amount: 4 }, { tokenId: "goblin", amount: 4 }] });
+    expect(effectToPlay({ ...nuke, amount: 0 }, "turn", turn("aria"))).toBeNull();
   });
 });
