@@ -6,6 +6,7 @@ import { MAPS, atPoint, viewRect, type CropView } from "./crops";
 import { CropWindow } from "./CropWindow";
 import { logLines, moveToken, openingRoom, undoAction, type DemoRoom } from "./recoverRoom";
 import { squareCenter, squareOf } from "./sightDemo";
+import { t } from "../../i18n/locale";
 
 /** The merchant ship's deck from rail to rail, on the deck's home crop. */
 const VIEW: CropView = { col: 1, row: 1, cols: 16, rows: 9 };
@@ -73,24 +74,24 @@ export default function RecoverDemo() {
         onPointerCancel={() => setDrag(null)}
       >
         <CropWindow src={MAPS.recover.src} alt={MAPS.recover.alt} view={VIEW}>
-          {Object.values(room.state.tokens).map((t) => {
-            const dragging = drag?.id === t.id;
-            const shownAt = dragging ? squareCenter(squareOf(drag.at).col, squareOf(drag.at).row) : t.position;
+          {Object.values(room.state.tokens).map((token) => {
+            const dragging = drag?.id === token.id;
+            const shownAt = dragging ? squareCenter(squareOf(drag.at).col, squareOf(drag.at).row) : token.position;
             return (
               <button
-                key={t.id}
+                key={token.id}
                 type="button"
                 className={dragging ? "token-chip recover-token is-dragging" : "token-chip recover-token"}
                 style={atPoint(VIEW, shownAt)}
-                aria-label={`${t.name}. Arrow keys move ${t.name} one square.`}
-                onKeyDown={(e) => onKeyDown(t.id, e)}
+                aria-label={t("home.recover.tokenMove", { name: token.name })}
+                onKeyDown={(e) => onKeyDown(token.id, e)}
                 onPointerDown={(e) => {
-                  setDrag({ id: t.id, at: t.position });
+                  setDrag({ id: token.id, at: token.position });
                   board.current?.setPointerCapture?.(e.pointerId);
                 }}
               >
-                <TokenDisc name={t.name} color={t.color} image={t.imageUrl}>
-                  <span className="token-label">{t.name}</span>
+                <TokenDisc name={token.name} color={token.color} image={token.imageUrl}>
+                  <span className="token-label">{token.name}</span>
                 </TokenDisc>
               </button>
             );
@@ -104,8 +105,8 @@ export default function RecoverDemo() {
       </div>
 
       <div className="recover-log">
-        <h4>Activity log</h4>
-        <p className="muted small-print">Newest first, as the GM sees it.</p>
+        <h4>{t("home.recover.log")}</h4>
+        <p className="muted small-print">{t("home.recover.logNote")}</p>
         <ol className="plain activity-entries" aria-live="polite">
           {lines.map((line) => (
             <li key={line.seq}>
@@ -120,10 +121,10 @@ export default function RecoverDemo() {
                     onClick={() => undo(line.commandId!)}
                   >
                     <ArrowCounterClockwise size={14} aria-hidden="true" />
-                    Undo
+                    {t("home.recover.undo")}
                   </button>
                 )}
-                {line.undone && <span className="activity-undone">Undone</span>}
+                {line.undone && <span className="activity-undone">{t("home.recover.undone")}</span>}
               </div>
               {refusal && line.commandId !== undefined && refusal.commandId === line.commandId && (
                 <p role="alert" className="error">

@@ -6,6 +6,7 @@ import { PanelSection } from "../ui/PanelSection";
 import { pendingRulingCount } from "./attackRoll";
 import { encounterIncludes, includedInEncounter } from "./tokenGroups";
 import { initiativeEntries, initiativeFieldValue, invalidInitiative, invalidMessage } from "./initiativeFields";
+import { t } from "../i18n/locale";
 
 /**
  * Turn order (FR-GM-21).
@@ -58,10 +59,10 @@ export function InitiativeTracker({
     const invalid = invalidInitiative(scores, chosen);
     setInvalidIds(invalid.map((t) => t.id));
     if (invalid.length > 0) {
-      return setError(invalidMessage(invalid.map((t) => tokens.find((x) => x.id === t.id)?.name ?? "token")));
+      return setError(invalidMessage(invalid.map((entry) => tokens.find((x) => x.id === entry.id)?.name ?? t("common.aToken"))));
     }
     const entries = initiativeEntries(scores, chosen);
-    if (entries.length === 0) return setError("Give at least one included token an initiative score");
+    if (entries.length === 0) return setError(t("init.needScore"));
     const result = await connection.command({ type: "initiative.start", entries });
     setError(result.ok ? null : result.message);
     if (result.ok) {
@@ -77,23 +78,23 @@ export function InitiativeTracker({
 
   if (!init) {
     return (
-      <PanelSection id="initiative" title="Initiative">
-        {!isGm && <p className="muted">No encounter running.</p>}
+      <PanelSection id="initiative" title={t("appGuide.initiative.title")}>
+        {!isGm && <p className="muted">{t("init.none")}</p>}
         {isGm && (
           <>
             {tokens.length === 0 ? (
-              <p className="muted">Add tokens before starting an encounter.</p>
+              <p className="muted">{t("init.addTokens")}</p>
             ) : (
               <>
-                <p className="muted">No encounter running.</p>
+                <p className="muted">{t("init.none")}</p>
                 <button className="primary" type="button" data-tour="start-encounter" onClick={() => openSetup()}>
-                  Start encounter
+                  {t("init.start")}
                 </button>
               </>
             )}
           </>
         )}
-        <Modal open={setupOpen} title="Start encounter" onClose={() => setSetupOpen(false)}>
+        <Modal open={setupOpen} title={t("init.start")} onClose={() => setSetupOpen(false)}>
           <form
             className="stack"
             onSubmit={(e) => {
@@ -102,12 +103,12 @@ export function InitiativeTracker({
             }}
           >
             <p className="muted init-hint">
-              Type each token's initiative. Highest goes first. Scores are saved on the tokens and filled in next time. Tokens left empty or not included won't get a turn.
+              {t("init.intro")}
             </p>
             {groups.length > 0 && (
               <fieldset className="init-groups">
-                <legend>Start from groups</legend>
-                <p className="muted small-print">Includes the chosen groups and every player's token. Leave all unticked to include everyone.</p>
+                <legend>{t("init.fromGroups")}</legend>
+                <p className="muted small-print">{t("init.groupsHint")}</p>
                 {groups.map((g) => (
                   <label key={g.id} className="inline">
                     <input
@@ -125,45 +126,45 @@ export function InitiativeTracker({
               </fieldset>
             )}
             <ul className="plain init-setup">
-              {tokens.map((t, i) => (
-                <li key={t.id} className={isIncluded(t.id) ? undefined : "init-left-out"}>
+              {tokens.map((entry, i) => (
+                <li key={entry.id} className={isIncluded(entry.id) ? undefined : "init-left-out"}>
                   <input
                     type="checkbox"
-                    checked={isIncluded(t.id)}
-                    onChange={(e) => setIncluded(t.id, e.target.checked)}
-                    aria-label={`Include ${t.name}`}
+                    checked={isIncluded(entry.id)}
+                    onChange={(e) => setIncluded(entry.id, e.target.checked)}
+                    aria-label={t("init.include", { name: entry.name })}
                   />
-                  <span className="swatch" style={{ background: t.color }} aria-hidden />
-                  <label className="init-name" htmlFor={`init-${t.id}`}>
-                    {t.name}
+                  <span className="swatch" style={{ background: entry.color }} aria-hidden />
+                  <label className="init-name" htmlFor={`init-${entry.id}`}>
+                    {entry.name}
                   </label>
                   <input
-                    id={`init-${t.id}`}
-                    aria-invalid={invalidIds.includes(t.id) || undefined}
-                    aria-describedby={invalidIds.includes(t.id) ? "init-error" : undefined}
+                    id={`init-${entry.id}`}
+                    aria-invalid={invalidIds.includes(entry.id) || undefined}
+                    aria-describedby={invalidIds.includes(entry.id) ? "init-error" : undefined}
                     type="number"
                     inputMode="numeric"
-                    placeholder="Init"
+                    placeholder={t("init.placeholder")}
                     autoFocus={i === 0}
-                    disabled={!isIncluded(t.id)}
-                    value={initiativeFieldValue(scores, t)}
+                    disabled={!isIncluded(entry.id)}
+                    value={initiativeFieldValue(scores, entry)}
                     onChange={(e) => {
-                      const next = { ...scores, [t.id]: e.target.value };
+                      const next = { ...scores, [entry.id]: e.target.value };
                       setScores(next);
                       // Once a score was refused, keep the flagged fields and the message in step with the edits.
                       if (invalidIds.length > 0) {
                         const stillInvalid = invalidInitiative(next, tokens);
                         setInvalidIds(stillInvalid.map((x) => x.id));
-                        setError(stillInvalid.length > 0 ? invalidMessage(stillInvalid.map((x) => tokens.find((y) => y.id === x.id)?.name ?? "token")) : null);
+                        setError(stillInvalid.length > 0 ? invalidMessage(stillInvalid.map((x) => tokens.find((y) => y.id === x.id)?.name ?? t("common.aToken"))) : null);
                       }
                     }}
-                    aria-label={`Initiative for ${t.name}`}
+                    aria-label={t("init.forNamed", { name: entry.name })}
                   />
                 </li>
               ))}
             </ul>
             {error && <p id="init-error" role="alert" className="error">{error}</p>}
-            <button className="primary" type="submit">Start encounter</button>
+            <button className="primary" type="submit">{t("init.start")}</button>
           </form>
         </Modal>
       </PanelSection>
@@ -178,7 +179,7 @@ export function InitiativeTracker({
       id="initiative"
       title={
         <>
-          Initiative <span className="muted">· round {init.round}</span>
+          {t("appGuide.initiative.title")} <span className="muted">{t("init.roundSuffix", { n: init.round })}</span>
         </>
       }
     >
@@ -199,8 +200,8 @@ export function InitiativeTracker({
                   {isActive ? "▶" : i + 1}
                 </span>
                 <span className="swatch" style={{ background: token?.color ?? "#555" }} aria-hidden />
-                <span className="init-name">{token?.name ?? "(removed)"}</span>
-                {isActive && <span className="sr-only">, active turn</span>}
+                <span className="init-name">{token?.name ?? t("init.removed")}</span>
+                {isActive && <span className="sr-only">{t("init.activeTurn")}</span>}
               </button>
             </li>
           );
@@ -209,20 +210,20 @@ export function InitiativeTracker({
 
       <p aria-live="polite" className="sr-only">
         {/* No active token means a hidden one has the turn; say nothing about it (FR-GM-23). */}
-        {activeId && state.tokens[activeId] ? `${state.tokens[activeId].name} is taking their turn, round ${init.round}.` : `Round ${init.round}.`}
+        {activeId && state.tokens[activeId] ? t("init.takingTurn", { name: state.tokens[activeId].name, n: init.round }) : t("init.round", { n: init.round })}
       </p>
 
       {isGm && (
         <div className="init-controls">
-          <button className="primary" onClick={() => send({ type: "initiative.advance" })}>Next turn</button>
+          <button className="primary" onClick={() => send({ type: "initiative.advance" })}>{t("init.next")}</button>
           {/* A reminder, not a gate: the GM may move on with rulings open (attack-ux-polish). */}
           {pending > 0 && (
             <span className="muted init-pending" role="status">
-              {pending} {pending === 1 ? "ruling" : "rulings"} pending
+              {t("init.pending", { n: pending })}
             </span>
           )}
           <button className="secondary" onClick={() => send({ type: "initiative.end" })}>
-            End encounter
+            {t("init.end")}
           </button>
         </div>
       )}

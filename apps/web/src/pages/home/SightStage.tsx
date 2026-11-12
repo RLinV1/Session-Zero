@@ -7,6 +7,7 @@ import { TokenDisc } from "../../ui/TokenDisc";
 import { CROP, MAPS, PORTRAITS, cropWalls, inSquare } from "./crops";
 import { litArea, moveTo, squareCenter, squareOf, svgPoints } from "./sightDemo";
 import { TokenChip } from "./TokenChip";
+import { t } from "../../i18n/locale";
 
 /** What stops the torch's light, and what stops the torch bearer: the table's two rules. */
 const SIGHT_WALLS = cropWalls("sun-tomb");
@@ -97,7 +98,7 @@ export function SightStage() {
   function step(to: Point) {
     const move = moveTo(MOVE_WALLS, at, to);
     setAt(move.at);
-    setNote(move.refused === "wall" ? "A wall is in the way." : move.refused === "edge" ? "That is the edge of the map." : null);
+    setNote(move.refused === "wall" ? t("home.sight.wall") : move.refused === "edge" ? t("home.sight.edge") : null);
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -129,17 +130,16 @@ export function SightStage() {
   return (
     <div className="sight-section">
       <div className="sight-copy">
-        <h4>They only see what their torch reaches.</h4>
+        <h4>{t("home.sight.title")}</h4>
         <p>
-          Walls and closed doors block sight, square by square, the way they do at the table. Hide a monster and your
-          players can't see it, can't find it in the turn order, and can't dig it out of their browser either.
+          {t("home.sight.body")}
         </p>
-        <div className="seg" role="group" aria-label="Whose view to show">
+        <div className="seg" role="group" aria-label={t("home.sight.whose")}>
           <button type="button" aria-pressed={view === "player"} onClick={() => setView("player")}>
-            Player view
+            {t("home.sight.player")}
           </button>
           <button type="button" aria-pressed={view === "gm"} onClick={() => setView("gm")}>
-            GM view
+            {t("home.sight.gm")}
           </button>
         </div>
       </div>
@@ -156,13 +156,13 @@ export function SightStage() {
           <SightFog lit={[lit]} view={view} average={MAPS.visibility.average} />
           <TokenChip name="Kaveh" color="#3fb950" hp={61} image={PORTRAITS.visibility.kaveh} at={{ col: 12, row: 8 }} />
           {view === "gm" && (
-            <TokenChip name="Guardian (hidden)" color="#8a6d3b" hp={100} image={PORTRAITS.visibility.guardian} at={HIDDEN_AT} className="is-hidden" />
+            <TokenChip name={t("home.creature.guardianHidden")} color="#8a6d3b" hp={100} image={PORTRAITS.visibility.guardian} at={HIDDEN_AT} className="is-hidden" />
           )}
           <button
             type="button"
             className="token-chip sight-lead"
             style={inSquare(col, row)}
-            aria-label="Nalani, carrying the torch. Arrow keys move Nalani one square."
+            aria-label={t("home.sight.lead", { name: "Nalani" })}
             onKeyDown={onKeyDown}
             onPointerDown={(e) => {
               dragging.current = true;
@@ -170,7 +170,7 @@ export function SightStage() {
             }}
           >
             <TokenDisc name="Nalani" color="#5b8def" image={PORTRAITS.visibility.nalani} hp={0.84}>
-              <span className="token-label">Nalani</span>
+              <span className="token-label">{"Nalani"}</span>
             </TokenDisc>
           </button>
         </div>
@@ -178,8 +178,8 @@ export function SightStage() {
       <p className="figure-note" role="status">
         {note ??
           (view === "gm"
-            ? "You see the whole tomb and the guardian hidden in the side chamber. The outline is what Nalani can see."
-            : "Past what their tokens can see, the tomb is in shadow and empty for your players. The guardian in the side chamber isn't there for them at all, not even in the turn order.")}
+            ? t("home.sight.gmNote", { name: "Nalani" })
+            : t("home.sight.playerNote"))}
       </p>
     </div>
   );

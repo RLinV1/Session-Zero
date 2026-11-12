@@ -22,13 +22,16 @@ import { blocksMovement } from "./portals";
 import { inverseOf, sameValue, undoableAction, undoConflict } from "./undo";
 import { concealedFrom, concealmentFor, fogConcealsSide, isInFog, portalConcealedFrom, templateConcealedFrom } from "./visibility";
 import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
+import { englishText, sharedMsg, type MessageRef } from "./i18n";
+import { presetLabel } from "./i18n/labels";
 import { MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
 export type Decision =
   | { ok: true; events: DomainEvent[] }
-  | { ok: false; code: RejectionCode; message: string };
+  /** `message` is `text` in English, as it always was; `text` is for the client's own language (ADR 0054). */
+  | { ok: false; code: RejectionCode; message: string; text: MessageRef };
 
 export interface DecideContext {
   libraryMap?: ResolvedLibraryMap | null;
@@ -123,7 +126,7 @@ function removeAllWalls(state: RoomState): DomainEvent[] {
 const samePortal = (a: Portal | null, b: Portal | null) => a?.kind === b?.kind && a?.state === b?.state;
 
 /** The same words for every viewer, so a refusal tells a player nothing about walls they can't see. */
-const wallBlocked = (): Decision => reject("invalid", "That spot is blocked by a wall.");
+const wallBlocked = (): Decision => reject("invalid", sharedMsg("reject.wallBlocked"));
 
 /**
  * Where a token goes when its size changes (KAN-74): a grid-aligned token keeps its top-left
@@ -149,22 +152,22 @@ export function decide(
   // token.move / portal.setState are player commands: they only guard the scene, never require the GM.
   const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState";
   const sceneChanged = "expectedSceneId" in command && command.expectedSceneId !== undefined && command.expectedSceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID);
-  if (playerSceneCommand && sceneChanged) return reject("invalid", "The scene changed. Refresh the board before moving.");
+  if (playerSceneCommand && sceneChanged) return reject("invalid", sharedMsg("reject.sceneChangedMove"));
   if (!playerSceneCommand && "expectedSceneId" in command && command.expectedSceneId !== undefined) {
     if (!can.administer(actor)) return forbidden();
-    if ((state.activeSceneId ?? INITIAL_SCENE_ID) !== command.expectedSceneId) return reject("invalid", "The scene changed. Reopen the editor before saving.");
+    if ((state.activeSceneId ?? INITIAL_SCENE_ID) !== command.expectedSceneId) return reject("invalid", sharedMsg("reject.sceneChangedSave"));
   }
   if ("expectedMapUrl" in command && command.expectedMapUrl !== undefined) {
     if (!can.administer(actor)) return forbidden();
-    if (state.scene.map?.url !== command.expectedMapUrl) return reject("invalid", "The map changed. Reopen the editor before saving.");
+    if (state.scene.map?.url !== command.expectedMapUrl) return reject("invalid", sharedMsg("reject.mapChangedSave"));
   }
   switch (command.type) {
     case "scene.savePreparation": {
       if (!can.administer(actor)) return forbidden();
       // Validate even direct callers; the whitelist cannot recurse or bypass authorization.
       const parsed = PreparationSave.safeParse(command);
-      if (!parsed.success) return reject("invalid", "This preparation exceeds the save limits or contains unsupported edits.");
-      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", "Terrain or the board changed. Your draft has been kept; refresh before applying it.");
+      if (!parsed.success) return reject("invalid", sharedMsg("reject.preparationTooLarge"));
+      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", sharedMsg("reject.terrainChangedDraftKept"));
       const paints = parsed.data.edits.flatMap((edit) => edit.type === "terrain.paint" ? edit.paint : []);
       const problem = paintProblem(paints);
       if (problem) return reject("invalid", problem);
@@ -181,7 +184,7 @@ export function decide(
     }
     case "scene.copyCurrent": {
       if (!can.administer(actor)) return forbidden();
-      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "Choose a private scene for the copy.");
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", sharedMsg("reject.copyNeedsPrivateScene"));
       const previous = savedSceneOf(state, command.sceneId);
       if (!previous) return notFound("scene");
       return accept({ type: "ScenePrepared", sceneId: command.sceneId, previous, prepared: {
@@ -190,8 +193,8 @@ export function decide(
     }
     case "scene.prepare": {
       if (!can.administer(actor)) return forbidden();
-      if (!isScenePreparationCommand(command.command)) return reject("invalid", "That action is not available in a private scene.");
-      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "This scene is live. Return to the active scene before editing it.");
+      if (!isScenePreparationCommand(command.command)) return reject("invalid", sharedMsg("reject.notInPrivateScene"));
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", sharedMsg("reject.sceneIsLive"));
       const preparedState = sceneState(state, command.sceneId);
       const previous = savedSceneOf(state, command.sceneId);
       if (!preparedState || !previous) return notFound("scene");
@@ -201,10 +204,10 @@ export function decide(
     }
     case "scene.create": {
       if (!can.administer(actor)) return forbidden();
-      if (command.activate !== false && state.areaEffect) return reject("invalid", "Finish or skip the open area effect before switching scenes.");
+      if (command.activate !== false && state.areaEffect) return reject("invalid", sharedMsg("reject.areaEffectOpenSwitch"));
       const names = sceneNamesOf(state);
-      if (Object.keys(names).length >= MAX_SCENES) return reject("invalid", `A room can hold at most ${MAX_SCENES} scenes.`);
-      if (Object.values(names).some((name) => normalizeName(name) === normalizeName(command.name))) return reject("invalid", "A scene already has that name.");
+      if (Object.keys(names).length >= MAX_SCENES) return reject("invalid", sharedMsg("reject.tooManyScenes", { max: MAX_SCENES }));
+      if (Object.values(names).some((name) => normalizeName(name) === normalizeName(command.name))) return reject("invalid", sharedMsg("reject.sceneNameTaken"));
       const fromId = state.activeSceneId ?? INITIAL_SCENE_ID;
       if (command.activate === false) return accept({ type: "SceneDraftCreated", sceneId: ctx.newId(), name: command.name, initialId: fromId, initialName: names[fromId]!, saved: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
       return accept({ type: "SceneCreated", sceneId: ctx.newId(), name: command.name, fromId, fromName: names[fromId]!, previous: saveScene(state), restored: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
@@ -214,13 +217,13 @@ export function decide(
       const names = sceneNamesOf(state);
       const previous = sceneNameOf(state, command.sceneId);
       if (!previous) return notFound("scene");
-      if (Object.entries(names).some(([id, name]) => id !== command.sceneId && normalizeName(name) === normalizeName(command.name))) return reject("invalid", "A scene already has that name.");
-      if (previous === command.name) return reject("invalid", "That scene already has that name.");
+      if (Object.entries(names).some(([id, name]) => id !== command.sceneId && normalizeName(name) === normalizeName(command.name))) return reject("invalid", sharedMsg("reject.sceneNameTaken"));
+      if (previous === command.name) return reject("invalid", sharedMsg("reject.sceneSameName"));
       return accept({ type: "SceneRenamed", sceneId: command.sceneId, name: command.name, previous });
     }
     case "scene.switch": {
       if (!can.administer(actor)) return forbidden();
-      if (state.areaEffect) return reject("invalid", "Finish or skip the open area effect before switching scenes.");
+      if (state.areaEffect) return reject("invalid", sharedMsg("reject.areaEffectOpenSwitch"));
       const restored = savedSceneOf(state, command.sceneId);
       const name = sceneNameOf(state, command.sceneId);
       if (!restored || !name) return notFound("scene");
@@ -228,7 +231,7 @@ export function decide(
     }
     case "scene.delete": {
       if (!can.administer(actor)) return forbidden();
-      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "Switch to another scene before deleting this one.");
+      if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", sharedMsg("reject.deleteActiveScene"));
       const previous = savedSceneOf(state, command.sceneId);
       const name = sceneNameOf(state, command.sceneId);
       if (!previous || !name) return notFound("scene");
@@ -236,25 +239,25 @@ export function decide(
     }
     case "scene.setMap": {
       if (!can.administer(actor)) return forbidden();
-      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", "Terrain or the board changed. Review the current map before applying.");
+      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", sharedMsg("reject.terrainChangedReview"));
       const library = command.includeLibraryBoard ? ctx.libraryMap : null;
-      if (command.includeLibraryBoard && (!library || !sameValue(library.map, command.map))) return reject("not_found", "This library map is unavailable or changed. Choose it again from your library.");
+      if (command.includeLibraryBoard && (!library || !sameValue(library.map, command.map))) return reject("not_found", sharedMsg("reject.libraryMapUnavailable"));
       const grid = command.grid ?? library?.grid ?? state.scene.grid;
-      if (library?.board.terrain?.length && (!library.grid || gridGeometryChanged(library.grid, grid)) && !command.resetTerrain) return reject("invalid", "Changing the prepared library grid spacing or origin requires resetting terrain. Cancel or explicitly reset terrain and apply.");
-      if (library && libraryBoardProblem(library.board, command.map)) return reject("invalid", "This library map's geometry is invalid. Fix it in your library before applying it.");
+      if (library?.board.terrain?.length && (!library.grid || gridGeometryChanged(library.grid, grid)) && !command.resetTerrain) return reject("invalid", sharedMsg("reject.libraryGridNeedsTerrainReset"));
+      if (library && libraryBoardProblem(library.board, command.map)) return reject("invalid", sharedMsg("reject.libraryGeometryInvalid"));
       if (!canRenderGrid(grid.cellSize, command.map)) {
-        return reject("invalid", "Grid cell size creates too many lines for this map.");
+        return reject("invalid", sharedMsg("reject.gridTooDense"));
       }
       const adjustment = adjustMapTokens(
         Object.values(state.tokens), state.scene.map, command.map, state.scene.grid, grid, command.tokenPolicy,
       );
       if (!adjustment.ok) {
         const token = state.tokens[adjustment.tokenId]!;
-        return reject("invalid", `${token.name}'s ${adjustment.footprint} px footprint cannot fit this ${command.map.width} × ${command.map.height} px map. Use a larger map, reduce the grid cell size, or reduce the token's size.`);
+        return reject("invalid", sharedMsg("reject.tokenFootprint", { token: token.name, footprint: adjustment.footprint, width: command.map.width, height: command.map.height }));
       }
       const geometryChanged = command.map.url !== state.scene.map?.url || command.map.width !== state.scene.map?.width || command.map.height !== state.scene.map?.height;
       const gridChanged = gridGeometryChanged(state.scene.grid, grid);
-      if (!geometryChanged && gridChanged && hasTerrain(state.terrain) && !command.resetTerrain && !library) return reject("invalid", "Changing grid spacing or origin requires resetting terrain.");
+      if (!geometryChanged && gridChanged && hasTerrain(state.terrain) && !command.resetTerrain && !library) return reject("invalid", sharedMsg("reject.gridNeedsTerrainReset"));
       // Map, effective grid and adjusted positions are one reversible fact (ADR 0042).
       return accept({
         type: "MapSet",
@@ -274,14 +277,14 @@ export function decide(
     case "scene.importUVTT": {
       if (!can.administer(actor)) return forbidden();
       const prep = ctx.preparedUvtt;
-      if (!prep) return reject("not_found", "This preparation has expired or the server restarted. Re-import the file.");
+      if (!prep) return reject("not_found", sharedMsg("reject.preparationExpired"));
       const { baseline, map, grid } = prep;
       if (!sameValue(state.scene.map, baseline.map) || !sameValue(state.scene.grid, baseline.grid) || !sameValue(state.walls, baseline.walls) || !sameValue(state.fog, baseline.fog) || (state.terrainRevision ?? 0) !== baseline.terrainRevision) {
-        return reject("invalid", "The applied map, grid, walls, fog or terrain changed while editing. Re-import against the current scene; your draft has been kept.");
+        return reject("invalid", sharedMsg("reject.importStale"));
       }
-      try { validateUvttDraft(grid, prep.walls, map); } catch { return reject("invalid", "The prepared grid or geometry is invalid."); }
+      try { validateUvttDraft(grid, prep.walls, map); } catch { return reject("invalid", sharedMsg("reject.preparedGeometryInvalid")); }
       const adjustment = adjustMapTokens(Object.values(state.tokens), state.scene.map, map, state.scene.grid, grid, command.tokenPolicy);
-      if (!adjustment.ok) return reject("invalid", "A token cannot fit the imported map. Use a larger image, smaller grid or smaller token.");
+      if (!adjustment.ok) return reject("invalid", sharedMsg("reject.tokenDoesNotFitImport"));
       return accept({ type: "MapSet", map, previous: state.scene.map,
         ...(state.terrain ? { terrainChange: { terrain: emptyTerrain(), previous: state.terrain } } : {}),
         gridChange: { grid, previous: state.scene.grid }, tokenChanges: adjustment.changes,
@@ -292,12 +295,12 @@ export function decide(
 
     case "scene.setGrid": {
       if (!can.administer(actor)) return forbidden();
-      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", "Terrain or the board changed. Review the current map before applying.");
+      if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", sharedMsg("reject.terrainChangedReview"));
       if (!canRenderGrid(command.grid.cellSize, state.scene.map)) {
-        return reject("invalid", "Grid cell size creates too many lines for this map.");
+        return reject("invalid", sharedMsg("reject.gridTooDense"));
       }
       const geometryChanged = gridGeometryChanged(command.grid, state.scene.grid);
-      if (geometryChanged && hasTerrain(state.terrain) && !command.resetTerrain) return reject("invalid", "Changing grid spacing or origin requires resetting terrain.");
+      if (geometryChanged && hasTerrain(state.terrain) && !command.resetTerrain) return reject("invalid", sharedMsg("reject.gridNeedsTerrainReset"));
       return accept(
         { type: "GridSet", grid: command.grid, previous: state.scene.grid, ...(geometryChanged && state.terrain ? { terrainChange: { terrain: emptyTerrain(), previous: state.terrain ?? emptyTerrain() } } : {}) },
         ...resnapToGrid(state, command.grid),
@@ -306,19 +309,19 @@ export function decide(
 
     case "scene.setLineOfSight":
       if (!can.administer(actor)) return forbidden();
-      if (command.enabled === (state.scene.lineOfSight ?? false)) return reject("invalid", `Line of sight is already ${command.enabled ? "on" : "off"}.`);
+      if (command.enabled === (state.scene.lineOfSight ?? false)) return reject("invalid", sharedMsg(command.enabled ? "reject.sightAlreadyOn" : "reject.sightAlreadyOff"));
       return accept({ type: "LineOfSightSet", from: state.scene.lineOfSight ?? false, to: command.enabled });
 
     case "scene.setIsometric":
       if (!can.administer(actor)) return forbidden();
-      if (command.enabled === (state.scene.isometric ?? false)) return reject("invalid", `The map is already ${command.enabled ? "2.5D isometric" : "flat"}.`);
+      if (command.enabled === (state.scene.isometric ?? false)) return reject("invalid", sharedMsg(command.enabled ? "reject.mapAlreadyIsometric" : "reject.mapAlreadyFlat"));
       return accept({ type: "IsometricSet", from: state.scene.isometric ?? false, to: command.enabled });
 
     case "scene.setSightRange": {
       if (!can.administer(actor)) return forbidden();
       const current = state.scene.sightRange ?? null;
-      if (command.range === current) return reject("invalid", `Sight range is already ${current === null ? "unlimited" : current}.`);
-      if (command.range !== null && command.range > 1000 * state.scene.grid.unitsPerCell) return reject("invalid", "Sight range is too large.");
+      if (command.range === current) return reject("invalid", current === null ? sharedMsg("reject.sightRangeAlreadyUnlimited") : sharedMsg("reject.sightRangeAlready", { range: current }));
+      if (command.range !== null && command.range > 1000 * state.scene.grid.unitsPerCell) return reject("invalid", sharedMsg("reject.sightRangeTooLarge"));
       return accept({ type: "SightRangeSet", from: current, to: command.range });
     }
 
@@ -328,11 +331,11 @@ export function decide(
       if (off) return off;
       const ownerError = checkOwners(state, command.ownerIds);
       if (ownerError) return ownerError;
-      if (!command.name.trim()) return reject("invalid", "Token name can't be blank.");
+      if (!command.name.trim()) return reject("invalid", sharedMsg("reject.tokenNameBlank"));
       if (command.stats.hp !== null && command.stats.maxHp !== null && command.stats.hp > command.stats.maxHp) {
-        return reject("invalid", "Current HP cannot exceed maximum HP");
+        return reject("invalid", sharedMsg("reject.hpOverMax"));
       }
-      if (new Set(command.conditions).size !== command.conditions.length) return reject("invalid", "A condition is listed twice.");
+      if (new Set(command.conditions).size !== command.conditions.length) return reject("invalid", sharedMsg("reject.conditionTwice"));
       if (footprintCrossesWall(command.position, command.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
       if (command.groupId !== undefined && !state.groups[command.groupId]) return notFound("group");
       const made = createTokens(state, {
@@ -380,7 +383,7 @@ export function decide(
       const name = command.name.trim();
       const invalid = groupNameProblem(state, name);
       if (invalid) return reject("invalid", invalid);
-      if (Object.keys(state.groups).length >= MAX_GROUPS) return reject("invalid", `A room holds at most ${MAX_GROUPS} groups.`);
+      if (Object.keys(state.groups).length >= MAX_GROUPS) return reject("invalid", sharedMsg("reject.tooManyGroups", { max: MAX_GROUPS }));
       return accept({ type: "GroupCreated", group: { id: ctx.newId(), name } });
     }
 
@@ -389,7 +392,7 @@ export function decide(
       const group = state.groups[command.groupId];
       if (!group) return notFound("group");
       const name = command.name.trim();
-      if (name === group.name) return reject("invalid", "That is already the group's name.");
+      if (name === group.name) return reject("invalid", sharedMsg("reject.groupSameName"));
       const invalid = groupNameProblem(state, name, group.id);
       if (invalid) return reject("invalid", invalid);
       return accept({ type: "GroupRenamed", groupId: group.id, name, previous: group.name });
@@ -412,7 +415,7 @@ export function decide(
         .map((tokenId) => ({ tokenId, previous: state.tokenGroups[tokenId] ?? null }))
         .filter((c) => c.previous !== command.groupId);
       if (changes.length === 0) {
-        return reject("invalid", command.groupId === null ? "Those tokens are not in a group." : "Those tokens are already in that group.");
+        return reject("invalid", sharedMsg(command.groupId === null ? "reject.tokensNotInGroup" : "reject.tokensAlreadyInGroup"));
       }
       return accept({ type: "TokensGrouped", groupId: command.groupId, changes });
     }
@@ -422,23 +425,23 @@ export function decide(
     case "terrain.effect.rename":
     case "terrain.effect.remove": {
       if (!can.administer(actor)) return forbidden();
-      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", "Terrain or the board changed. Your draft has been kept; refresh before applying it.");
-      if (!state.scene.map) return reject("invalid", "Apply a map before painting terrain.");
+      if (command.context.boardEpoch !== (state.boardEpoch ?? 0) || command.context.revision !== (state.terrainRevision ?? 0)) return reject("invalid", sharedMsg("reject.terrainChangedDraftKept"));
+      if (!state.scene.map) return reject("invalid", sharedMsg("reject.paintNeedsMap"));
       const terrain = state.terrain ?? emptyTerrain();
       if (command.type === "terrain.paint") {
-        if (new TextEncoder().encode(JSON.stringify(command)).length >= MAX_TERRAIN_PAINT_BYTES) return reject("invalid", "This gesture is too large. Paint a smaller area.");
+        if (new TextEncoder().encode(JSON.stringify(command)).length >= MAX_TERRAIN_PAINT_BYTES) return reject("invalid", sharedMsg("reject.paintTooLarge"));
         const problem = paintProblem(command.paint);
         if (problem) return reject("invalid", problem);
         const layer = terrainLayer(terrain, command.layerId);
         if (!layer) return notFound("terrain layer");
         const map = state.scene.map;
-        if (command.paint.some((r) => { const first = cellRect(r.start, r.row, state.scene.grid), last = cellRect(r.end, r.row, state.scene.grid); return last.maxX <= 0 || first.minX >= map.width || first.maxY <= 0 || first.minY >= map.height || first.minX < -state.scene.grid.cellSize || last.maxX > map.width + state.scene.grid.cellSize; })) return reject("invalid", "Terrain must lie on the map.");
+        if (command.paint.some((r) => { const first = cellRect(r.start, r.row, state.scene.grid), last = cellRect(r.end, r.row, state.scene.grid); return last.maxX <= 0 || first.minX >= map.width || first.maxY <= 0 || first.minY >= map.height || first.minX < -state.scene.grid.cellSize || last.maxX > map.width + state.scene.grid.cellSize; })) return reject("invalid", sharedMsg("reject.terrainOffMap"));
         const next = replaceTerrainLayer(terrain, command.layerId, paintTerrain(layer, command.paint));
-        if (!Terrain.safeParse(next).success) return reject("invalid", "The room would exceed the terrain cell limit.");
+        if (!Terrain.safeParse(next).success) return reject("invalid", sharedMsg("reject.terrainCellLimit"));
         return accept({ type: "TerrainPainted", layerId: command.layerId, paint: command.paint, previous: previousPaint(layer, command.paint) });
       }
       if (command.type === "terrain.effect.create") {
-        if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return reject("invalid", "Remove a temporary effect before creating another.");
+        if (terrain.effects.length >= MAX_TERRAIN_EFFECTS) return reject("invalid", sharedMsg("reject.tooManyTerrainEffects"));
         return accept({ type: "TerrainEffectCreated", effect: { id: command.effectId && !terrain.effects.some((e) => e.id === command.effectId) ? command.effectId : ctx.newId(), name: command.name, runs: [] } });
       }
       const effect = terrain.effects.find((e) => e.id === command.effectId);
@@ -455,8 +458,8 @@ export function decide(
       if (!token || concealedFrom(concealmentFor(state, actor), token, actor)) return notFound("token");
       if (!can.moveToken(actor, token)) return forbidden();
       if (command.reposition && !can.administer(actor)) return forbidden();
-      if ((command.expectedOrigin && !sameValue(token.position, command.expectedOrigin)) || (command.boardEpoch !== undefined && command.boardEpoch !== (state.boardEpoch ?? 0))) return reject("invalid", "The board or token changed. Try the move again.");
-      if (movementBlocked(state, token, command.to, command.reposition)) return reject("invalid", "That move is unavailable.");
+      if ((command.expectedOrigin && !sameValue(token.position, command.expectedOrigin)) || (command.boardEpoch !== undefined && command.boardEpoch !== (state.boardEpoch ?? 0))) return reject("invalid", sharedMsg("reject.moveStale"));
+      if (movementBlocked(state, token, command.to, command.reposition)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       return accept({
         type: "TokenMoved",
         tokenId: token.id,
@@ -476,9 +479,9 @@ export function decide(
       if (gmFields && !can.administer(actor)) return forbidden();
       const off = presetRefusal(state, { attacks: changes.attacks !== undefined, conditions: (changes.conditions?.length ?? 0) > 0, ac: changes.stats?.ac ?? null });
       if (off) return off;
-      if (changes.name !== undefined && !changes.name.trim()) return reject("invalid", "Token name can't be blank.");
+      if (changes.name !== undefined && !changes.name.trim()) return reject("invalid", sharedMsg("reject.tokenNameBlank"));
       if (changes.stats && changes.stats.hp !== null && changes.stats.maxHp !== null && changes.stats.hp > changes.stats.maxHp) {
-        return reject("invalid", "Current HP cannot exceed maximum HP");
+        return reject("invalid", sharedMsg("reject.hpOverMax"));
       }
       if (changes.ownerIds) {
         const ownerError = checkOwners(state, changes.ownerIds);
@@ -488,18 +491,18 @@ export function decide(
       const position = changes.position ?? resizedPosition(state, token, size);
       // Explicit displacement keeps swept movement checks; automatic anchoring only checks the result.
       if (changes.position && !sameValue(changes.position, token.position)) {
-        if (movementBlocked(state, { ...token, size }, position)) return reject("invalid", "That move is unavailable.");
+        if (movementBlocked(state, { ...token, size }, position)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       } else if (size !== token.size && destinationBlocked(state, size, position)) {
-        return reject("invalid", "That move is unavailable.");
+        return reject("invalid", sharedMsg("reject.moveUnavailable"));
       }
       const imageUrl = changes.imageUrl;
       const assetId = changes.assetId;
       const imageChanged = imageUrl !== undefined || assetId !== undefined;
       if (imageChanged && (imageUrl === undefined || assetId === undefined)) {
-        return reject("invalid", "Image URL and asset must be changed together.");
+        return reject("invalid", sharedMsg("reject.imageUrlAndAsset"));
       }
       if (imageUrl === null && assetId !== null) {
-        return reject("invalid", "An image asset requires an image URL.");
+        return reject("invalid", sharedMsg("reject.imageAssetNeedsUrl"));
       }
 
       const name = changes.name === undefined ? token.name : uniqueTokenName(state, changes.name, token.id);
@@ -557,12 +560,12 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       const token = state.tokens[command.tokenId];
       if (!token) return notFound("token");
-      if (!command.name.trim()) return reject("invalid", "Token name can't be blank.");
+      if (!command.name.trim()) return reject("invalid", sharedMsg("reject.tokenNameBlank"));
       const name = uniqueTokenName(state, command.name, token.id);
       const rotation = normalizeRotation(command.rotation);
       if (name === token.name && command.size === token.size && rotation === token.rotation) return { ok: true, events: [] };
       const position = resizedPosition(state, token, command.size);
-      if (command.size !== token.size && destinationBlocked(state, command.size, position)) return reject("invalid", "That move is unavailable.");
+      if (command.size !== token.size && destinationBlocked(state, command.size, position)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       const appearance: DomainEvent = {
         type: "TokenAppearanceSet",
         tokenId: token.id,
@@ -619,7 +622,7 @@ export function decide(
       const off = presetRefusal(state, { ac: command.stats.ac });
       if (off) return off;
       if (command.stats.hp !== null && command.stats.maxHp !== null && command.stats.hp > command.stats.maxHp) {
-        return reject("invalid", "Current HP cannot exceed maximum HP");
+        return reject("invalid", sharedMsg("reject.hpOverMax"));
       }
       return accept(...withDefeats(state, [{
         type: "TokenStatsSet",
@@ -634,7 +637,7 @@ export function decide(
       const token = state.tokens[command.tokenId];
       if (!token) return notFound("token");
       if (token.imageUrl === command.imageUrl && (token.assetId ?? null) === command.assetId) {
-        return reject("invalid", `${token.name} already has that image.`);
+        return reject("invalid", sharedMsg("reject.sameImage", { token: token.name }));
       }
       return accept({
         type: "TokenImageSet",
@@ -669,7 +672,7 @@ export function decide(
         .sort((a, b) => b.score - a.score || a.tokenId.localeCompare(b.tokenId))
         .map((e) => e.tokenId);
       const deduped = [...new Set(order)];
-      if (deduped.length !== order.length) return reject("invalid", "A token appears twice in the order");
+      if (deduped.length !== order.length) return reject("invalid", sharedMsg("reject.orderDuplicate"));
       return accept({
         type: "InitiativeStarted",
         initiative: { order: deduped, activeIndex: 0, round: 1 },
@@ -685,7 +688,7 @@ export function decide(
     case "initiative.advance": {
       if (!can.administer(actor)) return forbidden();
       const current = state.initiative;
-      if (!current) return reject("invalid", "No encounter is running");
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
       return accept({
         type: "InitiativeAdvanced",
         initiative: advance(current),
@@ -713,7 +716,7 @@ export function decide(
         if (!can.attackWith(actor, attacker)) return forbidden();
         const target = visible(command.attack.targetTokenId);
         if (!target) return notFound("token");
-        if (target.id === attacker.id) return reject("invalid", "A token can't attack itself");
+        if (target.id === attacker.id) return reject("invalid", sharedMsg("reject.selfAttack"));
         // An unowned token under fog is concealed on the roll for good, like a hidden one (ADR 0016).
         const side = (t: Token) => ({ tokenId: t.id, name: t.name, hidden: t.hidden || fogConcealsSide(state, t) });
         // The animation comes from the actor's own named attack, never from the client (ADR 0038).
@@ -732,9 +735,9 @@ export function decide(
       }
       if (command.visibility === "gm" && !can.rollHidden(actor)) return forbidden();
       const parsed = parseDiceExpression(command.expression);
-      if (!parsed.ok) return reject("invalid", parsed.message);
+      if (!parsed.ok) return reject("invalid", parsed.text);
       const random = ctx.random;
-      if (!random) return reject("invalid", "Dice are unavailable");
+      if (!random) return reject("invalid", sharedMsg("reject.diceUnavailable"));
       const { dice, total } = rollDice(parsed.expression, random);
       const rolled: DomainEvent = {
         type: "DiceRolled",
@@ -759,11 +762,11 @@ export function decide(
       const rulingOff = presetRefusal(state, { attacks: true });
       if (rulingOff) return rulingOff;
       const roll = findDiceRoll(state.rolls, command.rollId);
-      if (!roll) return reject("not_found", "That roll is too old to rule on");
-      if (roll.attack?.kind !== "toHit") return reject("invalid", "Only to-hit attack rolls take a ruling");
+      if (!roll) return reject("not_found", sharedMsg("reject.rollTooOldToRule"));
+      if (roll.attack?.kind !== "toHit") return reject("invalid", sharedMsg("reject.rulingNeedsToHit"));
       const previous = roll.verdict ?? null;
       if (previous === command.verdict) {
-        return reject("invalid", command.verdict ? `That roll is already a ${command.verdict}` : "That roll has no ruling");
+        return reject("invalid", sharedMsg(command.verdict === "hit" ? "reject.alreadyHit" : command.verdict === "miss" ? "reject.alreadyMiss" : "reject.noRuling"));
       }
       return accept({ type: "RollRuled", rollId: roll.id, verdict: command.verdict, previous });
     }
@@ -773,15 +776,15 @@ export function decide(
       const damageOff = presetRefusal(state, { attacks: true });
       if (damageOff) return damageOff;
       const roll = findDiceRoll(state.rolls, command.rollId);
-      if (!roll) return reject("not_found", "That roll is too old to apply");
-      if (roll.attack?.kind !== "damage") return reject("invalid", "Only damage rolls can be applied");
-      if (roll.damageApplied) return reject("invalid", "That damage has already been applied");
+      if (!roll) return reject("not_found", sharedMsg("reject.rollTooOldToApply"));
+      if (roll.attack?.kind !== "damage") return reject("invalid", sharedMsg("reject.applyNeedsDamage"));
+      if (roll.damageApplied) return reject("invalid", sharedMsg("reject.damageApplied"));
       // Copied scenes share token ids, so a roll made on another board must not hit this one.
-      if (roll.sceneId !== undefined && roll.sceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", "That roll was made in another scene");
+      if (roll.sceneId !== undefined && roll.sceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", sharedMsg("reject.rollOtherScene"));
       // The GM's copy always has both sides; a missing target was deleted.
       const target = roll.attack.target ? state.tokens[roll.attack.target.tokenId] : undefined;
       if (!target) return notFound("token");
-      if (target.stats.hp === null) return reject("invalid", `${target.name} has no HP to change`);
+      if (target.stats.hp === null) return reject("invalid", sharedMsg("reject.noHp", { token: target.name }));
       // Worked out here from current HP, so a stale screen or a second tap can't apply twice.
       const amount = Math.max(0, roll.total);
       const hp = Math.max(MIN_HP, target.stats.hp - amount);
@@ -813,7 +816,7 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       const off = presetRefusal(state, { attacks: true });
       if (off) return off;
-      if (state.areaEffect) return reject("invalid", "Finish or skip the open area effect first");
+      if (state.areaEffect) return reject("invalid", sharedMsg("reject.areaEffectOpen"));
       const rolled = rollForTokens(state, command.tokenIds, command.expression, ctx);
       if (!rolled.ok) return rolled.refusal;
       const effect: AreaEffect = {
@@ -832,12 +835,12 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       const effect = state.areaEffect;
       if (!effect || effect.id !== command.effectId) return notFound("area effect");
-      if (effect.damage) return reject("invalid", "The damage has already been rolled");
+      if (effect.damage) return reject("invalid", sharedMsg("reject.damageRolled"));
       const caller = state.participants[command.participantId];
       if (!caller) return notFound("participant");
-      if (!isActive(caller)) return reject("invalid", `${caller.displayName} has left the table`);
+      if (!isActive(caller)) return reject("invalid", sharedMsg("reject.callerLeft", { name: caller.displayName }));
       const previous = effect.call?.participantId ?? null;
-      if (previous === caller.id) return reject("invalid", `${caller.displayName} already has the call`);
+      if (previous === caller.id) return reject("invalid", sharedMsg("reject.callerHasCall", { name: caller.displayName }));
       return accept({ type: "AreaEffectCalled", effectId: effect.id, participantId: caller.id, previous });
     }
 
@@ -846,11 +849,11 @@ export function decide(
       // The caller alone writes the formula; the GM takes the call over first (ADR 0046).
       if (effect?.call?.participantId !== actor.id) return forbidden();
       if (!effect || effect.id !== command.effectId) return notFound("area effect");
-      if (areaEffectStage(effect) !== "called") return reject("invalid", "The damage has already been rolled");
+      if (areaEffectStage(effect) !== "called") return reject("invalid", sharedMsg("reject.damageRolled"));
       const parsed = parseDiceExpression(command.expression);
-      if (!parsed.ok) return reject("invalid", parsed.message);
+      if (!parsed.ok) return reject("invalid", parsed.text);
       const random = ctx.random;
-      if (!random) return reject("invalid", "Dice are unavailable");
+      if (!random) return reject("invalid", sharedMsg("reject.diceUnavailable"));
       const expression = formatExpression(parsed.expression);
       const damage: AreaEffectDamage = command.mode === "single"
         ? { mode: "single", expression, byParticipantId: actor.id, ...rollDice(parsed.expression, random) }
@@ -868,12 +871,12 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       const effect = state.areaEffect;
       if (!effect || effect.id !== command.effectId) return notFound("area effect");
-      if (areaEffectStage(effect) === "called") return reject("invalid", "Wait for the damage roll, or take the call over");
+      if (areaEffectStage(effect) === "called") return reject("invalid", sharedMsg("reject.waitForDamage"));
       const targetIds = new Set(effect.targets.map((t) => t.tokenId));
       const seen = new Set<string>();
       for (const row of command.rows) {
-        if (!targetIds.has(row.tokenId)) return reject("invalid", "Only the effect's targets can be resolved");
-        if (seen.has(row.tokenId)) return reject("invalid", "Each target can be resolved once");
+        if (!targetIds.has(row.tokenId)) return reject("invalid", sharedMsg("reject.notATarget"));
+        if (seen.has(row.tokenId)) return reject("invalid", sharedMsg("reject.targetResolved"));
         seen.add(row.tokenId);
       }
       const addsConditions = command.rows.some((row) => row.addConditions.length > 0);
@@ -899,7 +902,7 @@ export function decide(
         const added = row.addConditions.filter((c) => !token.conditions.includes(c));
         if (added.length > 0) {
           const conditions: ConditionId[] = [...token.conditions, ...new Set(added)];
-          if (conditions.length > 12) return reject("invalid", `${token.name} can't hold more than 12 conditions`);
+          if (conditions.length > 12) return reject("invalid", sharedMsg("reject.tooManyConditions", { token: token.name }));
           changes.push({ type: "TokenConditionsSet", tokenId: token.id, conditions, previous: token.conditions });
         }
       }
@@ -916,21 +919,21 @@ export function decide(
     case "room.setReducedEffects": {
       if (!can.administer(actor)) return forbidden();
       const previous = state.reducedEffects ?? false;
-      if (previous === command.enabled) return reject("invalid", command.enabled ? "Reduced animations are already on" : "Reduced animations are already off");
+      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.reducedAnimationsOn" : "reject.reducedAnimationsOff"));
       return accept({ type: "ReducedEffectsSet", enabled: command.enabled, previous });
     }
 
     case "room.setAutoRemoveDefeated": {
       if (!can.administer(actor)) return forbidden();
       const previous = state.autoRemoveDefeated ?? true;
-      if (previous === command.enabled) return reject("invalid", command.enabled ? "Automatic removal is already on" : "Automatic removal is already off");
+      if (previous === command.enabled) return reject("invalid", sharedMsg(command.enabled ? "reject.autoRemoveOn" : "reject.autoRemoveOff"));
       return accept({ type: "AutoRemoveDefeatedSet", enabled: command.enabled, previous });
     }
 
     case "room.setJoinsLocked": {
       if (!can.administer(actor)) return forbidden();
       const previous = state.joinsLocked ?? false;
-      if (previous === command.locked) return reject("invalid", command.locked ? "The room is already locked" : "The room is already unlocked");
+      if (previous === command.locked) return reject("invalid", sharedMsg(command.locked ? "reject.roomAlreadyLocked" : "reject.roomAlreadyUnlocked"));
       return accept({ type: "JoinsLockSet", locked: command.locked, previous });
     }
 
@@ -940,7 +943,7 @@ export function decide(
       if (off) return off;
       const map = state.scene.map;
       if (map && (command.origin.x < 0 || command.origin.y < 0 || command.origin.x > map.width || command.origin.y > map.height)) {
-        return reject("invalid", "Aim the nuke at a point on the map");
+        return reject("invalid", sharedMsg("reject.nukeOffMap"));
       }
       // Hidden and fogged tokens fall too; the filters decide who hears about each (ADR 0038).
       const damaged: DomainEvent[] = [];
@@ -963,12 +966,12 @@ export function decide(
       // Only the GM hides things from players, as with hidden tokens and GM-only rolls.
       if (command.gmOnly && !can.administer(actor)) return forbidden();
       if (Object.keys(state.templates).length >= MAX_AREA_TEMPLATES) {
-        return reject("invalid", `A room can hold at most ${MAX_AREA_TEMPLATES} area templates. Remove some first.`);
+        return reject("invalid", sharedMsg("reject.tooManyTemplates", { max: MAX_AREA_TEMPLATES }));
       }
       // A width only means something on a line, and at most 10 cells of this room's grid (KAN-35).
       const width = command.shape === "line" ? command.width : undefined;
       if (width !== undefined && width > MAX_LINE_WIDTH_CELLS * state.scene.grid.unitsPerCell) {
-        return reject("invalid", `A line is at most ${MAX_LINE_WIDTH_CELLS * state.scene.grid.unitsPerCell} ${state.scene.grid.unitLabel} wide.`);
+        return reject("invalid", sharedMsg("reject.lineTooWide", { width: MAX_LINE_WIDTH_CELLS * state.scene.grid.unitsPerCell, unit: state.scene.grid.unitLabel }));
       }
       return accept({
         type: "TemplatePlaced",
@@ -997,11 +1000,11 @@ export function decide(
     case "fog.add": {
       if (!can.administer(actor)) return forbidden();
       if (Object.keys(state.fog).length >= MAX_FOG_REGIONS) {
-        return reject("invalid", `A room can hold at most ${MAX_FOG_REGIONS} fog regions. Remove some first.`);
+        return reject("invalid", sharedMsg("reject.tooManyFog", { max: MAX_FOG_REGIONS }));
       }
       const points = fogPoints(command.region);
       // A line or a point conceals nothing and can't be clicked to remove; refuse it.
-      if (Math.abs(polygonArea(points)) < 1) return reject("invalid", "A fog region needs some area.");
+      if (Math.abs(polygonArea(points)) < 1) return reject("invalid", sharedMsg("reject.fogNoArea"));
       return accept({ type: "FogAdded", region: { id: ctx.newId(), shape: command.region.shape, points } });
     }
 
@@ -1010,10 +1013,10 @@ export function decide(
       const removed = [...new Set(command.removeIds)].map((id) => state.fog[id]);
       if (removed.some((region) => !region)) return notFound("fog region");
       if (Object.keys(state.fog).length - removed.length + command.add.length > MAX_FOG_REGIONS) {
-        return reject("invalid", `A room can hold at most ${MAX_FOG_REGIONS} fog regions. Remove some first.`);
+        return reject("invalid", sharedMsg("reject.tooManyFog", { max: MAX_FOG_REGIONS }));
       }
       const added = command.add.map((region) => ({ shape: region.shape, points: fogPoints(region) }));
-      if (added.some((region) => Math.abs(polygonArea(region.points)) < 1)) return reject("invalid", "A fog region needs some area.");
+      if (added.some((region) => Math.abs(polygonArea(region.points)) < 1)) return reject("invalid", sharedMsg("reject.fogNoArea"));
       return accept(
         ...removed.map((region) => ({ type: "FogRemoved" as const, region: region! })),
         ...added.map((region) => ({ type: "FogAdded" as const, region: { id: ctx.newId(), ...region } })),
@@ -1030,18 +1033,18 @@ export function decide(
     case "wall.applyDetected": {
       if (!can.administer(actor)) return forbidden();
       const map = state.scene.map;
-      if (!map || map.url !== command.mapUrl) return reject("invalid", "Those walls were detected for a different map.");
+      if (!map || map.url !== command.mapUrl) return reject("invalid", sharedMsg("reject.detectedWallsOtherMap"));
       const result = ctx.detectedWalls?.(command.mapUrl) ?? null;
-      if (!result) return reject("invalid", "No detected walls are ready for this map.");
+      if (!result) return reject("invalid", sharedMsg("reject.detectedWallsNotReady"));
       const detected = result.walls;
-      if (detected.length === 0) return reject("invalid", "No walls were detected on this map.");
-      if (detected.length > MAX_WALLS || !wallsFitMap(detected, map)) return reject("invalid", "The detected walls don't fit this map.");
+      if (detected.length === 0) return reject("invalid", sharedMsg("reject.noWallsDetected"));
+      if (detected.length > MAX_WALLS || !wallsFitMap(detected, map)) return reject("invalid", sharedMsg("reject.detectedWallsDontFit"));
       const { exclude } = command;
-      if (exclude && exclude.resultId !== result.resultId) return reject("invalid", "The detected walls changed. Check the preview again.");
+      if (exclude && exclude.resultId !== result.resultId) return reject("invalid", sharedMsg("reject.detectedWallsChanged"));
       const erased = new Set(exclude?.indices);
-      if (exclude && [...erased].some((i) => i >= detected.length)) return reject("invalid", "The detected walls changed. Check the preview again.");
+      if (exclude && [...erased].some((i) => i >= detected.length)) return reject("invalid", sharedMsg("reject.detectedWallsChanged"));
       const kept = detected.filter((_, i) => !erased.has(i));
-      if (kept.length === 0) return reject("invalid", "Every detected wall was erased.");
+      if (kept.length === 0) return reject("invalid", sharedMsg("reject.allDetectedErased"));
       const walls: Wall[] = kept.map((w) => ({ id: ctx.newId(), a: w.a, b: w.b, ...(w.portal ? { portal: w.portal } : {}) }));
       // Applying replaces: one action, so one undo puts the old walls back.
       return accept(...removeAllWalls(state), { type: "WallsAdded", walls });
@@ -1050,12 +1053,12 @@ export function decide(
     case "wall.add": {
       if (!can.administer(actor)) return forbidden();
       const map = state.scene.map;
-      if (!map) return reject("invalid", "Set a map before drawing walls.");
-      if (command.walls.some((w) => w.a.x === w.b.x && w.a.y === w.b.y)) return reject("invalid", "A wall needs two different ends.");
-      if (!wallsFitMap(command.walls, map)) return reject("invalid", "Walls must lie on the map.");
+      if (!map) return reject("invalid", sharedMsg("reject.wallsNeedMap"));
+      if (command.walls.some((w) => w.a.x === w.b.x && w.a.y === w.b.y)) return reject("invalid", sharedMsg("reject.wallZeroLength"));
+      if (!wallsFitMap(command.walls, map)) return reject("invalid", sharedMsg("reject.wallOffMap"));
       const walls = removePortalOverlaps([...command.walls, ...wallsOf(state).filter((w) => hasPortalBounds(w))]).filter((w) => !("id" in w));
       if (Object.keys(state.walls).length + walls.length > MAX_WALLS) {
-        return reject("invalid", `A room can hold at most ${MAX_WALLS} walls. Remove some first.`);
+        return reject("invalid", sharedMsg("reject.tooManyWalls", { max: MAX_WALLS }));
       }
       return walls.length ? accept({ type: "WallsAdded", walls: walls.map((w) => ({ ...w, id: ctx.newId() })) }) : accept();
     }
@@ -1065,8 +1068,8 @@ export function decide(
       const previous = Object.hasOwn(state.walls, command.wall.id) ? state.walls[command.wall.id] : undefined;
       if (!previous) return notFound("wall");
       const map = state.scene.map;
-      if (!map || !wallsFitMap([command.wall], map)) return reject("invalid", "Walls must lie on the map.");
-      if (command.wall.a.x === command.wall.b.x && command.wall.a.y === command.wall.b.y) return reject("invalid", "A wall needs two different ends.");
+      if (!map || !wallsFitMap([command.wall], map)) return reject("invalid", sharedMsg("reject.wallOffMap"));
+      if (command.wall.a.x === command.wall.b.x && command.wall.a.y === command.wall.b.y) return reject("invalid", sharedMsg("reject.wallZeroLength"));
       const portals = wallsOf(state).filter((w) => w.id !== command.wall.id && hasPortalBounds(w));
       if (hasPortalBounds(command.wall)) portals.push(command.wall);
       const removed: Wall[] = [], added: Wall[] = [];
@@ -1079,9 +1082,9 @@ export function decide(
       }
       // A moved solid wall also cannot duplicate a portal's gap.
       if (!hasPortalBounds(command.wall) && !sameValue(removePortalOverlaps([command.wall, ...portals]).filter((w) => !hasPortalBounds(w)), [command.wall])) {
-        return reject("invalid", "That wall overlaps a portal. Draw separate wall segments around the portal bounds.");
+        return reject("invalid", sharedMsg("reject.wallOverlapsPortal"));
       }
-      if (Object.keys(state.walls).length - removed.length + added.length > MAX_WALLS) return reject("invalid", `Portal normalization would exceed ${MAX_WALLS} walls.`);
+      if (Object.keys(state.walls).length - removed.length + added.length > MAX_WALLS) return reject("invalid", sharedMsg("reject.portalWallLimit", { max: MAX_WALLS }));
       return accept({ type: "WallUpdated", wall: command.wall, previous },
         ...(removed.length ? [{ type: "WallsRemoved" as const, walls: removed }] : []),
         ...(added.length ? [{ type: "WallsAdded" as const, walls: added }] : []));
@@ -1107,7 +1110,7 @@ export function decide(
       const wall = Object.hasOwn(state.walls, command.wallId) ? state.walls[command.wallId] : undefined;
       if (!wall) return notFound("wall");
       const from = wall.portal ?? null;
-      if (samePortal(from, command.portal)) return reject("invalid", "That wall is already like that.");
+      if (samePortal(from, command.portal)) return reject("invalid", sharedMsg("reject.wallUnchanged"));
       return accept({ type: "PortalChanged", wallId: wall.id, from, to: command.portal });
     }
 
@@ -1118,8 +1121,8 @@ export function decide(
       // A plain wall, a missing one and a portal under fog read the same to a player.
       if (!wall?.portal || portalConcealedFrom(concealmentFor(state, actor), wall, actor)) return notFound("portal");
       const from = wall.portal;
-      if (from.state === "locked" && !can.administer(actor)) return reject("invalid", `That ${from.kind} is locked.`);
-      if (from.state === command.state) return reject("invalid", `That ${from.kind} is already ${command.state}.`);
+      if (from.state === "locked" && !can.administer(actor)) return reject("invalid", sharedMsg("reject.portalLocked", { kind: portalNoun(from.kind) }));
+      if (from.state === command.state) return reject("invalid", sharedMsg("reject.portalAlready", { kind: portalNoun(from.kind), state: sharedMsg(PORTAL_STATE[command.state]) }));
       return accept({ type: "PortalChanged", wallId: wall.id, from, to: { ...from, state: command.state } });
     }
 
@@ -1143,7 +1146,7 @@ export function decide(
         return current ? accept({ type: "ParticipantDiceLookSet", participantId: actor.id, look: null, previous: current }) : accept();
       }
       const owned = ctx.ownedDiceLook ?? null;
-      if (!owned || owned.lookId !== command.lookId) return reject("forbidden", "You can only use your own dice looks.");
+      if (!owned || owned.lookId !== command.lookId) return reject("forbidden", sharedMsg("reject.notYourDiceLook"));
       if (current?.lookId === owned.lookId && current.version === owned.version) return accept();
       return accept({ type: "ParticipantDiceLookSet", participantId: actor.id, look: owned, previous: current });
     }
@@ -1152,8 +1155,8 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       const target = state.participants[command.participantId];
       if (!target) return notFound("participant");
-      if (target.id === actor.id) return reject("invalid", "Choose Classic in your Dice panel to change your own dice.");
-      if (!isActive(target)) return reject("invalid", `${target.displayName} is no longer in this room.`);
+      if (target.id === actor.id) return reject("invalid", sharedMsg("reject.chooseClassic"));
+      if (!isActive(target)) return reject("invalid", sharedMsg("reject.participantGone", { name: target.displayName }));
       if (!target.diceLook) return accept();
       return accept({ type: "ParticipantDiceLookSet", participantId: target.id, look: null, previous: target.diceLook });
     }
@@ -1161,7 +1164,7 @@ export function decide(
     case "participant.leave":
       // The room would be left without anyone who can administer it. The GM's way out is
       // the Home link, which only closes their socket (ADR 0006).
-      if (can.administer(actor)) return reject("invalid", "The GM can't leave their own room.");
+      if (can.administer(actor)) return reject("invalid", sharedMsg("reject.gmCantLeave"));
       return accept({ type: "ParticipantLeft", participant: actor });
 
     case "participant.revoke": {
@@ -1205,7 +1208,7 @@ export function decide(
     case "history.undo": {
       if (!can.administer(actor)) return forbidden();
       const entry = undoableAction(state.undo, command.commandId);
-      if (!entry) return reject("invalid", "That action can no longer be undone.");
+      if (!entry) return reject("invalid", sharedMsg("reject.undoExpired"));
       // Never clobber a newer change: refuse unless every value the action set is still current.
       const conflict = undoConflict(state, entry);
       if (conflict) return reject("invalid", conflict);
@@ -1216,10 +1219,10 @@ export function decide(
     case "checkpoint.create": {
       if (!can.administer(actor)) return forbidden();
       const name = command.name.trim();
-      if (!name) return reject("invalid", "Give the checkpoint a name.");
-      if (name.length > MAX_CHECKPOINT_NAME) return reject("invalid", `Checkpoint names are at most ${MAX_CHECKPOINT_NAME} characters.`);
-      if (state.checkpoints.some((checkpoint) => checkpoint.name.trim().toLowerCase() === name.toLowerCase())) return reject("invalid", "A checkpoint with this name already exists in this room. Choose another name.");
-      if (ctx.lastSeq === undefined) return reject("invalid", "Checkpoints can't be saved here.");
+      if (!name) return reject("invalid", sharedMsg("reject.checkpointNameBlank"));
+      if (name.length > MAX_CHECKPOINT_NAME) return reject("invalid", sharedMsg("reject.checkpointNameTooLong", { max: MAX_CHECKPOINT_NAME }));
+      if (state.checkpoints.some((checkpoint) => checkpoint.name.trim().toLowerCase() === name.toLowerCase())) return reject("invalid", sharedMsg("reject.checkpointNameTaken"));
+      if (ctx.lastSeq === undefined) return reject("invalid", sharedMsg("reject.checkpointsUnavailable"));
       return accept({ type: "CheckpointCreated", checkpoint: { id: ctx.newId(), name, seq: ctx.lastSeq } });
     }
 
@@ -1234,9 +1237,9 @@ export function decide(
       if (!can.administer(actor)) return forbidden();
       // A template that is another account's reads exactly like one that does not exist.
       const encounter = ctx.encounterTemplate?.(command.templateId) ?? null;
-      if (!encounter) return reject("invalid", "That encounter template isn't available.");
+      if (!encounter) return reject("invalid", sharedMsg("reject.templateUnavailable"));
       if (command.keepMapSetup && !sameMapAndGrid(state.scene, encounter.scene)) {
-        return reject("invalid", "Keeping this map's setup needs the room to be on the template's map and grid.");
+        return reject("invalid", sharedMsg("reject.keepSetupNeedsSameMap"));
       }
       // A template saved in another game's room loads without the features this room has off (KAN-63).
       const table = tableForPreset(encounterTable(encounter, ctx.newId), presetOf(state));
@@ -1265,7 +1268,7 @@ export function decide(
       const checkpoint = state.checkpoints.find((c) => c.id === command.checkpointId);
       if (!checkpoint) return notFound("checkpoint");
       const restored = ctx.checkpointTable?.(checkpoint.id) ?? null;
-      if (!restored) return reject("invalid", `Checkpoint "${checkpoint.name}" can't be restored right now.`);
+      if (!restored) return reject("invalid", sharedMsg("reject.checkpointRestoreUnavailable", { name: checkpoint.name }));
       return accept({ type: "CheckpointRestored", checkpointId: checkpoint.id, name: checkpoint.name, restored, previous: tableOf(state) });
     }
   }
@@ -1278,22 +1281,22 @@ export function decide(
 function resolveDeparture(state: RoomState, participantId: string, actions: DepartureAction[]): Decision {
   const departed = state.participants[participantId];
   if (!departed) return notFound("participant");
-  if (isActive(departed)) return reject("invalid", `${departed.displayName} hasn't left the room.`);
+  if (isActive(departed)) return reject("invalid", sharedMsg("reject.notDeparted", { name: departed.displayName }));
 
   const seen = new Set<string>();
   for (const a of actions) {
-    if (seen.has(a.tokenId)) return reject("invalid", "A token appears twice in the resolution");
+    if (seen.has(a.tokenId)) return reject("invalid", sharedMsg("reject.resolutionDuplicate"));
     seen.add(a.tokenId);
     const token = state.tokens[a.tokenId];
     if (!token) return notFound("token");
     if (!token.ownerIds.includes(departed.id)) {
-      return reject("invalid", `${token.name} is no longer owned by ${departed.displayName}.`);
+      return reject("invalid", sharedMsg("reject.noLongerOwned", { token: token.name, name: departed.displayName }));
     }
     if (a.action === "reassign") {
       const to = state.participants[a.to];
       if (!to) return notFound("participant");
       if (to.role !== "player" || !isActive(to)) {
-        return reject("invalid", `${to.displayName} can't be given tokens: choose a player who is still in the room.`);
+        return reject("invalid", sharedMsg("reject.cantGiveTokens", { name: to.displayName }));
       }
     }
   }
@@ -1326,8 +1329,8 @@ function resolveDeparture(state: RoomState, participantId: string, actions: Depa
 function checkOwners(state: RoomState, ownerIds: string[]): Decision | null {
   for (const id of ownerIds) {
     const owner = state.participants[id];
-    if (!owner) return reject("not_found", `Unknown participant ${id}`);
-    if (!isActive(owner)) return reject("invalid", `${owner.displayName} has left the room.`);
+    if (!owner) return reject("not_found", sharedMsg("reject.unknownParticipant", { id }));
+    if (!isActive(owner)) return reject("invalid", sharedMsg("reject.ownerLeft", { name: owner.displayName }));
   }
   return null;
 }
@@ -1432,11 +1435,11 @@ function fogPoints(region: Extract<Command, { type: "fog.add" }>["region"]): Poi
 }
 
 /** Why `name` can't name a group, or null (KAN-82): blank, too long, or another group's. */
-export function groupNameProblem(state: RoomState, name: string, exceptId?: string): string | null {
-  if (!name) return "Give the group a name.";
-  if (name.length > MAX_GROUP_NAME) return `Group names are at most ${MAX_GROUP_NAME} characters.`;
+export function groupNameProblem(state: RoomState, name: string, exceptId?: string): MessageRef | null {
+  if (!name) return sharedMsg("reject.groupNameBlank");
+  if (name.length > MAX_GROUP_NAME) return sharedMsg("reject.groupNameTooLong", { max: MAX_GROUP_NAME });
   const taken = Object.values(state.groups).some((g) => g.id !== exceptId && normalizeName(g.name) === normalizeName(name));
-  return taken ? `There is already a group named "${name}".` : null;
+  return taken ? sharedMsg("reject.groupNameTaken", { name }) : null;
 }
 
 /** Keep persisted angles compact while accepting any finite angle from clients. */
@@ -1480,7 +1483,7 @@ export function isDisplayNameTaken(state: RoomState, name: string, exceptId?: st
 export type JoinRejectionReason = "blank" | "room_locked" | "room_full" | "name_taken";
 export type JoinDecision =
   | { ok: true; events: DomainEvent[] }
-  | { ok: false; code: RejectionCode; message: string; reason: JoinRejectionReason };
+  | { ok: false; code: RejectionCode; message: string; text: MessageRef; reason: JoinRejectionReason };
 
 /**
  * Joining is an unauthenticated HTTP action with no actor, so it isn't a `Command`; this is its
@@ -1490,13 +1493,13 @@ export type JoinDecision =
  */
 export function decideJoin(state: RoomState, participant: Participant): JoinDecision {
   const displayName = participant.displayName.trim();
-  if (!displayName) return { ok: false, code: "invalid", message: BLANK_NAME, reason: "blank" };
-  if (state.joinsLocked) return { ok: false, code: "invalid", message: ROOM_LOCKED_MESSAGE, reason: "room_locked" };
+  if (!displayName) return { ok: false, code: "invalid", message: englishText(BLANK_NAME), text: BLANK_NAME, reason: "blank" };
+  if (state.joinsLocked) return { ok: false, code: "invalid", message: englishText(ROOM_LOCKED_MESSAGE), text: ROOM_LOCKED_MESSAGE, reason: "room_locked" };
   if (activePlayerCount(state) >= MAX_PLAYERS_PER_ROOM) {
-    return { ok: false, code: "invalid", message: ROOM_FULL_MESSAGE, reason: "room_full" };
+    return { ok: false, code: "invalid", message: englishText(ROOM_FULL_MESSAGE), text: ROOM_FULL_MESSAGE, reason: "room_full" };
   }
   if (isDisplayNameTaken(state, displayName)) {
-    return { ok: false, code: "invalid", message: nameTaken(displayName), reason: "name_taken" };
+    return { ok: false, code: "invalid", message: englishText(nameTaken(displayName)), text: nameTaken(displayName), reason: "name_taken" };
   }
   return { ok: true, events: [{ type: "ParticipantJoined", participant: { ...participant, displayName } }] };
 }
@@ -1504,9 +1507,9 @@ export function decideJoin(state: RoomState, participant: Participant): JoinDeci
 /** Why the GM can't remove this participant, or null when they can (FR-GM-20). */
 function revokeRefusal(target: Participant | undefined, actor: Participant): Decision | null {
   if (!target) return notFound("participant");
-  if (target.id === actor.id) return reject("invalid", "You can't remove yourself.");
-  if (target.role === "gm") return reject("invalid", "The GM can't be removed.");
-  if (!isActive(target)) return reject("invalid", `${target.displayName} is no longer in the room.`);
+  if (target.id === actor.id) return reject("invalid", sharedMsg("reject.cantRemoveSelf"));
+  if (target.role === "gm") return reject("invalid", sharedMsg("reject.cantRemoveGm"));
+  if (!isActive(target)) return reject("invalid", sharedMsg("reject.participantNotInRoom", { name: target.displayName }));
   return null;
 }
 
@@ -1515,10 +1518,10 @@ export function activePlayerCount(state: RoomState) {
   return Object.values(state.participants).filter((p) => p.role === "player" && isActive(p)).length;
 }
 
-const BLANK_NAME = "Display name can't be blank.";
-const ROOM_FULL_MESSAGE = `This room is full: it holds ${MAX_PLAYERS_PER_ROOM} players. Ask the GM for a seat.`;
-const ROOM_LOCKED_MESSAGE = "This room is locked, so no one new can join. Ask the GM to unlock it.";
-const nameTaken = (name: string) => `The name "${name}" is already taken in this room. Choose another name.`;
+const BLANK_NAME = sharedMsg("reject.displayNameBlank");
+const ROOM_FULL_MESSAGE = sharedMsg("reject.roomFull", { max: MAX_PLAYERS_PER_ROOM });
+const ROOM_LOCKED_MESSAGE = sharedMsg("reject.roomLocked");
+const nameTaken = (name: string) => sharedMsg("reject.displayNameTaken", { name });
 
 /**
  * Next turn. Wrapping past the last entry starts a new round (FR-GM-21).
@@ -1547,7 +1550,7 @@ function rollForTokens(
   input: string,
   ctx: DecideContext,
 ): { ok: true; expression: string; entries: GroupRollEntry[] } | { ok: false; refusal: Decision } {
-  if (new Set(tokenIds).size !== tokenIds.length) return { ok: false, refusal: reject("invalid", "Choose each token once") };
+  if (new Set(tokenIds).size !== tokenIds.length) return { ok: false, refusal: reject("invalid", sharedMsg("reject.chooseEachOnce")) };
   const tokens: Token[] = [];
   for (const id of tokenIds) {
     const token = state.tokens[id];
@@ -1555,9 +1558,9 @@ function rollForTokens(
     tokens.push(token);
   }
   const parsed = parseDiceExpression(input);
-  if (!parsed.ok) return { ok: false, refusal: reject("invalid", parsed.message) };
+  if (!parsed.ok) return { ok: false, refusal: reject("invalid", parsed.text) };
   const random = ctx.random;
-  if (!random) return { ok: false, refusal: reject("invalid", "Dice are unavailable") };
+  if (!random) return { ok: false, refusal: reject("invalid", sharedMsg("reject.diceUnavailable")) };
   const expression: DiceExpression = parsed.expression;
   const entries = tokens.map((t) => ({
     tokenId: t.id,
@@ -1570,9 +1573,9 @@ function rollForTokens(
 
 function presetRefusal(state: RoomState, uses: { attacks?: boolean; conditions?: boolean; ac?: number | null }): Decision | null {
   const preset = presetOf(state);
-  if (uses.attacks && !preset.features.attacks) return reject("invalid", `Attack rolls are off in ${preset.name}.`);
-  if (uses.conditions && !preset.features.conditions) return reject("invalid", `Conditions are off in ${preset.name}.`);
-  if (uses.ac != null && !preset.features.armorClass) return reject("invalid", `AC is off in ${preset.name}.`);
+  if (uses.attacks && !preset.features.attacks) return reject("invalid", sharedMsg("reject.presetNoAttacks", { preset: presetLabel(preset) }));
+  if (uses.conditions && !preset.features.conditions) return reject("invalid", sharedMsg("reject.presetNoConditions", { preset: presetLabel(preset) }));
+  if (uses.ac != null && !preset.features.armorClass) return reject("invalid", sharedMsg("reject.presetNoAc", { preset: presetLabel(preset) }));
   return null;
 }
 
@@ -1596,6 +1599,25 @@ function withDefeats(state: RoomState, events: DomainEvent[]): DomainEvent[] {
 }
 
 const accept = (...events: DomainEvent[]): Decision => ({ ok: true, events });
-const reject = (code: RejectionCode, message: string): Decision => ({ ok: false, code, message });
-const forbidden = () => reject("forbidden", "You are not allowed to do that");
-const notFound = (what: string) => reject("not_found", `No such ${what}`);
+/** "door" or "window" inside a message, in the reader's language. */
+const portalNoun = (kind: Portal["kind"]) => sharedMsg(kind === "door" ? "noun.door" : "noun.window");
+const PORTAL_STATE = { open: "noun.open", closed: "noun.closed", locked: "noun.locked" } as const;
+
+/** A refusal: the message as data for the client's language, and in English for everyone else (ADR 0054). */
+const reject = (code: RejectionCode, text: MessageRef): Decision => ({ ok: false, code, message: englishText(text), text });
+const forbidden = () => reject("forbidden", sharedMsg("reject.forbidden"));
+const NOT_FOUND = {
+  "area effect": "reject.notFound.areaEffect",
+  checkpoint: "reject.notFound.checkpoint",
+  "fog region": "reject.notFound.fogRegion",
+  group: "reject.notFound.group",
+  participant: "reject.notFound.participant",
+  portal: "reject.notFound.portal",
+  scene: "reject.notFound.scene",
+  template: "reject.notFound.template",
+  "terrain effect": "reject.notFound.terrainEffect",
+  "terrain layer": "reject.notFound.terrainLayer",
+  token: "reject.notFound.token",
+  wall: "reject.notFound.wall",
+} as const;
+const notFound = (what: keyof typeof NOT_FOUND) => reject("not_found", sharedMsg(NOT_FOUND[what]));

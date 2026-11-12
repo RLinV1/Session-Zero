@@ -1,5 +1,6 @@
 import { MapGrid } from "../../ui/MapGrid";
 import { HOME_MAPS } from "./crops";
+import { t } from "../../i18n/locale";
 
 /**
  * The asset library, described rather than linked: the rooms page is its way in (gm-dashboard).
@@ -13,10 +14,9 @@ export function LibraryStrip() {
   return (
     <section className="home-section library-strip" aria-labelledby="library-heading">
       <div className="section-copy">
-        <h3 id="library-heading">Your library comes to every room.</h3>
+        <h3 id="library-heading">{t("home.library.title")}</h3>
         <p>
-          Maps, token art, creatures and encounters are kept on your account, so they're there on any device you sign in
-          on. You'll find the library on your rooms page.
+          {t("home.library.body")}
         </p>
       </div>
       <div className="marquee">
@@ -27,7 +27,7 @@ export function LibraryStrip() {
             return (
               <li key={i} className={copy ? "marquee-copy" : undefined} aria-hidden={copy || undefined}>
                 <div className="shelf-map">
-                  <img src={m.thumb} width={m.width} height={m.height} alt={copy ? "" : `${m.name}, the whole map.`} loading="lazy" decoding="async" />
+                  <img src={m.thumb} width={m.width} height={m.height} alt={copy ? "" : t("home.library.mapAlt", { name: t(m.name) })} loading="lazy" decoding="async" />
                   <MapGrid
                     width={m.width}
                     height={m.height}
@@ -38,16 +38,16 @@ export function LibraryStrip() {
                     variant="light"
                   />
                 </div>
-                <strong>{m.name}</strong>
+                <strong>{t(m.name)}</strong>
                 <span className="readout">
-                  {m.width} × {m.height} px · {m.squares.across} × {m.squares.down} squares
+                  {t("home.library.size", { width: m.width, height: m.height, across: m.squares.across, down: m.squares.down })}
                 </span>
               </li>
             );
           })}
         </ul>
       </div>
-      <p className="figure-note">The maps on this page, as a library keeps them.</p>
+      <p className="figure-note">{t("home.library.caption")}</p>
     </section>
   );
 }

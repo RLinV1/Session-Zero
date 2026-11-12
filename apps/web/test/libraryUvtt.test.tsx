@@ -53,7 +53,7 @@ describe("UVTT upload and review in the asset library (KAN-43/44, FR-GM-06/07/12
     const editor = await screen.findByRole("dialog", { name: "Edit map" });
     expect(upload).toHaveBeenCalledWith(selected); expect(size).not.toHaveBeenCalled();
     expect(within(editor).getByText(/Imported map saved to your library/)).toBeTruthy();
-    expect(within(editor).getByText("1 import warnings")).toBeTruthy();
+    expect(within(editor).getByText("1 import warning")).toBeTruthy();
     expect(within(editor).getByDisplayValue("12.5")).toBeTruthy();
     fireEvent.change(within(editor).getByLabelText("Distance per square"), { target: { value: "10" } });
     fireEvent.click(within(editor).getByRole("tab", { name: /· Walls$/ }));
@@ -64,7 +64,7 @@ describe("UVTT upload and review in the asset library (KAN-43/44, FR-GM-06/07/12
     fireEvent.click(within(editor).getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(api.library.savePreparation).toHaveBeenCalledWith(asset.id, expect.objectContaining({ board: { walls: [{ ...board.walls[0], uvttPortal: { ...board.walls[0]!.uvttPortal, closed: true } }], fog: [] } })));
     await waitFor(() => expect(api.library.savePreparation).toHaveBeenCalledWith(asset.id, expect.objectContaining({ grid: { ...asset.grid, unitsPerCell: 10 } })));
-    expect(within(editor).getByText("1 import warnings")).toBeTruthy();
+    expect(within(editor).getByText("1 import warning")).toBeTruthy();
     expect(saveGrid).not.toHaveBeenCalled();
     expect(editor.hasAttribute("open")).toBe(true);
     expect(input.disabled).toBe(false);

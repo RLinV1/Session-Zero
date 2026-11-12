@@ -14,13 +14,14 @@ import { TerrainSetup } from "./TerrainSetup";
 import { WallSetup } from "./WallSetup";
 import type { MapDraft } from "./mapDraft";
 import { boardChanged, boardFromDraft, draftFromBoard } from "./libraryBoardDraft";
+import { t, type TextId } from "../../i18n/locale";
 
 type Step = "grid" | "walls" | "fog" | "terrain";
-const STEPS: { key: Step; label: string }[] = [
-  { key: "grid", label: "1 · Grid" },
-  { key: "walls", label: "2 · Walls" },
-  { key: "fog", label: "3 · Fog" },
-  { key: "terrain", label: "4 · Terrain" },
+const STEPS: { key: Step; label: TextId }[] = [
+  { key: "grid", label: "editor.step.grid" },
+  { key: "walls", label: "editor.step.walls" },
+  { key: "fog", label: "editor.step.fog" },
+  { key: "terrain", label: "editor.step.terrain" },
 ];
 interface Props {
   asset: LibraryAsset | null;
@@ -63,7 +64,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
     let live = true;
     api.library.preparation(asset.id).then(
       (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(normalizeLegacyGridForBoard(preparation.grid, asset))); } } },
-      (err: unknown) => { if (live) setLoadError(err instanceof Error ? err.message : "Could not load this map's walls and fog"); },
+      (err: unknown) => { if (live) setLoadError(err instanceof Error ? err.message : t("editor.loadFailed")); },
     );
     return () => { live = false; active.current = false; };
   }, [asset.id, asset.url]);
@@ -85,7 +86,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const applyGridDraft = (next: typeof gridDraft) => {
     const parsed = parseGridDraft(next, asset);
     if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.base.length || (stored?.terrain?.length && !resetTerrain))) {
-      if (!window.confirm("Reset base terrain and apply this grid change? Cancel keeps the current grid and terrain.")) return;
+      if (!window.confirm(t("editor.resetTerrainConfirm"))) return;
       setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: emptyTerrain() } : current);
     }
     setGridDraft(next); setSaveError(null);
@@ -99,20 +100,20 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const save = async (): Promise<LibraryAsset | null> => {
     suggestionSession.blocked = true;
     if (busy.current) return null;
-    if (!parsedGrid) { setSaveError("Fix the grid before saving your changes."); return null; }
+    if (!parsedGrid) { setSaveError(t("editor.fixGrid")); return null; }
     busy.current = true;
     setSaving(true);
     setSaveError(null);
     let updated = savedAsset;
     try {
-      if (!draft || !revision) { setSaveError("Wait for map preparation to load before saving."); return null; }
+      if (!draft || !revision) { setSaveError(t("editor.waitPreparation")); return null; }
       const preparation = await api.library.savePreparation(asset.id, { grid: parsedGrid, board: boardFromDraft(draft), revision, resetTerrain });
       if (!active.current) return null;
       updated = { ...savedAsset, grid: preparation.grid };
       setRevision(preparation.revision); setStored(preparation.board); setSavedAsset(updated); setResetTerrain(false); onSaved(updated);
       return updated;
     } catch (err) {
-      if (active.current) setSaveError(err instanceof Error ? err.message : "Could not save map changes");
+      if (active.current) setSaveError(err instanceof Error ? err.message : t("editor.saveFailed"));
       return null;
     } finally {
       busy.current = false;
@@ -128,15 +129,15 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   };
 
   return <>
-    <Modal open title={savedAsset.grid ? "Edit map" : "Set up map"} className={`map-editor${waiting ? " is-preparing" : ""}`} onClose={close}
-      closeLabel={waiting ? "Set up manually" : "Close"}
-      headerContent={!waiting && <nav className="map-editor-steps" role="tablist" aria-label="Map setup steps">
-        {STEPS.map(({ key, label }) => <button key={key} type="button" role="tab" aria-selected={step === key}
-          className="map-editor-step" disabled={saving} onClick={() => setStep(key)}>{label}</button>)}
+    <Modal open title={savedAsset.grid ? t("editor.title.edit") : t("editor.title.setUp")} className={`map-editor${waiting ? " is-preparing" : ""}`} onClose={close}
+      closeLabel={waiting ? t("editor.setUpManually") : t("common.close")}
+      headerContent={!waiting && <nav className="map-editor-steps" role="tablist" aria-label={t("editor.steps")}>
+        {STEPS.map(({ key, label }, i) => <button key={key} type="button" role="tab" aria-selected={step === key}
+          className="map-editor-step" disabled={saving} onClick={() => setStep(key)}>{t("editor.stepLabel", { n: i + 1, name: t(label) })}</button>)}
         {dirty && <span className="map-editor-unsaved">
-          <span className="map-editor-draft">Unsaved changes: not saved to this map yet</span>
-          <button type="button" className="secondary small" disabled={saving} onClick={discard}>Discard</button>
-          <button type="button" className="small primary" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button>
+          <span className="map-editor-draft">{t("editor.unsaved")}</span>
+          <button type="button" className="secondary small" disabled={saving} onClick={discard}>{t("common.discard")}</button>
+          <button type="button" className="small primary" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? t("common.saving") : t("common.saveChanges")}</button>
         </span>}
         {saveError && !prompt && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
       </nav>}>
@@ -144,8 +145,8 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
       {waiting ? <GridPreparation label={preparation.label} onSkip={preparation.skip} /> :
       <div className="map-editor-shell"><div className="map-editor-body" role="tabpanel" inert={saving || !revision}>
         <GuideStepContext.Provider value={step}>
-        {importDiagnostics && <p className="muted">Imported map saved to your library. Review its grid and geometry below.</p>}
-        {importDiagnostics && importDiagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{importDiagnostics.length} import warnings</summary><ul>{importDiagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
+        {importDiagnostics && <p className="muted">{t("editor.imported")}</p>}
+        {importDiagnostics && importDiagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{t("editor.importWarnings", { n: importDiagnostics.length })}</summary><ul>{importDiagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
         {step === "grid" && <HudLayout className="map-editor-grid"><GridForm
           grid={savedAsset.grid ?? DEFAULT_GRID} map={asset} draft={gridDraft} hasDraft={gridDirty}
           onChange={applyGridDraft} onCancel={discard}
@@ -157,22 +158,22 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
           onUseSuggestion={(candidate) => applyGridDraft(withGridSuggestion(gridDraft, candidate))}
           allowUnchanged={!savedAsset.grid}
         /></HudLayout>}
-        {step !== "grid" && !loadError && !state && <p className="muted">Loading…</p>}
+        {step !== "grid" && !loadError && !state && <p className="muted">{t("common.loading")}</p>}
         {step === "walls" && state && <WallSetup connection={connection} state={state} token="" detection={false} />}
         {step === "fog" && state && <FogSetup connection={connection} state={state} />}
         {step === "terrain" && state && <TerrainSetup connection={connection} state={state} layers={false} />}
         </GuideStepContext.Provider>
       </div></div>}
     </Modal>
-    <Modal open={prompt} title="Save changes?" onClose={() => { if (!busy.current) setPrompt(false); }}>
+    <Modal open={prompt} title={t("common.saveChangesQ")} onClose={() => { if (!busy.current) setPrompt(false); }}>
       <div className="stack">
-        <p>This map has changes you haven't saved. Save the grid, walls and fog, or discard them?</p>
+        <p>{t("editor.unsavedBody")}</p>
         {saveError && <p role="alert" className="error">{saveError}</p>}
-        {!parsedGrid && <p className="error">Fix the grid before saving your changes.</p>}
+        {!parsedGrid && <p className="error">{t("editor.fixGrid")}</p>}
         <div className="row button-row">
-          <button type="button" className="primary" disabled={saving || !parsedGrid || !revision} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? "Saving…" : "Save"}</button>
-          <button type="button" className="secondary" disabled={saving} onClick={() => onClose(savedAsset)}>Discard</button>
-          <button type="button" className="secondary" disabled={saving} onClick={() => setPrompt(false)}>Keep editing</button>
+          <button type="button" className="primary" disabled={saving || !parsedGrid || !revision} onClick={async () => { const saved = await save(); if (saved) onClose(saved); }}>{saving ? t("common.saving") : t("common.save")}</button>
+          <button type="button" className="secondary" disabled={saving} onClick={() => onClose(savedAsset)}>{t("common.discard")}</button>
+          <button type="button" className="secondary" disabled={saving} onClick={() => setPrompt(false)}>{t("common.keepEditing")}</button>
         </div>
       </div>
     </Modal>

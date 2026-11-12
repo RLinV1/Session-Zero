@@ -22,6 +22,7 @@ import { RulingsPanel } from "./RulingsPanel";
 import { TokenRoster } from "./TokenRoster";
 import { useSectionCollapse } from "../ui/PanelSection";
 import { FULL_ROOM, type RoomFeatures } from "../pages/encounterEdit/roomFeatures";
+import { t } from "../i18n/locale";
 
 /**
  * The room's side panel, composed per role and per screen size (FR-PL-03).
@@ -46,10 +47,10 @@ export const isTabId = (v: unknown): v is TabId => v === "play" || v === "tokens
 /** The panel's tabs for this role. Manage is the GM's only; a player is never offered it. */
 export function panelTabs(isGm: boolean, offered: readonly TabId[] = FULL_ROOM.tabs): { id: TabId; label: string; icon: ReactNode }[] {
   const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
-    { id: "play", label: "Play", icon: <Sword size={16} aria-hidden="true" /> },
-    { id: "tokens", label: "Tokens", icon: <UserList size={16} aria-hidden="true" /> },
-    { id: "dice", label: "Dice", icon: <DiceFive size={16} aria-hidden="true" /> },
-    ...(isGm ? [{ id: "gm" as const, label: "Manage", icon: <MapTrifold size={16} aria-hidden="true" /> }] : []),
+    { id: "play", label: t("panel.play"), icon: <Sword size={16} aria-hidden="true" /> },
+    { id: "tokens", label: t("panel.tokens"), icon: <UserList size={16} aria-hidden="true" /> },
+    { id: "dice", label: t("panel.dice"), icon: <DiceFive size={16} aria-hidden="true" /> },
+    ...(isGm ? [{ id: "gm" as const, label: t("panel.manage"), icon: <MapTrifold size={16} aria-hidden="true" /> }] : []),
   ];
   return tabs.filter((t) => offered.includes(t.id));
 }
@@ -96,7 +97,7 @@ export function PanelTabs({
   }, [tab]);
 
   return (
-    <div className={className} role="tablist" aria-label="Room panels" data-tour="panel-tabs">
+    <div className={className} role="tablist" aria-label={t("panel.rooms")} data-tour="panel-tabs">
       {tabs.map((t) => (
         <button
           key={t.id}

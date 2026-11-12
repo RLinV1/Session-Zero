@@ -1,6 +1,7 @@
 import { attackLabel, diceRollsOf, formatAttackParties, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type DiceRoll, type LoggedRoll, type Point, type RoomState, type Token } from "@vtt/shared";
 import { measure } from "../board/tools";
 
+import { getLocale, t } from "../i18n/locale";
 /**
  * Pure helpers for the Attack section (attack-targeting). The server rolls whatever `NdX+M` it
  * is sent; the dice picked here are the client's choice, never a rule.
@@ -168,12 +169,16 @@ export function presetForRoll(presets: Record<string, AttackPreset[]>, roll: Dic
   return (presets[attack.actor.tokenId] ?? []).find((p) => p.name === attack.label && p.toHit) ?? null;
 }
 
-const DAMAGE_SUFFIX = " damage";
-
-/** The label a named attack's roll carries: "Longsword", or "Longsword damage", within the 40-character limit. */
+/**
+ * The label a named attack's roll carries: "Longsword", or "Longsword damage", within the 40-character limit.
+ * The roll keeps it, so the damage wording is in the roller's language, like any text typed at the table.
+ */
 export function presetRollLabel(preset: AttackPreset, kind: AttackKind): string {
   if (kind === "toHit") return preset.name.slice(0, MAX_ATTACK_LABEL);
-  return preset.name.slice(0, MAX_ATTACK_LABEL - DAMAGE_SUFFIX.length).trimEnd() + DAMAGE_SUFFIX;
+  const full = t("attack.damageLabel", { name: preset.name });
+  if (full.length <= MAX_ATTACK_LABEL) return full;
+  const room = MAX_ATTACK_LABEL - (full.length - preset.name.length);
+  return t("attack.damageLabel", { name: preset.name.slice(0, Math.max(0, room)).trimEnd() }).slice(0, MAX_ATTACK_LABEL);
 }
 
 /** "+5 · 1d8+3": to hit as a bonus when it is a plain d20, the full expression otherwise. */
@@ -184,7 +189,7 @@ export function presetSummary(preset: AttackPreset): string {
     parts.push(count === 1 && sides === 20 ? (modifier < 0 ? `${modifier}` : `+${modifier}`) : attackExpression(preset.toHit));
   }
   if (preset.damage) parts.push(attackExpression(preset.damage));
-  if (preset.maxTargets !== undefined) parts.push(`up to ${preset.maxTargets} targets`);
+  if (preset.maxTargets !== undefined) parts.push(t("attack.upToTargets", { n: preset.maxTargets }));
   return parts.join(" · ");
 }
 
@@ -241,8 +246,8 @@ export function rollHeadline(roll: Pick<DiceRoll, "expression" | "total" | "atta
 /** Attack rolls read as what they did; see `rollHeadline` for any roll. */
 export function attackHeadline(roll: Pick<DiceRoll, "expression" | "total" | "attack">): { title: string; meta: string } {
   const attack = roll.attack;
-  const title = `${roll.total} ${attack?.kind === "damage" ? "damage" : "to hit"}`;
+  const title = t(attack?.kind === "damage" ? "attack.totalDamage" : "attack.totalToHit", { n: roll.total });
   if (!attack) return { title, meta: roll.expression };
-  const label = attackLabel(attack);
-  return { title, meta: [label, roll.expression, formatAttackParties(attack)].filter(Boolean).join(" · ") };
+  const label = attackLabel(attack, getLocale());
+  return { title, meta: [label, roll.expression, formatAttackParties(attack, getLocale())].filter(Boolean).join(" · ") };
 }

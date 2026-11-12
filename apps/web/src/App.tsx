@@ -3,6 +3,7 @@ import { HomePage } from "./pages/HomePage";
 import { AccountPage, SignInPage, SignUpPage } from "./account/AccountPages";
 import { JoinPage } from "./pages/JoinPage";
 import { PrivacyPage, TermsPage } from "./pages/PolicyPages";
+import { useDocumentTitle, useT } from "./i18n/locale";
 import { useRoute, type Route } from "./router";
 import { layerFor, useRouteLayer } from "./theme";
 import { Ambient } from "./ui/Ambient";
@@ -19,15 +20,18 @@ export function App() {
   const route = useRoute();
   // Above the Suspense boundary, so a lazy page still loading already sits on its own ground.
   useRouteLayer(route);
+  useDocumentTitle(route);
+  const t = useT();
   return (
     <>
       <Ambient layer={layerFor(route)} />
-      <Suspense fallback={<main className="centered"><p role="status">Loading…</p></main>}><RoutePage route={route} /></Suspense>
+      <Suspense fallback={<main className="centered"><p role="status">{t("common.loading")}</p></main>}><RoutePage route={route} /></Suspense>
     </>
   );
 }
 
 function RoutePage({ route }: { route: Route }) {
+  const t = useT();
   switch (route.page) {
     case "isometricLighting":
       return <IsometricLightingPage />;
@@ -60,9 +64,9 @@ function RoutePage({ route }: { route: Route }) {
       return (
         <EntryPage>
           <div className="card">
-            <h1>Page not found</h1>
-            <p className="muted">There is nothing at this address. The link may be old, or mistyped.</p>
-            <a href="/">Go home</a>
+            <h1>{t("notFound.title")}</h1>
+            <p className="muted">{t("notFound.body")}</p>
+            <a href="/">{t("notFound.home")}</a>
           </div>
         </EntryPage>
       );

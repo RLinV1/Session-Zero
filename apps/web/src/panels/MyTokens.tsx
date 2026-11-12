@@ -5,6 +5,7 @@ import { PanelSection } from "../ui/PanelSection";
 import { useDisplayedHealth } from "../board/nukeHealth";
 import { hpLevel } from "../ui/palette";
 import { TokenDisc } from "../ui/TokenDisc";
+import { t } from "../i18n/locale";
 
 /**
  * The player's own characters, promoted above everything else (FR-PL-03).
@@ -37,12 +38,12 @@ export function MyTokens({
   const activeId = state.initiative?.order[state.initiative.activeIndex] ?? null;
 
   return (
-    <PanelSection id="my-tokens" title="My tokens">
+    <PanelSection id="my-tokens" title={t("appGuide.myTokens.title")}>
       {mine.length === 0 ? (
         <p className="muted">
           {you.role === "gm"
-            ? "You control every token as GM."
-            : "The GM has not assigned you a token yet."}
+            ? t("mine.gmAll")
+            : t("mine.none")}
         </p>
       ) : (
       <ul className="plain my-tokens">
@@ -55,7 +56,7 @@ export function MyTokens({
               <button type="button" className="my-token-head" onClick={() => onFocusToken(token.id)}>
                 <TokenDisc name={token.name} color={token.color} image={token.imageUrl} size="1.75rem" className="small" />
                 <span className="my-token-name">{token.name}</span>
-                {isActive && <span className="badge active-badge">your turn</span>}
+                {isActive && <span className="badge active-badge">{t("mine.yourTurn")}</span>}
               </button>
 
               {(token.stats.hp !== null || token.stats.ac !== null) && (
@@ -63,10 +64,10 @@ export function MyTokens({
                   {token.stats.hp !== null && (
                     <span className="hp">
                       {stats.hp}
-                      {token.stats.maxHp !== null && `/${token.stats.maxHp}`} HP
+                      {token.stats.maxHp !== null && `/${token.stats.maxHp}`} {t("creature.stat.hp")}
                     </span>
                   )}
-                  {token.stats.ac !== null && <span className="muted num">AC {token.stats.ac}</span>}
+                  {token.stats.ac !== null && <span className="muted num">{t("ruling.ac", { n: token.stats.ac })}</span>}
                 </p>
               )}
 
@@ -77,7 +78,7 @@ export function MyTokens({
                   aria-valuemin={0}
                   aria-valuemax={token.stats.maxHp ?? 0}
                   aria-valuenow={stats.hp ?? 0}
-                  aria-label={`${token.name} hit points`}
+                  aria-label={t("roster.hpOf", { name: token.name })}
                 >
                   <span style={{ width: `${fraction * 100}%` }} data-level={hpLevel(fraction)} />
                 </div>
@@ -112,7 +113,7 @@ export function MyTokens({
                           },
                         })
                       }
-                      aria-label={`${delta > 0 ? "Heal" : "Damage"} ${token.name} by ${Math.abs(delta)}`}
+                      aria-label={t(delta > 0 ? "mine.healBy" : "mine.damageBy", { name: token.name, n: Math.abs(delta) })}
                     >
                       {delta > 0 ? `+${delta}` : delta}
                     </button>

@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
-import { inactiveLabel, isActive, MAX_DEPARTURE_ACTIONS, type DepartureAction, type Participant, type RoomState } from "@vtt/shared";
+import { isActive, MAX_DEPARTURE_ACTIONS, type DepartureAction, type Participant, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
+import { t } from "../i18n/locale";
 
 /**
  * The GM decides, token by token, what happens to what a departed player owned (KAN-58,
@@ -27,7 +28,7 @@ export function ResolveDepartureModal({
 }) {
   const departed = participantId ? state.participants[participantId] : undefined;
   return (
-    <Modal open={!!departed} title={departed ? `${departed.displayName}'s tokens` : "Tokens"} onClose={onClose}>
+    <Modal open={!!departed} title={departed ? t("depart.tokensOf", { name: departed.displayName }) : t("panel.tokens")} onClose={onClose}>
       {departed && (
         <ResolveForm key={departed.id} connection={connection} state={state} departed={departed} onDone={onClose} />
       )}
@@ -57,7 +58,7 @@ function ResolveForm({
     .sort((a, b) => a.name.localeCompare(b.name));
   const players = Object.values(state.participants).filter((p) => p.role === "player" && isActive(p));
   /** Display name for a participant id, for the co-owner line. */
-  const name = (id: string) => state.participants[id]?.displayName ?? "someone";
+  const name = (id: string) => state.participants[id]?.displayName ?? t("common.someone");
 
   /** The row's current choice; unset rows are "Decide later". */
   const choiceOf = (tokenId: string): Choice => choices[tokenId] ?? "";
@@ -78,7 +79,7 @@ function ResolveForm({
     // with a schema error. Say so in words, and keep every row's choice (ADR 0006).
     if (actions.length > MAX_DEPARTURE_ACTIONS) {
       setError(
-        `You can apply up to ${MAX_DEPARTURE_ACTIONS} tokens at a time. Set the rest to "Decide later", apply, then review again.`,
+        t("depart.tooMany", { max: MAX_DEPARTURE_ACTIONS }),
       );
       return;
     }
@@ -92,24 +93,24 @@ function ResolveForm({
 
   const options = (
     <>
-      <option value="">Decide later</option>
+      <option value="">{t("gmMap.decideLater")}</option>
       {players.map((p) => (
         <option key={p.id} value={`reassign:${p.id}`}>
-          Give to {p.displayName}
+          {t("depart.giveTo", { name: p.displayName })}
         </option>
       ))}
-      <option value="unassign">Unassign (GM only)</option>
-      <option value="delete">Delete token</option>
+      <option value="unassign">{t("depart.unassign")}</option>
+      <option value="delete">{t("depart.deleteToken")}</option>
     </>
   );
 
   if (tokens.length === 0) {
     return (
       <div className="resolve-departure">
-        <p>{departed.displayName} doesn't own any tokens now. Nothing is left to decide.</p>
+        <p>{t("depart.noneLeft", { name: departed.displayName })}</p>
         <div className="row modal-actions">
           <button className="primary" type="button" onClick={onDone}>
-            Done
+            {t("common.done")}
           </button>
         </div>
       </div>
@@ -125,12 +126,11 @@ function ResolveForm({
       }}
     >
       <p>
-        {departed.displayName} {inactiveLabel(departed) === "removed" ? "was removed from" : "left"} the table. Choose what happens to each token they controlled. Tokens set to
-        "Decide later" stay as they are, and you can come back to them from the GM panel.
+        {t(departed.revoked ? "depart.introRemoved" : "depart.introLeft", { name: departed.displayName })}
       </p>
 
       <label className="resolve-all" htmlFor={allId}>
-        Apply to all
+        {t("depart.applyAll")}
         <select
           id={allId}
           value={shared}
@@ -141,7 +141,7 @@ function ResolveForm({
         >
           {shared === "mixed" && (
             <option value="mixed" disabled>
-              Mixed
+              {t("depart.mixed")}
             </option>
           )}
           {options}
@@ -149,30 +149,30 @@ function ResolveForm({
       </label>
 
       <ul className="plain resolve-rows">
-        {tokens.map((t) => {
-          const others = t.ownerIds.filter((id) => id !== departed.id);
+        {tokens.map((entry) => {
+          const others = entry.ownerIds.filter((id) => id !== departed.id);
           return (
-            <li key={t.id} className="resolve-row">
+            <li key={entry.id} className="resolve-row">
               <span className="resolve-token">
-                {t.imageUrl ? (
-                  <img className="swatch large round" src={t.imageUrl} alt="" />
+                {entry.imageUrl ? (
+                  <img className="swatch large round" src={entry.imageUrl} alt="" />
                 ) : (
-                  <span className="swatch large" style={{ background: t.color }} aria-hidden />
+                  <span className="swatch large" style={{ background: entry.color }} aria-hidden />
                 )}
                 <span className="resolve-token-text">
                   <span className="resolve-token-name">
-                    {t.name}
-                    {t.hidden && <span className="badge">hidden</span>}
+                    {entry.name}
+                    {entry.hidden && <span className="badge">{t("group.hidden")}</span>}
                   </span>
                   {others.length > 0 && (
-                    <span className="muted resolve-coowners">Also controlled by {others.map(name).join(", ")}</span>
+                    <span className="muted resolve-coowners">{t("depart.alsoControlled", { names: others.map(name).join(t("common.listSep")) })}</span>
                   )}
                 </span>
               </span>
               <select
-                aria-label={`What happens to ${t.name}`}
-                value={choiceOf(t.id)}
-                onChange={(e) => setChoices((c) => ({ ...c, [t.id]: e.target.value as Choice }))}
+                aria-label={t("depart.whatHappens", { name: entry.name })}
+                value={choiceOf(entry.id)}
+                onChange={(e) => setChoices((c) => ({ ...c, [entry.id]: e.target.value as Choice }))}
               >
                 {options}
               </select>
@@ -182,7 +182,7 @@ function ResolveForm({
       </ul>
 
       <p className="muted small-print">
-        {departed.displayName}'s dice rolls and activity log entries are kept either way.
+        {t("depart.keptEither", { name: departed.displayName })}
       </p>
       {error && (
         <p role="alert" className="error">
@@ -191,10 +191,10 @@ function ResolveForm({
       )}
       <div className="row modal-actions">
         <button type="button" className="secondary" onClick={onDone} disabled={busy}>
-          Close
+          {t("common.close")}
         </button>
         <button className="primary" type="submit" disabled={busy || actions.length === 0}>
-          {busy ? "Applying…" : actions.length === 0 ? "Apply" : `Apply to ${actions.length} ${actions.length === 1 ? "token" : "tokens"}`}
+          {busy ? t("grid.applying") : actions.length === 0 ? t("depart.apply") : t("depart.applyN", { n: actions.length })}
         </button>
       </div>
     </form>

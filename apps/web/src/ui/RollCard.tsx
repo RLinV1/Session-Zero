@@ -1,5 +1,6 @@
 import type { DiceRoll } from "@vtt/shared";
 import { rollHeadline } from "../panels/attackRoll";
+import { t } from "../i18n/locale";
 
 /**
  * What was just rolled, as a card that slides into the board's bottom-right corner and back out
@@ -17,7 +18,7 @@ export function RollCard({ roll, rollerName }: { roll: DiceRoll | undefined; rol
       <strong>{title}</strong>
       <span className="board-roll-meta">
         <span className="muted">{meta}</span>
-        {roll.visibility === "gm" && <em className="badge">GM only</em>}
+        {roll.visibility === "gm" && <em className="badge">{t("rail.gmOnly")}</em>}
       </span>
     </div>
   );

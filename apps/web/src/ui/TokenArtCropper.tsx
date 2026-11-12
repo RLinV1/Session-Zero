@@ -2,6 +2,7 @@ import { ArrowCounterClockwise, MagnifyingGlassMinus, MagnifyingGlassPlus } from
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Modal } from "./Modal";
 import { clampOffset, clampZoom, coverScale, MAX_ZOOM, MIN_ZOOM, sourceRect, type Offset } from "./tokenArtCrop";
+import { t } from "../i18n/locale";
 
 const VIEW = 256; // css px of the editing circle
 const OUT = 512; // baked output edge in px
@@ -33,7 +34,7 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
         setBitmap(b);
         setSrc(url);
       },
-      () => live && setError("Could not read that image"),
+      () => live && setError(t("crop.readFailed")),
     );
     return () => {
       live = false;
@@ -76,11 +77,11 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = OUT;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return setError("Cropping is not supported in this browser");
+    if (!ctx) return setError(t("crop.unsupported"));
     ctx.drawImage(bitmap, sx, sy, size, size, 0, 0, OUT, OUT);
     const type = file.type; // PNG/WebP keep their transparency
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, 0.92));
-    if (!blob) return setError("Could not crop that image");
+    if (!blob) return setError(t("crop.failed"));
     const ext = blob.type === "image/jpeg" ? "jpg" : blob.type === "image/webp" ? "webp" : "png";
     onConfirm(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.${ext}`, { type: blob.type }));
   }
@@ -102,7 +103,7 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
   };
 
   return (
-    <Modal open title="Frame token art" onClose={onCancel}>
+    <Modal open title={t("crop.title")} onClose={onCancel}>
       <div className="stack token-cropper">
         <div className="token-cropper-body">
         {error ? (
@@ -114,7 +115,7 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
             className="token-cropper-stage"
             tabIndex={0}
             role="group"
-            aria-label="Token art framing. Drag to move, arrow keys nudge, plus and minus zoom."
+            aria-label={t("crop.label")}
             style={{ width: VIEW, height: VIEW }}
             onKeyDown={(e) => {
               const k = keys[e.key];
@@ -147,19 +148,19 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
           </div>
         )}
         <div className="token-cropper-side">
-        <p className="muted token-cropper-hint">Drag to move, scroll or use the slider to zoom.</p>
+        <p className="muted token-cropper-hint">{t("crop.hint")}</p>
         <div className="row token-cropper-tools">
-          <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out" disabled={!bitmap} onClick={() => apply(zoom / 1.1, offset)}>
+          <button type="button" className="icon-button" aria-label={t("common.zoomOut")} title={t("common.zoomOut")} disabled={!bitmap} onClick={() => apply(zoom / 1.1, offset)}>
             <MagnifyingGlassMinus size={18} />
           </button>
-          <input type="range" aria-label="Zoom" min={MIN_ZOOM} max={MAX_ZOOM} step={0.01} value={zoom} disabled={!bitmap} style={{ "--fill": `${((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100}%` } as CSSProperties} onChange={(e) => apply(Number(e.target.value), offset)} />
-          <button type="button" className="icon-button" aria-label="Zoom in" title="Zoom in" disabled={!bitmap} onClick={() => apply(zoom * 1.1, offset)}>
+          <input type="range" aria-label={t("common.zoom")} min={MIN_ZOOM} max={MAX_ZOOM} step={0.01} value={zoom} disabled={!bitmap} style={{ "--fill": `${((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100}%` } as CSSProperties} onChange={(e) => apply(Number(e.target.value), offset)} />
+          <button type="button" className="icon-button" aria-label={t("common.zoomIn")} title={t("common.zoomIn")} disabled={!bitmap} onClick={() => apply(zoom * 1.1, offset)}>
             <MagnifyingGlassPlus size={18} />
           </button>
         </div>
         <div className="row token-cropper-readout">
           <output className="token-cropper-zoom" aria-live="off">{Math.round(zoom * 100)}%</output>
-          <button type="button" className="icon-button" aria-label="Reset framing" title="Reset framing" disabled={!bitmap} onClick={() => apply(1, { x: 0, y: 0 })}>
+          <button type="button" className="icon-button" aria-label={t("crop.reset")} title={t("crop.reset")} disabled={!bitmap} onClick={() => apply(1, { x: 0, y: 0 })}>
             <ArrowCounterClockwise size={18} />
           </button>
         </div>
@@ -171,8 +172,8 @@ export function TokenArtCropper({ file, onCancel, onConfirm }: { file: File; onC
               <img src={src} alt="" draggable={false} style={{ width: w * scale * LIVE, height: h * scale * LIVE, transform: `translate(calc(-50% + ${offset.x * LIVE}px), calc(-50% + ${offset.y * LIVE}px))` }} />
             </span>
           )}
-          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary" disabled={!bitmap} onClick={() => void confirm()}>Use art</button>
+          <button type="button" className="secondary" onClick={onCancel}>{t("common.cancel")}</button>
+          <button type="button" className="primary" disabled={!bitmap} onClick={() => void confirm()}>{t("crop.use")}</button>
         </div>
       </div>
     </Modal>

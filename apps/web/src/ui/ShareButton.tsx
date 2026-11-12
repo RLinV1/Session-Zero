@@ -5,6 +5,7 @@ import { api } from "../net/api";
 import { loadCredentials, saveCredentials } from "../net/identity";
 import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "./Modal";
+import { t, type TextId } from "../i18n/locale";
 
 /** What the GM pastes into an AI app. The AI needs only the invite link: `join_room` brings the rest (ADR 0052). */
 const oneCharacterMessage = (link: string) =>
@@ -21,15 +22,14 @@ const stayAtTableMessage = (link: string, name: string) =>
   `Call join_room with that link and a character name. Ask me for the name if I haven't given one. Find ${name} in the people get_view lists, and take orders only from them.\n` +
   "Then keep calling wait_for_turn, with maxSeconds 50 and ordersFrom set to their id. Use a smaller maxSeconds if that times out. When a mention is marked isOrder, do it, and pointedAt is the square they pointed at. When it is your turn, play it yourself: look, decide, act, and say what you did in one short chat line. Otherwise say nothing.";
 
-/** The ways an AI can play, each said in a line so the GM can choose without trying them all. */
-const AI_PLAY_OPTIONS: { what: "one" | "party" | "stay"; label: string; description: string; message: (link: string, name: string) => string }[] = [
-  { what: "one", label: "Copy message for one character", description: "It plays one character, and waits for you to tell it what to do in your AI app.", message: (link) => oneCharacterMessage(link) },
-  { what: "party", label: "Copy message for a party", description: "It plays several characters, each with its own seat.", message: (link) => partyMessage(link) },
-  {
-    what: "stay", label: "Copy message to stay at the table",
-    description: "It plays its own turns and takes your orders from chat: double-click the map, then write @ and its name. It needs an app that can keep running, such as Claude Code, and uses that app's plan while it waits.",
-    message: stayAtTableMessage,
-  },
+/**
+ * The ways an AI can play, each said in a line so the GM can choose without trying them all. Labels are
+ * catalog ids, read when shown; the messages stay in English, as instructions to the AI (localization).
+ */
+const AI_PLAY_OPTIONS: { what: "one" | "party" | "stay"; label: TextId; description: TextId; message: (link: string, name: string) => string }[] = [
+  { what: "one", label: "share.ai.one", description: "share.ai.oneHint", message: (link) => oneCharacterMessage(link) },
+  { what: "party", label: "share.ai.party", description: "share.ai.partyHint", message: (link) => partyMessage(link) },
+  { what: "stay", label: "share.ai.stay", description: "share.ai.stayHint", message: stayAtTableMessage },
 ];
 
 /**
@@ -169,38 +169,38 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
       setCode(inviteCode);
       flash("reset");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't reset the link");
+      setError(err instanceof Error ? err.message : t("share.resetFailed"));
     } finally {
       generation.current++;
       setBusy(false);
     }
   }
 
-  const status = result === "copied" ? "Copied" : result === "failed" ? "Copy failed" : result === "reset" ? "Link reset" : "";
+  const status = result === "copied" ? t("share.copied") : result === "failed" ? t("share.copyFailed") : result === "reset" ? t("share.linkReset") : "";
 
   return (
     <div className="share-group" data-tour="share">
       {!hideTrigger && (
         <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
-          Share
+          {t("share.share")}
         </button>
       )}
-      <Modal open={open} title="Share this room" className="share-modal" onAfterClose={onAfterClose} onClose={() => !busy && setOpen(false)}>
+      <Modal open={open} title={t("share.title")} className="share-modal" onAfterClose={onAfterClose} onClose={() => !busy && setOpen(false)}>
         <div className="share-body" aria-busy={!link && !loadFailed}>
           {loadFailed && (
             <div role="alert" className="error">
-              Couldn't load the link{" "}
+              {t("share.loadFailed")}{" "}
               <button type="button" className="secondary" onClick={load}>
-                Retry
+                {t("share.retry")}
               </button>
             </div>
           )}
-          {!link && !loadFailed && <p className="muted">Loading…</p>}
+          {!link && !loadFailed && <p className="muted">{t("common.loading")}</p>}
           {link && (
             <>
               <div className="share-section">
                 <label className="field-label" htmlFor={fieldId}>
-                  Invite link
+                  {t("share.inviteLink")}
                 </label>
                 <div className="share-link-row">
                   <input
@@ -214,8 +214,8 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                   <button
                     type="button"
                     className="icon-button share-copy"
-                    aria-label="Copy link"
-                    title="Copy link"
+                    aria-label={t("share.copyLink")}
+                    title={t("share.copyLink")}
                     onClick={(e) => void copy(e.currentTarget, link, "link")}
                     disabled={busy}
                   >
@@ -223,7 +223,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                   </button>
                 </div>
                 <p className="muted share-hint">
-                  {joinsLocked ? "The room is locked, so this link can't admit anyone new." : "Anyone with this link can join as a player."}
+                  {joinsLocked ? t("share.lockedNote") : t("share.anyone")}
                 </p>
               </div>
             </>
@@ -232,7 +232,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
             <div className="share-action-buttons">
               {link && (
                 <button type="button" className="secondary share-qr-toggle" onClick={() => setQrOpen(true)}>
-                  <QrCode size={16} aria-hidden="true" /> Show QR code
+                  <QrCode size={16} aria-hidden="true" /> {t("share.showQr")}
                 </button>
               )}
               <button
@@ -241,10 +241,10 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                 onClick={() => setConfirming(true)}
                 disabled={busy || !link}
               >
-                <ArrowsClockwise size={16} aria-hidden="true" /> Reset link
+                <ArrowsClockwise size={16} aria-hidden="true" /> {t("share.resetLink")}
               </button>
             </div>
-            <p className="muted share-hint">Reset replaces the link and QR code. The old ones stop working.</p>
+            <p className="muted share-hint">{t("share.resetNote")}</p>
           </div>
           {/* Outside the link's own loading: a leaked link should be stoppable even if it won't load. */}
           <div className="share-actions" aria-busy={locking}>
@@ -257,20 +257,20 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                 aria-describedby={lockHintId}
                 onChange={(e) => void setLocked(e.target.checked)}
               />
-              Lock the room
+              {t("share.lock")}
             </label>
             <p id={lockHintId} className="muted share-hint">
-              Stops anyone new joining, even with the link. Players already here can still come back.
+              {t("share.lockNote")}
             </p>
             {lockError && <p role="alert" className="error small">{lockError}</p>}
           </div>
           {link && (
             <section className="share-actions" aria-labelledby={`${connectorFieldId}-title`}>
-              <h3 id={`${connectorFieldId}-title`} className="share-ai-title">Play with your AI</h3>
-              <p className="muted share-hint">Your AI joins as a player and sees only what a player can see. Three steps:</p>
+              <h3 id={`${connectorFieldId}-title`} className="share-ai-title">{t("share.ai.title")}</h3>
+              <p className="muted share-hint">{t("share.ai.lead")}</p>
               <ol className="share-ai-steps">
                 <li>
-                  <label className="share-ai-step" htmlFor={connectorFieldId}>Add this address to your AI app as a connector</label>
+                  <label className="share-ai-step" htmlFor={connectorFieldId}>{t("share.ai.addConnector")}</label>
                   <div className="share-link-row">
                     <input
                       id={connectorFieldId}
@@ -283,30 +283,30 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                     <button
                       type="button"
                       className="icon-button share-copy"
-                      aria-label="Copy connector address"
-                      title="Copy connector address"
+                      aria-label={t("share.ai.copyConnector")}
+                      title={t("share.ai.copyConnector")}
                       onClick={(e) => void copy(e.currentTarget, connector, "connector")}
                     >
                       {result === "copied" && copiedWhat === "connector" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                     </button>
                   </div>
-                  {result === "failed" && copiedWhat === "connector" && <p className="error small">Couldn't copy. Select the address and copy it yourself.</p>}
+                  {result === "failed" && copiedWhat === "connector" && <p className="error small">{t("share.ai.connectorCopyFailed")}</p>}
                 </li>
                 <li>
-                  <span className="share-ai-step">Choose how it plays, and paste that message into your AI app</span>
+                  <span className="share-ai-step">{t("share.ai.choose")}</span>
                   <ul className="plain share-ai-options">
                     {AI_PLAY_OPTIONS.map((option) => (
                       <li key={option.what}>
                         <button type="button" className="secondary share-copy-message" aria-describedby={`${connectorFieldId}-${option.what}`} disabled={busy}
                           onClick={(e) => void copy(e.currentTarget, option.message(link, yourName), option.what)}>
-                          {result === "copied" && copiedWhat === option.what ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} {option.label}
+                          {result === "copied" && copiedWhat === option.what ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} {t(option.label)}
                         </button>
-                        <p id={`${connectorFieldId}-${option.what}`} className="muted share-hint">{option.description}</p>
-                        {aiCopy?.what === option.what && aiCopy.ok && <p className="share-copied">Copied. Paste it into your AI app.</p>}
+                        <p id={`${connectorFieldId}-${option.what}`} className="muted share-hint">{t(option.description)}</p>
+                        {aiCopy?.what === option.what && aiCopy.ok && <p className="share-copied">{t("share.ai.copied")}</p>}
                         {/* Clipboards can refuse on plain http, so the message is always reachable another way. */}
                         {aiCopy?.what === option.what && !aiCopy.ok && (
                           <label className="share-copy-fallback">
-                            <span className="error small">Couldn't copy. Select this message and copy it yourself.</span>
+                            <span className="error small">{t("share.ai.copyFailed")}</span>
                             <textarea readOnly rows={5} value={option.message(link, yourName)} onFocus={(e) => e.currentTarget.select()} />
                           </label>
                         )}
@@ -315,8 +315,8 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                   </ul>
                 </li>
                 <li>
-                  <span className="share-ai-step">Once it has joined, give it a token</span>
-                  <p className="muted share-hint">Open the token's editor and set Controlled by to your AI. Remove it from the table like any other player.</p>
+                  <span className="share-ai-step">{t("share.ai.giveToken")}</span>
+                  <p className="muted share-hint">{t("share.ai.giveTokenHint")}</p>
                 </li>
               </ol>
             </section>
@@ -326,7 +326,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
           </span>
         </div>
       </Modal>
-      <Modal open={qrOpen && !!link} title="QR code" className="share-qr-modal" onClose={() => setQrOpen(false)}>
+      <Modal open={qrOpen && !!link} title={t("share.qr")} className="share-qr-modal" onClose={() => setQrOpen(false)}>
         {link && (
           <div className="share-qr-body">
             <div className="share-qr">
@@ -337,13 +337,13 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                 bgColor="#ffffff"
                 fgColor="#000000"
                 role="img"
-                aria-label="QR code for the invite link"
+                aria-label={t("share.qrLabel")}
               />
             </div>
-            <p className="muted share-hint">Scan to join as a player.</p>
+            <p className="muted share-hint">{t("share.scan")}</p>
             <div className="row modal-actions">
               <button type="button" className="secondary" onClick={() => setQrOpen(false)}>
-                Close
+                {t("common.close")}
               </button>
             </div>
           </div>
@@ -351,15 +351,14 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
       </Modal>
       <Modal
         open={confirming}
-        title="Reset the invite link?"
+        title={t("share.resetQ")}
         onClose={() => !busy && closeConfirm()}
         initialFocus={cancelRef}
       >
         <div className="leave-confirm">
-          <p>The current link stops working straight away. Anyone who opens it sees "Invite not found".</p>
+          <p>{t("share.resetBody1")}</p>
           <p className="muted">
-            Everyone already in the room stays connected and can come back as usual. Share the new link with anyone
-            who still needs to join.
+            {t("share.resetBody2")}
           </p>
           {error && (
             <p role="alert" className="error">
@@ -368,10 +367,10 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
           )}
           <div className="row modal-actions">
             <button ref={cancelRef} type="button" className="secondary" onClick={closeConfirm} disabled={busy}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="danger-fill" onClick={() => void reset()} disabled={busy}>
-              {busy ? "Resetting…" : "Reset link"}
+              {busy ? t("share.resetting") : t("share.resetLink")}
             </button>
           </div>
         </div>

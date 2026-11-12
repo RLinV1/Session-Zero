@@ -1,5 +1,6 @@
 import type { Token } from "@vtt/shared";
 
+import { t } from "../i18n/locale";
 type Field = Pick<Token, "id" | "initiative"> & { name?: string };
 
 /** What a token's Start encounter field shows: what the GM typed, else the score saved on the token last time (ADR 0022). */
@@ -31,5 +32,5 @@ export function initiativeEntries(typed: Record<string, string>, tokens: readonl
 
 /** The error shown when typed scores are refused, naming the tokens so the GM knows which fields to fix. */
 export function invalidMessage(names: readonly string[]): string {
-  return `Initiative must be a whole number from -99 to 999: ${names.join(", ")}`;
+  return t("init.invalid", { names: names.join(t("common.listSep")) });
 }

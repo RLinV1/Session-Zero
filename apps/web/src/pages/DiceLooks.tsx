@@ -19,6 +19,7 @@ import {
 import { Die3D, layoutDice } from "../ui/Die3D";
 import { Modal } from "../ui/Modal";
 import { PopoverButton } from "../ui/Popover";
+import { t } from "../i18n/locale";
 
 const SIDES: Record<BodyName, number> = { d4: 4, d6: 6, d8: 8, d10: 10, d12: 12, d20: 20 };
 
@@ -37,7 +38,7 @@ export function DiceLookCards({ query, onEdit }: { query: string; onEdit: (id: s
   if (!ready) {
     return (
       <p className="muted" aria-busy="true">
-        Loading…
+        {t("common.loading")}
       </p>
     );
   }
@@ -46,11 +47,11 @@ export function DiceLookCards({ query, onEdit }: { query: string; onEdit: (id: s
       {shown.length === 0 && (
         <p className="muted">
           {q
-            ? "None of your dice looks match that search."
-            : `No dice looks yet. A dice look puts your own pictures on your dice, one per die type. ${
+            ? t("dice.noLookMatch")
+            : `${t("dice.noLooksBefore")}${
                 kept === "account"
-                  ? "Saved to your account; pick it in any room's Dice panel."
-                  : "Kept in this browser; pick it in a room's Dice panel."
+                  ? t("dice.savedToAccount")
+                  : t("dice.keptInBrowser")
               }`}
         </p>
       )}
@@ -75,25 +76,25 @@ function DiceLookCard({ look, active, onEdit }: { look: DiceSkin; active: boolea
       </strong>
       <span className="muted asset-meta">
         {coverage(look)}
-        {active && " · In use"}
+        {active && t("dice.inUse")}
       </span>
       {confirming ? (
-        <div className="confirm" role="alertdialog" aria-label={`Delete ${look.name}?`}>
-          <p>Delete “{look.name}”? Your dice go back to the classic look if it's in use.</p>
+        <div className="confirm" role="alertdialog" aria-label={t("common.deleteNamedQ", { name: look.name })}>
+          <p>{t("dice.deleteBody", { name: look.name })}</p>
           <div className="row">
             <button type="button" className="secondary small" onClick={() => setConfirming(false)}>
-              Cancel
+              {t("common.cancel")}
             </button>
             <button type="button" className="small danger-fill" onClick={() => void deleteDiceLook(look.id)}>
-              Delete
+              {t("common.delete")}
             </button>
           </div>
         </div>
       ) : (
         <div className="row asset-actions">
-          {!active && <IconAction icon={<CheckCircle size={16} aria-hidden="true" />} label="Use" onClick={() => setActiveDiceLook(look.id)} />}
-          <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label="Edit" onClick={onEdit} />
-          <IconAction icon={<Trash size={16} aria-hidden="true" />} label="Delete" danger onClick={() => setConfirming(true)} />
+          {!active && <IconAction icon={<CheckCircle size={16} aria-hidden="true" />} label={t("common.use")} onClick={() => setActiveDiceLook(look.id)} />}
+          <IconAction icon={<PencilSimple size={16} aria-hidden="true" />} label={t("common.edit")} onClick={onEdit} />
+          <IconAction icon={<Trash size={16} aria-hidden="true" />} label={t("common.delete")} danger onClick={() => setConfirming(true)} />
         </div>
       )}
     </li>
@@ -102,8 +103,8 @@ function DiceLookCard({ look, active, onEdit }: { look: DiceSkin; active: boolea
 
 function coverage(look: DiceSkin): string {
   const covered = BODIES.filter((b) => look.images[b]);
-  if (covered.length === 0) return "No pictures yet";
-  if (covered.length === BODIES.length) return "Every die";
+  if (covered.length === 0) return t("dice.noPictures");
+  if (covered.length === BODIES.length) return t("dice.everyDie");
   return covered.join(", ");
 }
 
@@ -112,7 +113,7 @@ export function DiceLookModal({ lookId, onClose }: { lookId: string | null; onCl
   const { looks, activeId } = useDiceLooks();
   const look = looks.find((l) => l.id === lookId) ?? null;
   return (
-    <Modal open={look !== null} title="Edit dice look" className="dice-look-modal" onClose={onClose}>
+    <Modal open={look !== null} title={t("dice.editLook")} className="dice-look-modal" onClose={onClose}>
       {look && <DiceLookEditor key={look.id} look={look} active={activeId === look.id} onDone={onClose} />}
     </Modal>
   );
@@ -134,7 +135,7 @@ function DiceLookEditor({ look, active, onDone }: { look: DiceSkin; active: bool
   return (
     <div className="stack dice-look-form">
       <label>
-        Name
+        {t("common.name")}
         <input
           value={name}
           maxLength={40}
@@ -144,22 +145,22 @@ function DiceLookEditor({ look, active, onDone }: { look: DiceSkin; active: bool
           aria-describedby="dice-look-name-hint"
         />
         <span id="dice-look-name-hint" className="muted">
-          Shown in a room's Dice panel, under Dice look.
+          {t("dice.lookHint")}
         </span>
       </label>
       <div className="stack">
         <div className="row dice-look-pictures-head">
-          <span className="field-label">Pictures</span>
+          <span className="field-label">{t("dice.pictures")}</span>
           <button
             type="button"
             className="link"
-            onClick={() => void copyText(DICE_PROMPT).then((ok) => setNote(ok ? "AI prompt copied: paste it with a die's template, or on its own for one picture on every face" : "Your browser didn't allow copying"))}
+            onClick={() => void copyText(DICE_PROMPT).then((ok) => setNote(ok ? t("dice.promptCopied") : t("dice.copyBlocked")))}
           >
-            Copy AI prompt
+            {t("dice.copyPrompt")}
           </button>
         </div>
         <p className="muted small-print">
-          {note ?? "Edit a die to copy its template or upload its picture. Give an image AI the template with the AI prompt. Dice without a picture stay classic."}
+          {note ?? t("dice.picturesHint")}
         </p>
         <ul className="plain die-card-grid">
           {BODIES.map((b, i) => (
@@ -170,7 +171,7 @@ function DiceLookEditor({ look, active, onDone }: { look: DiceSkin; active: bool
       <div className="row modal-actions">
         {!active && (
           <button type="button" className="secondary" onClick={() => setActiveDiceLook(look.id)}>
-            Use at the table
+            {t("dice.useAtTable")}
           </button>
         )}
         <button
@@ -180,7 +181,7 @@ function DiceLookEditor({ look, active, onDone }: { look: DiceSkin; active: bool
             onDone();
           }}
         >
-          Done
+          {t("common.done")}
         </button>
       </div>
     </div>
@@ -210,11 +211,11 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
     if (!file) return;
     const result = await readSkinFile(file);
     if (typeof result === "string") return setStatus({ text: result, error: true });
-    setStatus({ text: result.layout === "sheet" ? "Painted template on" : "Square picture on every face" });
+    setStatus({ text: result.layout === "sheet" ? t("dice.templateOn") : t("dice.squareOn") });
     try {
       await saveDiceLook({ ...look, images: { ...look.images, [body]: result } });
     } catch (err) {
-      setStatus({ text: err instanceof Error ? err.message : "Couldn't save that picture", error: true });
+      setStatus({ text: err instanceof Error ? err.message : t("dice.pictureFailed"), error: true });
     }
   };
 
@@ -232,14 +233,14 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
       <div className="die-card-foot">
         <strong className="die-card-name">{body}</strong>
         <PopoverButton
-          label={`Edit ${body}`}
-          title={`Edit ${body}`}
+          label={t("dice.editDie", { die: body })}
+          title={t("dice.editDie", { die: body })}
           align="right"
           className="secondary small die-card-edit"
           buttonContent={
             <>
               <PencilSimple size={14} aria-hidden="true" />
-              Edit
+              {t("common.edit")}
               <CaretDown size={12} aria-hidden="true" />
             </>
           }
@@ -255,12 +256,12 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
                     const copying = copyTemplate(body);
                     close();
                     void copying.then((how) =>
-                      setStatus({ text: how === "copied" ? "Template copied: paste it into your image AI" : `Saved ${body}-skin-template.png instead` }),
+                      setStatus({ text: how === "copied" ? t("dice.templateCopied") : t("dice.templateSaved", { die: body }) }),
                     );
                   }}
                 >
                   <CopySimple size={16} aria-hidden="true" />
-                  Copy template
+                  {t("dice.copyTemplate")}
                 </button>
               </li>
               <li>
@@ -274,7 +275,7 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
                   }}
                 >
                   <UploadSimple size={16} aria-hidden="true" />
-                  {image ? "Replace picture" : "Upload picture"}
+                  {image ? t("dice.replacePicture") : t("dice.uploadPicture")}
                 </button>
               </li>
               {image && (
@@ -285,13 +286,13 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
                     onClick={() => {
                       const images = { ...look.images };
                       delete images[body];
-                      saveDiceLook({ ...look, images }).catch(() => setStatus({ text: "Couldn't reset that die. Try again.", error: true }));
-                      setStatus({ text: "Back to classic" });
+                      saveDiceLook({ ...look, images }).catch(() => setStatus({ text: t("dice.resetFailed"), error: true }));
+                      setStatus({ text: t("dice.backToClassic") });
                       close();
                     }}
                   >
                     <ArrowCounterClockwise size={16} aria-hidden="true" />
-                    Reset to classic
+                    {t("dice.resetToClassic")}
                   </button>
                 </li>
               )}
@@ -304,7 +305,7 @@ function DieCard({ look, body, index }: { look: DiceSkin; body: BodyName; index:
         type="file"
         accept={SKIN_FILE_TYPES.join(",")}
         hidden
-        aria-label={`Upload a ${body} picture`}
+        aria-label={t("dice.uploadDiePicture", { die: body })}
         onChange={(e) => {
           void upload(e.target.files?.[0]);
           e.target.value = "";
@@ -357,7 +358,7 @@ export function SaveBrowserLooksOffer() {
   if (result && result.failed.length === 0) {
     return (
       <p role="status" className="notice">
-        Saved {result.saved} dice look{result.saved === 1 ? "" : "s"} to your account.
+        {t("dice.savedCount", { n: result.saved })}
       </p>
     );
   }
@@ -365,16 +366,15 @@ export function SaveBrowserLooksOffer() {
   return (
     <div className="notice save-browser-looks">
       <p>
-        This browser has {count} dice look{count === 1 ? "" : "s"} of its own. Save {count === 1 ? "it" : "them"} to your
-        account to use {count === 1 ? "it" : "them"} on any device.
+        {t("dice.localCount", { n: count })}
       </p>
       {result && result.failed.length > 0 && (
         <p role="alert" className="error">
-          {result.failed.join(", ")} could not be saved and stayed in this browser.
+          {t("dice.notSaved", { names: result.failed })}
         </p>
       )}
       <button className="primary" type="button" onClick={() => void save()} disabled={busy}>
-        {busy ? "Saving…" : "Save to my account"}
+        {busy ? t("common.saving") : t("dice.saveToAccount")}
       </button>
     </div>
   );
@@ -384,8 +384,7 @@ export function SaveBrowserLooksOffer() {
 export function DiceSignInLine() {
   return (
     <p className="muted small-print">
-      These looks are kept in this browser. <Link href={signInFor("/library?tab=dice")}>Sign in</Link> to keep your dice on
-      every device.
+      {t("dice.browserOnly.before")}<Link href={signInFor("/library?tab=dice")}>{t("dice.browserOnly.link")}</Link>{t("dice.browserOnly.after")}
     </p>
   );
 }

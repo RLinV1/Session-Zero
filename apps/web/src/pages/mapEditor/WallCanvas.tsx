@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { GridSpec, MapImage, Point, Wall } from "@vtt/shared";
 import { wallAt, wallPoint, type WallMode } from "../../board/tools";
 import { MapCanvas } from "./MapCanvas";
+import { t } from "../../i18n/locale";
 
 /** A drawn wall's end joins an existing wall end this close, in screen pixels (wall-editing D2). */
 const JOIN_PX = 12;
@@ -50,7 +51,7 @@ export function WallCanvas({ map, grid, walls, mode, onAdd, onRemove, onPortal, 
       grid={grid}
       mode={mode}
       pan={false}
-      label="Map walls. Draw, erase, mark doors and windows, or detect walls with the pointer; the wheel or a pinch zooms; the middle button, Space-drag or two fingers pan."
+      label={t("walls.canvas")}
       onMove={(p, e, view) => {
         setFree(e.altKey);
         setHover(p && (mode === "draw" ? snap(p, e.altKey, view.px) : p));

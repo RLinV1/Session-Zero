@@ -111,6 +111,26 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     const moved: DomainEvent = { type: "TokenMoved", tokenId: token.id, from: { x: 1987.9, y: 829.1000000000001 }, to: { x: 2057.3456, y: 829.1000000000001 } };
     expect(formatActivity(moved, "Mara", state)).toBe("Mara moved Goblin from (1987.9, 829.1) to (2057.35, 829.1)");
   });
+
+  // Localization: every event type also reads in Traditional Chinese, with typed names kept as typed.
+  const HAN = /[\u3400-\u9fff]/;
+  const NAMES = /\b(Goblin ambush|Before the ambush|Watch the door|Dex save|Mara|Goblin|Alice|Tomas|Ogre|Cellar|Vault|Tavern|Dungeon|Ice|Sleet|Scimitar|Bite|Gate guards|Patrol|Fireball|Goblin ambush|ft|GM|HP|AC|\d*d\d+|2\.5D)\b/g;
+  it.each(Object.entries(cases))("formats %s in Traditional Chinese (localization)", (_type, [event, english]) => {
+    const chinese = formatActivity(event, "Mara", state, "zh-TW");
+    expect(chinese).toMatch(HAN);
+    expect(chinese).not.toBe(english);
+    // Only names people typed, units and dice notation stay in Latin letters.
+    expect(chinese.replace(NAMES, "").match(/[A-Za-z]{2,}/g) ?? []).toEqual([]);
+  });
+  it("keeps names as typed and uses the glossary's terms in Chinese (localization)", () => {
+    const { state: room, token: aria } = withToken(baseRoom(), { name: "Aria" });
+    const moved: DomainEvent = { type: "TokenMoved", tokenId: aria.id, from: { x: 35, y: 35 }, to: { x: 105, y: 35 } };
+    expect(formatActivity(moved, "Sam", room, "zh-TW")).toBe("Sam 將 Aria 從 (35, 35) 移至 (105, 35)");
+    expect(formatActivity({ type: "TokenConditionsSet", tokenId: aria.id, conditions: ["prone", "poisoned"], previous: [] }, "Sam", room, "zh-TW"))
+      .toBe("Sam 將 Aria 的狀態設為倒地、中毒");
+    expect(formatActivity({ type: "DiceRolled", roll: { ...roll, visibility: "gm" } }, "Tomas", state, "zh-TW")).toBe("Tomas 擲了 1d20，結果為 15（僅 GM 可見）");
+    expect(formatActivity({ type: "TokenOwnersSet", tokenId: token.id, ownerIds: [], previous: [] }, "瑪拉", state, "zh-TW")).toBe("瑪拉將 Goblin 設為不屬於任何玩家");
+  });
 });
 
 describe("History projection and visibility (FR-REC-01)", () => {

@@ -1,4 +1,5 @@
 import { useCallback, type KeyboardEvent, type PointerEvent } from "react";
+import { t } from "../i18n/locale";
 
 export const MIN_PANEL_WIDTH = 272;
 const MAX_PANEL_WIDTH = 720;
@@ -51,12 +52,12 @@ export function PanelResizeHandle({
       className="panel-resize"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t("sidebar.resize")}
       aria-valuemin={MIN_PANEL_WIDTH}
       aria-valuemax={maxPanelWidth(window.innerWidth)}
       aria-valuenow={width ?? undefined}
       tabIndex={0}
-      title="Drag to resize the sidebar · double-click to reset"
+      title={t("sidebar.resizeHint")}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         e.preventDefault();

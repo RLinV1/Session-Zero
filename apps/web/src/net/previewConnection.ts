@@ -1,5 +1,6 @@
 import type { CommandResult, RoomConnection } from "./roomConnection";
 
+import { t } from "../i18n/locale";
 /**
  * A connection that refuses to send while `isReadOnly()` is true (gm-view-as-player). Everything
  * reads through to the real connection; commands are refused locally and ephemeral messages
@@ -11,8 +12,8 @@ import type { CommandResult, RoomConnection } from "./roomConnection";
 export function guardedConnection(
   connection: RoomConnection,
   isReadOnly: () => boolean,
-  name = "a player",
-  message = `Previewing as ${name}. Go back to the GM view to make changes.`,
+  name = t("preview.aPlayer"),
+  message = t("preview.refused", { name }),
 ): RoomConnection {
   const refused = async (): Promise<CommandResult> => ({ ok: false, code: "forbidden", message });
   return new Proxy(connection, {

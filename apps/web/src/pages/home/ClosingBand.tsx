@@ -1,5 +1,6 @@
 import { ArrowRight } from "@phosphor-icons/react";
 import { Link } from "../../Link";
+import { t } from "../../i18n/locale";
 
 /**
  * The page's last word, for someone running a game: the hero's own primary action, worded the
@@ -11,10 +12,10 @@ export function ClosingBand() {
     <section className="closing-band" aria-labelledby="closing-heading">
       <div className="closing-plate" aria-hidden="true" />
       <div className="closing-copy">
-        <h2 id="closing-heading">Ready to run a game?</h2>
-        <p>Start a room and send your players the link.</p>
+        <h2 id="closing-heading">{t("home.closing.title")}</h2>
+        <p>{t("home.closing.body")}</p>
         <Link href="/gm-dashboard" className="cta">
-          Start a room
+          {t("home.closing.start")}
           <ArrowRight aria-hidden="true" />
         </Link>
       </div>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 
 /**
  * A board animation as plain data (ADR 0038). Flat and bounded, so the server can validate it
@@ -23,7 +24,7 @@ export type ParticleShape = z.infer<typeof ParticleShape>;
 export const AttackStyle = z.enum(["melee", "ranged", "magic"]);
 export type AttackStyle = z.infer<typeof AttackStyle>;
 
-const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour like #ff8800");
+const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, validationMessage(sharedMsg("valid.hexColour")));
 const Unit = z.number().min(0).max(1);
 
 export const MAX_ANIMATION_NAME = 60;
@@ -67,9 +68,9 @@ export const AnimationDef = z.object({
 export type AnimationDef = z.infer<typeof AnimationDef>;
 
 /** A strike animation: anything but the map-wide nuke. */
-export const StrikeAnimationDef = AnimationDef.refine((a) => a.shape !== "nuke", { message: "A nuke cannot be used for an attack" });
+export const StrikeAnimationDef = AnimationDef.refine((a) => a.shape !== "nuke", { message: validationMessage(sharedMsg("valid.nukeNotAttack")) });
 /** The blast animation of a nuke. */
-export const NukeAnimationDef = AnimationDef.refine((a) => a.shape === "nuke", { message: "Only a nuke animation can be used for a nuke" });
+export const NukeAnimationDef = AnimationDef.refine((a) => a.shape === "nuke", { message: validationMessage(sharedMsg("valid.nukeOnly")) });
 
 /** The most damage one nuke may deal to each token. */
 export const MAX_NUKE_DAMAGE = 999;
@@ -90,5 +91,5 @@ export type CreateAnimationRequest = z.infer<typeof CreateAnimationRequest>;
 
 export const UpdateAnimationRequest = z
   .object({ name: AnimationName.optional(), def: AnimationDef.optional() })
-  .refine((p) => p.name !== undefined || p.def !== undefined, { message: "Nothing to change" });
+  .refine((p) => p.name !== undefined || p.def !== undefined, { message: validationMessage(sharedMsg("valid.nothingToChange")) });
 export type UpdateAnimationRequest = z.infer<typeof UpdateAnimationRequest>;

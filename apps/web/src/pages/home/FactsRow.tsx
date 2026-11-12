@@ -1,4 +1,5 @@
 import { MAX_PLAYERS_PER_ROOM } from "@vtt/shared";
+import { t } from "../../i18n/locale";
 
 /**
  * How fast a ping reaches the other screens at the table: the p95 target the ephemeral benchmark
@@ -14,24 +15,24 @@ export const PING_TARGET_MS = 150;
  */
 export function FactsRow() {
   return (
-    <ul className="plain facts-row" aria-label="At a glance">
+    <ul className="plain facts-row" aria-label={t("home.facts.label")}>
       <li>
-        <strong>No account</strong> <span>for players. They join from a link, in any browser.</span>
+        <strong>{t("home.facts.noAccount")}</strong> <span>{t("home.facts.noAccountDetail")}</span>
       </li>
       <li>
         <strong>
-          Up to <span className="num">{MAX_PLAYERS_PER_ROOM}</span>
+          <span className="num">{t("home.facts.upTo", { n: MAX_PLAYERS_PER_ROOM })}</span>
         </strong>{" "}
-        <span>players in one room.</span>
+        <span>{t("home.facts.players")}</span>
       </li>
       <li>
         <strong>
-          Under <span className="num">{PING_TARGET_MS} ms</span>
+          <span className="num">{t("home.facts.under", { ms: PING_TARGET_MS })}</span>
         </strong>{" "}
-        <span>for a ping to reach everyone at the table.</span>
+        <span>{t("home.facts.ping")}</span>
       </li>
       <li>
-        <strong>Undo</strong> <span>for moves, fog, walls and hit points.</span>
+        <strong>{t("home.facts.undo")}</strong> <span>{t("home.facts.undoDetail")}</span>
       </li>
     </ul>
   );

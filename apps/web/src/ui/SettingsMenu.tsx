@@ -1,20 +1,29 @@
-import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { Globe } from "@phosphor-icons/react";
 import type { Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
+import { useT } from "../i18n/locale";
+import { LANGUAGE_CHOICE_ENABLED } from "../i18n/rollout";
+import { LanguageSettings } from "./LanguageMenu";
 import { Modal } from "./Modal";
 import { setClientSettings, useClientSettings, type GraphicsQuality } from "./clientSettings";
 
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
 export interface SettingsRoom { connection: RoomConnection; state: RoomState; you: Participant }
 
-type SettingsTab = "audio" | "graphics" | "table";
+type SettingsTab = "audio" | "graphics" | "language" | "table";
 
 export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: boolean; onClose: () => void; onAfterClose?: () => void; room?: SettingsRoom }) {
+  const t = useT();
   const settings = useClientSettings();
   const baseId = useId();
   const showTable = !!room && room.you.role === "gm";
-  const tabs: { key: SettingsTab; label: string }[] = [
-    { key: "audio", label: "Audio" }, { key: "graphics", label: "Graphics" }, ...(showTable ? [{ key: "table" as const, label: "Table" }] : []),
+  // The globe marks Language in any language, for a reader who can't read the tab names (design.md §11).
+  const tabs: { key: SettingsTab; label: ReactNode }[] = [
+    { key: "audio", label: t("settings.tab.audio") },
+    { key: "graphics", label: t("settings.tab.graphics") },
+    ...(LANGUAGE_CHOICE_ENABLED ? [{ key: "language" as const, label: <span className="tab-with-icon"><Globe aria-hidden="true" />{t("language.label")}</span> }] : []),
+    ...(showTable ? [{ key: "table" as const, label: t("settings.tab.table") }] : []),
   ];
   const [chosen, setChosen] = useState<SettingsTab>("audio");
   useEffect(() => { if (open) setChosen("audio"); }, [open]);
@@ -30,11 +39,11 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
     setChosen(key);
     document.getElementById(`${baseId}-${key}`)?.focus();
   };
-  const browserNote = <p className="muted small-print">Audio and graphics are saved in this browser. Changes apply immediately.</p>;
+  const browserNote = <p className="muted small-print">{t("settings.browserNote")}</p>;
   return (
-    <Modal open={open} title="Settings" className="client-settings-modal" onClose={onClose} onAfterClose={onAfterClose}>
+    <Modal open={open} title={t("settings.title")} className="client-settings-modal" onClose={onClose} onAfterClose={onAfterClose}>
       <div className="stack client-settings">
-        <nav className="map-editor-steps settings-tabs" role="tablist" aria-label="Settings sections" onKeyDown={onTabKey}>
+        <nav className="map-editor-steps settings-tabs" role="tablist" aria-label={t("settings.sections")} onKeyDown={onTabKey}>
           {tabs.map(({ key, label }) => (
             <button key={key} id={`${baseId}-${key}`} type="button" role="tab" className="map-editor-step" tabIndex={tab === key ? 0 : -1}
               aria-selected={tab === key} aria-controls={`${baseId}-panel`} onClick={() => setChosen(key)}>{label}</button>
@@ -44,41 +53,43 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
           {tab === "audio" && (
             <>
               {browserNote}
-              <VolumeSlider label="Music volume" value={settings.musicVolume} onChange={(musicVolume) => setClientSettings({ musicVolume })} />
-              <VolumeSlider label="Sound effects volume" value={settings.soundVolume} onChange={(soundVolume) => setClientSettings({ soundVolume })} />
+              <VolumeSlider label={t("settings.musicVolume")} value={settings.musicVolume} onChange={(musicVolume) => setClientSettings({ musicVolume })} />
+              <VolumeSlider label={t("settings.soundVolume")} value={settings.soundVolume} onChange={(soundVolume) => setClientSettings({ soundVolume })} />
             </>
           )}
           {tab === "graphics" && (
             <>
               {browserNote}
-              <label>Graphics quality
+              <label>{t("settings.graphicsQuality")}
                 <select value={settings.graphicsQuality} onChange={(e) => setClientSettings({ graphicsQuality: e.target.value as GraphicsQuality })}>
-                  <option value="high">High</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="low">Low</option>
+                  <option value="high">{t("settings.quality.high")}</option>
+                  <option value="balanced">{t("settings.quality.balanced")}</option>
+                  <option value="low">{t("settings.quality.low")}</option>
                 </select>
               </label>
               <label className="checkbox">
                 <input type="checkbox" role="switch" checked={settings.reducedAnimations} onChange={(e) => setClientSettings({ reducedAnimations: e.target.checked })} />
-                Reduced animations
+                {t("settings.reducedAnimations")}
               </label>
-              <p className="muted small-print">Still effects instead of moving ones.</p>
+              <p className="muted small-print">{t("settings.reducedAnimationsHint")}</p>
               <label className="checkbox">
                 <input type="checkbox" role="switch" checked={settings.autoFocusAttacks} onChange={(e) => setClientSettings({ autoFocusAttacks: e.target.checked })} />
-                Focus on attacks
+                {t("settings.focusAttacks")}
               </label>
-              <p className="muted small-print">Zoom the board to the fight.</p>
+              <p className="muted small-print">{t("settings.focusAttacksHint")}</p>
             </>
           )}
+          {tab === "language" && <LanguageSettings atTable={!!room} />}
           {tab === "table" && room && <TableSection room={room} />}
         </div>
-        <div className="row settings-actions"><button type="button" onClick={onClose}>Done</button></div>
+        <div className="row settings-actions"><button type="button" onClick={onClose}>{t("common.done")}</button></div>
       </div>
     </Modal>
   );
 }
 /** GM only: a setting every player at the table shares (FR-TAC-07). The server decides; this is a hint. */
 function TableSection({ room }: { room: SettingsRoom }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hintId = useId();
@@ -92,17 +103,18 @@ function TableSection({ room }: { room: SettingsRoom }) {
   };
   return (
     <div className="stack" aria-busy={busy}>
-      <p className="muted small-print">This setting is shared by everyone at the table.</p>
+      <p className="muted small-print">{t("settings.tableShared")}</p>
       <label className="checkbox">
         <input type="checkbox" role="switch" checked={enabled} disabled={busy} aria-describedby={hintId} onChange={(e) => void toggle(e.target.checked)} />
-        Remove tokens at 0 HP
+        {t("settings.removeAtZero")}
       </label>
-      <p id={hintId} className="muted small-print">Tokens are removed when their HP reaches 0 or below. Undo brings one back.</p>
+      <p id={hintId} className="muted small-print">{t("settings.removeAtZeroHint")}</p>
       {error && <p role="alert" className="error small">{error}</p>}
     </div>
   );
 }
 function VolumeSlider({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  const t = useT();
   const id = useId();
   return (
     <div className="range-field settings-volume">
@@ -111,7 +123,7 @@ function VolumeSlider({ label, value, onChange }: { label: string; value: number
         <output htmlFor={id} className="range-value">{value}%</output>
       </div>
       <input id={id} className="range" type="range" min="0" max="100" step="1"
-        value={value} aria-valuetext={`${value} percent`}
+        value={value} aria-valuetext={t("settings.percent", { value })}
         style={{ "--range-progress": `${value}%` } as CSSProperties}
         onChange={(e) => onChange(Number(e.target.value))} />
     </div>

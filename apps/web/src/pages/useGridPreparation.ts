@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { MapImage } from "@vtt/shared";
 import { parseGridDraft, withGridSuggestion, type GridDraft, type GridSuggestionSession, type GridPreparation } from "./gridDraft";
 import { useGridDetection } from "./useGridDetection";
+import { t } from "../i18n/locale";
 
 interface Setup {
   draft: GridDraft;
@@ -41,8 +42,8 @@ export function useGridPreparation<T extends Setup>({ source, token, id, map, en
         ? withGridSuggestion(current.draft, status.candidate) : null;
       const draft = candidate && parseGridDraft(candidate, map) ? candidate : current.draft;
       const notice = accessDenied ? null : error || status?.status === "error"
-        ? "Grid fitting could not finish. Set up the grid manually."
-        : status?.status === "no_grid" ? "No grid estimate was found. Set up the grid manually." : null;
+        ? t("grid.fitFailed")
+        : status?.status === "no_grid" ? t("grid.noEstimate") : null;
       return { ...current, draft, preparation: { phase: "editable", notice } };
     });
   }, [waiting, session, initialLoading, status, error, accessDenied, map, setup?.preparation?.phase, update]);
@@ -57,7 +58,7 @@ export function useGridPreparation<T extends Setup>({ source, token, id, map, en
       ? { ...current, draft: setup.draft, preparation: { phase: "editable", notice: null } } : current);
   };
 
-  const label = initialLoading ? "Checking grid…" : status?.status === "queued" ? "Waiting to fit grid…"
-    : status?.status === "running" ? "Fitting grid…" : "Checking grid…";
+  const label = initialLoading ? t("grid.checkingShort") : status?.status === "queued" ? t("grid.waitingFit")
+    : status?.status === "running" ? t("grid.fitting") : t("grid.checkingShort");
   return { detection, waiting, label, skip };
 }

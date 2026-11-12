@@ -369,9 +369,22 @@ numeric — initiative scores, hit points, dice results, seq numbers all need ta
 so they stop jittering as they change.
 
 ```
---font-ui:   "Geist Sans", system-ui, -apple-system, "Segoe UI", sans-serif
---font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace
+--font-cjk:  "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei"
+--font-ui:   "CJK Punctuation", "Geist Sans", var(--font-cjk), system-ui, -apple-system, "Segoe UI", sans-serif
+--font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, var(--font-cjk), monospace
 ```
+
+**Language and type.** The interface is in English or Traditional Chinese (zh-TW; see
+[ADR 0054](adr/0054-localized-messages.md) and the [glossary](GLOSSARY-zh-TW.md)). Latin
+text stays in Geist; Chinese falls through to the system's Traditional Chinese face, never
+downloaded. "CJK Punctuation" is a local `@font-face` limited to U+3000–303F and U+FF00–FFEF,
+listed first so full-width punctuation (，。：「」) comes from the CJK face instead of Geist's
+narrow Latin comma. The board's Pixi labels use the same stacks (`board/boardFont.ts`) and are
+redrawn on a language change. Chinese headings keep normal letter spacing (`:lang(zh-TW)`), and a
+half-width space separates Han from Latin or digits only where a value meets text (the `cjk`
+helper), as in "棋子 Aria". Names and anything typed at the table are never translated. The
+language control is the globe and endonym in the header (繁體中文 / English) and Settings ›
+Language; on a phone narrower than 420px the caret hides so the header keeps one line.
 
 Geist is the only typeface, on every surface: the home and entry pages, the hub, the table,
 dialogs, and the labels the board draws on tokens. The table used Alegreya Sans, loaded from

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { TokenDisc } from "../../ui/TokenDisc";
 import { TurnNotice } from "../../ui/TurnNotice";
-import { fightRoom, nextTurn, scoreOf, TURN_PLAYER } from "./turnDemo";
+import { fightRoom, nextTurn, scoreOf, turnPlayer } from "./turnDemo";
+import { t } from "../../i18n/locale";
 
 /**
  * The turn order, from a room whose fight `decide` started and Next turn advances. Under it is
@@ -9,12 +10,13 @@ import { fightRoom, nextTurn, scoreOf, TURN_PLAYER } from "./turnDemo";
  */
 export default function TurnTile() {
   const [state, setState] = useState(fightRoom);
+  const [you] = useState(turnPlayer);
   const [shown, setShown] = useState<string | null>(null);
   const initiative = state.initiative!;
 
   return (
     <>
-      <ol className="plain turn-order" aria-label="Turn order">
+      <ol className="plain turn-order" aria-label={t("home.play.turnOrder")}>
         {initiative.order.map((id, i) => {
           const t = state.tokens[id]!;
           const active = i === initiative.activeIndex;
@@ -29,16 +31,16 @@ export default function TurnTile() {
       </ol>
       <div className="turn-bar">
         <span className="readout">
-          Round <b>{initiative.round}</b>
+          {t("home.turn.roundBefore")}<b>{initiative.round}</b>{t("home.turn.roundAfter")}
         </span>
         <button type="button" className="ui-button" onClick={() => setState(nextTurn)}>
-          Next turn
+          {t("home.turn.next")}
         </button>
       </div>
       <div className="turn-notice-slot">
-        <TurnNotice state={state} you={TURN_PLAYER} onFocusToken={(id) => setShown(id)} />
+        <TurnNotice state={state} you={you} onFocusToken={(id) => setShown(id)} />
       </div>
-      <p className="turn-hint muted small-print">Press Next turn. When Mara's turn comes up, Mara's player gets a notice here.</p>
+      <p className="turn-hint muted small-print">{t("home.turn.help", { name: "Mara" })}</p>
     </>
   );
 }

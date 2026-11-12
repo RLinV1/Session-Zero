@@ -4,6 +4,7 @@ import { signInFor } from "../account/safeNext";
 import { loadCredentials } from "../net/identity";
 import { setActiveDiceLook, useDiceLooks } from "../ui/diceSkinStore";
 import { useShowOthersDice } from "../ui/tableLooks";
+import { t } from "../i18n/locale";
 
 /**
  * Which dice look your rolls are drawn in (dice-image-skins, shared-dice-looks). Looks are made in
@@ -22,10 +23,10 @@ export function DiceLookPicker({ roomId }: { roomId: string }) {
   const onTable = kept === "account" && loadCredentials(roomId)?.viaAccount === true;
   return (
     <div className="dice-look">
-      <label htmlFor="dice-look">Dice look</label>
+      <label htmlFor="dice-look">{t("diceLook.title")}</label>
       <div className="dice-look-row">
         <select id="dice-look" value={value} onChange={(e) => setActiveDiceLook(e.target.value || null)}>
-          <option value="">Classic</option>
+          <option value="">{t("diceLook.classic")}</option>
           {looks.map((look) => (
             <option key={look.id} value={look.id}>
               {look.name}
@@ -33,25 +34,24 @@ export function DiceLookPicker({ roomId }: { roomId: string }) {
           ))}
         </select>
         <a href="/library?tab=dice" target="_blank" rel="noopener" className="icon-button dice-look-edit"
-          aria-label={looks.length > 0 ? "Edit looks" : "Make a look"} title={looks.length > 0 ? "Edit looks" : "Make a look"}>
+          aria-label={looks.length > 0 ? t("diceLook.edit") : t("diceLook.make")} title={looks.length > 0 ? t("diceLook.edit") : t("diceLook.make")}>
           <PaintBrush size={18} aria-hidden="true" />
         </a>
       </div>
       <p className="muted small-print">
         {onTable ? (
-          "Everyone at the table sees your rolls in your look."
+          t("diceLook.everyone")
         ) : account.status === "signedIn" ? (
-          "Only you see your look until you keep this seat on your account."
+          t("diceLook.onlyYouUntil")
         ) : (
           <>
-            Only you see your look. <a href={signInFor(`/r/${roomId}`)}>Sign in</a> and keep your seat to show it to the
-            table.
+            {t("diceLook.onlyYou")} <a href={signInFor(`/r/${roomId}`)}>{t("title.signin")}</a> {t("diceLook.keepSeat")}
           </>
         )}
       </p>
       <label className="checkbox">
         <input type="checkbox" checked={showOthers} onChange={(e) => setShowOthers(e.target.checked)} />
-        Show other players&apos; dice looks
+        {t("diceLook.showOthers")}
       </label>
     </div>
   );

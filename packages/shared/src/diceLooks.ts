@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedMsg, validationMessage } from "./i18n";
 
 /**
  * Dice looks saved to an account (ADR 0017 O3). A look is a named set of pictures, at most one
@@ -13,8 +14,8 @@ export type DieName = z.infer<typeof DieName>;
 export const DiceLookName = z
   .string()
   .trim()
-  .min(1, { message: "Name can't be blank" })
-  .max(40, { message: "Name must be 40 characters or fewer" });
+  .min(1, { message: validationMessage(sharedMsg("valid.nameBlank")) })
+  .max(40, { message: validationMessage(sharedMsg("valid.nameTooLong", { max: 40 })) });
 
 /** Most looks one account may hold. */
 export const MAX_DICE_LOOKS = 50;
@@ -44,7 +45,7 @@ export function diceFaceLayout(width: number, height: number): "sheet" | "single
 export const DiceLookFaceFields = z
   .object({ width: z.coerce.number().int().positive(), height: z.coerce.number().int().positive() })
   .refine((f) => diceFaceLayout(f.width, f.height) !== null, {
-    message: `Use a painted template (${DICE_SHEET.width} × ${DICE_SHEET.height} or smaller, 3:2) or a square picture up to ${DICE_SQUARE_MAX} × ${DICE_SQUARE_MAX}`,
+    message: validationMessage(sharedMsg("valid.diceLookPicture", { width: DICE_SHEET.width, height: DICE_SHEET.height, max: DICE_SQUARE_MAX })),
   });
 export type DiceLookFaceFields = z.infer<typeof DiceLookFaceFields>;
 

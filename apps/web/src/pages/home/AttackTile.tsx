@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { motionReduced } from "../../ui/motion";
 import { useNearViewport } from "../../ui/nearViewport";
+import { t } from "../../i18n/locale";
 
 /** The animation preview needs the board's renderer, so it is fetched only near the viewport. */
 const AttackStage = lazy(() => import("./AttackStage"));
@@ -18,8 +19,8 @@ export function AttackTile() {
   const [still] = useState(motionReduced);
   return (
     <>
-      <h4>Attacks</h4>
-      <p>Make an attack and its animation plays on the board for everyone at the table.</p>
+      <h4>{t("home.attack.title")}</h4>
+      <p>{t("home.attack.body")}</p>
       <div ref={ref} className="attack-slot">
         {still ? (
           <img
@@ -27,7 +28,7 @@ export function AttackTile() {
             src={ATTACK_STILL.src}
             width={ATTACK_STILL.width}
             height={ATTACK_STILL.height}
-            alt="A fireball flying from the attacker's token to the target's, as it plays on the board."
+            alt={t("home.attack.alt")}
             loading="lazy"
             decoding="async"
           />

@@ -2,6 +2,7 @@ import { DIE_NAMES, type DiceLookView } from "@vtt/shared";
 import { api } from "../net/api";
 import { skinLayoutFor, type DiceSkin, type DiceSkinImage } from "./diceSkin";
 
+import { t } from "../i18n/locale";
 /**
  * Where dice looks are kept (dice-looks, ADR 0017 O3): in this browser when signed out, on the
  * account when signed in. The store in `diceSkinStore.ts` talks to one of these and swaps them
@@ -103,7 +104,7 @@ async function moveLegacy() {
   if (!raw) return;
   try {
     const old = JSON.parse(raw) as DiceSkinImage & { name?: string };
-    const look: DiceSkin = { id: newLookId(), name: "My d6 look", updatedAt: Date.now(), images: { d6: { href: old.href, width: old.width, height: old.height, layout: old.layout } } };
+    const look: DiceSkin = { id: newLookId(), name: t("diceLook.migrated"), updatedAt: Date.now(), images: { d6: { href: old.href, width: old.width, height: old.height, layout: old.layout } } };
     if (isLook(look)) {
       await run("readwrite", (s) => s.put(look));
       if (!readActiveId()) writeActiveId(look.id);

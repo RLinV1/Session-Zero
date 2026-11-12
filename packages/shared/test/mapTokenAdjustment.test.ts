@@ -181,7 +181,7 @@ describe("map command, reduction and visibility (KAN-66, FR-GM-15, FR-GM-23)", (
 
   it("authorizes before checking hidden footprints, and rejects a hidden oversized token", () => {
     const placed = place(baseRoom(), "Secret giant", { x: 0, y: 0 }, 10, true);
-    expect(attempt(placed.state, alice, { type: "scene.setMap", map: newMap })).toEqual({ ok: false, code: "forbidden", message: "You are not allowed to do that" });
+    expect(attempt(placed.state, alice, { type: "scene.setMap", map: newMap })).toMatchObject({ ok: false, code: "forbidden", message: "You are not allowed to do that" });
     expect(attempt(placed.state, gm, { type: "scene.setMap", map: newMap })).toMatchObject({
       ok: false, code: "invalid", message: expect.stringMatching(/Secret giant.*700 px.*larger map.*grid cell size.*token's size/),
     });

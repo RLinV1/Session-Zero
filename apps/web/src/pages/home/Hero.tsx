@@ -8,6 +8,7 @@ import { CROP, MAPS, PORTRAITS, cropWalls } from "./crops";
 import { litArea, squareCenter } from "./sightDemo";
 import { SightFog } from "./SightStage";
 import { TokenChip } from "./TokenChip";
+import { t } from "../../i18n/locale";
 
 /** The hero's table: Brenna and Toma hold the light on the quay. */
 const HERO_WALLS = cropWalls("canal-market");
@@ -39,10 +40,10 @@ export function Hero() {
       <div className="hero-grid" aria-hidden="true" />
       <div className="hero-copy">
         <h1 id="hero-heading" className="enter">
-          Your battle map, ready to play tonight.
+          {t("home.hero.title")}
         </h1>
         <p className="landing-sub enter enter-2">
-          Upload a map, set the fog and walls, send a link. Players join from any browser without an account.
+          {t("home.hero.body")}
         </p>
         <HeroActions />
       </div>
@@ -79,7 +80,7 @@ function HeroActions() {
     <div className="hero-actions enter enter-3">
       <div className="hero-buttons">
         <Link href="/gm-dashboard" className="cta">
-          Start a room
+          {t("home.hero.start")}
           <ArrowRight aria-hidden="true" />
         </Link>
         <button
@@ -89,7 +90,7 @@ function HeroActions() {
           aria-controls="join-panel"
           onClick={requestJoin}
         >
-          Join a game
+          {t("home.hero.join")}
         </button>
       </div>
       {open && (
@@ -112,14 +113,14 @@ function JoinedRooms({ rooms }: { rooms: ReturnType<typeof listJoinedRooms> }) {
     <section className="joined-rooms" aria-labelledby="joined-rooms-label">
       <p id="joined-rooms-label" className="path-label">
         <DoorOpen aria-hidden="true" />
-        Rooms you've joined
+        {t("home.hero.joined.title")}
       </p>
-      <p className="path-hint">Pick up where you left off. Saved in this browser only.</p>
+      <p className="path-hint">{t("home.hero.joined.body")}</p>
       <ul className="plain joined-list">
         {rooms.map((room) => (
           <li key={room.roomId} className="joined-row">
             <Link href={`/r/${encodeURIComponent(room.roomId)}`} className="joined-name">
-              {room.roomName ?? "A room you joined"}
+              {room.roomName ?? t("home.hero.joined.unnamed")}
               <ArrowRight aria-hidden="true" />
             </Link>
           </li>
@@ -137,13 +138,13 @@ function JoinForm({ field }: { field: RefObject<HTMLInputElement | null> }) {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const code = inviteCodeFrom(value);
-    if (!code) return setError("That doesn't look like an invite link or code.");
+    if (!code) return setError(t("home.hero.badInvite"));
     navigate(`/join/${encodeURIComponent(code)}`);
   }
 
   return (
-    <form className="join-form" aria-label="Join a game" onSubmit={onSubmit}>
-      <label htmlFor="join-invite">Paste the link your GM sent you</label>
+    <form className="join-form" aria-label={t("home.hero.join")} onSubmit={onSubmit}>
+      <label htmlFor="join-invite">{t("home.hero.pasteLink")}</label>
       {/* The label sits outside the row so the field and Join share one height. */}
       <div className="join-row">
         <input
@@ -155,12 +156,12 @@ function JoinForm({ field }: { field: RefObject<HTMLInputElement | null> }) {
             setError(null);
           }}
           required
-          placeholder="https://…/join/abc123"
+          placeholder={t("home.hero.invitePlaceholder")}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "join-error" : undefined}
         />
         <button type="submit" className="ui-button">
-          Join
+          {t("home.hero.joinSubmit")}
         </button>
       </div>
       {error && (

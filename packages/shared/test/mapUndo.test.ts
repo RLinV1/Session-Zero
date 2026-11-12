@@ -67,7 +67,7 @@ describe("composite map undo (KAN-66, FR-REC-02, FR-REC-03)", () => {
   it("rejects changed map values, including an asset ID change", () => {
     const applied = act(setup().state, { type: "scene.setMap", map, grid });
     const changed = act(applied.state, { type: "scene.setMap", map: { ...map, assetId: "different" }, tokenPolicy: "keep" });
-    expect(refusal(changed.state, applied.commandId)).toEqual({ ok: false, code: "invalid", message: "Can't undo: the map has changed since." });
+    expect(refusal(changed.state, applied.commandId)).toMatchObject({ ok: false, code: "invalid", message: "Can't undo: the map has changed since." });
   });
 
   it.each([
@@ -76,21 +76,21 @@ describe("composite map undo (KAN-66, FR-REC-02, FR-REC-03)", () => {
   ])("rejects changes to any complete applied grid value %j", (changes) => {
     const applied = act(setup().state, { type: "scene.setMap", map, grid });
     const changed = act(applied.state, { type: "scene.setGrid", grid: { ...grid, ...changes } });
-    expect(refusal(changed.state, applied.commandId)).toEqual({ ok: false, code: "invalid", message: "Can't undo: the grid has changed since." });
+    expect(refusal(changed.state, applied.commandId)).toMatchObject({ ok: false, code: "invalid", message: "Can't undo: the grid has changed since." });
   });
 
   it("rejects moved adjusted tokens", () => {
     const { state, free } = setup();
     const applied = act(state, { type: "scene.setMap", map, grid });
     const changed = act(applied.state, { type: "token.move", tokenId: free, to: { x: 111, y: 222 } });
-    expect(refusal(changed.state, applied.commandId)).toEqual({ ok: false, code: "invalid", message: "Can't undo: Free has changed since." });
+    expect(refusal(changed.state, applied.commandId)).toMatchObject({ ok: false, code: "invalid", message: "Can't undo: Free has changed since." });
   });
 
   it("rejects deleted adjusted tokens with the recorded name", () => {
     const { state, secret } = setup();
     const applied = act(state, { type: "scene.setMap", map, grid });
     const changed = act(applied.state, { type: "token.delete", tokenId: secret });
-    expect(refusal(changed.state, applied.commandId)).toEqual({ ok: false, code: "invalid", message: "Can't undo: Secret no longer exists." });
+    expect(refusal(changed.state, applied.commandId)).toMatchObject({ ok: false, code: "invalid", message: "Can't undo: Secret no longer exists." });
   });
 
   it("preserves unrelated token fields and newly created tokens even if sizes now exceed old geometry", () => {

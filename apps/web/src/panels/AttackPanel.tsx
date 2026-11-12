@@ -45,6 +45,7 @@ import { saveTokenAttacks } from "./tokenAttacks";
 import { BUILTIN_ANIMATIONS } from "../board/effectPresets";
 import { SearchablePicker } from "../ui/SearchablePicker";
 import { useStrikeAnimations } from "./useLibraryAnimations";
+import { t } from "../i18n/locale";
 
 /** The Animation select's value for an animation that is on the attack but not (or no longer) in the library. */
 const CURRENT_ANIMATION = "__current";
@@ -138,15 +139,15 @@ export function AttackPanel({
       id="attack"
       title={
         <>
-          Attack
+          {t("attack.heading")}
           {/* Said in the heading, so the collapsed line explains why it's quiet (attack-ux-polish). */}
-          {!state.initiative && <span className="muted"> · no encounter running</span>}
+          {!state.initiative && <span className="muted"> {t("attack.noEncounter")}</span>}
         </>
       }
     >
       {!attacker ? (
         <p className="muted">
-          {you.role === "gm" ? "Add a token to attack with." : "The GM has not assigned you a token yet."}
+          {you.role === "gm" ? t("attack.addToken") : t("attack.noToken")}
         </p>
       ) : (
         <AttackForm
@@ -249,7 +250,7 @@ function AttackForm({
   // After a Hit with the chosen attack on any aimed target, its one roll button becomes that attack's damage.
   const hits = chosen?.damage ? aimed.map((id) => hitOn(state.rolls, you.id, attackerId, id, chosen)).filter((r): r is DiceRoll => r !== null) : [];
   const followUp = hits[0] ?? null;
-  const rollLabel = !chosen ? "" : busy ? "Rolling…" : !target ? "Choose a target" : followUp ? `Roll damage ${attackExpression(chosen.damage!)}` : chosen.toHit ? "Roll to hit" : "Roll damage";
+  const rollLabel = !chosen ? "" : busy ? t("home.dice.rolling") : !target ? t("attack.chooseTarget") : followUp ? t("attack.rollDamageExpr", { expr: attackExpression(chosen.damage!) }) : chosen.toHit ? t("attack.rollToHit") : t("attack.rollDamage");
   const expression = attackExpression(settings);
   const kind = kindOf(settings);
   const update = (changes: Partial<AttackSettings>) => {
@@ -319,8 +320,8 @@ function AttackForm({
       type="button"
       className={visibility === "gm" ? "icon-button attack-private on" : "icon-button attack-private"}
       aria-pressed={visibility === "gm"}
-      aria-label="Roll privately (players won't see it)"
-      title={visibility === "gm" ? "Private roll: players won't see it" : "Public roll: click to roll privately"}
+      aria-label={t("attack.rollPrivately")}
+      title={visibility === "gm" ? t("attack.privateOn") : t("attack.privateOff")}
       onClick={() => onVisibility(visibility === "gm" ? "public" : "gm")}
     >
       {visibility === "gm" ? <EyeSlash size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
@@ -334,11 +335,11 @@ function AttackForm({
         {attackers.length === 1 || inTurn ? (
           <p className="attack-attacker">
             <Sword size={16} aria-hidden="true" /> <strong>{attacker.name}</strong>
-            {inTurn && <span className="badge active-badge">turn</span>}
+            {inTurn && <span className="badge active-badge">{t("attack.turn")}</span>}
           </p>
         ) : (
           <Picker
-            label="Attacker"
+            label={t("stage.attacker")}
             icon={<Sword size={16} aria-hidden="true" />}
             value={attackerId}
             onChange={onAttacker}
@@ -350,36 +351,36 @@ function AttackForm({
         )}
         {maxTargets > 1 ? (
           <PopoverButton
-            label="Targets"
-            title="Choose targets"
+            label={t("attack.targets")}
+            title={t("attack.chooseTargets")}
             align="left"
             className="attack-targets-button"
             buttonContent={
               <span className="attack-targets-summary">
                 <Target size={16} aria-hidden="true" />
-                <strong>{aimed.length === 0 ? (targets.length === 0 ? "No targets" : "Choose targets") : aimed.length === 1 ? target!.token.name : `${aimed.length} targets`}</strong>
-                <span className="muted">of up to {maxTargets}</span>
+                <strong>{aimed.length === 0 ? (targets.length === 0 ? t("attack.noTargets") : t("attack.chooseTargets")) : aimed.length === 1 ? target!.token.name : t("attack.nTargets", { n: aimed.length })}</strong>
+                <span className="muted">{t("attack.upTo", { max: maxTargets })}</span>
               </span>
             }
           >
             {() => (
               <fieldset className="attack-target-list">
-                <legend className="field-label">Choose up to {maxTargets} targets ({aimed.length} chosen)</legend>
-                {targets.map((t) => {
-                  const on = aimed.includes(t.token.id);
+                <legend className="field-label">{t("attack.chooseUpTo", { max: maxTargets, n: aimed.length })}</legend>
+                {targets.map((target) => {
+                  const on = aimed.includes(target.token.id);
                   return (
-                    <label key={t.token.id} className="checkbox">
+                    <label key={target.token.id} className="checkbox">
                       <input
                         type="checkbox"
                         checked={on}
                         disabled={!on && aimed.length >= maxTargets}
                         onChange={(e) => {
-                          const next = e.target.checked ? [...aimed, t.token.id] : aimed.filter((id) => id !== t.token.id);
+                          const next = e.target.checked ? [...aimed, target.token.id] : aimed.filter((id) => id !== target.token.id);
                           onTarget(next[0] ?? null);
                           setExtraIds(next.slice(1));
                         }}
                       />
-                      {t.token.name}{t.token.hidden ? " (hidden)" : ""} <span className="muted">{t.distance}</span>
+                      {target.token.name}{target.token.hidden ? t("attack.hiddenSuffix") : ""} <span className="muted">{target.distance}</span>
                     </label>
                   );
                 })}
@@ -388,23 +389,23 @@ function AttackForm({
           </PopoverButton>
         ) : (
           <Picker
-            label="Target"
+            label={t("stage.target")}
             icon={<Target size={16} aria-hidden="true" />}
-            placeholder={targets.length === 0 ? "No targets" : "Target"}
+            placeholder={targets.length === 0 ? t("attack.noTargets") : t("stage.target")}
             disabled={targets.length === 0}
             value={target?.token.id ?? null}
             onChange={onTarget}
             options={targets.map((t) => ({ key: t.token.id, label: `${t.token.name}${t.token.hidden ? " (hidden)" : ""}`, detail: t.distance }))}
           />
         )}
-        <button type="button" className="icon-button attack-board-pick" onClick={onPickOnBoard} aria-label="Pick target on board" title="Pick target on board">
+        <button type="button" className="icon-button attack-board-pick" onClick={onPickOnBoard} aria-label={t("attack.pickOnBoard")} title={t("attack.pickOnBoard")}>
           <Crosshair size={18} aria-hidden="true" />
         </button>
       </div>
 
       {isGm && visibility === "public" && (attacker.hidden || target?.token.hidden) && (
         <p className="attack-warning" role="note">
-          {attacker.hidden ? `${attacker.name} is hidden.` : `${target!.token.name} is hidden.`} Players will see this roll with the hidden token as Unknown, but they will see the attack's name.
+          {t("attack.hiddenWarning", { name: attacker.hidden ? attacker.name : target!.token.name })}
         </p>
       )}
 
@@ -435,7 +436,7 @@ function AttackForm({
           <div className="attack-row">
             {chosen ? (
               <Picker
-                label={`${attacker.name}'s attack`}
+                label={t("attack.attackOf", { name: attacker.name })}
                 icon={<Sword size={16} aria-hidden="true" />}
                 value={String(chosenIndex)}
                 onChange={(key) => setSelected(Number(key))}
@@ -443,12 +444,12 @@ function AttackForm({
               />
             ) : (
               <button type="button" className="secondary attack-add-first" onClick={() => setEditing("new")}>
-                <Plus size={14} aria-hidden="true" /> Add an attack
+                <Plus size={14} aria-hidden="true" /> {t("attack.addAttack")}
               </button>
             )}
             <PopoverButton
-              label="Attack options"
-              title="Attack options"
+              label={t("attack.options")}
+              title={t("attack.options")}
               align="right"
               className="icon-button attack-more"
               buttonContent={<DotsThree size={20} aria-hidden="true" />}
@@ -464,20 +465,20 @@ function AttackForm({
                         setEditing(chosenIndex);
                       }}
                     >
-                      <PencilSimple size={14} aria-hidden="true" /> Edit {chosen.name}
+                      <PencilSimple size={14} aria-hidden="true" /> {t("attack.editNamed", { name: chosen.name })}
                     </button>
                   )}
                   <button
                     type="button"
                     className="menu-item"
                     disabled={presets.length >= MAX_PRESETS}
-                    title={presets.length >= MAX_PRESETS ? `At most ${MAX_PRESETS} per token; remove one first` : undefined}
+                    title={presets.length >= MAX_PRESETS ? t("attack.presetLimit", { max: MAX_PRESETS }) : undefined}
                     onClick={() => {
                       close();
                       setEditing("new");
                     }}
                   >
-                    <Plus size={14} aria-hidden="true" /> Add attack
+                    <Plus size={14} aria-hidden="true" /> {t("creature.addAttack")}
                   </button>
                   <button
                     type="button"
@@ -487,17 +488,17 @@ function AttackForm({
                       onCustomOpen(!customOpen);
                     }}
                   >
-                    <SlidersHorizontal size={14} aria-hidden="true" /> {customOpen ? "Hide custom roll" : "Custom roll"}
+                    <SlidersHorizontal size={14} aria-hidden="true" /> {customOpen ? t("attack.hideCustom") : t("attack.customRoll")}
                   </button>
                 </div>
               )}
             </PopoverButton>
           </div>
-          {!chosen && <p className="muted small-print">Create an attack or use Custom roll to choose your attack and damage dice.</p>}
+          {!chosen && <p className="muted small-print">{t("attack.createHint")}</p>}
           {!chosen && !customOpen && (
             <div className="attack-roll-row">
               <button type="button" className="secondary" onClick={() => onCustomOpen(true)}>
-                <SlidersHorizontal size={18} aria-hidden="true" /> Custom roll
+                <SlidersHorizontal size={18} aria-hidden="true" /> {t("attack.customRoll")}
               </button>
             </div>
           )}
@@ -507,10 +508,10 @@ function AttackForm({
                 type="button"
                 className="attack-roll primary"
                 disabled={!target || busy || rolling}
-                title={rolling ? "Your dice are still on the board" : undefined}
+                title={rolling ? t("attack.diceOnBoard") : undefined}
                 onClick={() => (followUp ? rollDamage(chosen, hits) : rollPreset(chosen))}
                 // Starts with the visible words (WCAG 2.5.3), then says which attack at whom.
-                aria-label={target ? `${rollLabel}: ${chosen.name} against ${target.token.name}` : undefined}
+                aria-label={target ? t("attack.rollAgainst", { roll: rollLabel, attack: chosen.name, target: target.token.name }) : undefined}
               >
                 <DiceFive size={18} aria-hidden="true" />
                 {rollLabel}
@@ -522,26 +523,26 @@ function AttackForm({
       )}
 
       {customOpen && (
-        <section className="attack-custom" aria-label="Custom roll">
+        <section className="attack-custom" aria-label={t("attack.customRoll")}>
           <div className="attack-custom-head">
-            <span className="field-label">Custom roll</span>
-            <button type="button" className="icon-button" onClick={() => onCustomOpen(false)} aria-label="Close custom roll" title="Close">
+            <span className="field-label">{t("attack.customRoll")}</span>
+            <button type="button" className="icon-button" onClick={() => onCustomOpen(false)} aria-label={t("attack.closeCustom")} title={t("common.close")}>
               <X size={14} aria-hidden="true" />
             </button>
           </div>
           <form className="stack" onSubmit={rollCustom}>
-            <div className="attack-kind" role="group" aria-label="Roll type">
+            <div className="attack-kind" role="group" aria-label={t("attack.rollType")}>
               <button type="button" className="chip" aria-pressed={kind === "toHit"} onClick={() => update({ kind: "toHit" })}>
-                To hit
+                {t("attack.toHit")}
               </button>
               <button type="button" className="chip" aria-pressed={kind === "damage"} onClick={() => update({ kind: "damage" })}>
-                Damage
+                {t("attack.damage")}
               </button>
             </div>
 
             <fieldset className="attack-dice">
-              <legend className="sr-only">Dice</legend>
-              <div className="attack-die-types" role="group" aria-label="Die type">
+              <legend className="sr-only">{t("home.dice.title")}</legend>
+              <div className="attack-die-types" role="group" aria-label={t("attack.dieType")}>
                 {DIE_SIDES.map((sides) => (
                   <button key={sides} type="button" className="chip" aria-pressed={settings.sides === sides} onClick={() => update({ sides })}>
                     d{sides}
@@ -549,19 +550,19 @@ function AttackForm({
                 ))}
               </div>
               <div className="attack-dice-row">
-                <span className="attack-stepper" role="group" aria-label="Number of dice">
-                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count - 1) })} disabled={settings.count <= 1} aria-label="One die fewer">
+                <span className="attack-stepper" role="group" aria-label={t("attack.numberOfDice")}>
+                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count - 1) })} disabled={settings.count <= 1} aria-label={t("attack.fewer")}>
                     <Minus size={12} aria-hidden="true" />
                   </button>
                   <output aria-live="polite">{settings.count}</output>
-                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count + 1) })} disabled={settings.count >= MAX_ATTACK_DICE} aria-label="One die more">
+                  <button type="button" className="icon-button" onClick={() => update({ count: clampCount(settings.count + 1) })} disabled={settings.count >= MAX_ATTACK_DICE} aria-label={t("attack.more")}>
                     <Plus size={12} aria-hidden="true" />
                   </button>
                 </span>
                 <span className="muted">d{settings.sides}</span>
                 <label className="attack-modifier">
                   <span className="muted">+</span>
-                  <span className="sr-only">Modifier</span>
+                  <span className="sr-only">{t("attack.modifier")}</span>
                   <input
                     type="number"
                     value={modifierText}
@@ -579,11 +580,11 @@ function AttackForm({
               </div>
               <input
                 className="attack-custom-label"
-                aria-label="Label"
+                aria-label={t("attack.label")}
                 value={settings.label}
                 onChange={(e) => update({ label: e.target.value })}
                 maxLength={MAX_ATTACK_LABEL}
-                placeholder="Label (optional)"
+                placeholder={t("attack.labelOptional")}
               />
             </fieldset>
 
@@ -592,10 +593,10 @@ function AttackForm({
                 type="submit"
                 className="attack-roll primary"
                 disabled={busy || rolling || !target}
-                title={rolling ? "Your dice are still on the board" : undefined}
+                title={rolling ? t("attack.diceOnBoard") : undefined}
               >
                 <DiceFive size={18} aria-hidden="true" />
-                {busy ? "Rolling…" : !target ? "Choose a target" : kind === "damage" ? `Roll ${expression} damage` : `Roll ${expression} to hit`}
+                {busy ? t("home.dice.rolling") : !target ? t("attack.chooseTarget") : kind === "damage" ? t("attack.rollExprDamage", { expr: expression }) : t("attack.rollExprToHit", { expr: expression })}
               </button>
               {privateToggle}
             </div>
@@ -648,34 +649,34 @@ export function PresetEditor({
   const save = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) return setError("Give the attack a name.");
-    if (taken.some((n) => n.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) return setError(`There is already an attack called ${trimmed}.`);
-    if (!toHit && !damage) return setError("An attack needs a to-hit roll, a damage roll, or both.");
+    if (!trimmed) return setError(t("attack.nameRequired"));
+    if (taken.some((n) => n.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) return setError(t("attack.nameTaken", { name: trimmed }));
+    if (!toHit && !damage) return setError(t("attack.needsRoll"));
     onSave({ name: trimmed, toHit, damage, ...(animation && { animation }), ...(multi && { maxTargets }) });
   };
 
   return (
-    <form className="stack attack-editor" onSubmit={save} aria-label={initial ? `Edit ${initial.name}` : "Add attack"}>
+    <form className="stack attack-editor" onSubmit={save} aria-label={initial ? t("attack.editNamed", { name: initial.name }) : t("creature.addAttack")}>
       <label>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_ATTACK_LABEL} placeholder="Longsword, Fire Bolt, Claws…" autoFocus />
+        {t("common.name")}
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_ATTACK_LABEL} placeholder={t("attack.namePlaceholder")} autoFocus />
       </label>
-      <DiceField label="To hit" value={toHit} fallback={{ count: 1, sides: 20, modifier: 0 }} onChange={setToHit} />
-      <DiceField label="Damage" value={damage} fallback={{ count: 1, sides: 6, modifier: 0 }} onChange={setDamage} />
+      <DiceField label={t("attack.toHit")} value={toHit} fallback={{ count: 1, sides: 20, modifier: 0 }} onChange={setToHit} />
+      <DiceField label={t("attack.damage")} value={damage} fallback={{ count: 1, sides: 6, modifier: 0 }} onChange={setDamage} />
       <label className="checkbox">
         <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
-        Can attack multiple targets
+        {t("attack.multiTarget")}
       </label>
       {multi && (
         <label>
-          Most targets at once
+          {t("attack.mostTargets")}
           <input type="number" inputMode="numeric" min={2} max={MAX_ATTACK_TARGETS} step={1} value={maxTargetsText}
             onChange={(e) => { setMaxTargetsText(e.target.value); if (e.target.value !== "") setMaxTargets(clampTargets(Number(e.target.value))); }}
             onBlur={() => setMaxTargetsText(String(maxTargets))} />
         </label>
       )}
       <SearchablePicker
-        label="Animation"
+        label={t("home.attack.animation")}
         value={animationValue === "" ? AUTOMATIC_ANIMATION : animationValue}
         onChange={(key) => {
           if (key === CURRENT_ANIMATION) return;
@@ -683,8 +684,8 @@ export function PresetEditor({
           setAnimation(key === AUTOMATIC_ANIMATION ? null : [...library, ...builtins].find((a) => a.id === key)?.def ?? null);
         }}
         options={[
-          { key: AUTOMATIC_ANIMATION, label: "Automatic", detail: "animation" },
-          ...(animationValue === CURRENT_ANIMATION ? [{ key: CURRENT_ANIMATION, label: "Saved animation" }] : []),
+          { key: AUTOMATIC_ANIMATION, label: t("walls.colour.auto"), detail: "animation" },
+          ...(animationValue === CURRENT_ANIMATION ? [{ key: CURRENT_ANIMATION, label: t("attack.savedAnimation") }] : []),
           ...builtins.map((b) => ({ key: b.id, label: b.name, detail: "preset" })),
           ...library.map((a) => ({ key: a.id, label: a.name, detail: "yours" })),
         ]}
@@ -697,13 +698,13 @@ export function PresetEditor({
       <div className="row attack-editor-actions">
         {onRemove && (
           <button type="button" className="secondary" onClick={onRemove}>
-            Remove
+            {t("common.remove")}
           </button>
         )}
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </button>
-        <button type="submit" className="primary">Save</button>
+        <button type="submit" className="primary">{t("common.save")}</button>
       </div>
     </form>
   );
@@ -735,13 +736,13 @@ function DiceField({
         <span className="attack-dice-inputs">
           <input
             type="number"
-            aria-label={`${label}: number of dice`}
+            aria-label={t("attack.diceCount", { label })}
             value={dice.count}
             min={1}
             max={MAX_ATTACK_DICE}
             onChange={(e) => set({ count: clampCount(Number(e.target.value)) })}
           />
-          <select aria-label={`${label}: die`} value={dice.sides} onChange={(e) => set({ sides: Number(e.target.value) })}>
+          <select aria-label={t("attack.diceDie", { label })} value={dice.sides} onChange={(e) => set({ sides: Number(e.target.value) })}>
             {DIE_SIDES.map((s) => (
               <option key={s} value={s}>
                 d{s}
@@ -751,7 +752,7 @@ function DiceField({
           <span className="muted">+</span>
           <input
             type="number"
-            aria-label={`${label}: modifier`}
+            aria-label={t("attack.diceModifier", { label })}
             value={modifierText}
             min={-MAX_ATTACK_MODIFIER}
             max={MAX_ATTACK_MODIFIER}

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Eye } from "@phosphor-icons/react";
+import { t } from "../i18n/locale";
 
 /**
  * Shown while the GM previews the room as a player (gm-view-as-player). It stays outside the
@@ -12,10 +13,10 @@ export function PreviewBanner({ name, onExit }: { name: string; onExit: () => vo
     <div className="preview-banner" role="status">
       <Eye size={18} aria-hidden="true" />
       <span>
-        Viewing as <strong>{name}</strong>. This is what they see; you can't make changes here.
+        {t("viewAs.viewing")} <strong>{name}</strong>{t("viewAs.after")}
       </span>
       <button className="primary" ref={exit} type="button" onClick={onExit}>
-        Back to GM view
+        {t("join.gm.back")}
       </button>
     </div>
   );

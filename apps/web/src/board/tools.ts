@@ -113,13 +113,13 @@ export function fogDraftPoints(region: FogDraft): Point[] {
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
 }
 
-/** Colours offered by the Draw tool. */
+/** Colours offered by the Draw tool; names are catalog ids, read with `t()` when shown. */
 export const DRAW_COLORS = [
-  { name: "Red", value: 0xe74c3c },
-  { name: "Yellow", value: 0xf1c40f },
-  { name: "Green", value: 0x2ecc71 },
-  { name: "Blue", value: 0x3498db },
-  { name: "White", value: 0xecf0f1 },
+  { name: "colour.red", value: 0xe74c3c },
+  { name: "colour.yellow", value: 0xf1c40f },
+  { name: "colour.green", value: 0x2ecc71 },
+  { name: "colour.blue", value: 0x3498db },
+  { name: "colour.white", value: 0xecf0f1 },
 ] as const;
 /** Sizes offered for placing an area with a click, in grid units (the common 5e set). A drag sizes it instead. */
 export const AREA_SIZES = [5, 10, 15, 20, 30, 40, 60] as const;

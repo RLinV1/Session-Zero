@@ -15,7 +15,9 @@ import { EmptyState } from "../ui/EmptyState";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
+import { t } from "../i18n/locale";
 
+import { presetName } from "../i18n/labels";
 /**
  * The signed-in person's place outside a room (gm-dashboard, room-membership): create a room,
  * reopen any room they host or play in from any device, reach the library. Every way in is a
@@ -54,9 +56,9 @@ function Dashboard() {
     </div>
     <main className="page-shell home gm-page">
       <div className="page-title-row">
-        <h1>Your rooms</h1>
+        <h1>{t("dashboard.title")}</h1>
         <button type="button" className="primary" onClick={() => setCreating(true)}>
-          <Plus size={16} aria-hidden /> Create room
+          <Plus size={16} aria-hidden /> {t("dashboard.create")}
         </button>
       </div>
       <LegacyMoveBanner onMoved={() => setRefresh((n) => n + 1)} />
@@ -67,7 +69,7 @@ function Dashboard() {
         </div>
       </div>
       <CreateRoom open={creating} onClose={() => setCreating(false)} />
-      <p className="muted small-print">Your rooms and library are saved to your account, on any device you sign in on.</p>
+      <p className="muted small-print">{t("dashboard.savedNote")}</p>
     </main>
     </>
   );
@@ -105,7 +107,7 @@ function CreateRoom({ open, onClose }: { open: boolean; onClose: () => void }) {
     try {
       navigate(`/r/${await createRoomWith(details, templateId || undefined)}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create room");
+      setError(err instanceof Error ? err.message : t("dashboard.createFailed"));
       setBusy(false);
     }
   }
@@ -117,16 +119,16 @@ function CreateRoom({ open, onClose }: { open: boolean; onClose: () => void }) {
   }
 
   return (
-    <Modal open={open} title="Create a room" onClose={close} initialFocus={focusRef} className="create-room-modal">
+    <Modal open={open} title={t("dashboard.createTitle")} onClose={close} initialFocus={focusRef} className="create-room-modal">
       <form className="create-room" onSubmit={onSubmit}>
         <div className="create-room-fields" ref={(el) => { focusRef.current = el?.querySelector("input") ?? null; }}>
           <RoomDetailsFields value={details} onChange={setDetails} />
         </div>
         {templates.length > 0 && (
           <label>
-            Start from template
+            {t("dashboard.fromTemplate")}
             <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-              <option value="">Empty room</option>
+              <option value="">{t("dashboard.emptyRoom")}</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
@@ -140,10 +142,10 @@ function CreateRoom({ open, onClose }: { open: boolean; onClose: () => void }) {
         )}
         <div className="row modal-actions">
           <button type="button" className="secondary" onClick={close} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button className="primary" type="submit" disabled={busy}>
-            {busy ? "Creating…" : "Create room"}
+            {busy ? t("common.creating") : t("dashboard.create")}
           </button>
         </div>
       </form>
@@ -165,7 +167,7 @@ function useOpenRoom() {
       await ensureSeat(room.id);
       navigate(`/r/${room.id}`);
     } catch (err) {
-      setError(`${room.name || "Untitled room"} could not be opened. ${err instanceof Error ? err.message : ""}`.trim());
+      setError(t("dashboard.openFailed", { name: room.name || t("common.untitledRoom"), detail: err instanceof Error ? err.message : "" }).trim());
       setOpening(null);
     }
   }
@@ -179,7 +181,7 @@ function useOpenRoom() {
  * reader users have the Open button, so the picture is left out of the tab order.
  */
 function RoomCard(props: { room: GmRoomSummary; opening: boolean; preview?: boolean; onOpen: () => void; onDelete?: () => void }) {
-  const name = props.room.name || "Untitled room";
+  const name = props.room.name || t("common.untitledRoom");
   return (
     <li className={props.preview ? "room-card has-preview" : "room-card"}>
       {props.preview && (
@@ -190,15 +192,15 @@ function RoomCard(props: { room: GmRoomSummary; opening: boolean; preview?: bool
       <div className="room-card-body">
         <strong className="room-card-name">{name}</strong>
         <span className="muted room-card-meta">
-          {presetOf(props.room).name} · active {formatRelative(props.room.lastActiveAt)}
+          {t("dashboard.roomMeta", { preset: presetName(presetOf(props.room)), when: formatRelative(props.room.lastActiveAt) })}
         </span>
         <div className="row room-card-actions">
           <button type="button" className="secondary small" onClick={props.onOpen} disabled={props.opening}>
-            {props.opening ? "Opening…" : "Open"}
+            {props.opening ? t("common.opening") : t("common.open")}
           </button>
           {props.onDelete && (
-            <button type="button" className="secondary small danger" onClick={props.onDelete} aria-label={`Delete ${name}`}>
-              Delete
+            <button type="button" className="secondary small danger" onClick={props.onDelete} aria-label={t("common.deleteNamed", { name })}>
+              {t("common.delete")}
             </button>
           )}
         </div>
@@ -224,7 +226,7 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
       onDeleted(room.id);
       setDeleteError(null);
     } catch {
-      setDeleteError(`${room.name || "Untitled room"} could not be deleted. Try again.`);
+      setDeleteError(t("dashboard.deleteFailed", { name: room.name || t("common.untitledRoom") }));
     } finally {
       setDeleting(false);
       setConfirming(null);
@@ -234,7 +236,7 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
   const hosting = state.status === "loaded" ? state.rooms.hosting : [];
   return (
     <section className="room-section" aria-labelledby="hosting-heading" aria-busy={state.status === "loading"}>
-      <h2 id="hosting-heading">Hosting</h2>
+      <h2 id="hosting-heading">{t("dashboard.hosting")}</h2>
       {state.status === "loading" && (
         // Cards shaped like the rooms that will replace them, not a spinner.
         <ul className="plain room-grid" aria-hidden="true">
@@ -245,7 +247,7 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
       )}
       {state.status === "failed" && (
         <p role="alert" className="error">
-          Your rooms could not be loaded. You can still create a room.
+          {t("dashboard.loadFailed")}
         </p>
       )}
       {(error || deleteError) && (
@@ -258,11 +260,11 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
           picture="empty-rooms"
           action={
             <button type="button" onClick={onCreate}>
-              Create a room
+              {t("dashboard.createTitle")}
             </button>
           }
         >
-          No rooms yet. Create your first one and send your players the link.
+          {t("dashboard.none")}
         </EmptyState>
       )}
       {hosting.length > 0 && (
@@ -281,20 +283,19 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
       )}
       <Modal
         open={confirming !== null}
-        title={`Delete ${confirming?.name || "Untitled room"}?`}
+        title={t("common.deleteNamedQ", { name: confirming?.name || t("common.untitledRoom") })}
         onClose={() => !deleting && setConfirming(null)}
         initialFocus={cancelRef}
       >
         <p>
-          <strong>{confirming?.name || "Untitled room"}</strong> and everything in it will be permanently deleted: the
-          map, tokens, fog, dice rolls, history, and every player&apos;s seat. Anyone in the room right now is removed.
+          <strong>{confirming?.name || t("common.untitledRoom")}</strong> {t("dashboard.deleteBody")}
         </p>
         <p className="muted">
-          This cannot be undone. Images in your asset library are kept; the invite link stops working.
+          {t("dashboard.deleteNote")}
         </p>
         <div className="row modal-actions">
           <button ref={cancelRef} type="button" className="secondary" onClick={() => setConfirming(null)} disabled={deleting}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -302,7 +303,7 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
             onClick={() => confirming && void deleteRoom(confirming)}
             disabled={deleting}
           >
-            {deleting ? "Deleting…" : "Delete room"}
+            {deleting ? t("common.deleting") : t("dashboard.deleteRoom")}
           </button>
         </div>
       </Modal>
@@ -316,7 +317,7 @@ function PlayingCard({ state }: { state: RoomsState }) {
   if (state.status !== "loaded" || state.rooms.playing.length === 0) return null;
   return (
     <section className="room-section" aria-labelledby="playing-heading">
-      <h2 id="playing-heading">Playing</h2>
+      <h2 id="playing-heading">{t("dashboard.playing")}</h2>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -374,7 +375,7 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
         setState({ status: "none" });
         return;
       }
-      setState({ status: "failed", summary, message: err instanceof Error ? err.message : "Try again." });
+      setState({ status: "failed", summary, message: err instanceof Error ? err.message : t("common.tryAgain") });
     }
   }
 
@@ -382,28 +383,27 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
   if (state.status === "moved") {
     return (
       <p role="status" className="notice">
-        Moved into your account: {describeCounts(state.summary)}.
+        {t("dashboard.legacy.moved", { what: describeCounts(state.summary) })}
       </p>
     );
   }
   return (
     <section className="notice legacy-move" aria-labelledby="legacy-move-heading">
-      <h2 id="legacy-move-heading">Bring this browser&apos;s rooms into your account</h2>
+      <h2 id="legacy-move-heading">{t("dashboard.legacy.title")}</h2>
       <p>
-        This browser has {describeCounts(state.summary)} from before accounts. Move them into your account to open them on
-        any device.
+        {t("dashboard.legacy.body", { what: describeCounts(state.summary) })}
       </p>
       {state.status === "failed" && (
         <p role="alert" className="error">
-          Nothing was moved. {state.message}
+          {t("dashboard.legacy.failed", { message: state.message })}
         </p>
       )}
       <div className="row">
         <button type="button" className="primary" onClick={() => void move(state.summary)} disabled={state.status === "moving"}>
-          {state.status === "moving" ? "Moving…" : "Move into my account"}
+          {state.status === "moving" ? t("common.moving") : t("dashboard.legacy.move")}
         </button>
         <button type="button" className="secondary" onClick={() => setDismissed(true)} disabled={state.status === "moving"}>
-          Not now
+          {t("common.notNow")}
         </button>
       </div>
     </section>
@@ -412,12 +412,11 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
 
 function describeCounts(s: LegacySummary): string {
   const parts = [
-    [s.rooms, "room", "rooms"],
-    [s.assets, "library image", "library images"],
-    [s.creatures, "creature", "creatures"],
-    [s.diceLooks, "dice look", "dice looks"],
+    [s.rooms, "dashboard.legacy.room"],
+    [s.assets, "dashboard.legacy.asset"],
+    [s.creatures, "dashboard.legacy.creature"],
+    [s.diceLooks, "dashboard.legacy.diceLook"],
   ] as const;
-  const named = parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
-  return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : (named[0] ?? "nothing");
+  return t("dashboard.legacy.list", { items: parts.filter(([n]) => n > 0).map(([n, key]) => t(key, { n })) });
 }
 

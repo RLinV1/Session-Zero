@@ -4,6 +4,7 @@ import { api } from "../net/api";
 import { MapThumbnail } from "./MapThumbnail";
 import { useNearViewport } from "./nearViewport";
 
+import { t } from "../i18n/locale";
 type PreviewState = { status: "loading" } | { status: "loaded"; preview: RoomPreview } | { status: "failed" };
 
 /**
@@ -41,7 +42,7 @@ export function RoomBoardPreview({ roomId }: { roomId: string }) {
           overlay={<BoardMarks preview={preview} width={map.width} height={map.height} />}
         />
       ) : (
-        <span className={`room-preview-empty is-${state.status}`}>{preview && "No map yet"}</span>
+        <span className={`room-preview-empty is-${state.status}`}>{preview && t("thumb.noMap")}</span>
       )}
     </span>
   );

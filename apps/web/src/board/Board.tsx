@@ -29,6 +29,7 @@ import type { BoardTool } from "./tools";
 import { TokenCard } from "./TokenCard";
 import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../ui/MoveControl";
 
+import { t, type TextId, useLocale } from "../i18n/locale";
 /** Loaded when the first effect or condition needs it, so the board paints before the libraries arrive. */
 const EffectsOverlay = lazy(() => import("./EffectsOverlay"));
 
@@ -104,7 +105,7 @@ export type DiceBoard = Pick<BoardHandle, "aimThrow">;
 /** Rolls on the board at once; a fourth throw clears the oldest away. */
 const MAX_BOARD_THROWS = 3;
 
-const PLACING_HINT = "Click squares to place · or arrow keys, then Enter · drag to pan · hold Alt to place freely · Esc when done";
+const PLACING_HINT: TextId = "board.placingHint";
 
 /** Directions for keyboard placement (token-placement-flow): one square per press. */
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -133,27 +134,27 @@ interface Placing {
   said: string;
 }
 
-const HINTS: Record<BoardTool["kind"], string> = {
-  select: "Drag to pan · scroll to zoom · double-click to ping · hold Alt to place freely",
-  measure: "Drag to measure · Alt: straight line · Esc: stop",
-  draw: "Drag to draw · only you can see drawings · Esc to stop",
-  area: "Drag to size and aim · click to place the chosen size · hold Alt to place freely · everyone at the table sees areas",
-  erase: "Click or drag over your marks and areas to erase them · Esc to stop",
-  attack: "Click the token to attack · Esc or right-click to cancel",
-  pickTemplate: "Click an area to select every token it touches · Esc or right-click to cancel",
-  fog: "",
+const HINTS: Record<BoardTool["kind"], TextId | null> = {
+  select: "board.hint.select",
+  measure: "board.hint.measure",
+  draw: "board.hint.draw",
+  area: "board.hint.area",
+  erase: "board.hint.erase",
+  attack: "board.hint.attack",
+  pickTemplate: "board.hint.pickTemplate",
+  fog: null,
 };
 
 /** Fog hints by mode (FR-GM-17). Players never get the Fog tool. */
 const FOG_HINTS = {
-  rect: "Drag a rectangle to hide it from players · Esc to stop",
-  polygon: "Click corners · click the first corner or press Enter to close · Backspace removes a corner · Esc cancels",
-  reveal: "Click fog to remove it and show players what is under it · undo from the activity log",
-} as const;
+  rect: "board.fogHint.rect",
+  polygon: "board.fogHint.polygon",
+  reveal: "board.fogHint.reveal",
+} as const satisfies Record<string, TextId>;
 
 
 /** With GM only ticked, the areas are the GM's alone; saying "everyone sees them" would mislead. */
-const GM_ONLY_AREA_HINT = "Drag to size and aim · click to place the chosen size · GM only: players won't see these areas";
+const GM_ONLY_AREA_HINT: TextId = "board.gmOnlyAreaHint";
 
 /** A strike waits for its dice at most this long, in case their landing is never reported. */
 const STRIKE_WAIT_MS = 5000;
@@ -168,6 +169,9 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const renderedState = useDisplayedHealth(state);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
+  // A language change relabels what Pixi draws (token names, condition letters, captions); nothing is sent.
+  const locale = useLocale();
+  useEffect(() => { viewRef.current?.refreshText(); }, [locale]);
   /** GM only: "off" hides fog from this view. Not remembered: every time the board opens, fog is shown. */
   const [terrainOpen, setTerrainOpen] = useState(false);
   const [showTerrain, setShowTerrain] = useState(false);
@@ -371,7 +375,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       if (now?.source !== current.source) return now;
       if (!result.ok) return { ...now, busy: false, error: result.message };
       const placed = now.placed + 1;
-      return { ...now, busy: false, error: null, placed, said: `${ghostRef.current?.name ?? "Token"} placed, ${placed} so far.` };
+      return { ...now, busy: false, error: null, placed, said: t("board.placedSaid", { name: ghostRef.current?.name ?? t("board.token"), n: placed }) };
     });
   };
   const placeRef = useRef(place);
@@ -614,7 +618,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     e.preventDefault();
     const cursor = moveCursor(current.cursor, step[0], step[1], size, state);
     viewRef.current?.setPlacementCursor(cursor);
-    const said = `${ghostRef.current?.name ?? "Token"} at ${cursorSquare(cursor, size, state.scene.grid)}${cursor === current.cursor ? ", the edge of the map" : ""}.`;
+    const said = t(cursor === current.cursor ? "board.cursorEdge" : "board.cursorSaid", { name: ghostRef.current?.name ?? t("board.token"), square: cursorSquare(cursor, size, state.scene.grid) });
     setPlacing({ ...current, cursor, said });
   };
 
@@ -779,7 +783,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         ref={hostRef}
         className="board-canvas"
         tabIndex={-1}
-        aria-label={placing ? `Board. Placing ${ghost?.name ?? "a token"}: arrow keys move it, Enter places one, Esc when done.` : undefined}
+        aria-label={placing ? t("board.placingAria", { name: ghost?.name ?? t("board.aToken") }) : undefined}
         onKeyDown={onBoardKey}
       />
       {(overlayEffects.length > 0 || Object.values(state.tokens).some((t) => t.conditions.length > 0)) && (
@@ -794,43 +798,43 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         {phone ? (
           <>
           {/* Two 44px buttons on a phone: board options (Paint terrain, Fit) and, separately, the view filter. */}
-          <PopoverButton label="Board options" title="Board options" className="tool-button board-menu-button" buttonContent={<SlidersHorizontal size={18} aria-hidden="true" />}>
+          <PopoverButton label={t("board.options")} title={t("board.options")} className="tool-button board-menu-button" buttonContent={<SlidersHorizontal size={18} aria-hidden="true" />}>
             {(close) => (
               <div className="room-menu">
                 {canPaint && (
                   <button type="button" className="tool-button" onClick={() => { close(); if (state.scene.map) setTerrainOpen(true); else setNoMapNotice(true); }}>
-                    <PaintBrush size={16} aria-hidden="true" /> Paint terrain
+                    <PaintBrush size={16} aria-hidden="true" /> {t("board.paintTerrain")}
                   </button>
                 )}
                 <button type="button" className="tool-button" data-tour="fit" onClick={() => { close(); viewRef.current?.resetView(); }}>
-                  <CornersOut size={16} aria-hidden="true" /> Fit map to screen
+                  <CornersOut size={16} aria-hidden="true" /> {t("board.fitScreen")}
                 </button>
               </div>
             )}
           </PopoverButton>
-          <PopoverButton label="View filters" title="View filters" placement="fixed" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
+          <PopoverButton label={t("board.viewFilters")} title={t("board.viewFilters")} placement="fixed" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
             <div className="room-menu">{filters(true)}</div>
           </PopoverButton>
           </>
         ) : (
           <>
-            {canPaint && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>Paint terrain</button>}
-            <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title="Fit the map to the screen">
+            {canPaint && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>{t("board.paintTerrain")}</button>}
+            <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title={t("board.fitTitle")}>
               <CornersOut size={16} aria-hidden="true" />
-              Fit
+              {t("common.fit")}
             </button>
             {filters(false)}
           </>
         )}
       </div>
       {tokenView && gmCanSee && viewing.length === 0 && (
-        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />No tokens on the map to see through</p>
+        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />{t("board.noTokensSee")}</p>
       )}
       {/* Line of sight with no token to see through: the map shows dimmed, and this says why. */}
       {you.role === "player" && losOn && state.scene.map && state.sight?.length === 0 && (
-        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />You'll see through your token once the GM gives you one</p>
+        <p className="board-status" role="status"><Eye size={14} aria-hidden="true" />{t("board.seeOnceGiven")}</p>
       )}
-      {gridPreview && <p className="grid-preview-label" role="status">Preview · Not applied</p>}
+      {gridPreview && <p className="grid-preview-label" role="status">{t("board.previewNotApplied")}</p>}
       {!readOnly && !selectOnly && (
       <ToolRail
         movementControls={<MovementControls key={state.roomId} roomId={state.roomId} grid={state.scene.grid} onChange={setMovementSettings} />}
@@ -855,9 +859,9 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {tool.kind === "measure" && movementFeedback && <p className="movement-feedback" role="status">{movementFeedback}</p>}
       {overlay}
       {notices}
-      {noMapNotice && !state.scene.map && <p className="board-movement-readout" role="status">Add a map first to paint terrain.</p>}
+      {noMapNotice && !state.scene.map && <p className="board-movement-readout" role="status">{t("board.addMapFirst")}</p>}
       {movementNotice && !selected && !readOnly && <p className="board-movement-readout" role="status">{movementNotice}</p>}
-      {terrainOpen && you.role === "gm" && !readOnly && <Modal open title="Live terrain" className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live layers /></div></Modal>}
+      {terrainOpen && you.role === "gm" && !readOnly && <Modal open title={t("terrain.live")} className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live layers /></div></Modal>}
       {refusal && <p key={refusal.at} className="board-refusal" role="alert">{refusal.message}</p>}
       {selected && (
         <TokenCard
@@ -894,15 +898,15 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {placing && (
         <div className="placement-bar">
           <p>
-            Placing <strong>{ghost?.name}</strong>: click squares to add more
-            {placing.placed > 0 ? ` · ${placing.placed} placed` : ""}
+            {t("board.placingBefore")}<strong>{ghost?.name}</strong>{t("board.placingAfter")}
+            {placing.placed > 0 ? t("board.placedN", { n: placing.placed }) : ""}
           </p>
           {/* Each cursor move and each token placed, for screen readers (token-placement-flow). */}
           <p className="sr-only" aria-live="polite">{placing.said}</p>
           {placing.error && <p role="alert" className="error">{placing.error}</p>}
           <div className="row">
             <button type="button" className="secondary" disabled={placing.busy} onClick={() => setPlacing(null)}>
-              {placing.placed > 0 ? "Done" : "Cancel"}
+              {placing.placed > 0 ? t("common.done") : t("common.cancel")}
             </button>
           </div>
         </div>
@@ -911,7 +915,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {/* Read-only boards (a player preview, a checkpoint preview) can't ping or place, so no hint. */}
       {!readOnly && (
         <p className="board-hint" aria-live={placing ? "off" : "polite"}>
-          {placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : HINTS[tool.kind]}
+          {(() => { const hint = placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : HINTS[tool.kind]; return hint ? t(hint) : ""; })()}
         </p>
       )}
     </div>
