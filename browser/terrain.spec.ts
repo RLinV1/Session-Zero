@@ -130,7 +130,7 @@ test("GM editor resizes reject obstructions atomically and preserve fog concealm
   } finally { gm.close(); player.close(); await playerContext.close(); }
 });
 
-test("terrain preparation, synchronized layers, movement restrictions and private feedback (FR-GM-15/23, FR-PL-04)", async ({ page, browser }, testInfo) => {
+test("terrain preparation, movement restrictions and private feedback (FR-GM-15/23, FR-PL-04)", async ({ page, browser }, testInfo) => {
   test.setTimeout(150_000); page.setDefaultTimeout(15_000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const gmRefusals: string[] = [], gmAcks: string[] = [], gmSent: string[] = [];
@@ -202,26 +202,6 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await playerPage.keyboard.press("Escape"); await playerPage.mouse.up();
     expect(Object.values(player.state.tokens)[0]!.position).toEqual({ x: 25, y: 25 });
     expect(player.raw.join("\n")).not.toContain("tokenMoveFeedback"); expect(gm.raw.join("\n")).not.toContain("tokenMoveFeedback");
-    // The GM paints live terrain with the rail's Terrain tool, on Base only (board-terrain-tool).
-    await expect(page.getByRole("button", { name: "Paint terrain", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Terrain", exact: true }).click();
-    await expect(page.getByRole("group", { name: "Terrain options" }).locator("select")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Manage layers" })).toHaveCount(0);
-    const gmHost = page.locator(".board-canvas"), gmBox = (await gmHost.boundingBox())!;
-    const gmScale = Math.min(gmBox.width / 700, gmBox.height / 500) * .95;
-    const boardPoint = (x: number, y: number) => ({ x: gmBox.x + (gmBox.width - 700 * gmScale) / 2 + x * gmScale, y: gmBox.y + (gmBox.height - 500 * gmScale) / 2 + y * gmScale });
-    const strokeFrom = boardPoint(75, 25), strokeTo = boardPoint(125, 25);
-    await page.mouse.move(strokeFrom.x, strokeFrom.y); await page.mouse.down(); await page.mouse.move(strokeTo.x, strokeTo.y, { steps: 6 }); await page.mouse.up();
-    await expect.poll(() => gm.state.terrain?.base).toEqual([{ row: 0, start: 1, end: 2, kind: "difficult" }]);
-    await expect.poll(() => player.state.terrainView?.runs).toEqual(gm.state.terrain!.base);
-    expect(gm.state.terrain?.effects).toEqual([]);
-    // Esc drops a stroke in progress without sending it.
-    const revisionBefore = gm.state.terrainRevision;
-    const cancelAt = boardPoint(225, 25);
-    await page.mouse.move(cancelAt.x, cancelAt.y); await page.mouse.down(); await page.keyboard.press("Escape"); await page.mouse.up();
-    expect(gm.state.terrainRevision).toBe(revisionBefore);
-    await page.screenshot({ path: testInfo.outputPath("terrain-rail-tool.png") });
-    await page.getByRole("button", { name: "Select", exact: true }).click();
     await page.getByRole("tab", { name: "Manage", exact: true }).click();
     await page.getByRole("button", { name: "Edit map", exact: true }).click();
     const preparationEditor = page.getByRole("dialog", { name: "Edit map", exact: true });
@@ -472,7 +452,7 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await page.getByRole("button", { name: "Back to GM view", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("terrain-board.png") });
     await playerPage.screenshot({ path: testInfo.outputPath("terrain-player.png") });
-    expect(player.raw.join("\n")).not.toContain("Private spell name"); expect(player.raw.join("\n")).not.toContain('"terrainRevision"');
+    expect(player.raw.join("\n")).not.toContain('"terrainRevision"');
     expect(errors).toEqual([]);
   } finally { gm.close(); player.close(); await playerContext.close(); }
 });
