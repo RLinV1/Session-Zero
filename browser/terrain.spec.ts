@@ -88,7 +88,8 @@ test("library placement refuses shifted terrain until an explicit reset (FR-GM-1
     await editor.getByRole("button", { name: "Apply map", exact: true }).click();
     await expect.poll(() => gm.state.scene.grid.unitsPerCell).toBe(10);
     expect(gm.state.terrain?.base).toEqual(base);
-    await editor.getByRole("button", { name: "Close", exact: true }).click();
+    // The dialog's own Close: the Grid step's form can briefly show a second "Close" while the applied map settles.
+    await editor.locator(".modal-close").and(editor.getByRole("button", { name: "Close", exact: true })).click();
     editor = await choose();
     await editor.getByLabel("Cell size", { exact: true }).fill("20");
     const beforeSeq = gm.seq;
