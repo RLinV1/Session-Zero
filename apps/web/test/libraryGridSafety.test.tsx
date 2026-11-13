@@ -34,7 +34,7 @@ const change = (label: string, value: string) => fireEvent.change(screen.getByLa
 const terrainTab = () => fireEvent.click(screen.getByRole("tab", { name: /Terrain/ }));
 const gridTab = () => fireEvent.click(screen.getByRole("tab", { name: /Grid/ }));
 const terrainCanvas = () => screen.getByRole("application", { name: "Terrain preparation canvas" });
-const expectTerrain = (cells: number) => expect(within(terrainCanvas()).queryAllByText("⊘")).toHaveLength(cells);
+const expectTerrain = (cells: number) => expect(terrainCanvas().querySelectorAll('[data-terrain="blocked"]')).toHaveLength(cells);
 async function saveChanges() {
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.library.savePreparation).toHaveBeenCalledOnce());

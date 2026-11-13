@@ -23,7 +23,6 @@ export const board = {
   "board.cursorEdge": ({ name, square }: { name: string; square: string }) => `${name} at ${square}, the edge of the map.`,
   "board.placingAria": ({ name }: { name: string }) => `Board. Placing ${name}: arrow keys move it, Enter places one, Esc when done.`,
   "board.options": "Board options",
-  "board.paintTerrain": "Paint terrain",
   "board.fitScreen": "Fit map to screen",
   "board.viewFilters": "View filters",
   "board.fitTitle": "Fit the map to the screen",
@@ -85,4 +84,7 @@ export const board = {
   "board.missSplash": "MISS",
   "card.details": ({ name }: { name: string }) => `${name} details`,
   "card.noneLower": "none",
+  "board.hint.terrain": "Drag to paint squares · everyone sees terrain · Esc or right-click cancels",
+  "board.hint.doors": "Click a door or window to change it · Esc to stop",
+  "card.quickHp": "Quick HP",
 } as const satisfies CatalogSource;

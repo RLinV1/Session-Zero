@@ -1,6 +1,7 @@
-import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
+import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type PortalState, type TerrainKind, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
+import type { StrokeShape } from "./terrainStroke";
 
 /**
  * Board tools (KAN-69): the tool rail's Measure, Draw, Area and Eraser tools. Pure geometry in board
@@ -29,10 +30,26 @@ export type BoardTool =
   | { kind: "erase" }
   /** GM only (FR-GM-17, ADR 0016): conceal a rectangle or polygon, or reveal (remove) a fogged region. */
   | { kind: "fog"; mode: FogMode }
+  /** GM only (board-terrain-tool): paint Base terrain on the live board; `paint` null erases to Normal ground. */
+  | { kind: "terrain"; shape: StrokeShape; paint: TerrainKind | null }
+  /** GM only (board-doors-tool): change a door's or window's state by clicking it. */
+  | { kind: "doors"; mode: DoorsMode }
   /** Picking whom `attackerId` attacks (attack-targeting). Started from a token's Attack button, not the rail. */
   | { kind: "attack"; attackerId: string }
   /** GM only: picking a placed template whose tokens to select (ADR 0046). Started from From template, not the rail. */
   | { kind: "pickTemplate" };
+
+/** What a Doors-tool click does: Open/Close, or Lock/Unlock (board-doors-tool). */
+export type DoorsMode = "toggle" | "lock";
+
+/**
+ * The state a Doors-tool click sets: Open/Close opens a closed or locked portal and closes an open
+ * one; Lock/Unlock locks an open or closed portal and unlocks a locked one to closed.
+ */
+export function doorsTarget(mode: DoorsMode, current: PortalState): PortalState {
+  if (mode === "toggle") return current === "open" ? "closed" : "open";
+  return current === "locked" ? "closed" : "locked";
+}
 
 /** What the Measure tool measures: plain range, or a route's movement cost (ruler-modes). */
 export type MeasureMode = "range" | "movement";

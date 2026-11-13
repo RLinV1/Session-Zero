@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { Copy, Eye, EyeSlash, PencilSimple, Trash } from "@phosphor-icons/react";
-import { can, conditionLabel, presetOf, type Participant, type Point, type RoomState, type Token } from "@vtt/shared";
+import { can, conditionLabel, presetOf, type Participant, type Point, type RoomState, type Token, type TokenStats } from "@vtt/shared";
 import { Modal } from "../ui/Modal";
 import { statHidden } from "../ui/statHidden";
+import { applyHpDelta } from "../ui/hpChange";
 
 import { getLocale, t } from "../i18n/locale";
 /**
@@ -23,6 +24,7 @@ export function TokenCard({
   reposition,
   sight,
   movementReadout,
+  onSetStats,
 }: {
   token: Token;
   state: RoomState;
@@ -42,6 +44,8 @@ export function TokenCard({
   /** GM Token view: the eye that narrows the board to this token's sight (gm-token-sight-view). Omit to hide the button. */
   sight?: { on: boolean; onToggle: () => void };
   movementReadout?: string | null;
+  /** Sends `token.setStats`, for quick damage and healing (token-quick-hp). Resolves the server's answer. */
+  onSetStats?: (stats: TokenStats) => Promise<{ ok: true } | { ok: false; message: string }>;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
@@ -50,6 +54,7 @@ export function TokenCard({
   const showDuplicate = !readOnly && !!onDuplicate && you.role === "gm";
   const showDelete = !readOnly && !!onDelete && you.role === "gm";
   const showMove = !readOnly && !!onMove && can.moveToken(you, token);
+  const showQuickHp = !readOnly && !!onSetStats && can.editToken(you, token) && token.stats.hp !== null && !statHidden(state, you, token, "hp");
 
   return (
     <aside className="token-card" aria-label={t("card.details", { name: token.name })}>
@@ -101,6 +106,7 @@ export function TokenCard({
           </>
         )}
       </dl>
+      {showQuickHp && onSetStats && <QuickHp token={token} onSetStats={onSetStats} />}
       {showMove && reposition && (
         <button
           type="button"
@@ -165,5 +171,47 @@ export function TokenCard({
         </div>
       </Modal>
     </aside>
+  );
+}
+
+/**
+ * Quick damage and healing (token-quick-hp): −5, −1, +1, +5. Healing stops at max HP; each tap is
+ * one `token.setStats`. Disabled while a change is in flight, so two fast taps never compute from
+ * the same stale HP.
+ */
+function QuickHp({ token, onSetStats }: { token: Token; onSetStats: (stats: TokenStats) => Promise<{ ok: true } | { ok: false; message: string }> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const apply = async (delta: number) => {
+    if (busy) return;
+    const stats = applyHpDelta(token.stats, delta);
+    if (!stats || stats.hp === token.stats.hp) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onSetStats(stats);
+      if (!result.ok) setError(result.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="token-card-hp" role="group" aria-label={t("card.quickHp")} aria-busy={busy}>
+      <div className="hp-quick">
+        {[-5, -1, +1, +5].map((delta) => (
+          <button
+            key={delta}
+            type="button"
+            className="chip"
+            disabled={busy}
+            onClick={() => void apply(delta)}
+            aria-label={t(delta > 0 ? "mine.healBy" : "mine.damageBy", { name: token.name, n: Math.abs(delta) })}
+          >
+            {delta > 0 ? `+${delta}` : delta}
+          </button>
+        ))}
+      </div>
+      {error && <p role="alert" className="error small">{error}</p>}
+    </div>
   );
 }

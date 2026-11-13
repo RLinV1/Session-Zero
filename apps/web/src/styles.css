@@ -9,6 +9,15 @@
 }
 
 :root {
+  /* Map elements (board-palette): fixed, not themed; mirrors board/mapPalette.ts. */
+  --map-wall: #4cc46a;
+  --map-wall-outer: #0f1a12;
+  --map-door: #f08a24;
+  --map-door-outer: #1a1108;
+  --map-window: #5dade2;
+  --map-window-outer: #0b1620;
+  --map-difficult: #9b4de8;
+  --map-blocked: #e0525a;
   /* Slate and rust: a wet-erase battle mat under a marker, not a SaaS dashboard. One cool
      neutral family; rust is the only accent and marks the one thing to act on. */
   --bg: #121417;
@@ -359,6 +368,8 @@ a.tool-button { text-decoration: none; }
 .token-card dt { color: var(--muted); }
 .token-card dd { margin: 0; }
 .token-card-actions { margin-top: var(--space-3); gap: var(--space-2); }
+/* Quick damage and healing on the board's card (token-quick-hp). */
+.token-card-hp { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 .token-card-reposition { align-self: flex-start; max-width: 100%; margin: var(--space-3) 0 var(--space-2); white-space: normal; }
 .token-card-reposition[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .token-card-sight.is-on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -2914,6 +2925,8 @@ dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: va
 }
 .rail-label { font-size: var(--fs-xs); font-weight: 500; line-height: 1; }
 .rail-divider { height: 1px; margin: var(--space-1) 0; background: var(--border-strong); }
+.tool-segmented.wide { flex-direction: column; }
+.tool-segmented.wide .tool-button.rail-button { width: auto; justify-content: flex-start; gap: var(--space-2); padding: 0 var(--space-2); white-space: nowrap; }
 .tool-options {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-2);
@@ -2969,7 +2982,7 @@ dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: va
 .walls-actions > button { flex: 1 1 8rem; }
 .walls-legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
 .walls-legend li { display: flex; align-items: center; gap: var(--space-1); }
-.walls-legend-swatch { width: 22px; border-top: 3px solid #f0a24a; }
+.walls-legend-swatch { width: 22px; border-top: 3px solid var(--map-wall); }
 /* Doors and windows are drawn twice as thick as walls, on a dark casing. */
 .walls-legend-swatch.portal { border-top-width: 6px; box-shadow: 0 0 0 1px #111; }
 .walls-legend-swatch.doubtful { border-top-style: dashed; }
@@ -3749,23 +3762,23 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .step-copy p { margin: 0; color: var(--muted); line-height: 1.55; }
 .walls-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--fs-sm); color: var(--muted); }
 .walls-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
-.legend-line { display: inline-block; width: 1.25rem; height: 3px; border-radius: 2px; background: #f0a24a; box-shadow: 0 0 0 1px #14110e; }
-.legend-line.is-door { height: 6px; border-radius: 0; background: #c8873a; }
-.legend-line.is-window { height: 6px; border-radius: 0; background: #5dade2; }
+.legend-line { display: inline-block; width: 1.25rem; height: 3px; border-radius: 2px; background: var(--map-wall); box-shadow: 0 0 0 1px var(--map-wall-outer); }
+.legend-line.is-door { height: 6px; border-radius: 0; background: var(--map-door); box-shadow: 0 0 0 1px var(--map-door-outer); }
+.legend-line.is-window { height: 6px; border-radius: 0; background: var(--map-window); box-shadow: 0 0 0 1px var(--map-window-outer); }
 .legend-lock { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; background: #c0392b; box-shadow: 0 0 0 1px #111; }
 @media (max-width: 860px) {
   .prepare-step, .walls-step { grid-template-columns: 1fr; }
   .walls-step .step-copy { order: 0; }
 }
 
-/* Walls as the board draws them: amber walls and portals in wood or glass, each over a dark halo. */
+/* Walls as the board draws them (board-palette): green walls, orange doors, blue windows, each over a dark halo. */
 .walls-drawing { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .walls-drawing line { stroke-linecap: round; }
-.wall-halo line { stroke: #14110e; stroke-opacity: 0.55; }
-.walls-drawing .wall-stroke { stroke: #f0a24a; stroke-opacity: 0.95; }
+.wall-halo line { stroke: var(--map-wall-outer); stroke-opacity: 0.85; }
+.walls-drawing .wall-stroke { stroke: var(--map-wall); stroke-opacity: 0.95; }
 .portal-halo line { stroke: #111; stroke-opacity: 0.85; stroke-linecap: butt; }
-.walls-drawing .wall-stroke.is-door { stroke: #c8873a; stroke-opacity: 1; stroke-linecap: butt; }
-.walls-drawing .wall-stroke.is-window { stroke: #5dade2; stroke-opacity: 1; stroke-linecap: butt; }
+.walls-drawing .wall-stroke.is-door { stroke: var(--map-door); stroke-opacity: 1; stroke-linecap: butt; }
+.walls-drawing .wall-stroke.is-window { stroke: var(--map-window); stroke-opacity: 1; stroke-linecap: butt; }
 .portal-lock { fill: #c0392b; stroke: #111; stroke-width: 2; }
 
 /* Part of a crop on its own (CropWindow): the whole picture, moved and clipped to the view. */
@@ -3967,25 +3980,12 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .terrain-controls .terrain-seg button.terrain-icon:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--raised); color: var(--text); }
 .terrain-controls .terrain-seg button.terrain-icon[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); outline: 0; box-shadow: inset 0 0 0 1.5px var(--accent); }
 .terrain-controls .terrain-seg button.terrain-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; position: relative; z-index: 1; }
-.terrain-icon sup { position: absolute; right: 4px; top: 3px; font-size: .62rem; line-height: 1; font-weight: 700; color: #d5a64d; }
-.terrain-kind-blocked[aria-pressed="true"] { color: #d57474; }
-.terrain-kind-difficult[aria-pressed="true"] { color: #d5a64d; }
-.terrain-layers { border: 1px solid var(--border); border-radius: 8px; background: var(--field); overflow: clip; }
-.terrain-layers header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-1) var(--space-2); background: var(--raised); font-size: .85rem; color: var(--muted); }
+.terrain-icon sup { position: absolute; right: 4px; top: 3px; font-size: .62rem; line-height: 1; font-weight: 700; color: var(--map-difficult); }
+.terrain-kind-blocked[aria-pressed="true"] { color: var(--map-blocked); }
+.terrain-kind-difficult[aria-pressed="true"] { color: var(--map-difficult); }
 /* No own scroll: the HUD aside is the single scroll region. */
 .terrain-editor .map-editor-hud { scrollbar-gutter: stable; }
-.terrain-layers ul { list-style: none; margin: 0; padding: 0; }
-.terrain-layer { display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-1); border-top: 1px solid var(--border); }
-.terrain-layer[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-.terrain-layers button.terrain-layer-pick { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: var(--space-2); background: none; border: 0; color: var(--text); text-align: left; }
-.terrain-layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.terrain-chip { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; flex: none; color: #fff; }
-.terrain-chip-effect { background: #b78321; }
-.terrain-chip-base { background: #4f6b52; }
-.terrain-layers input.terrain-new { width: calc(100% - 1rem); margin: var(--space-1) var(--space-2); }
-.terrain-layer .terrain-rename { flex: 1; min-width: 0; margin: var(--space-1) 0; }
 .terrain-guide { list-style: none; margin: 0; padding: var(--space-2); display: grid; gap: var(--space-2); width: 16rem; max-width: calc(100vw - 3rem); font-size: .85rem; }
-.terrain-layers-note { margin: 0; padding: var(--space-1) var(--space-2); }
 .terrain-guide span { min-width: 0; overflow-wrap: anywhere; }
 .terrain-guide li { display: flex; gap: var(--space-2); align-items: flex-start; }
 .terrain-guide svg { flex: none; width: 18px; height: 18px; color: var(--accent-text); }
@@ -4165,6 +4165,8 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .rail-current .rail-caret { position: absolute; top: 3px; right: 3px; color: var(--muted); }
   .rail-current[aria-expanded="true"] { border-color: var(--accent); }
   .tool-flyout { display: grid; grid-template-columns: repeat(4, 44px); gap: var(--space-1); }
+  /* The divider between play and GM tools spans the flyout (board-tool-rail). */
+  .tool-flyout .rail-divider { grid-column: 1 / -1; margin: 0; }
   .tool-options { padding: var(--space-2); }
   .tool-swatches { flex-wrap: wrap; }
 

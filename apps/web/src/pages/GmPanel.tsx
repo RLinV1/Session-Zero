@@ -750,7 +750,7 @@ function MapSection(props: {
             {step === "fog" && (prep
               ? <p className="map-editor-empty">{t("gmMap.applyBeforeFog")}</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.fog(draftEdits, draftState)}</Fragment>)}
-            {step === "terrain" && (prep ? <p className="map-editor-empty">{t("gmMap.applyBeforeTerrain")}</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} layers />)}
+            {step === "terrain" && (prep ? <p className="map-editor-empty">{t("gmMap.applyBeforeTerrain")}</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} />)}
         {step === "sight" && (prep
               ? <p className="map-editor-empty">{t("sight.needsMap")}</p>
               : !props.map ? <p className="map-editor-empty">{t("sight.needsMap")}</p>

@@ -14,6 +14,7 @@ import { Modal } from "../../ui/Modal";
 import { WallCanvas, type CanvasMode } from "./WallCanvas";
 import { HudLayout } from "./HudLayout";
 import { t, type TextId } from "../../i18n/locale";
+import { hex, MAP_PALETTE } from "../../board/mapPalette";
 
 const MODES: { key: CanvasMode; label: TextId; icon: typeof Eraser; needsDetection?: boolean }[] = [
   { key: "select", label: "common.select", icon: Cursor },
@@ -26,7 +27,7 @@ const MODES: { key: CanvasMode; label: TextId; icon: typeof Eraser; needsDetecti
 /** Detected walls the model was unsure about (wall-review) get a halo in this colour in the preview and its legend. */
 const DOUBTFUL_COLOR = "#ff5fa2";
 /** Preview stroke colours, shared with the Sight step: plain wall, door, window. */
-const KIND_COLOR = { wall: "#f0a24a", door: "#e8c46a", window: "#6cc6ff" } as const;
+const KIND_COLOR = { wall: hex(MAP_PALETTE.wall.inner), door: hex(MAP_PALETTE.door.inner), window: hex(MAP_PALETTE.window.inner) } as const;
 const kindOf = (w: DetectedWall): "wall" | PortalKind => w.portal?.kind ?? "wall";
 
 /** What the Door / window tool turns a clicked wall into (ADR 0030). "wall" makes it plain again. */

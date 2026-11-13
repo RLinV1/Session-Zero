@@ -6,6 +6,7 @@ import { useDisplayedHealth } from "../board/nukeHealth";
 import { hpLevel } from "../ui/palette";
 import { TokenDisc } from "../ui/TokenDisc";
 import { t } from "../i18n/locale";
+import { applyHpDelta } from "../ui/hpChange";
 
 /**
  * The player's own characters, promoted above everything else (FR-PL-03).
@@ -103,16 +104,10 @@ export function MyTokens({
                       key={delta}
                       type="button"
                       className="chip"
-                      onClick={() =>
-                        connection.command({
-                          type: "token.setStats",
-                          tokenId: token.id,
-                          stats: {
-                            ...token.stats,
-                            hp: clamp(token.stats.hp! + delta, token.stats.maxHp),
-                          },
-                        })
-                      }
+                      onClick={() => {
+                        const stats = applyHpDelta(token.stats, delta);
+                        if (stats) void connection.command({ type: "token.setStats", tokenId: token.id, stats });
+                      }}
                       aria-label={t(delta > 0 ? "mine.healBy" : "mine.damageBy", { name: token.name, n: Math.abs(delta) })}
                     >
                       {delta > 0 ? `+${delta}` : delta}
@@ -128,6 +123,3 @@ export function MyTokens({
     </PanelSection>
   );
 }
-
-/** The server rejects hp above maxHp, so clamp rather than letting a tap fail. */
-const clamp = (hp: number, maxHp: number | null) => (maxHp === null ? hp : Math.min(hp, maxHp));

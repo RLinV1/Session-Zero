@@ -47,8 +47,14 @@ async function wire(credentials: Credentials) {
 async function enter(page: Page, credentials: Credentials) {
   await page.addInitScript((creds) => localStorage.setItem(`vtt.credentials.${creds.roomId}`, JSON.stringify(creds)), credentials);
   await page.goto(`/r/${credentials.roomId}`);
-  await page.getByRole("button", { name: "Show", exact: true }).click();
-  await page.getByLabel("Terrain", { exact: true }).setChecked(true);
+  await expect(page.locator(".board-canvas canvas")).toBeVisible();
+  // Terrain shows by default; only the GM has a Show menu (board-view-filters).
+  const show = page.getByRole("button", { name: "Show", exact: true });
+  if (await show.count()) {
+    await show.click();
+    await expect(page.getByLabel("Terrain", { exact: true })).toBeChecked();
+    await page.keyboard.press("Escape");
+  }
 }
 
 test("GM editor resizes reject obstructions atomically and preserve fog concealment (FR-TAC-03, FR-GM-23)", async ({ page, browser }, testInfo) => {
@@ -196,43 +202,26 @@ test("terrain preparation, synchronized layers, movement restrictions and privat
     await playerPage.keyboard.press("Escape"); await playerPage.mouse.up();
     expect(Object.values(player.state.tokens)[0]!.position).toEqual({ x: 25, y: 25 });
     expect(player.raw.join("\n")).not.toContain("tokenMoveFeedback"); expect(gm.raw.join("\n")).not.toContain("tokenMoveFeedback");
-    await page.getByRole("button", { name: "Paint terrain", exact: true }).click();
-    const editor = page.getByRole("dialog", { name: "Live terrain", exact: true });
-    const canvas = editor.getByRole("application", { name: "Live terrain canvas" });
-    await canvas.focus(); await canvas.press("ArrowRight"); await canvas.press("Enter"); await canvas.press("ArrowRight"); await canvas.press("Enter");
+    // The GM paints live terrain with the rail's Terrain tool, on Base only (board-terrain-tool).
+    await expect(page.getByRole("button", { name: "Paint terrain", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Terrain", exact: true }).click();
+    await expect(page.getByRole("group", { name: "Terrain options" }).locator("select")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Manage layers" })).toHaveCount(0);
+    const gmHost = page.locator(".board-canvas"), gmBox = (await gmHost.boundingBox())!;
+    const gmScale = Math.min(gmBox.width / 700, gmBox.height / 500) * .95;
+    const boardPoint = (x: number, y: number) => ({ x: gmBox.x + (gmBox.width - 700 * gmScale) / 2 + x * gmScale, y: gmBox.y + (gmBox.height - 500 * gmScale) / 2 + y * gmScale });
+    const strokeFrom = boardPoint(75, 25), strokeTo = boardPoint(125, 25);
+    await page.mouse.move(strokeFrom.x, strokeFrom.y); await page.mouse.down(); await page.mouse.move(strokeTo.x, strokeTo.y, { steps: 6 }); await page.mouse.up();
     await expect.poll(() => gm.state.terrain?.base).toEqual([{ row: 0, start: 1, end: 2, kind: "difficult" }]);
     await expect.poll(() => player.state.terrainView?.runs).toEqual(gm.state.terrain!.base);
-    await editor.getByRole("button", { name: "Normal / Erase layer", exact: true }).click();
-    await canvas.focus(); await canvas.press("Enter");
-    const erasePreview = editor.getByLabel("Erase preview", { exact: true });
-    await expect(erasePreview.locator("text")).toHaveCount(0);
-    await expect(erasePreview.locator("rect")).toHaveAttribute("fill", "#ffffff");
-    await editor.screenshot({ path: testInfo.outputPath("terrain-erase-preview.png") });
-    await canvas.press("Escape");
-    await editor.getByRole("button", { name: "Difficult · ×2", exact: true }).click();
-    await editor.getByRole("button", { name: "Add layer", exact: true }).click(); await editor.getByLabel("New layer name").fill("Private spell name"); await editor.getByLabel("New layer name").press("Enter");
-    await expect.poll(() => gm.state.terrain?.effects.length).toBe(1);
-    await editor.getByRole("button", { name: "Private spell name", exact: true }).click();
-    await editor.getByRole("button", { name: "Blocked", exact: true }).click();
-    await canvas.focus(); await canvas.press("Enter"); await canvas.press("Enter");
-    await expect.poll(() => gm.state.terrain?.effects[0]?.runs.length).toBe(1);
-    await expect.poll(() => player.state.terrainView?.temporary.length).toBe(1);
-    await editor.getByRole("button", { name: "Rename Private spell name", exact: true }).click();
-    await editor.getByLabel("Layer name").fill("Spell layer"); await editor.getByLabel("Layer name").press("Enter");
-    await expect.poll(() => gm.state.terrain?.effects[0]?.name).toBe("Spell layer");
-    await editor.getByRole("button", { name: "Remove Spell layer", exact: true }).click();
-    await expect.poll(() => gm.state.terrain?.effects.length).toBe(0);
-    await expect(editor.getByRole("button", { name: "Base terrain", exact: true })).toHaveAttribute("aria-pressed", "true");
-    expect(gm.state.terrain?.base).toEqual([{ row: 0, start: 1, end: 2, kind: "difficult" }]);
-    await canvas.focus(); await canvas.press("Enter");
-    await expect(editor.getByText(/Preview ready/)).toBeVisible();
-    await expect(editor.getByRole("button", { name: /Apply preview|Cancel stroke/ })).toHaveCount(0);
-    await canvas.press("Escape");
-    await expect(editor.getByText(/Preview ready/)).toHaveCount(0);
-    await editor.screenshot({ path: testInfo.outputPath("terrain-editor.png") });
-    const viewport = page.viewportSize()!; const close = editor.getByRole("button", { name: "Close", exact: true }); const closeBox = await close.boundingBox();
-    expect(closeBox!.y).toBeGreaterThanOrEqual(0); expect(closeBox!.y + closeBox!.height).toBeLessThanOrEqual(viewport.height);
-    await close.click();
+    expect(gm.state.terrain?.effects).toEqual([]);
+    // Esc drops a stroke in progress without sending it.
+    const revisionBefore = gm.state.terrainRevision;
+    const cancelAt = boardPoint(225, 25);
+    await page.mouse.move(cancelAt.x, cancelAt.y); await page.mouse.down(); await page.keyboard.press("Escape"); await page.mouse.up();
+    expect(gm.state.terrainRevision).toBe(revisionBefore);
+    await page.screenshot({ path: testInfo.outputPath("terrain-rail-tool.png") });
+    await page.getByRole("button", { name: "Select", exact: true }).click();
     await page.getByRole("tab", { name: "Manage", exact: true }).click();
     await page.getByRole("button", { name: "Edit map", exact: true }).click();
     const preparationEditor = page.getByRole("dialog", { name: "Edit map", exact: true });

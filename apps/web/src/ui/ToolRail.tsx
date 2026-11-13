@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AreaColor, MAX_LINE_WIDTH_CELLS } from "@vtt/shared";
+import { AreaColor, MAX_LINE_WIDTH_CELLS, type TerrainKind } from "@vtt/shared";
 import { isBoolean, usePersistentState } from "./usePersistentState";
 import { usePhone } from "./usePhone";
-import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Eraser, Eye, Lightbulb, LineSegment, PaintBrush, PencilSimple, Polygon, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
-import { AREA_SHADES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
+import { CaretDoubleLeft, CaretDoubleRight, Circle, CaretUp, CloudFog, Cursor, Door, DoorOpen, Eraser, Eye, Lightbulb, LineSegment, LockSimple, Mountains, PaintBrush, PencilSimple, Polygon, Prohibit, Ruler, Square, Target, Trash, Triangle } from "@phosphor-icons/react";
+import { AREA_SHADES, DRAW_COLORS, type AreaShape, isMeasureMode, type BoardTool, type DoorsMode, type DrawShape, type FogMode, type MeasureMode } from "../board/tools";
+import type { StrokeShape } from "../board/terrainStroke";
 import { t, type TextId } from "../i18n/locale";
 
 /** The options each tool remembers while another tool is active. */
@@ -11,6 +12,10 @@ export interface ToolOptions {
   draw: { shape: DrawShape; color: number };
   area: { shape: AreaShape; lineCells: number; color: AreaColor; gmOnly: boolean };
   fog: { mode: FogMode };
+  /** GM only (board-terrain-tool). `paint` null erases. Painting is always on Base. */
+  terrain: { shape: StrokeShape; paint: TerrainKind | null };
+  /** GM only (board-doors-tool). */
+  doors: { mode: DoorsMode };
   /** The ruler's mode (ruler-modes); remembered in this browser by the board. */
   measure: { mode: MeasureMode };
 }
@@ -19,20 +24,42 @@ export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   draw: { shape: "brush", color: DRAW_COLORS[0].value },
   area: { shape: "circle", lineCells: 1, color: "orange", gmOnly: false },
   fog: { mode: "rect" },
+  terrain: { shape: "brush", paint: "difficult" },
+  doors: { mode: "toggle" },
   measure: { mode: "range" },
 };
 
 /** Tools the rail offers; Attack starts from a token instead (attack-targeting). */
 type ToolKind = Exclude<BoardTool["kind"], "attack">;
 
+/** Play tools first, then the GM's tools after a divider (board-tool-rail). */
 const TOOLS: { kind: ToolKind; label: TextId; icon: ReactNode; gmOnly?: boolean }[] = [
   { kind: "select", label: "rail.select", icon: <Cursor size={18} aria-hidden="true" /> },
   { kind: "measure", label: "rail.measure", icon: <Ruler size={18} aria-hidden="true" /> },
   { kind: "draw", label: "rail.draw", icon: <PencilSimple size={18} aria-hidden="true" /> },
   { kind: "area", label: "rail.aoe", icon: <Target size={18} aria-hidden="true" /> },
   { kind: "erase", label: "rail.eraser", icon: <Eraser size={18} aria-hidden="true" /> },
-  // Players never see a fog control, not even a disabled one (FR-GM-17, INTERFACE.md).
+  // Players never see a GM control, not even a disabled one (FR-GM-17, INTERFACE.md).
   { kind: "fog", label: "rail.fog", icon: <CloudFog size={18} aria-hidden="true" />, gmOnly: true },
+  { kind: "terrain", label: "rail.terrain", icon: <Mountains size={18} aria-hidden="true" />, gmOnly: true },
+  { kind: "doors", label: "rail.doors", icon: <Door size={18} aria-hidden="true" />, gmOnly: true },
+];
+
+const TERRAIN_SHAPES: { key: StrokeShape; label: TextId; icon: ReactNode }[] = [
+  { key: "brush", label: "terrain.brush", icon: <PaintBrush size={16} aria-hidden="true" /> },
+  { key: "rect", label: "common.rectangle", icon: <Square size={16} aria-hidden="true" /> },
+];
+
+/** Normal erases (its key stands in for null). */
+const TERRAIN_PAINTS: { key: "normal" | TerrainKind; label: TextId; icon: ReactNode }[] = [
+  { key: "normal", label: "terrain.normal", icon: <Eraser size={16} aria-hidden="true" /> },
+  { key: "difficult", label: "terrain.difficult", icon: <Mountains size={16} aria-hidden="true" /> },
+  { key: "blocked", label: "terrain.blocked", icon: <Prohibit size={16} aria-hidden="true" /> },
+];
+
+const DOORS_MODES: { key: DoorsMode; label: TextId; icon: ReactNode }[] = [
+  { key: "toggle", label: "rail.doorsToggle", icon: <DoorOpen size={16} aria-hidden="true" /> },
+  { key: "lock", label: "rail.doorsLock", icon: <LockSimple size={16} aria-hidden="true" /> },
 ];
 
 const FOG_MODES: { key: FogMode; label: TextId; icon: ReactNode }[] = [
@@ -60,6 +87,12 @@ export function toolFor(kind: ToolKind, options: ToolOptions): BoardTool {
   if (kind === "draw") return { kind, ...options.draw };
   if (kind === "area") return { kind, ...options.area };
   if (kind === "fog") return { kind, ...options.fog };
+  // Options from before a tool existed fall back to its defaults.
+  if (kind === "terrain") {
+    const { shape, paint } = options.terrain ?? DEFAULT_TOOL_OPTIONS.terrain;
+    return { kind, shape, paint };
+  }
+  if (kind === "doors") return { kind, ...(options.doors ?? DEFAULT_TOOL_OPTIONS.doors) };
   // Options saved before the ruler had modes have no `measure`: Range.
   if (kind === "measure") return { kind, mode: isMeasureMode(options.measure?.mode) ? options.measure.mode : "range" };
   return { kind };
@@ -125,6 +158,8 @@ export function ToolRail({
       {collapsed ? <CaretDoubleRight size={14} aria-hidden="true" /> : <CaretDoubleLeft size={14} aria-hidden="true" />}
     </button>
   );
+  const terrain = options.terrain ?? DEFAULT_TOOL_OPTIONS.terrain;
+  const doors = options.doors ?? DEFAULT_TOOL_OPTIONS.doors;
   const extras = (
     <>
       {active === "measure" && movementControls}
@@ -202,9 +237,43 @@ export function ToolRail({
           />
         </div>
       )}
+
+      {active === "terrain" && isGm && (
+        <div className="tool-options" role="group" aria-label={t("rail.terrainOptions")}>
+          <Segmented
+            label={t("rail.shape")}
+            items={TERRAIN_SHAPES.map((item) => ({ ...item, label: t(item.label) }))}
+            value={terrain.shape}
+            onChange={(shape) => onOptions({ ...options, terrain: { ...terrain, shape } })}
+          />
+          <Segmented
+            label={t("terrain.kind")}
+            items={TERRAIN_PAINTS.map((item) => ({ ...item, label: t(item.label) }))}
+            value={terrain.paint ?? "normal"}
+            onChange={(key) => onOptions({ ...options, terrain: { ...terrain, paint: key === "normal" ? null : key } })}
+          />
+        </div>
+      )}
+
+      {active === "doors" && isGm && (
+        <div className="tool-options" role="group" aria-label={t("rail.doorsOptions")}>
+          <Segmented
+            label={t("rail.doorsMode")}
+            items={DOORS_MODES.map((item) => ({ ...item, label: t(item.label) }))}
+            value={doors.mode}
+            onChange={(mode) => onOptions({ ...options, doors: { mode } })}
+            wide
+          />
+        </div>
+      )}
     </>
   );
   const visibleTools = TOOLS.filter((tool) => (isGm || !tool.gmOnly) && (!selectOnly || tool.kind === "select"));
+  const playTools = visibleTools.filter((tool) => !tool.gmOnly);
+  const gmTools = visibleTools.filter((tool) => tool.gmOnly);
+  const showSight = isGm && !selectOnly && !!onToggleLineOfSight;
+  // The divider before the GM's tools shows only when there are some (board-tool-rail).
+  const gmGroup = gmTools.length > 0 || showSight;
   if (phone) {
     const current = TOOLS.find((tool) => tool.kind === active) ?? TOOLS[0]!;
     const pick = (run: () => void) => () => { setFlyout(false); run(); currentRef.current?.focus(); };
@@ -224,12 +293,18 @@ export function ToolRail({
         </div>
         {flyout && (
           <div className="tool-flyout" role="group" aria-label={t("rail.boardTools")}>
-            {visibleTools.map((tool) => (
+            {playTools.map((tool) => (
               <button key={tool.kind} type="button" className="tool-button rail-button" aria-pressed={active === tool.kind} aria-label={t(tool.label)} title={t(tool.label)} onClick={pick(() => onSelect(tool.kind))}>
                 {tool.icon}
               </button>
             ))}
-            {isGm && onToggleLineOfSight && (
+            {gmGroup && <span className="rail-divider" aria-hidden="true" />}
+            {gmTools.map((tool) => (
+              <button key={tool.kind} type="button" className="tool-button rail-button" aria-pressed={active === tool.kind} aria-label={t(tool.label)} title={t(tool.label)} onClick={pick(() => onSelect(tool.kind))}>
+                {tool.icon}
+              </button>
+            ))}
+            {showSight && onToggleLineOfSight && (
               <button type="button" className="tool-button rail-button" aria-pressed={!!lineOfSight} aria-label={t("walls.lineOfSight")} title={t(lineOfSight ? "rail.losOn" : "rail.losOff")} onClick={pick(onToggleLineOfSight)}>
                 <Lightbulb size={18} aria-hidden="true" />
               </button>
@@ -243,6 +318,19 @@ export function ToolRail({
       </div>
     );
   }
+  const railButton = (tool: (typeof TOOLS)[number]) => (
+    <button
+      key={tool.kind}
+      type="button"
+      className="tool-button rail-button labelled"
+      aria-pressed={active === tool.kind}
+      title={t(tool.label)}
+      onClick={() => onSelect(tool.kind)}
+    >
+      {tool.icon}
+      <span className="rail-label">{t(tool.label)}</span>
+    </button>
+  );
   // Hidden, the rail is just its toggle; the active tool keeps working on the board.
   // Untagged while hidden, so the guide skips its Board tools step rather than spotlight the toggle.
   if (collapsed) return <div className="tool-rail-wrap"><div className="tool-rail">{toggle}</div></div>;
@@ -250,20 +338,10 @@ export function ToolRail({
     <div className="tool-rail-wrap" data-tour="tools">
       <div className="tool-rail" role="toolbar" aria-label={t("rail.boardTools")} aria-orientation="vertical">
         {toggle}
-        {visibleTools.map((tool) => (
-          <button
-            key={tool.kind}
-            type="button"
-            className="tool-button rail-button labelled"
-            aria-pressed={active === tool.kind}
-            title={t(tool.label)}
-            onClick={() => onSelect(tool.kind)}
-          >
-            {tool.icon}
-            <span className="rail-label">{t(tool.label)}</span>
-          </button>
-        ))}
-        {isGm && !selectOnly && onToggleLineOfSight && (
+        {playTools.map(railButton)}
+        {gmGroup && <span className="rail-divider" aria-hidden="true" />}
+        {gmTools.map(railButton)}
+        {showSight && onToggleLineOfSight && (
           <button
             type="button"
             className="tool-button rail-button labelled"
@@ -297,14 +375,17 @@ function Segmented<K extends string>({
   items,
   value,
   onChange,
+  wide = false,
 }: {
   label: string;
   items: { key: K; label: string; icon: ReactNode }[];
   value: K;
   onChange: (key: K) => void;
+  /** Show each item's name beside its icon. */
+  wide?: boolean;
 }) {
   return (
-    <div className="tool-segmented" role="group" aria-label={label}>
+    <div className={wide ? "tool-segmented wide" : "tool-segmented"} role="group" aria-label={label}>
       {items.map((item) => (
         <button
           key={item.key}
@@ -316,6 +397,7 @@ function Segmented<K extends string>({
           onClick={() => onChange(item.key)}
         >
           {item.icon}
+          {wide && <span>{item.label}</span>}
         </button>
       ))}
     </div>
