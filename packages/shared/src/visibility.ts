@@ -205,6 +205,8 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   const templates = Object.fromEntries(
     Object.entries(state.templates).filter(([, t]) => !templateConcealedFrom(c, t, viewer)),
   );
+  // Drawings are public and drawn above fog and darkness, so every viewer gets all of them in the
+  // spread below; there is nothing in them to withhold (ADR 0064).
   // Fog regions stay: they are the mask the player's board draws, and name nothing (ADR 0016).
   // Chat is public, so `chat` stays as it is in the spread below (ADR 0015). So are its mentions:
   // ids and public display names of participants every viewer already has in `participants`. If
@@ -490,6 +492,10 @@ export function filterEventForViewer(
       const { width: _width, ...rest } = template;
       return byVisibility(templateConcealedFrom(conc(), template, viewer), templateConcealedFrom(conc(), { ...rest, ...e.to }, viewer));
     }
+    case "DrawingAdded":
+    case "DrawingRemoved":
+      // Drawings are public, drawn above fog and darkness: every viewer gets every one (ADR 0064).
+      return pass;
     case "TemplatePlaced":
     case "TemplateRemoved":
       // gmOnly never changes after placement, and fog changes only through FogAdded/FogRemoved,

@@ -1,5 +1,3 @@
-import { FOG_FEATHER_CELLS } from "./fogTexture";
-
 /**
  * Where the fog's puffs and wisps sit (flowing-fog) and how each moves. Pure: the board turns
  * these into particles (`boardView.ts`) over the painted art (`fogArt.ts`). Everything comes from
@@ -26,8 +24,8 @@ const WISP_STRETCH = 0.25;
 const WISP_SWAY = 0.1;
 /** The fog's shared wind: body puffs drift along it. */
 const WIND = { x: 0.94, y: 0.33 };
-/** Kept this far inside the border's fade, so no puff or wisp ever reaches its end. */
-const REACH_LIMIT = 0.97 * FOG_FEATHER_CELLS;
+/** How far inside a region a particle keeps its rim, in cells, so no puff or wisp crosses the border. */
+const BORDER_GAP = 0.03;
 
 export interface FogPuff {
   kind: "puff" | "wisp";
@@ -67,8 +65,10 @@ export interface PuffPose {
 }
 
 /**
- * Puffs on a jittered grid over each region's body, smaller puffs along every edge, and wisps
- * along the edges pointing out. Edges on the board's own border get none. Over `budget`, the
+ * Puffs on a jittered grid over each region's body, smaller puffs just inside every edge, and wisps
+ * along the edges pointing in. Every particle stays inside its region at every moment, so nothing
+ * but the fog's own narrow fade reaches revealed map (fog-inner-fade-and-shared-dice).
+ * Edges on the board's own border get none. Over `budget`, the
  * layout spreads out and its puffs grow, so the fog stays covered with fewer of them.
  */
 export function layoutFogPuffs(
@@ -113,7 +113,7 @@ export function layoutFogPuffs(
         const drift = 0.8 * cell;
         const size = Math.min(
           wanted,
-          (REACH_LIMIT * cell + depth - wander - drift / 2) / (PUFF_REACH * (1 + PUFF_GROWTH / 2)),
+          (depth - BORDER_GAP * cell - wander - drift / 2) / (PUFF_REACH * (1 + PUFF_GROWTH / 2)),
           onBoard(x, y, wander + drift / 2),
         );
         if (size < 1.2 * cell) continue;
@@ -126,43 +126,52 @@ export function layoutFogPuffs(
     }
   }
 
-  // The border: puffs straddling each edge, and wisps reaching out from it.
+  // The border: puffs just inside each edge, and wisps reaching in from it.
   for (const e of edges) {
+    const { points } = e;
     const puffCount = Math.max(1, Math.round(e.length / (EDGE_SPACING * cell * thin)));
     for (let k = 0; k < puffCount; k++) {
       const t = (k + 0.5 + (random() - 0.5) * 0.6) / puffCount;
-      const out = (-0.3 + 0.8 * random()) * cell;
+      const inward = (0.6 + 0.6 * random()) * cell;
       const sign = random() < 0.5 ? -1 : 1;
       const wander = 0.15 * cell;
       const drift = 0.4 * cell;
       const wanted = (1.3 + 0.8 * random()) * cell * grow;
-      const x = e.a.x + (e.b.x - e.a.x) * t + e.nx * out, y = e.a.y + (e.b.y - e.a.y) * t + e.ny * out;
-      const size = Math.min(
-        wanted,
-        (REACH_LIMIT * cell - Math.max(0, out) - wander - drift / 2) / (PUFF_REACH * (1 + PUFF_GROWTH / 2)),
-        onBoard(x, y, wander + drift / 2),
-      );
+      const x = e.a.x + (e.b.x - e.a.x) * t - e.nx * inward, y = e.a.y + (e.b.y - e.a.y) * t - e.ny * inward;
       const art = Math.floor(random() * PUFF_ART), angle = random() * Math.PI * 2, spin = (random() - 0.5) * 0.08;
       const shade = 0.55 + 0.45 * random(), peak = 0.5 + 0.25 * random(), period = 8 + 6 * random();
+      if (!insidePolygon(points, x, y)) continue;
+      // Measured to every edge, so a puff near a corner keeps clear of the next edge too.
+      const depth = edgeDistance(points, x, y);
+      const size = Math.min(
+        wanted,
+        (depth - BORDER_GAP * cell - wander - drift / 2) / (PUFF_REACH * (1 + PUFF_GROWTH / 2)),
+        onBoard(x, y, wander + drift / 2),
+      );
       if (size < 0.5 * cell) continue;
       add({ kind: "puff", art, x, y, size, angle, spin, shade, peak, period, drift, dirX: e.tx * sign, dirY: e.ty * sign, wander });
     }
     const wispCount = Math.max(1, Math.round(e.length / (WISP_SPACING * cell * thin)));
     for (let k = 0; k < wispCount; k++) {
       const t = (k + 0.5 + (random() - 0.5) * 0.5) / wispCount;
-      const x = e.a.x + (e.b.x - e.a.x) * t - e.nx * 0.15 * cell;
-      const y = e.a.y + (e.b.y - e.a.y) * t - e.ny * 0.15 * cell;
-      const angle = Math.atan2(e.ny, e.nx) + (random() - 0.5) * 0.6;
-      const size = Math.min((1.4 + 0.6 * random()) * cell, (REACH_LIMIT * cell) / ((1 + WISP_STRETCH / 5) * (1 - WISP_ANCHOR)));
+      const size = (1.4 + 0.6 * random()) * cell;
+      const stretched = size * (1 + WISP_STRETCH / 5);
+      // Seated far enough in that the bit of picture behind its seat stays inside the border too.
+      const seat = stretched * WISP_ANCHOR + 0.1 * cell;
+      const x = e.a.x + (e.b.x - e.a.x) * t - e.nx * seat;
+      const y = e.a.y + (e.b.y - e.a.y) * t - e.ny * seat;
+      const angle = Math.atan2(-e.ny, -e.nx) + (random() - 0.5) * 0.6;
       const art = Math.floor(random() * WISP_ART);
       const shade = 0.6 + 0.4 * random(), peak = 0.55 + 0.25 * random(), period = 7 + 5 * random();
-      // Its thin end must stay on the board whichever way it sways.
-      const reach = size * (1 + WISP_STRETCH / 5) * (1 - WISP_ANCHOR);
-      const onBoard = [-WISP_SWAY, WISP_SWAY].every((sway) => {
-        const tx = x + Math.cos(angle + sway) * reach, ty = y + Math.sin(angle + sway) * reach;
-        return tx >= 0 && ty >= 0 && tx <= board.width && ty <= board.height;
+      // Both its ends must stay inside the region, and so on the board, whichever way it sways.
+      const reach = stretched * (1 - WISP_ANCHOR);
+      const back = stretched * WISP_ANCHOR;
+      const inside = [-WISP_SWAY, WISP_SWAY].every((sway) => {
+        const c = Math.cos(angle + sway), s = Math.sin(angle + sway);
+        const ends = [{ x: x + c * reach, y: y + s * reach }, { x: x - c * back, y: y - s * back }];
+        return ends.every((q) => insidePolygon(points, q.x, q.y) && q.x >= 0 && q.y >= 0 && q.x <= board.width && q.y <= board.height);
       });
-      if (!onBoard) continue;
+      if (!inside) continue;
       add({ kind: "wisp", art, x, y, size, angle, spin: 0, shade, peak, period, drift: 0, dirX: e.tx, dirY: e.ty, wander: 0 });
     }
   }
@@ -175,7 +184,7 @@ export function layoutFogPuffs(
 /**
  * A puff or wisp `seconds` into the fog's life. It fades in and out once per cycle; while it is
  * invisible, at the turn of a cycle, it settles on a new spot near its seat. Over the cycle a puff
- * drifts, turns and grows a little, as mist spreads; a wisp sways and stretches outward.
+ * drifts, turns and grows a little, as mist spreads; a wisp sways and stretches inward.
  */
 export function puffPose(p: FogPuff, seconds: number): PuffPose {
   const cycle = seconds / p.period + p.phase;
@@ -195,6 +204,8 @@ export function puffPose(p: FogPuff, seconds: number): PuffPose {
 }
 
 interface Edge {
+  /** The region the edge belongs to. */
+  points: ReadonlyArray<Pt>;
   a: Pt;
   b: Pt;
   length: number;
@@ -219,7 +230,7 @@ function outerEdges(points: ReadonlyArray<Pt>, board: { width: number; height: n
     // An edge along the board's own border has nothing outside it to fade into.
     const ox = mid.x + nx * 0.5 * cell, oy = mid.y + ny * 0.5 * cell;
     if (ox < 0 || oy < 0 || ox > board.width || oy > board.height) continue;
-    edges.push({ a, b, length, tx, ty, nx, ny });
+    edges.push({ points, a, b, length, tx, ty, nx, ny });
   }
   return edges;
 }

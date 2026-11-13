@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_THROW_MAX_DICE, boardDiePaths, boardDieSize, centreThrow, clientToBoard, crowdedOffset, holdEvent, releaseVelocity, throwBlocker, throwLanding } from "../src/board/diceThrow";
+import { attackAim, ownDiceShowing, rollAim, BOARD_THROW_MAX_DICE, boardDiePaths, boardDieSize, centreThrow, clientToBoard, crowdedOffset, holdEvent, releaseVelocity, throwBlocker, throwLanding } from "../src/board/diceThrow";
 
 const canvas = { left: 100, top: 50, width: 800, height: 600 };
 const map = { width: 1400, height: 1000 };
@@ -170,5 +170,95 @@ describe("rolls made together lie apart (multi-target attacks, FR-TAC-09)", () =
     expect(xs[0]).toBe(0);
     expect(new Set(xs).size).toBe(4);
     for (const a of xs) for (const b of xs) if (a !== b) expect(Math.abs(a - b)).toBeGreaterThanOrEqual(size * 2);
+  });
+});
+
+describe("attack throws go from the attacker toward the target (shared-roll-throws)", () => {
+  const side = (tokenId: string) => ({ tokenId, name: tokenId, hidden: false });
+  const attack = { actor: side("a"), target: side("t") };
+  const at = (x: number, y: number) => ({ position: { x, y } });
+
+  it("lands a cell short of the target, thrown from the attacker", () => {
+    const aim = attackAim(attack, { a: at(140, 500), t: at(140 + 3 * 70, 500) }, grid, map)!;
+    expect(aim.to.x).toBeCloseTo(140 + 2 * 70);
+    expect(aim.to.y).toBeCloseTo(500);
+    expect(aim.from.x).toBeCloseTo(140);
+  });
+
+  it("lands halfway between adjacent tokens", () => {
+    const aim = attackAim(attack, { a: at(140, 500), t: at(210, 500) }, grid, map)!;
+    expect(aim.to.x).toBeCloseTo(175);
+    expect(aim.from.x).toBeCloseTo(140);
+  });
+
+  it("travels no further than a hand throw for a distant target", () => {
+    const aim = attackAim(attack, { a: at(100, 100), t: at(100 + 20 * 70, 100) }, grid, { width: 2000, height: 1000 })!;
+    expect(aim.to.x).toBeCloseTo(100 + 19 * 70);
+    expect(Math.hypot(aim.to.x - aim.from.x, aim.to.y - aim.from.y)).toBeCloseTo(3 * 70);
+  });
+
+  it("stays on the map", () => {
+    const aim = attackAim(attack, { a: at(1390, 990), t: at(1399, 999 + 300) }, grid, map)!;
+    for (const p of [aim.from, aim.to]) {
+      expect(p.x).toBeLessThanOrEqual(map.width);
+      expect(p.y).toBeLessThanOrEqual(map.height);
+    }
+  });
+
+  it("is null when a side was blanked, a token is missing, or both stand on one spot", () => {
+    const tokens = { a: at(140, 500), t: at(350, 500) };
+    expect(attackAim({ actor: side("a"), target: null }, tokens, grid, map)).toBeNull();
+    expect(attackAim({ actor: null, target: side("t") }, tokens, grid, map)).toBeNull();
+    expect(attackAim(attack, { a: at(140, 500) }, grid, map)).toBeNull();
+    expect(attackAim(attack, { a: at(140, 500), t: at(140, 500) }, grid, map)).toBeNull();
+    expect(attackAim(undefined, tokens, grid, map)).toBeNull();
+  });
+});
+
+describe("every public roll is thrown on every board (shared-roll-throws)", () => {
+  const centre = { from: { x: 0, y: 0 }, to: { x: 500, y: 400 } };
+  const drop = { from: { x: 10, y: 10 }, to: { x: 60, y: 30 } };
+  const table = {
+    tokens: { a: { position: { x: 140, y: 500 } }, t: { position: { x: 350, y: 500 } } },
+    scene: { grid, map },
+  };
+  const side = (tokenId: string) => ({ tokenId, name: tokenId, hidden: false });
+  const attack = { actor: side("a"), target: side("t"), kind: "toHit" as const, label: null };
+
+  it("throws another player's Roll-button roll into the middle of this board", () => {
+    expect(rollAim({ visibility: "public" }, null, table, () => centre)).toEqual(centre);
+  });
+
+  it("throws an attack roll from the attacker toward the target", () => {
+    const aim = rollAim({ visibility: "public", attack }, null, table, () => centre)!;
+    expect(aim.from.x).toBeCloseTo(140);
+    expect(aim.to.x).toBeCloseTo(280);
+  });
+
+  it("throws an attack on a target hidden from this viewer into the middle", () => {
+    expect(rollAim({ visibility: "public", attack: { ...attack, target: null } }, null, table, () => centre)).toEqual(centre);
+  });
+
+  it("lands a dropped die where it was let go, and a missed drop in the middle", () => {
+    expect(rollAim({ visibility: "public", attack }, drop, table, () => centre)).toEqual(drop);
+    expect(rollAim({ visibility: "public" }, null, table, () => centre)).toEqual(centre);
+  });
+
+  it("never throws a GM-only roll on the board", () => {
+    expect(rollAim({ visibility: "gm" }, null, table, () => centre)).toBeNull();
+    expect(rollAim({ visibility: "gm", attack }, drop, table, () => centre)).toBeNull();
+  });
+});
+
+describe("other participants' dice never hold your roll controls (shared-roll-throws)", () => {
+  const rolls = [{ id: "r1", byParticipantId: "other" }, { id: "r2", byParticipantId: "me" }];
+
+  it("does not wait for another player's dice in the air", () => {
+    expect(ownDiceShowing(new Set(), new Set(["r1"]), rolls, "me")).toBe(false);
+  });
+
+  it("waits for your own dice in the air or still on the board", () => {
+    expect(ownDiceShowing(new Set(), new Set(["r2"]), rolls, "me")).toBe(true);
+    expect(ownDiceShowing(new Set(["r2"]), new Set(), rolls, "me")).toBe(true);
   });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FOG_FEATHER_CELLS } from "../src/board/fogTexture";
 import { PUFF_REACH, WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "../src/board/fogPuffs";
 
 const CELL = 50;
@@ -7,6 +6,9 @@ const BOARD = { width: 1000, height: 800 };
 const rect = (x0: number, y0: number, x1: number, y1: number) => [
   { x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 },
 ];
+/** How far a point lies inside a rectangle, in cells (negative outside). */
+const depth = (r: [number, number, number, number], x: number, y: number) =>
+  (outside(r, x, y) > 0 ? -outside(r, x, y) : Math.min(x - r[0], r[2] - x, y - r[1], r[3] - y) / CELL);
 /** How far a point lies outside a rectangle, in cells (0 inside). */
 const outside = (r: [number, number, number, number], x: number, y: number) =>
   Math.hypot(Math.max(r[0] - x, 0, x - r[2]), Math.max(r[1] - y, 0, y - r[3])) / CELL;
@@ -26,23 +28,29 @@ describe("fog puffs and wisps (flowing-fog, FR-GM-17)", () => {
     expect(layoutFogPuffs([rect(...box)], BOARD, CELL, 1000)).toEqual(puffs);
   });
 
-  it("covers the body with puffs and the border with puffs and outward wisps", () => {
+  it("covers the body with puffs and the border with puffs and inward wisps (fog-inner-fade-and-shared-dice)", () => {
     const body = puffs.filter((p) => p.kind === "puff" && outside([box[0] + CELL, box[1] + CELL, box[2] - CELL, box[3] - CELL], p.x, p.y) === 0);
     const wisps = puffs.filter((p) => p.kind === "wisp");
     expect(body.length).toBeGreaterThan(5);
     expect(wisps.length).toBeGreaterThan(8);
     for (const w of wisps) {
-      // Each wisp's thin end points away from the region.
+      // Each wisp's thin end points into the region.
       const tip = { x: w.x + Math.cos(w.angle) * CELL, y: w.y + Math.sin(w.angle) * CELL };
-      expect(outside(box, tip.x, tip.y)).toBeGreaterThan(outside(box, w.x, w.y));
+      expect(depth(box, tip.x, tip.y)).toBeGreaterThan(depth(box, w.x, w.y));
     }
   });
 
-  it("never reaches past the border's fade, at any moment", () => {
+  it("never reaches past the region's border, at any moment, so revealed map stays clear (fog-of-war)", () => {
     for (const p of puffs) {
       for (let t = 0; t < 40; t += 0.37) {
-        const r = reach(p, puffPose(p, t));
-        expect(outside(box, r.x, r.y) + r.radius / CELL).toBeLessThanOrEqual(FOG_FEATHER_CELLS + 0.05);
+        const pose = puffPose(p, t);
+        const r = reach(p, pose);
+        expect(depth(box, r.x, r.y) - r.radius / CELL).toBeGreaterThanOrEqual(0);
+        if (p.kind === "wisp") {
+          // And the bit of picture behind a wisp's seat.
+          const back = p.size * pose.scale * WISP_ANCHOR;
+          expect(depth(box, pose.x - Math.cos(pose.rotation) * back, pose.y - Math.sin(pose.rotation) * back)).toBeGreaterThanOrEqual(0);
+        }
       }
     }
   });
@@ -70,8 +78,8 @@ describe("fog puffs and wisps (flowing-fog, FR-GM-17)", () => {
         const r = reach(p, puffPose(p, t));
         expect(r.x >= -1 && r.y >= -1).toBe(true);
       }
-      // Only the edges facing the board (right and bottom) get wisps; none point off its border.
-      expect(Math.cos(p.angle) > 0.5 || Math.sin(p.angle) > 0.5).toBe(true);
+      // Only the edges facing the board (right and bottom) get wisps, pointing back into the region.
+      expect(Math.cos(p.angle) < -0.5 || Math.sin(p.angle) < -0.5).toBe(true);
     }
   });
 

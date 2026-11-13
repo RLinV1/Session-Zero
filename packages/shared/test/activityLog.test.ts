@@ -81,6 +81,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     // An area the log no longer holds reads generically; the wording per kind is in areaTemplates.test.ts.
     TemplateChanged: [{ type: "TemplateChanged", templateId: "gone", from: { origin: { x: 0, y: 0 }, toward: { x: 1, y: 0 }, size: 10 }, to: { origin: { x: 70, y: 0 }, toward: { x: 71, y: 0 }, size: 10 } }, "Mara changed an area"],
     TemplateRemoved: [{ type: "TemplateRemoved", template: { ...areaTemplate, gmOnly: true } }, "Mara removed a 20 ft cone (GM only)"],
+    DrawingAdded: [{ type: "DrawingAdded", drawing: { id: "d1", ownerId: gm.id, kind: "line", color: "red", from: { x: 0, y: 0 }, to: { x: 70, y: 70 } } }, "Mara drew a line"],
+    DrawingRemoved: [{ type: "DrawingRemoved", drawing: { id: "d2", ownerId: alice.id, kind: "stroke", color: "blue", points: [0, 0, 10, 10] } }, "Mara erased Alice's freehand drawing"],
     ReducedEffectsSet: [{ type: "ReducedEffectsSet", enabled: true, previous: false }, "Mara turned reduced animations on for the table"],
     JoinsLockSet: [{ type: "JoinsLockSet", locked: true, previous: false }, "Mara locked the room to new players"],
     AutoRemoveDefeatedSet: [{ type: "AutoRemoveDefeatedSet", enabled: false, previous: true }, "Mara turned automatic removal of defeated tokens off"],
@@ -117,6 +119,13 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     expect(formatActivity({ type: "DiceRolled", roll: { ...roll, visibility: "gm" } }, "Tomas", state)).toBe("Tomas rolled 1d20: 15 (GM only)");
     expect(formatActivity({ type: "TokenConditionsSet", tokenId: "missing", conditions: [], previous: [] }, "System", state)).toBe("System set an unknown token's conditions to none");
     expect(formatActivity({ type: "TokenOwnersSet", tokenId: token.id, ownerIds: [], previous: [] }, "Mara", state)).toBe("Mara assigned Goblin to no players");
+  });
+  it("says when someone erased their own drawing (shared drawings, FR-TAC-04)", () => {
+    const circle = { id: "d3", ownerId: alice.id, kind: "circle" as const, color: "green" as const, from: { x: 10, y: 10 }, to: { x: 40, y: 10 } };
+    expect(formatActivity({ type: "DrawingRemoved", drawing: circle }, "Alice", state)).toBe("Alice erased their circle");
+    expect(formatActivity({ type: "DrawingRemoved", drawing: circle }, "GM", state)).toBe("GM erased Alice's circle");
+    expect(formatActivity({ type: "DrawingRemoved", drawing: circle }, "Alice", state, "zh-TW")).toBe("Alice 擦掉了自己的圓形");
+    expect(formatActivity({ type: "DrawingAdded", drawing: { ...circle, kind: "rect" } }, "Alice", state)).toBe("Alice drew a rectangle");
   });
   it("rounds move coordinates to at most 2 decimal places", () => {
     const moved: DomainEvent = { type: "TokenMoved", tokenId: token.id, from: { x: 1987.9, y: 829.1000000000001 }, to: { x: 2057.3456, y: 829.1000000000001 } };

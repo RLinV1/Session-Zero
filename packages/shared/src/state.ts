@@ -257,6 +257,60 @@ export const Initiative = z.object({
 export type Initiative = z.infer<typeof Initiative>;
 
 /**
+ * The Draw tool's colours (FR-TAC-04, ADR 0064). Names, not hex, as for areas (ADR 0040): the
+ * client owns the shades, and a forged colour fails to parse.
+ */
+export const DrawColor = z.enum(["red", "yellow", "green", "blue", "white"]);
+export type DrawColor = z.infer<typeof DrawColor>;
+
+/** Most points one freehand stroke may have, after the browser simplifies it (ADR 0064). */
+export const MAX_STROKE_POINTS = 500;
+/** Most drawings a scene holds, and most points across them (a line, box or circle counts 2). */
+export const MAX_DRAWINGS = 300;
+export const MAX_DRAWING_POINTS = 20_000;
+
+/** A whole map pixel: drawings are stored rounded, so they cost fewer bytes in every snapshot. */
+export const PixelPoint = z.object({ x: z.number().int(), y: z.number().int() });
+export type PixelPoint = z.infer<typeof PixelPoint>;
+
+/** A line, box or circle drawn on the board. A circle is centred on `from`, through `to`. */
+export const DrawnShape = z.object({
+  kind: z.enum(["line", "rect", "circle"]),
+  color: DrawColor,
+  from: PixelPoint,
+  to: PixelPoint,
+});
+/** A freehand stroke: its points as a flat `[x0, y0, x1, y1, ...]` list of whole map pixels. */
+export const DrawnStroke = z.object({
+  kind: z.literal("stroke"),
+  color: DrawColor,
+  points: z
+    .array(z.number().int())
+    .min(4)
+    .max(2 * MAX_STROKE_POINTS)
+    .refine((xs) => xs.length % 2 === 0, "points come in x, y pairs"),
+});
+/** What a participant drew, before it has an id and an owner: the `drawing.add` payload. */
+export const DrawingShape = z.discriminatedUnion("kind", [DrawnShape, DrawnStroke]);
+export type DrawingShape = z.infer<typeof DrawingShape>;
+
+/**
+ * A drawing shared with the whole table (FR-TAC-04, ADR 0064). Board coordinates (invariant 8).
+ * Public: every participant sees every drawing, above fog and darkness. Its drawer or the GM may
+ * erase it; it is never undone.
+ */
+export const Drawing = z.discriminatedUnion("kind", [
+  DrawnShape.extend({ id: Id, ownerId: Id }),
+  DrawnStroke.extend({ id: Id, ownerId: Id }),
+]);
+export type Drawing = z.infer<typeof Drawing>;
+
+/** How many points a drawing costs against `MAX_DRAWING_POINTS`. */
+export function drawingPoints(d: DrawingShape): number {
+  return d.kind === "stroke" ? d.points.length / 2 : 2;
+}
+
+/**
  * What is on the board: the part of the state a checkpoint restores (FR-REC-02, ADR 0019).
  * Participants, rolls, chat and history record the session and are never part of it.
  */
@@ -269,12 +323,14 @@ export const TableState = z.object({
   /** Optional: tables in events from before walls existed have none (ADR 0029). */
   walls: z.record(Id, Wall).optional(),
   terrain: Terrain.optional(),
+  /** Optional: tables from before drawings were shared have none (ADR 0064). */
+  drawings: z.record(Id, Drawing).optional(),
 });
 export type TableState = z.infer<typeof TableState>;
 
 /** The table part of a room state. */
 export function tableOf(state: Pick<RoomState, keyof TableState>): TableState {
-  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls, ...(state.terrain ? { terrain: state.terrain } : {}) };
+  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls, drawings: state.drawings, ...(state.terrain ? { terrain: state.terrain } : {}) };
 }
 
 /** Most checkpoints a room keeps; the oldest drops off past this (ADR 0019). */
@@ -362,6 +418,8 @@ export interface RoomState {
   rolls: LoggedRoll[];
   /** Placed area templates everyone at the table can see, bar GM-only ones (FR-TAC-06, ADR 0007). */
   templates: Record<Id, AreaTemplate>;
+  /** Drawings on the active scene, everyone's, shown to everyone (FR-TAC-04, ADR 0064). */
+  drawings: Record<Id, Drawing>;
   /** Most recent chat messages, oldest first, public to the whole room (KAN-75, ADR 0015). Capped at CHAT_LOG_LIMIT. */
   chat: ChatMessage[];
   /** Fog regions, in the order they were added (FR-GM-17, ADR 0016). Sent to players: they are the mask. */
@@ -467,6 +525,7 @@ export function emptyRoomState(roomId: Id): RoomState {
     initiative: null,
     rolls: [],
     templates: {},
+    drawings: {},
     chat: [],
     fog: {},
     walls: {},

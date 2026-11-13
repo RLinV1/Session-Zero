@@ -1,15 +1,15 @@
-import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DiagonalRule, type FogRegion, type GridSpec, type Point, type PortalState, type TerrainKind, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
+import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DrawColor, type Drawing, type DrawingShape, type DiagonalRule, type FogRegion, type GridSpec, type Point, type PortalState, type TerrainKind, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
 import type { StrokeShape } from "./terrainStroke";
 
 /**
  * Board tools (KAN-69): the tool rail's Measure, Draw, Area and Eraser tools. Pure geometry in board
- * coordinates (invariant 8), so it is testable without Pixi. The marks these tools make are
- * local to the viewer; syncing them is KAN-33/35/39.
+ * coordinates (invariant 8), so it is testable without Pixi. Rulers stay local to the viewer;
+ * areas (ADR 0007) and drawings (ADR 0064) are shared with the table.
  */
 
-/** `brush` is freehand, which FR-TAC-04 leaves out of the shared overlays; it is local-only here. */
+/** `brush` is freehand: a stroke, simplified before it is shared (ADR 0064). */
 export type DrawShape = "brush" | "line" | "rect" | "circle";
 
 export type BoardTool =
@@ -132,14 +132,51 @@ export function fogDraftPoints(region: FogDraft): Point[] {
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
 }
 
-/** Colours offered by the Draw tool; names are catalog ids, read with `t()` when shown. */
+/**
+ * Colours offered by the Draw tool: `id` is what a shared drawing stores (ADR 0064), `name` a
+ * catalog id read with `t()` when shown, `value` the shade the board draws it in.
+ */
 export const DRAW_COLORS = [
-  { name: "colour.red", value: 0xe74c3c },
-  { name: "colour.yellow", value: 0xf1c40f },
-  { name: "colour.green", value: 0x2ecc71 },
-  { name: "colour.blue", value: 0x3498db },
-  { name: "colour.white", value: 0xecf0f1 },
-] as const;
+  { id: "red", name: "colour.red", value: 0xe74c3c },
+  { id: "yellow", name: "colour.yellow", value: 0xf1c40f },
+  { id: "green", name: "colour.green", value: 0x2ecc71 },
+  { id: "blue", name: "colour.blue", value: 0x3498db },
+  { id: "white", name: "colour.white", value: 0xecf0f1 },
+] as const satisfies ReadonlyArray<{ id: DrawColor; name: string; value: number }>;
+
+/** The stored colour for a Draw tool shade; red for a shade the tool doesn't offer. */
+export function drawColorId(value: number): DrawColor {
+  return DRAW_COLORS.find((c) => c.value === value)?.id ?? "red";
+}
+
+/** The shade a stored drawing colour is drawn in. */
+export function drawShade(color: DrawColor): number {
+  return DRAW_COLORS.find((c) => c.id === color)?.value ?? DRAW_COLORS[0].value;
+}
+
+/** A shared drawing as a mark, for drawing and hit testing (ADR 0064). */
+export function drawingMark(d: Drawing): Extract<Mark, { kind: "draw" | "stroke" }> {
+  if (d.kind === "stroke") {
+    const points = Array.from({ length: d.points.length / 2 }, (_, i) => ({ x: d.points[2 * i]!, y: d.points[2 * i + 1]! }));
+    return { kind: "stroke", color: drawShade(d.color), points };
+  }
+  return { kind: "draw", shape: d.kind, color: drawShade(d.color), from: d.from, to: d.to };
+}
+
+/**
+ * What the Draw tool shares for a finished line, box or circle: whole map pixels, with any point
+ * past the map's edge pulled onto it, since the server refuses points off the map (ADR 0064).
+ */
+export function drawnShape(
+  shape: Exclude<DrawShape, "brush">,
+  color: number,
+  from: Point,
+  to: Point,
+  map: { width: number; height: number },
+): DrawingShape {
+  const clamp = (p: Point) => ({ x: Math.round(Math.min(map.width, Math.max(0, p.x))), y: Math.round(Math.min(map.height, Math.max(0, p.y))) });
+  return { kind: shape, color: drawColorId(color), from: clamp(from), to: clamp(to) };
+}
 
 /** A mark as the viewer made it: raw points, so a grid change re-derives snapping and sizes. */
 export type Mark =

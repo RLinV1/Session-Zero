@@ -193,6 +193,9 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
 const point = (p: { x: number; y: number }) => `(${Number(p.x.toFixed(2))}, ${Number(p.y.toFixed(2))})`;
 
 /** Activity sentences in Traditional Chinese. Mirrors `formatActivity`'s English, case for case. */
+/** What each kind of drawing is called in the log (ADR 0064). */
+const DRAWING_NAMES_ZH = { line: "一條線", rect: "一個矩形", circle: "一個圓形", stroke: "一個手繪圖形" } as const;
+
 export function formatActivityZhTW(event: DomainEvent, actorName: string, before: RoomState, findRoll: FindRoll): string {
   const a = actorName;
   const tokenName = (id: string) => before.tokens[id]?.name ?? "未知的棋子";
@@ -362,6 +365,12 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       return sentence + gmOnly(!!template.gmOnly);
     }
     case "TemplateRemoved": return cjk`${a}移除了${templateLabel(event.template)}` + gmOnly(!!event.template.gmOnly);
+    case "DrawingAdded": return cjk`${a}畫了${DRAWING_NAMES_ZH[event.drawing.kind]}`;
+    case "DrawingRemoved": {
+      const owner = participantName(event.drawing.ownerId);
+      const what = DRAWING_NAMES_ZH[event.drawing.kind].replace(/^一(條|個)/, "");
+      return owner === a ? cjk`${a}擦掉了自己的${what}` : cjk`${a}擦掉了${owner}的${what}`;
+    }
     case "FogAdded": return cjk`${a}新增了${event.region.shape === "rect" ? "矩形" : "多邊形"}迷霧區域`;
     case "FogRemoved": return cjk`${a}移除了${event.region.shape === "rect" ? "矩形" : "多邊形"}迷霧區域`;
     case "WallUpdated": return cjk`${a}修改了${event.wall.portal ? "一個門窗" : "一面牆"}`;

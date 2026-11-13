@@ -426,12 +426,15 @@ VM (§2, *Production*).
 - *Line of sight.* With line of sight on, each player sees only what their tokens can see:
   walls and closed or locked doors block sight, windows and open doors do not, and an optional
   sight range limits it. Sight is computed on the server and anything outside it is concealed
-  by the same filters as fog (ADR 0044). The GM can view as any token.
+  by the same filters as fog (ADR 0044). The darkness is drawn as vector shapes from every owned
+  token's merged sight, so its edge is crisp at any zoom, with no fade either side. The GM can view as any token.
 - *Play.* Pan, zoom, ping, and measure with a personal movement-budget ruler (equal,
   alternating or Euclidean diagonals). Manual fog in rectangles or polygons, drawn as flowing
-  painted fog. Shared area templates (circles, cones, lines, squares) aimed live on the
+  painted fog whose border fades out over a quarter of a cell, wavering. Lines, shapes and freehand drawings
+  the whole table sees, above fog. Shared area templates (circles, cones, lines, squares) aimed live on the
   ephemeral channel, in colours, optionally GM-only. Initiative with turn notices. Dice
   expressions, public or GM-only, thrown on the board with 3D dice and per-player dice looks;
+  every public roll, attacks included, is thrown on every participant's board;
   group rolls across many tokens. Attack rolls against one or several targets, with GM
   rulings and damage application; area effects that run saves, a GM call and damage across
   every token in an area (ADR 0046, area effects). Themed board animations and sound
@@ -454,8 +457,7 @@ real sockets and Postgres store tests that run when a database is configured
 (`apps/server/test`), ~1,050 web tests (`apps/web/test`), 50 Python tests for the vision
 service, and Playwright browser specs for UVTT, grid detection, scenes and terrain.
 
-**Not built yet.** Shared drawing overlays (FR-TAC-04): the Draw tool works, but only on the
-viewer's own board. Wall detection does not yet classify doors and windows, and its worker is
+**Not built yet.** Wall detection does not yet classify doors and windows, and its worker is
 off by default in production.
 
 **Run it — no containers.** A fresh clone plays without Docker, because the store,
@@ -590,7 +592,7 @@ checkpoint previews are built through the same filters.
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
 | FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
 | FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |
-| FR-TAC-04 | Drawing overlays | Local Draw tool | ~ |
+| FR-TAC-04 | Drawing overlays | `drawing.add`/`drawing.remove`, `RoomState.drawings`, `simplifyStroke.ts` (ADR 0064) | B |
 | FR-TAC-05 | Target pings | Ephemeral `ping` | B |
 | FR-TAC-06 | AoE templates | `templatePreview` → `template.place`, `areaEffect.*` (ADR 0007, 0021, 0040, 0046) | B |
 | FR-TAC-07 | Token statistics and conditions | `token.setStats/setConditions`, auto-remove at 0 HP (ADR 0049) | B |
@@ -609,8 +611,9 @@ FR-GM-11 detects walls, with confidence, but does not yet classify doors and win
 GM reviews every result on its preview before applying it, and adds portals by hand. The
 `vision-walls` worker is behind the `walls` compose profile and off in the deployed stack,
 so production wall detection must be switched on explicitly.
-FR-TAC-04 draws lines, rectangles, circles and strokes, but only on the viewer's own board;
-nothing is shared with the table yet.
+FR-TAC-04 draws lines, rectangles, circles and freehand strokes that the whole table sees,
+saved with the scene and drawn above fog and darkness (ADR 0064). Freehand goes beyond the
+README's original scope; strokes are simplified in the browser and bounded on the server.
 
 FR-TAC-03 is now built as the README specifies it: a personal ruler with a local allowance
 and selectable diagonals, with no per-turn tracking. Terrain-aware movement cost (ADR 0046)
@@ -620,7 +623,6 @@ goes beyond it.
 
 ## 7. Open Decisions
 
-- **Shared drawings.** FR-TAC-04 needs a committed overlay type, a new event, and a decision on whether drawings are undoable.
 - **Sight updates.** Owned-token moves resync their owner with a full snapshot while line of sight is on (ADR 0044). Diff-style sight updates can come later without a schema change if this costs too much on large tables.
 - **Door and window detection.** Whether `vision-walls` classifies portals or the GM keeps placing them by hand, and when the worker is turned on in production.
 - **Hosting beyond one VM.** The deployed VM is a single point of failure with manually backed-up volumes. Moving to managed Postgres, Redis and object storage ([`DEPLOYMENT.md`](DEPLOYMENT.md) §5) needs no code change, only environment variables.
@@ -701,6 +703,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0052](adr/0052-mcp-player-seats.md) | AI player seats over MCP | Proposed |
 | [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes, templates from an approved draft, and AI-set grids and walls by the owner's choice | Proposed |
 | [0054](adr/0054-localized-messages.md) | Localized messages: ids on rejections, `Accept-Language` on REST | Proposed |
+| [0064](adr/0064-shared-drawings.md) | Shared drawings: persisted per scene, public, erasable by the drawer or GM, not undoable | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

@@ -1,7 +1,7 @@
 # ADR 0007 — Shared area templates
 
 **Status:** Accepted — reviewed by the Real-Time Architecture owner (Raymond), 2026-09-27 · **Extends:** `docs/adr/0001-event-model.md`, `docs/adr/0003-tactical-state.md`
-**Amended by:** `docs/adr/0021-area-lines-and-aim.md` (line templates, shared aiming), `docs/adr/0040-area-color-and-square-centre.md` (area colours, hatched GM-only areas, squares placed by their centre), `docs/adr/0058-edit-placed-area-templates.md` (editing placed areas)
+**Amended by:** `docs/adr/0021-area-lines-and-aim.md` (line templates, shared aiming), `docs/adr/0040-area-color-and-square-centre.md` (area colours, hatched GM-only areas, squares placed by their centre), `docs/adr/0058-edit-placed-area-templates.md` (editing placed areas), `docs/adr/0064-shared-drawings.md` (drawings shared)
 **Change:** `openspec/changes/shared-aoe-templates` · **Tickets:** KAN-35 (FR-TAC-06), KAN-69
 
 ## Context
@@ -37,7 +37,7 @@ Placed area templates become room state, following the standard pattern.
   - Undo (KAN-41).
   - Line-shaped templates.
   - Editing a placed template: remove and place again.
-- **Drawings and measurements stay local.** Sharing drawings (FR-TAC-04, KAN-33) would follow this same pattern with its own ADR.
+- **Drawings and measurements stay local.** Sharing drawings (FR-TAC-04, KAN-33) would follow this same pattern with its own ADR. *Amended:* drawings are shared by ADR 0064; measurements stay local.
 
 ## Alternatives considered
 
