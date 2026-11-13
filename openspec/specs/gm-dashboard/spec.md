@@ -6,7 +6,7 @@ Gives the GM one place to work outside a room: create a room, reopen the rooms t
 ## Requirements
 
 ### Requirement: GM dashboard
-The app SHALL provide a GM dashboard at `/gm-dashboard`. It SHALL offer a form to create a room (room name and the GM's display name), list the rooms this browser's GM identity owns with each room's name, when it was last active and an Open action, link to the asset library, and show the account menu. It SHALL state that the rooms it lists are saved in this browser.
+The app SHALL provide a GM dashboard at `/gm-dashboard`. It SHALL offer a form to create a room (room name and the GM's display name), list the rooms this browser's GM identity owns with each room's name, when it was last active and an Open action, link to the asset library, offer **Room settings** (see `gm-room-defaults`), and show the account menu. It SHALL state that the rooms it lists are saved in this browser. Room settings SHALL be available to a signed-in GM. Without a signed-in account, it SHALL say that signing in is needed to save room defaults, and SHALL send no request.
 
 #### Scenario: Returning GM finds their rooms
 - **WHEN** a browser whose GM identity owns rooms opens the dashboard
@@ -23,6 +23,14 @@ The app SHALL provide a GM dashboard at `/gm-dashboard`. It SHALL offer a form t
 #### Scenario: Room list cannot be loaded
 - **WHEN** the rooms request fails
 - **THEN** the dashboard still offers room creation and the library link, and shows that the room list could not be loaded
+
+#### Scenario: Opening Room settings
+- **WHEN** a signed-in GM chooses Room settings on the dashboard
+- **THEN** Room settings opens with their saved defaults, and closing it returns focus to the Room settings control
+
+#### Scenario: Room settings without an account
+- **WHEN** a guest who is not signed in chooses Room settings
+- **THEN** it says signing in is needed to save room defaults, and no request is sent
 
 ### Requirement: One entry rule for the dashboard
 A browser SHALL be *recognised* when it holds a GM identity or has previously chosen to continue as a guest. Every way into a GM surface, meaning the GM dashboard and the asset library, SHALL apply the same rule: a recognised browser SHALL reach the surface directly, and any other browser SHALL be taken to the sign-in page first, which then leads to the dashboard. This applies to the home page's link, to other links into those surfaces, and to opening `/gm-dashboard` or `/library` directly. The home page SHALL NOT link to the asset library; the GM dashboard is its way in.
