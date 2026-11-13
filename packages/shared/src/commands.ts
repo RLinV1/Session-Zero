@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IsometricBuildings } from "./isometricBuildings";
 import { SceneName } from "./scenes";
 import { PaintRun, TerrainContext, MAX_TERRAIN_CELLS } from "./terrain";
 import { AttackStyle, MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
@@ -82,6 +83,7 @@ export type TokenUpdate = z.infer<typeof TokenUpdate>;
 export const PreparationEdit = z.discriminatedUnion("type", [
   z.object({ type: z.literal("scene.setLineOfSight"), expectedSceneId: Id.optional(), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("scene.setIsometric"), expectedSceneId: Id.optional(), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("scene.setBuildings"), expectedSceneId: Id.optional(), expectedMapUrl: z.string().min(1), buildings: IsometricBuildings }).strict(),
   z.object({ type: z.literal("scene.setSightRange"), expectedSceneId: Id.optional(), range: z.number().positive().finite().nullable() }).strict(),
   z.object({ type: z.literal("terrain.paint"), expectedSceneId: Id.optional(), layerId: z.string().min(1).max(64), paint: z.array(PaintRun).min(1).max(MAX_TERRAIN_CELLS), context: TerrainContext }).strict(),
   z.object({ type: z.literal("terrain.effect.create"), expectedSceneId: Id.optional(), name: z.string().trim().min(1).max(60), effectId: Id.optional(), context: TerrainContext }).strict(),

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IsometricBuildingSet } from "./isometricBuildings";
 import { Terrain, type TerrainView } from "./terrain";
 import { DEFAULT_PRESET_ID } from "./gamePresets";
 import { TokenAttacks } from "./attackPresets";
@@ -75,6 +76,8 @@ export const Scene = z.object({
   lineOfSight: z.boolean().optional(),
   /** 2.5D isometric lighting/render projection; absent = flat (ADR 0048). */
   isometric: z.boolean().optional(),
+  /** Editable building geometry tied to one map image (ADR 0066). */
+  isometricBuildings: IsometricBuildingSet.optional(),
   /** How far a token sees, in grid units; absent = unlimited (ADR 0044). */
   sightRange: z.number().positive().optional(),
 });

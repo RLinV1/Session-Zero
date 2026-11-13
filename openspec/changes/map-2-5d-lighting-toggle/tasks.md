@@ -8,4 +8,8 @@
 ## 3. Web
 - [x] 3.1 Add `isometric` to the draft and `planDraftSave`; tests
 - [x] 3.2 Map style radio group in the Sight step; web test
-- [ ] 3.3 Playwright check of the toggle (not run: Playwright MCP failed to connect)
+- [x] 3.3 Playwright MCP check and screenshots of the toggle and projected board
+- [x] 3.4 Initial map setup view choice, including first library maps with saved grids
+- [x] 3.5 Playable board projection, pointer conversion, fitting, fog and DOM overlays
+- [x] 3.6 Uploaded-map building outlines, textured roof extrusion and draggable height in Isometric mode only
+- [ ] 3.7 Final Playwright MCP screenshots and verification of raised buildings

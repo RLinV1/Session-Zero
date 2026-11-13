@@ -46,6 +46,9 @@ import {
 } from "@vtt/shared";
 import { footprint, placementPoint, type PlacementGhost } from "./placement";
 import { clientToBoard, type BoardTransform } from "./diceThrow";
+import { ISO_X, projectMap, projectedBounds, unprojectMap } from "./mapProjection";
+import { buildingsForScene } from "@vtt/shared";
+import { buildingGeometry, polygonVertices } from "./buildingGeometry";
 import { recenterOnResize } from "./recenter";
 import { exceedsPanThreshold, pinchIsManual, resizeAction, zoomChangesScale } from "./viewFit";
 import { conditionRowY, tokenLabelFontSize, tokenLabelStroke } from "./tokenLabel";
@@ -376,6 +379,10 @@ export class BoardView {
   /** Tokens the GM is looking through (gm-token-sight-view), ringed with a dashed outline. */
   private viewedIds = new Set<string>();
   private world = new Container();
+  private mapPlane = new Container();
+  private buildingLayer = new Container();
+  private buildingKey = "";
+  private buildingTexture: Texture | null = null;
   /** Untransformed parent of the map world; screen-space blasts are its sibling. */
   private screenLayer = new Container();
   /** Screen-space blasts never inherit the map zoom or huge offscreen map bounds. */
@@ -658,7 +665,9 @@ export class BoardView {
     this.fogLayer.addChild(this.fogMist, this.fogEdgeGraphics);
     this.wallGraphics.eventMode = "none";
     this.portalGraphics.eventMode = "none";
-    this.world.addChild(this.mapSprite, this.grid, this.terrainGraphics, this.fogLayer, this.wallGraphics, this.portalGraphics, this.tokenLayer, this.sightLayer, this.markLayer, this.fxLayer);
+    this.buildingLayer.eventMode = "none";
+    this.mapPlane.addChild(this.mapSprite, this.grid, this.terrainGraphics, this.fogLayer, this.wallGraphics, this.portalGraphics, this.tokenLayer, this.buildingLayer, this.sightLayer, this.markLayer, this.fxLayer);
+    this.world.addChild(this.mapPlane);
     this.fxLayer.addChild(this.ghostFootprint);
     this.screenLayer.addChild(this.world);
     this.app.stage.addChild(this.screenLayer, this.screenFxLayer);
@@ -795,7 +804,7 @@ export class BoardView {
   private notifyView() {
     const view = this.transform;
     const last = this.lastView;
-    if (last && last.scale === view.scale && last.x === view.x && last.y === view.y) return;
+    if (last && last.scale === view.scale && last.x === view.x && last.y === view.y && last.isometric === view.isometric) return;
     this.lastView = view;
     for (const fn of this.viewListeners) fn(view);
   }
@@ -812,7 +821,7 @@ export class BoardView {
 
   /** The board's world transform right now. */
   get transform(): BoardTransform {
-    return { scale: this.world.scale.x, x: this.world.x, y: this.world.y };
+    return { scale: this.world.scale.x, x: this.world.x, y: this.world.y, isometric: this.state?.scene.isometric ?? false };
   }
 
   /** A page point (clientX/Y) in board coordinates, or null when it is not over the canvas. */
@@ -895,6 +904,10 @@ export class BoardView {
     this.state = state;
     this.you = you;
     this.shownSeq = seq;
+    if ((before?.scene.isometric ?? false) !== (state.scene.isometric ?? false)) {
+      this.mapPlane.setFromMatrix(state.scene.isometric ? new Matrix(ISO_X, 0.5, -ISO_X, 0.5, 0, 0) : new Matrix());
+      this.autoFit = true;
+    }
     // A different scene is a different board: nothing of the old one keeps playing.
     if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
     const table = state.reducedEffects ?? false;
@@ -910,6 +923,7 @@ export class BoardView {
     this.syncSight();
     this.syncVisibleRegion();
     this.syncTokens();
+    this.syncBuildings();
     if (state.templates !== this.drawnTemplates || state.fog !== this.drawnFog || state.drawings !== this.drawnDrawings) {
       for (const id of this.removing) if (!state.templates[id]) this.removing.delete(id);
       for (const id of this.erasingDrawings) if (!state.drawings[id]) this.erasingDrawings.delete(id);
@@ -1480,9 +1494,10 @@ export class BoardView {
     this.autoFit = false;
     const screen = this.app.screen;
     const scale = this.world.scale.x;
+    const at = projectMap(token.position, this.state?.scene.isometric);
     this.world.position.set(
-      screen.width / 2 - token.position.x * scale,
-      screen.height / 2 - token.position.y * scale,
+      screen.width / 2 - at.x * scale,
+      screen.height / 2 - at.y * scale,
     );
     // Force a redraw so the focus ring appears on the newly focused token and clears
     // from the previous one.
@@ -2043,7 +2058,7 @@ export class BoardView {
     // Clicking the first corner again closes the polygon.
     const first = this.fogPoints[0];
     if (first && this.fogPoints.length >= 3) {
-      const p = this.world.toGlobal(first);
+      const p = this.mapPlane.toGlobal(first);
       if (Math.hypot(p.x - screen.x, p.y - screen.y) <= FOG_CLOSE_PX) {
         this.closeFogPolygon();
         return;
@@ -2162,22 +2177,22 @@ export class BoardView {
   private driftFog() {
     if (!this.fogBody || !this.fogMist.visible) return;
     const { width, height } = this.boardSize();
-    const k = this.world.scale.x;
     const screen = this.app.screen;
-    const x0 = Math.max(0, Math.floor(-this.world.x / k) - 1);
-    const y0 = Math.max(0, Math.floor(-this.world.y / k) - 1);
-    const x1 = Math.min(width, Math.ceil((screen.width - this.world.x) / k) + 1);
-    const y1 = Math.min(height, Math.ceil((screen.height - this.world.y) / k) + 1);
+    const corners = [{ x: 0, y: 0 }, { x: screen.width, y: 0 }, { x: 0, y: screen.height }, { x: screen.width, y: screen.height }].map((p) => this.toBoard(p));
+    const x0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p.x))) - 1);
+    const y0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p.y))) - 1);
+    const x1 = Math.min(width, Math.ceil(Math.max(...corners.map((p) => p.x))) + 1);
+    const y1 = Math.min(height, Math.ceil(Math.max(...corners.map((p) => p.y))) + 1);
     this.fogBody.setRect(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
     this.fogBody.setTime(this.fogTime);
   }
 
   /** Puts the fog over the tokens (`covering`) or back under the walls, only when that changes. */
   private layerFog(covering: boolean) {
-    const kids = this.world.children;
+    const kids = this.mapPlane.children;
     const covered = kids.indexOf(this.fogLayer) > kids.indexOf(this.tokenLayer);
     if (covering === covered) return;
-    this.world.setChildIndex(this.fogLayer, covering ? kids.indexOf(this.tokenLayer) : kids.indexOf(this.wallGraphics));
+    this.mapPlane.setChildIndex(this.fogLayer, covering ? kids.indexOf(this.tokenLayer) : kids.indexOf(this.wallGraphics));
   }
 
   /** Re-colours the fog to the map's average colour (null: the default blue-grey). */
@@ -2597,10 +2612,12 @@ export class BoardView {
     const { width, height } = this.boardSize();
     const screen = this.app.screen;
     if (screen.width === 0 || screen.height === 0) return;
-    const scale = Math.min(screen.width / width, screen.height / height) * 0.95;
+    const elevation = this.state?.scene.isometric ? Math.max(0, ...buildingsForScene(this.state.scene).map((building) => building.height * this.state!.scene.grid.cellSize)) : 0;
+    const bounds = projectedBounds(width, height, this.state?.scene.isometric, elevation);
+    const scale = Math.min(screen.width / bounds.width, screen.height / bounds.height) * 0.95;
     this.world.scale.set(scale);
     this.syncTextSharpness();
-    this.world.position.set((screen.width - width * scale) / 2, (screen.height - height * scale) / 2);
+    this.world.position.set((screen.width - bounds.width * scale) / 2 - bounds.x * scale, (screen.height - bounds.height * scale) / 2 - bounds.y * scale);
   }
 
   /**
@@ -2650,6 +2667,7 @@ export class BoardView {
       (texture) => {
         if (this.mapUrl !== url || !this.initialized) return;
         this.mapSprite.texture = texture;
+        this.syncBuildings();
         this.setFogBase(averageColor(texture.source.resource as CanvasImageSource));
         this.invalidate();
       },
@@ -2658,6 +2676,42 @@ export class BoardView {
         markMissing();
       },
     );
+  }
+
+  /** Textured roofs and shaded vertical faces; an occupied building cuts away for play. */
+  private syncBuildings() {
+    const state = this.state, map = state?.scene.map;
+    const items = state?.scene.isometric ? buildingsForScene(state.scene) : [];
+    const occupiedIds = items.filter((building) => Object.values(state!.tokens).some((token) => pointInPolygon(token.position, building.footprint))).map((building) => building.id);
+    const key = JSON.stringify([map?.url, state?.scene.grid.cellSize, items, occupiedIds]);
+    if (key === this.buildingKey && this.buildingTexture === this.mapSprite.texture) return;
+    this.buildingKey = key; this.buildingTexture = this.mapSprite.texture;
+    for (const child of this.buildingLayer.removeChildren()) child.destroy({ children: true });
+    if (!state?.scene.isometric || !map) return;
+    const buildings = [...items].sort((a, b) =>
+      Math.max(...a.footprint.map((p) => p.x + p.y)) - Math.max(...b.footprint.map((p) => p.x + p.y)));
+    for (const building of buildings) {
+      const body = new Container();
+      const geometry = buildingGeometry(building, state.scene.grid.cellSize);
+      const occupied = occupiedIds.includes(building.id);
+      const faces = new Graphics();
+      for (const face of geometry.faces) {
+        faces.poly(polygonVertices(face.points)).fill({ color: face.color, alpha: occupied ? 0.35 : 1 })
+          .stroke({ color: 0x2c251e, width: 1, alpha: occupied ? 0.35 : 0.9 });
+      }
+      body.addChild(faces);
+      const roof = new Container();
+      roof.position.set(-geometry.rise, -geometry.rise);
+      const picture = new Sprite(this.mapSprite.texture);
+      picture.width = map.width; picture.height = map.height;
+      const mask = new Graphics().poly(polygonVertices(building.footprint)).fill(0xffffff);
+      picture.mask = mask;
+      const edge = new Graphics().poly(polygonVertices(building.footprint)).stroke({ color: 0xc3ab87, width: 2 });
+      roof.addChild(picture, mask, edge);
+      roof.alpha = occupied ? 0.12 : 1;
+      body.addChild(roof);
+      this.buildingLayer.addChild(body);
+    }
   }
 
   private syncGrid() {
@@ -3137,8 +3191,9 @@ export class BoardView {
     const screen = this.app.screen;
     if (screen.width === 0 || screen.height === 0) return;
     const margin = Math.max(radius * 3, (this.state?.scene.grid.cellSize ?? 70) * 3);
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
+    const projected = points.map((p) => projectMap(p, this.state?.scene.isometric));
+    const xs = projected.map((p) => p.x);
+    const ys = projected.map((p) => p.y);
     const left = Math.min(...xs);
     const right = Math.max(...xs);
     const top = Math.min(...ys);
@@ -3147,7 +3202,7 @@ export class BoardView {
     const height = bottom - top + margin * 2;
     const scale = Math.min(MAX_FIGHT_ZOOM, MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(screen.width / width, screen.height / height)));
     const centre = { x: (left + right) / 2, y: (top + bottom) / 2 };
-    this.focusCentre = centre;
+    this.focusCentre = unprojectMap(centre, this.state?.scene.isometric);
     const from = { scale: this.world.scale.x, x: this.world.x, y: this.world.y };
     const to = { scale, x: screen.width / 2 - centre.x * scale, y: screen.height / 2 - centre.y * scale };
     this.autoFit = false;
@@ -3359,7 +3414,7 @@ export class BoardView {
   // ---------- input ----------
 
   private toBoard(global: Point): Point {
-    const p = this.world.toLocal(global);
+    const p = this.mapPlane.toLocal(global);
     return { x: p.x, y: p.y };
   }
 
@@ -3743,7 +3798,7 @@ export class BoardView {
     e.preventDefault();
     const rect = this.app.canvas.getBoundingClientRect();
     const screenPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    const before = this.toBoard(screenPoint);
+    const before = this.world.toLocal(screenPoint);
     const factor = Math.exp(-e.deltaY * 0.0015);
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.world.scale.x * factor));
     if (zoomChangesScale(this.world.scale.x, scale)) this.autoFit = false;

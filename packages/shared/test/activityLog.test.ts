@@ -18,6 +18,7 @@ const committed = (event: DomainEvent, seq = 1, actorId: string | null = gm.id):
 
 describe("Human-readable activity formatter (FR-REC-01)", () => {
   const cases: Record<DomainEventType, [DomainEvent, string]> = {
+    BuildingsSet: [{ type: "BuildingsSet", from: null, to: null }, "Mara updated the map's buildings and heights"],
     TerrainPainted: [{ type: "TerrainPainted", layerId: "base", paint: [], previous: [] }, "Mara painted terrain"],
     TerrainEffectCreated: [{ type: "TerrainEffectCreated", effect: { id: "ice", name: "Ice", runs: [] } }, 'Mara created terrain effect "Ice"'],
     TerrainEffectRemoved: [{ type: "TerrainEffectRemoved", effect: { id: "ice", name: "Ice", runs: [] } }, 'Mara removed terrain effect "Ice"'],

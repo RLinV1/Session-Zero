@@ -7,6 +7,16 @@ const grid = { cellSize: 70 };
 
 describe("throwing dice onto the board (throw-dice-on-board, FR-TAC-09)", () => {
   describe("clientToBoard", () => {
+    it("undoes the isometric projection after pan and zoom", () => {
+      const view = { scale: 2, x: 350, y: 40, isometric: true };
+      const board = { x: 200, y: 120 };
+      const client = { x: canvas.left + view.x + Math.sqrt(3) / 2 * (board.x - board.y) * view.scale,
+        y: canvas.top + view.y + (board.x + board.y) / 2 * view.scale };
+      const back = clientToBoard(client, canvas, view)!;
+      expect(back.x).toBeCloseTo(board.x);
+      expect(back.y).toBeCloseTo(board.y);
+    });
+
     it("undoes the world transform", () => {
       const view = { scale: 2, x: -300, y: 40 };
       const board = { x: 250, y: 130 };

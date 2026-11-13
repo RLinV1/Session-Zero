@@ -1,4 +1,5 @@
 import { destinationBlocked, movementBlocked, movementObstacles } from "./movement";
+import { buildingsForScene } from "./isometricBuildings";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
 import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
@@ -338,6 +339,16 @@ function decideCommand(
       if (!can.administer(actor)) return forbidden();
       if (command.enabled === (state.scene.isometric ?? false)) return reject("invalid", sharedMsg(command.enabled ? "reject.mapAlreadyIsometric" : "reject.mapAlreadyFlat"));
       return accept({ type: "IsometricSet", from: state.scene.isometric ?? false, to: command.enabled });
+
+    case "scene.setBuildings": {
+      if (!can.administer(actor)) return forbidden();
+      if (!state.scene.isometric) return reject("invalid", sharedMsg("reject.buildingsNeedIsometric"));
+      const map = state.scene.map;
+      if (!map || map.url !== command.expectedMapUrl) return reject("invalid", sharedMsg("reject.buildingsMapChanged"));
+      if (command.buildings.some((building) => building.footprint.some((p) => p.x < 0 || p.y < 0 || p.x > map.width || p.y > map.height))) return reject("invalid", sharedMsg("reject.buildingsOutsideMap"));
+      if (sameValue(buildingsForScene(state.scene), command.buildings)) return reject("invalid", sharedMsg("reject.buildingsUnchanged"));
+      return accept({ type: "BuildingsSet", from: state.scene.isometricBuildings ?? null, to: { mapUrl: map.url, items: command.buildings } });
+    }
 
     case "scene.setSightRange": {
       if (!can.administer(actor)) return forbidden();

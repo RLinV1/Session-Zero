@@ -7,6 +7,9 @@ import { t, type TextId } from "../i18n/locale";
  * image and its grid draft, held by the GM's browser only. Nothing reaches the room until Apply.
  */
 export interface MapPrep {
+  buildings?: import("@vtt/shared").IsometricBuilding[];
+  /** View chosen before applying this new map. */
+  isometric?: boolean;
   /** Room baseline from the start of preparation; UVTT imports use their server-held baseline. */
   terrainContext?: { boardEpoch: number; revision: number };
   /** Explicitly discard the library base instead of reinterpreting its cell indices. */
@@ -38,7 +41,7 @@ export function startPrep(map: MapImage, savedGrid: GridSpec | null | undefined,
 /** Whether closing would lose alignment work: the draft no longer matches where it started. */
 export function prepDirty(prep: MapPrep): boolean {
   const parsed = parseGridDraft(prep.draft, prep.map);
-  return prep.resetTerrain === true || parsed === null || !gridsEqual(parsed, prep.initial) || !sameValue(prep.walls, prep.initialWalls);
+  return prep.isometric === true || (prep.buildings?.length ?? 0) > 0 || prep.resetTerrain === true || parsed === null || !gridsEqual(parsed, prep.initial) || !sameValue(prep.walls, prep.initialWalls);
 }
 
 /** The one command Apply sends: map and grid together, a single `MapSet` (ADR 0004). Null while the grid is invalid. */

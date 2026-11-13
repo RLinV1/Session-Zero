@@ -420,6 +420,23 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     expect(fake.commands).toEqual([]);
   });
 
+  it("ignores delayed detection after switching scenes that share a map", async () => {
+    const fake = mount(room());
+    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
+    fake.notify({ status: "done", wallCount: 7, width: 800, height: 600 });
+    await screen.findByRole("dialog", { name: "Detected walls" });
+    let complete!: (result: DetectedWallsResponse) => void;
+    vi.mocked(api.walls.detected).mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply 7 walls" }));
+    const next = room();
+    next.activeSceneId = "other-scene";
+    fake.rerender(next);
+    await act(async () => { complete({ resultId: "result-a", walls: detectedRows(7) }); });
+    expect(screen.queryByText(/Unsaved changes/)).toBeNull();
+    expect(fake.commands).toEqual([]);
+  });
+
   it("stops a multi-batch Save when another GM changes the map", async () => {
     const fake = mount(room());
     const walls = Array.from({ length: MAX_WALLS_PER_ADD + 1 }, (_, i) => ({ a: { x: i * 5, y: 0 }, b: { x: i * 5, y: 50 } }));

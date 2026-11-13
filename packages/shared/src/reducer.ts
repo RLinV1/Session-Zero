@@ -148,6 +148,10 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
 
     case "IsometricSet":
       return { ...state, scene: { ...state.scene, isometric: event.to } };
+    case "BuildingsSet": {
+      const { isometricBuildings: _previous, ...scene } = state.scene;
+      return { ...state, scene: event.to ? { ...scene, isometricBuildings: event.to } : scene };
+    }
     case "LineOfSightSet":
       return { ...state, scene: { ...state.scene, lineOfSight: event.to } };
 

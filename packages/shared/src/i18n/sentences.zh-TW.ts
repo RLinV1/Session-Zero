@@ -140,6 +140,7 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
     return { verb: `移除${what}`, noun: `移除${what}` };
   }
   if (first.type === "LineOfSightSet") return first.to ? { verb: "開啟視線", noun: "開啟視線" } : { verb: "關閉視線", noun: "關閉視線" };
+  if (first.type === "BuildingsSet") return { verb: "建築高度變更", noun: "變更建築高度" };
   if (first.type === "IsometricSet") return { verb: "地圖樣式變更", noun: "變更地圖樣式" };
   if (first.type === "SightRangeSet") return { verb: "視野範圍變更", noun: "變更視野範圍" };
   if (first.type === "WallUpdated") return { verb: "牆或門窗的編輯", noun: "編輯牆或門窗" };
@@ -240,6 +241,7 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     }
     case "GridSet": return cjk`${a}更新了網格`;
     case "LineOfSightSet": return cjk`${a}${event.to ? "啟用" : "關閉"}了視線判定`;
+    case "BuildingsSet": return cjk`${a}變更了建築高度`;
     case "IsometricSet": return cjk`${a}將地圖切換為${event.to ? "2.5D 等角視角" : "平面視角"}`;
     case "SightRangeSet": {
       const n = event.to === null ? null : Math.round(event.to * 10) / 10;

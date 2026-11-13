@@ -49,6 +49,20 @@ function fogInDraft() {
 }
 
 describe("map editor step switching (FR-GM-09, FR-GM-17)", () => {
+  it("offers isometric view in the first Map step and saves it through the existing command", async () => {
+    const fake = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(tab("1 · Map"));
+    const choice = within(editor()).getByRole("radio", { name: "Isometric" });
+    expect(choice.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(choice);
+    expect(choice.getAttribute("aria-checked")).toBe("true");
+    expect(fake.commands).toEqual([]);
+    fireEvent.click(within(editor()).getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fake.commands).toContainEqual(expect.objectContaining({
+      type: "scene.savePreparation", edits: [expect.objectContaining({ type: "scene.setIsometric", enabled: true })],
+    })));
+  });
   it("asks before leaving Fog with unsaved fog, and Keep editing stays put", async () => {
     const fake = mount();
     fogInDraft();

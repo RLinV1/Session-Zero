@@ -7,6 +7,7 @@ import { rangeFill } from "../../ui/rangeFill";
 import { MapCanvas } from "./MapCanvas";
 import { HudLayout } from "./HudLayout";
 import { t } from "../../i18n/locale";
+import { MapStylePicker } from "./MapStylePicker";
 
 const MAX_SQUARES = 60;
 /** The editor-only viewer that owns the test tokens: never a room participant, never sent anywhere. */
@@ -104,7 +105,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
 
   if (!map) return <p className="map-editor-empty">{t("sight.needsMap")}</p>;
 
-  const send = async (command: { type: "scene.setLineOfSight"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
+  const send = async (command: { type: "scene.setLineOfSight" | "scene.setIsometric"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
     const result = await connection.command(command);
     setMessage(result.ok ? null : result.message);
   };
@@ -223,7 +224,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
       </aside>
       <div className="sight-preview-stage">
         <MapCanvas
-          map={map} grid={grid} mode={placing ? "place" : "view"} pan={false}
+          map={map} grid={grid} isometric={state.scene.isometric} mode={placing ? "place" : "view"} pan={false}
           className={`map-editor-sight-preview${drag ? " is-dragging" : ""}${placing ? " is-placing" : ""}`}
           label={placing ? t("sight.previewHint") : t("sight.preview")}
           onPress={press} onMove={dragTo} onRelease={release} onCancel={() => { pressed.current = null; setDrag(null); }}
@@ -285,6 +286,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         )}
       </div>
       <aside className="map-editor-hud" aria-label={t("sight.settings")}>
+        <MapStylePicker isometric={state.scene.isometric ?? false} onChange={(enabled) => void send({ type: "scene.setIsometric", enabled })} />
         <section className="sight-setting">
           <h3 className="map-editor-heading">{t("sight.lineOfSight")}</h3>
           <div className="map-editor-modes" role="radiogroup" aria-label={t("sight.lineOfSight")} data-guide="sight-toggle">

@@ -1,4 +1,8 @@
 import { GridActionsContext } from "./GridActionsContext";
+import { ISO_X, projectedBounds } from "../board/mapProjection";
+import { buildingsForScene } from "@vtt/shared";
+import { BuildingSetup } from "./mapEditor/BuildingSetup";
+import { BuildingLayers } from "./mapEditor/BuildingLayers";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
@@ -19,6 +23,7 @@ import { useGridPreparation, type GridDetection } from "./useGridPreparation";
 import { GridPreparation } from "./mapEditor/GridPreparation";
 import { FogSetup } from "./mapEditor/FogSetup";
 import { SightSetup } from "./mapEditor/SightSetup";
+import { MapStylePicker } from "./mapEditor/MapStylePicker";
 import { TerrainSetup } from "./mapEditor/TerrainSetup";
 import { WallSetup } from "./mapEditor/WallSetup";
 import { draftConnection } from "./mapEditor/draftConnection";
@@ -151,10 +156,12 @@ function DepartedPlayers({ state, onReview }: { state: RoomState; onReview: (par
 /** The room's scene with the draft's sight settings, for steps that show the draft. */
 function draftScene(scene: RoomState["scene"], draft: MapDraft): RoomState["scene"] {
   const { sightRange: _drop, ...rest } = scene;
-  return { ...rest, lineOfSight: draft.lineOfSight, isometric: draft.isometric, ...(draft.sightRange !== null && { sightRange: draft.sightRange }) };
+  return { ...rest, lineOfSight: draft.lineOfSight, isometric: draft.isometric,
+    ...(draft.buildings !== undefined && { isometricBuildings: { mapUrl: draft.mapUrl, items: draft.buildings } }),
+    ...(draft.sightRange !== null && { sightRange: draft.sightRange }) };
 }
 
-type EditorStep = "map" | "grid" | "walls" | "fog" | "sight" | "terrain";
+type EditorStep = "map" | "grid" | "walls" | "fog" | "sight" | "terrain" | "buildings";
 /** Unsaved work the editor asks about, and where it goes once the GM answers (map-section-step-buttons). */
 type PendingKind = "map" | "grid" | "draft";
 type Pending = { kind: PendingKind; then: EditorStep | "close" };
@@ -275,18 +282,18 @@ function MapSection(props: {
   const [pendingError, setPendingError] = useState<string | null>(null);
   const liveMapUrl = props.map?.url ?? null;
   const [editorGeneration, setEditorGeneration] = useState(0);
-  const editorSession = useMemo(() => ({ open: editorOpen, mapUrl: liveMapUrl }), [editorOpen, liveMapUrl, editorGeneration, props.roomId, props.connection]);
+  const editorSession = useMemo(() => ({ open: editorOpen, mapUrl: liveMapUrl, sceneId: props.sceneId }), [editorOpen, liveMapUrl, props.sceneId, editorGeneration, props.roomId, props.connection]);
   const currentSession = useRef(editorSession);
   currentSession.current = editorSession;
   useEffect(() => {
     if (!editorOpen || !liveMapUrl) return setDraft(null);
-    setDraft((current) => (current?.mapUrl === liveMapUrl ? current : draftFrom(props.room)));
-    // Only opening the editor or a new map restarts the draft; room updates must not overwrite it.
-  }, [editorOpen, liveMapUrl]);
+    setDraft((current) => (current?.mapUrl === liveMapUrl && current.sceneId === props.sceneId ? current : draftFrom(props.room)));
+    // Only opening the editor or a new map/scene restarts the draft; room updates must not overwrite it.
+  }, [editorOpen, liveMapUrl, props.sceneId]);
   const draftEdits = useMemo(
     () => draftConnection(
       props.connection,
-      (change) => setDraft((current) => (current && currentSession.current === editorSession && current.mapUrl === editorSession.mapUrl ? change(current) : current)),
+      (change) => setDraft((current) => (current && currentSession.current === editorSession && current.mapUrl === editorSession.mapUrl && current.sceneId === editorSession.sceneId ? change(current) : current)),
       (mapUrl) => api.walls.detected(props.roomId, props.token, mapUrl),
       editorSession.mapUrl ?? "",
       { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 },
@@ -294,7 +301,8 @@ function MapSection(props: {
     ),
     [props.connection, props.roomId, props.token, editorSession],
   );
-  const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, draft) } : props.room;
+  const activeDraft = draft?.mapUrl === liveMapUrl && draft.sceneId === props.sceneId ? draft : null;
+  const draftState: RoomState = activeDraft ? { ...props.room, walls: activeDraft.walls, fog: activeDraft.fog, terrain: activeDraft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, activeDraft) } : props.room;
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
     if (geometryChanged && draft && !sameValue(draft.terrain ?? emptyTerrain(), props.room.terrain ?? emptyTerrain())) {
@@ -309,14 +317,19 @@ function MapSection(props: {
     }
     return applied;
   };
-  const unsaved = draft !== null && draftDirty(props.room, draft);
+  const unsaved = activeDraft !== null && draftDirty(props.room, activeDraft);
   /** Submits one bounded preparation: the server validates and appends every edit atomically. */
   const saveDraft = async (): Promise<boolean> => {
     if (!draft || saving) return false;
+    const baseline = props.connection.snapshot?.state ?? props.room;
+    if (baseline.scene.map?.url !== draft.mapUrl || (baseline.activeSceneId ?? "initial") !== (draft.sceneId ?? props.sceneId)) {
+      setSaveError("The map or scene changed. Your draft has been kept; reopen the intended map before saving.");
+      return false;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      for (const command of planDraftSave(props.room, draft)) {
+      for (const command of planDraftSave(baseline, draft)) {
         if (currentSession.current !== editorSession) return false;
         const result = await props.connection.command(command);
         if (currentSession.current !== editorSession) return false;
@@ -326,7 +339,7 @@ function MapSection(props: {
         }
       }
       const saved = props.connection.snapshot?.state;
-      if (saved?.scene.map?.url === draft.mapUrl) {
+      if (saved?.scene.map?.url === draft.mapUrl && (saved.activeSceneId ?? "initial") === (draft.sceneId ?? props.sceneId)) {
         setDraft((current) => current === draft && currentSession.current === editorSession ? draftFrom(saved) : current);
       }
       return true;
@@ -389,7 +402,7 @@ function MapSection(props: {
     if (prep?.uvtt) return to === "fog" || to === "sight" ? "map" : null;
     if (prep && (from === "map" || from === "grid") && (to === "walls" || to === "fog" || to === "sight" || to === "terrain")) return "map";
     if (from === "grid" && to !== "grid" && gridDirty) return "grid";
-    if ((from === "walls" || from === "fog" || from === "sight" || from === "terrain") && to !== from && unsaved) return "draft";
+    if ((from === "walls" || from === "fog" || from === "sight" || from === "terrain" || from === "buildings") && to !== from && unsaved) return "draft";
     return null;
   };
   const busyNow = applyingMap || props.gridApplying || saving || pendingSaving;
@@ -485,9 +498,33 @@ function MapSection(props: {
       }
       if (applied) {
         const current = props.connection.snapshot?.state;
-        if (current) setDraft(draftFrom(current));
+        const isometric = prep.isometric ?? false;
+        if (current && (current.scene.map?.url !== prep.map.url || (current.activeSceneId ?? "initial") !== props.sceneId)) {
+          const message = "Another GM changed the map or scene while applying. Your preparation has been kept; review it before applying again.";
+          setPrepError(message); setPendingError(message);
+          return false;
+        }
+        // Save view and buildings together, bound to the map just applied; retain the draft on refusal.
+        const baseline = current ?? { ...props.room, scene: { ...props.room.scene, map: prep.map, grid } };
+        const nextDraft = { ...draftFrom(baseline), mapUrl: prep.map.url, sceneId: props.sceneId, isometric, ...(prep.buildings && { buildings: prep.buildings }) };
+        setDraft(nextDraft);
+        let viewSaved = true;
+        try {
+          for (const command of planDraftSave(baseline, nextDraft)) {
+            const result = await props.connection.command(command);
+            if (!result.ok) { setSaveError(result.message); viewSaved = false; break; }
+          }
+        } catch {
+          setSaveError("Map applied. Save changes to retry saving its view and building heights.");
+          viewSaved = false;
+        }
         setChangedMapUrl(askPolicy ? prep.map.url : null); setUndoError(null); discardPrep();
         setStep("walls");
+        if (!viewSaved) {
+          setPending((current) => current?.kind === "map" ? { ...current, kind: "draft" } : current);
+          setPendingError("The map was applied, but its view or building heights still need to be saved. Your draft has been kept.");
+          return false;
+        }
       }
       return applied;
     } catch (err) {
@@ -559,7 +596,7 @@ function MapSection(props: {
     const map = { url: asset.url, width: asset.width, height: asset.height, assetId: libraryAssetId(asset) };
     prepGeneration.current++;
     const next = startPrep(map, asset.grid, props.currentGrid, { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 });
-    if (editorOpen || !asset.grid) {
+    if (editorOpen || !asset.grid || !props.map) {
       setPicking(false);
       setPickError(null);
       setPrep(next);
@@ -577,7 +614,12 @@ function MapSection(props: {
 
   const [gridActionSlot, setGridActionSlot] = useState<HTMLElement | null>(null);
   const shown = prep?.map ?? props.map;
-  const steps = props.fixedMap ? FIXED_MAP_STEPS : STEPS;
+  const isometric = prep ? prep.isometric ?? false : draftState.scene.isometric ?? false;
+  const setupGrid = prep ? parseGridDraft(prep.draft, prep.map) ?? prep.initial : props.currentGrid;
+  const editorBuildings = prep ? prep.buildings ?? [] : buildingsForScene(draftState.scene);
+  const elevation = isometric ? Math.max(0, ...editorBuildings.map((building) => building.height * setupGrid.cellSize)) : 0;
+  const mapBounds = shown ? projectedBounds(shown.width, shown.height, isometric, elevation) : null;
+  const steps: { key: EditorStep; label: TextId | "Buildings" }[] = props.fixedMap ? FIXED_MAP_STEPS : isometric ? [...STEPS, { key: "buildings", label: "Buildings" }] : STEPS;
   return (
     <PanelSection id="gm-map" title={t("gmMap.battleMap")}>
       <div className="stack">
@@ -641,11 +683,13 @@ function MapSection(props: {
                 className="map-editor-step"
                 onClick={() => requestStep(key)}
               >
-                {t("editor.stepLabel", { n: i + 1, name: t(label) })}
+                {t("editor.stepLabel", { n: i + 1, name: label === "Buildings" ? label : t(label) })}
               </button>
             ))}
             <span ref={setGridActionSlot} hidden={step !== "grid"} style={{ marginLeft: "auto" }} />
             {prep && step !== "grid" && <span className="map-editor-draft">{t("gmMap.draftNote")}</span>}
+            {prep && prepError && step !== "grid" && <span role="alert" className="error map-editor-save-error">{prepError}</span>}
+            {prep && step === "buildings" && <button type="button" className="primary small" disabled={applyingMap} onClick={requestApply}>{applyingMap ? t("gmMap.applyingMap") : t("gmMap.applyMap")}</button>}
             {!prep && unsaved && (
               <span className="map-editor-unsaved">
                 <span className="map-editor-draft">{t("grid.unsaved")}</span>
@@ -668,10 +712,23 @@ function MapSection(props: {
               <div className="map-editor-split">
                 <div className="map-editor-stage">
                   <div className="map-editor-guide-slot"><EditorGuide step="map" /></div>
-                  {shown?.url ? <img className="map-editor-thumb" src={shown.url} alt={t("gmMap.currentAlt")} /> : <p className="map-editor-empty">{t("gmMap.noMapHint")}</p>}
+                  {shown?.url && mapBounds ? <svg className="map-editor-thumb" width="100%" height="100%" role="img" aria-label={t("gmMap.currentAlt")}
+                      viewBox={`${mapBounds.x} ${mapBounds.y} ${mapBounds.width} ${mapBounds.height}`}>
+                      <g transform={isometric ? `matrix(${ISO_X} 0.5 ${-ISO_X} 0.5 0 0)` : undefined}>
+                        <image href={shown.url} width={shown.width} height={shown.height} />
+                        {isometric && <BuildingLayers map={shown} buildings={editorBuildings} cellSize={setupGrid.cellSize} />}
+                      </g>
+                    </svg> : <p className="map-editor-empty">{t("gmMap.noMapHint")}</p>}
                 </div>
                 <aside className="map-editor-hud" aria-label={t("editor.step.map")}>
                   <h3 className="map-editor-heading">{t("gmMap.battleMap")}</h3>
+                  <MapStylePicker isometric={isometric}
+                    disabled={busy || (!prep && !draft)}
+                    onChange={(isometric) => {
+                      if (prep) setPrep((current) => current ? { ...current, isometric } : current);
+                      else setDraft((current) => current ? { ...current, isometric } : current);
+                    }} />
+                  {isometric && shown && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>Edit building heights</button>}
                   <p className="muted">{t("gmMap.uploadHint")}</p>
                   {props.hasLibrary && (
                     <label className="inline" data-guide="map-save-library">
@@ -731,6 +788,9 @@ function MapSection(props: {
                   busyLabel={t("gmMap.applyingMap")}
                   allowUnchanged
                 >
+                  <MapStylePicker isometric={prep.isometric ?? false} disabled={applyingMap}
+                    onChange={(isometric) => setPrep((current) => current ? { ...current, isometric } : current)} />
+                  {prep.isometric && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>Outline buildings and add height</button>}
                   {prep.map.assetId && <label className="checkbox">
                     <input type="checkbox" checked={prep.resetTerrain ?? false} onChange={(e) => setPrep((now) => now ? { ...now, resetTerrain: e.target.checked } : now)} />
                     <span>{t("gmMap.resetTerrain")}</span>
@@ -751,6 +811,11 @@ function MapSection(props: {
               ? <p className="map-editor-empty">{t("gmMap.applyBeforeFog")}</p>
               : <Fragment key={`${editorGeneration}:${liveMapUrl}`}>{props.fog(draftEdits, draftState)}</Fragment>)}
             {step === "terrain" && (prep ? <p className="map-editor-empty">{t("gmMap.applyBeforeTerrain")}</p> : <TerrainSetup key={`${editorGeneration}:${liveMapUrl}`} connection={draftEdits} state={draftState} />)}
+            {step === "buildings" && isometric && shown && <BuildingSetup key={`${editorGeneration}:${shown.url}`}
+              map={shown} grid={setupGrid} buildings={editorBuildings} onChange={(buildings) => {
+                if (prep) setPrep((current) => current ? { ...current, buildings } : current);
+                else setDraft((current) => current ? { ...current, buildings } : current);
+              }} />}
         {step === "sight" && (prep
               ? <p className="map-editor-empty">{t("sight.needsMap")}</p>
               : !props.map ? <p className="map-editor-empty">{t("sight.needsMap")}</p>

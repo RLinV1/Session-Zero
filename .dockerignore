@@ -19,3 +19,4 @@ docs
 **/*.log
 playwright-report
 test-results
+output/

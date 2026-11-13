@@ -3,6 +3,12 @@ import type { rejectionsEn } from "../en/rejections";
 
 /** Traditional Chinese for `en/rejections.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const rejectionsZhTW = {
+  "reject.buildingsNeedIsometric": "只有等角視角能設定建築高度。",
+  "reject.buildingsMapChanged": "地圖已變更，請重新開啟編輯器後再修改建築。",
+  "reject.buildingsOutsideMap": "建築輪廓必須位於地圖範圍內。",
+  "reject.buildingsUnchanged": "建築設定沒有變更。",
+  "undo.buildingsChanged": "無法復原：建築已變更。",
+
   "reject.forbidden": "你沒有執行這項操作的權限。",
   "reject.notFound.areaEffect": "找不到這個範圍效果",
   "reject.notFound.checkpoint": "找不到這個存檔點",

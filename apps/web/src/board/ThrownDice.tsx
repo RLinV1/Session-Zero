@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from 
 import type { MapImage } from "@vtt/shared";
 import { THROW_MS, throwKeyframes, throwStagger } from "../ui/diceGeometry";
 import { Die3D, dieParts, layoutDice, type TrayRoll } from "../ui/Die3D";
-import { boardDiePaths, type BoardThrow, type BoardTransform } from "./diceThrow";
+import { boardCssTransform, boardDiePaths, type BoardThrow, type BoardTransform } from "./diceThrow";
 import { armSound, playDiceSound } from "./fxSound";
 
 /** How long landed dice stay on the board, then how long they take to fade. */
@@ -49,7 +49,7 @@ export function ThrownDice({
   useLayoutEffect(
     () =>
       subscribe((view) => {
-        if (world.current) world.current.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+        if (world.current) world.current.style.transform = boardCssTransform(view);
       }),
     [subscribe],
   );

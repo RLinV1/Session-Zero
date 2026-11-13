@@ -3,7 +3,7 @@ import type { MapImage } from "@vtt/shared";
 import { Die3D, dieParts, layoutDice } from "../ui/Die3D";
 import { THROW_MS, throwKeyframes, throwStagger } from "../ui/diceGeometry";
 import type { DiceSkin } from "../ui/diceSkin";
-import { boardDiePaths, throwStart, type BoardTransform } from "./diceThrow";
+import { boardCssTransform, boardDiePaths, throwStart, type BoardTransform } from "./diceThrow";
 import { DROP_FADE_MS, DROP_LINGER_MS, DROP_MS, type BoardDrop, type DropGroup } from "./tokenDice";
 
 /** A roll dropping onto this viewer's board, until its dice have faded. */
@@ -39,7 +39,7 @@ export function DroppedDice({
   useLayoutEffect(
     () =>
       subscribe((view) => {
-        if (world.current) world.current.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+        if (world.current) world.current.style.transform = boardCssTransform(view);
       }),
     [subscribe],
   );

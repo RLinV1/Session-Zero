@@ -12,4 +12,8 @@ The GM needs to mark a map as 2.5D (isometric) or flat in the map editor's Sight
 
 ## Consequences
 
-Additive and optional: old events, snapshots and checkpoints parse and read as flat. UVTT import/export ignore it (neither touches `Scene.lineOfSight` either); a MapSet leaves it unchanged. Library maps and encounter templates do not carry it, as with line of sight. Board rendering for 2.5D maps is future work.
+Additive and optional: old events, snapshots and checkpoints parse and read as flat. UVTT import/export ignore it (neither touches `Scene.lineOfSight` either); a MapSet leaves it unchanged. Library maps and encounter templates do not carry it, as with line of sight.
+
+## Rendering follow-up (2026-11-11)
+
+The existing flag drives the playable board projection. A uniform pan/zoom camera wraps a projected map plane; pointer input is inverse-projected to map coordinates. Fog, sight, terrain, rulers, effects and dice follow that plane. First map setup offers the view alongside its grid; existing-map edits stay private until Save changes. Applying a new map sends the existing GM-only `scene.setIsometric` command after the map is accepted. If that command fails, the selected view remains in the editor draft for retry. Library map assets keep their existing schema and do not carry the scene preference.

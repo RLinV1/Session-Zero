@@ -3,6 +3,7 @@ import { MapGuide } from "./EditorGuide";
 import { GridLines, MapFilter } from "./GridLines";
 import { type GridSpec, type MapImage, type Point } from "@vtt/shared";
 import { t } from "../../i18n/locale";
+import { ISO_X, projectMap, projectedBounds, unprojectMap } from "../../board/mapProjection";
 
 /** A press that moves further than this is a drag, not a click. */
 const CLICK_SLOP_PX = 4;
@@ -37,10 +38,12 @@ export interface CanvasView {
  * draw their own layers as `children` and choose what a click or drag does.
  */
 export function MapCanvas({
-  map, grid, mode, pan, label, className, focus, onMove, onPress, onRelease, onCancel, onSecondary, onKeyDown, children,
+  map, grid, isometric = false, elevation = 0, mode, pan, label, className, focus, onMove, onPress, onRelease, onCancel, onSecondary, onKeyDown, children,
 }: {
   map: MapImage;
   grid: GridSpec;
+  isometric?: boolean;
+  elevation?: number;
   /** Names the cursor (`mode-<mode>`). Space held shows `pan`. */
   mode: string;
   /** The step's Pan tool is chosen: every drag moves the view. */
@@ -89,17 +92,21 @@ export function MapCanvas({
     setCamera((c) => ({ cx: focusX, cy: focusY, zoom: Math.max(c.zoom, FOCUS_ZOOM) }));
   }, [focusX, focusY]);
 
-  const fit = view.width > 0 && view.height > 0 ? Math.min(view.width / map.width, view.height / map.height) : 1;
+  const bounds = projectedBounds(map.width, map.height, isometric, elevation);
+  const frameOffset = unprojectMap({ x: 0, y: isometric ? -elevation / 2 : 0 }, isometric);
+  const fit = view.width > 0 && view.height > 0 ? Math.min(view.width / bounds.width, view.height / bounds.height) : 1;
   const scale = fit * camera.zoom;
   const viewBox = useMemo(() => {
     const w = view.width / scale || map.width;
     const h = view.height / scale || map.height;
-    return { x: camera.cx - w / 2, y: camera.cy - h / 2, w, h };
-  }, [view, scale, camera, map]);
+    const centre = projectMap({ x: camera.cx, y: camera.cy }, isometric);
+    if (isometric) centre.y -= elevation / 2;
+    return { x: centre.x - w / 2, y: centre.y - h / 2, w, h };
+  }, [view, scale, camera, map, isometric, elevation]);
 
   const toMap = (clientX: number, clientY: number): Point => {
     const rect = svgRef.current!.getBoundingClientRect();
-    return { x: viewBox.x + (clientX - rect.left) / scale, y: viewBox.y + (clientY - rect.top) / scale };
+    return unprojectMap({ x: viewBox.x + (clientX - rect.left) / scale, y: viewBox.y + (clientY - rect.top) / scale }, isometric);
   };
 
   const onWheel = (e: WheelEvent<SVGSVGElement>) => {
@@ -107,7 +114,7 @@ export function MapCanvas({
     const zoom = Math.min(MAX_ZOOM, Math.max(1, camera.zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
     const ratio = camera.zoom / zoom;
     // Keep the map point under the pointer where it is.
-    setCamera({ zoom, cx: at.x - (at.x - camera.cx) * ratio, cy: at.y - (at.y - camera.cy) * ratio });
+    setCamera({ zoom, cx: at.x - (at.x - camera.cx) * ratio + frameOffset.x * (ratio - 1), cy: at.y - (at.y - camera.cy) * ratio + frameOffset.y * (ratio - 1) });
   };
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
@@ -150,7 +157,8 @@ export function MapCanvas({
       const mid = midpoint(first, second);
       const zoom = Math.min(MAX_ZOOM, Math.max(1, gesture.zoom * Math.hypot(first.x - second.x, first.y - second.y) / gesture.distance));
       const next = fit * zoom;
-      setCamera({ zoom, cx: gesture.point.x - (mid.x - rect.left - view.width / 2) / next, cy: gesture.point.y - (mid.y - rect.top - view.height / 2) / next });
+      const offset = unprojectMap({ x: (mid.x - rect.left - view.width / 2) / next, y: (mid.y - rect.top - view.height / 2) / next }, isometric);
+      setCamera({ zoom, cx: gesture.point.x - offset.x - frameOffset.x, cy: gesture.point.y - offset.y - frameOffset.y });
       return;
     }
     onMove?.(toMap(e.clientX, e.clientY), e, { scale, px: 1 / scale });
@@ -159,7 +167,8 @@ export function MapCanvas({
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
     if (Math.hypot(dx, dy) > CLICK_SLOP_PX) start.moved = true;
-    if (start.pan && start.moved) setCamera({ ...start.camera, cx: start.camera.cx - dx / scale, cy: start.camera.cy - dy / scale });
+    const delta = unprojectMap({ x: dx / scale, y: dy / scale }, isometric);
+    if (start.pan && start.moved) setCamera({ ...start.camera, cx: start.camera.cx - delta.x, cy: start.camera.cy - delta.y });
   };
 
   const onPointerUp = (e: PointerEvent<SVGSVGElement>) => {
@@ -202,9 +211,11 @@ export function MapCanvas({
         onKeyUp={(e) => { if (e.key === " ") setSpace(false); }}
         onContextMenu={(e) => e.preventDefault()}
       >
+        <g transform={isometric ? `matrix(${ISO_X} 0.5 ${-ISO_X} 0.5 0 0)` : undefined}>
         <image href={map.url} x={0} y={0} width={map.width} height={map.height} preserveAspectRatio="none" />
         <GridLines grid={grid} map={map} scale={scale} />
         {children({ scale, px })}
+        </g>
       </svg>
       <MapGuide />
       <MapFilter />

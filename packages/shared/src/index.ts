@@ -10,6 +10,7 @@ export * from "./gridRenderLimit";
 export * from "./gridDetection";
 export * from "./wallDetection";
 export * from "./state";
+export * from "./isometricBuildings";
 export * from "./encounters";
 export * from "./commands";
 export * from "./events";

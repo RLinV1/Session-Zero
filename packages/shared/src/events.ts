@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IsometricBuildingSet } from "./isometricBuildings";
 import { Terrain, TerrainEffect, PaintRun, MAX_TERRAIN_CELLS } from "./terrain";
 import { SavedScene, SceneName } from "./scenes";
 import { MAX_NUKE_DAMAGE, NukeAnimationDef } from "./animation";
@@ -83,6 +84,7 @@ export const DomainEvent = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("LineOfSightSet"), from: z.boolean(), to: z.boolean() }),
   z.object({ type: z.literal("IsometricSet"), from: z.boolean(), to: z.boolean() }),
+  z.object({ type: z.literal("BuildingsSet"), from: IsometricBuildingSet.nullable(), to: IsometricBuildingSet.nullable() }),
   z.object({ type: z.literal("SightRangeSet"), from: z.number().nullable(), to: z.number().nullable() }),
   z.object({
     type: z.literal("TokenCreated"),

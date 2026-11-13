@@ -1,4 +1,5 @@
 import { paintTerrain, terrainCells, compressTerrain, emptyTerrain, replaceTerrainLayer, terrainLayer, MAX_TERRAIN_EFFECTS, TerrainRuns, type PaintRun, type Terrain, type TerrainRun } from "@vtt/shared";
+import { buildingsForScene, type IsometricBuilding } from "@vtt/shared";
 import {
   MAX_WALLS_PER_ADD, MAX_WALLS_PER_REMOVE,
   polygonArea, wallsFitMap, removePortalOverlaps, sameValue,
@@ -23,6 +24,7 @@ export interface MapDraft {
   lineOfSight: boolean;
   /** 2.5D isometric map style; false is flat (Sight step, ADR 0048). */
   isometric: boolean;
+  buildings?: IsometricBuilding[];
   /** Sight range in grid units; null is unlimited. */
   sightRange: number | null;
 }
@@ -31,7 +33,7 @@ export interface MapDraft {
 export const DRAFT_ID = "draft:";
 
 export function draftFrom(state: Pick<RoomState, "scene" | "walls" | "fog"> & Partial<Pick<RoomState, "terrain" | "boardEpoch" | "terrainRevision" | "activeSceneId">>): MapDraft {
-  return { sceneId: state.activeSceneId ?? "initial", terrain: state.terrain ?? emptyTerrain(), terrainContext: { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 }, mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
+  return { ...(state.scene.isometricBuildings ? { buildings: buildingsForScene(state.scene) } : {}), sceneId: state.activeSceneId ?? "initial", terrain: state.terrain ?? emptyTerrain(), terrainContext: { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 }, mapUrl: state.scene.map?.url ?? "", walls: state.walls, fog: state.fog, lineOfSight: state.scene.lineOfSight ?? false, isometric: state.scene.isometric ?? false, sightRange: state.scene.sightRange ?? null };
 }
 
 const pointKey = (p: Point) => `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`;
@@ -149,6 +151,7 @@ export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog"> &
   const sight: PreparationEdit[] = [];
   if ((room.scene.lineOfSight ?? false) !== draft.lineOfSight) sight.push({ type: "scene.setLineOfSight", enabled: draft.lineOfSight });
   if ((room.scene.isometric ?? false) !== draft.isometric) sight.push({ type: "scene.setIsometric", enabled: draft.isometric });
+  if (draft.isometric && !sameValue(buildingsForScene(room.scene), draft.buildings ?? [])) sight.push({ type: "scene.setBuildings", expectedMapUrl: draft.mapUrl, buildings: draft.buildings ?? [] });
   if ((room.scene.sightRange ?? null) !== draft.sightRange) sight.push({ type: "scene.setSightRange", range: draft.sightRange });
   const edits = [...commands.map((command) => command.type.startsWith("terrain.") ? command : { ...command, expectedMapUrl: draft.mapUrl }), ...sight].map((command) => ({ ...command, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }) }));
   return edits.length ? [{ type: "scene.savePreparation", expectedMapUrl: draft.mapUrl, ...(draft.sceneId !== undefined && { expectedSceneId: draft.sceneId }),
@@ -259,6 +262,8 @@ export function applyToDraft(draft: MapDraft, command: CommandInput, newId: () =
       return { ...draft, lineOfSight: command.enabled };
     case "scene.setIsometric":
       return { ...draft, isometric: command.enabled };
+    case "scene.setBuildings":
+      return { ...draft, buildings: command.buildings };
     case "scene.setSightRange":
       return { ...draft, sightRange: command.range };
     default:

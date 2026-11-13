@@ -164,7 +164,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     };
     it("asks on Apply map, not in the Grid step; Cancel sends nothing and keeps the draft; Recenter is sent", async () => {
       const fake = mount(withToken()); await importFile();
-      expect(screen.queryByRole("radio")).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Tokens already on the table" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
       let dialog = await screen.findByRole("dialog", { name: "Tokens already on the table" });
       expect(within(dialog).getByRole("radio", { name: /^Scale to fit/ })).toHaveProperty("checked", true);

@@ -1,5 +1,6 @@
 import { parseDiceExpression, type AttackContext, type DiceRoll, type GridSpec, type MapImage, type Point, diceCount } from "@vtt/shared";
 import { seed, throwTurns, type ThrowPath } from "../ui/diceGeometry";
+import { ISO_X, unprojectMap } from "./mapProjection";
 
 import { t } from "../i18n/locale";
 /**
@@ -10,11 +11,19 @@ import { t } from "../i18n/locale";
 /** Most dice one throw puts on the board; a bigger roll is rolled with the Roll button. */
 export const BOARD_THROW_MAX_DICE = 10;
 
-/** The board's world transform: a board point p sits at `offset + p * scale` in the canvas. */
+/** Camera offset/zoom, plus the optional projection applied before the camera. */
 export interface BoardTransform {
   scale: number;
   x: number;
   y: number;
+  isometric?: boolean;
+}
+
+/** The DOM effects and dice use the same map plane as Pixi. */
+export function boardCssTransform(view: BoardTransform): string {
+  const { scale: s, x, y } = view;
+  return view.isometric ? `matrix(${ISO_X * s},${s / 2},${-ISO_X * s},${s / 2},${x},${y})`
+    : `translate(${x}px, ${y}px) scale(${s})`;
 }
 
 /** A throw on this viewer's board, in board coordinates. Plain data, so it could be sent later. */
@@ -29,7 +38,7 @@ export function clientToBoard(client: Point, canvas: Pick<DOMRect, "left" | "top
   const x = client.x - canvas.left;
   const y = client.y - canvas.top;
   if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return null;
-  return { x: (x - view.x) / view.scale, y: (y - view.y) / view.scale };
+  return unprojectMap({ x: (x - view.x) / view.scale, y: (y - view.y) / view.scale }, view.isometric);
 }
 
 /** Whether a board point is on the map image. */
@@ -88,12 +97,15 @@ const EDGE_MARGIN = 1;
 export function throwLanding(
   from: Point,
   velocity: Point,
-  view: Pick<BoardTransform, "scale">,
+  view: Pick<BoardTransform, "scale" | "isometric">,
   grid: Pick<GridSpec, "cellSize">,
   map: Pick<MapImage, "width" | "height">,
 ): Point {
-  const speed = Math.hypot(velocity.x, velocity.y);
-  const direction = speed > 0.02 ? { x: velocity.x / speed, y: velocity.y / speed } : DROP_DIRECTION;
+  const boardVelocity = unprojectMap(velocity, view.isometric);
+  const speed = Math.hypot(boardVelocity.x, boardVelocity.y);
+  const vector = speed > 0.02 ? boardVelocity : unprojectMap(DROP_DIRECTION, view.isometric);
+  const magnitude = Math.hypot(vector.x, vector.y);
+  const direction = { x: vector.x / magnitude, y: vector.y / magnitude };
   const cells = Math.min(MAX_CELLS, Math.max(MIN_CELLS, (speed * FLICK_MS) / view.scale / grid.cellSize));
   const distance = cells * grid.cellSize;
   return clampToMap({ x: from.x + direction.x * distance, y: from.y + direction.y * distance }, map);

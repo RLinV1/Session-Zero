@@ -7,6 +7,12 @@ type Name = { name: string };
 type Token = { token: string };
 
 export const rejectionsEn = {
+  "reject.buildingsNeedIsometric": "Building heights are only available in isometric view.",
+  "reject.buildingsMapChanged": "The map changed. Reopen the editor before changing buildings.",
+  "reject.buildingsOutsideMap": "Buildings must stay inside the map.",
+  "reject.buildingsUnchanged": "The buildings are already set that way.",
+  "undo.buildingsChanged": "Can't undo: the buildings have changed since.",
+
   "reject.forbidden": "You are not allowed to do that",
   "reject.notFound.areaEffect": "No such area effect",
   "reject.notFound.checkpoint": "No such checkpoint",

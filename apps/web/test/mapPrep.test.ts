@@ -7,6 +7,11 @@ const terrainContext = { boardEpoch: 3, revision: 7 };
 const saved: GridSpec = { ...DEFAULT_GRID, cellSize: 100, offsetX: 10, offsetY: 20 };
 
 describe("private map preparation (KAN-59)", () => {
+  it("keeps a chosen isometric view as unsaved preparation", () => {
+    const prep = startPrep(map, saved, DEFAULT_GRID, terrainContext);
+    expect(prepDirty({ ...prep, isometric: true })).toBe(true);
+    expect(prepDirty({ ...prep, isometric: false })).toBe(false);
+  });
   it("starts a library map from its saved grid, and an upload from the room's grid", () => {
     expect(startPrep(map, saved, DEFAULT_GRID, terrainContext).initial).toMatchObject({ cellSize: 100, offsetX: 10, offsetY: 20 });
     expect(startPrep(map, undefined, { ...DEFAULT_GRID, offsetX: 75 }, terrainContext).initial).toMatchObject({ cellSize: 70, offsetX: 5 });

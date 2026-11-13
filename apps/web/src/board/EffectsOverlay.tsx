@@ -1,10 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { unprojectMap } from "./mapProjection";
 import { QUALITY, useClientSettings } from "../ui/clientSettings";
 import { motion } from "framer-motion";
 import Particles, { initParticlesEngine } from "@tsparticles/react";
 import { loadSlim } from "@tsparticles/slim";
 import type { ConditionId, RoomState, Token } from "@vtt/shared";
-import type { BoardTransform } from "./diceThrow";
+import { boardCssTransform, type BoardTransform } from "./diceThrow";
 import {
   CONDITION_GLOW,
   CONDITION_VISUALS,
@@ -105,8 +106,9 @@ export default function EffectsOverlay({
       if (!el || !latest) return;
       last = performance.now();
       const view = latest;
-      setCentre({ x: (el.clientWidth / 2 - view.x) / view.scale, y: (el.clientHeight / 2 - view.y) / view.scale,
-        halfWidth: el.clientWidth / (2 * view.scale), halfHeight: el.clientHeight / (2 * view.scale) });
+      const centre = unprojectMap({ x: (el.clientWidth / 2 - view.x) / view.scale, y: (el.clientHeight / 2 - view.y) / view.scale }, view.isometric);
+      const extent = unprojectMap({ x: el.clientWidth / (2 * view.scale), y: el.clientHeight / (2 * view.scale) }, view.isometric);
+      setCentre({ ...centre, halfWidth: extent.x, halfHeight: view.isometric ? extent.x : extent.y });
     };
     const queue = () => {
       if (timer) return;
@@ -116,7 +118,7 @@ export default function EffectsOverlay({
     };
     const stop = subscribe((view) => {
       latest = view;
-      if (world.current) world.current.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+      if (world.current) world.current.style.transform = boardCssTransform(view);
       queue();
     });
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(queue);

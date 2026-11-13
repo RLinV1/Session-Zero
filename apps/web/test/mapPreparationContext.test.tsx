@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Command, decide, reduce, type CommandInput, type GridDetectionStatus, type LibraryAsset, type Participant, type RoomState } from "@vtt/shared";
 import { accountStore } from "../src/account/accountStore";
@@ -7,7 +7,7 @@ import { api } from "../src/net/api";
 import * as imageFile from "../src/net/imageFile";
 import { GmPanel } from "../src/pages/GmPanel";
 import { toGridDraft } from "../src/pages/gridDraft";
-import { fakeConnection, GRID, room, stubMapEditorEnvironment, TOKEN } from "./mapEditorHarness";
+import { click, fakeConnection, GRID, room, stubMapEditorEnvironment, TOKEN } from "./mapEditorHarness";
 
 vi.mock("../src/panels/CheckpointsPanel", () => ({ CheckpointsPanel: () => null }));
 vi.mock("../src/panels/EncounterPanel", () => ({ EncounterPanel: () => null }));
@@ -128,6 +128,75 @@ describe.each(["upload", "library"] as const)("%s preparation context (FR-TAC-03
 });
 
 describe("preparation entry points retain their baseline (FR-TAC-03, FR-GM-02/03)", () => {
+  it("does not apply prepared view or building edits to another GM's replacement map", async () => {
+    const view = mount(room({ withMap: false }));
+    const send = vi.mocked(view.connection.command).getMockImplementation()!;
+    vi.mocked(view.connection.command).mockImplementation(async (command) => {
+      const result = await send(command);
+      if (command.type === "scene.setMap") view.otherGm({ type: "scene.setMap", map: { url: "/replacement.png", width: 700, height: 700 } });
+      return result;
+    });
+    fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["image"], "map.png", { type: "image/png" })] } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Isometric" }));
+    apply();
+    await screen.findByText(/Another GM changed the map or scene/);
+    expect(view.state().scene.map?.url).toBe("/replacement.png");
+    expect(view.state().scene.isometric).not.toBe(true);
+    expect(view.commands.map((command) => command.type)).toEqual(["scene.setMap"]);
+    expect(screen.getByRole("dialog", { name: "Edit map" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Isometric" }).getAttribute("aria-checked")).toBe("true");
+  });
+  it("retains outlined buildings when a follow-up save fails while closing, then retries before closing", async () => {
+    const view = mount(room({ withMap: false }));
+    const send = vi.mocked(view.connection.command).getMockImplementation()!;
+    let refuse = true;
+    vi.mocked(view.connection.command).mockImplementation(async (command) => {
+      if (command.type === "scene.savePreparation" && refuse) {
+        refuse = false;
+        return { ok: false as const, code: "invalid" as const, message: "Height save refused" };
+      }
+      return send(command);
+    });
+    fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["image"], "map.png", { type: "image/png" })] } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Isometric" }));
+    fireEvent.click(screen.getByRole("button", { name: "Outline buildings and add height" }));
+    const canvas = screen.getByRole("application");
+    for (const point of [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }, { x: 100, y: 300 }]) click(canvas, point);
+    fireEvent.click(screen.getByRole("button", { name: "Finish outline" }));
+    fireEvent.click(screen.getByLabelText("Close", { exact: true }));
+    const applyPrompt = await screen.findByRole("dialog", { name: "Apply this map?" });
+    fireEvent.click(within(applyPrompt).getByRole("button", { name: "Apply map", exact: true }));
+    const retryPrompt = await screen.findByRole("dialog", { name: "Save changes?" });
+    expect(screen.getByRole("dialog", { name: "Edit map" })).toBeTruthy();
+    expect(view.state().scene.map?.url).toBe(asset.url);
+    expect(view.state().scene.isometricBuildings).toBeUndefined();
+    fireEvent.click(within(retryPrompt).getByRole("button", { name: "Save", exact: true }));
+    await waitFor(() => expect(view.state().scene.isometricBuildings?.items).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit map" })).toBeNull());
+  });
+
+  it("offers the view choice before a first library map with a saved grid is applied", async () => {
+    const view = mount(room({ withMap: false }));
+    fireEvent.click(screen.getByRole("button", { name: "From library" }));
+    fireEvent.click(await screen.findByTitle(asset.name));
+    const choice = await screen.findByRole("radio", { name: "Isometric" });
+    expect(view.commands).toEqual([]);
+    fireEvent.click(choice);
+    apply();
+    await waitFor(() => expect(view.state().scene.isometric).toBe(true));
+    expect(view.state().scene.map?.url).toBe(asset.url);
+  });
+  it("lets a first map use isometric view before Apply, and persists that view", async () => {
+    const view = mount(room({ withMap: false }));
+    fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["image"], "map.png", { type: "image/png" })] } });
+    const choice = await screen.findByRole("radio", { name: "Isometric" });
+    fireEvent.click(choice);
+    expect(view.commands).toEqual([]);
+    apply();
+    await waitFor(() => expect(view.state().scene.isometric).toBe(true));
+    expect(view.commands.map((command) => command.type)).toEqual(["scene.setMap", "scene.savePreparation"]);
+    expect(view.state().scene.map?.url).toBe(asset.url);
+  });
   it.each([false, true])("captures before decoding and upload, surviving fitting and room rerenders (save to library: %s)", async (saveToLibrary) => {
     const size = deferred<{ width: number; height: number }>();
     const uploaded = deferred<LibraryAsset>();
@@ -158,18 +227,21 @@ describe("preparation entry points retain their baseline (FR-TAC-03, FR-GM-02/03
     expect(screen.getByLabelText("Cell size")).toHaveProperty("value", "90");
   });
 
-  it("captures immediate library placement when the asset is chosen", async () => {
+  it("captures the first library map's baseline when chosen, before view setup", async () => {
     const view = mount({ ...room({ withMap: false }), boardEpoch: 3, terrainRevision: 7 });
     fireEvent.click(screen.getByRole("button", { name: "From library" }));
     await screen.findByTitle(asset.name);
     view.otherGm({ type: "scene.setGrid", grid: { ...GRID, cellSize: 100 } });
     const atSelection = context(view.state());
     fireEvent.click(screen.getByTitle(asset.name));
+    await screen.findByRole("radio", { name: "Isometric" });
+    expect(view.commands).toEqual([]);
+    apply();
     await waitFor(() => expect(view.commands).toHaveLength(1));
     expect(view.commands[0]).toMatchObject({ type: "scene.setMap", terrainContext: atSelection, includeLibraryBoard: true });
     expect(view.state().scene.map).toEqual(libraryMap.map);
     expect(view.state().terrain).toEqual({ base: libraryMap.board.terrain, effects: [] });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "3 · Walls" }).getAttribute("aria-selected")).toBe("true"));
   });
 
   it("retains the selection baseline while fitting a library map without a saved grid", async () => {

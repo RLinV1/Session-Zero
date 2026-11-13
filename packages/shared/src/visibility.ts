@@ -1,5 +1,6 @@
 import { movementRouteKnown, terrainForViewer } from "./terrainVisibility";
 import { movementBlocked, movementObstacles } from "./movement";
+import { buildingsForScene, buildingVisible } from "./isometricBuildings";
 import type { MovementPreviewFeedback, MovementPreviewRequest } from "./protocol";
 import { reduce } from "./reducer";
 import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type LoggedRoll } from "./dice";
@@ -216,12 +217,17 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // as the pieces the player can already see, clipped at fog and sight edges, with opaque ids:
   // whole walls inside fog would outline rooms the players haven't seen (ADR 0029, ADR 0056).
   const walls = wallsForViewer(state, viewer, c);
+  const { isometricBuildings: _privateBuildings, ...scene } = state.scene;
+  const visibleBuildings = state.scene.isometric
+    ? buildingsForScene(state.scene).filter((building) => buildingVisible(building, Object.values(c.fog).map((region) => region.points), c.sight)) : [];
+  const publicScene = visibleBuildings.length && state.scene.map
+    ? { ...scene, isometricBuildings: { mapUrl: state.scene.map.url, items: visibleBuildings } } : scene;
   // Groups are the GM's organisation and would say which group a hidden token is in (KAN-82, ADR 0026).
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
   const { terrain: _terrain, terrainRevision: _terrainRevision, terrainView: _terrainView, sight: _sight, ...publicState } = state;
-  return { ...publicState, terrainView: terrainForViewer(state, c), tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
+  return { ...publicState, scene: publicScene, terrainView: terrainForViewer(state, c), tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =
@@ -549,7 +555,8 @@ export function filterEventForViewer(
       // carry only the ids and public display names of participants every viewer already has (ADR 0035).
       return pass;
     case "IsometricSet":
-      return pass; // a public scene flag, no hidden data (ADR 0048)
+    case "BuildingsSet":
+      return { kind: "resync" }; // Building outlines are filtered with fog and sight (ADR 0066).
     case "LineOfSightSet":
     case "SightRangeSet":
       // Sight changes for every player (ADR 0044).

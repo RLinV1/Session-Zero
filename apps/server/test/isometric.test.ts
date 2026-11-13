@@ -11,6 +11,29 @@ afterEach(async () => {
 });
 
 describe("2.5D map style over the wire (FR-GM-19)", () => {
+  it("saves a building's height, shares visible geometry, and withholds fogged outlines", async () => {
+    server = await startServer();
+    const gmCreds = await server.createRoom();
+    const playerCreds = await server.join(gmCreds.inviteCode, "Alice");
+    const gm = await server.connect(gmCreds), player = await server.connect(playerCreds);
+    clients.push(gm, player);
+    await gm.command({ type: "scene.setMap", map: { url: "/map", width: 700, height: 700 } });
+    const building = { id: "house", name: "House", height: 2, footprint: [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }, { x: 100, y: 300 }] };
+    const command = { type: "scene.setBuildings" as const, expectedMapUrl: "/map", buildings: [building] };
+    expect(await gm.command(command)).toMatchObject({ type: "rejected", code: "invalid" });
+    await gm.command({ type: "scene.setIsometric", enabled: true });
+    expect(await player.command(command)).toMatchObject({ type: "rejected", code: "forbidden" });
+    const saved = await gm.command(command);
+    expect(saved.type).toBe("ack");
+    if (saved.type !== "ack" || saved.seq === null) throw new Error("Building did not save");
+    await player.waitForSeq(saved.seq);
+    expect(player.state.scene.isometricBuildings?.items).toEqual([building]);
+    const hidden = await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 150, y: 150 }, to: { x: 200, y: 200 } } });
+    if (hidden.type !== "ack" || hidden.seq === null) throw new Error("Fog did not save");
+    await player.waitForSeq(hidden.seq);
+    expect(player.state.scene.isometricBuildings).toBeUndefined();
+    expect(gm.state.scene.isometricBuildings?.items).toEqual([building]);
+  });
   it("saves terrain and map style atomically, broadcasts the style, and undoes both (FR-TAC-03)", async () => {
     server = await startServer();
     const gmCreds = await server.createRoom();

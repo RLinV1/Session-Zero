@@ -5,7 +5,7 @@ import { applyToDraft, draftCommandProblem, DRAFT_ID, withDetectedWalls, type Ma
 import { t } from "../../i18n/locale";
 
 /** The commands the draft holds; `applyToDraft` handles each. */
-const DRAFT_COMMANDS = new Set<CommandInput["type"]>(["terrain.paint", "terrain.effect.create", "terrain.effect.rename", "terrain.effect.remove", "wall.update", "wall.add", "wall.remove", "wall.clear", "portal.set", "fog.add", "fog.remove", "fog.replace", "scene.setLineOfSight", "scene.setIsometric", "scene.setSightRange"]);
+const DRAFT_COMMANDS = new Set<CommandInput["type"]>(["terrain.paint", "terrain.effect.create", "terrain.effect.rename", "terrain.effect.remove", "wall.update", "wall.add", "wall.remove", "wall.clear", "portal.set", "fog.add", "fog.remove", "fog.replace", "scene.setLineOfSight", "scene.setIsometric", "scene.setBuildings", "scene.setSightRange"]);
 
 /**
  * The room connection as the map editor's Walls and Fog steps see it (map-editor-drafts): wall and
