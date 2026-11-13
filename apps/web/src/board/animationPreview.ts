@@ -350,8 +350,10 @@ export class AnimationPreview {
 
   /** Plays `def` from the attacker onto the target; a play in progress is cut short first. */
   /** The editor always plays the whole animation: reduced animations never applies while making one. */
-  play(def: AnimationDef) {
+  play(def: AnimationDef, opts: { reducedMotion?: boolean } = {}) {
     if (!this.ready || this.destroyed) return;
+    // Opt-in for a preview that should look as the board would for this viewer (attack-range).
+    const reduced = opts.reducedMotion ?? false;
     this.stop();
     const { width, height } = this.size;
     const scale = this.world.scale.x;
@@ -363,11 +365,11 @@ export class AnimationPreview {
       shakeTarget: this.world,
       filterTarget: this.screenLayer,
       screen: { width, height },
-      reducedMotion: false,
+      reducedMotion: reduced,
     };
     // A nuke shakes the whole page at its blast, as it does on the board (unless the system or the
     // in-app setting asks for reduced motion: the editor plays everything else in full).
-    if (def.shape === "nuke" && !motionReduced()) this.stopShake = shakeScreen(def);
+    if (def.shape === "nuke" && !reduced && !motionReduced()) this.stopShake = shakeScreen(def);
     this.run = withSound(
       def.shape === "nuke"
         ? playNuke({ ...host, layer: this.screenFxLayer }, { def, origin: { x: width / 2, y: height / 2 }, unit: STAGE_CELL, extent: Math.hypot(width, height) / 2 })

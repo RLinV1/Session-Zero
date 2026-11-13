@@ -71,6 +71,10 @@ export type Verdict = z.infer<typeof Verdict>;
  * What an attack roll was for. `decide` always fills both sides; a side is `null` only in a
  * player's copy, where it named a token hidden from them (FR-GM-23).
  */
+/** A named attack's kind of range, as a roll carries it (ADR 0067). */
+export const AttackRangeKind = z.enum(["melee", "ranged"]);
+export type AttackRangeKind = z.infer<typeof AttackRangeKind>;
+
 export const AttackContext = z.object({
   actor: AttackSide.nullable(),
   target: AttackSide.nullable(),
@@ -81,6 +85,11 @@ export const AttackContext = z.object({
   style: AttackStyle.optional(),
   /** The actor's named attack's animation, copied here by `decide`; a client cannot set it (ADR 0038). */
   animation: StrikeAnimationDef.optional(),
+  /**
+   * Whether the actor's named attack is melee or ranged, copied here by `decide`; never its reach or
+   * distance, and a client cannot set it. Picks the Automatic animation the same on every board (ADR 0067).
+   */
+  range: AttackRangeKind.optional(),
 });
 export type AttackContext = z.infer<typeof AttackContext>;
 

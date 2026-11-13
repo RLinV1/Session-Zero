@@ -816,6 +816,8 @@ function decideCommand(
         // The animation comes from the actor's own named attack, never from the client (ADR 0038).
         const named = namedAttackFor(attacker.attacks, command.attack.label, command.attack.kind);
         const animation = named?.animation;
+        // Only melee or ranged, never the number: it decides the Automatic animation for every viewer (ADR 0067).
+        const range = named?.range?.kind;
         attack = {
           actor: side(attacker),
           target: side(target),
@@ -823,6 +825,7 @@ function decideCommand(
           kind: command.attack.kind,
           ...(command.attack.style && { style: command.attack.style }),
           ...(animation && { animation }),
+          ...(range && { range }),
         };
         const off = presetRefusal(state, { attacks: true });
         if (off) return off;

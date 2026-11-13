@@ -1,7 +1,7 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { GearSix, House } from "@phosphor-icons/react";
-import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { areaEffectStage, can, diceRollsOf, type AttackRange, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
 import { templateArea, tokensTouchingArea } from "../board/tools";
 import { dropFor } from "../board/tokenDice";
@@ -266,6 +266,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   // Who attacks whom (attack-targeting): chosen in the Play tab's Attack section or on the board.
   const [attackPick, setAttackPick] = useState<AttackPick>({ attackerId: null, targetId: null });
   const pickOnBoard = useCallback((attackerId: string) => boardRef.current?.startAttack(attackerId), []);
+  /** The Attack panel's chosen named attack's range, for the board's aim (attack-range). */
+  const [attackRange, setAttackRange] = useState<AttackRange | null>(null);
   const pickTarget = useCallback((attackerId: string, targetId: string) => setAttackPick({ attackerId, targetId }), []);
   // Ending the encounter clears the target and the last roll, but keeps the attacker and named attacks (attack-panel-encounter-reset).
   const attackReset = useEncounterReset(roomId, state, you?.id ?? null, () => setAttackPick((p) => ({ ...p, targetId: null })));
@@ -745,6 +747,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         suppressLiveEffects={replaying}
         gridPreview={you.role === "gm" && !readOnly ? gridPreview : null}
         onPickTarget={pickTarget}
+        attackRange={attackRange}
         onEditToken={editToken}
         groupSelection={you.role === "gm" && !readOnly ? groupSelection.tokenIds : undefined}
         onToggleGroupToken={you.role === "gm" && !readOnly ? toggleGroupToken : undefined}
@@ -824,6 +827,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
               attackReset={attackReset}
               rollThrow={rollThrow}
               onPickOnBoard={pickOnBoard}
+              onAttackRange={setAttackRange}
               onShowPing={showPing}
               diceBoard={diceBoard}
               attackVisibility={attackVisibility}

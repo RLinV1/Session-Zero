@@ -1,4 +1,4 @@
-import { diceRollsOf, findDiceRoll, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { diceRollsOf, findDiceRoll, isAdjacent, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "./effectPresets";
 import { getClientSettings, QUALITY, type AttackAnimations, type GraphicsQuality } from "../ui/clientSettings";
 
@@ -76,28 +76,24 @@ export function attackEffectFor(event: DomainEvent, after: RoomState, viewer: Pa
   }
 }
 
-/** A target this close (grid cells) is struck in melee when the roll names no style. */
-export const MELEE_REACH_CELLS = 1.5;
+/** What Automatic plays (attack-range, ADR 0067): the slash up close, one arrow at range. */
+export const AUTOMATIC_MELEE: AnimationDef = SHAPE_DEFAULTS.slash;
+export const AUTOMATIC_RANGED: AnimationDef = SHAPE_DEFAULTS.arrow;
 
-export const RANGED_ATTACK_SHAPES = ["projectile", "volley", "dagger", "fireball", "bolt", "beam"] as const;
-
-/** Unique roll ids vary the default while every viewer chooses the same travelling effect. */
-export function rangedAnimationFor(rollId: string): AnimationDef {
-  let hash = 2166136261;
-  for (let i = 0; i < rollId.length; i++) hash = Math.imul(hash ^ rollId.charCodeAt(i), 16777619);
-  return SHAPE_DEFAULTS[RANGED_ATTACK_SHAPES[(hash >>> 0) % RANGED_ATTACK_SHAPES.length]!];
-}
-
-/** The roll's own animation, else its style's built-in, else melee or ranged by distance (design Decision 14). */
+/**
+ * The roll's own animation, else its style's built-in, else Automatic: the named attack's kind of
+ * range when it has one (melee: slash, ranged: arrow), otherwise the slash when the two tokens
+ * touch and the arrow when they don't. Only what every viewer has decides it, so all see the same.
+ */
 export function strikeAnimation(roll: DiceRoll, state: RoomState): AnimationDef {
   const attack = roll.attack;
   if (attack?.animation) return attack.animation;
   if (attack?.style) return ATTACK_STYLE_PRESETS[attack.style];
+  if (attack?.range) return attack.range === "melee" ? AUTOMATIC_MELEE : AUTOMATIC_RANGED;
   const from = attack?.actor ? state.tokens[attack.actor.tokenId] : undefined;
   const to = attack?.target ? state.tokens[attack.target.tokenId] : undefined;
-  if (!from || !to) return ATTACK_STYLE_PRESETS.melee;
-  const cells = Math.hypot(to.position.x - from.position.x, to.position.y - from.position.y) / Math.max(1, state.scene.grid.cellSize);
-  return cells <= MELEE_REACH_CELLS ? ATTACK_STYLE_PRESETS.melee : rangedAnimationFor(roll.id);
+  if (!from || !to) return AUTOMATIC_MELEE;
+  return isAdjacent(from, to, state.scene.grid) ? AUTOMATIC_MELEE : AUTOMATIC_RANGED;
 }
 
 /**

@@ -7,7 +7,7 @@ import { CornersOut, Eye, Funnel, SlidersHorizontal } from "@phosphor-icons/reac
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { DEFAULT_TOKEN_COLOR, INITIAL_SCENE_ID, EMPTY_STATS, can, type AttackRange, type ReplayFrame, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
@@ -56,6 +56,8 @@ interface Props {
   landedRollId?: string | null;
   /** The viewer clicked the token `attackerId` attacks, in Pick on board (attack-targeting). */
   onPickTarget?: (attackerId: string, targetId: string) => void;
+  /** The chosen named attack's range while picking a target: the aim turns red over a token out of it (attack-range). */
+  attackRange?: AttackRange | null;
   /** Only the Select tool: a template being edited (ADR 0033). */
   selectOnly?: boolean;
   /** Open the sidebar's editor for a token, from its card (token-card-actions). */
@@ -175,7 +177,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 /** The PixiJS board plus its React toolbar and notices; Pixi objects stay inside `BoardView`. */
-export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, onNukeImpact, selectOnly = false, onEditToken, groupSelection, onToggleGroupToken, onPickTemplate }, ref) {
+export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, attackRange = null, onNukeImpact, selectOnly = false, onEditToken, groupSelection, onToggleGroupToken, onPickTemplate }, ref) {
   const renderedState = useDisplayedHealth(state);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
@@ -328,6 +330,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   useEffect(() => { setMovementNotice(null); }, [selectedId, readOnly, you.id]);
   useEffect(() => { viewRef.current?.setShowTerrain(drawTerrain); }, [drawTerrain]);
   useEffect(() => { viewRef.current?.setRepositionToken(repositionId); }, [repositionId]);
+  const attackRangeRef = useRef(attackRange); attackRangeRef.current = attackRange;
+  useEffect(() => { viewRef.current?.setAttackRange(attackRange); }, [attackRange]);
   const ghost = useMemo<PlacementGhost | null>(
     () => source && (source.kind === "create" ? ghostOf(source.draft) : source.ghost),
     [source],
@@ -521,6 +525,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       view.setShowPortals(latest.current.showPortals);
       view.setShowTerrain(latest.current.showTerrain);
       view.setRepositionToken(repositionRef.current);
+      // The Attack panel says its range as the room loads, often before the board is ready (attack-range).
+      view.setAttackRange(attackRangeRef.current);
       view.setReadOnly(latest.current.readOnly);
       view.setViewedTokens(latest.current.viewing);
       view.setGridPreview(latest.current.gridPreview);

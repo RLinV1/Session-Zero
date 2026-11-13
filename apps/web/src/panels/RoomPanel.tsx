@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { presetOf } from "@vtt/shared";
+import { AttackEditorContext } from "./attackEditorContext";
 import { DiceFive, MapTrifold, Sword, UserList } from "@phosphor-icons/react";
-import { can, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
+import { can, type AttackRange, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import type { DiceBoard } from "../board/Board";
 import type { TokenDraft } from "../board/placement";
 import type { RoomConnection } from "../net/roomConnection";
@@ -155,6 +156,8 @@ interface Props {
   /** Which rolls are still being thrown, the one that just landed, and how to say it landed (throw-dice-on-board). */
   rollThrow: RollThrow;
   onPickOnBoard: (attackerId: string) => void;
+  /** The chosen named attack's range, or null for none, for the board's aim (attack-range). */
+  onAttackRange?: (range: AttackRange | null) => void;
   onShowPing: (at: Point) => void;
   /** The board, for dice thrown onto it from the Dice panel (throw-dice-on-board). */
   diceBoard?: DiceBoard;
@@ -196,11 +199,15 @@ interface Props {
  */
 export function RoomPanel({
   connection, state, you, token, onFocusToken, onPlaceToken, onDuplicateToken, editingTokenId, onEditToken, groupSelection,
-  attackPick, onAttackPick, attackReset, rollThrow, onPickOnBoard, onShowPing, diceBoard, attackVisibility, onAttackVisibility,
+  attackPick, onAttackPick, attackReset, rollThrow, onPickOnBoard, onAttackRange, onShowPing, diceBoard, attackVisibility, onAttackVisibility,
   gridDraft, hasGridDraft, onGridDraftChange, onGridDraftCancel, onGridApply, gridApplying, gridError,
   compact, tab, onTab, onReviewDeparture, tabBadges, readOnly, features: roomFeatures = FULL_ROOM,
 }: Props) {
   const isGm = you.role === "gm";
+  const { unitsPerCell, unitLabel } = state.scene.grid;
+  const reducedEffects = state.reducedEffects ?? false;
+  /** Attack editors type ranges in this room's units (attack-range). */
+  const attackEditorEnv = useMemo(() => ({ unitsPerCell, unitLabel, reducedEffects }), [unitsPerCell, unitLabel, reducedEffects]);
   useQuietAttackSection(state, you);
 
   // Role is server-owned, so it can change under us. Don't strand the panel on a tab that
@@ -241,6 +248,7 @@ export function RoomPanel({
           reset={attackReset}
           rolling={rollThrow.rolling}
           onPickOnBoard={onPickOnBoard}
+          onAttackRange={onAttackRange}
           onShowPing={onShowPing}
           visibility={attackVisibility}
           onVisibility={onAttackVisibility}
@@ -271,6 +279,7 @@ export function RoomPanel({
   };
 
   return (
+    <AttackEditorContext.Provider value={attackEditorEnv}>
     <div className="tabbed">
       {compact && <PanelTabs isGm={isGm} tab={tab} badges={tabBadges} onTab={(t) => onTab(t)} offered={roomFeatures.tabs} />}
       <div role="tabpanel" id={TAB_PANEL_ID} aria-labelledby={tabButtonId(tab)} tabIndex={0} className="tabpanel">
@@ -283,6 +292,7 @@ export function RoomPanel({
         )}
       </div>
     </div>
+    </AttackEditorContext.Provider>
   );
 }
 

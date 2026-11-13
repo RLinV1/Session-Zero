@@ -3,9 +3,9 @@ import type { AnimationShape, Point } from "@vtt/shared";
 import type { ResolvedAnimation } from "./effectPresets";
 import { graphicsBudget } from "../ui/clientSettings";
 import {
-  WHITE, arcPoints, blade, clamp01, easeIn, easeOut, lerp, lerpPoint, lightning, mix, orb, polyline, ring, streak, type Spark,
+  WHITE, arcPoints, blade, clamp01, easeIn, easeOut, lerp, lerpPoint, lightning, mix, orb, polyline, ring, streak, type BurstAim, type Spark,
 } from "./fxKit";
-import { ART_ENDS, DEBRIS, HOLY_PILLAR, HOLY_SIGIL_RADIUS, POISON_DROP, POISON_VIAL, RING_RADIUS, SKULL_WISP, TNT, TORNADO_TIP, arc, fxTexture, oval, span, stamp, type StampLayer } from "./fxTextures";
+import { ART_ENDS, DEBRIS, PIERCE_BLADE_ASPECT, HOLY_PILLAR, HOLY_SIGIL_RADIUS, POISON_DROP, POISON_VIAL, RING_RADIUS, SKULL_WISP, TNT, TORNADO_TIP, arc, fxTexture, oval, span, stamp, type StampLayer } from "./fxTextures";
 
 /**
  * The look of every strike shape (ADR 0038). `fx.ts` owns the scene, the clock, the landing burst
@@ -58,8 +58,8 @@ export interface StrikeCtx {
   landed: boolean;
   /** A point on the line from attacker to target, `off` to the side. */
   along(u: number, off?: number): Point;
-  /** Throws `count` sparks from `at`, if the animation has any particles. */
-  emit(at: Point, count: number, speed: number, life?: number): void;
+  /** Throws `count` sparks from `at`, if the animation has any particles; all round, or within `aim`'s cone. */
+  emit(at: Point, count: number, speed: number, life?: number, aim?: BurstAim): void;
 }
 
 interface ShapeDraw {
@@ -76,6 +76,11 @@ export interface ShapeSpec {
   big: number;
   /** "full": flash, disc and rings. "light": flash and rings. "none": the shape draws all of it. */
   impact: "full" | "light" | "none";
+  /**
+   * The shape throws all of its own sparks: no round burst at the target as it lands, which would
+   * otherwise spend the whole spark allowance before the shape's own burst (the pierce's cone).
+   */
+  ownSparks?: boolean;
   make(c: StrikeCtx): ShapeDraw;
 }
 
@@ -593,12 +598,26 @@ const shadow: ShapeSpec["make"] = (c) => {
 // ---------- ranged extras ----------
 
 /** `count` arrows fanned by spread, arcing high and coming down together. */
+/** Where arrow i of n lands, as a share of the volley's radius: spread over a disc, roughly evenly, never in a line. */
+export function volleyLanding(i: number, n: number, jitter: () => number = Math.random): Point {
+  if (n <= 1) return { x: 0, y: 0 };
+  // The golden angle spreads them round; the square root spreads them out evenly over the area.
+  const angle = i * 2.39996 + (jitter() - 0.5) * 0.9;
+  const radius = Math.sqrt((i + 0.5) / n) * (0.75 + jitter() * 0.4);
+  return { x: Math.cos(angle) * Math.min(1, radius), y: Math.sin(angle) * Math.min(1, radius) };
+}
+
 const volley: ShapeSpec["make"] = (c) => {
   const stagger = c.n > 1 ? Math.min(0.035 * c.D, (c.L * 0.5) / (c.n - 1)) : 0;
-  const arrows = Array.from({ length: c.n }, (_, i) => ({ off: c.n > 1 ? (i / (c.n - 1) - 0.5) * 2 * c.spread * c.r * 4 : 0, delay: i * stagger, hit: false }));
+  // The arrows come down in a rough circle round the target, as wide as `spread` makes it (the arrow: one, dead centre).
+  const radius = c.spread * c.r * 2.4;
+  const arrows = Array.from({ length: c.n }, (_, i) => {
+    const land = volleyLanding(i, c.n);
+    return { end: { x: c.to.x + land.x * radius, y: c.to.y + land.y * radius }, delay: i * stagger, hit: false };
+  });
   const liftH = c.arc * Math.min(c.dist * 0.6, c.r * 10) + c.r * 1.5;
-  const pos = (off: number, u: number): Point => {
-    const p = c.along(u, off * u);
+  const pos = (end: Point, u: number): Point => {
+    const p = lerpPoint(c.from, end, u);
     return { x: p.x, y: p.y - Math.sin(Math.PI * u) * liftH };
   };
   return {
@@ -608,13 +627,13 @@ const volley: ShapeSpec["make"] = (c) => {
         const raw = (e - a.delay) / (c.L - a.delay);
         if (raw < 0) continue;
         if (raw >= 1) {
-          const end = pos(a.off, 1);
+          const end = pos(a.end, 1);
           if (!a.hit) {
             a.hit = true;
             c.emit(end, 3, c.r * 2, 0.4);
           }
           // The arrow stays stuck in the ground until the end.
-          const before = pos(a.off, 0.96);
+          const before = pos(a.end, 0.96);
           const stuck = 1 - clamp01((e - c.L) / c.impactLen);
           if (arrowArt(c, before, end, stuck)) continue;
           const len = Math.hypot(end.x - before.x, end.y - before.y) || 1;
@@ -622,16 +641,16 @@ const volley: ShapeSpec["make"] = (c) => {
           streak(c.g, end, shaft, Math.max(2, c.r * 0.1), c.primary, c.secondary, stuck);
           continue;
         }
-        const head = pos(a.off, raw);
+        const head = pos(a.end, raw);
         // Painted, each arrow is the arrow picture pointing along its flight, a faint fraying streak
         // behind it.
-        if (arrowArt(c, pos(a.off, Math.max(0, raw - 0.03)), head, 1)) {
-          span(c.stamps, "energy-streak", head, pos(a.off, Math.max(0, raw - tail * 1.4)), c.r * 0.9, mix(c.primary, WHITE, 0.2), 0.5);
+        if (arrowArt(c, pos(a.end, Math.max(0, raw - 0.03)), head, 1)) {
+          span(c.stamps, "energy-streak", head, pos(a.end, Math.max(0, raw - tail * 1.4)), c.r * 0.9, mix(c.primary, WHITE, 0.2), 0.5);
           continue;
         }
         // Without it, a streak that frays behind a glowing head.
-        if (!span(c.stamps, "energy-streak", head, pos(a.off, Math.max(0, raw - tail * 1.4)), c.r * 0.9, mix(c.primary, WHITE, 0.2), 1)) {
-          streak(c.g, pos(a.off, Math.max(0, raw - tail)), head, Math.max(2, c.r * 0.12), c.primary, c.secondary, 1);
+        if (!span(c.stamps, "energy-streak", head, pos(a.end, Math.max(0, raw - tail * 1.4)), c.r * 0.9, mix(c.primary, WHITE, 0.2), 1)) {
+          streak(c.g, pos(a.end, Math.max(0, raw - tail)), head, Math.max(2, c.r * 0.12), c.primary, c.secondary, 1);
         }
         glowOrb(c, head, c.r * 0.14, c.accent, c.secondary);
       }
@@ -640,6 +659,106 @@ const volley: ShapeSpec["make"] = (c) => {
 };
 
 /** `count` thrown blades, spinning, on curved paths that fan out and meet at the target. */
+/** How much thicker than its picture's 3:1 shape the pierce blade is drawn, across the blade. */
+const PIERCE_BLADE_THICKEN = 1.4;
+
+/** Thrust i of a flurry lands this long after the one before: quick, and all of them in the first half after the landing. */
+export const pierceStep = (count: number, duration: number) => Math.min(0.12, 0.45 / Math.max(1, count)) * duration;
+
+/**
+ * A melee thrust (ADR 0067). Each thrust: a glint on the attacker's edge as it winds up, then the
+ * blade lunges into the target with fading afterimages behind it and a glowing point, punches out
+ * of the far side in a cone of sparks, and draws back as it fades. `count` above 1 is a flurry:
+ * that many thrusts in quick succession, each a little to the side of the last. The blade is the
+ * painted `pierce-blade` (with its own speed streaks), or a drawn blade until that has loaded.
+ */
+const pierce: ShapeSpec["make"] = (c) => {
+  const step = pierceStep(c.n, c.D);
+  const length = c.r * (1.5 + c.trail * 0.6);
+  const ghosts = 1 + Math.round(c.trail * 4);
+  const tipGlow = c.r * (0.08 + c.d.glow * 0.1);
+  const thrusts = Array.from({ length: c.n }, (_, i) => {
+    // Alternate sides and widen outwards, so a flurry reads as several stabs, not one repeated.
+    const side = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2);
+    const off = side * c.r * (0.18 + c.spread * 0.35);
+    const hit = c.L + i * step;
+    // The first winds up from the start; the rest from just after the one before landed.
+    const start = i === 0 ? 0 : hit - Math.min(c.L, step * 1.6);
+    const at = (u: number) => {
+      const begin = c.along(Math.min(0.45, (c.r * 0.7) / Math.max(1, c.dist)), off);
+      const end = { x: c.to.x + c.normal.x * off * 0.5, y: c.to.y + c.normal.y * off * 0.5 };
+      return lerpPoint(begin, end, u);
+    };
+    const through = c.r * (0.9 + c.spread * 0.6);
+    const exit = { x: c.to.x + c.dir.x * through + c.normal.x * off * 0.5, y: c.to.y + c.dir.y * through + c.normal.y * off * 0.5 };
+    return { start, hit, at, exit, burst: false };
+  });
+
+  const bladeArt = (tip: Point, alpha: number) => {
+    const ends = ART_ENDS["pierce-blade"]!;
+    const tail = { x: tip.x - c.dir.x * length, y: tip.y - c.dir.y * length };
+    // Drawn a little thicker than the picture's own shape, so the blade reads at token size.
+    const height = (length / (ends.to.x - ends.from.x) / PIERCE_BLADE_ASPECT) * PIERCE_BLADE_THICKEN;
+    return span(c.stamps, "pierce-blade", tail, tip, height, mix(c.primary, WHITE, 0.35), alpha);
+  };
+  /** The drawn stand-in: a narrow tapering blade with a bright ridge, a crossguard and a grip. */
+  const bladeDrawn = (tip: Point, alpha: number) => {
+    const w = c.r * 0.11;
+    const at = (k: number, side: number) => ({ x: tip.x - c.dir.x * length * k + c.normal.x * w * side, y: tip.y - c.dir.y * length * k + c.normal.y * w * side });
+    const guard = 0.8;
+    const shoulder = [at(guard, 1), at(guard * 0.7, 0.9), at(0, 0), at(guard * 0.7, -0.9), at(guard, -1)];
+    c.g.poly(shoulder.flatMap((p) => [p.x, p.y])).fill({ color: c.primary, alpha: alpha * 0.9 });
+    const ridgeEnd = at(guard, 0);
+    c.g.moveTo(ridgeEnd.x, ridgeEnd.y).lineTo(tip.x, tip.y).stroke({ width: Math.max(1, w * 0.35), color: c.secondary, alpha });
+    const [g1, g2] = [at(guard, 2.4), at(guard, -2.4)];
+    c.g.moveTo(g1.x, g1.y).lineTo(g2.x, g2.y).stroke({ width: Math.max(1.5, w * 0.6), color: c.secondary, alpha });
+    const grip = at(1, 0);
+    c.g.moveTo(ridgeEnd.x, ridgeEnd.y).lineTo(grip.x, grip.y).stroke({ width: Math.max(1.5, w * 0.8), color: mix(c.primary, 0x000000, 0.35), alpha });
+  };
+  const drawBlade = (tip: Point, alpha: number) => {
+    if (!bladeArt(tip, alpha)) bladeDrawn(tip, alpha);
+  };
+
+  return {
+    draw(e) {
+      for (const t of thrusts) {
+        if (e < t.start) continue;
+        const windUp = t.start + (t.hit - t.start) * 0.3;
+        // The glint: a star of light on the attacker's edge, swelling then gone as the thrust fires.
+        if (e < windUp + (t.hit - t.start) * 0.15) {
+          const k = clamp01((e - t.start) / (windUp - t.start || 1));
+          const fade = e < windUp ? 1 : 1 - clamp01((e - windUp) / ((t.hit - t.start) * 0.15));
+          const glint = t.at(0);
+          if (!stamp(c.stamps, "particle-star", glint, c.r * (0.4 + k * 0.9), mix(c.accent, WHITE, 0.4), fade * (0.4 + k * 0.6), e * 2)) {
+            orb(c.g, glint, c.r * 0.1 * (0.5 + k), c.accent, WHITE, fade);
+          }
+        }
+        if (e < windUp) continue;
+        if (e < t.hit) {
+          const u = 1 - (1 - clamp01((e - windUp) / (t.hit - windUp))) ** 3;
+          // Afterimages, fainter the further back, then the blade and its glowing point.
+          for (let k = ghosts; k >= 1; k--) drawBlade(t.at(Math.max(0, u - k * 0.07 * (1 + c.trail))), 0.3 * (1 - k / (ghosts + 1)));
+          const tip = t.at(u);
+          drawBlade(tip, 1);
+          glowOrb(c, tip, tipGlow, c.accent, c.secondary);
+          continue;
+        }
+        const k = clamp01((e - t.hit) / c.impactLen);
+        if (!t.burst) {
+          t.burst = true;
+          // Out of the far side, in a cone along the thrust: more sparks the more the animation has.
+          c.emit(t.exit, 4 + Math.round(c.d.particles * 0.35), c.r * 5.5, 0.55, { angle: Math.atan2(c.dir.y, c.dir.x), cone: 0.35 + c.spread * 0.4 });
+        }
+        // Through in the first fifth, then a short recoil while it fades.
+        const tip = k < 0.2 ? lerpPoint(c.to, t.exit, k / 0.2) : lerpPoint(t.exit, c.to, Math.min(1, (k - 0.2) / 0.5) * 0.6);
+        const alpha = 1 - clamp01((k - 0.35) / 0.65);
+        drawBlade(tip, alpha);
+        if (k < 0.3) glowOrb(c, t.exit, tipGlow * (1.6 - k * 2), c.accent, c.secondary, 1 - k / 0.3);
+      }
+    },
+  };
+};
+
 const dagger: ShapeSpec["make"] = (c) => {
   const stagger = c.n > 1 ? Math.min(0.03 * c.D, (c.L * 0.4) / (c.n - 1)) : 0;
   const daggers = Array.from({ length: c.n }, (_, i) => {
@@ -1320,11 +1439,15 @@ const tornado: ShapeSpec["make"] = (c) => {
 /** When each shape lands, how big its impact is, and how it is drawn. */
 export const STRIKE_SHAPES: Record<StrikeShape, ShapeSpec> = {
   slash: { land: 0.3, big: 1, impact: "light", make: cuts(1, true) },
+  // The light impact's flash and rings, but no round burst: its sparks all go to its own cone.
+  pierce: { land: 0.4, big: 1, impact: "light", ownSparks: true, make: pierce },
   claw: { land: 0.3, big: 1, impact: "light", make: cuts(1.15, false) },
   whirlwind: { land: 0.5, big: 1.3, impact: "full", make: whirlwind },
   slam: { land: 0.45, big: 1.8, impact: "full", make: slam },
   shadow: { land: 0.65, big: 1, impact: "light", make: shadow },
   projectile: { land: 0.55, big: 1, impact: "full", make: flyer("projectile") },
+  // One heavy arrow: the volley's drawing with one arrow, down the middle (ADR 0067).
+  arrow: { land: 0.6, big: 1, impact: "light", make: volley },
   volley: { land: 0.6, big: 1, impact: "light", make: volley },
   dagger: { land: 0.5, big: 1, impact: "light", make: dagger },
   fireball: { land: 0.5, big: 2.2, impact: "full", make: flyer("fireball") },

@@ -24,8 +24,8 @@ const STEP_S = 1 / 30;
 
 /** How far into the animation its most recognisable frame is: after the strike lands, before it fades. */
 const PEAK: Record<AnimationShape, number> = {
-  slash: 0.5, claw: 0.5, whirlwind: 0.5, slam: 0.6, shadow: 0.6,
-  projectile: 0.45, volley: 0.45, dagger: 0.45, fireball: 0.42, meteor: 0.46, explosion: 0.68,
+  slash: 0.5, pierce: 0.5, claw: 0.5, whirlwind: 0.5, slam: 0.6, shadow: 0.6,
+  projectile: 0.45, arrow: 0.5, volley: 0.45, dagger: 0.45, fireball: 0.42, meteor: 0.46, explosion: 0.68,
   bolt: 0.5, chain: 0.5, beam: 0.5, frost: 0.55, poison: 0.75, smite: 0.68, sonic: 0.5, tornado: 0.6,
   nuke: 0.5,
 };

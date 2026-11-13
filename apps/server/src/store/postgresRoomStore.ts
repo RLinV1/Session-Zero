@@ -18,7 +18,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, RoomDefaults, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   BuildChoiceOffError,
@@ -555,6 +555,17 @@ export class PostgresRoomStore implements RoomStore {
       });
       return true;
     });
+  }
+
+  async getRoomDefaults(ownerGmId: string): Promise<RoomDefaults | null> {
+    const row = await this.prisma.gmIdentity.findUnique({ where: { id: ownerGmId }, select: { roomDefaults: true } });
+    // Stored by an older or newer schema and no longer valid: read as never saved (ADR 0066).
+    const parsed = RoomDefaults.safeParse(row?.roomDefaults);
+    return parsed.success ? parsed.data : null;
+  }
+
+  async setRoomDefaults(ownerGmId: string, defaults: RoomDefaults) {
+    await this.prisma.gmIdentity.update({ where: { id: ownerGmId }, data: { roomDefaults: defaults } });
   }
 
   async findDetection(target: DetectionTarget): Promise<DetectionRecord | null> {

@@ -21,11 +21,13 @@ import { NUKE_DROP_SHARE } from "./fxBudget";
 /** The real-world sound each animation is built from. */
 export const SOUND_THEMES: Record<AnimationShape, string> = {
   slash: "a steel longsword cutting through the air and biting into armour",
+  pierce: "a spear thrust punching through mail",
   claw: "a snarling beast raking its claws through hide",
   whirlwind: "a ring of spinning blades in a rush of wind",
   slam: "a warhammer leaping down onto flagstones",
   shadow: "a wraith of living shadow: moaning, whispering voices, an inhale, a shriek, a double slice",
   projectile: "a crossbow bolt thudding into its target",
+  arrow: "one heavy longbow loosing a single arrow that thunks home",
   volley: "a line of longbows loosing at once and arrows raining down",
   dagger: "throwing knives spinning into wood",
   fireball: "a gout of fire hurled, then a fiery blast",
@@ -264,6 +266,8 @@ function choir(cue: Cue, at: At, dur: number, att: Att, notes: Hz[], vowel: Vowe
 // ---------- hit spacings the drawing derives from the animation (SOUND-PLAN.md, general rule 2) ----------
 
 /** Slash and claw: cut i starts `i * min(0.06, 0.35 / n) * D`. */
+/** Pierce: thrust i of a flurry lands `i * min(0.12, 0.45 / n) * D` after the first (fxStrikes' `pierceStep`). */
+const pierceStep = (d: ResolvedAnimation) => Math.min(0.12, 0.45 / Math.max(1, d.count)) * d.duration;
 const cutStep = (d: ResolvedAnimation) => Math.min(0.06, 0.35 / d.count) * d.duration;
 /** Shots that all land together leave `i * min(share * D, spread * D / (n - 1))` apart. */
 const stagger = (share: number, spread: number) => (d: ResolvedAnimation) => Math.min(share, spread / Math.max(1, d.count - 1)) * d.duration;
@@ -301,6 +305,13 @@ export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
     clip("impact", "sword-clash", 0.3, 0.5, { wet: 0.3 }),
     tone("impact", "sine", 0.3, 0.12, 0.003, [190, 90], 0.45, 0),
     tone("impact", "sine", 0.3, 0.25, 0.004, [85, 42], 0.35, 0),
+  ],
+  pierce: [
+    // The blade's rush peaks as it reaches the target, then the point bites; once per thrust of a flurry.
+    clip("launch", "whoosh-light", 0.3, 0.6, x("count", pierceStep)),
+    clip("impact", "sword-cut", 0.4, 0.9, { rate: 1.15, wet: 0.15, ...x("count", pierceStep) }),
+    clip("impact", "arrow-thunk-2", 0.4, 0.6, { wet: 0.1, ...x("count", pierceStep) }),
+    tone("impact", "sine", 0.4, 0.12, 0.003, [210, 95], 0.4, 0),
   ],
   claw: [
     clip("launch", "beast-growl", 0, 0.55, { dur: 0.25, wet: 0.2 }),
@@ -357,6 +368,12 @@ export const SHAPE_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
     clip("travel", "arrow-whoosh", 0.45, 0.5),
     clip("impact", "arrow-thunk", 0.55, 0.9, { wet: 0.15 }),
     tone("impact", "sine", 0.55, 0.14, 0.003, [220, 90], 0.4, 0),
+  ],
+  arrow: [
+    clip("launch", "bow-release", 0, 0.9),
+    clip("travel", "arrow-whoosh", 0.5, 0.5),
+    clip("impact", "arrow-thunk", 0.6, 1, { wet: 0.15 }),
+    tone("impact", "sine", 0.6, 0.16, 0.003, [200, 80], 0.45, 0),
   ],
   volley: [
     clip("launch", "bow-release", 0, 0.7, { spread: 0.5, ...x("count", stagger(0.035, 0.3)) }),
@@ -550,8 +567,8 @@ const SOFT_HOLY = [clip("impact", "church-bell", 0, 0.2, { dur: 0.5, wet: 0 })];
 const SOFT_NUKE = [clip("impact", "thunder-crack", 0, 0.3, { rate: 0.6, dur: 0.5, wet: 0 })];
 
 export const REDUCED_SOUNDS: Record<AnimationShape, SoundLayer[]> = {
-  slash: SOFT_BLADE, claw: SOFT_HIT, whirlwind: SOFT_BLADE, slam: SOFT_HIT, shadow: SOFT_SHADOW,
-  projectile: SOFT_HIT, volley: SOFT_HIT, dagger: SOFT_BLADE, sonic: SOFT_HIT,
+  slash: SOFT_BLADE, pierce: SOFT_BLADE, claw: SOFT_HIT, whirlwind: SOFT_BLADE, slam: SOFT_HIT, shadow: SOFT_SHADOW,
+  projectile: SOFT_HIT, arrow: SOFT_HIT, volley: SOFT_HIT, dagger: SOFT_BLADE, sonic: SOFT_HIT,
   bolt: SOFT_MAGIC, chain: SOFT_MAGIC, beam: SOFT_MAGIC,
   frost: SOFT_ICE, smite: SOFT_HOLY,
   fireball: SOFT_FIRE, meteor: SOFT_FIRE, explosion: SOFT_FIRE,

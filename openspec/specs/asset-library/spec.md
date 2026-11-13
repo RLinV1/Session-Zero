@@ -43,7 +43,7 @@ The library page (`/library`) SHALL show the GM's library in separate Maps, Toke
 - **THEN** only maps whose name contains "gob", case-insensitively, are shown
 
 ### Requirement: Map assets carry a grid
-Map assets MAY store a grid definition: cell size, offsets, and units per cell with a label. New uploads SHALL start without saved grid metadata. Grid setup SHALL begin with the room default grid and persist metadata only when the GM saves, including when the saved values equal that default. Token assets SHALL store only the image, its size and a name.
+Map assets MAY store a grid definition: cell size, offsets, and units per cell with a label. New uploads SHALL start without saved grid metadata. Grid setup SHALL begin with the room default grid and persist metadata only when the GM saves, including when the saved values equal that default. In the library, the default grid's units per square and unit label SHALL be the GM's room defaults (see `gm-room-defaults`), or 5 and `ft` when the GM has saved none; its other values are unchanged. Token assets SHALL store only the image, its size and a name.
 
 #### Scenario: Unconfigured map on upload
 - **WHEN** a map is uploaded
@@ -52,6 +52,14 @@ Map assets MAY store a grid definition: cell size, offsets, and units per cell w
 #### Scenario: Explicitly save the default grid
 - **WHEN** the GM saves an unconfigured map's grid without changing the default values
 - **THEN** the map stores that explicit grid and future placements reuse it without opening setup
+
+#### Scenario: Grid setup uses the GM's units
+- **WHEN** a GM whose room defaults are 1.5 per square and `m` opens grid setup for a library map that has no saved grid
+- **THEN** "Units per square" shows 1.5 and the unit label shows `m`
+
+#### Scenario: A saved grid keeps its units
+- **WHEN** the same GM opens grid setup for a library map saved with 5 `ft`
+- **THEN** the editor shows 5 and `ft`
 
 ### Requirement: Place a library asset in a room
 In a room, the GM SHALL be able to set the map or add a token from their library as well as by uploading a new image. Placing a configured map SHALL set the room's map and **copy** the asset's grid into the room in a single undoable action. A successful placement or upload without saved grid metadata SHALL open the shared setup editor; the accepted room grid remains authoritative until Apply succeeds. Placing a token SHALL create a token that shows the asset's image. The room SHALL record which library asset each map or token came from.

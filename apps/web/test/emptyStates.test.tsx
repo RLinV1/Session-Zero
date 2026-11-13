@@ -29,6 +29,15 @@ describe("empty states show the next step (design-language)", () => {
     expect(screen.getByText("Upload map").closest(".library-toolbar")).toBeTruthy();
   });
 
+  it("offers Room settings in the library's header too (gm-room-defaults)", async () => {
+    vi.spyOn(api.library, "list").mockResolvedValue([]);
+    vi.spyOn(api.library.creatures, "list").mockResolvedValue([]);
+    vi.spyOn(api.library.encounters, "list").mockResolvedValue([]);
+    render(<LibraryPage />);
+    const gear = await screen.findByRole("button", { name: "Room settings" });
+    expect(gear.closest(".site-actions")).toBeTruthy();
+  });
+
   it("offers the GM of a room with no map the way to choose one", () => {
     const onChooseMap = vi.fn();
     render(<BoardEmptyState isGm onChooseMap={onChooseMap} />);

@@ -8,7 +8,7 @@ const mock = vi.hoisted(() => ({ slide: vi.fn(), stopSlides: vi.fn() }));
 vi.mock("../src/board/boardView", () => ({ BoardView: class {
   init = async () => {};
   destroy() {} update() {} setGmFogView() {} setShowWalls() {} setShowPortals() {} setReadOnly() {} setGridPreview() {} setTool() {} setPlacement() {} setViewedTokens() {} setGroupSelection() {}
-  setShowTerrain() {} setRepositionToken() {} refreshMovementPreview() {} cancelMovement() { return false; } setMovementRuler() {}
+  setShowTerrain() {} setRepositionToken() {} setAttackRange() {} refreshMovementPreview() {} cancelMovement() { return false; } setMovementRuler() {}
   slide = mock.slide;
   stopSlides = mock.stopSlides;
 } }));

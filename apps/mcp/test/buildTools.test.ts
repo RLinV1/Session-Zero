@@ -171,6 +171,18 @@ describe("the build tools (FR-GM-26)", () => {
     ] } }]);
   });
 
+  it("keeps an attack's range as the AI sets it (attack-range)", async () => {
+    const { pass } = await startBuild();
+    const bow = { name: "Longbow", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: null, range: { kind: "ranged", distance: 150 } };
+    const glaive = { name: "Glaive", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: null, range: { kind: "melee", reach: 10 } };
+    const saved = await ai.call("save_creatures", { pass, creatures: [creature({ attacks: [bow, glaive] })] });
+    expect((saved.json.results as { saved: boolean }[])[0]?.saved).toBe(true);
+    const { json } = await ai.call("get_build", { pass });
+    expect(json.items).toMatchObject([{ data: { attacks: [{ range: { kind: "ranged", distance: 150 } }, { range: { kind: "melee", reach: 10 } }] } }]);
+    const refused = await ai.call("save_creatures", { pass, creatures: [creature({ key: "bad", attacks: [{ ...bow, range: { kind: "ranged", distance: 0 } }] })] });
+    expect((refused.json.results as { saved: boolean }[])[0]?.saved).toBe(false);
+  });
+
   it("saves a repeat by key rather than adding one", async () => {
     const { pass } = await startBuild();
     await ai.call("save_creatures", { pass, creatures: [creature({ hp: 1, maxHp: 1 })] });

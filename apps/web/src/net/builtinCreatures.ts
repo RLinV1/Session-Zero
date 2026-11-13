@@ -1,4 +1,5 @@
-import type { AttackPreset, LibraryCreature } from "@vtt/shared";
+import type { AnimationDef, AttackPreset, AttackRange, LibraryCreature } from "@vtt/shared";
+import { SHAPE_DEFAULTS } from "../board/effectPresets";
 import { t } from "../i18n/locale";
 
 /**
@@ -18,12 +19,19 @@ type CreatureSlug = "goblin-guard" | "goblin-spearman" | "human-mage" | "human-s
  * Names are read when used, in the reader's language: a list shows the current one, and placing a
  * creature copies the placer's (localization: "Text the app copies into a room becomes room data").
  */
-const attack = (slug: AttackSlug, toHit: number, damage: ReturnType<typeof dmg>): AttackPreset => ({
+/** Ranges in feet, as the stat lines are written (attack-range); melee reaches one square. */
+const MELEE: AttackRange = { kind: "melee" };
+const ranged = (distance: number): AttackRange => ({ kind: "ranged", distance });
+
+const attack = (slug: AttackSlug, toHit: number, damage: ReturnType<typeof dmg>, range: AttackRange, animation?: AnimationDef): AttackPreset => ({
   get name() {
     return t(`builtin.attack.${slug}`);
   },
   toHit: hit(toHit),
   damage,
+  range,
+  // A copy of the built-in look, as a GM attaching one would make (ADR 0038); none plays Automatic.
+  ...(animation && { animation: structuredClone(animation) }),
 });
 
 /** `slug` is also the art file name under /img/tokens/enemies/. */
@@ -41,10 +49,22 @@ function creature(
 }
 
 export const BUILTIN_CREATURES: readonly LibraryCreature[] = [
-  creature("goblin-guard", 11, 15, "#689f38", [attack("scimitar", 4, dmg(1, 6, 2)), attack("shortbow", 4, dmg(1, 6, 2))]),
-  creature("goblin-spearman", 9, 13, "#7cb342", [attack("spear", 4, dmg(1, 6, 2)), attack("thrown-spear", 4, dmg(1, 6, 2))]),
-  creature("human-mage", 22, 12, "#5c6bc0", [attack("staff", 2, dmg(1, 6)), attack("firebolt", 5, dmg(2, 10))]),
-  creature("human-swordsman", 32, 16, "#78909c", [attack("longsword", 5, dmg(1, 8, 3)), attack("dagger", 5, dmg(1, 4, 3))]),
+  creature("goblin-guard", 11, 15, "#689f38", [
+    attack("scimitar", 4, dmg(1, 6, 2), MELEE, SHAPE_DEFAULTS.slash),
+    attack("shortbow", 4, dmg(1, 6, 2), ranged(80), SHAPE_DEFAULTS.volley),
+  ]),
+  creature("goblin-spearman", 9, 13, "#7cb342", [
+    attack("spear", 4, dmg(1, 6, 2), { kind: "melee", reach: 10 }, SHAPE_DEFAULTS.pierce),
+    attack("thrown-spear", 4, dmg(1, 6, 2), ranged(20), SHAPE_DEFAULTS.pierce),
+  ]),
+  creature("human-mage", 22, 12, "#5c6bc0", [
+    attack("staff", 2, dmg(1, 6), MELEE, SHAPE_DEFAULTS.slam),
+    attack("firebolt", 5, dmg(2, 10), ranged(120), SHAPE_DEFAULTS.fireball),
+  ]),
+  creature("human-swordsman", 32, 16, "#78909c", [
+    attack("longsword", 5, dmg(1, 8, 3), MELEE, SHAPE_DEFAULTS.slash),
+    attack("dagger", 5, dmg(1, 4, 3), MELEE, SHAPE_DEFAULTS.pierce),
+  ]),
 ];
 
 export const isBuiltinCreature = (creature: Pick<LibraryCreature, "id">): boolean => creature.id.startsWith("builtin:");

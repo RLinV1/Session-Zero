@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash } from "@phosphor-icons/react";
-import { CONDITIONS, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { CONDITIONS, type AttackRange, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
 import { IconAction } from "../../ui/IconAction";
 import { DiceField } from "../../panels/AttackPanel";
 import { poolOf, type DicePool } from "../../ui/dicePool";
@@ -8,7 +8,7 @@ import { tokenOrder } from "./buildOrder";
 
 const optionalNumber = (text: string): number | null => (text.trim() === "" ? null : Number(text));
 /** A draft attack: its rolls are built with the dice builder (dice-pool); null is a blank roll. */
-interface AttackRow { name: string; toHit: DicePool | null; damage: DicePool | null; maxTargets?: number }
+interface AttackRow { name: string; toHit: DicePool | null; damage: DicePool | null; maxTargets?: number; range?: AttackRange }
 
 /** Everything a draft creature can hold. The server applies the same limits as for the AI. */
 export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
@@ -25,7 +25,7 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
   const [color, setColor] = useState(data.color);
   const [art, setArt] = useState(data.imageFileId ?? "");
   const [conditions, setConditions] = useState<ConditionId[]>(data.conditions);
-  const [attacks, setAttacks] = useState<AttackRow[]>(data.attacks.map((a) => ({ name: a.name, toHit: a.toHit, damage: a.damage, ...(a.maxTargets ? { maxTargets: a.maxTargets } : {}) })));
+  const [attacks, setAttacks] = useState<AttackRow[]>(data.attacks.map((a) => ({ name: a.name, toHit: a.toHit, damage: a.damage, ...(a.maxTargets ? { maxTargets: a.maxTargets } : {}), ...(a.range ? { range: a.range } : {}) })));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const tokens = files.filter((f) => f.kind === "token");
@@ -45,6 +45,8 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
           toHit: r.toHit,
           damage: r.damage,
           ...(r.maxTargets ? { maxTargets: r.maxTargets } : {}),
+          // Kept as the AI set it; this form has no range field (ADR 0067).
+          ...(r.range ? { range: r.range } : {}),
         })),
       });
     } catch (err) {

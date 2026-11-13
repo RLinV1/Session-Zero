@@ -28,6 +28,8 @@ export * from "./activityLog";
 export * from "./templateChange";
 export * from "./areas";
 export * from "./gamePresets";
+export * from "./roomDefaults";
+export * from "./attackRange";
 
 export * from "./replay";
 export * from "./portals";

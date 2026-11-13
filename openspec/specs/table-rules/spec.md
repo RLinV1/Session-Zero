@@ -6,7 +6,7 @@ Lets the GM set rules the whole table shares: which tokens leave the board at 0 
 ## Requirements
 
 ### Requirement: Table tab
-The Settings dialog's Table tab SHALL be shown only to the GM, and only outside a preview. It SHALL hold exactly these controls, with these labels and no hint text: "Remove tokens at 0 HP" with the choices All, Only NPC tokens and Off; a switch "Hide map from players without a token"; a switch "Hide HP from Players"; a switch "Hide AC from Players"; "Diagonals" with the choices Equal cost, Alternating (1, 2) and Euclidean; "Difficult terrain applies" with the choices On entry, On exit and Both. Every rule SHALL belong to the room: it applies on every scene, survives reloads and reconnects, and is the same for every participant. Only the GM SHALL be able to change a rule. The server SHALL refuse a player's change as forbidden and a change to the value a rule already has as invalid. Every participant SHALL be able to read the rules. A change SHALL reach every connected participant without a reload, and the GM's activity log SHALL record who changed which rule to what.
+The Settings dialog's Table tab SHALL be shown only to the GM, and only outside a preview. It SHALL hold exactly these controls, with these labels and no hint text: "Remove tokens at 0 HP" with the choices All, Only NPC tokens and Off; a switch "Hide map from players without a token"; a switch "Hide HP from Players"; a switch "Hide AC from Players"; "Diagonals" with the choices Equal cost, Alternating (1, 2) and Euclidean; "Difficult terrain applies" with the choices On entry, On exit and Both. Every rule SHALL belong to the room: it applies on every scene, survives reloads and reconnects, and is the same for every participant. A new room's rules SHALL start from the creating GM's room defaults (see `gm-room-defaults`), and from All, the three switches off, Equal cost and On entry when the GM has saved none. Only the GM SHALL be able to change a rule. The server SHALL refuse a player's change as forbidden and a change to the value a rule already has as invalid. Every participant SHALL be able to read the rules. A change SHALL reach every connected participant without a reload, and the GM's activity log SHALL record who changed which rule to what.
 
 #### Scenario: GM sees the rules
 - **WHEN** the GM opens Settings and chooses the Table tab
@@ -21,8 +21,12 @@ The Settings dialog's Table tab SHALL be shown only to the GM, and only outside 
 - **THEN** the server refuses it as invalid and nothing is recorded
 
 #### Scenario: Defaults in a new room
-- **WHEN** the GM creates a room
+- **WHEN** a GM who has saved no room defaults creates a room
 - **THEN** "Remove tokens at 0 HP" is All, the three switches are off, "Diagonals" is Equal cost and "Difficult terrain applies" is On entry
+
+#### Scenario: A new room follows the GM's room defaults
+- **WHEN** a GM whose room defaults are Only NPC tokens, "Hide AC from Players" on and On exit creates a room
+- **THEN** the new room's Table tab shows Only NPC tokens, "Hide AC from Players" on, the other switches off, "Diagonals" Equal cost and "Difficult terrain applies" On exit
 
 #### Scenario: Older room
 - **WHEN** a room saved before "Diagonals" and "Difficult terrain applies" existed is loaded

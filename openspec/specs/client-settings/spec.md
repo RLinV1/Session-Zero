@@ -53,3 +53,25 @@ A browser's saved settings SHALL survive the addition of new settings. A setting
 #### Scenario: One bad value does not reset the rest
 - **WHEN** a browser's saved settings hold Sound effects volume 250 and Graphics quality Low
 - **THEN** Sound effects volume shows its default and Graphics quality stays Low
+
+### Requirement: Local graphics preferences
+High, Balanced and Low graphics quality SHALL control canvas pixel density, effect detail, glow, particle limits and animation cadence. Balanced SHALL be the default. The blast SHALL retain its screen-centred placement and broad fire/dust silhouette at every quality level. Changes SHALL apply without reloading or modifying room state.
+
+#### Scenario: Lower rendering work
+- **WHEN** a viewer changes from High to Low
+- **THEN** canvas resolution is capped at 1x, attack frames at 24 fps, condition particle canvases are disabled, and strike blur is disabled
+- **AND** other viewers' settings and room data remain unchanged
+
+### Requirement: Reduced animations compose with existing preferences
+The local Reduced animations preference SHALL combine with the device preference and GM table preference. An enabled device or table preference SHALL remain effective when the local switch is off. Still Pixi markers SHALL paint once and use a removal timer rather than an animation loop.
+
+#### Scenario: Audio controls leave graphical effects alone
+- **WHEN** either saved volume is adjusted
+- **THEN** no canvas resize or effect restart occurs
+
+### Requirement: Preferences survive storage limitations
+Validated preferences SHALL persist in browser storage and follow changes from another tab. Invalid values SHALL fall back to safe defaults. Blocked or full storage SHALL not prevent the settings controls from working for the current visit.
+
+#### Scenario: Storage is blocked
+- **WHEN** browser storage is blocked or full and the viewer changes a setting
+- **THEN** the setting takes effect for the current visit and the controls keep working

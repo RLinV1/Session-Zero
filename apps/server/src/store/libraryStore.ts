@@ -1,4 +1,4 @@
-import type { AnimationDef, LibraryMapBoard, AssetKind, EncounterTemplateData, AttackPreset, ConditionId, DieName, GmRoomSummary, GridSpec, LegacySummary } from "@vtt/shared";
+import type { AnimationDef, LibraryMapBoard, AssetKind, EncounterTemplateData, AttackPreset, ConditionId, DieName, GmRoomSummary, GridSpec, LegacySummary, RoomDefaults } from "@vtt/shared";
 import type { DetectionState, UploadAnalysis } from "./gridDetectionStore";
 
 /** A stored library asset (ADR 0004). `objectKey` is the AssetStore key; it never leaves the server. */
@@ -213,6 +213,10 @@ export interface LibraryStore {
    * it inserted anything.
    */
   seedShippedMaps(ownerGmId: string, rows: LibraryAssetRecord[]): Promise<boolean>;
+  /** The owner's saved defaults for new rooms (ADR 0066); null when never saved, or when what is stored no longer parses. */
+  getRoomDefaults(ownerGmId: string): Promise<RoomDefaults | null>;
+  /** Replaces the owner's saved defaults for new rooms (ADR 0066). The caller has validated them. */
+  setRoomDefaults(ownerGmId: string, defaults: RoomDefaults): Promise<void>;
   /** The asset only if `ownerGmId` owns it — callers never see another GM's rows. */
   findAsset(id: string, ownerGmId: string): Promise<LibraryAssetRecord | null>;
   updateAsset(id: string, ownerGmId: string, patch: { name?: string; grid?: GridSpec }): Promise<LibraryAssetRecord | null>;

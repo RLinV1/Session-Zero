@@ -24,11 +24,13 @@ synth layer had. A clip that has not loaded yet is left out of that play.
 | Shape | Theme | Recorded clips |
 |---|---|---|
 | slash | steel longsword | sword swish, sword cut, sword clash |
+| pierce | blade thrust | light whoosh into each lunge, sword cut pitched up, small thunk, once per thrust |
 | claw | snarling beast's claws | growl, whoosh, cloth tear per rake, punch |
 | whirlwind | spinning blades in a rush of wind | blade swing per blade pass, strong wind up and down, two sword clashes |
 | slam | warhammer onto flagstones | heavy whooshes, hammer on concrete, thunder crack two octaves down, falling stones |
 | shadow | wraith of living shadow | slowed wind moan, two whisper murmurs left and right, reversed bowl and reversed whisper inhaling into the lunge, growl two octaves down, slowed whisper fading in the hall (with synth formant moans, a rising shriek and a dying wail) |
 | projectile | crossbow bolt | bow release, arrow whoosh, arrow into target |
+| arrow | one heavy arrow | bow release, arrow whoosh, one thunk into the target |
 | volley | longbow volley | bow release and arrow whoosh per arrow, arrows into target, spread in stereo |
 | dagger | throwing knives | blade swing per knife, whooshes, knives into wood, vibrating blade |
 | fireball | hurled fire, fiery blast | gasoline ignition, whoosh, fire roar, blast, deep thunder, fire burst, crackle |
@@ -52,16 +54,18 @@ All times are at the shape's default preset (`SHAPE_DEFAULTS` in `effectPresets.
 GM-edited `duration` or `count` moves a beat, the formula is given next to the number. "D" means the
 animation's duration, "L" means its landing time (`land * D`), "n" means `def.count`.
 
-## The 20 shapes at a glance
+## The 22 shapes at a glance
 
 | Shape | Duration D (s) | Land fraction | Land L (s) | Hits at default count | Map shake (px) | Showpiece |
 |---|---|---|---|---|---|---|
 | slash | 0.9 | 0.30 | 0.27 | 1 (extra cuts follow 0.054 s apart if n > 1) | 8.0 | no |
+| pierce | 0.9 | 0.40 | 0.36 | 1 thrust (a flurry of `count` thrusts, `min(0.12, 0.45/n) * D` apart) | 7.2 | no |
 | claw | 0.9 | 0.30 | 0.27 | 3 rakes, 0.054 s apart | 8.8 | no |
 | whirlwind | 1.4 | 0.50 | 0.70 | 1 landing, then 4 blades passing 13 times a second | 7.3 | no |
 | slam | 1.2 | 0.45 | 0.54 | 1, then 8 cracks all at once | 19.3 | no |
 | shadow | 1.4 | 0.65 | 0.91 | 1 (two crossing cuts at the same moment) | 5.6 | no |
 | projectile | 1.0 | 0.55 | 0.55 | 1 | 4.0 | no |
+| arrow | 1.1 | 0.60 | 0.66 | 1 arrow down the middle (volley drawing) | 4.8 | no |
 | volley | 1.3 | 0.60 | 0.78 | 7 arrows, all land at the same instant | 4.8 | no |
 | dagger | 1.0 | 0.50 | 0.50 | 3 daggers, all land at the same instant | 4.8 | no |
 | fireball | 1.4 | 0.50 | 0.70 | 1 | 14.2 | YES |

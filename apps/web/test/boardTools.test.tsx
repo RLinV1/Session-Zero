@@ -10,7 +10,7 @@ vi.mock("../src/board/boardView", () => ({ BoardView: class {
   constructor(_host: unknown, callbacks: BoardCallbacks) { mock.callbacks = callbacks; }
   init = async () => {};
   destroy() {} update() {} setGmFogView() {} setShowWalls() {} setReadOnly() {} setGridPreview() {} setPlacement() {} setViewedTokens() {} setGroupSelection() {}
-  setRepositionToken() {} refreshMovementPreview() {} cancelMovement() { return false; } setMovementRuler() {} clearMarks() {}
+  setRepositionToken() {} setAttackRange() {} refreshMovementPreview() {} cancelMovement() { return false; } setMovementRuler() {} clearMarks() {}
   setShowTerrain(show: boolean) { mock.terrain.push(show); }
   setShowPortals(show: boolean) { mock.portals.push(show); }
   setWallsDimmed(dim: boolean) { mock.dimmed.push(dim); }

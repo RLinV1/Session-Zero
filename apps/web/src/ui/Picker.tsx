@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { CaretDown, Check } from "@phosphor-icons/react";
 
 export interface PickerOption {
@@ -7,7 +7,13 @@ export interface PickerOption {
   label: string;
   /** Muted text on the right, e.g. dice or a distance. */
   detail?: string;
+  /** Listed behind the collapsed `groupLabel` row, after the other options (attack-range). */
+  grouped?: boolean;
+  /** A second line under the label, in place of `detail`, in the list and on the closed picker (e.g. an attack's range and rolls). */
+  summary?: ReactNode;
 }
+
+type Row = { kind: "option"; option: PickerOption } | { kind: "group" };
 
 /**
  * A compact dropdown in the app's look (attack-section-compact): a closed row with an icon, a
@@ -24,6 +30,9 @@ export function Picker({
   placeholder = "Choose…",
   icon,
   disabled,
+  groupLabel,
+  note,
+  status,
 }: {
   options: PickerOption[];
   /** The chosen option's key, or null for none yet. */
@@ -34,15 +43,27 @@ export function Picker({
   placeholder?: string;
   icon?: ReactNode;
   disabled?: boolean;
+  /** The row the `grouped` options sit behind, e.g. "Out of range (2)". It starts collapsed each time the list opens. */
+  groupLabel?: string;
+  /** A line above the group, e.g. that nothing is in range. */
+  note?: string;
+  /** Shown on the closed picker, which turns red, e.g. "Out of range" (attack-range). */
+  status?: string;
 }) {
-  const selected = options.findIndex((o) => o.key === value);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const grouped = groupLabel ? options.filter((o) => o.grouped) : [];
+  const rows: Row[] = [
+    ...options.filter((o) => !groupLabel || !o.grouped).map((option) => ({ kind: "option" as const, option })),
+    ...(grouped.length > 0 ? [{ kind: "group" as const }, ...(groupOpen ? grouped.map((option) => ({ kind: "option" as const, option })) : [])] : []),
+  ];
+  const selected = rows.findIndex((r) => r.kind === "option" && r.option.key === value);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(Math.max(selected, 0));
   const wrapRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
   const optionId = (i: number) => `${listId}-opt-${i}`;
-  const chosen = selected >= 0 ? options[selected] : undefined;
+  const chosen = options.find((o) => o.key === value);
 
   useEffect(() => {
     if (!open) return;
@@ -60,22 +81,27 @@ export function Picker({
 
   // Keep the highlighted option in view while moving through a long list.
   useEffect(() => {
-    if (open) listRef.current?.children[active]?.scrollIntoView({ block: "nearest" });
+    // By id: a note row may sit between options, so the position in the list isn't the index.
+    if (open) document.getElementById(optionId(active))?.scrollIntoView?.({ block: "nearest" });
   }, [open, active]);
 
   const openList = () => {
     if (options.length === 0) return;
-    setActive(Math.max(selected, 0));
+    // The group starts collapsed every time; a chosen option inside it is reached through the group row.
+    setGroupOpen(false);
+    const start = rows.findIndex((r) => r.kind === "option" && r.option.key === value && !(groupLabel && r.option.grouped));
+    setActive(start >= 0 ? start : 0);
     setOpen(true);
   };
   const choose = (i: number) => {
-    const option = options[i];
-    if (option) onChange(option.key);
+    const row = rows[i];
+    if (row?.kind === "group") return setGroupOpen((g) => !g);
+    if (row) onChange(row.option.key);
     setOpen(false);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const last = options.length - 1;
+    const last = rows.length - 1;
     if (!open) {
       if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
         e.preventDefault();
@@ -100,7 +126,7 @@ export function Picker({
   };
 
   return (
-    <div ref={wrapRef} className="picker">
+    <div ref={wrapRef} className={status ? "picker picker-warning" : "picker"}>
       <button
         type="button"
         role="combobox"
@@ -115,28 +141,53 @@ export function Picker({
         onKeyDown={onKeyDown}
       >
         {icon}
-        {chosen ? <span className="picker-label">{chosen.label}</span> : <span className="picker-placeholder">{placeholder}</span>}
-        {chosen?.detail && <span className="picker-detail">{chosen.detail}</span>}
+        {chosen?.summary ? (
+          <span className="picker-main">
+            <span className="picker-label">{chosen.label}</span>
+            <span className="picker-summary">{chosen.summary}</span>
+          </span>
+        ) : chosen ? <span className="picker-label">{chosen.label}</span> : <span className="picker-placeholder">{placeholder}</span>}
+        {chosen?.detail && !chosen.summary && <span className="picker-detail">{chosen.detail}</span>}
+        {status && <span className="picker-status">{status}</span>}
         <CaretDown size={12} className="picker-caret" aria-hidden="true" />
       </button>
       <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="picker-list" hidden={!open}>
-        {options.map((option, i) => (
-          <li
-            key={option.key}
-            id={optionId(i)}
-            role="option"
-            aria-selected={i === selected}
-            className={i === active ? "picker-option active" : "picker-option"}
+        {rows.map((row, i) => {
+          const common = {
+            id: optionId(i),
             // Keep focus on the button, so the keyboard keeps working after a pointer hover.
-            onMouseDown={(e) => e.preventDefault()}
-            onMouseEnter={() => setActive(i)}
-            onClick={() => choose(i)}
-          >
-            <Check size={14} className="picker-check" aria-hidden="true" />
-            <span className="picker-label">{option.label}</span>
-            {option.detail && <span className="picker-detail">{option.detail}</span>}
-          </li>
-        ))}
+            onMouseDown: (e: MouseEvent) => e.preventDefault(),
+            onMouseEnter: () => setActive(i),
+            onClick: () => choose(i),
+          };
+          if (row.kind === "group") {
+            return (
+              <Fragment key="__group">
+                {note && <li role="presentation" className="picker-note">{note}</li>}
+                {/* Chosen like an option, but it opens or closes the options behind it. */}
+                <li {...common} role="option" aria-selected={false} aria-expanded={groupOpen}
+                  className={i === active ? "picker-option picker-group active" : "picker-option picker-group"}>
+                  <CaretDown size={12} className={groupOpen ? "picker-group-caret open" : "picker-group-caret"} aria-hidden="true" />
+                  <span className="picker-label">{groupLabel}</span>
+                </li>
+              </Fragment>
+            );
+          }
+          const { option } = row;
+          return (
+            <li key={option.key} {...common} role="option" aria-selected={i === selected}
+              className={[i === active ? "picker-option active" : "picker-option", option.grouped && groupLabel ? "picker-grouped" : ""].join(" ").trim()}>
+              <Check size={14} className="picker-check" aria-hidden="true" />
+              {option.summary ? (
+                <span className="picker-main">
+                  <span className="picker-label">{option.label}</span>
+                  <span className="picker-summary">{option.summary}</span>
+                </span>
+              ) : <span className="picker-label">{option.label}</span>}
+              {option.detail && !option.summary && <span className="picker-detail">{option.detail}</span>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

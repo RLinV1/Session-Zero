@@ -3,11 +3,13 @@ import type { AnimationDef } from "@vtt/shared";
 /** What the Animations tab shows for a shape: catalog ids, read with `t()` when shown. */
 export const SHAPE_LABELS = {
   slash: "animation.shape.slash",
+  pierce: "animation.shape.pierce",
   claw: "animation.shape.claw",
   whirlwind: "animation.shape.whirlwind",
   slam: "animation.shape.slam",
   shadow: "animation.shape.shadow",
   projectile: "animation.shape.projectile",
+  arrow: "animation.shape.arrow",
   volley: "animation.shape.volley",
   dagger: "animation.shape.dagger",
   fireball: "animation.shape.fireball",

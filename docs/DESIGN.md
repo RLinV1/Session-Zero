@@ -704,6 +704,8 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes, templates from an approved draft, and AI-set grids and walls by the owner's choice | Proposed |
 | [0054](adr/0054-localized-messages.md) | Localized messages: ids on rejections, `Accept-Language` on REST | Proposed |
 | [0064](adr/0064-shared-drawings.md) | Shared drawings: persisted per scene, public, erasable by the drawer or GM, not undoable | Proposed |
+| [0066](adr/0066-gm-room-defaults.md) | A GM's defaults for new rooms: saved per account, carried on `RoomCreated` | Proposed |
+| [0067](adr/0067-attack-range-and-shapes.md) | Attack range, the range kind on rolls, and the arrow and pierce shapes | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

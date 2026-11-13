@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CreateCreatureRequest, creatureHpValid } from "@vtt/shared";
+import { CreateCreatureRequest, creatureHpValid, TokenAttacks } from "@vtt/shared";
 import { BUILTIN_CREATURES, isBuiltinCreature } from "../src/net/builtinCreatures";
 import { BuiltinCreatureCard } from "../src/pages/LibraryCreatures";
 import { creatureDraft } from "../src/pages/creatureDraft";
@@ -36,5 +36,35 @@ describe("default creatures (builtin-default-creatures, FR-TAC-07)", () => {
     expect(html).toContain("/img/tokens/enemies/goblin-guard.svg");
     expect(html).toContain("Goblin Guard");
     expect(html).not.toContain("<button");
+  });
+});
+
+describe("built-in creatures' attack ranges and animations (attack-range)", () => {
+  const attacks = () => Object.fromEntries(BUILTIN_CREATURES.flatMap((c) => c.attacks ?? []).map((a) => [a.name, a]));
+
+  it("gives each attack its range and animation", () => {
+    const all = attacks();
+    const expected: Record<string, [string, number | null, string | undefined]> = {
+      Scimitar: ["melee", null, "slash"],
+      Shortbow: ["ranged", 80, "volley"],
+      Spear: ["melee", 10, "pierce"],
+      "Thrown Spear": ["ranged", 20, "pierce"],
+      Staff: ["melee", null, "slam"],
+      Firebolt: ["ranged", 120, "fireball"],
+      Longsword: ["melee", null, "slash"],
+      Dagger: ["melee", null, "pierce"],
+    };
+    for (const [name, [kind, distance, shape]] of Object.entries(expected)) {
+      const attack = all[name]!;
+      expect(attack.range?.kind, name).toBe(kind);
+      expect(attack.range?.kind === "ranged" ? attack.range.distance : attack.range?.kind === "melee" ? attack.range.reach ?? null : null, name).toBe(distance);
+      expect(attack.animation?.shape, name).toBe(shape);
+    }
+  });
+
+  it("are valid token attacks, so placing a creature carries them into a room", () => {
+    for (const creature of BUILTIN_CREATURES) {
+      expect(TokenAttacks.safeParse(JSON.parse(JSON.stringify(creature.attacks))).success, creature.name).toBe(true);
+    }
   });
 });
