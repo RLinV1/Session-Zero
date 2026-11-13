@@ -1,10 +1,23 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { io } from "socket.io-client";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { SOCKET_EVENTS, emptyRoomState, reduceReceived, type ServerMessage } from "@vtt/shared";
 
 const serverUrl = process.env.VTT_BROWSER_SERVER_URL ?? "http://127.0.0.1:3109";
+
+// Crossing the 720px breakpoint remounts the panel, which closes the editor: open it again from Manage.
+async function reopenEditor(page: Page) {
+  const manage = page.getByRole("tab", { name: "Manage", exact: true });
+  await expect(manage).toBeVisible();
+  if (await manage.getAttribute("aria-selected") !== "true") await manage.click();
+  const showSidebar = page.getByRole("button", { name: "Show sidebar", exact: true });
+  if (await showSidebar.isVisible()) await showSidebar.click();
+  const section = page.getByRole("button", { name: "Battle map", exact: true });
+  await expect(section).toBeVisible();
+  if (await section.getAttribute("aria-expanded") === "false") { await section.scrollIntoViewIfNeeded(); await section.click(); }
+  await page.getByRole("button", { name: "Edit map", exact: true }).click();
+}
 
 test("first map setup persists isometric view and token dragging uses map coordinates", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
@@ -68,7 +81,12 @@ test("first map setup persists isometric view and token dragging uses map coordi
     if (await showSidebar.isVisible()) await showSidebar.click();
     await page.getByRole("button", { name: "Edit map", exact: true }).click();
     await expect(editor.getByRole("radio", { name: "Isometric", exact: true })).toHaveAttribute("aria-checked", "true");
+    await editor.getByLabel("Close", { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await reopenEditor(page);
+    await expect(editor.getByRole("radio", { name: "Isometric", exact: true })).toBeVisible();
+    await expect(editor.getByRole("radio", { name: "Isometric", exact: true })).toHaveAttribute("aria-checked", "true");
     await page.screenshot({ path: testInfo.outputPath("isometric-setup-mobile.png") });
     expect(errors).toEqual([]);
   } finally { socket.disconnect(); }
@@ -137,9 +155,19 @@ test("uploaded roof outlines gain editable height only in isometric view", async
     await page.getByRole("button", { name: "Edit map", exact: true }).click();
     await editor.getByRole("tab", { name: "7 · Buildings", exact: true }).click();
     await expect(height).toHaveValue("15");
+    await editor.getByLabel("Close", { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await reopenEditor(page);
+    await editor.getByRole("tab", { name: "7 · Buildings", exact: true }).click();
+    await expect(height).toBeVisible();
+    await expect(height).toHaveValue("15");
+    await height.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("raised-building-mobile.png") });
+    await editor.getByLabel("Close", { exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.reload();
+    await reopenEditor(page);
     await editor.getByRole("tab", { name: "1 · Map", exact: true }).click();
     await editor.getByRole("radio", { name: "Flat", exact: true }).click();
     await expect(editor.getByRole("tab", { name: "7 · Buildings", exact: true })).toHaveCount(0);

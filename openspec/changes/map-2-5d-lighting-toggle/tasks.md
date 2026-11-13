@@ -12,4 +12,4 @@
 - [x] 3.4 Initial map setup view choice, including first library maps with saved grids
 - [x] 3.5 Playable board projection, pointer conversion, fitting, fog and DOM overlays
 - [x] 3.6 Uploaded-map building outlines, textured roof extrusion and draggable height in Isometric mode only
-- [ ] 3.7 Final Playwright MCP screenshots and verification of raised buildings
+- [x] 3.7 Final Playwright MCP screenshots and verification of raised buildings
