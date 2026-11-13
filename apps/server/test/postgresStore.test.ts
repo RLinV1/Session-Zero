@@ -99,6 +99,30 @@ describe.skipIf(!store)("PostgresRoomStore (docs/adr/0001-event-model.md)", () =
     } finally { await fresh.close(); }
   });
 
+  it("round-trips staged tokens through a scene switch and a fresh Postgres store (ADR 0068)", async () => {
+    const roomId = await newRoom();
+    const gm = { id: randomUUID(), role: "gm" as const, displayName: "GM" };
+    const alice = { id: randomUUID(), role: "player" as const, displayName: "Alice" };
+    const room = await LiveRoom.load(roomId, store!);
+    await room.appendSystem(null, [{ type: "RoomCreated", name: "Carry" }, { type: "ParticipantJoined", participant: gm }, { type: "ParticipantJoined", participant: alice }]);
+    const submit = async (input: unknown) => expect(await room.submit(gm.id, Command.parse(input))).toMatchObject({ ok: true });
+    await submit({ type: "scene.setMap", map: { url: "/tavern", width: 700, height: 700 } });
+    await submit({ type: "token.create", name: "Aria", position: { x: 105, y: 105 }, ownerIds: [alice.id] });
+    await submit({ type: "scene.create", name: "Crypt", activate: false });
+    const events = await store!.loadEvents(roomId);
+    const state = replayTo(roomId, events, events.at(-1)!.seq);
+    const aria = Object.values(state.tokens)[0]!;
+    const cryptId = Object.keys(state.savedScenes!)[0]!;
+    await submit({ type: "scene.switch", sceneId: cryptId, carryTokenIds: [aria.id] });
+    const fresh = await PostgresRoomStore.connect(url!);
+    try {
+      const loaded = await fresh.loadEvents(roomId);
+      const replayed = replayTo(roomId, loaded, loaded.at(-1)!.seq);
+      expect(replayed.staged[aria.id]).toEqual(aria);
+      expect(tableOf(replayed).staged?.[aria.id]?.ownerIds).toEqual([alice.id]);
+    } finally { await fresh.close(); }
+  });
+
   it("rejects an append whose expected last seq is stale, writing nothing", async () => {
     const roomId = await newRoom();
     await store!.append(roomId, 0, [{ actorId: null, event: { type: "RoomCreated", name: "One" } }]);

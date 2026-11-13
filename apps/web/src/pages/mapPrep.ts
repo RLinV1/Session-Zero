@@ -42,10 +42,16 @@ export function prepDirty(prep: MapPrep): boolean {
 }
 
 /** The one command Apply sends: map and grid together, a single `MapSet` (ADR 0004). Null while the grid is invalid. */
-export function prepCommand(prep: MapPrep, tokenPolicy?: MapTokenPolicy): Extract<Command, { type: "scene.setMap" }> | null {
+export function prepCommand(prep: MapPrep, tokens?: MapTokenChoice): Extract<Command, { type: "scene.setMap" }> | null {
   const grid = parseGridDraft(prep.draft, prep.map);
-  return grid ? { type: "scene.setMap", map: prep.map, grid, terrainContext: prep.terrainContext, ...(prep.map.assetId ? { includeLibraryBoard: true } : {}), ...(prep.resetTerrain ? { resetTerrain: true } : {}), ...(tokenPolicy ? { tokenPolicy } : {}) } : null;
+  return grid ? { type: "scene.setMap", map: prep.map, grid, terrainContext: prep.terrainContext, ...(prep.map.assetId ? { includeLibraryBoard: true } : {}), ...(prep.resetTerrain ? { resetTerrain: true } : {}), ...tokens } : null;
 }
+
+/**
+ * What a new map does with the tokens on it: one of the policies (ADR 0042), or Select and place,
+ * which keeps the named tokens waiting to be placed and removes the rest (ADR 0068).
+ */
+export type MapTokenChoice = { tokenPolicy: MapTokenPolicy } | { placeTokenIds: string[] };
 
 /** The choices for tokens already on a map that is about to be replaced (KAN-67, ADR 0042). */
 export const TOKEN_POLICY_CHOICES: readonly { value: MapTokenPolicy; label: TextId; hint: TextId }[] = [

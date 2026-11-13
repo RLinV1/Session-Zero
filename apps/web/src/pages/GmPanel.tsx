@@ -23,7 +23,9 @@ import { TerrainSetup } from "./mapEditor/TerrainSetup";
 import { WallSetup } from "./mapEditor/WallSetup";
 import { draftConnection } from "./mapEditor/draftConnection";
 import { draftDirty, draftFrom, planDraftSave, type MapDraft } from "./mapEditor/mapDraft";
-import { adjustedMessage, offersTokenPolicy, prepCommand, prepDirty, startPrep, startUvttPrep, TOKEN_POLICY_CHOICES, type MapPrep } from "./mapPrep";
+import { adjustedMessage, offersTokenPolicy, prepCommand, prepDirty, startPrep, startUvttPrep, TOKEN_POLICY_CHOICES, type MapPrep, type MapTokenChoice } from "./mapPrep";
+import { CarryChecklist, useTicks } from "../panels/CarryChecklist";
+import { CarryContext } from "../panels/CarryContext";
 import { FULL_ROOM, type RoomFeatures } from "./encounterEdit/roomFeatures";
 import { EditorGuide, GuideStepContext } from "./mapEditor/EditorGuide";
 import { t, type TextId } from "../i18n/locale";
@@ -74,7 +76,7 @@ export function GmPanel({
         hasLibrary={hasLibrary}
         onError={setError}
         onSetMap={(command, report) => runWith(report)(connection.command({ ...command, expectedSceneId: state.activeSceneId ?? "initial" }))}
-        onImport={(importId, revision, tokenPolicy, report) => runWith(report)(connection.command({ type: "scene.importUVTT", importId, revision, expectedSceneId: state.activeSceneId ?? "initial", ...(tokenPolicy ? { tokenPolicy } : {}) }))}
+        onImport={(importId, revision, tokens, report) => runWith(report)(connection.command({ type: "scene.importUVTT", importId, revision, expectedSceneId: state.activeSceneId ?? "initial", ...tokens }))}
         onGridClose={onGridDraftCancel}
         gridDraft={gridDraft}
         hasGridDraft={hasGridDraft}
@@ -192,7 +194,7 @@ function MapSection(props: {
   sceneId: string;
   hasLibrary: boolean;
   onSetMap: (command: Extract<Command, { type: "scene.setMap" }>, report: (message: string | null) => void) => Promise<boolean>;
-  onImport: (id: string, revision: number, policy: MapTokenPolicy | undefined, report: (message: string | null) => void) => Promise<boolean>;
+  onImport: (id: string, revision: number, tokens: MapTokenChoice | undefined, report: (message: string | null) => void) => Promise<boolean>;
   onError: (message: string | null) => void;
   onGridClose: () => void;
   /** The live map's grid edits, so leaving the Grid step or closing can ask about them. */
@@ -244,7 +246,15 @@ function MapSection(props: {
   const [applyingMap, setApplyingMap] = useState(false);
   const [exporting, setExporting] = useState(false);
   /** What to do with existing tokens (KAN-67); only asked when a map and tokens are there to move. */
-  const [policy, setPolicy] = useState<MapTokenPolicy>("scale");
+  const [policy, setPolicy] = useState<MapTokenPolicy | "place">("scale");
+  // Select and place (ADR 0068): only at a real table, on the live board, where placing can follow.
+  const carry = useContext(CarryContext);
+  const preparingScene = useContext(ScenePreparationContext)?.preparing ?? false;
+  const offersPlace = carry !== null && !preparingScene;
+  const mapTokens = useMemo(() => Object.values(props.room.tokens), [props.room.tokens]);
+  const mapTokenIds = useMemo(() => mapTokens.map((token) => token.id), [mapTokens]);
+  const ownedByPlayer = useMemo(() => (id: string) => (props.room.tokens[id]?.ownerIds.length ?? 0) > 0, [props.room.tokens]);
+  const placeTicks = useTicks(mapTokenIds, ownedByPlayer);
   /** The token-choice dialog is open (token-policy-dialog); Apply map asks here instead of in the Grid step. */
   const [askingPolicy, setAskingPolicy] = useState(false);
   /** Where to go once the token dialog's Apply map succeeds, when the leave-step prompt opened it. */
@@ -456,9 +466,12 @@ function MapSection(props: {
   const requestApply = () => {
     if (!askPolicy) return void applyPrep();
     setPolicy("scale");
+    placeTicks.reset();
     setAskingPolicy(true);
   };
-  const applyPrep = async (choice: MapTokenPolicy = "scale"): Promise<boolean> => {
+  const applyPrep = async (choice: MapTokenPolicy | "place" = "scale"): Promise<boolean> => {
+    const placeIds = choice === "place" ? [...placeTicks.ticked] : [];
+    const tokens: MapTokenChoice | undefined = !askPolicy ? undefined : choice === "place" ? { placeTokenIds: placeIds } : { tokenPolicy: choice };
     if (prep?.suggestionSession) prep.suggestionSession.blocked = true;
     if (!prep || applyingMap) return false;
     const grid = parseGridDraft(prep.draft, prep.map);
@@ -478,11 +491,13 @@ function MapSection(props: {
           revision = saved.revision;
           setPrep((now) => now?.uvtt?.id === saved.id ? { ...now, uvtt: { ...now.uvtt, revision }, walls: Object.fromEntries(saved.walls.map((w, i) => [`draft:${i}`, { ...w, id: `draft:${i}` }])), validated: { grid: saved.grid, walls: saved.walls } } : now);
         }
-        applied = await props.onImport(prep.uvtt.id, revision, askPolicy ? choice : undefined, setPrepError);
+        applied = await props.onImport(prep.uvtt.id, revision, tokens, setPrepError);
       } else {
-        const command = prepCommand(prep, askPolicy ? choice : undefined);
+        const command = prepCommand(prep, tokens);
         if (command) applied = await props.onSetMap(command, setPrepError);
       }
+      // The board starts placing the kept tokens as soon as they wait (ADR 0068).
+      if (applied && tokens && "placeTokenIds" in tokens && placeIds.length > 0) carry?.carried(placeIds);
       if (applied) {
         const current = props.connection.snapshot?.state;
         if (current) setDraft(draftFrom(current));
@@ -774,6 +789,15 @@ function MapSection(props: {
               <span>{t(choice.label)} <span className="muted">{t(choice.hint)}</span></span>
             </label>
           ))}
+          {offersPlace && (
+            <label className="checkbox">
+              <input type="radio" name="token-policy" value="place" checked={policy === "place"} onChange={() => setPolicy("place")} />
+              <span>{t("mapPrep.place")} <span className="muted">{t("mapPrep.placeHint")}</span></span>
+            </label>
+          )}
+          {offersPlace && policy === "place" && (
+            <CarryChecklist state={props.room} tokens={mapTokens} legend={t("mapPrep.placeLegend")} ticked={placeTicks.ticked} onToggle={placeTicks.toggle} />
+          )}
           <div className="row button-row">
             <button type="submit" className="primary" ref={applyRef}>{t("gmMap.applyMap")}</button>
             <button type="button" className="secondary" onClick={() => { setAskingPolicy(false); setAfterPolicy(null); }}>{t("common.cancel")}</button>

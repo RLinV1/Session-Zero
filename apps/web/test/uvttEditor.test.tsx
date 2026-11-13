@@ -11,6 +11,7 @@ import { draftConnection } from "../src/pages/mapEditor/draftConnection";
 import { draftFrom, planDraftSave } from "../src/pages/mapEditor/mapDraft";
 import { startUvttPrep, prepDirty } from "../src/pages/mapPrep";
 import { fakeConnection, room, stubMapEditorEnvironment, TOKEN } from "./mapEditorHarness";
+import { CarryContext } from "../src/panels/CarryContext";
 vi.mock("../src/panels/CheckpointsPanel", () => ({ CheckpointsPanel: () => null }));
 vi.mock("../src/panels/EncounterPanel", () => ({ EncounterPanel: () => null }));
 const preparation: UvttPreparation = { id: "opaque", revision: 1, map: { url: "/uploads/import.png", width: 800, height: 600 },
@@ -178,6 +179,33 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
       fireEvent.click(within(dialog).getByRole("radio", { name: /^Recenter/ }));
       fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
       await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1, tokenPolicy: "recenter" }]));
+    });
+    it("offers Select and place at a table: player tokens ticked, the rest under Other tokens, then placing starts (ADR 0068)", async () => {
+      const state = withToken();
+      state.participants.alice = { id: "alice", role: "player", displayName: "Alice" };
+      state.tokens.aria = { ...state.tokens.hero!, id: "aria", name: "Aria", ownerIds: ["alice"] };
+      const fake = fakeConnection();
+      const carried = vi.fn();
+      render(<CarryContext.Provider value={{ carried }}><GmPanel connection={fake.connection} state={state} token={TOKEN} gridDraft={toGridDraft(state.scene.grid)} hasGridDraft={false}
+        onGridDraftChange={() => {}} onGridDraftCancel={() => {}} onGridApply={async () => true} gridApplying={false} gridError={null} onReviewDeparture={() => {}} /></CarryContext.Provider>);
+      await importFile();
+      fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
+      const dialog = await screen.findByRole("dialog", { name: "Tokens already on the table" });
+      expect(within(dialog).queryByRole("group", { name: "Tokens to place" })).toBeNull();
+      fireEvent.click(within(dialog).getByRole("radio", { name: /^Select and place/ }));
+      const group = within(dialog).getByRole("group", { name: "Tokens to place" });
+      expect(within(group).getByRole("checkbox", { name: /^Aria/ })).toHaveProperty("checked", true);
+      expect(within(group).getByText("Other tokens (1)")).toBeTruthy();
+      expect(within(group).getByRole("checkbox", { name: /^Hero/ })).toHaveProperty("checked", false);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
+      await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1, placeTokenIds: ["aria"] }]));
+      await waitFor(() => expect(carried).toHaveBeenCalledWith(["aria"]));
+    });
+    it("doesn't offer Select and place away from a table", async () => {
+      mount(withToken()); await importFile();
+      fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
+      const dialog = await screen.findByRole("dialog", { name: "Tokens already on the table" });
+      expect(within(dialog).queryByRole("radio", { name: /^Select and place/ })).toBeNull();
     });
     it("applies at once with no dialog and no policy when the room has no tokens", async () => {
       const fake = mount(); await importFile();

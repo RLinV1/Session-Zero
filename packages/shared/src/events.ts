@@ -23,7 +23,18 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("SceneDraftCreated"), sceneId: Id, name: SceneName, initialId: Id, initialName: SceneName, saved: SavedScene }),
   z.object({ type: z.literal("ScenePrepared"), sceneId: Id, prepared: SavedScene, previous: SavedScene }),
   z.object({ type: z.literal("SceneCreated"), sceneId: Id, name: SceneName, fromId: Id, fromName: SceneName, previous: SavedScene, restored: SavedScene }),
-  z.object({ type: z.literal("SceneSwitched"), fromId: Id, sceneId: Id, name: SceneName, previous: SavedScene, restored: SavedScene }),
+  /**
+   * With a carry (ADR 0068): `carriedTokenIds` moved from the live board onto `restored` as staged;
+   * `replacedTokens` are the destination's own tokens with those ids, which the carried ones
+   * replaced; `previousInitiative` is the live turn order before the carried tokens left it. The
+   * last two record what the carry overwrote (invariant 6); `reduce` reads neither.
+   */
+  z.object({
+    type: z.literal("SceneSwitched"), fromId: Id, sceneId: Id, name: SceneName, previous: SavedScene, restored: SavedScene,
+    carriedTokenIds: z.array(Id).optional(),
+    replacedTokens: z.array(Token).optional(),
+    previousInitiative: Initiative.nullable().optional(),
+  }),
   z.object({ type: z.literal("SceneRenamed"), sceneId: Id, name: SceneName, previous: SceneName }),
   z.object({ type: z.literal("SceneDeleted"), sceneId: Id, name: SceneName, previous: SavedScene }),
   z.object({
@@ -119,8 +130,11 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("TokenDeleted"),
     token: Token,
-    /** "defeated": removed by the auto-remove option after its HP reached 0 (ADR 0049). Reversible by undo. */
-    reason: z.literal("defeated").optional(),
+    /**
+     * "defeated": removed by the auto-remove option after its HP reached 0 (ADR 0049).
+     * "mapReplaced": left unticked in Select and place on a new map (ADR 0068). Both reversible by undo.
+     */
+    reason: z.enum(["defeated", "mapReplaced"]).optional(),
   }),
   z.object({
     type: z.literal("TokenOwnersSet"),
@@ -501,6 +515,21 @@ export const DomainEvent = z.discriminatedUnion("type", [
     name: z.string(),
     applied: TableState,
     previous: TableState,
+    /** Tokens moved onto `applied` as staged (ADR 0068), for the activity log only. */
+    carriedTokenIds: z.array(Id).optional(),
+  }),
+  /**
+   * The GM placed staged tokens (ADR 0068): each moves from `staged` to `tokens`, from its last
+   * position to `to`. GM-only: players resync, since non-owners never had the token.
+   */
+  z.object({
+    type: z.literal("StagedTokensPlaced"),
+    placements: z.array(z.object({ tokenId: Id, from: Point, to: Point })).min(1),
+  }),
+  /** Undo of a placement (ADR 0068): each token goes back to `staged` at `to`. GM-only: players resync. */
+  z.object({
+    type: z.literal("StagedTokensRestaged"),
+    placements: z.array(z.object({ tokenId: Id, from: Point, to: Point })).min(1),
   }),
   /**
    * The GM undid one earlier action (FR-REC-02, ADR 0013). Comes last in its batch, after the

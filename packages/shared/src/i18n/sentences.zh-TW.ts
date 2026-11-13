@@ -110,7 +110,8 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
   }
   const first = entry.events[0];
   if (!first) return { verb: "上一個動作", noun: "一個動作" };
-  const defeats = entry.events.filter((e) => e.type === "TokenDeleted");
+  // Tokens removed by Select and place follow their map change, which names itself below (ADR 0068).
+  const defeats = entry.events.filter((e): e is Extract<typeof e, { type: "TokenDeleted" }> => e.type === "TokenDeleted" && e.reason === "defeated");
   if (first.type === "TokenDeleted" || defeats.length > 0) {
     const names = defeats.map((e) => e.token.name);
     const who = names.length === 1 ? names[0]! : cjk`${names.length}枚棋子`;
@@ -130,6 +131,12 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
   if (first.type === "AreaEffectResolved") return { verb: "範圍效果", noun: "結算一個範圍效果" };
   if (first.type === "CheckpointRestored") return { verb: `還原「${first.name}」`, noun: `還原存檔點「${first.name}」` };
   if (first.type === "EncounterApplied") return { verb: `套用「${first.name}」`, noun: `套用遭遇範本「${first.name}」` };
+  if (first.type === "StagedTokensRestaged") return { verb: "選取並放置", noun: "讓棋子回到等待放置" };
+  if (first.type === "StagedTokensPlaced") {
+    const count = first.placements.length;
+    const who = count === 1 ? nameOf(first.placements[0]!.tokenId) : cjk`${count}枚帶過來的棋子`;
+    return { verb: cjk`放置${who}`, noun: cjk`放置${who}` };
+  }
   const wallsAdded = entry.events.find((e) => e.type === "WallsAdded");
   if (wallsAdded) {
     const what = cjk`${wallsAdded.walls.length}面牆`;
@@ -201,6 +208,10 @@ const DRAWING_NAMES_ZH = { line: "一條線", rect: "一個矩形", circle: "一
 export function formatActivityZhTW(event: DomainEvent, actorName: string, before: RoomState, findRoll: FindRoll): string {
   const a = actorName;
   const tokenName = (id: string) => before.tokens[id]?.name ?? "未知的棋子";
+  // Carried tokens (ADR 0068): "，並帶上 2 枚棋子".
+  const carryingZh = (ids: readonly string[] | undefined) => (ids?.length ? cjk`，並帶上${ids.length}枚棋子` : "");
+  const stagedNamesZh = (placements: readonly { tokenId: string }[]) =>
+    placements.map((p) => (before.staged?.[p.tokenId] ?? before.tokens[p.tokenId])?.name ?? "未知的棋子").join("、");
   const participantName = (id: string) => before.participants[id]?.displayName ?? "未知的參與者";
   const rollLabel = (roll: DiceRoll | undefined, fallback: string) =>
     roll?.attack ? `${attackPartiesZhTW(roll.attack)}（${roll.expression}：${roll.total}）` : fallback;
@@ -217,7 +228,7 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     case "SceneDraftCreated": return cjk`${a}準備了「${event.name}」場景`;
     case "ScenePrepared": return cjk`${a}編輯了私人場景`;
     case "SceneCreated": return cjk`${a}建立了場景「${event.name}」`;
-    case "SceneSwitched": return cjk`${a}切換至「${event.name}」場景`;
+    case "SceneSwitched": return cjk`${a}切換至「${event.name}」場景${carryingZh(event.carriedTokenIds)}`;
     case "SceneRenamed": return cjk`${a}將場景「${event.previous}」重新命名為「${event.name}」`;
     case "SceneDeleted": return cjk`${a}刪除了場景「${event.name}」`;
     case "RoomCreated": return cjk`${a}建立了房間「${event.name}」`;
@@ -386,7 +397,9 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     case "CheckpointCreated": return cjk`${a}儲存了存檔點「${event.checkpoint.name}」`;
     case "CheckpointDeleted": return cjk`${a}刪除了存檔點「${event.checkpoint.name}」`;
     case "CheckpointRestored": return cjk`${a}將遊戲桌還原至存檔點「${event.name}」`;
-    case "EncounterApplied": return cjk`${a}套用了遭遇範本「${event.name}」`;
+    case "EncounterApplied": return cjk`${a}套用了遭遇範本「${event.name}」${carryingZh(event.carriedTokenIds)}`;
+    case "StagedTokensPlaced": return cjk`${a}放置了${stagedNamesZh(event.placements)}`;
+    case "StagedTokensRestaged": return cjk`${a}將${stagedNamesZh(event.placements)}移回等待放置`;
     case "ActionUndone": {
       const entry = before.undo.find((e) => e.commandId === event.commandId);
       return entry ? cjk`${a}復原了${describeUndoZhTW(entry, before.tokens).noun}` : cjk`${a}復原了一項操作`;

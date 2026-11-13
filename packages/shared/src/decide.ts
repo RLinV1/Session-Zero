@@ -1,6 +1,6 @@
 import { destinationBlocked, movementBlocked, movementObstacles } from "./movement";
 import { Terrain, emptyTerrain, hasTerrain, terrainLayer, paintTerrain, previousPaint, replaceTerrainLayer, paintProblem, gridGeometryChanged, MAX_TERRAIN_EFFECTS, MAX_TERRAIN_PAINT_BYTES, cellRect } from "./terrain";
-import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand } from "./scenes";
+import { INITIAL_SCENE_ID, MAX_SCENES, savedSceneOf, sceneNameOf, sceneNamesOf, saveScene, sceneState, isScenePreparationCommand, type SavedScene } from "./scenes";
 import { hasPortalBounds, removePortalOverlaps, validateUvttDraft, type PreparedUvttScene } from "./uvtt";
 import { namedAttackFor } from "./attackPresets";
 import { findMentions } from "./chatMentions";
@@ -12,7 +12,7 @@ import { areaEffectStage, type AreaEffect, type AreaEffectDamage } from "./areaE
 import { findDiceRoll, formatExpression, parseDiceExpression, rollDice, type AttackContext, type DiceExpression, type DiceRoll, type GroupRollEntry } from "./dice";
 import type { DomainEvent } from "./events";
 import { encounterTable, sameMapAndGrid, type ResolvedEncounter } from "./encounters";
-import { clearanceTouchesWall, isSnapped, occupyingTokens, overlapsToken, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
+import { clearanceTouchesWall, footprintsOverlap, isSnapped, occupyingTokens, overlapsToken, polygonArea, resizedTokenCenter, snapTokenCenter, spreadPositions, type GridSpec, type Point } from "./geometry";
 import { canRenderGrid } from "./gridRenderLimit";
 import { adjustMapTokens } from "./mapTokenAdjustment";
 import { libraryBoardProblem, type ResolvedLibraryMap } from "./libraryBoard";
@@ -216,6 +216,8 @@ function decideCommand(
     case "scene.prepare": {
       if (!can.administer(actor)) return forbidden();
       if (!isScenePreparationCommand(command.command)) return reject("invalid", sharedMsg("reject.notInPrivateScene"));
+      // A private scene never takes tokens off the live board (ADR 0068).
+      if ("carryTokenIds" in command.command && command.command.carryTokenIds) return reject("invalid", sharedMsg("reject.carryInPreparation"));
       if (command.sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return reject("invalid", sharedMsg("reject.sceneIsLive"));
       const preparedState = sceneState(state, command.sceneId);
       const previous = savedSceneOf(state, command.sceneId);
@@ -249,7 +251,24 @@ function decideCommand(
       const restored = savedSceneOf(state, command.sceneId);
       const name = sceneNameOf(state, command.sceneId);
       if (!restored || !name) return notFound("scene");
-      return accept({ type: "SceneSwitched", fromId: state.activeSceneId ?? INITIAL_SCENE_ID, sceneId: command.sceneId, name, previous: saveScene(state), restored });
+      const fromId = state.activeSceneId ?? INITIAL_SCENE_ID;
+      if (!command.carryTokenIds) return accept({ type: "SceneSwitched", fromId, sceneId: command.sceneId, name, previous: saveScene(state), restored });
+      // Carried tokens leave this scene and wait, staged, on the next (ADR 0068).
+      const carried = carriedTokens(state, command.carryTokenIds);
+      if (!carried) return reject("invalid", sharedMsg("reject.carryUnknownToken"));
+      const outgoing = withoutTokens(saveScene(state), command.carryTokenIds);
+      const replacedTokens = command.carryTokenIds.flatMap((id) => {
+        const own = Object.hasOwn(restored.table.tokens, id) ? restored.table.tokens[id] : restored.table.staged && Object.hasOwn(restored.table.staged, id) ? restored.table.staged[id] : undefined;
+        return own ? [own] : [];
+      });
+      return accept({
+        type: "SceneSwitched", fromId, sceneId: command.sceneId, name,
+        previous: outgoing,
+        restored: stageTokens(withoutTokens(restored, command.carryTokenIds), carried),
+        carriedTokenIds: command.carryTokenIds,
+        ...(replacedTokens.length > 0 && { replacedTokens }),
+        ...(!sameValue(outgoing.table.initiative, state.initiative) && { previousInitiative: state.initiative }),
+      });
     }
     case "scene.delete": {
       if (!can.administer(actor)) return forbidden();
@@ -270,8 +289,10 @@ function decideCommand(
       if (!canRenderGrid(grid.cellSize, command.map)) {
         return reject("invalid", sharedMsg("reject.gridTooDense"));
       }
+      if (command.placeTokenIds && !command.placeTokenIds.every((id) => Object.hasOwn(state.tokens, id))) return reject("invalid", sharedMsg("reject.carryUnknownToken"));
+      // Select and place leaves no token on the map to adjust: each waits or goes (ADR 0068).
       const adjustment = adjustMapTokens(
-        Object.values(state.tokens), state.scene.map, command.map, state.scene.grid, grid, command.tokenPolicy,
+        command.placeTokenIds ? [] : Object.values(state.tokens), state.scene.map, command.map, state.scene.grid, grid, command.tokenPolicy,
       );
       if (!adjustment.ok) {
         const token = state.tokens[adjustment.tokenId]!;
@@ -281,7 +302,7 @@ function decideCommand(
       const gridChanged = gridGeometryChanged(state.scene.grid, grid);
       if (!geometryChanged && gridChanged && hasTerrain(state.terrain) && !command.resetTerrain && !library) return reject("invalid", sharedMsg("reject.gridNeedsTerrainReset"));
       // Map, effective grid and adjusted positions are one reversible fact (ADR 0042).
-      return accept({
+      return acceptWithPlacement(state, command.placeTokenIds, {
         type: "MapSet",
         ...(((geometryChanged || gridChanged || library) && (state.terrain || library?.board.terrain)) ? { terrainChange: { terrain: library && !command.resetTerrain ? { base: library.board.terrain ?? [], effects: [] } : emptyTerrain(), previous: state.terrain ?? emptyTerrain() } } : {}),
         map: command.map,
@@ -305,9 +326,10 @@ function decideCommand(
         return reject("invalid", sharedMsg("reject.importStale"));
       }
       try { validateUvttDraft(grid, prep.walls, map); } catch { return reject("invalid", sharedMsg("reject.preparedGeometryInvalid")); }
-      const adjustment = adjustMapTokens(Object.values(state.tokens), state.scene.map, map, state.scene.grid, grid, command.tokenPolicy);
+      if (command.placeTokenIds && !command.placeTokenIds.every((id) => Object.hasOwn(state.tokens, id))) return reject("invalid", sharedMsg("reject.carryUnknownToken"));
+      const adjustment = adjustMapTokens(command.placeTokenIds ? [] : Object.values(state.tokens), state.scene.map, map, state.scene.grid, grid, command.tokenPolicy);
       if (!adjustment.ok) return reject("invalid", sharedMsg("reject.tokenDoesNotFitImport"));
-      return accept({ type: "MapSet", map, previous: state.scene.map,
+      return acceptWithPlacement(state, command.placeTokenIds, { type: "MapSet", map, previous: state.scene.map,
         ...(state.terrain ? { terrainChange: { terrain: emptyTerrain(), previous: state.terrain } } : {}),
         gridChange: { grid, previous: state.scene.grid }, tokenChanges: adjustment.changes,
         fogChange: { fog: [], previous: Object.values(state.fog) },
@@ -378,6 +400,16 @@ function decideCommand(
       if (!made.ok || command.groupId === undefined) return made;
       const changes = made.events.flatMap((e) => (e.type === "TokenCreated" ? [{ tokenId: e.token.id, previous: null }] : []));
       return accept(...made.events, { type: "TokensGrouped", groupId: command.groupId, changes });
+    }
+
+    case "token.placeStaged": {
+      if (!can.administer(actor)) return forbidden();
+      const ids = command.tokenIds ?? Object.keys(state.staged);
+      if (ids.length === 0) return reject("invalid", sharedMsg("reject.nothingStaged"));
+      if (ids.some((id) => !Object.hasOwn(state.staged, id))) return reject("invalid", sharedMsg("reject.notStaged"));
+      const placements = placeStaged(state, ids.map((id) => state.staged[id]!), command.origin);
+      if (!placements) return reject("invalid", sharedMsg("reject.notEnoughSpace"));
+      return accept({ type: "StagedTokensPlaced", placements });
     }
 
     case "token.duplicate": {
@@ -1451,7 +1483,13 @@ function decideCommand(
         : table;
       // keepMapSetup with no room terrain must not inherit the template's.
       if (command.keepMapSetup && !state.terrain) delete applied.terrain;
-      return accept({ type: "EncounterApplied", templateId: encounter.id, name: encounter.name, applied, previous: tableOf(state) });
+      if (!command.carryTokenIds) return accept({ type: "EncounterApplied", templateId: encounter.id, name: encounter.name, applied, previous: tableOf(state) });
+      // Carried tokens wait, staged, on the applied board. `previous` stays the whole board, so undo
+      // puts them back where they were (ADR 0068).
+      const carried = carriedTokens(state, command.carryTokenIds);
+      if (!carried) return reject("invalid", sharedMsg("reject.carryUnknownToken"));
+      const staged = stageTokens({ table: applied, groups: {}, tokenGroups: {} }, carried).table;
+      return accept({ type: "EncounterApplied", templateId: encounter.id, name: encounter.name, applied: staged, previous: tableOf(state), carriedTokenIds: command.carryTokenIds });
     }
 
     case "checkpoint.restore": {
@@ -1583,6 +1621,108 @@ export function uniqueName(namesInUse: Iterable<string>, name: string): string {
     const candidate = base.slice(0, MAX_TOKEN_NAME - suffix.length).trimEnd() + suffix;
     if (!taken.has(normalizeName(candidate))) return candidate;
   }
+}
+
+/**
+ * A new map's `MapSet`, then Select and place (ADR 0068) when `placeTokenIds` is given: those
+ * tokens leave the map to wait, staged where they stood, and every other token on the map is
+ * removed. All in the one action, so undoing the map change brings every token back.
+ */
+function acceptWithPlacement(state: RoomState, placeTokenIds: readonly string[] | undefined, mapSet: Extract<DomainEvent, { type: "MapSet" }>): Decision {
+  if (!placeTokenIds) return accept(mapSet);
+  const keep = new Set(placeTokenIds);
+  const staged = Object.values(state.tokens).filter((t) => keep.has(t.id)).map((t) => ({ tokenId: t.id, from: t.position, to: t.position }));
+  const removed = Object.values(state.tokens).filter((t) => !keep.has(t.id))
+    .map((token): DomainEvent => ({ type: "TokenDeleted", token, reason: "mapReplaced" }));
+  return accept(mapSet, ...(staged.length > 0 ? [{ type: "StagedTokensRestaged" as const, placements: staged }] : []), ...removed);
+}
+
+/**
+ * The tokens `ids` name on the live board or in its staging area, in that order (ADR 0068), or
+ * null when any id names neither.
+ */
+function carriedTokens(state: RoomState, ids: readonly string[]): Token[] | null {
+  const tokens: Token[] = [];
+  for (const id of ids) {
+    const token = Object.hasOwn(state.tokens, id) ? state.tokens[id] : Object.hasOwn(state.staged, id) ? state.staged[id] : undefined;
+    if (!token) return null;
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+/** `initiative` without `ids`, the turn staying with the same remaining token, or the next one (ADR 0068). */
+function initiativeWithout(initiative: Initiative | null, ids: ReadonlySet<string>): Initiative | null {
+  if (!initiative || !initiative.order.some((id) => ids.has(id))) return initiative;
+  const order = initiative.order.filter((id) => !ids.has(id));
+  if (order.length === 0) return null;
+  // Entries kept before the active one; when the active token left, the next keeps the turn.
+  const before = initiative.order.slice(0, initiative.activeIndex).filter((id) => !ids.has(id)).length;
+  // Past the end: the turn wraps to the top of a new round, as when a turn order loses its last token.
+  return before < order.length ? { ...initiative, order, activeIndex: before } : { ...initiative, order, activeIndex: 0, round: initiative.round + 1 };
+}
+
+/**
+ * A saved board with no trace of the tokens `ids` (ADR 0068): not on the map, not staged, not in
+ * the turn order, in no group. Carrying out of a scene, and clearing a same-id copy from the
+ * destination (scene.copyCurrent copies ids).
+ */
+function withoutTokens(board: SavedScene, ids: readonly string[]): SavedScene {
+  const gone = new Set(ids);
+  const keep = <T,>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).filter(([id]) => !gone.has(id)));
+  const { staged, ...table } = board.table;
+  const left = staged ? keep(staged) : {};
+  return {
+    ...board,
+    table: { ...table, tokens: keep(table.tokens), initiative: initiativeWithout(table.initiative, gone), ...(Object.keys(left).length > 0 ? { staged: left } : {}) },
+    tokenGroups: keep(board.tokenGroups),
+  };
+}
+
+/** A board with `tokens` added to its staging area, unchanged (ADR 0068). */
+function stageTokens(board: SavedScene, tokens: readonly Token[]): SavedScene {
+  const staged = { ...board.table.staged };
+  for (const token of tokens) staged[token.id] = token;
+  return { ...board, table: { ...board.table, staged } };
+}
+
+/**
+ * Where staged `tokens` go when the GM clicks `origin` (ADR 0068): larger tokens first, the first
+ * on the square under `origin`, each later one on the nearest free spot around it, never on another
+ * token, across a wall or off the map. Null when the click's square is taken or any token finds no
+ * spot: the placement is all or nothing.
+ */
+function placeStaged(state: RoomState, tokens: readonly Token[], origin: Point): { tokenId: string; from: Point; to: Point }[] | null {
+  const grid = state.scene.grid;
+  const walls = blockingWalls(state);
+  const map = state.scene.map;
+  // Stable: equal sizes keep the order they were asked for.
+  const order = tokens.map((token, i) => ({ token, i })).sort((a, b) => b.token.size - a.token.size || a.i - b.i).map(({ token }) => token);
+  const occupied = occupyingTokens(Object.values(state.tokens)).map((t) => ({ position: t.position, size: t.size }));
+  const onMap = (p: Point, size: number) => {
+    const half = (size * grid.cellSize) / 2;
+    return !map || (p.x - half >= 0 && p.y - half >= 0 && p.x + half <= map.width && p.y + half <= map.height);
+  };
+  const placements: { tokenId: string; from: Point; to: Point }[] = [];
+  for (const [n, token] of order.entries()) {
+    const start = snapTokenCenter(origin, token.size, grid);
+    const blocked = (p: Point) => clearanceTouchesWall(p, token.size, grid, walls);
+    let to: Point | undefined;
+    if (n === 0) {
+      // The click's own square: taken, off the map or across a wall refuses the whole placement.
+      const taken = occupied.some((o) => footprintsOverlap(o, { position: start, size: token.size }, grid));
+      if (taken || !onMap(start, token.size) || blocked(start)) return null;
+      to = start;
+    } else {
+      // `spreadPositions` never checks its origin, so ask for one spot beyond it when it is taken.
+      const spots = spreadPositions(start, token.size, 2, grid, map, occupied, blocked, false);
+      to = spots.find((p, i) => (i > 0 || !occupied.some((o) => footprintsOverlap(o, { position: p, size: token.size }, grid))) && !blocked(p) && onMap(p, token.size));
+    }
+    if (!to) return null;
+    occupied.push({ position: to, size: token.size });
+    placements.push({ tokenId: token.id, from: token.position, to });
+  }
+  return placements;
 }
 
 /**
@@ -1782,17 +1922,21 @@ const isExitFor = (next: DomainEvent | undefined, tokenId: string) =>
  * a deletion already followed by its exit (from a nested `decide`) gets no second one.
  */
 export function withInitiativeExits(state: RoomState, events: DomainEvent[]): DomainEvent[] {
-  if (!events.some((e) => e.type === "TokenDeleted")) return events;
+  if (!events.some((e) => e.type === "TokenDeleted" || e.type === "StagedTokensRestaged")) return events;
   const out: DomainEvent[] = [];
   let folded = state;
   for (const [i, event] of events.entries()) {
     out.push(event);
     folded = reduce(folded, event);
-    if (event.type !== "TokenDeleted" || !folded.initiative?.order.includes(event.token.id)) continue;
-    if (isExitFor(events[i + 1], event.token.id)) continue;
-    const exit = initiativeExit(folded.initiative, event.token.id, "deleted");
-    out.push(exit);
-    folded = reduce(folded, exit);
+    // A token sent back to wait off the map takes no turn either (ADR 0068).
+    const gone = event.type === "TokenDeleted" ? [event.token.id] : event.type === "StagedTokensRestaged" ? event.placements.map((p) => p.tokenId) : [];
+    for (const tokenId of gone) {
+      if (!folded.initiative?.order.includes(tokenId)) continue;
+      if (gone.length === 1 && isExitFor(events[i + 1], tokenId)) continue;
+      const exit = initiativeExit(folded.initiative, tokenId, "deleted");
+      out.push(exit);
+      folded = reduce(folded, exit);
+    }
   }
   return out;
 }
