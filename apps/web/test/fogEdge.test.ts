@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FOG_FEATHER_CELLS, fogDistanceField, fogEdgeAlpha, type FogDistanceField } from "../src/board/fogTexture";
+import { fogFragment } from "../src/board/fogShader";
 
 /** The field's value at the sample nearest a board point. */
 const at = (field: FogDistanceField, x: number, y: number) =>
@@ -49,23 +50,22 @@ describe("fog distance field (flowing-fog, FR-GM-17)", () => {
   });
 });
 
-describe("fog edge fade (flowing-fog, FR-GM-17)", () => {
-  it("is fully opaque inside a region whatever the noise", () => {
-    for (const d of [0, 0.01, 1, 5]) for (const n of [0, 0.3, 0.5, 1]) expect(fogEdgeAlpha(d, n)).toBe(1);
+describe("fog edge fade (flowing-fog, fog-inner-fade-and-shared-dice, FR-GM-17)", () => {
+  const noises = Array.from({ length: 41 }, (_, i) => i / 40);
+
+  it("is fully opaque at and inside a region's edge whatever the noise, so it hides everything inside", () => {
+    for (const d of [0, 0.01, 1, 5]) for (const n of noises) expect(fogEdgeAlpha(d, n)).toBe(1);
   });
 
-  it("fades to nothing about two cells out, whatever the noise", () => {
-    for (const n of [0, 0.5, 1]) {
-      expect(fogEdgeAlpha(-FOG_FEATHER_CELLS, n)).toBe(0);
-      expect(fogEdgeAlpha(-FOG_FEATHER_CELLS - 1, n)).toBe(0);
-    }
-    expect(FOG_FEATHER_CELLS).toBe(2);
+  it("is gone a quarter cell outside, whatever the noise, so the dragged area is the hidden area", () => {
+    expect(FOG_FEATHER_CELLS).toBe(0.25);
+    for (const d of [-0.25, -0.3, -1, -5]) for (const n of noises) expect(fogEdgeAlpha(d, n)).toBe(0);
   });
 
   it("falls evenly with distance, so the edge has no step or ring", () => {
     for (const n of [0, 0.25, 0.5, 0.75, 1]) {
       let last = 1;
-      for (let d = 0; d >= -FOG_FEATHER_CELLS; d -= 0.05) {
+      for (let d = 0; d >= -FOG_FEATHER_CELLS; d -= FOG_FEATHER_CELLS / 40) {
         const a = fogEdgeAlpha(d, n);
         expect(a).toBeLessThanOrEqual(last + 1e-9);
         expect(last - a).toBeLessThan(0.1);
@@ -74,8 +74,28 @@ describe("fog edge fade (flowing-fog, FR-GM-17)", () => {
     }
   });
 
-  it("lets the noise move the fade in and out between the edge and its end", () => {
-    expect(fogEdgeAlpha(-1, 1)).toBeGreaterThan(fogEdgeAlpha(-1, 0) + 0.3);
-    expect(Math.abs(fogEdgeAlpha(-0.02, 0) - fogEdgeAlpha(-0.02, 1))).toBeLessThan(0.05);
+  it("lets the noise move the edge in and out, so a straight border isn't a ruled line", () => {
+    const mid = -FOG_FEATHER_CELLS / 2;
+    expect(fogEdgeAlpha(mid, 1)).toBeGreaterThan(fogEdgeAlpha(mid, 0) + 0.3);
+    expect(Math.abs(fogEdgeAlpha(-0.003, 0) - fogEdgeAlpha(-0.003, 1))).toBeLessThan(0.05);
+  });
+});
+
+describe("fog shader edge fade matches fogEdgeAlpha (fog-inner-fade-and-shared-dice)", () => {
+  // Run the shader's edgeAlpha as JavaScript: its body is plain arithmetic once `float` is dropped.
+  const body = /float edgeAlpha\(float d, float n\) \{([\s\S]*?)\n\}/.exec(fogFragment)![1]!.replace(/\bfloat\b/g, "const");
+  const feather = Number(/const float FEATHER = ([\d.]+);/.exec(fogFragment)![1]);
+  const billow = Number(/const float BILLOW = ([\d.]+);/.exec(fogFragment)![1]);
+  const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+  const glsl = new Function("d", "n", "clamp", "FEATHER", "BILLOW", body) as (d: number, n: number, c: typeof clamp, f: number, b: number) => number;
+
+  it("gives the same opacity for every distance and noise", () => {
+    for (let d = -0.2; d <= 0.5; d += 0.01) for (const n of [0, 0.2, 0.5, 0.8, 1]) {
+      expect(glsl(d, n, clamp, feather, billow)).toBeCloseTo(fogEdgeAlpha(d, n), 6);
+    }
+  });
+
+  it("discards everything past the end of the fade", () => {
+    expect(fogFragment).toContain("if (d <= -FEATHER) discard;");
   });
 });

@@ -7,7 +7,7 @@ import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
 import { AreaEffect, AreaEffectDamage, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
-import { AreaTemplate, ChatMessage, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, TemplateGeometry, Token, TokenGroup, Wall } from "./state";
+import { AreaTemplate, ChatMessage, Drawing, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, TemplateGeometry, Token, TokenGroup, Wall } from "./state";
 
 /**
  * Events are FACTS the server has committed. They are append-only and never edited.
@@ -402,6 +402,16 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("TemplateRemoved"),
     template: AreaTemplate,
+  }),
+  /** Someone drew on the board for everyone (FR-TAC-04, ADR 0064). Not undoable. */
+  z.object({
+    type: z.literal("DrawingAdded"),
+    drawing: Drawing,
+  }),
+  /** A drawing was erased; carries the whole drawing as it was (invariant 6, ADR 0064). Not undoable. */
+  z.object({
+    type: z.literal("DrawingRemoved"),
+    drawing: Drawing,
   }),
   /** The GM fogged a region of the map (FR-GM-17, ADR 0016). */
   z.object({

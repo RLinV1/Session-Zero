@@ -5,6 +5,7 @@ import { areaEffectStage, can, diceRollsOf, filterStateForViewer, findDiceRoll, 
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
 import { templateArea, tokensTouchingArea } from "../board/tools";
 import { dropFor } from "../board/tokenDice";
+import { ownDiceShowing, rollAim } from "../board/diceThrow";
 import type { GroupSelection } from "../panels/GroupSelection";
 import { NukeHealthContext, useNukeHealth } from "../board/nukeHealth";
 import { PendingDrops, type DiceDrop } from "../board/diceDrops";
@@ -486,8 +487,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         else land(roll.id);
         return;
       }
+      // Every public roll is thrown on every board (shared-roll-throws): where its die was let go,
+      // else an attack from its attacker toward its target as this viewer sees them, else into the
+      // middle of this viewer's own board.
       const board = boardRef.current;
-      const aim = drops.current.take(roll, performance.now()) ?? (mine ? board?.centreAim() : null);
+      const aim = rollAim(roll, drops.current.take(roll, performance.now()) ?? null, connection.snapshot.state, () => board?.centreAim() ?? null);
       // Every public roll wears its roller's dice look, for everyone (shared-dice-looks).
       const look = { ...trayRoll(roll), skin: diceFor.current(roll.byParticipantId, mine) };
       // Not where it can't be animated (reduced motion, say): then it lands at once.
@@ -541,7 +545,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   // The card shows only rolls the viewed player could see, so a GM-only roll vanishes when a preview starts.
   const cardRoll = cardRollId ? findDiceRoll((preview?.state ?? state)?.rolls ?? [], cardRollId) : undefined;
   // Your dice are still showing: on the board until they fade, or in a private tray until they land.
-  const rolling = onBoard.size > 0 || !!state?.rolls.some((r) => airborne.has(r.id) && r.byParticipantId === you?.id);
+  const rolling = ownDiceShowing(onBoard, airborne, state?.rolls ?? [], you?.id);
   const rollThrow: RollThrow = { airborne, rolling, justLandedId: landedId, onLanded: land, expectDrop };
 
   if (leaving) return <main className="centered" aria-busy="true">{t("encounterEdit.closing")}</main>;

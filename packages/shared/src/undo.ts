@@ -491,7 +491,7 @@ export function undoConflict(state: RoomState, entry: UndoEntry): MessageRef | n
 
 /** A table as `reduce` applies it: one from before walls existed had none (ADR 0029). */
 
-const withWalls = (table: TableState): TableState => ({ ...table, walls: table.walls ?? {} });
+const withWalls = (table: TableState): TableState => ({ ...table, walls: table.walls ?? {}, drawings: table.drawings ?? {} });
 
 type GroupEvent = Extract<ReversibleEvent, { type: "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" }>;
 

@@ -35,7 +35,7 @@ export const sceneNameOf = (state: RoomState, sceneId: string): string | undefin
 export function sceneState(state: RoomState, sceneId: string): RoomState | null {
   if (sceneId === (state.activeSceneId ?? INITIAL_SCENE_ID)) return state;
   const saved = savedSceneOf(state, sceneId);
-  return saved ? { ...state, ...saved.table, terrain: saved.table.terrain, boardEpoch: saved.boardEpoch ?? 0, terrainRevision: saved.terrainRevision ?? 0, walls: saved.table.walls ?? {}, groups: saved.groups, tokenGroups: saved.tokenGroups, activeSceneId: sceneId, areaEffect: null, undo: [] } : null;
+  return saved ? { ...state, ...saved.table, terrain: saved.table.terrain, boardEpoch: saved.boardEpoch ?? 0, terrainRevision: saved.terrainRevision ?? 0, walls: saved.table.walls ?? {}, drawings: saved.table.drawings ?? {}, groups: saved.groups, tokenGroups: saved.tokenGroups, activeSceneId: sceneId, areaEffect: null, undo: [] } : null;
 }
 
 export function saveScene(state: RoomState): SavedScene {

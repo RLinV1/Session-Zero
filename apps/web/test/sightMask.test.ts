@@ -1,16 +1,10 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_STATS, viewerSight, type Participant, type Token } from "@vtt/shared";
-import { isBorderEdge, DIMMED_ALPHA, sightColor, sightMaskAlpha } from "../src/board/sightMask";
+import { DIMMED_ALPHA, makeSightMaskCanvas, sightColor, sightMaskAlpha } from "../src/board/sightMask";
 import { room } from "./mapEditorHarness";
 
 describe("sight mask helpers (line-of-sight, FR-GM-19)", () => {
-  it("detects edges lying along the map border only", () => {
-    expect(isBorderEdge({ x: 0, y: 10 }, { x: 0, y: 90 }, 100, 100)).toBe(true);
-    expect(isBorderEdge({ x: 10, y: 100 }, { x: 90, y: 99.5 }, 100, 100)).toBe(true);
-    expect(isBorderEdge({ x: 0, y: 10 }, { x: 50, y: 50 }, 100, 100)).toBe(false);
-    expect(isBorderEdge({ x: 0, y: 0 }, { x: 100, y: 100 }, 100, 100)).toBe(false);
-  });
-
   it("tints the darkness to the map, near-black but never pure black", () => {
     const [r, g, b] = sightColor([40, 120, 50]);
     expect(g).toBeGreaterThan(r);
@@ -48,5 +42,40 @@ describe("sight mask helpers (line-of-sight, FR-GM-19)", () => {
     expect(sightMaskAlpha(viewerSight(s, player)!, true)).toBe(1);
     s.scene = { ...s.scene, lineOfSight: true };
     expect(sightMaskAlpha(viewerSight(s, player)!, true)).toBe(1);
+  });
+});
+
+describe("darkness has a crisp edge (fog-inner-fade-and-shared-dice, FR-GM-19)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Records what the mask paints, since jsdom has no 2D canvas. */
+  function recordPaint() {
+    const calls: string[] = [];
+    const ctx = new Proxy({} as Record<string | symbol, unknown>, {
+      get: (target, key) => (key in target ? target[key] : (...args: unknown[]) => void calls.push(`${String(key)}(${args.join(",")})`)),
+      set: (target, key, value) => {
+        target[key] = value;
+        calls.push(`${String(key)}=${String(value)}`);
+        return true;
+      },
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as never);
+    return calls;
+  }
+
+  it("darkens everything, then clears exactly the sight polygons, with no fade or blur", () => {
+    const calls = recordPaint();
+    const room = [{ x: 200, y: 200 }, { x: 600, y: 200 }, { x: 600, y: 500 }, { x: 200, y: 500 }];
+    makeSightMaskCanvas([room], 800, 700, 50, [10, 12, 14]);
+    expect(calls).toContain("fillRect(0,0,800,700)");
+    expect(calls.filter((c) => c.startsWith("clearRect"))).toHaveLength(1);
+    expect(calls.some((c) => c.startsWith("filter") || c.startsWith("stroke") || c.startsWith("globalAlpha"))).toBe(false);
+  });
+
+  it("stays fully dark with no sight", () => {
+    const calls = recordPaint();
+    makeSightMaskCanvas([], 800, 700, 50, [10, 12, 14]);
+    expect(calls).toContain("fillRect(0,0,800,700)");
+    expect(calls.some((c) => c.startsWith("clearRect"))).toBe(false);
   });
 });

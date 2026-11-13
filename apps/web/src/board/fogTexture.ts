@@ -161,20 +161,27 @@ function paintFog(shade: (lift: number) => [number, number, number]): HTMLCanvas
   return canvas;
 }
 
-/** How far mist fades out past a fog region's edge, in grid cells. Inside the edge the fog is solid. */
-export const FOG_FEATHER_CELLS = 2;
+/**
+ * How far fog fades out past a region's edge, in grid cells; inside the edge it is solid. Very
+ * narrow, so the area the GM dragged is the area hidden: just enough, with the noise moving it,
+ * that the edge isn't a ruled line.
+ */
+export const FOG_FEATHER_CELLS = 0.25;
 /** How far the edge's noise can move the fade in or out, as a share of the fade. */
 const FOG_BILLOW = 0.25;
 
 /**
  * The fog's opacity at `distance` grid cells from a region's edge (positive inside), with `noise`
- * in [0, 1] moving the fade. Opaque inside, nothing past `FOG_FEATHER_CELLS`, and in between an
- * even fall that the noise pushes out or pulls in. The noise's reach is zero at both ends of the
- * fade, so it can never open the inside or carry mist past the end. Mirrored in `fogShader.ts`.
+ * in [0, 1] moving the fade. Opaque at and inside the edge, nothing past `FOG_FEATHER_CELLS` out,
+ * and in between an even fall that the noise pushes out or pulls in. The fade lies outside the
+ * region, so fog hides everything inside up to its border. The noise's reach is zero at both ends
+ * of the fade, so it can never open the inside or carry mist past the end. The noise moves the
+ * half-opaque line from about 0.3 to 0.7 of the way across the fade, so a straight border wavers
+ * (fog-of-war). Mirrored in `fogShader.ts`.
  */
 export function fogEdgeAlpha(distance: number, noise: number): number {
   if (distance >= 0) return 1;
-  const u = Math.min(1, Math.max(0, 1 + distance / FOG_FEATHER_CELLS));
+  const u = Math.max(0, 1 + distance / FOG_FEATHER_CELLS);
   // With |shift| at most u(1 - u), the fade still falls steadily with distance.
   const shift = (noise - 0.5) * 2 * FOG_BILLOW * 4 * u * (1 - u);
   const v = Math.min(1, Math.max(0, u + shift));

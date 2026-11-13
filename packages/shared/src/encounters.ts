@@ -74,7 +74,7 @@ export function encounterTable(encounter: ResolvedEncounter, newId: () => string
     const id = newId();
     walls[id] = { ...wall, id };
   }
-  return { scene: encounter.scene, tokens, templates: {}, fog, initiative: null, walls, ...(encounter.terrain ? { terrain: { base: encounter.terrain, effects: [] } } : {}) };
+  return { scene: encounter.scene, tokens, templates: {}, drawings: {}, fog, initiative: null, walls, ...(encounter.terrain ? { terrain: { base: encounter.terrain, effects: [] } } : {}) };
 }
 
 /** Rebuilds a map image from a template's saved reference and the address the server resolved. */

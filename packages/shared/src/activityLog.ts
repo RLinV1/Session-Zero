@@ -54,6 +54,9 @@ const formatPoint = (p: { x: number; y: number }) => `(${Number(p.x.toFixed(2))}
  * Pure, exhaustive sentence formatter. Context must already be viewer-filtered. Writes in `locale`;
  * the Traditional Chinese twin mirrors this switch case for case (ADR 0054).
  */
+/** What each kind of drawing is called in the log (ADR 0064). */
+const DRAWING_NAMES = { line: "a line", rect: "a rectangle", circle: "a circle", stroke: "a freehand drawing" } as const;
+
 export function formatActivity(event: DomainEvent, actorName: string, before: RoomState, locale: Locale = "en"): string {
   if (locale === "zh-TW") return formatActivityZhTW(event, actorName, before, (id) => findDiceRoll(before.rolls, id));
   /** A token's name as it was just before this event. */
@@ -228,6 +231,13 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} ${kind} ${withArticle(templateLabel(was))}${gm}`;
     }
     case "TemplateRemoved": return `${actorName} removed ${withArticle(templateLabel(event.template))}${event.template.gmOnly ? " (GM only)" : ""}`;
+    case "DrawingAdded": return `${actorName} drew ${DRAWING_NAMES[event.drawing.kind]}`;
+    case "DrawingRemoved": {
+      // Names are unique in a room, so the actor's name says whether they erased their own (ADR 0064).
+      const owner = participantName(event.drawing.ownerId);
+      const what = DRAWING_NAMES[event.drawing.kind].replace(/^an? /, "");
+      return owner === actorName ? `${actorName} erased their ${what}` : `${actorName} erased ${owner}'s ${what}`;
+    }
     case "FogAdded": return `${actorName} added a fog ${fogLabel(event.region.shape)}`;
     case "FogRemoved": return `${actorName} removed a fog ${fogLabel(event.region.shape)}`;
     case "WallUpdated": return `${actorName} edited a ${event.wall.portal ? "portal" : "wall"}`;

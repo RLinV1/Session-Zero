@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MA
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DrawingShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -467,6 +467,19 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("template.remove"),
     templateId: Id,
+  }),
+  /**
+   * Draw a line, box, circle or freehand stroke for the whole table (FR-TAC-04, ADR 0064). Any
+   * active participant. Whole map pixels, inside the map; a stroke has at most `MAX_STROKE_POINTS`.
+   */
+  z.object({
+    type: z.literal("drawing.add"),
+    drawing: DrawingShape,
+  }),
+  /** Erase a drawing. Its drawer or the GM (ADR 0064). */
+  z.object({
+    type: z.literal("drawing.remove"),
+    drawingId: Id,
   }),
   /** A player permanently gives up their seat (KAN-58, ADR 0006). The GM cannot leave. */
   z.object({

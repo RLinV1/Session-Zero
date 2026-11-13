@@ -1,4 +1,4 @@
-import { parseDiceExpression, type GridSpec, type MapImage, type Point, diceCount } from "@vtt/shared";
+import { parseDiceExpression, type AttackContext, type DiceRoll, type GridSpec, type MapImage, type Point, diceCount } from "@vtt/shared";
 import { seed, throwTurns, type ThrowPath } from "../ui/diceGeometry";
 
 import { t } from "../i18n/locale";
@@ -111,6 +111,67 @@ export function centreThrow(
 ): { from: Point; to: Point } {
   const to = map ? clampToMap(centre, map) : centre;
   return { from: throwStart(to, 2 * boardDieSize(grid, view)), to };
+}
+
+/**
+ * An attack or damage roll thrown from the attacker toward the target (shared-roll-throws): it
+ * lands a cell short of the target, or halfway between two tokens under two cells apart, and
+ * travels at most a hand throw's reach (3 cells), so a distant target's dice start partway along
+ * the line. Only from this viewer's own tokens: null when either side was blanked for them (hidden
+ * or under fog), either token is not in their state, or the two stand on one spot, and the roll is
+ * then thrown into the middle of their board instead. The same tokens give the same throw on
+ * every board that sees them.
+ */
+export function attackAim(
+  attack: Pick<AttackContext, "actor" | "target"> | undefined,
+  tokens: Readonly<Record<string, { position: Point }>>,
+  grid: Pick<GridSpec, "cellSize">,
+  map: Pick<MapImage, "width" | "height"> | null,
+): { from: Point; to: Point } | null {
+  const actor = attack?.actor ? tokens[attack.actor.tokenId] : undefined;
+  const target = attack?.target ? tokens[attack.target.tokenId] : undefined;
+  if (!actor || !target) return null;
+  const a = actor.position, b = target.position;
+  const distance = Math.hypot(b.x - a.x, b.y - a.y);
+  if (distance < 1) return null;
+  const dir = { x: (b.x - a.x) / distance, y: (b.y - a.y) / distance };
+  const cell = grid.cellSize;
+  const landAt = distance < 2 * cell ? distance / 2 : distance - cell;
+  const travel = Math.min(MAX_CELLS * cell, landAt);
+  const along = (d: number) => ({ x: a.x + dir.x * d, y: a.y + dir.y * d });
+  const to = along(landAt);
+  const from = along(landAt - travel);
+  return map ? { from: clampToMap(from, map), to: clampToMap(to, map) } : { from, to };
+}
+
+/**
+ * Where a roll that just arrived is thrown on this viewer's board (shared-roll-throws), for every
+ * viewer alike, the roller included: where its die was let go (`drop`), else an attack's line from
+ * attacker to target as this viewer sees them, else the middle of this viewer's board. A GM-only
+ * roll is never thrown on the board: it lands in the GM's panel tray.
+ */
+export function rollAim(
+  roll: Pick<DiceRoll, "visibility" | "attack">,
+  drop: { from: Point; to: Point } | null,
+  table: { tokens: Readonly<Record<string, { position: Point }>>; scene: { grid: Pick<GridSpec, "cellSize">; map: Pick<MapImage, "width" | "height"> | null } } | null,
+  centre: () => { from: Point; to: Point } | null,
+): { from: Point; to: Point } | null {
+  if (roll.visibility === "gm") return null;
+  return drop ?? (table ? attackAim(roll.attack, table.tokens, table.scene.grid, table.scene.map) : null) ?? centre();
+}
+
+/**
+ * Whether this viewer's roll controls wait: their own dice are still on the board (`onBoard` holds
+ * only their own throws) or one of their rolls is still in the air. Other participants' dice,
+ * which every board now throws too (shared-roll-throws), never hold them.
+ */
+export function ownDiceShowing(
+  onBoard: ReadonlySet<string>,
+  airborne: ReadonlySet<string>,
+  rolls: ReadonlyArray<{ id: string; byParticipantId: string }>,
+  youId: string | undefined,
+): boolean {
+  return onBoard.size > 0 || rolls.some((r) => airborne.has(r.id) && r.byParticipantId === youId);
 }
 
 /** Where a Roll-button throw onto `to` leaves the hand, `reach` board px back along the usual direction. */

@@ -446,6 +446,17 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         if (!result.ok) console.warn("Area removal rejected:", result.message);
         return result.ok;
       },
+      // A refused drawing (too many on the board, off the map) says why (ADR 0064).
+      addDrawing: async (drawing) => {
+        const result = await guarded.command({ type: "drawing.add", drawing });
+        if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
+        return result.ok;
+      },
+      removeDrawing: async (drawingId) => {
+        const result = await guarded.command({ type: "drawing.remove", drawingId });
+        if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
+        return result.ok;
+      },
       addFog: async (region) => {
         const result = await guarded.command({ type: "fog.add", region });
         if (!result.ok) console.warn("Fog rejected:", result.message);

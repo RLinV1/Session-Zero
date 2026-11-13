@@ -2,6 +2,7 @@
 
 **Status:** Proposed. Needs review by the Real-Time Architecture owner. · **Extends:** `docs/adr/0001-event-model.md` (the ephemeral channel, FR-SYNC-03)
 **Owner:** Real-Time Architecture (Raymond) · **Change:** `openspec/changes/throw-dice-on-board` · **Requirements:** FR-TAC-09, FR-SYNC-03
+**Amended by:** `openspec/changes/fog-inner-fade-and-shared-dice` (every public roll is thrown on every board; no message changes)
 
 ## Context
 
@@ -24,7 +25,7 @@ The roll itself must not change: the server rolls it, and `dice.roll` and `DiceR
 - **Every viewer, the thrower included,** keeps drops in order per thrower for up to 5 seconds. When a roll arrives:
   - it takes that thrower's oldest waiting drop with the same expression, and the dice land there;
   - older drops ahead of it are discarded, because their rolls never came (refused);
-  - with no drop, the roller's own board throws the roll into the middle of the visible board, and everyone else shows only the result card.
+  - with no drop, every board throws the roll itself (amended by `fog-inner-fade-and-shared-dice`): an attack roll from its attacker toward its target, as that viewer's filtered state shows them, and any other roll, or an attack with a side hidden from that viewer, into the middle of that viewer's visible board. No message carries this: each board works it out from the roll and its own state, so nothing hidden is sent. The race described above came from one shared "roll in the air" slot; rolls are now tracked one by one, so throwing everyone's rolls doesn't bring it back.
 - **Replays look the same everywhere.** The throw's path and resting angles are seeded by the roll id and the two points, so it lands the same way on every board. If it can't be animated (reduced motion), the roll lands at once.
 - **Private rolls:** `board-dice-rolls` keeps GM-only rolls off the board, in the GM's panel tray. The client doesn't offer the drag for a private roll and sends no drop for one.
 

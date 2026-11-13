@@ -251,3 +251,30 @@ describe("deleting a checkpoint (ADR 0036, FR-REC-02)", () => {
     expect(JSON.stringify(filterStateForViewer(r.state, alice))).not.toContain(id);
   });
 });
+
+describe("checkpoints and shared drawings (FR-TAC-04, ADR 0064)", () => {
+  const line = { kind: "line" as const, color: "red" as const, from: { x: 100, y: 100 }, to: { x: 300, y: 200 } };
+  const newestUndo = (state: RoomState) => [...state.undo].reverse().find((e) => undoableAction(state.undo, e.commandId))!.commandId;
+
+  it("restores a checkpoint's drawings, and its undo puts back the drawings it replaced", () => {
+    const r = room();
+    r.run(gm, { type: "scene.setMap", map: { url: "/uploads/a.png", width: 1000, height: 800 } });
+    r.run(gm, { type: "checkpoint.create", name: "Before" });
+    r.run(alice, { type: "drawing.add", drawing: line });
+    r.run(gm, { type: "checkpoint.restore", checkpointId: r.state.checkpoints[0]!.id });
+    expect(r.state.drawings).toEqual({});
+    r.run(gm, { type: "history.undo", commandId: newestUndo(r.state) });
+    expect(Object.values(r.state.drawings)).toMatchObject([{ ...line, ownerId: alice.id }]);
+  });
+
+  it("refuses undoing a restore once someone has drawn since, so the new drawing is kept", () => {
+    const r = room();
+    r.run(gm, { type: "scene.setMap", map: { url: "/uploads/a.png", width: 1000, height: 800 } });
+    r.run(gm, { type: "checkpoint.create", name: "Before" });
+    r.run(gm, { type: "checkpoint.restore", checkpointId: r.state.checkpoints[0]!.id });
+    const restore = newestUndo(r.state);
+    r.run(bob, { type: "drawing.add", drawing: line });
+    expect(r.attempt(gm, { type: "history.undo", commandId: restore })).toMatchObject({ ok: false });
+    expect(Object.values(r.state.drawings)).toHaveLength(1);
+  });
+});

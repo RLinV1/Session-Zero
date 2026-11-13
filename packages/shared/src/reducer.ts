@@ -84,7 +84,7 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       const sceneNames = event.type === "SceneCreated"
         ? { ...state.sceneNames, [event.fromId]: event.fromName, [event.sceneId]: event.name }
         : state.sceneNames;
-      return { ...state, ...event.restored.table, terrain: event.restored.table.terrain, walls: event.restored.table.walls ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
+      return { ...state, ...event.restored.table, terrain: event.restored.table.terrain, walls: event.restored.table.walls ?? {}, drawings: event.restored.table.drawings ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
     }
     case "SceneRenamed":
       return { ...state, activeSceneId: state.activeSceneId ?? "initial", sceneNames: { ...state.sceneNames, [event.sceneId]: event.name } };
@@ -362,6 +362,15 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       return { ...state, templates: rest };
     }
 
+    case "DrawingAdded":
+      return { ...state, drawings: { ...state.drawings, [event.drawing.id]: event.drawing } };
+
+    case "DrawingRemoved": {
+      required(state.drawings[event.drawing.id], event);
+      const { [event.drawing.id]: _removed, ...rest } = state.drawings;
+      return { ...state, drawings: rest };
+    }
+
     case "CheckpointCreated":
       return { ...state, checkpoints: [...state.checkpoints, event.checkpoint].slice(-MAX_CHECKPOINTS) };
 
@@ -372,11 +381,11 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "CheckpointRestored":
       // Only the board changes: participants, rolls, chat and history stay (ADR 0019). A table
       // from before walls existed had none (ADR 0029).
-      return { ...state, ...event.restored, terrain: event.restored.terrain, walls: event.restored.walls ?? {} };
+      return { ...state, ...event.restored, terrain: event.restored.terrain, walls: event.restored.walls ?? {}, drawings: event.restored.drawings ?? {} };
 
     case "EncounterApplied":
       // Only the board changes, exactly as a checkpoint restore (ADR 0024).
-      return { ...state, ...event.applied, terrain: event.applied.terrain, walls: event.applied.walls ?? {} };
+      return { ...state, ...event.applied, terrain: event.applied.terrain, walls: event.applied.walls ?? {}, drawings: event.applied.drawings ?? {} };
 
     case "FogAdded":
       return { ...state, fog: { ...state.fog, [event.region.id]: event.region } };

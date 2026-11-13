@@ -25,7 +25,7 @@ import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
 import { DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./i18n/ruleIds";
-import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_DRAWINGS, MAX_DRAWING_POINTS, drawingPoints, type Drawing, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -89,6 +89,9 @@ export const can = {
   /** Whoever placed a template may remove it; the GM may remove any (ADR 0007). */
   removeTemplate: (actor: Participant, template: AreaTemplate) =>
     actor.role === "gm" || template.ownerId === actor.id,
+  /** Whoever drew a drawing may erase it; the GM may erase any (ADR 0064). */
+  removeDrawing: (actor: Participant, drawing: Drawing) =>
+    actor.role === "gm" || drawing.ownerId === actor.id,
   /** The same people may move, resize, turn or widen it (ADR 0058). */
   editTemplate: (actor: Participant, template: AreaTemplate) =>
     actor.role === "gm" || template.ownerId === actor.id,
@@ -217,8 +220,8 @@ export function decide(
       if (Object.keys(names).length >= MAX_SCENES) return reject("invalid", sharedMsg("reject.tooManyScenes", { max: MAX_SCENES }));
       if (Object.values(names).some((name) => normalizeName(name) === normalizeName(command.name))) return reject("invalid", sharedMsg("reject.sceneNameTaken"));
       const fromId = state.activeSceneId ?? INITIAL_SCENE_ID;
-      if (command.activate === false) return accept({ type: "SceneDraftCreated", sceneId: ctx.newId(), name: command.name, initialId: fromId, initialName: names[fromId]!, saved: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
-      return accept({ type: "SceneCreated", sceneId: ctx.newId(), name: command.name, fromId, fromName: names[fromId]!, previous: saveScene(state), restored: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
+      if (command.activate === false) return accept({ type: "SceneDraftCreated", sceneId: ctx.newId(), name: command.name, initialId: fromId, initialName: names[fromId]!, saved: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, drawings: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
+      return accept({ type: "SceneCreated", sceneId: ctx.newId(), name: command.name, fromId, fromName: names[fromId]!, previous: saveScene(state), restored: { table: { scene: { map: null, grid: state.scene.grid }, tokens: {}, templates: {}, drawings: {}, fog: {}, walls: {}, initiative: null }, groups: {}, tokenGroups: {} } });
     }
     case "scene.rename": {
       if (!can.administer(actor)) return forbidden();
@@ -1111,6 +1114,28 @@ export function decide(
       return accept({ type: "TemplateRemoved", template });
     }
 
+    case "drawing.add": {
+      // Whole map pixels on the map: a drawing off it could never be seen or erased (ADR 0064).
+      const map = state.scene.map;
+      const shape = command.drawing;
+      const xy = shape.kind === "stroke" ? shape.points : [shape.from.x, shape.from.y, shape.to.x, shape.to.y];
+      const onMap = (v: number, i: number) => v >= 0 && v <= (i % 2 === 0 ? map?.width ?? -1 : map?.height ?? -1);
+      if (!map || !xy.every(onMap)) return reject("invalid", sharedMsg("reject.drawingOffMap"));
+      const drawings = Object.values(state.drawings);
+      const used = drawings.reduce((sum, d) => sum + drawingPoints(d), 0);
+      if (drawings.length >= MAX_DRAWINGS || used + drawingPoints(shape) > MAX_DRAWING_POINTS) {
+        return reject("invalid", sharedMsg("reject.tooManyDrawings"));
+      }
+      return accept({ type: "DrawingAdded", drawing: { ...shape, id: ctx.newId(), ownerId: actor.id } });
+    }
+
+    case "drawing.remove": {
+      const drawing = state.drawings[command.drawingId];
+      if (!drawing) return notFound("drawing");
+      if (!can.removeDrawing(actor, drawing)) return forbidden();
+      return accept({ type: "DrawingRemoved", drawing });
+    }
+
     case "fog.add": {
       if (!can.administer(actor)) return forbidden();
       if (Object.keys(state.fog).length >= MAX_FOG_REGIONS) {
@@ -1759,6 +1784,7 @@ const forbidden = () => reject("forbidden", sharedMsg("reject.forbidden"));
 const NOT_FOUND = {
   "area effect": "reject.notFound.areaEffect",
   checkpoint: "reject.notFound.checkpoint",
+  drawing: "reject.notFound.drawing",
   "fog region": "reject.notFound.fogRegion",
   group: "reject.notFound.group",
   participant: "reject.notFound.participant",

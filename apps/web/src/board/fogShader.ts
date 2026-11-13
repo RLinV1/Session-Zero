@@ -5,8 +5,8 @@ import { FOG_DISTANCE_RANGE, FOG_FEATHER_CELLS, type Rgb } from "./fogTexture";
  * The players' fog body (flowing-fog): one quad over the part of the board on screen, coloured by a
  * shader. It reads the fog bank twice, at two scales, and bends both reads by a third, slower read
  * drifting the other way, so the clouds curl and fold instead of sliding. Its opacity comes from the
- * fog's distance field (`fogDistanceField`): opaque inside every region, fading out past the edge
- * through the same curve as `fogEdgeAlpha`, which slow noise pushes in and out. GLSL only: the board
+ * fog's distance field (`fogDistanceField`): opaque inside every region, fading out over a quarter
+ * of a cell past its edge through the same curve as `fogEdgeAlpha`, which slow noise pushes in and out. GLSL only: the board
  * never asks Pixi for WebGPU.
  */
 
@@ -31,7 +31,8 @@ void main() {
 }
 `;
 
-const fragment = /* glsl */ `
+/** The fog body's fragment shader; exported so tests can check its edge fade against `fogEdgeAlpha`. */
+export const fogFragment = /* glsl */ `
 precision highp float;
 
 in vec2 vBoard;
@@ -76,8 +77,8 @@ void main() {
   float b = bank(p * 1.61 + vec2(0.5, 0.21) + warp * 0.45 + vec2(-0.011, 0.008) * t);
   float density = mix(a, b, 0.3);
   vec3 colour = mix(uDark, uLight, smoothstep(0.08, 0.92, density));
-  // Edge noise about a cell across, so the fade reaches out and pulls back in tongues.
-  float n = bank(vBoard / (uCell * 4.0) + warp * 0.3 + vec2(0.013, -0.009) * t);
+  // Edge noise a cell or two across, so the narrow fade wavers instead of following a ruled line.
+  float n = bank(vBoard / (uCell * 1.5) + warp * 0.3 + vec2(0.013, -0.009) * t);
   float alpha = edgeAlpha(d, n) * uColor.a;
   finalColor = vec4(colour * alpha, alpha);
 }
@@ -91,7 +92,7 @@ export class FogBody {
 
   constructor(bank: Texture, distance: Texture) {
     this.shader = Shader.from({
-      gl: { vertex, fragment, name: "fog-body" },
+      gl: { vertex, fragment: fogFragment, name: "fog-body" },
       resources: {
         uBank: bank.source,
         uDistance: distance.source,

@@ -37,6 +37,8 @@ import {
   type RoomState,
   type Token,
   type AreaTemplate,
+  type Drawing,
+  type DrawingShape,
   type TemplateGeometry,
   templateGeometry,
   type MovementPreviewRequest,
@@ -71,12 +73,13 @@ import { averageColor, fogDistanceField, fogPalette, makeFogDensityCanvas, makeF
 import { WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "./fogPuffs";
 import { fogArt, loadFogArt } from "./fogArt";
 import { FogBody } from "./fogShader";
-import { makeSightMaskCanvas, sightColor, sightMaskAlpha } from "./sightMask";
+import { darknessShapes, makeSightMaskCanvas, sightColor, sightMaskAlpha } from "./sightMask";
 import { makeVisibleRegionCanvas } from "./areaMask";
 
 /** How long the old line-of-sight mask takes to fade out over the new one. */
 const SIGHT_FADE_MS = 160;
-import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
+import { simplifyStroke } from "./simplifyStroke";
+import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, drawColorId, drawingMark, drawnShape, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
 import { aimExpiry, expiredAims } from "./aims";
 import { PING_MS, pingPulse } from "./ping";
 import { boardFontFamily, boardMonoFamily, relabelWhenFontsReady, relabelledFamily, waitForBoardFont } from "./boardFont";
@@ -128,6 +131,10 @@ export interface BoardCallbacks {
   updateTemplate(templateId: string, geometry: TemplateGeometry, expected: TemplateGeometry): Promise<false | { seq: number | null }>;
   /** Resolves false if the server rejected the removal. */
   removeTemplate(templateId: string): Promise<boolean>;
+  /** Share a drawing with the table (ADR 0064). Resolves false if the server rejected it. */
+  addDrawing(drawing: DrawingShape): Promise<boolean>;
+  /** Erase a shared drawing. Resolves false if the server rejected it. */
+  removeDrawing(drawingId: string): Promise<boolean>;
   /** GM: fog a region (FR-GM-17). Resolves false if the server rejected it. */
   addFog(region: FogDraft): Promise<boolean>;
   /** GM: remove a fog region. Resolves false if the server rejected it. */
@@ -208,8 +215,10 @@ const MAX_FIGHT_ZOOM = 2;
 const FIGHT_FOCUS_MS = 450;
 /** Strikes this soon after a focus are part of the same attack and keep its framing. */
 const FIGHT_REFOCUS_MS = 2500;
-/** Longest brush stroke, in points, so one stroke can't grow without bound. */
-const MAX_STROKE_POINTS = 2000;
+/** Longest brush stroke, in points, before it is simplified and shared, so one stroke can't grow without bound. */
+const MAX_BRUSH_POINTS = 2000;
+/** How far a simplified brush stroke may stray from the drawn one, in screen pixels (ADR 0064). */
+const STROKE_TOLERANCE_PX = 1.5;
 
 /** A fog particle's colour: `shade` of the way from the fog's bank colour to its mist colour. */
 function fogTint(dark: Rgb, light: Rgb, shade: number): number {
@@ -397,9 +406,9 @@ export class BoardView {
   private fogEdgeGraphics = new Graphics();
   /** Line of sight (ADR 0044): opaque dark over the map with the viewer's sight polygons cut out, soft-edged. */
   private sightLayer = new Container();
-  private sightSprite: Sprite | null = null;
+  private sightSprite: Graphics | Sprite | null = null;
   /** The previous mask, fading out on top of the new one. */
-  private sightFading: Sprite | null = null;
+  private sightFading: Graphics | Sprite | null = null;
   private sightFadeStep: ((now: number) => boolean) | null = null;
   private drawnSight: unknown = null;
   private drawnSightKey = "";
@@ -493,6 +502,11 @@ export class BoardView {
   private selectOnArrival: Extract<Mark, { kind: "area" }>[] = [];
   /** Templates the eraser has asked to remove, so one sweep sends each only once. */
   private removing = new Set<string>();
+  /** Drawings on their way to the server, shown until it answers (ADR 0064). */
+  private pendingDrawings: Extract<Mark, { kind: "draw" | "stroke" }>[] = [];
+  /** Shared drawings the eraser has asked to remove, hidden until they go. */
+  private erasingDrawings = new Set<string>();
+  private drawnDrawings: RoomState["drawings"] | null = null;
   private drawnTemplates: RoomState["templates"] | null = null;
   private drawnFog: RoomState["fog"] | null = null;
   /** Fog regions sent to the server but not yet back in state, drawn so a release doesn't blink. */
@@ -896,8 +910,9 @@ export class BoardView {
     this.syncSight();
     this.syncVisibleRegion();
     this.syncTokens();
-    if (state.templates !== this.drawnTemplates || state.fog !== this.drawnFog) {
+    if (state.templates !== this.drawnTemplates || state.fog !== this.drawnFog || state.drawings !== this.drawnDrawings) {
       for (const id of this.removing) if (!state.templates[id]) this.removing.delete(id);
+      for (const id of this.erasingDrawings) if (!state.drawings[id]) this.erasingDrawings.delete(id);
       for (const id of this.removingFog) if (!state.fog[id]) this.removingFog.delete(id);
       this.settleTemplateEdits();
       this.removeCancelledAreas();
@@ -1090,12 +1105,10 @@ export class BoardView {
     if (state.sight === this.drawnSight && key === this.drawnSightKey) return;
     this.drawnSight = state.sight;
     this.drawnSightKey = key;
-    let next: Sprite | null = null;
+    let next: Graphics | Sprite | null = null;
     if (state.sight) {
-      const { canvas, scale } = makeSightMaskCanvas(state.sight, width, height, cell, sightColor(this.fogBase));
-      next = new Sprite(Texture.from(canvas));
+      next = this.darknessGraphics(state.sight, width, height) ?? this.darknessSprite(state.sight, width, height, cell);
       next.eventMode = "none";
-      next.scale.set(1 / scale);
       next.alpha = sightMaskAlpha(state.sight, hideMap);
     }
     this.finishSightFade();
@@ -1128,10 +1141,43 @@ export class BoardView {
     this.sightFading = null;
   }
 
-  private destroySightSprite(sprite: Sprite) {
+  private destroySightSprite(sprite: Graphics | Sprite) {
+    if (sprite instanceof Graphics) return sprite.destroy();
     const texture = sprite.texture;
     sprite.destroy();
     texture.destroy(true);
+  }
+
+  /**
+   * The darkness as vector shapes: the map minus every token's merged sight, so its edge stays
+   * crisp and smooth at any zoom (fog-inner-fade-and-shared-dice). Null if the sight is too
+   * complex to merge quickly or the clipper can't resolve it; the board then uses the canvas mask.
+   */
+  private darknessGraphics(sight: ReadonlyArray<ReadonlyArray<Point>>, width: number, height: number): Graphics | null {
+    let shapes;
+    try {
+      shapes = darknessShapes(sight, width, height);
+    } catch {
+      return null;
+    }
+    if (!shapes) return null;
+    const [r, g, b] = sightColor(this.fogBase).map(Math.round) as unknown as [number, number, number];
+    const color = (r << 16) | (g << 8) | b;
+    const graphics = new Graphics();
+    for (const shape of shapes) {
+      graphics.poly(shape.outer).fill({ color });
+      // Lit islands inside a dark area, such as sight seen around a pillar.
+      for (const hole of shape.holes) graphics.poly(hole).cut();
+    }
+    return graphics;
+  }
+
+  /** The darkness as a canvas picture, for sight the clipper couldn't resolve. */
+  private darknessSprite(sight: ReadonlyArray<ReadonlyArray<Point>>, width: number, height: number, cell: number): Sprite {
+    const { canvas, scale } = makeSightMaskCanvas(sight, width, height, cell, sightColor(this.fogBase));
+    const sprite = new Sprite(Texture.from(canvas));
+    sprite.scale.set(1 / scale);
+    return sprite;
   }
 
   /**
@@ -1593,7 +1639,7 @@ export class BoardView {
     this.invalidate();
   }
 
-  /** Remove every mark this viewer has made, including their shared templates. The tool stays as it is. */
+  /** Remove every mark this viewer has made, including their shared templates and drawings. The tool stays as it is. */
   clearMarks() {
     this.marks = [];
     this.measurement = null;
@@ -1601,6 +1647,9 @@ export class BoardView {
     const you = this.you;
     for (const t of Object.values(this.state?.templates ?? {})) {
       if (you && t.ownerId === you.id) this.requestRemove(t);
+    }
+    for (const d of Object.values(this.state?.drawings ?? {})) {
+      if (you && d.ownerId === you.id) this.requestErase(d);
     }
     // Areas still on their way to the server are cleared too, once they arrive.
     this.cancelledAreas.push(...this.pendingAreas);
@@ -1806,9 +1855,14 @@ export class BoardView {
     if (tool.kind === "measure" && dragged) {
       this.measurement = { kind: "measure", from, to, free, tokenSize: gesture.tokenSize };
     } else if (tool.kind === "draw" && tool.shape === "brush" && dragged) {
-      this.addMark({ kind: "stroke", color: tool.color, points: gesture.path });
+      const map = this.state?.scene.map;
+      // Kept on the map, then simplified to whole pixels, as the server takes it (ADR 0064).
+      const path = map ? gesture.path.map((p) => ({ x: Math.min(map.width, Math.max(0, p.x)), y: Math.min(map.height, Math.max(0, p.y)) })) : gesture.path;
+      const points = simplifyStroke(path, STROKE_TOLERANCE_PX / this.world.scale.x);
+      this.shareDrawing({ kind: "stroke", color: drawColorId(tool.color), points });
     } else if (tool.kind === "draw" && tool.shape !== "brush" && dragged) {
-      this.addMark({ kind: "draw", shape: tool.shape, color: tool.color, from, to });
+      const map = this.state?.scene.map ?? { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER };
+      this.shareDrawing(drawnShape(tool.shape, tool.color, from, to, map));
     } else if (tool.kind === "area") {
       this.callbacks.aimEnd(tool.gmOnly);
       const area = this.areaFromGesture(gesture, tool);
@@ -2171,6 +2225,32 @@ export class BoardView {
     return true;
   };
 
+  /** Send a drawing to the table; show it until the server's answer arrives (ADR 0064). */
+  private shareDrawing(drawing: DrawingShape) {
+    const pending = drawingMark({ ...drawing, id: "", ownerId: "" });
+    this.pendingDrawings.push(pending);
+    this.redrawMarks();
+    // The drawing's event arrives before the answer, so it is in state by the time this one goes.
+    const settle = () => {
+      this.pendingDrawings = this.pendingDrawings.filter((d) => d !== pending);
+      this.redrawMarks();
+    };
+    this.callbacks.addDrawing(drawing).then(settle, settle);
+  }
+
+  /** Ask the server to erase a shared drawing; hidden from now on, shown again if refused. */
+  private requestErase(d: Drawing) {
+    if (this.erasingDrawings.has(d.id)) return;
+    this.erasingDrawings.add(d.id);
+    const restore = () => {
+      this.erasingDrawings.delete(d.id);
+      this.redrawMarks();
+    };
+    this.callbacks.removeDrawing(d.id).then((ok) => {
+      if (!ok) restore();
+    }, restore);
+  }
+
   /** Send an area to the table; show it until the server's answer arrives. */
   private placeArea(area: Extract<Mark, { kind: "area" }>, gmOnly: boolean) {
     const origin = areaOrigin(area.origin, this.state!.scene.grid, area.free);
@@ -2224,10 +2304,13 @@ export class BoardView {
     const touches = (mark: Mark) => path.some((p) => hitMark(mark, p, reach, grid));
     const kept = this.marks.filter((mark) => !touches(mark));
     const measurementHit = this.measurement !== null && touches(this.measurement);
-    // Shared templates: only ones this viewer may remove (their own; any, for the GM).
+    // Shared templates and drawings: only ones this viewer may remove (their own; any, for the GM).
     const you = this.you;
     for (const t of Object.values(this.state?.templates ?? {})) {
       if (you && can.removeTemplate(you, t) && touches(templateMark(t))) this.requestRemove(t);
+    }
+    for (const d of Object.values(this.state?.drawings ?? {})) {
+      if (you && can.removeDrawing(you, d) && touches(drawingMark(d))) this.requestErase(d);
     }
     if (kept.length === this.marks.length && !measurementHit) return;
     this.marks = kept;
@@ -2260,6 +2343,7 @@ export class BoardView {
     if (!this.initialized) return;
     this.marksScale = this.world.scale.x;
     this.drawnTemplates = this.state?.templates ?? null;
+    this.drawnDrawings = this.state?.drawings ?? null;
     const g = this.marksGraphics.clear();
     const clipped = this.clippedGraphics.clear();
     const you = this.you;
@@ -2272,6 +2356,11 @@ export class BoardView {
       this.drawMark(you && !can.editTemplate(you, t) ? clipped : g, templateMark(this.shownTemplate(t)));
     }
     for (const area of this.pendingAreas) this.drawMark(g, area);
+    // Shared drawings, everyone's, above fog and darkness and never clipped (ADR 0064).
+    for (const d of Object.values(this.state?.drawings ?? {})) {
+      if (!this.erasingDrawings.has(d.id)) this.drawMark(g, drawingMark(d));
+    }
+    for (const d of this.pendingDrawings) this.drawMark(g, d);
     for (const mark of this.marks) this.drawMark(g, mark);
     this.drawTemplateHandles(g);
     this.redrawFog();
@@ -3397,7 +3486,7 @@ export class BoardView {
       const last = gesture.path[gesture.path.length - 1]!;
       const step = Math.hypot(gesture.to.x - last.x, gesture.to.y - last.y) * this.world.scale.x;
       const brushing = this.tool.kind === "draw" && this.tool.shape === "brush";
-      if (brushing && step >= BRUSH_STEP_PX && gesture.path.length < MAX_STROKE_POINTS) gesture.path.push(gesture.to);
+      if (brushing && step >= BRUSH_STEP_PX && gesture.path.length < MAX_BRUSH_POINTS) gesture.path.push(gesture.to);
       // Aiming an area: the others see it take shape (KAN-35).
       if (this.tool.kind === "area" && this.state) {
         const area = this.areaFromGesture(gesture, this.tool);
