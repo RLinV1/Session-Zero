@@ -162,7 +162,7 @@ export function planDraftSave(room: Pick<RoomState, "scene" | "walls" | "fog"> &
 const samePortal = (a: Portal | undefined, b: Portal | undefined) => a?.kind === b?.kind && a?.state === b?.state;
 
 /** Whether Save would send anything. */
-export const draftDirty = (room: Pick<RoomState, "scene" | "walls" | "fog"> & Partial<Pick<RoomState, "terrain" | "boardEpoch" | "terrainRevision" | "activeSceneId">>, draft: MapDraft) => room.scene.map?.url === draft.mapUrl && planDraftSave(room, draft).length > 0;
+export const draftDirty = (room: Pick<RoomState, "scene" | "walls" | "fog"> & Partial<Pick<RoomState, "terrain" | "boardEpoch" | "terrainRevision" | "activeSceneId">>, draft: MapDraft) => (draft.sceneId === undefined || draft.sceneId === (room.activeSceneId ?? "initial")) && room.scene.map?.url === draft.mapUrl && planDraftSave(room, draft).length > 0;
 
 type FogAdd = Extract<CommandInput, { type: "fog.add" }>["region"];
 

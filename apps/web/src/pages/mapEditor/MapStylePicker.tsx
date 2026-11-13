@@ -1,3 +1,4 @@
+import { t } from "../../i18n/locale";
 import { Cube, Square } from "@phosphor-icons/react";
 
 export function MapStylePicker({ isometric, onChange, disabled = false }: {
@@ -6,9 +7,9 @@ export function MapStylePicker({ isometric, onChange, disabled = false }: {
   disabled?: boolean;
 }) {
   return <section className="sight-setting">
-    <h3 className="map-editor-heading">Map view</h3>
-    <div className="map-editor-modes" role="radiogroup" aria-label="Map view">
-      {[{ enabled: false, label: "Flat", Icon: Square }, { enabled: true, label: "Isometric", Icon: Cube }].map(({ enabled, label, Icon }) => (
+    <h3 className="map-editor-heading">{t("mapStyle.title")}</h3>
+    <div className="map-editor-modes" role="radiogroup" aria-label={t("mapStyle.title")}>
+      {[{ enabled: false, label: t("mapStyle.flat"), Icon: Square }, { enabled: true, label: t("mapStyle.isometric"), Icon: Cube }].map(({ enabled, label, Icon }) => (
         <button key={label} type="button" role="radio" aria-checked={isometric === enabled}
           className="tool-button map-editor-mode" disabled={disabled}
           tabIndex={isometric === enabled ? 0 : -1}
@@ -24,6 +25,6 @@ export function MapStylePicker({ isometric, onChange, disabled = false }: {
         </button>
       ))}
     </div>
-    <p className="muted small-print">{isometric ? "Outline buildings in the Buildings step, then drag their roofs up to add height." : "Play with the map viewed from above."}</p>
+    <p className="muted small-print">{isometric ? t("mapStyle.isometricHint") : t("mapStyle.flatHint")}</p>
   </section>;
 }

@@ -323,7 +323,7 @@ function MapSection(props: {
     if (!draft || saving) return false;
     const baseline = props.connection.snapshot?.state ?? props.room;
     if (baseline.scene.map?.url !== draft.mapUrl || (baseline.activeSceneId ?? "initial") !== (draft.sceneId ?? props.sceneId)) {
-      setSaveError("The map or scene changed. Your draft has been kept; reopen the intended map before saving.");
+      setSaveError(t("gmMap.changedDraftKept"));
       return false;
     }
     setSaving(true);
@@ -500,7 +500,7 @@ function MapSection(props: {
         const current = props.connection.snapshot?.state;
         const isometric = prep.isometric ?? false;
         if (current && (current.scene.map?.url !== prep.map.url || (current.activeSceneId ?? "initial") !== props.sceneId)) {
-          const message = "Another GM changed the map or scene while applying. Your preparation has been kept; review it before applying again.";
+          const message = t("gmMap.changedDuringApply");
           setPrepError(message); setPendingError(message);
           return false;
         }
@@ -515,14 +515,14 @@ function MapSection(props: {
             if (!result.ok) { setSaveError(result.message); viewSaved = false; break; }
           }
         } catch {
-          setSaveError("Map applied. Save changes to retry saving its view and building heights.");
+          setSaveError(t("gmMap.retryViewSave"));
           viewSaved = false;
         }
         setChangedMapUrl(askPolicy ? prep.map.url : null); setUndoError(null); discardPrep();
         setStep("walls");
         if (!viewSaved) {
           setPending((current) => current?.kind === "map" ? { ...current, kind: "draft" } : current);
-          setPendingError("The map was applied, but its view or building heights still need to be saved. Your draft has been kept.");
+          setPendingError(t("gmMap.viewSavePending"));
           return false;
         }
       }
@@ -619,7 +619,7 @@ function MapSection(props: {
   const editorBuildings = prep ? prep.buildings ?? [] : buildingsForScene(draftState.scene);
   const elevation = isometric ? Math.max(0, ...editorBuildings.map((building) => building.height * setupGrid.cellSize)) : 0;
   const mapBounds = shown ? projectedBounds(shown.width, shown.height, isometric, elevation) : null;
-  const steps: { key: EditorStep; label: TextId | "Buildings" }[] = props.fixedMap ? FIXED_MAP_STEPS : isometric ? [...STEPS, { key: "buildings", label: "Buildings" }] : STEPS;
+  const steps: { key: EditorStep; label: TextId }[] = props.fixedMap ? FIXED_MAP_STEPS : isometric ? [...STEPS, { key: "buildings", label: "editor.step.buildings" }] : STEPS;
   return (
     <PanelSection id="gm-map" title={t("gmMap.battleMap")}>
       <div className="stack">
@@ -683,7 +683,7 @@ function MapSection(props: {
                 className="map-editor-step"
                 onClick={() => requestStep(key)}
               >
-                {t("editor.stepLabel", { n: i + 1, name: label === "Buildings" ? label : t(label) })}
+                {t("editor.stepLabel", { n: i + 1, name: t(label) })}
               </button>
             ))}
             <span ref={setGridActionSlot} hidden={step !== "grid"} style={{ marginLeft: "auto" }} />
@@ -728,7 +728,7 @@ function MapSection(props: {
                       if (prep) setPrep((current) => current ? { ...current, isometric } : current);
                       else setDraft((current) => current ? { ...current, isometric } : current);
                     }} />
-                  {isometric && shown && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>Edit building heights</button>}
+                  {isometric && shown && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>{t("buildings.editHeights")}</button>}
                   <p className="muted">{t("gmMap.uploadHint")}</p>
                   {props.hasLibrary && (
                     <label className="inline" data-guide="map-save-library">
@@ -790,7 +790,7 @@ function MapSection(props: {
                 >
                   <MapStylePicker isometric={prep.isometric ?? false} disabled={applyingMap}
                     onChange={(isometric) => setPrep((current) => current ? { ...current, isometric } : current)} />
-                  {prep.isometric && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>Outline buildings and add height</button>}
+                  {prep.isometric && <button type="button" className="secondary" onClick={() => requestStep("buildings")}>{t("buildings.outlineAndHeight")}</button>}
                   {prep.map.assetId && <label className="checkbox">
                     <input type="checkbox" checked={prep.resetTerrain ?? false} onChange={(e) => setPrep((now) => now ? { ...now, resetTerrain: e.target.checked } : now)} />
                     <span>{t("gmMap.resetTerrain")}</span>

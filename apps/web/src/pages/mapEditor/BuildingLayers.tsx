@@ -1,3 +1,4 @@
+import { t } from "../../i18n/locale";
 import { useId } from "react";
 import type { IsometricBuilding, MapImage } from "@vtt/shared";
 import { buildingGeometry, polygonPoints } from "../../board/buildingGeometry";
@@ -13,7 +14,7 @@ export function BuildingLayers({ map, buildings, cellSize, selected, onKeyHeight
     const clip = `${prefix}-${building.id}`;
     return <g key={building.id} data-building-id={building.id} className="isometric-building"
       role={onKeyHeight ? "button" : undefined} tabIndex={onKeyHeight ? 0 : undefined}
-      aria-label={onKeyHeight ? `${building.name}, height ${building.height} squares. Drag the roof up or down, or use the arrow keys.` : undefined}
+      aria-label={onKeyHeight ? t("buildings.roofAria", { name: building.name, height: building.height }) : undefined}
       onKeyDown={onKeyHeight ? (event) => {
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
           event.preventDefault(); event.stopPropagation(); onKeyHeight(building.id, event.key === "ArrowUp" ? 0.25 : -0.25);
