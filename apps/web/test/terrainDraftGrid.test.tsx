@@ -50,7 +50,7 @@ describe("private terrain across grid editing (FR-GM-15, FR-REC-02)", () => {
     expect(fake.committed().terrain).toBeUndefined();
     expect(screen.getByText(/Unsaved changes/)).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "6 · Terrain" }));
-    expect(screen.getAllByText("×2").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-terrain="difficult"]').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.committed().terrain?.base).toEqual([{ row: 0, start: 0, end: 0, kind: "difficult" }]));
     expect(fake.commands).toHaveLength(1);

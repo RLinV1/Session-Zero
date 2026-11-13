@@ -3,14 +3,16 @@ import type { GridSpec, MapImage, Point, Wall } from "@vtt/shared";
 import { wallAt, wallPoint, type WallMode } from "../../board/tools";
 import { MapCanvas } from "./MapCanvas";
 import { t } from "../../i18n/locale";
+import { hex, MAP_PALETTE } from "../../board/mapPalette";
 
 /** A drawn wall's end joins an existing wall end this close, in screen pixels (wall-editing D2). */
 const JOIN_PX = 12;
 /** Erase picks the wall within this many screen pixels of the click. */
 const PICK_PX = 10;
-/** Portal colours, as on the board (ADR 0030): wood for doors, glass for windows, red lock mark. */
-const PORTAL_COLORS = { door: "#c8873a", window: "#5dade2" } as const;
-const LOCK_COLOR = "#c0392b";
+/** The board's colours (board-palette): green walls, orange doors, blue windows, red lock mark. */
+const PORTAL_COLORS = { door: hex(MAP_PALETTE.door.inner), window: hex(MAP_PALETTE.window.inner) } as const;
+const WALL_COLOR = hex(MAP_PALETTE.wall.inner);
+const LOCK_COLOR = hex(MAP_PALETTE.lock.inner);
 
 export type CanvasMode = WallMode | "select";
 
@@ -102,12 +104,12 @@ export function WallCanvas({ map, grid, walls, mode, onAdd, onRemove, onPortal, 
             <g strokeLinecap="round">
               {Object.values(walls).map((w) => {
                 const hot = erasing?.id === w.id || marking?.id === w.id || selected === w.id;
-                const color = erasing?.id === w.id ? "#e74c3c" : marking?.id === w.id || selected === w.id ? "#ffd166" : w.portal ? PORTAL_COLORS[w.portal.kind] : w.uvttPortal ? "#9b7bd0" : "#f0a24a";
+                const color = erasing?.id === w.id ? "#e74c3c" : marking?.id === w.id || selected === w.id ? "#ffd166" : w.portal ? PORTAL_COLORS[w.portal.kind] : w.uvttPortal ? "#9b7bd0" : WALL_COLOR;
                 // An open portal is drawn dashed, a locked one with a lock mark (ADR 0030).
                 const dash = (w.portal ? w.portal.state === "open" : w.uvttPortal?.closed === false) ? `${10 * px} ${6 * px}` : undefined;
                 return (
                   <g key={w.id} data-portal={w.portal ? `${w.portal.state} ${w.portal.kind}` : undefined}>
-                    <line x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} stroke="#111" strokeOpacity={0.8} strokeWidth={(w.portal ? 9 : 7) * px} strokeDasharray={dash} />
+                    <line x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} stroke={hex(w.portal ? MAP_PALETTE[w.portal.kind].outer : MAP_PALETTE.wall.outer)} strokeOpacity={0.85} strokeWidth={(w.portal ? 9 : 7) * px} strokeDasharray={dash} />
                     <line x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} stroke={color} strokeWidth={(hot ? 6 : w.portal ? 5 : 3.5) * px} strokeDasharray={dash} />
                     {w.portal?.state === "locked" && (
                       <circle cx={(w.a.x + w.b.x) / 2} cy={(w.a.y + w.b.y) / 2} r={5 * px} fill={LOCK_COLOR} stroke="#111" strokeWidth={1.5 * px} />

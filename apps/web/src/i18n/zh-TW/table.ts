@@ -300,4 +300,11 @@ export const tableZhTW = {
   "share.ai.copyFailed": "無法複製，請手動選取這段訊息並複製。",
   "share.ai.giveToken": "AI 加入後，指派一枚棋子給它",
   "share.ai.giveTokenHint": "開啟棋子編輯器，將「控制者」設為你的 AI。要讓它離開遊戲桌，操作方式和移除其他玩家相同。",
+  "rail.terrain": "地形",
+  "rail.terrainOptions": "地形選項",
+  "rail.doors": "門窗",
+  "rail.doorsOptions": "門窗選項",
+  "rail.doorsMode": "按一下的動作",
+  "rail.doorsToggle": "開啟／關閉",
+  "rail.doorsLock": "上鎖／解鎖",
 } satisfies Catalog<typeof table>;

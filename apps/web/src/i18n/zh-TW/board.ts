@@ -24,7 +24,6 @@ export const boardZhTW = {
   "board.cursorEdge": ({ name, square }) => cjk`${name}位於${square}，已到達地圖邊界。`,
   "board.placingAria": ({ name }) => cjk`棋盤。正在放置${name}：使用方向鍵移動位置，按 Enter 放置一枚棋子，完成後按 Esc。`,
   "board.options": "棋盤選項",
-  "board.paintTerrain": "編輯地形",
   "board.fitScreen": "地圖適應畫面",
   "board.viewFilters": "顯示項目",
   "board.fitTitle": "將整張地圖縮放至畫面內",
@@ -86,4 +85,7 @@ export const boardZhTW = {
   "board.missSplash": "未命中",
   "card.details": ({ name }) => cjk`${name}的詳細資料`,
   "card.noneLower": "無",
+  "board.hint.terrain": "拖曳塗上地形格 · 所有玩家都看得到地形 · Esc 或滑鼠右鍵取消",
+  "board.hint.doors": "按一下門或窗以改變狀態 · Esc 結束",
+  "card.quickHp": "快速調整 HP",
 } satisfies Catalog<typeof board>;

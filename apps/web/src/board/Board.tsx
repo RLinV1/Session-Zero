@@ -1,11 +1,9 @@
-import { TerrainSetup } from "../pages/mapEditor/TerrainSetup";
-import { Modal } from "../ui/Modal";
 import { MovementControls, useRulerMode } from "./MovementControls";
 import { slidePointsFor } from "./slidePoints";
 import { REPLAY_SLIDE_MARGIN_MS } from "./tokenSlide";
 import { REPLAY_STEP_MS } from "../ui/replaySteps";
 import { movementReadout } from "./movementRuler";
-import { CornersOut, Eye, Funnel, PaintBrush, SlidersHorizontal } from "@phosphor-icons/react";
+import { CornersOut, Eye, Funnel, SlidersHorizontal } from "@phosphor-icons/react";
 import { PopoverButton } from "../ui/Popover";
 import { usePhone } from "../ui/usePhone";
 import { Suspense, forwardRef, lazy, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
@@ -29,7 +27,7 @@ import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiv
 import type { OverlayEffect } from "./EffectsOverlay";
 import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type BoardThrow, type BoardTransform } from "./diceThrow";
 import { cursorSquare, moveCursor, placementCommand, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
-import type { BoardTool, MeasureMode } from "./tools";
+import { doorsTarget, type BoardTool, type MeasureMode } from "./tools";
 import { TokenCard } from "./TokenCard";
 import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../ui/MoveControl";
 
@@ -147,6 +145,8 @@ const HINTS: Record<BoardTool["kind"], TextId | null> = {
   attack: "board.hint.attack",
   pickTemplate: "board.hint.pickTemplate",
   fog: null,
+  terrain: "board.hint.terrain",
+  doors: "board.hint.doors",
 };
 
 /** Measure hints by mode (ruler-modes). */
@@ -183,8 +183,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const locale = useLocale();
   useEffect(() => { viewRef.current?.refreshText(); }, [locale]);
   /** GM only: "off" hides fog from this view. Not remembered: every time the board opens, fog is shown. */
-  const [terrainOpen, setTerrainOpen] = useState(false);
-  const [showTerrain, setShowTerrain] = useState(false);
+  /** GM only: whether this browser draws terrain. On by default; players always see it (board-view-filters). */
+  const [showTerrain, setShowTerrain] = useState(true);
   const [noMapNotice, setNoMapNotice] = useState(false);
   const [movementNotice, setMovementNotice] = useState<string | null>(null);
   const [repositionId, setRepositionId] = useState<string | null>(null);
@@ -192,8 +192,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const [gmFog, setGmFog] = useState<GmFogView>("tint");
   /** GM only: whether this browser draws the walls. Players never receive them. */
   const [showWalls, setShowWalls] = usePersistentState<boolean>("vtt.ui.gmShowWalls", true, (v): v is boolean => typeof v === "boolean");
-  /** GM only: whether this browser draws doors and windows. Players always see the ones they can reach. */
-  const [showPortals, setShowPortals] = usePersistentState<boolean>("vtt.ui.gmShowPortals", true, (v): v is boolean => typeof v === "boolean");
+  /**
+   * GM only: whether this board draws doors and windows. Not remembered: every time the board opens they
+   * are shown (board-view-filters). Players always see the ones they can reach.
+   */
+  const [showPortals, setShowPortals] = useState(true);
   /** GM only: darken this browser's board to what the selected token sees (gm-token-sight-view). View-only, nothing is sent. */
   const [tokenView, setTokenView] = useState(false);
   /** Narrows Token view to these tokens (set only by a card's eye); empty means every token on the map. */
@@ -219,7 +222,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   // The committed seq of `state` when it is the live room's, so the board knows when an edit it sent has landed.
   const live = connection.snapshot as RoomConnection["snapshot"] | undefined; // absent on test doubles
   const shownSeq = live && state === live.state ? live.seq : null;
-  const latest = useRef({ shownSeq, tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: false, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
+  const latest = useRef({ shownSeq, tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: true, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
   latest.current = { shownSeq, tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
   // Sends nothing while previewing as a player, whatever the board is asked to do. Stable for as
   // long as the connection is, so entering and leaving a preview never rebuilds the board view.
@@ -251,6 +254,14 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   latest.current.viewing = viewing;
   useEffect(() => viewRef.current?.setViewedTokens(viewing), [viewing.join(",")]);
   const [tool, setTool] = useState<BoardTool>({ kind: "select" });
+  // What the board draws: Show is the GM's own view; players always see terrain (board-view-filters),
+  // and the Terrain tool shows what it paints without changing Show (board-terrain-tool).
+  const drawTerrain = you.role !== "gm" || showTerrain || tool.kind === "terrain";
+  // The Doors tool shows every portal and dims plain walls, without changing Show (board-doors-tool).
+  const drawPortals = showPortals || tool.kind === "doors";
+  const wallsDimmed = tool.kind === "doors";
+  latest.current.showTerrain = drawTerrain;
+  latest.current.showPortals = drawPortals;
   // The ruler's mode is remembered in this browser (ruler-modes); the other options last the visit.
   const [measureMode, setMeasureMode] = useRulerMode();
   const [otherToolOptions, setToolOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS);
@@ -315,7 +326,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }, []);
   useEffect(() => { if (repositionId && repositionId !== selectedId) { setRepositionId(null); repositionRef.current = null; } }, [selectedId, repositionId]);
   useEffect(() => { setMovementNotice(null); }, [selectedId, readOnly, you.id]);
-  useEffect(() => { viewRef.current?.setShowTerrain(showTerrain); }, [showTerrain]);
+  useEffect(() => { viewRef.current?.setShowTerrain(drawTerrain); }, [drawTerrain]);
   useEffect(() => { viewRef.current?.setRepositionToken(repositionId); }, [repositionId]);
   const ghost = useMemo<PlacementGhost | null>(
     () => source && (source.kind === "create" ? ghostOf(source.draft) : source.ghost),
@@ -439,6 +450,23 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         const result = await guarded.command({ type: "fog.add", region });
         if (!result.ok) console.warn("Fog rejected:", result.message);
         return result.ok;
+      },
+      paintTerrain: async (layerId, paint, context) => {
+        const result = await guarded.command({ type: "terrain.paint", layerId, paint, context });
+        if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
+        return result.ok;
+      },
+      setPortal: (wallId, mode) => {
+        const current = latest.current.state;
+        const portal = current.walls[wallId]?.portal;
+        if (!portal || latest.current.you.role !== "gm") return;
+        void guarded.command({ type: "portal.setState", wallId, state: doorsTarget(mode, portal.state), expectedSceneId: current.activeSceneId ?? INITIAL_SCENE_ID }).then((result) => {
+          if (!result.ok && result.code !== "offline") setRefusal({ message: result.message, at: Date.now() });
+        });
+      },
+      terrainNotice: (problem) => {
+        if (problem === "needsMap") setNoMapNotice(true);
+        else setRefusal({ message: t(problem === "rectTooBig" ? "terrain.rectTooBig" : "terrain.strokeTooBig"), at: Date.now() });
       },
       removeFog: async (regionId) => {
         const result = await guarded.command({ type: "fog.remove", regionId });
@@ -599,8 +627,9 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
 
   useEffect(() => {
     viewRef.current?.setShowWalls(showWalls);
-    viewRef.current?.setShowPortals(showPortals);
-  }, [showWalls, showPortals]);
+    viewRef.current?.setShowPortals(drawPortals);
+  }, [showWalls, drawPortals]);
+  useEffect(() => { viewRef.current?.setWallsDimmed(wallsDimmed); }, [wallsDimmed]);
 
   useEffect(() => {
     viewRef.current?.setGmFogView(gmFog);
@@ -680,6 +709,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       if (toolRef.current.kind === "measure" && e.key === "Backspace" && viewRef.current?.dropRoutePoint()) return e.preventDefault();
       if (e.key !== "Escape") return;
       if (viewRef.current?.cancelFogPolygon()) return;
+      if (toolRef.current.kind === "terrain" && viewRef.current?.cancelTerrainStroke()) return;
       if (toolRef.current.kind === "measure" && viewRef.current?.cancelRoute()) return;
       if (toolRef.current.kind === "attack") endAttack();
       else setTool({ kind: "select" });
@@ -806,12 +836,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   }), []);
 
   const phone = usePhone();
-  const canPaint = you.role === "gm" && !readOnly && !selectOnly;
   const filters = (inline: boolean) => (
     <BoardFilters
       inline={inline}
       value={{ fog: gmFog !== "off", walls: showWalls, portals: showPortals, terrain: showTerrain }}
-      available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: true }}
+      available={{ fog: you.role === "gm" && hasFog, walls: you.role === "gm" && hasWalls, portals: you.role === "gm" && hasPortals, terrain: you.role === "gm" }}
       sight={gmCanSee && losOn ? {
         checked: tokenView,
         onChange: (on) => { setEyeStarted(false); setTokenView(on); setViewedIds([]); },
@@ -845,28 +874,25 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
         {toolbar}
         {phone ? (
           <>
-          {/* Two 44px buttons on a phone: board options (Paint terrain, Fit) and, separately, the view filter. */}
+          {/* Two 44px buttons on a phone: board options (Fit) and, separately, the GM's view filter. */}
           <PopoverButton label={t("board.options")} title={t("board.options")} className="tool-button board-menu-button" buttonContent={<SlidersHorizontal size={18} aria-hidden="true" />}>
             {(close) => (
               <div className="room-menu">
-                {canPaint && (
-                  <button type="button" className="tool-button" onClick={() => { close(); if (state.scene.map) setTerrainOpen(true); else setNoMapNotice(true); }}>
-                    <PaintBrush size={16} aria-hidden="true" /> {t("board.paintTerrain")}
-                  </button>
-                )}
                 <button type="button" className="tool-button" data-tour="fit" onClick={() => { close(); viewRef.current?.resetView(); }}>
                   <CornersOut size={16} aria-hidden="true" /> {t("board.fitScreen")}
                 </button>
               </div>
             )}
           </PopoverButton>
+          {/* Show is the GM's own view; players always see terrain and get no Show control (board-view-filters). */}
+          {you.role === "gm" && (
           <PopoverButton label={t("board.viewFilters")} title={t("board.viewFilters")} placement="fixed" className="tool-button board-menu-button" buttonContent={<Funnel size={18} aria-hidden="true" />}>
             <div className="room-menu">{filters(true)}</div>
           </PopoverButton>
+          )}
           </>
         ) : (
           <>
-            {canPaint && <button type="button" className="tool-button" onClick={() => (state.scene.map ? setTerrainOpen(true) : setNoMapNotice(true))}>{t("board.paintTerrain")}</button>}
             <button type="button" className="tool-button" data-tour="fit" onClick={() => viewRef.current?.resetView()} title={t("board.fitTitle")}>
               <CornersOut size={16} aria-hidden="true" />
               {t("common.fit")}
@@ -914,7 +940,6 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {notices}
       {noMapNotice && !state.scene.map && <p className="board-movement-readout" role="status">{t("board.addMapFirst")}</p>}
       {movementNotice && !selected && !readOnly && <p className="board-movement-readout" role="status">{movementNotice}</p>}
-      {terrainOpen && you.role === "gm" && !readOnly && <Modal open title={t("terrain.live")} className="map-editor" onClose={() => setTerrainOpen(false)}><div className="map-editor-body"><TerrainSetup connection={connection} state={state} live layers /></div></Modal>}
       {refusal && <p key={refusal.at} className="board-refusal" role="alert">{refusal.message}</p>}
       {selected && (
         <TokenCard
@@ -929,6 +954,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
           onDelete={() => deleteToken(selected.id)}
           onMove={(to) => moveToken(selected.id, to)}
           movementReadout={movementNotice}
+          onSetStats={(stats) => guarded.command({ type: "token.setStats", tokenId: selected.id, stats })}
           reposition={you.role === "gm" && !readOnly ? { on: repositionId === selected.id, toggle: () => setRepositionId((id) => id === selected.id ? null : selected.id) } : undefined}
           sight={gmCanSee && losOn ? (() => {
             const on = tokenView && viewedIds.includes(selected.id);

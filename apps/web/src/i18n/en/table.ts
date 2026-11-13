@@ -303,4 +303,11 @@ export const table = {
   "share.ai.copyFailed": "Couldn't copy. Select this message and copy it yourself.",
   "share.ai.giveToken": "Once it has joined, give it a token",
   "share.ai.giveTokenHint": "Open the token's editor and set Controlled by to your AI. Remove it from the table like any other player.",
+  "rail.terrain": "Terrain",
+  "rail.terrainOptions": "Terrain options",
+  "rail.doors": "Doors",
+  "rail.doorsOptions": "Door options",
+  "rail.doorsMode": "What a click does",
+  "rail.doorsToggle": "Open / close",
+  "rail.doorsLock": "Lock / unlock",
 } as const satisfies CatalogSource;

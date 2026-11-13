@@ -11,36 +11,15 @@ import { stubMapEditorEnvironment, fakeConnection, room, drag } from "./mapEdito
 beforeEach(stubMapEditorEnvironment);
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("terrain tools and mover ruler (FR-TAC-03, FR-GM-15/23)", () => {
-  it("creates a layer from the plus button and caps at 32 (FR-TAC-03)", async () => {
-    const { connection, commands } = fakeConnection();
-    const { rerender } = render(<TerrainSetup connection={connection} state={room()} live />);
-    expect(screen.queryByLabelText("New layer name")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Add layer" }));
-    const input = screen.getByLabelText("New layer name");
-    fireEvent.change(input, { target: { value: "Ice" } }); fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(commands).toEqual([expect.objectContaining({ type: "terrain.effect.create", name: "Ice" })]));
-    await waitFor(() => expect(screen.queryByLabelText("New layer name")).toBeNull());
-    const effects = Array.from({ length: 32 }, (_, i) => ({ id: `e${i}`, name: `L${i}`, runs: [] }));
-    rerender(<TerrainSetup connection={connection} state={{ ...room(), terrain: { base: [], effects } }} live />);
-    expect((screen.getByRole("button", { name: "Add layer" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-  it("focuses the new layer name input when + is clicked in a live room (FR-TAC-03)", () => {
-    const { connection } = fakeConnection();
-    render(<TerrainSetup connection={connection} state={room()} live />);
-    fireEvent.click(screen.getByRole("button", { name: "Add layer" }));
-    expect(document.activeElement).toBe(screen.getByLabelText("New layer name"));
-  });
-  it("hides Add layer in the library editor and says why, instead of a dead button (FR-TAC-03)", () => {
-    const { connection } = fakeConnection();
-    render(<TerrainSetup connection={connection} state={room()} />);
-    expect(screen.queryByRole("button", { name: "Add layer" })).toBeNull();
-    expect(screen.getByText(/Layers are for room maps/)).toBeTruthy();
-  });
-  it("offers Add layer in a room map-editor draft (FR-TAC-03)", () => {
-    const { connection } = fakeConnection();
-    render(<TerrainSetup connection={connection} state={room()} layers />);
-    expect(screen.getByRole("button", { name: "Add layer" })).toBeTruthy();
-    expect(screen.queryByText(/Layers are for room maps/)).toBeNull();
+  it("offers no terrain layers: no Add layer, no layer list, in rooms and the library (board-terrain-tool)", () => {
+    for (const live of [true, false]) {
+      const { connection } = fakeConnection();
+      const view = render(<TerrainSetup connection={connection} state={room()} live={live} />);
+      expect(screen.queryByRole("button", { name: "Add layer" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Layers" })).toBeNull();
+      expect(screen.queryByText(/Layers are for room maps/)).toBeNull();
+      view.unmount();
+    }
   });
   it("keeps a fixed popover fully inside the window", () => {
     const view = { innerWidth: 400, innerHeight: 300 }, panel = { width: 256, height: 120 };

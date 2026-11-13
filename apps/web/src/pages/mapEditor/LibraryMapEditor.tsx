@@ -161,7 +161,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {step !== "grid" && !loadError && !state && <p className="muted">{t("common.loading")}</p>}
         {step === "walls" && state && <WallSetup connection={connection} state={state} token="" detection={false} />}
         {step === "fog" && state && <FogSetup connection={connection} state={state} />}
-        {step === "terrain" && state && <TerrainSetup connection={connection} state={state} layers={false} />}
+        {step === "terrain" && state && <TerrainSetup connection={connection} state={state} />}
         </GuideStepContext.Provider>
       </div></div>}
     </Modal>

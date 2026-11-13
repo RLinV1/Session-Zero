@@ -1,4 +1,7 @@
-import { effectiveTerrain, emptyTerrain, cellRect, type TerrainRun, conditionAbbr } from "@vtt/shared";
+import { effectiveTerrain, emptyTerrain, cellAt, cellRect, type PaintRun, type TerrainRun, conditionAbbr } from "@vtt/shared";
+import { MAP_PALETTE, terrainColour, terrainHatch } from "./mapPalette";
+import type { DoorsMode } from "./tools";
+import { extendStroke, startStroke, strokePaint, strokeRuns, type TerrainContext, type TerrainStroke } from "./terrainStroke";
 import { plainWallLines } from "./wallLines";
 import { slideDistance, slideDuration } from "./tokenSlide";
 import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
@@ -151,6 +154,12 @@ export interface BoardCallbacks {
    * Shift was held. The server decides what the viewer may do.
    */
   togglePortal(wallId: string, lock: boolean): void;
+  /** GM: paint a terrain stroke (board-terrain-tool). Resolves false if the server refused it. */
+  paintTerrain?(layerId: string, paint: PaintRun[], context: TerrainContext): Promise<boolean>;
+  /** GM: why a terrain stroke cannot be painted. */
+  terrainNotice?(problem: "needsMap" | "rectTooBig" | "strokeTooBig"): void;
+  /** GM: a Doors-tool click on a door or window (board-doors-tool). */
+  setPortal?(wallId: string, mode: DoorsMode): void;
 }
 
 const MIN_ZOOM = 0.1;
@@ -177,10 +186,6 @@ const FOG_EDGE_ALPHA = 0.45;
 const FOG_EDGE = 0x9fb3c8;
 /** How close (screen pixels) a click has to come to a door or window to use it (ADR 0030). */
 const PORTAL_REACH_PX = 10;
-/** Portal colours by kind: wood for doors, glass for windows. Locked ones get a red lock mark. */
-const DOOR_COLOR = 0xc8873a;
-const WINDOW_COLOR = 0x5dade2;
-const LOCK_COLOR = 0xc0392b;
 /** The thinnest a door or window is drawn, in screen pixels, however far the board is zoomed out. */
 const PORTAL_MIN_PX = 6;
 /** How close (screen pixels) the eraser has to come to a line to erase it. */
@@ -260,6 +265,15 @@ const TOOL_CURSORS = {
       outlined("M5 1v8M1 5h8"),
     5, 5,
   ),
+  // A crosshair over a violet terrain square (board-terrain-tool).
+  terrain: svgCursor(
+    "<rect x='9' y='9' width='13' height='13' rx='1' fill='rgba(164,108,240,0.45)' stroke='#160d24' stroke-width='2.5'/>" +
+      "<rect x='9' y='9' width='13' height='13' rx='1' fill='none' stroke='#a46cf0' stroke-width='1.2'/>" +
+      outlined("M5 1v8M1 5h8"),
+    5, 5,
+  ),
+  // Picking a door or window to change (board-doors-tool).
+  doors: "pointer",
   // Picking a template's tokens (ADR 0046).
   pickTemplate: "crosshair",
   // A red reticle, aimed from its centre.
@@ -500,6 +514,12 @@ export class BoardView {
   private movementTokenSize = 1;
   /** A Measure/Draw/Area/Eraser drag in progress, in board coordinates. */
   private gesture: { from: Point; to: Point; screenFrom: Point; free: boolean; dragged: boolean; path: Point[]; tokenSize?: number } | null = null;
+  /** The Terrain tool's stroke being dragged (board-terrain-tool). */
+  private terrainStroke: TerrainStroke | null = null;
+  /** The door or window under the pointer while the Doors tool is active (board-doors-tool). */
+  private hoveredPortalId: string | null = null;
+  /** Strokes sent and not yet answered: drawn until the room's terrain shows them. */
+  private pendingTerrain: { runs: TerrainRun[]; erase: boolean }[] = [];
   /** Zoom the marks were last drawn at; stroke widths are divided by it. NaN forces a redraw. */
   private marksScale = Number.NaN;
   /** Moves sent but not yet reflected in state, so tokens don't snap back while waiting. */
@@ -988,22 +1008,25 @@ export class BoardView {
     const terrain = state.terrain ?? emptyTerrain();
     const runs = this.you?.role === "gm" ? effectiveTerrain(terrain) : state.terrainView?.runs ?? [];
     const temporary = this.you?.role === "gm" ? effectiveTerrain({ base: [], effects: terrain.effects }) : state.terrainView?.temporary ?? [];
+    const s = state.scene.grid.cellSize;
     const draw = (list: TerrainRun[], marker: boolean) => {
       for (const run of list) for (let col = run.start; col <= run.end; col++) {
-        const r = cellRect(col, run.row, state.scene.grid), s = state.scene.grid.cellSize;
-        const color = run.kind === "blocked" ? 0xc36d74 : 0xd5aa56;
-        if (marker) g.rect(r.minX + .73 * s, r.minY + .05 * s, .2 * s, .2 * s).fill({ color, alpha: .95 }).stroke({ color: 0xffffff, alpha: .8, width: s / 50 });
-        else {
-          g.rect(r.minX, r.minY, s, s).fill({ color, alpha: .17 });
-          if (run.kind === "blocked") {
-            for (let i = 0; i < 4; i++) { const step = i * s / 4; g.moveTo(r.minX + step, r.minY).lineTo(r.maxX, r.maxY - step); g.moveTo(r.minX, r.minY + step).lineTo(r.maxX - step, r.maxY); }
-            g.stroke({ color, alpha: .45, width: s / 70 });
-            g.circle(r.minX + s / 2, r.minY + s / 2, s * .13).moveTo(r.minX + s * .41, r.minY + s * .59).lineTo(r.minX + s * .59, r.minY + s * .41).stroke({ color, alpha: .9, width: s / 40 });
-          } else {
-            g.moveTo(r.minX + s * .38, r.minY + s * .4).lineTo(r.minX + s * .48, r.minY + s * .6).moveTo(r.minX + s * .48, r.minY + s * .4).lineTo(r.minX + s * .38, r.minY + s * .6).stroke({ color, width: s / 30 });
-            g.moveTo(r.minX + s * .54, r.minY + s * .4).lineTo(r.minX + s * .64, r.minY + s * .4).lineTo(r.minX + s * .64, r.minY + s * .5).lineTo(r.minX + s * .54, r.minY + s * .5).lineTo(r.minX + s * .54, r.minY + s * .6).lineTo(r.minX + s * .64, r.minY + s * .6).stroke({ color, width: s / 30 });
-          }
+        const r = cellRect(col, run.row, state.scene.grid);
+        const colour = terrainColour(run.kind);
+        if (marker) {
+          // An extra layer's corner marker, two-tone.
+          g.rect(r.minX + .73 * s, r.minY + .05 * s, .2 * s, .2 * s).fill({ color: colour.inner, alpha: .95 }).stroke({ color: colour.outer, alpha: .9, width: s / 35 });
+          continue;
         }
+        // Two-tone, so the square reads on light and dark maps alike (board-palette).
+        const inset = s / 60;
+        g.rect(r.minX, r.minY, s, s).fill({ color: colour.inner, alpha: .22 });
+        // Difficult: single hatching; Blocked: crosshatching. Two-tone, no glyphs, under the border (board-palette).
+        const hatch = () => { for (const [p, q] of terrainHatch(run.kind, s)) g.moveTo(r.minX + p.x, r.minY + p.y).lineTo(r.minX + q.x, r.minY + q.y); };
+        hatch(); g.stroke({ color: colour.outer, alpha: .5, width: s / 30 });
+        hatch(); g.stroke({ color: colour.inner, alpha: .85, width: s / 60 });
+        g.rect(r.minX + inset, r.minY + inset, s - 2 * inset, s - 2 * inset).stroke({ color: colour.outer, alpha: .85, width: s / 30 });
+        g.rect(r.minX + inset * 2.5, r.minY + inset * 2.5, s - 5 * inset, s - 5 * inset).stroke({ color: colour.inner, alpha: .95, width: s / 60 });
       }
     };
     if (this.showTerrain) draw(runs, false);
@@ -1135,7 +1158,7 @@ export class BoardView {
           g.moveTo(a.x, a.y).lineTo(start.x, start.y).moveTo(end.x, end.y).lineTo(b.x, b.y);
         } else g.moveTo(a.x, a.y).lineTo(b.x, b.y);
       }
-      g.stroke({ width: width + 3, color: 0x14110e, alpha: 0.55, cap: "round", join: "round" });
+      g.stroke({ width: width + 3, color: MAP_PALETTE.wall.outer, alpha: 0.85, cap: "round", join: "round" });
       for (const wall of plain) {
         const { a, b } = wall;
         if (wall.uvttPortal?.closed === false) {
@@ -1144,7 +1167,7 @@ export class BoardView {
           g.moveTo(a.x, a.y).lineTo(start.x, start.y).moveTo(end.x, end.y).lineTo(b.x, b.y);
         } else g.moveTo(a.x, a.y).lineTo(b.x, b.y);
       }
-      g.stroke({ width, color: 0xf0a24a, alpha: 0.95, cap: "round", join: "round" });
+      g.stroke({ width, color: MAP_PALETTE.wall.inner, alpha: 0.95, cap: "round", join: "round" });
     }
     this.drawPortals();
   }
@@ -1160,26 +1183,60 @@ export class BoardView {
     if (!state) return;
     const px = 1 / this.world.scale.x;
     const width = Math.max(state.scene.grid.cellSize * 0.2, PORTAL_MIN_PX * px);
+    const cell = state.scene.grid.cellSize;
+    // A tick across each jamb, about a third of a cell long, tells a door from a wall by shape too.
+    const tickHalf = Math.max(cell * 0.175, width * 0.9);
+    const tickWidth = Math.max(width * 0.35, 3 * px);
+    const outline = 3 * px;
     for (const wall of Object.values(state.walls)) {
       if (!wall.portal) continue;
-      const color = wall.portal.kind === "door" ? DOOR_COLOR : WINDOW_COLOR;
+      const colour = wall.portal.kind === "door" ? MAP_PALETTE.door : MAP_PALETTE.window;
       const { a, b } = wall;
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      if (length === 0) continue;
       const along = (t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      const normal = { x: -(b.y - a.y) / length, y: (b.x - a.x) / length };
       const pieces: [Point, Point][] = wall.portal.state === "open" ? [[a, along(0.2)], [along(0.8), b]] : [[a, b]];
-      for (const [p, q] of pieces) g.moveTo(p.x, p.y).lineTo(q.x, q.y);
-      g.stroke({ width: width + 3 * px, color: 0x111111, alpha: 0.85, cap: "butt" });
-      for (const [p, q] of pieces) g.moveTo(p.x, p.y).lineTo(q.x, q.y);
-      g.stroke({ width, color, alpha: 1, cap: "butt" });
-      if (wall.portal.state === "locked") {
-        const mid = along(0.5);
-        g.circle(mid.x, mid.y, width * 0.8).fill({ color: LOCK_COLOR }).stroke({ width: 2 * px, color: 0x111111 });
+      const ticks: [Point, Point][] = [a, b].map((p) => [
+        { x: p.x - normal.x * tickHalf, y: p.y - normal.y * tickHalf },
+        { x: p.x + normal.x * tickHalf, y: p.y + normal.y * tickHalf },
+      ]);
+      const path = (segments: [Point, Point][]) => { for (const [p, q] of segments) g.moveTo(p.x, p.y).lineTo(q.x, q.y); };
+      if (wall.id === this.hoveredPortalId) {
+        // The Doors tool's hover: a white glow round the whole portal (board-doors-tool).
+        path([[a, b], ...ticks]);
+        g.stroke({ width: width + 10 * px, color: 0xffffff, alpha: 0.55, cap: "round" });
       }
+      // Two-tone: the dark outline first, then the colour on top (board-palette).
+      path(pieces);
+      g.stroke({ width: width + outline, color: colour.outer, alpha: 0.9, cap: "butt" });
+      path(ticks);
+      g.stroke({ width: tickWidth + outline, color: colour.outer, alpha: 0.9, cap: "butt" });
+      path(pieces);
+      g.stroke({ width, color: colour.inner, alpha: 1, cap: "butt" });
+      path(ticks);
+      g.stroke({ width: tickWidth, color: colour.inner, alpha: 1, cap: "butt" });
+      if (wall.portal.state === "locked") this.drawPadlock(g, along(0.5), width, px);
     }
+  }
+
+  /** A small upright padlock: a body and a shackle, red on a dark outline (portals). */
+  private drawPadlock(g: Graphics, at: Point, portalWidth: number, px: number) {
+    const lock = MAP_PALETTE.lock;
+    const w = portalWidth * 1.5, h = portalWidth * 1.2;
+    const top = at.y - h * 0.25;
+    const shackleR = w * 0.3, shackleW = Math.max(w * 0.16, 2 * px);
+    g.moveTo(at.x - shackleR, top).arc(at.x, top, shackleR, Math.PI, 0);
+    g.stroke({ width: shackleW + 3 * px, color: lock.outer });
+    g.moveTo(at.x - shackleR, top).arc(at.x, top, shackleR, Math.PI, 0);
+    g.stroke({ width: shackleW, color: lock.inner });
+    g.roundRect(at.x - w / 2, top, w, h, w * 0.15).fill({ color: lock.inner }).stroke({ width: 2 * px, color: lock.outer });
+    g.circle(at.x, top + h * 0.45, Math.max(w * 0.1, px)).fill({ color: lock.outer });
   }
 
   /** The door or window under a screen point, while the Select tool is free to use one (ADR 0030). */
   private portalUnder(global: Point): RoomState["walls"][string] | null {
-    if (!this.state || this.readOnly || this.placement || this.tool.kind !== "select") return null;
+    if (!this.state || this.readOnly || this.placement || (this.tool.kind !== "select" && this.tool.kind !== "doors")) return null;
     return portalAt(this.state.walls, this.toBoard(global), PORTAL_REACH_PX / this.world.scale.x);
   }
 
@@ -1199,6 +1256,14 @@ export class BoardView {
   setShowWalls(show: boolean) {
     if (this.wallGraphics.visible === show) return;
     this.wallGraphics.visible = show;
+    if (this.initialized) this.invalidate();
+  }
+
+  /** GM only: dim plain walls so doors and windows stand out (board-doors-tool). */
+  setWallsDimmed(dim: boolean) {
+    const alpha = dim ? 0.35 : 1;
+    if (this.wallGraphics.alpha === alpha) return;
+    this.wallGraphics.alpha = alpha;
     if (this.initialized) this.invalidate();
   }
 
@@ -1425,6 +1490,8 @@ export class BoardView {
       this.fogPoints = [];
       this.fogHover = null;
       this.routeHover = null;
+      this.terrainStroke = null;
+      if (this.hoveredPortalId) { this.hoveredPortalId = null; this.drawPortals(); }
     }
     this.attackHover = null;
     this.tool = tool;
@@ -1762,6 +1829,65 @@ export class BoardView {
       this.redrawMarks();
     };
     this.callbacks.addFog(region).then(done, done);
+  }
+
+  // ---------- Terrain tool (board-terrain-tool) ----------
+
+  private beginTerrainStroke(at: Point) {
+    const tool = this.tool, state = this.state;
+    if (tool.kind !== "terrain" || !state) return;
+    if (!state.scene.map) return this.callbacks.terrainNotice?.("needsMap");
+    const cell = cellAt(at, state.scene.grid);
+    // The Terrain tool paints Base only; extra layers are not offered (board-terrain-tool).
+    this.terrainStroke = startStroke(cell, tool.paint, "base", { boardEpoch: state.boardEpoch ?? 0, revision: state.terrainRevision ?? 0 });
+    this.extendTerrainStroke(at);
+  }
+
+  private extendTerrainStroke(at: Point) {
+    const stroke = this.terrainStroke, tool = this.tool, state = this.state;
+    if (!stroke || tool.kind !== "terrain" || !state?.scene.map) return;
+    const cell = cellAt(at, state.scene.grid);
+    if (stroke.cells.size > 0 && cell.col === stroke.to.col && cell.row === stroke.to.row) return;
+    const problem = extendStroke(stroke, cell, { shape: tool.shape, paint: tool.paint, grid: state.scene.grid, map: state.scene.map });
+    if (problem) this.callbacks.terrainNotice?.(problem);
+    this.redrawOverlay();
+  }
+
+  private finishTerrainStroke() {
+    const stroke = this.terrainStroke;
+    this.terrainStroke = null;
+    const paint = stroke ? strokePaint(stroke) : [];
+    if (!stroke || paint.length === 0 || !this.callbacks.paintTerrain) return this.redrawOverlay();
+    const pending = { runs: strokeRuns(stroke), erase: stroke.erase };
+    this.pendingTerrain.push(pending);
+    const done = () => {
+      this.pendingTerrain = this.pendingTerrain.filter((p) => p !== pending);
+      this.redrawOverlay();
+    };
+    this.callbacks.paintTerrain(stroke.layerId, paint, stroke.context).then(done, done);
+    this.redrawOverlay();
+  }
+
+  /** Escape or right-click: drop the stroke being dragged. False when there is none, so Escape can leave the tool. */
+  cancelTerrainStroke(): boolean {
+    if (!this.terrainStroke) return false;
+    this.terrainStroke = null;
+    this.redrawOverlay();
+    return true;
+  }
+
+  /** The stroke being dragged and the ones awaiting an answer, in the paint's colour or white for erasing. */
+  private drawTerrainDraft(g: Graphics) {
+    const state = this.state;
+    if (!state) return;
+    const s = state.scene.grid.cellSize, px = 1 / this.world.scale.x;
+    const drafts = [...this.pendingTerrain];
+    if (this.terrainStroke) drafts.push({ runs: strokeRuns(this.terrainStroke), erase: this.terrainStroke.erase });
+    for (const draft of drafts) for (const run of draft.runs) for (let col = run.start; col <= run.end; col++) {
+      const r = cellRect(col, run.row, state.scene.grid);
+      const colour = draft.erase ? { inner: 0xffffff, outer: 0x111111 } : terrainColour(run.kind);
+      g.rect(r.minX, r.minY, s, s).fill({ color: colour.inner, alpha: draft.erase ? .22 : .45 }).stroke({ color: colour.outer, alpha: .9, width: 2 * px });
+    }
   }
 
   // ---------- ruler Movement mode (ruler-modes) ----------
@@ -2189,6 +2315,7 @@ export class BoardView {
       }
     }
     if (tool.kind === "fog") this.drawFogDraft(g, tool.mode);
+    if (this.terrainStroke || this.pendingTerrain.length > 0) this.drawTerrainDraft(g);
     if (tool.kind === "attack") this.drawAttackLine(g, tool.attackerId);
     this.invalidate();
   }
@@ -3206,6 +3333,16 @@ export class BoardView {
     if (this.tool.kind === "fog" && this.tool.mode !== "rect" && e.button === 0) {
       return this.fogClick(this.toBoard(e.global), { x: e.global.x, y: e.global.y });
     }
+    if (this.tool.kind === "doors") {
+      // A press pans; one that stays put uses the door under it on release (board-doors-tool).
+      this.pan = { start: { x: e.global.x, y: e.global.y }, origin: { x: this.world.x, y: this.world.y }, button: e.button };
+      return;
+    }
+    if (this.tool.kind === "terrain") {
+      // Right-click cancels a stroke; with none, it pans like any other tool.
+      if (e.button === 2 && this.cancelTerrainStroke()) return;
+      if (e.button === 0) return this.beginTerrainStroke(this.toBoard(e.global));
+    }
     if (this.tool.kind === "measure" && this.tool.mode === "movement" && !e.altKey && e.button === 0) {
       return this.routeClick(this.toBoard(e.global));
     }
@@ -3246,7 +3383,9 @@ export class BoardView {
         this.redrawOverlay();
       }
     }
-    if (this.templateEdit) {
+    if (this.terrainStroke && this.tool.kind === "terrain") {
+      this.extendTerrainStroke(this.toBoard(e.global));
+    } else if (this.templateEdit) {
       this.moveTemplateEdit(e.global, this.toBoard(e.global), e.altKey);
     } else if (this.gesture) {
       const gesture = this.gesture;
@@ -3279,6 +3418,17 @@ export class BoardView {
       this.drag.target = { at, free: e.altKey };
       this.refreshMovementPreview(false);
       this.invalidate();
+    } else if (!this.pan && this.tool.kind === "doors" && this.you?.role === "gm") {
+      // Highlight the door or window a click would change (board-doors-tool).
+      const portal = this.portalUnder(e.global);
+      const id = portal?.id ?? null;
+      if (id !== this.hoveredPortalId) {
+        this.hoveredPortalId = id;
+        this.drawPortals();
+        this.invalidate();
+      }
+      const cursor = portal ? "pointer" : "default";
+      if (this.app.stage.cursor !== cursor) this.app.stage.cursor = cursor;
     } else if (!this.pan && this.tool.kind === "select" && !this.placement && this.you) {
       // A hand over a door or window the viewer may open or close (ADR 0030).
       const portal = this.portalUnder(e.global);
@@ -3317,6 +3467,12 @@ export class BoardView {
     const pan = this.pan;
     this.pan = null;
     if (this.templateEdit) return this.finishTemplateEdit();
+    if (this.terrainStroke) return this.finishTerrainStroke();
+    if (pan && pan.button === 0 && this.tool.kind === "doors" && !exceedsPanThreshold(pan.start, e.global)) {
+      const portal = this.portalUnder(e.global);
+      if (portal) this.callbacks.setPortal?.(portal.id, this.tool.mode);
+      return;
+    }
     if (pan && pan.button === 0 && !this.placement && !this.gesture && this.tool.kind === "select" && !exceedsPanThreshold(pan.start, e.global)) {
       // A click on a door or window uses it (FR-GM-18); anywhere else on the map clears the selection.
       const portal = this.portalUnder(e.global);

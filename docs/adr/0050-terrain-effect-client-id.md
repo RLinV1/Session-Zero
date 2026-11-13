@@ -16,3 +16,7 @@ A room preparation save (`scene.savePreparation`) is one atomic fold, but a laye
 - No event, reducer, persistence or visibility change; players still never receive effect ids.
 - Library storage stays base-only (ADR 0046); only room editors create layers.
 - Old clients omit the field and behave as before.
+
+## Update (2026-11-12)
+
+The interface no longer creates terrain layers: the board's Terrain tool and both map editors paint Base only (change `board-tools-and-legibility`, spec `board-terrain-tool`). The planned change that added layer UI to the map editors (`terrain-effect-layers-in-map-editors`) was dropped. This decision still describes the contract: `effectId` stays an optional field on `terrain.effect.create`, and layers a room already has are kept as they are.
