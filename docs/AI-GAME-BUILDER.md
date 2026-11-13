@@ -67,7 +67,8 @@ Two choices let your AI do more. Both are off unless you turn them on when you s
 - **Let my AI set walls, doors and windows.** Your AI reads your materials and the map, then:
   - turns a UVTT file's openings into doors, locked doors and windows;
   - draws walls, doors and windows on a map with a grid, from grid corner to grid corner;
-  - leaves anything it can't work out for you, with a reason. That covers curved walls, cave edges, an opening that might be an archway, and anywhere your materials and the map disagree.
+  - traces curved walls and cave edges with short straight lines between whole and half-square corners, so the outline is close but not exact. It leaves cave mouths and fallen walls open;
+  - leaves anything it can't work out for you, with a reason. That covers broken walls, an opening that might be an archway, and anywhere your materials and the map disagree.
 
 Your AI reads positions off a picture of the map with numbered columns, rows and openings, so it never guesses pixels. Its walls are stored in squares, so if you correct a grid, they move with it.
 
