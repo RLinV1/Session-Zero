@@ -470,9 +470,11 @@ describe("map editor in the GM panel (FR-GM-09, FR-GM-17)", () => {
     click(canvas(), { x: 200, y: 100 });
     fireEvent.keyDown(canvas(), { key: "Enter" });
     const saved = room({ walls: [{ id: "saved-wall", a: { x: 100, y: 100 }, b: { x: 200, y: 100 } }] });
-    Object.defineProperty(fake.connection, "snapshot", { get: () => ({ state: saved }) });
+    let latest = room();
+    Object.defineProperty(fake.connection, "snapshot", { get: () => ({ state: latest }) });
     vi.mocked(fake.connection.command).mockImplementationOnce(async (command) => {
       fake.commands.push(command);
+      latest = saved;
       fake.rerender(saved);
       return { ok: true, seq: null };
     });

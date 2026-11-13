@@ -396,13 +396,19 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     expect(fake.commands).toEqual([]);
   });
 
-  it("uses a configured/shipped library calibration without waiting", async () => {
+  it("opens a configured first map without waiting so its view can be chosen", async () => {
     signedIn(); vi.mocked(api.library.list).mockResolvedValue([{ ...asset, grid: DEFAULT_GRID }]);
     const fake = roomEditor();
     fireEvent.click(screen.getByRole("button", { name: "From library" })); await flush();
     fireEvent.click(screen.getByTitle(asset.name)); await flush();
+    expect(fake.commands).toEqual([]);
+    const editor = screen.getByRole("dialog", { name: "Edit map" });
+    expect(within(editor).getByRole("radio", { name: "Flat" }).getAttribute("aria-checked")).toBe("true");
+    expect((within(editor).getByRole("spinbutton", { name: "Cell size" }) as HTMLInputElement).value).toBe(String(DEFAULT_GRID.cellSize));
+    expect(screen.queryByText("Checking grid…")).toBeNull();
+    expect(screen.queryByText("Fitting grid…")).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply map" })); await flush();
     expect(fake.commands).toEqual([expect.objectContaining({ type: "scene.setMap", grid: DEFAULT_GRID })]);
-    expect(api.detection.library).not.toHaveBeenCalled();
   });
 
   it("resets preparation on another room selection and ignores the old pending result", async () => {

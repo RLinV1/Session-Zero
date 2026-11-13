@@ -165,12 +165,12 @@ describe("preparation entry points retain their baseline (FR-TAC-03, FR-GM-02/03
     fireEvent.click(screen.getByRole("button", { name: "Finish outline" }));
     fireEvent.click(screen.getByLabelText("Close", { exact: true }));
     const applyPrompt = await screen.findByRole("dialog", { name: "Apply this map?" });
-    fireEvent.click(within(applyPrompt).getByRole("button", { name: "Apply map", exact: true }));
+    fireEvent.click(within(applyPrompt).getByRole("button", { name: "Apply map" }));
     const retryPrompt = await screen.findByRole("dialog", { name: "Save changes?" });
     expect(screen.getByRole("dialog", { name: "Edit map" })).toBeTruthy();
     expect(view.state().scene.map?.url).toBe(asset.url);
     expect(view.state().scene.isometricBuildings).toBeUndefined();
-    fireEvent.click(within(retryPrompt).getByRole("button", { name: "Save", exact: true }));
+    fireEvent.click(within(retryPrompt).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(view.state().scene.isometricBuildings?.items).toHaveLength(1));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit map" })).toBeNull());
   });
