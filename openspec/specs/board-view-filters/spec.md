@@ -1,7 +1,7 @@
 # board-view-filters Specification
 
 ## Purpose
-TBD - created by archiving change fog-and-filter-polish. Update Purpose after archive.
+Controls what the GM's own board draws (fog, walls, doors and windows, terrain, Token view) without changing what players see, and keeps players' boards free of view controls.
 
 ## Requirements
 
