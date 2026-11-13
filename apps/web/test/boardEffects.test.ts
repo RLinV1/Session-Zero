@@ -12,10 +12,8 @@ import {
   conditionLoopWanted,
   loopFrameDue,
   loopingConditions,
-  rangedAnimationFor,
-  RANGED_ATTACK_SHAPES,
 } from "../src/board/effects";
-import { ATTACK_STYLE_PRESETS, NUKE_PRESET } from "../src/board/effectPresets";
+import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "../src/board/effectPresets";
 
 const gm: Participant = { id: "gm", role: "gm", displayName: "GM" };
 const player: Participant = { id: "p1", role: "player", displayName: "Aria" };
@@ -256,27 +254,32 @@ describe("attack animation resolution (FR-TAC-09, ADR 0038)", () => {
     expect(animationOf(withAttack({ style }), at(6))).toEqual(ATTACK_STYLE_PRESETS[style]);
   });
 
-  it("infers melee at 1 cell and ranged at 6 cells when the roll names no style", () => {
-    expect(animationOf(withAttack({}), at(1))).toEqual(ATTACK_STYLE_PRESETS.melee);
-    expect(animationOf(withAttack({}), at(6))).toEqual(rangedAnimationFor(withAttack({}).id));
+  it("plays the slash next to the target and one arrow farther away when the roll says nothing (attack-range)", () => {
+    expect(animationOf(withAttack({}), at(1))).toEqual(SHAPE_DEFAULTS.slash);
+    expect(animationOf(withAttack({}), at(6))).toEqual(SHAPE_DEFAULTS.arrow);
   });
 
-  it("treats exactly 1.5 cells as melee and just over as ranged", () => {
-    expect(animationOf(withAttack({}), at(1.5))).toEqual(ATTACK_STYLE_PRESETS.melee);
-    expect(animationOf(withAttack({}), at(1.6))).toEqual(rangedAnimationFor(withAttack({}).id));
+  it("decides by whether the tokens' squares touch", () => {
+    expect(animationOf(withAttack({}), at(1.5))).toEqual(SHAPE_DEFAULTS.slash);
+    expect(animationOf(withAttack({}), at(1.6))).toEqual(SHAPE_DEFAULTS.arrow);
   });
   it("treats a diagonal neighbouring cell as melee", () => {
     const state = at(1);
     state.tokens.b = { ...state.tokens.b!, position: { x: 100 + cell, y: 100 + cell } };
-    expect(animationOf(withAttack({}), state)).toEqual(ATTACK_STYLE_PRESETS.melee);
+    expect(animationOf(withAttack({}), state)).toEqual(SHAPE_DEFAULTS.slash);
   });
-  it("varies distant rolls across the ranged pool, consistently for every viewer", () => {
-    const shapes = new Set(Array.from({ length: 120 }, (_, i) => rangedAnimationFor("roll-" + i).shape));
-    expect([...shapes].sort()).toEqual([...RANGED_ATTACK_SHAPES].sort());
-    const r = withAttack({});
+
+  it("follows the named attack's kind of range, wherever the target stands (attack-range)", () => {
+    expect(animationOf(withAttack({ range: "melee" }), at(6))).toEqual(SHAPE_DEFAULTS.slash);
+    expect(animationOf(withAttack({ range: "ranged" }), at(1))).toEqual(SHAPE_DEFAULTS.arrow);
+  });
+
+  it("plays the same arrow for every distant roll, for every viewer", () => {
     const state = at(6);
+    const shapes = new Set(Array.from({ length: 20 }, (_, i) => animationOf(roll({ id: `roll-${i}`, attack: withAttack({}).attack }), state)?.shape));
+    expect([...shapes]).toEqual(["arrow"]);
+    const r = withAttack({ range: "ranged" });
     expect(attackEffectFor(rolled(r), state, player)).toEqual(attackEffectFor(rolled(r), state, gm));
-    expect(rangedAnimationFor("same-roll")).toEqual(rangedAnimationFor("same-roll"));
   });
 
   it("prefers the roll's own animation over its style and the distance", () => {

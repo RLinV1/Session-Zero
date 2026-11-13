@@ -104,6 +104,8 @@ const DraftAttack = z.strictObject({
   toHit: DraftDice.nullable(),
   damage: DraftDice.nullable(),
   maxTargets: AttackPreset.shape.maxTargets,
+  /** Melee (with an optional reach) or ranged with a distance, in the game's units (ADR 0067). */
+  range: AttackPreset.shape.range,
 }).refine((a) => a.toHit !== null || a.damage !== null, { message: "An attack needs a to-hit or damage roll. If it has neither, list it as not carried over." });
 
 const DraftAttacks = z.array(DraftAttack).max(MAX_TOKEN_ATTACKS).refine(

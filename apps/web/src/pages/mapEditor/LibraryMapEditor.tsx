@@ -55,6 +55,24 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const busy = useRef(false);
   const active = useRef(true);
   const suggestionSession = setup.suggestionSession;
+  /** Where an unconfigured map's grid starts: the default grid in the GM's own units (gm-room-defaults). */
+  const [fallbackGrid, setFallbackGrid] = useState(DEFAULT_GRID);
+  /** Whether the map has a saved grid, which always wins over the GM's units. */
+  const hasSavedGrid = useRef(!!asset.grid);
+  useEffect(() => {
+    let live = true;
+    // Best effort: without the GM's defaults, setup starts from the default grid as before.
+    api.roomDefaults.get().then((defaults) => {
+      if (!live) return;
+      const grid = { ...DEFAULT_GRID, unitsPerCell: defaults.unitsPerCell, unitLabel: defaults.unitLabel };
+      setFallbackGrid(grid);
+      const untouched = (d: typeof gridDraft) => d.unitsPerCell === String(DEFAULT_GRID.unitsPerCell) && d.unitLabel === DEFAULT_GRID.unitLabel;
+      setSetup((current) => hasSavedGrid.current || !untouched(current.draft)
+        ? current
+        : { ...current, draft: { ...current.draft, unitsPerCell: String(grid.unitsPerCell), unitLabel: grid.unitLabel } });
+    }, () => {});
+    return () => { live = false; };
+  }, []);
   const preparation = useGridPreparation({
     source: "library", token: "", id: asset.id, map: asset, enabled: true, setup, update: setSetup,
   });
@@ -63,7 +81,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
     active.current = true;
     let live = true;
     api.library.preparation(asset.id).then(
-      (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(normalizeLegacyGridForBoard(preparation.grid, asset))); } } },
+      (preparation) => { if (live) { setRevision(preparation.revision); setStored(preparation.board); setDraft(draftFromBoard(asset.url, preparation.board)); if (preparation.grid) { hasSavedGrid.current = true; setSavedAsset({ ...asset, grid: preparation.grid }); setGridDraft(toGridDraft(normalizeLegacyGridForBoard(preparation.grid, asset))); } } },
       (err: unknown) => { if (live) setLoadError(err instanceof Error ? err.message : t("editor.loadFailed")); },
     );
     return () => { live = false; active.current = false; };
@@ -79,13 +97,13 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   ), [asset.width, asset.height]);
   const state = useMemo(() => draft ? {
     ...emptyRoomState("library"),
-    scene: { map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID },
+    scene: { map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: parsedGrid ?? savedAsset.grid ?? fallbackGrid },
     walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? emptyTerrain(),
-  } : null, [asset, draft, parsedGrid, savedAsset.grid]);
+  } : null, [asset, draft, parsedGrid, savedAsset.grid, fallbackGrid]);
 
   const applyGridDraft = (next: typeof gridDraft) => {
     const parsed = parseGridDraft(next, asset);
-    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? DEFAULT_GRID) && (draft?.terrain?.base.length || (stored?.terrain?.length && !resetTerrain))) {
+    if (parsed && gridGeometryChanged(parsed, parsedGrid ?? savedAsset.grid ?? fallbackGrid) && (draft?.terrain?.base.length || (stored?.terrain?.length && !resetTerrain))) {
       if (!window.confirm(t("editor.resetTerrainConfirm"))) return;
       setResetTerrain(true); setDraft((current) => current ? { ...current, terrain: emptyTerrain() } : current);
     }
@@ -93,7 +111,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   };
   const discard = () => {
     suggestionSession.blocked = true;
-    setGridDraft(toGridDraft(normalizeLegacyGridForBoard(savedAsset.grid ?? DEFAULT_GRID, asset)));
+    setGridDraft(toGridDraft(normalizeLegacyGridForBoard(savedAsset.grid ?? fallbackGrid, asset)));
     if (stored) setDraft(draftFromBoard(asset.url, stored));
     setSaveError(null); setResetTerrain(false);
   };
@@ -148,7 +166,7 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
         {importDiagnostics && <p className="muted">{t("editor.imported")}</p>}
         {importDiagnostics && importDiagnostics.length > 0 && <details className="uvtt-diagnostics"><summary>{t("editor.importWarnings", { n: importDiagnostics.length })}</summary><ul>{importDiagnostics.map((issue, i) => <li key={i}>{issue.path}: {issue.message}</li>)}</ul></details>}
         {step === "grid" && <HudLayout className="map-editor-grid"><GridForm
-          grid={savedAsset.grid ?? DEFAULT_GRID} map={asset} draft={gridDraft} hasDraft={gridDirty}
+          grid={savedAsset.grid ?? fallbackGrid} map={asset} draft={gridDraft} hasDraft={gridDirty}
           onChange={applyGridDraft} onCancel={discard}
           onApply={async () => { await save(); }} applying={saving} error={null} hideActions advancedOpen
           detection={detection.status} detectionError={detection.error}

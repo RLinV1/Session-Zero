@@ -206,10 +206,10 @@ export function playStrike(host: FxHost, params: StrikeFxParams): RunningFx {
     n: def.count, spread: def.spread, arc: def.arc, trail: def.trail, spin: def.spin, spinRate, G: gravity,
     sparks, sparkCount, landed: false,
     along: (u, off = 0) => ({ x: from.x + dx * u + normal.x * off, y: from.y + dy * u + normal.y * off }),
-    emit(at, count, speed, life = 0.6) {
+    emit(at, count, speed, life = 0.6, aim) {
       // Trails and impacts share one live-particle allowance, not one allowance per burst.
       const available = Math.max(0, sparkCount - sparks.length);
-      burst(sparks, at, Math.min(count, available), speed, Math.max(1.5, r * 0.05), palette, life, gravity, spinRate * 0.3);
+      burst(sparks, at, Math.min(count, available), speed, Math.max(1.5, r * 0.05), palette, life, gravity, spinRate * 0.3, aim);
     },
   };
   const drawing = spec.make(c);
@@ -260,7 +260,7 @@ export function playStrike(host: FxHost, params: StrikeFxParams): RunningFx {
       props.begin();
       if (!c.landed && elapsed >= landAt) {
         c.landed = true;
-        burst(sparks, to, Math.max(0, sparkCount - sparks.length), r * 4 * spec.big, Math.max(1.5, r * 0.06), palette, 0.9, gravity, spinRate * 0.3);
+        if (!spec.ownSparks) burst(sparks, to, Math.max(0, sparkCount - sparks.length), r * 4 * spec.big, Math.max(1.5, r * 0.06), palette, 0.9, gravity, spinRate * 0.3);
       }
       drawing.draw(elapsed);
       if (c.landed) {

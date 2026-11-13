@@ -182,7 +182,7 @@ describe("animation definitions (ADR 0038)", () => {
   });
 
   it("knows every shape, with the nuke last (ADR 0038)", () => {
-    expect(ANIMATION_SHAPES).toHaveLength(20);
+    expect(ANIMATION_SHAPES).toHaveLength(22);
     expect(ANIMATION_SHAPES.at(-1)).toBe("nuke");
     for (const shape of ANIMATION_SHAPES) expect(AnimationDef.safeParse({ ...slash, shape }).success, shape).toBe(true);
   });

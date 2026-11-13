@@ -47,10 +47,11 @@ export function ThemeToggle() {
 }
 
 /**
- * The one header of the home and hub pages: the mark and name, the page's navigation, the
- * account control and the theme toggle, always in the same places.
+ * The one header of the home and hub pages: the mark and name with the page's navigation beside
+ * it, and at the right one row of settings-type controls (the page's own settings, the account,
+ * the language and the theme), always in the same places.
  */
-export function SiteHeader({ nav, account }: { nav?: ReactNode; account?: ReactNode }) {
+export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; account?: ReactNode; settings?: ReactNode }) {
   const t = useT();
   return (
     <header className="site-header">
@@ -61,6 +62,7 @@ export function SiteHeader({ nav, account }: { nav?: ReactNode; account?: ReactN
         </nav>
       )}
       <div className="site-actions">
+        {settings}
         {account}
         <LanguageMenu />
         <ThemeToggle />

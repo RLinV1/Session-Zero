@@ -3,7 +3,7 @@ import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget } from "./gridDetectionStore";
-import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type RoomDefaults, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   BuildChoiceOffError,
@@ -348,6 +348,16 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   private seededSlugs = new Map<string, Set<string>>();
+  private roomDefaults = new Map<string, RoomDefaults>();
+
+  async getRoomDefaults(ownerGmId: string) {
+    const saved = this.roomDefaults.get(ownerGmId);
+    return saved ? structuredClone(saved) : null;
+  }
+
+  async setRoomDefaults(ownerGmId: string, defaults: RoomDefaults) {
+    this.roomDefaults.set(ownerGmId, structuredClone(defaults));
+  }
 
   async seedShippedMaps(ownerGmId: string, rows: LibraryAssetRecord[]) {
     const seeded = this.seededSlugs.get(ownerGmId) ?? new Set<string>();

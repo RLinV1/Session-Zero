@@ -1069,6 +1069,27 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .attack-who > :first-child { flex: 1 1 100%; }
 .attack-board-pick, .attack-more, .attack-private { flex: none; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .attack-row > .popover-anchor { flex: none; }
+/* At whom: the target beside Pick on board, below the attack it is grouped by (attack-range). */
+.attack-target-row { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.attack-target-row .picker, .attack-target-row .popover-anchor { flex: 1 1 0; min-width: 0; }
+/* A picker with a second line (the attack card): its name, then its range and rolls. */
+.picker-button:has(.picker-main) { height: auto; min-height: 40px; padding-block: 0.35rem; }
+.picker-main { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; min-width: 0; flex: 1; text-align: left; }
+.picker-main .picker-label { max-width: 100%; }
+/* A thin rule between the name and its second line. */
+.picker-summary { align-self: stretch; min-width: 0; margin-top: 0.15rem; padding-top: 0.2rem; border-top: 1px solid var(--border); }
+/* The chosen attack spelled out on its card: range, attack roll, damage roll. */
+/* Range, then the rolls as one unit: all on one row, or the range above both rolls, never split between them. */
+.attack-stats { display: flex; flex-wrap: nowrap; gap: 0.1rem 0.7rem; font-size: var(--fs-sm); font-weight: 400; line-height: 1.35; }
+/* Every attack the same: chosen for the whole list from its widest line (AttackPanel). */
+.attack-stats.stacked { flex-direction: column; align-items: flex-start; }
+/* The unseen copies measured for that choice: in the panel's type, one row each, taking no room. */
+.attack-stats-measure { position: absolute; visibility: hidden; pointer-events: none; height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; }
+.attack-stats-measure .attack-stats { width: max-content; }
+.attack-rolls { display: inline-flex; flex-wrap: nowrap; gap: 0.7rem; }
+.attack-stat { display: inline-flex; align-items: center; gap: 0.2rem; white-space: nowrap; }
+.attack-stat-icon { flex: none; color: var(--muted); }
+.attack-stat-value { font-weight: 550; font-variant-numeric: tabular-nums; color: var(--text); }
 .attack-add-first { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 40px; }
 .attack-roll-row .attack-roll { flex: 1; min-height: 44px; font-size: var(--fs-md); }
 .attack-private.on { border-color: var(--warn); color: var(--warn); background: rgba(217, 164, 65, 0.12); }
@@ -1278,12 +1299,17 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
    the theme toggle at the right. */
 .site-header { position: relative; z-index: 20; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; min-height: 3.25rem; padding: 0.55rem 0; }
 .brand {
-  display: inline-flex; align-items: center; gap: 0.6rem; margin-right: auto;
+  display: inline-flex; align-items: center; gap: 0.6rem;
   font-weight: 700; font-size: 1.02rem; letter-spacing: -0.015em; color: var(--text); text-decoration: none;
 }
 .brand:hover { color: var(--accent-hover); }
 .brand-mark { display: block; flex: none; width: 1.75rem; height: 1.75rem; }
 .site-nav, .site-actions { display: flex; align-items: center; gap: 0.4rem; }
+/* The page's navigation sits by the mark; every settings-type control is one row at the right.
+   With no navigation the mark pushes them over itself, which still holds where a phone lays the
+   actions out loose (display: contents, below). */
+.site-actions { margin-left: auto; }
+.site-header:not(:has(.site-nav)) .brand { margin-right: auto; }
 /* The page the nav is on: the shared selected treatment, as on a tab. */
 .site-header .nav-link[aria-current="page"] { color: var(--text); background: var(--raised); box-shadow: inset 0 -2px 0 var(--accent); }
 /* On a phone the account control and toggle keep the first row, at the right as on every page,
@@ -3851,6 +3877,32 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .play-tile .dice-result { min-height: 0; padding: var(--space-3); }
 .dice-line { display: flex; align-items: baseline; gap: var(--space-3); margin: 0; }
 
+/* Out of the chosen attack's range (attack-range): red, with the words, never disabled. */
+.picker-status, .attack-out-of-range { color: var(--danger); font-size: var(--text-small, 0.8125rem); font-weight: 600; white-space: nowrap; }
+.attack-target-out { color: var(--danger); }
+.picker-note { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--text-small, 0.8125rem); list-style: none; }
+/* Out of range sits quietly below the targets in range: smaller, muted, and its targets too. */
+.picker-group { font-size: var(--fs-sm); color: var(--muted); border-top: 1px solid var(--border); }
+.picker-group .picker-label { font-weight: 500; }
+.picker-group-caret { transition: transform 120ms; transform: rotate(-90deg); }
+.picker-group-caret.open { transform: none; }
+.picker-grouped { color: var(--muted); }
+.picker-grouped .picker-label { font-weight: 500; }
+.attack-out-of-range-group { color: var(--muted); }
+.attack-out-of-range-group summary { cursor: pointer; font-size: var(--fs-sm); padding-block: var(--space-1); }
+
+/* The attack editor's range and preview (attack-range): the stage follows the dialog's width. */
+.attack-range-field { border: 0; padding: 0; margin: 0; display: grid; gap: var(--space-2); min-width: 0; }
+.attack-range-kinds { gap: var(--space-3); flex-wrap: wrap; }
+.attack-range-number .row { gap: var(--space-2); align-items: center; }
+.attack-range-number input { width: 7rem; }
+.attack-editor-preview { min-width: 0; }
+.attack-animation-field { display: grid; gap: var(--space-1); justify-items: start; }
+.attack-editor-preview .animation-preview { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-control); overflow: clip; }
+.attack-editor-preview .animation-preview-stage,
+.attack-editor-preview-placeholder { width: 100%; aspect-ratio: 9 / 5; position: relative; overflow: hidden; background: var(--raised); }
+.attack-editor-preview .animation-preview-stage canvas { position: absolute; inset: 0; }
+
 /* The attack stage keeps its shape before the renderer arrives, so nothing jumps. */
 .attack-slot { display: flex; flex-direction: column; }
 .attack-placeholder,
@@ -4071,9 +4123,16 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
 .scene-option[aria-selected="true"] { border-color: var(--accent); }
 
 /* create-room-popup: heading left, Create room button right; rooms use the full width. */
+/* The Hosting heading with Create room beside it (gm-dashboard). */
+.room-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.room-section-head h2 { margin: 0; }
+.room-section-head button { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .page-title-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
 .page-title-row h1 { margin: 0; }
 .page-title-row button { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; white-space: nowrap; }
+/* Room settings (gm-room-defaults): the distance field reads "Distance per square: [5] ft". */
+.room-settings-distance { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.room-settings-distance input { width: 6rem; }
 .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
 .create-room { display: flex; flex-direction: column; gap: var(--space-4); }
 /* Roomy create-room modal: wider, more padding, field-to-field gap, air above the actions. */

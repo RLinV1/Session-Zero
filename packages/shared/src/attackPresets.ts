@@ -48,6 +48,20 @@ export const AttackDice = z.preprocess(upgradeAttackDice, z.object({
   if (problem === "tooMany") ctx.addIssue({ code: "custom", message: `At most ${MAX_DICE} dice`, path: ["terms"] });
 }));
 export type AttackDice = z.infer<typeof AttackDice>;
+/** The largest reach or distance a named attack may have, in the room's units (ADR 0067). */
+export const MAX_ATTACK_RANGE = 9999;
+const RangeNumber = z.number().positive().max(MAX_ATTACK_RANGE);
+
+/**
+ * How far a named attack reaches (attack-range, ADR 0067). Melee with no reach is one square on
+ * whatever map; a number is in the room's units, as typed, and never converted. Absent: no limit.
+ */
+export const AttackRange = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("melee"), reach: RangeNumber.optional() }),
+  z.object({ kind: z.literal("ranged"), distance: RangeNumber }),
+]);
+export type AttackRange = z.infer<typeof AttackRange>;
+
 export const AttackPreset = z.object({
   name: z.string().trim().min(1).max(MAX_ATTACK_LABEL),
   toHit: AttackDice.nullable(),
@@ -56,6 +70,8 @@ export const AttackPreset = z.object({
   animation: StrikeAnimationDef.optional(),
   /** Set when the attack may hit several tokens at once: how many at most. Absent means one target. The panel rolls it once per chosen target. */
   maxTargets: z.number().int().min(2).max(MAX_ATTACK_TARGETS).optional(),
+  /** How far it reaches (ADR 0067). Absent: no limit, as for every attack saved before ranges. */
+  range: AttackRange.optional(),
 }).refine((a) => a.toHit !== null || a.damage !== null, { message: validationMessage(sharedMsg("valid.attackNeedsRoll")) });
 export type AttackPreset = z.infer<typeof AttackPreset>;
 export const TokenAttacks = z.array(AttackPreset).max(MAX_TOKEN_ATTACKS).refine(

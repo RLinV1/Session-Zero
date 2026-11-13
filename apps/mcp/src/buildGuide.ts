@@ -28,7 +28,7 @@ export const FIELD_GUIDE = {
       hp: "Current HP, whole number, or null. Leave null if not given.",
       maxHp: "1 to 9999, or null.",
       ac: "0 to 99, or null. If a game has several defence numbers, say in the game profile which one this is.",
-      attacks: `Up to ${MAX_TOKEN_ATTACKS}, each with a unique name, toHit and damage. If there are more, keep the first ${MAX_TOKEN_ATTACKS} that have rolls and list the rest under notCarriedOver.`,
+      attacks: `Up to ${MAX_TOKEN_ATTACKS}, each with a unique name, toHit and damage. If there are more, keep the first ${MAX_TOKEN_ATTACKS} that have rolls and list the rest under notCarriedOver. Optional range: { kind: "melee" } for reach of one square, { kind: "melee", reach: 10 } for a longer reach, or { kind: "ranged", distance: 80 } for a ranged attack, numbers in the game's distance units as written (a bow's normal range, not its long range). Leave range out when the sheet doesn't say.`,
       conditions: `Only these: ${CONDITIONS.map((c) => c.id).join(", ")}. Anything else, such as bleeding, goes under notCarriedOver.`,
       color: "Optional. A hex colour such as #336699 for a token with no art. Don't flag it if missing.",
       imageFileId: "Optional. The id of a token file in this build, or null for a coloured disc.",

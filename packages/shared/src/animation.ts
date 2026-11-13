@@ -7,8 +7,8 @@ import { sharedMsg, validationMessage } from "./i18n";
  * attack styles and the nuke are values of this type too.
  */
 export const ANIMATION_SHAPES = [
-  "slash", "claw", "whirlwind", "slam", "shadow",
-  "projectile", "volley", "dagger", "fireball", "meteor", "explosion",
+  "slash", "pierce", "claw", "whirlwind", "slam", "shadow",
+  "projectile", "arrow", "volley", "dagger", "fireball", "meteor", "explosion",
   "bolt", "chain", "beam", "frost", "poison", "smite", "sonic", "tornado",
   "nuke",
 ] as const;

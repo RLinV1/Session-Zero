@@ -95,8 +95,22 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       delete sceneNames[event.sceneId];
       return { ...state, sceneNames, savedScenes };
     }
-    case "RoomCreated":
-      return { ...state, name: event.name, preset: event.preset ?? DEFAULT_PRESET_ID };
+    case "RoomCreated": {
+      const created = { ...state, name: event.name, preset: event.preset ?? DEFAULT_PRESET_ID };
+      const d = event.defaults;
+      if (!d) return created;
+      // The creating GM's defaults (ADR 0066): the room starts with them, with no rule events.
+      return {
+        ...created,
+        defeatRemoval: d.defeatRemoval,
+        hideMapWithoutToken: d.hideMapWithoutToken,
+        hideHp: d.hideHp,
+        hideAc: d.hideAc,
+        diagonalRule: d.diagonalRule,
+        difficultTerrain: d.difficultTerrain,
+        scene: { ...created.scene, grid: { ...created.scene.grid, unitsPerCell: d.unitsPerCell, unitLabel: d.unitLabel } },
+      };
+    }
 
     case "ParticipantJoined":
       return {

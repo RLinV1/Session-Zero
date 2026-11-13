@@ -35,6 +35,7 @@ export const board = {
   "board.placedN": ({ n }: { n: number }) => ` · ${n} placed`,
   "board.hiddenName": ({ name }: { name: string }) => `${name} (hidden)`,
   "board.aiming": ({ name }: { name: string }) => `${name} aiming`,
+  "board.outOfRange": "Out of range",
   "board.blocked": "Blocked",
   "board.difficult": ({ n }: { n: number }) => ` · ${n} difficult`,
   "board.throwNeedsExpr": "Enter a valid expression to throw it",

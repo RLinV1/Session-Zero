@@ -10,7 +10,7 @@ vi.mock("../src/board/boardView", () => ({ BoardView: class {
   constructor(_host: unknown, callbacks: BoardCallbacks) { mock.callbacks = callbacks; }
   init = async () => {};
   destroy() {} update() {} setGmFogView() {} setShowWalls() {} setShowPortals() {} setReadOnly() {} setGridPreview() {} setTool() {} setPlacement() {} setViewedTokens() {} setGroupSelection() {}
-  setShowTerrain() {} setRepositionToken() {} refreshMovementPreview() {} cancelMovement() { return false; }
+  setShowTerrain() {} setRepositionToken() {} setAttackRange() {} refreshMovementPreview() {} cancelMovement() { return false; }
   setMovementRuler = mock.ruler;
 } }));
 vi.mock("../src/board/TokenCard", () => ({ TokenCard: () => null }));

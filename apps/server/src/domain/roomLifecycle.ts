@@ -7,7 +7,6 @@ import {
   tableForPreset,
   tableOf,
   type DomainEvent,
-  type GamePreset,
   type GamePresetId,
   type GridSpec,
   type MapImage,
@@ -69,10 +68,15 @@ export function roomLifecycle(deps: {
     const live = await registry.get(roomId);
     // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
     const preset = presetOf({ preset: room.preset });
-    const grid = { ...DEFAULT_GRID, ...preset.grid };
+    // The GM's own defaults (ADR 0066): every table rule and the grid units, on the first event.
+    // Their units win over the preset's. A temporary editing room edits a template or map, whose
+    // own units must survive, so it starts as before.
+    const defaults = room.temporary ? null : await store.getRoomDefaults(room.ownerGmId);
+    const units = defaults ? { unitsPerCell: defaults.unitsPerCell, unitLabel: defaults.unitLabel } : preset.grid;
+    const grid = { ...DEFAULT_GRID, ...units };
     const events: DomainEvent[] = [
-      { type: "RoomCreated", name: room.roomName, preset: preset.id },
-      ...(grid.unitsPerCell !== DEFAULT_GRID.unitsPerCell || grid.unitLabel !== DEFAULT_GRID.unitLabel
+      { type: "RoomCreated", name: room.roomName, preset: preset.id, ...(defaults && { defaults }) },
+      ...(!defaults && (grid.unitsPerCell !== DEFAULT_GRID.unitsPerCell || grid.unitLabel !== DEFAULT_GRID.unitLabel)
         ? [{ type: "GridSet" as const, grid, previous: DEFAULT_GRID }]
         : []),
       {
@@ -85,7 +89,7 @@ export function roomLifecycle(deps: {
         type: "EncounterApplied",
         templateId: room.encounter.id,
         name: room.encounter.name,
-        applied: tableForPreset(withPresetGrid(encounterTable(room.encounter, randomUUID), preset), preset),
+        applied: tableForPreset(withGridUnits(encounterTable(room.encounter, randomUUID), units), preset),
         previous: { ...tableOf(emptyRoomState(roomId)), scene: { map: null, grid } },
       });
     } else if (room.scene) {
@@ -129,7 +133,7 @@ export function roomLifecycle(deps: {
 
 export type RoomLifecycle = ReturnType<typeof roomLifecycle>;
 
-/** A template's table keeps its own grid alignment but takes the room's preset units (KAN-63). */
-function withPresetGrid(table: TableState, preset: GamePreset): TableState {
-  return { ...table, scene: { ...table.scene, grid: { ...table.scene.grid, ...preset.grid } } };
+/** A template's table keeps its own grid alignment but takes the room's units: the GM's, else the preset's (KAN-63, ADR 0066). */
+function withGridUnits(table: TableState, units: Pick<GridSpec, "unitsPerCell" | "unitLabel">): TableState {
+  return { ...table, scene: { ...table.scene, grid: { ...table.scene.grid, ...units } } };
 }

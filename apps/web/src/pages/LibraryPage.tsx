@@ -1,4 +1,5 @@
 import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
+import { RoomSettingsButton } from "./RoomSettings";
 import { IconAction } from "../ui/IconAction";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
@@ -224,7 +225,7 @@ function Library() {
   return (
     <>
     <div className="page-shell page-bar">
-      <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} />
+      <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} settings={<RoomSettingsButton />} />
     </div>
     <main className="page-shell home gm-page">
       <h1>{t("library.title")}</h1>

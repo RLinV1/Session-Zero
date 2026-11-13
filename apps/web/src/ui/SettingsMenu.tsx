@@ -1,11 +1,12 @@
 import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Globe } from "@phosphor-icons/react";
-import { DEFEAT_REMOVAL_IDS, DEFEAT_REMOVALS, DIAGONAL_RULE_IDS, DIAGONAL_RULES, DIFFICULT_TERRAIN_IDS, DIFFICULT_TERRAIN_MODES, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, type CommandInput, type DefeatRemoval, type DiagonalRule, type DifficultTerrainMode, type Participant, type RoomState } from "@vtt/shared";
+import type { CommandInput, Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
-import { useT, type TextId } from "../i18n/locale";
+import { useT } from "../i18n/locale";
 import { LANGUAGE_CHOICE_ENABLED } from "../i18n/rollout";
 import { LanguageSettings } from "./LanguageMenu";
 import { Modal } from "./Modal";
+import { TableRuleControls, tableRulesOf, type TableRules } from "./TableRuleControls";
 import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
 
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
@@ -119,10 +120,8 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
  * decides and enforces them; this only sends the GM's choice.
  */
 function TableSection({ room }: { room: SettingsRoom }) {
-  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const state = room.state;
   const send = async (command: CommandInput) => {
     setBusy(true);
     setError(null);
@@ -130,34 +129,22 @@ function TableSection({ room }: { room: SettingsRoom }) {
     setBusy(false);
     if (!result.ok) setError(result.message);
   };
-  const rules: { label: TextId; on: boolean; command: (enabled: boolean) => CommandInput }[] = [
-    { label: "settings.hideMap", on: state.hideMapWithoutToken ?? false, command: (enabled) => ({ type: "room.setHideMapWithoutToken", enabled }) },
-    { label: "settings.hideHp", on: state.hideHp ?? false, command: (enabled) => ({ type: "room.setHideHp", enabled }) },
-    { label: "settings.hideAc", on: state.hideAc ?? false, command: (enabled) => ({ type: "room.setHideAc", enabled }) },
-  ];
+  // One control changes one rule, so each change is one command.
+  const commandFor = (change: Partial<TableRules>): CommandInput | null => {
+    if (change.defeatRemoval !== undefined) return { type: "room.setDefeatRemoval", mode: change.defeatRemoval };
+    if (change.hideMapWithoutToken !== undefined) return { type: "room.setHideMapWithoutToken", enabled: change.hideMapWithoutToken };
+    if (change.hideHp !== undefined) return { type: "room.setHideHp", enabled: change.hideHp };
+    if (change.hideAc !== undefined) return { type: "room.setHideAc", enabled: change.hideAc };
+    if (change.diagonalRule !== undefined) return { type: "room.setDiagonalRule", rule: change.diagonalRule };
+    if (change.difficultTerrain !== undefined) return { type: "room.setDifficultTerrain", mode: change.difficultTerrain };
+    return null;
+  };
   return (
     <div className="stack" aria-busy={busy}>
-      <label>{t("settings.removeAtZero")}
-        <select value={defeatRemovalOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDefeatRemoval", mode: e.target.value as DefeatRemoval })}>
-          {DEFEAT_REMOVALS.map((mode) => <option key={mode} value={mode}>{t(DEFEAT_REMOVAL_IDS[mode])}</option>)}
-        </select>
-      </label>
-      {rules.map(({ label, on, command }) => (
-        <label key={label} className="checkbox">
-          <input type="checkbox" role="switch" checked={on} disabled={busy} onChange={(e) => void send(command(e.target.checked))} />
-          {t(label)}
-        </label>
-      ))}
-      <label>{t("settings.diagonals")}
-        <select value={diagonalRuleOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDiagonalRule", rule: e.target.value as DiagonalRule })}>
-          {DIAGONAL_RULES.map((rule) => <option key={rule} value={rule}>{t(DIAGONAL_RULE_IDS[rule])}</option>)}
-        </select>
-      </label>
-      <label>{t("settings.difficultTerrain")}
-        <select value={difficultTerrainOf(state)} disabled={busy} onChange={(e) => void send({ type: "room.setDifficultTerrain", mode: e.target.value as DifficultTerrainMode })}>
-          {DIFFICULT_TERRAIN_MODES.map((mode) => <option key={mode} value={mode}>{t(DIFFICULT_TERRAIN_IDS[mode])}</option>)}
-        </select>
-      </label>
+      <TableRuleControls value={tableRulesOf(room.state)} disabled={busy} onChange={(change) => {
+        const command = commandFor(change);
+        if (command) void send(command);
+      }} />
       {error && <p role="alert" className="error small">{error}</p>}
     </div>
   );

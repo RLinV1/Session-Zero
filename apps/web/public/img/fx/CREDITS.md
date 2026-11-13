@@ -173,3 +173,15 @@ Eleventh round (the holy smite), processed like the others: the circle at 320 px
 - Holy pillar: a vertical column of divine holy light striking straight down from the sky, a narrow
   blinding white core inside soft rays and drifting sparkles, widening at the bottom where it hits
   the ground in a bright splash of light.
+
+Pierce blade (`pierce-blade`, 2026-11-13, for the pierce animation, ADR 0067): generated for this
+project with ChatGPT's built-in image generation from the prompt below, then converted to greyscale,
+the near-black lifted to exact black, the outer edge faded, and resized to 768 × 256 px webp (it is
+three times as wide as it is tall, the one long texture). A generated illustration, not a work
+attributed to a human artist.
+
+- Pierce blade: a single slim bladed thrusting weapon pointing straight to the right, seen from the
+  side: a long narrow double-edged blade tapering to a needle-sharp point, a bright polished edge and
+  a small star-like glint at the tip, a simple short crossguard and a short plain grip, no
+  decoration; behind it, trailing to the left, thin speed streaks of motion blur, brightest just
+  behind the tip and fading out to the left. Monochrome grey and white on plain pure black.

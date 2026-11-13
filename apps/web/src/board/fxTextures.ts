@@ -16,7 +16,7 @@ export const FX_ART = [
   "particle-spark", "particle-star", "particle-square", "particle-shard", "particle-ring", "tnt",
   "poison-vial", "poison-splash", "poison-bubble", "poison-drop", "poison-puddle", "skull-wisp",
   "dust-swirl", "debris-1", "debris-2", "debris-3", "debris-4",
-  "nuke-bomb", "nuke-billow", "blast-wave", "holy-sigil", "holy-pillar",
+  "nuke-bomb", "nuke-billow", "blast-wave", "holy-sigil", "holy-pillar", "pierce-blade",
 ] as const;
 export type FxArt = (typeof FX_ART)[number];
 
@@ -40,7 +40,12 @@ export const ART_ENDS: Partial<Record<FxArt, { from: Point; to: Point }>> = {
   beam: { from: { x: 0.05, y: 0.5 }, to: { x: 0.95, y: 0.5 } },
   // From the end of the fletching to the arrowhead's tip.
   arrow: { from: { x: 0.05, y: 0.494 }, to: { x: 0.95, y: 0.494 } },
+  // The pierce's blade (768 x 256): from the end of its grip to the glint on its point. The
+  // speed streaks trail off to the left of `from`, behind the thrust.
+  "pierce-blade": { from: { x: 0.06, y: 0.486 }, to: { x: 0.952, y: 0.486 } },
 };
+/** The pierce blade's picture is three times as wide as it is tall. */
+export const PIERCE_BLADE_ASPECT = 3;
 /** The tornado's tip, which sits on the ground: its picture is anchored there. */
 export const TORNADO_TIP = { x: 0.5, y: 0.96 };
 /** The mushroom cloud: the foot of its column (anchored on the ground), the top of its cap, and its cap's width. */

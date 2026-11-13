@@ -126,3 +126,21 @@ describe("every strike shape plays and cleans up (library-animations, ADR 0038)"
     expect(h.layer.children).toHaveLength(0);
   });
 });
+
+describe("the pierce throws its own sparks (board-attack-effects, ADR 0067)", () => {
+  it("sends its sparks out behind the target along the thrust, with no round burst first", () => {
+    const seen: { vx: number; vy: number }[][] = [];
+    vi.spyOn(SparkRenderer.prototype, "draw").mockImplementation((sparks) => {
+      seen.push(sparks.map((s) => ({ vx: s.vx, vy: s.vy })));
+    });
+    const def = SHAPE_DEFAULTS.pierce;
+    // Thrusting straight right, so every spark of the cone moves right.
+    const fx = playStrike(host(false), { def, from: { x: 0, y: 0 }, to: { x: 400, y: 0 }, radius: 24 });
+    const landed = def.duration * 0.4;
+    for (let t = 0; t <= landed + 0.1; t += 1 / 60) fx.update(t);
+    fx.destroy();
+    const after = seen.at(-1)!;
+    expect(after.length).toBeGreaterThan(5);
+    for (const s of after) expect(Math.abs(Math.atan2(s.vy, s.vx))).toBeLessThan(1.2);
+  });
+});

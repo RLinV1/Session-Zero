@@ -36,6 +36,7 @@ export const boardZhTW = {
   "board.placedN": ({ n }) => cjk`· 已放置${n}枚`,
   "board.hiddenName": ({ name }) => cjk`${name}（隱藏）`,
   "board.aiming": ({ name }) => cjk`${name}正在瞄準`,
+  "board.outOfRange": "超出攻擊距離",
   "board.blocked": "無法通行",
   "board.difficult": ({ n }) => ` · ${n} 格困難地形`,
   "board.throwNeedsExpr": "請先輸入有效的擲骰公式。",

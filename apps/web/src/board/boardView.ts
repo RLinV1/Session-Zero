@@ -1,10 +1,11 @@
-import { effectiveTerrain, emptyTerrain, cellAt, cellRect, type PaintRun, type TerrainRun, conditionAbbr } from "@vtt/shared";
+import { effectiveTerrain, emptyTerrain, cellAt, cellRect, type PaintRun, type TerrainRun, conditionAbbr, type AttackRange } from "@vtt/shared";
 import { MAP_PALETTE, terrainColour, terrainHatch } from "./mapPalette";
 import type { DoorsMode } from "./tools";
 import { extendStroke, startStroke, strokePaint, strokeRuns, type TerrainContext, type TerrainStroke } from "./terrainStroke";
 import { plainWallLines } from "./wallLines";
 import { slideDistance, slideDuration } from "./tokenSlide";
 import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
+import { attackAim } from "./attackAim";
 import {
   Application,
   Assets,
@@ -79,7 +80,7 @@ import { makeVisibleRegionCanvas } from "./areaMask";
 /** How long the old line-of-sight mask takes to fade out over the new one. */
 const SIGHT_FADE_MS = 160;
 import { simplifyStroke } from "./simplifyStroke";
-import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, drawColorId, drawingMark, drawnShape, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, measure, portalAt, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
+import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, drawColorId, drawingMark, drawnShape, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, portalAt, snapToCellCenter, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
 import { aimExpiry, expiredAims } from "./aims";
 import { PING_MS, pingPulse } from "./ping";
 import { boardFontFamily, boardMonoFamily, relabelWhenFontsReady, relabelledFamily, waitForBoardFont } from "./boardFont";
@@ -301,6 +302,10 @@ const MEASURE_COLOR = 0xf1c40f;
  */
 const AIM_COLOR = 0xf4ede4;
 const AIM_EDGE = 0x14171b;
+/** The aim over a token out of the chosen attack's range (attack-range): a red that reads on any map. */
+const AIM_OUT_OF_RANGE = 0xff5a4f;
+/** How opaque the aim's path is over empty board, where it only shows reach (attack-range). */
+const AIM_EMPTY_ALPHA = 0.55;
 /** GM-only areas are hatched (ADR 0040): stripes about a quarter of a cell apart, so they zoom with the map. */
 const HATCH_TILE_PX = 16;
 const HATCH_SPACING_CELLS = 0.25;
@@ -518,6 +523,10 @@ export class BoardView {
   private fogHover: Point | null = null;
   /** The token under the pointer while picking an attack target; null over the map or the attacker. */
   private attackHover: string | null = null;
+  /** The press while aiming began on an empty square: a click there (not a drag) leaves targeting. */
+  private attackEmptyPress = false;
+  /** The square under the pointer while aiming, for the aim when no token is there (attack-range). */
+  private attackPointer: Point | null = null;
   /** When a target was last picked: a double-click there is part of the pick, not a ping. */
   private lastPickAt = 0;
   /** The last measurement; stays until the next one starts, the tool changes, or Clear. */
@@ -1540,6 +1549,7 @@ export class BoardView {
       if (this.hoveredPortalId) { this.hoveredPortalId = null; this.drawPortals(); }
     }
     this.attackHover = null;
+    this.attackPointer = null;
     this.tool = tool;
     if (this.initialized) this.app.stage.cursor = this.toolCursor();
     if (this.state) this.syncTokens();
@@ -2436,15 +2446,29 @@ export class BoardView {
    * active turn) rather than crossing the portraits, and a thin ring marks the token aimed at.
    * Only this viewer sees it; nothing is sent until the roll (attack-targeting).
    */
+  /** The chosen named attack's range while picking a target, or null for none (attack-range). */
+  private attackRange: AttackRange | null = null;
+
+  /** What the target being aimed at is checked against; redraws the aim when it changes. */
+  setAttackRange(range: AttackRange | null) {
+    if (JSON.stringify(range) === JSON.stringify(this.attackRange)) return;
+    this.attackRange = range;
+    if (this.tool.kind === "attack") this.redrawOverlay();
+  }
+
   private drawAttackLine(g: Graphics, attackerId: string) {
     const state = this.state;
     const attacker = state?.tokens[attackerId];
-    const target = this.attackHover ? state?.tokens[this.attackHover] : undefined;
+    const token = this.attackHover ? state?.tokens[this.attackHover] : undefined;
+    // No token under the pointer: aim at the square it is over, one square in size (attack-range).
+    const target = token ?? (this.attackPointer ? { position: this.attackPointer, size: 1 } : undefined);
     if (!state || !attacker || !target) return;
+    if (!token && target.position.x === attacker.position.x && target.position.y === attacker.position.y) return;
     const grid = state.scene.grid;
     const px = 1 / this.world.scale.x;
     // A token's disc is size × cell / 2 − 2; its active-turn ring reaches 9 beyond (see drawDecor).
-    const clearance = (t: Token) => (t.size * grid.cellSize) / 2 - 2 + 9 + 3 * px;
+    // An empty square has no rings: the arrow runs to just short of its centre.
+    const clearance = (t: { size: number }, isToken = true) => isToken ? (t.size * grid.cellSize) / 2 - 2 + 9 + 3 * px : 6 * px;
 
     const from = attacker.position;
     const to = target.position;
@@ -2452,22 +2476,33 @@ export class BoardView {
     const ux = (to.x - from.x) / (length || 1);
     const uy = (to.y - from.y) / (length || 1);
     const start = { x: from.x + ux * clearance(attacker), y: from.y + uy * clearance(attacker) };
-    const tip = { x: to.x - ux * clearance(target), y: to.y - uy * clearance(target) };
+    const tip = { x: to.x - ux * clearance(target, !!token), y: to.y - uy * clearance(target, !!token) };
 
-    // The token aimed at: one thin ring just inside where the arrow stops.
-    const ringRadius = clearance(target) - 3 * px;
-    g.circle(to.x, to.y, ringRadius).stroke({ width: 3.5 * px, color: AIM_EDGE, alpha: 0.45 });
-    g.circle(to.x, to.y, ringRadius).stroke({ width: 1.5 * px, color: AIM_COLOR, alpha: 0.95 });
+    // Nearest square to nearest square under the room's rule, as the target list and range measure (ADR 0067).
+    const { outOfRange, label } = attackAim(state, attacker, target, this.attackRange);
+    const color = outOfRange ? AIM_OUT_OF_RANGE : AIM_COLOR;
+    const tint = outOfRange ? AIM_OUT_OF_RANGE : 0xffffff;
 
-    // Snapped cell to cell, like Measure: exact for 1-cell tokens, a hint for larger ones.
-    const m = measure(from, to, grid, false);
+    // The token aimed at: one thin ring just inside where the arrow stops. An empty square: its outline.
+    const ringRadius = token ? clearance(target) - 3 * px : grid.cellSize / 2;
+    if (token) {
+      g.circle(to.x, to.y, ringRadius).stroke({ width: 3.5 * px, color: AIM_EDGE, alpha: 0.45 });
+      g.circle(to.x, to.y, ringRadius).stroke({ width: 1.5 * px, color, alpha: 0.95 });
+    } else {
+      const half = grid.cellSize / 2;
+      g.rect(to.x - half, to.y - half, half * 2, half * 2).stroke({ width: 3.5 * px, color: AIM_EDGE, alpha: 0.35 * AIM_EMPTY_ALPHA });
+      g.rect(to.x - half, to.y - half, half * 2, half * 2).stroke({ width: 1.5 * px, color, alpha: 0.8 * AIM_EMPTY_ALPHA });
+    }
+
     const span = Math.hypot(tip.x - start.x, tip.y - start.y);
     // Tokens touching or overlapping: no room for an arrow, so the ring and distance say it all.
     if (span <= 0 || (tip.x - start.x) * ux + (tip.y - start.y) * uy <= 0) {
-      this.showLabel(m.label, { x: to.x, y: to.y - ringRadius });
+      this.showLabel(label, { x: to.x, y: to.y - ringRadius }, tint);
       return;
     }
 
+    // Over empty board the path is a hint of reach, not a choice: drawn see-through. The label stays solid.
+    const fade = token ? 1 : AIM_EMPTY_ALPHA;
     const head = Math.min(10 * px, span / 2);
     const shaftEnd = { x: tip.x - ux * head, y: tip.y - uy * head };
     const dashes = (style: { width: number; color: number; alpha: number }) => {
@@ -2480,8 +2515,8 @@ export class BoardView {
       }
       g.stroke({ ...style, cap: "round" });
     };
-    dashes({ width: 4 * px, color: AIM_EDGE, alpha: 0.45 });
-    dashes({ width: 2 * px, color: AIM_COLOR, alpha: 0.95 });
+    dashes({ width: 4 * px, color: AIM_EDGE, alpha: 0.45 * fade });
+    dashes({ width: 2 * px, color, alpha: 0.95 * fade });
 
     const wing = 5 * px;
     g.poly([
@@ -2489,11 +2524,11 @@ export class BoardView {
       shaftEnd.x - uy * wing, shaftEnd.y + ux * wing,
       shaftEnd.x + uy * wing, shaftEnd.y - ux * wing,
     ])
-      .fill({ color: AIM_COLOR, alpha: 0.95 })
-      .stroke({ width: 1.5 * px, color: AIM_EDGE, alpha: 0.55, join: "round" });
+      .fill({ color, alpha: 0.95 * fade })
+      .stroke({ width: 1.5 * px, color: AIM_EDGE, alpha: 0.55 * fade, join: "round" });
 
     // Halfway along, above the shaft, so it names the gap rather than sitting on a portrait.
-    this.showLabel(m.label, { x: (start.x + tip.x) / 2, y: (start.y + tip.y) / 2 });
+    this.showLabel(label, { x: (start.x + tip.x) / 2, y: (start.y + tip.y) / 2 }, tint);
   }
 
   /** The topmost token whose disc contains `p`, other than `exceptId`. */
@@ -2512,8 +2547,9 @@ export class BoardView {
   }
 
   /** The size label beside the pointer, kept the same size on screen at any zoom. */
-  private showLabel(text: string, at: Point) {
+  private showLabel(text: string, at: Point, tint = 0xffffff) {
     this.measureLabel.text = text;
+    this.measureLabel.tint = tint;
     this.measureLabel.scale.set(1 / this.world.scale.x);
     this.measureLabel.position.set(at.x, at.y);
     this.measureLabel.visible = true;
@@ -3407,8 +3443,10 @@ export class BoardView {
         this.lastPickAt = performance.now();
         return this.callbacks.pickTarget(this.tool.attackerId, target);
       }
-      // A press on the map or the attacker picks nothing; dragging still pans.
-      this.pan = { start: { x: e.global.x, y: e.global.y }, origin: { x: this.world.x, y: this.world.y } };
+      // A press on the map or the attacker picks nothing; dragging still pans. A click (no drag) on an
+      // empty square leaves targeting, as Escape does; one on the attacker itself doesn't (attack-range).
+      this.attackEmptyPress = e.button === 0 && this.tokenAt(this.toBoard(e.global), "") === null;
+      this.pan = { start: { x: e.global.x, y: e.global.y }, origin: { x: this.world.x, y: this.world.y }, button: e.button };
       return;
     }
     if (this.tool.kind === "pickTemplate") {
@@ -3455,10 +3493,17 @@ export class BoardView {
       this.redrawGhost();
     }
     if (this.tool.kind === "attack" && !this.pan) {
-      const hover = this.tokenAt(this.toBoard(e.global), this.tool.attackerId);
-      if (hover !== this.attackHover) {
+      const at = this.toBoard(e.global);
+      const hover = this.tokenAt(at, this.tool.attackerId);
+      // Over empty board the aim follows the pointer square by square, so it shows how far the attack reaches.
+      const square = this.state ? snapToCellCenter(at, this.state.scene.grid) : null;
+      const moved = !!square && (square.x !== this.attackPointer?.x || square.y !== this.attackPointer?.y);
+      if (hover !== this.attackHover || (!hover && moved)) {
         this.attackHover = hover;
+        this.attackPointer = square;
         this.redrawOverlay();
+      } else if (moved) {
+        this.attackPointer = square;
       }
     }
     if (this.tool.kind === "fog" && this.tool.mode === "polygon" && this.fogPoints.length > 0) {
@@ -3555,6 +3600,9 @@ export class BoardView {
   private onPointerUp = (e: FederatedPointerEvent) => {
     const pan = this.pan;
     this.pan = null;
+    const emptyPress = this.attackEmptyPress;
+    this.attackEmptyPress = false;
+    if (pan && emptyPress && this.tool.kind === "attack" && !exceedsPanThreshold(pan.start, e.global)) return this.callbacks.cancelAttack();
     if (this.templateEdit) return this.finishTemplateEdit();
     if (this.terrainStroke) return this.finishTerrainStroke();
     if (pan && pan.button === 0 && this.tool.kind === "doors" && !exceedsPanThreshold(pan.start, e.global)) {

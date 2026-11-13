@@ -45,6 +45,7 @@ import { UPLOAD_ALLOWANCE, UploadAllowanceError } from "../store/libraryStore";
 import { registerEncounterEditRoutes } from "./encounterEdits";
 import { registerEncounterRoutes } from "./encounters";
 import { registerLibraryRoutes } from "./library";
+import { registerGmSettingsRoutes } from "./gmSettings";
 import { detectionWire } from "./library";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import type { DetectionTarget } from "../store/gridDetectionStore";
@@ -375,6 +376,7 @@ export function registerRoutes(
   registerEncounterEditRoutes(app, { store, registry, rooms });
   registerLegacyRoutes(app, { store });
   registerDiceLookRoutes(app, { store, uploadDir, assets });
+  registerGmSettingsRoutes(app, { store });
   registerMembershipRoutes(app, { store, registry, limits });
 
   /** FR-REC-01: history belongs to this room's GM, never merely any valid GM token. */

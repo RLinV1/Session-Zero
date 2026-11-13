@@ -136,6 +136,8 @@ model GmIdentity {
   shippedMapsSeededAt DateTime? @map("shipped_maps_seeded_at") @db.Timestamptz(6)
   /// Slugs of the shipped maps already added to this owner's library; never shrinks, so a deleted map stays deleted.
   shippedMapsSeeded String[] @default([]) @map("shipped_maps_seeded")
+  /// The owner's defaults for new rooms (ADR 0066), as `RoomDefaults`; null until first saved.
+  roomDefaults Json? @map("room_defaults")
 
   rooms     Room[]
   assets    LibraryAsset[]

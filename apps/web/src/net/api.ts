@@ -18,6 +18,7 @@ import {
   type CreateAnimationRequest,
   type CreateCreatureRequest,
   type DiceLookView,
+  RoomDefaults,
   type DiceLooksResponse,
   type DieName,
   type EncounterEditSession,
@@ -375,6 +376,13 @@ export const api = {
     rooms: () => accountRequest<MyRoomsResponse>("/api/me/rooms"),
     /** A hosted room's board, small, for its dashboard card (gm-dashboard). */
     roomPreview: (roomId: string) => accountRequest<RoomPreview>(`/api/me/rooms/${encodeURIComponent(roomId)}/preview`),
+  },
+
+  /** The signed-in GM's defaults for new rooms (gm-room-defaults, ADR 0066), checked on the way in. */
+  roomDefaults: {
+    get: async () => RoomDefaults.parse(await accountRequest<unknown>("/api/gm/settings")),
+    save: async (defaults: RoomDefaults) =>
+      RoomDefaults.parse(await accountRequest<unknown>("/api/gm/settings", { method: "PUT", ...jsonBody(defaults) })),
   },
 
   /** The account's active seat in an invite's room, if any (room-membership): Resume instead of joining twice. */

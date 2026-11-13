@@ -1,5 +1,5 @@
-import { attackLabel, diceRollsOf, formatAttackParties, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type DiceRoll, type LoggedRoll, type Point, type RoomState, type Token } from "@vtt/shared";
-import { measure } from "../board/tools";
+import { attackDistance, attackLabel, diagonalRuleOf, diceRollsOf, formatAttackParties, inRange, isInFog, MAX_ATTACK_LABEL, type AttackKind, type AttackPreset, type AttackRange, type DiceRoll, type GridSpec, type LoggedRoll, type Point, type RoomState, type Token } from "@vtt/shared";
+import { formatDistance } from "../board/tools";
 import { poolExpression, poolOf, readPool, type DicePool } from "../ui/dicePool";
 
 import { getLocale, t } from "../i18n/locale";
@@ -43,22 +43,26 @@ export const isSettingsRecord = (v: unknown): v is Record<string, AttackSettings
 
 export interface TargetOption {
   token: Token;
-  /** Distance in the grid's units, snapped cell to cell like Measure. */
+  /** Distance in the grid's units, nearest square to nearest square under the room's Diagonals rule (ADR 0067). */
   units: number;
   /** "15 ft". */
   distance: string;
+  /** Within the chosen attack's range; always true with no range (attack-range). */
+  inRange: boolean;
 }
 
 /** Every token in the viewer's state other than the attacker, nearest first, then by name. */
-export function targetsByDistance(state: RoomState, attackerId: string): TargetOption[] {
+export function targetsByDistance(state: RoomState, attackerId: string, range?: AttackRange): TargetOption[] {
   const attacker = state.tokens[attackerId];
   if (!attacker) return [];
   const grid = state.scene.grid;
+  const rule = diagonalRuleOf(state);
   return Object.values(state.tokens)
     .filter((t) => t.id !== attackerId)
     .map((token) => {
-      const m = measure(attacker.position, token.position, grid, false);
-      return { token, units: m.units, distance: m.label };
+      // The same count as the ruler and the board's aim, so the three always agree (ADR 0067).
+      const units = attackDistance(attacker, token, grid, rule);
+      return { token, units, distance: formatDistance(units, grid), inRange: inRange(range, attacker, token, grid, rule) };
     })
     .sort((a, b) => a.units - b.units || a.token.name.localeCompare(b.token.name));
 }
@@ -162,6 +166,23 @@ export function presetRollLabel(preset: AttackPreset, kind: AttackKind): string 
 }
 
 /** "+5 · 1d8+3": to hit as a bonus when it is a plain d20, the full expression otherwise. */
+/**
+ * A named attack spelled out for the Attack section (attack-range): its range in the room's units
+ * ("Melee: 5 ft", "Ranged: 80 ft", "Unlimited"), its to-hit roll and its damage roll, or null for
+ * a roll it doesn't have.
+ */
+export function attackStats(preset: AttackPreset, grid: GridSpec): { range: string; toHit: string | null; damage: string | null } {
+  const range = preset.range;
+  const rangeText = !range
+    ? t("attack.range.none")
+    : range.kind === "melee"
+      ? t("attack.rangeMelee", { distance: formatDistance(range.reach ?? grid.unitsPerCell, grid) })
+      : t("attack.rangeRanged", { distance: formatDistance(range.distance, grid) });
+  // The whole roll, die and all, even a plain d20: "1d20+4", never just "+4".
+  const toHit = preset.toHit ? attackExpression(preset.toHit) : null;
+  return { range: rangeText, toHit, damage: preset.damage ? attackExpression(preset.damage) : null };
+}
+
 export function presetSummary(preset: AttackPreset): string {
   const parts: string[] = [];
   if (preset.toHit) {

@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Crosshair, DiceFive, DotsThree, Eye, EyeSlash, PencilSimple, Plus, SlidersHorizontal, Sword, Target, X } from "@phosphor-icons/react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { Crosshair, DiceFive, DotsThree, Drop, Eye, EyeSlash, PencilSimple, Plus, Ruler, SlidersHorizontal, Sword, Target, X } from "@phosphor-icons/react";
 import {
   can,
   isGroupRoll,
   MAX_ATTACK_LABEL,
+  MAX_ATTACK_RANGE,
   MAX_ATTACK_TARGETS,
   type AttackKind,
+  type AttackRange,
   type AnimationDef,
+  type GridSpec,
   type DiceRoll,
   type DiceVisibility,
   type LoggedRoll,
@@ -28,9 +31,10 @@ import {
   MAX_PRESETS,
   presetsForToken,
   presetRollLabel,
-  presetSummary,
   shouldPingTarget,
   targetsByDistance,
+  attackStats,
+  type TargetOption,
   readAttackSettings,
   type AttackPreset,
   type AttackSettings,
@@ -42,7 +46,15 @@ import { saveTokenAttacks } from "./tokenAttacks";
 import { BUILTIN_ANIMATIONS } from "../board/effectPresets";
 import { SearchablePicker } from "../ui/SearchablePicker";
 import { useStrikeAnimations } from "./useLibraryAnimations";
+import { useAttackEditorEnv } from "./attackEditorContext";
+import { AUTOMATIC_MELEE, AUTOMATIC_RANGED } from "../board/effects";
+import { motionReduced } from "../ui/motion";
 import { t } from "../i18n/locale";
+
+/** The preview stage loads with its renderer only when an attack editor opens (attack-range). */
+const AnimationPreviewStage = lazy(() => import("../ui/AnimationPreviewStage").then((m) => ({ default: m.AnimationPreviewStage })));
+
+const RANGE_KIND_LABELS = { none: "attack.range.none", melee: "attack.range.melee", ranged: "attack.range.ranged" } as const;
 
 /** The Animation select's value for an animation that is on the attack but not (or no longer) in the library. */
 const CURRENT_ANIMATION = "__current";
@@ -73,6 +85,7 @@ export function AttackPanel({
   reset,
   rolling,
   onPickOnBoard,
+  onAttackRange,
   onShowPing,
   visibility,
   onVisibility,
@@ -90,6 +103,8 @@ export function AttackPanel({
   /** Its dice have landed, on the board or in the private tray. */
   /** Put the board into targeting mode for this attacker. */
   onPickOnBoard: (attackerId: string) => void;
+  /** The chosen named attack's range, or null for none, so the board's aim can show it (attack-range). */
+  onAttackRange?: (range: AttackRange | null) => void;
   /** Show a ping on this viewer's own board; the relay doesn't echo it back. */
   onShowPing: (at: Point) => void;
   /**
@@ -168,6 +183,7 @@ export function AttackPanel({
           onAttacker={(id) => onPick({ attackerId: id, targetId: pick.targetId === id ? null : pick.targetId })}
           onTarget={(id) => onPick({ attackerId: attacker.id, targetId: id })}
           onPickOnBoard={() => onPickOnBoard(attacker.id)}
+          onAttackRange={onAttackRange}
           onShowPing={onShowPing}
           onRolledCustom={(settings) => setLastUsed((all) => ({ ...all, [attacker.id]: settings }))}
           onPresets={(update) => saveTokenAttacks(connection, attacker.id, update(presetsForToken(attacker)).slice(0, MAX_PRESETS))}
@@ -195,6 +211,7 @@ function AttackForm({
   onAttacker,
   onTarget,
   onPickOnBoard,
+  onAttackRange,
   onShowPing,
   onRolledCustom,
   onPresets,
@@ -217,6 +234,7 @@ function AttackForm({
   onAttacker: (id: string) => void;
   onTarget: (id: string | null) => void;
   onPickOnBoard: () => void;
+  onAttackRange?: (range: AttackRange | null) => void;
   onShowPing: (at: Point) => void;
   onRolledCustom: (settings: AttackSettings) => void;
   /** Save the attacker's attacks for the GM and its owners; resolves to why the server refused, else null. */
@@ -234,14 +252,71 @@ function AttackForm({
   const isGm = you.role === "gm";
   const chosen = presets.length > 0 ? presets[Math.min(selected, presets.length - 1)] : undefined;
   const chosenIndex = chosen ? presets.indexOf(chosen) : -1;
+  /** The range the target is checked against: the chosen named attack's, none while the custom roll is in use (attack-range). */
+  const range = customOpen ? undefined : chosen?.range;
+  const rangeKey = JSON.stringify(range ?? null);
+  useEffect(() => {
+    // Keyed by value: a fresh object holding the same range changes nothing.
+    onAttackRange?.(range ?? null);
+  }, [rangeKey, onAttackRange]);
+  useEffect(() => () => onAttackRange?.(null), [onAttackRange]);
+
+  /**
+   * One layout for every attack's range and rolls (attack-range): all on one row when the widest
+   * attack's fits the card, otherwise every one with the range above its rolls. Measured from an
+   * unseen copy of each line, and again whenever the panel changes width.
+   */
+  const attackRowRef = useRef<HTMLDivElement>(null);
+  const statsMeasureRef = useRef<HTMLSpanElement>(null);
+  const [statsStacked, setStatsStacked] = useState(false);
+  const statsKey = JSON.stringify(presets.map((p) => [p.range, p.toHit, p.damage, p.maxTargets]));
+  useLayoutEffect(() => {
+    const row = attackRowRef.current;
+    const measure = statsMeasureRef.current;
+    if (!row || !measure) return;
+    const decide = () => {
+      const card = row.querySelector<HTMLElement>(".picker-summary");
+      if (!card) return;
+      const widest = Math.max(0, ...[...measure.children].map((el) => (el as HTMLElement).scrollWidth));
+      setStatsStacked(needsTwoRows(widest, card.clientWidth));
+    };
+    decide();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(decide);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [statsKey, state.scene.grid.unitLabel, chosenIndex]);
 
   const attacker = state.tokens[attackerId]!;
-  const targets = targetsByDistance(state, attackerId);
+  const targets = targetsByDistance(state, attackerId, range);
+  const outOfRange = targets.filter((x) => !x.inRange);
   const target = targets.find((t) => t.token.id === targetId);
   // Every target the chosen attack rolls at: the main one plus the extras it allows.
   const maxTargets = chosen?.maxTargets ?? 1;
   const extras = extraIds.filter((id) => id !== target?.token.id && targets.some((t) => t.token.id === id)).slice(0, maxTargets - 1);
   const aimed = target ? [target.token.id, ...extras] : [];
+  /** Chosen targets out of the attack's range: marked red, never refused (attack-range). */
+  const aimedOut = aimed.filter((id) => outOfRange.some((x) => x.token.id === id));
+  const targetRow = (option: TargetOption) => {
+    const on = aimed.includes(option.token.id);
+    const out = on && !option.inRange;
+    return (
+      <label key={option.token.id} className={out ? "checkbox attack-target-out" : "checkbox"}>
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={!on && aimed.length >= maxTargets}
+          onChange={(e) => {
+            const next = e.target.checked ? [...aimed, option.token.id] : aimed.filter((id) => id !== option.token.id);
+            onTarget(next[0] ?? null);
+            setExtraIds(next.slice(1));
+          }}
+        />
+        {option.token.name}{option.token.hidden ? t("attack.hiddenSuffix") : ""} <span className="muted">{option.distance}</span>
+        {out && <span className="attack-out-of-range">{t("attack.outOfRange")}</span>}
+      </label>
+    );
+  };
   // After a Hit with the chosen attack on any aimed target, its one roll button becomes that attack's damage.
   const hits = chosen?.damage ? aimed.map((id) => hitOn(state.rolls, you.id, attackerId, id, chosen)).filter((r): r is DiceRoll => r !== null) : [];
   const followUp = hits[0] ?? null;
@@ -324,7 +399,7 @@ function AttackForm({
 
   return (
     <div className="stack attack-panel">
-      {/* Who attacks whom: the attacker, then the target (attack-section-compact). */}
+      {/* Who attacks, with what, then at whom: the target list depends on the attack's range (attack-range). */}
       <div className="attack-who">
         {attackers.length === 1 || inTurn ? (
           <p className="attack-attacker">
@@ -343,65 +418,7 @@ function AttackForm({
             }))}
           />
         )}
-        {maxTargets > 1 ? (
-          <PopoverButton
-            label={t("attack.targets")}
-            title={t("attack.chooseTargets")}
-            align="left"
-            className="attack-targets-button"
-            buttonContent={
-              <span className="attack-targets-summary">
-                <Target size={16} aria-hidden="true" />
-                <strong>{aimed.length === 0 ? (targets.length === 0 ? t("attack.noTargets") : t("attack.chooseTargets")) : aimed.length === 1 ? target!.token.name : t("attack.nTargets", { n: aimed.length })}</strong>
-                <span className="muted">{t("attack.upTo", { max: maxTargets })}</span>
-              </span>
-            }
-          >
-            {() => (
-              <fieldset className="attack-target-list">
-                <legend className="field-label">{t("attack.chooseUpTo", { max: maxTargets, n: aimed.length })}</legend>
-                {targets.map((target) => {
-                  const on = aimed.includes(target.token.id);
-                  return (
-                    <label key={target.token.id} className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        disabled={!on && aimed.length >= maxTargets}
-                        onChange={(e) => {
-                          const next = e.target.checked ? [...aimed, target.token.id] : aimed.filter((id) => id !== target.token.id);
-                          onTarget(next[0] ?? null);
-                          setExtraIds(next.slice(1));
-                        }}
-                      />
-                      {target.token.name}{target.token.hidden ? t("attack.hiddenSuffix") : ""} <span className="muted">{target.distance}</span>
-                    </label>
-                  );
-                })}
-              </fieldset>
-            )}
-          </PopoverButton>
-        ) : (
-          <Picker
-            label={t("stage.target")}
-            icon={<Target size={16} aria-hidden="true" />}
-            placeholder={targets.length === 0 ? t("attack.noTargets") : t("stage.target")}
-            disabled={targets.length === 0}
-            value={target?.token.id ?? null}
-            onChange={onTarget}
-            options={targets.map((t) => ({ key: t.token.id, label: `${t.token.name}${t.token.hidden ? " (hidden)" : ""}`, detail: t.distance }))}
-          />
-        )}
-        <button type="button" className="icon-button attack-board-pick" onClick={onPickOnBoard} aria-label={t("attack.pickOnBoard")} title={t("attack.pickOnBoard")}>
-          <Crosshair size={18} aria-hidden="true" />
-        </button>
       </div>
-
-      {isGm && visibility === "public" && (attacker.hidden || target?.token.hidden) && (
-        <p className="attack-warning" role="note">
-          {t("attack.hiddenWarning", { name: attacker.hidden ? attacker.name : target!.token.name })}
-        </p>
-      )}
 
       {editing !== null ? (
         <PresetEditor
@@ -427,14 +444,14 @@ function AttackForm({
       ) : (
         <>
           {/* What to roll: one row however many attacks a token has, the rest in a menu. */}
-          <div className="attack-row">
+          <div className="attack-row" ref={attackRowRef}>
             {chosen ? (
               <Picker
                 label={t("attack.attackOf", { name: attacker.name })}
                 icon={<Sword size={16} aria-hidden="true" />}
                 value={String(chosenIndex)}
                 onChange={(key) => setSelected(Number(key))}
-                options={presets.map((p, i) => ({ key: String(i), label: p.name, detail: presetSummary(p) }))}
+                options={presets.map((p, i) => ({ key: String(i), label: p.name, summary: <AttackStatsLine preset={p} grid={state.scene.grid} stacked={statsStacked} /> }))}
               />
             ) : (
               <button type="button" className="secondary attack-add-first" onClick={() => setEditing("new")}>
@@ -488,6 +505,12 @@ function AttackForm({
               )}
             </PopoverButton>
           </div>
+          {/* Every attack's line on one row, unseen, to decide one layout for them all. */}
+          {presets.length > 0 && (
+            <span className="attack-stats-measure" ref={statsMeasureRef} aria-hidden="true">
+              {presets.map((p, i) => <AttackStatsLine key={i} preset={p} grid={state.scene.grid} stacked={false} />)}
+            </span>
+          )}
           {!chosen && <p className="muted small-print">{t("attack.createHint")}</p>}
           {!chosen && !customOpen && (
             <div className="attack-roll-row">
@@ -495,6 +518,61 @@ function AttackForm({
                 <SlidersHorizontal size={18} aria-hidden="true" /> {t("attack.customRoll")}
               </button>
             </div>
+          )}
+          {/* At whom, grouped and coloured by the attack chosen above (attack-range). */}
+          <div className="attack-target-row">
+            {maxTargets > 1 ? (
+              <PopoverButton
+                label={t("attack.targets")}
+                title={t("attack.chooseTargets")}
+                align="left"
+                className="attack-targets-button"
+                buttonContent={
+                  <span className={aimedOut.length > 0 ? "attack-targets-summary attack-target-out" : "attack-targets-summary"}>
+                    <Target size={16} aria-hidden="true" />
+                    <strong>{aimed.length === 0 ? (targets.length === 0 ? t("attack.noTargets") : t("attack.chooseTargets")) : aimed.length === 1 ? target!.token.name : t("attack.nTargets", { n: aimed.length })}</strong>
+                    <span className="muted">{t("attack.upTo", { max: maxTargets })}</span>
+                    {aimedOut.length > 0 && <span className="attack-out-of-range">{t("attack.outOfRange")}</span>}
+                  </span>
+                }
+              >
+                {() => (
+                  <fieldset className="attack-target-list">
+                    <legend className="field-label">{t("attack.chooseUpTo", { max: maxTargets, n: aimed.length })}</legend>
+                    {targets.filter((x) => x.inRange).map(targetRow)}
+                    {outOfRange.length > 0 && <>
+                      {outOfRange.length === targets.length && <p className="muted small-print">{t("attack.noneInRange")}</p>}
+                      {/* Closed each time the list opens; its targets can still be chosen (attack-range). */}
+                      <details className="attack-out-of-range-group">
+                        <summary>{t("attack.outOfRangeGroup", { n: outOfRange.length })}</summary>
+                        {outOfRange.map(targetRow)}
+                      </details>
+                    </>}
+                  </fieldset>
+                )}
+              </PopoverButton>
+            ) : (
+              <Picker
+                label={t("stage.target")}
+                icon={<Target size={16} aria-hidden="true" />}
+                placeholder={targets.length === 0 ? t("attack.noTargets") : t("stage.target")}
+                disabled={targets.length === 0}
+                value={target?.token.id ?? null}
+                onChange={onTarget}
+                options={targets.map((t) => ({ key: t.token.id, label: `${t.token.name}${t.token.hidden ? " (hidden)" : ""}`, detail: t.distance, grouped: !t.inRange }))}
+                groupLabel={outOfRange.length > 0 ? t("attack.outOfRangeGroup", { n: outOfRange.length }) : undefined}
+                note={outOfRange.length > 0 && outOfRange.length === targets.length ? t("attack.noneInRange") : undefined}
+                status={target && !target.inRange ? t("attack.outOfRange") : undefined}
+              />
+            )}
+            <button type="button" className="icon-button attack-board-pick" onClick={onPickOnBoard} aria-label={t("attack.pickOnBoard")} title={t("attack.pickOnBoard")}>
+              <Crosshair size={18} aria-hidden="true" />
+            </button>
+          </div>
+          {isGm && visibility === "public" && (attacker.hidden || target?.token.hidden) && (
+            <p className="attack-warning" role="note">
+              {t("attack.hiddenWarning", { name: attacker.hidden ? attacker.name : target!.token.name })}
+            </p>
           )}
           {chosen && !customOpen && (
             <div className="attack-roll-row">
@@ -594,6 +672,13 @@ export function PresetEditor({
   const [maxTargetsText, setMaxTargetsText] = useState(String(initial?.maxTargets ?? 3));
   const clampTargets = (n: number) => Math.min(MAX_ATTACK_TARGETS, Math.max(2, Math.round(n) || 2));
   const [error, setError] = useState<string | null>(null);
+  /** How far it reaches (attack-range): typed in the room's units, or the GM's outside a room. */
+  const env = useAttackEditorEnv();
+  const [rangeKind, setRangeKind] = useState<"none" | AttackRange["kind"]>(initial?.range?.kind ?? "none");
+  // Reach starts at one square, which is saved as "one square" so it means one square on any map.
+  const [reachText, setReachText] = useState(String(initial?.range?.kind === "melee" && initial.range.reach !== undefined ? initial.range.reach : env.unitsPerCell));
+  const [distanceText, setDistanceText] = useState(initial?.range?.kind === "ranged" ? String(initial.range.distance) : "");
+  const rangeInputId = useId();
   /** The attack's own animation: a copy of a library one (ADR 0038). Null leaves the attack's style to decide. */
   const [animation, setAnimation] = useState<AnimationDef | null>(initial?.animation ?? null);
   const library = useStrikeAnimations();
@@ -610,8 +695,17 @@ export function PresetEditor({
     if (!trimmed) return setError(t("attack.nameRequired"));
     if (taken.some((n) => n.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) return setError(t("attack.nameTaken", { name: trimmed }));
     if (!toHit && !damage) return setError(t("attack.needsRoll"));
-    onSave({ name: trimmed, toHit, damage, ...(animation && { animation }), ...(multi && { maxTargets }) });
+    let range: AttackRange | undefined;
+    if (rangeKind !== "none") {
+      const text = (rangeKind === "melee" ? reachText : distanceText).trim();
+      const n = text === "" ? NaN : Number(text);
+      if (!Number.isFinite(n) || n <= 0 || n > MAX_ATTACK_RANGE) return setError(t("attack.rangeInvalid", { max: MAX_ATTACK_RANGE }));
+      range = rangeKind === "ranged" ? { kind: "ranged", distance: n } : n === env.unitsPerCell ? { kind: "melee" } : { kind: "melee", reach: n };
+    }
+    onSave({ name: trimmed, toHit, damage, ...(animation && { animation }), ...(multi && { maxTargets }), ...(range && { range }) });
   };
+  /** What the preview plays: the chosen animation, or what Automatic plays for this Range choice. */
+  const previewDef = animation ?? (rangeKind === "melee" ? AUTOMATIC_MELEE : AUTOMATIC_RANGED);
 
   return (
     <form className="stack attack-editor" onSubmit={save} aria-label={initial ? t("attack.editNamed", { name: initial.name }) : t("creature.addAttack")}>
@@ -633,21 +727,60 @@ export function PresetEditor({
             onBlur={() => setMaxTargetsText(String(maxTargets))} />
         </label>
       )}
-      <SearchablePicker
-        label={t("home.attack.animation")}
-        value={animationValue === "" ? AUTOMATIC_ANIMATION : animationValue}
-        onChange={(key) => {
-          if (key === CURRENT_ANIMATION) return;
-          // Copied in: later library edits do not change this attack.
-          setAnimation(key === AUTOMATIC_ANIMATION ? null : [...library, ...builtins].find((a) => a.id === key)?.def ?? null);
-        }}
-        options={[
-          { key: AUTOMATIC_ANIMATION, label: t("walls.colour.auto"), detail: "animation" },
-          ...(animationValue === CURRENT_ANIMATION ? [{ key: CURRENT_ANIMATION, label: t("attack.savedAnimation") }] : []),
-          ...builtins.map((b) => ({ key: b.id, label: b.name, detail: "preset" })),
-          ...library.map((a) => ({ key: a.id, label: a.name, detail: "yours" })),
-        ]}
-      />
+      <fieldset className="attack-range-field">
+        <legend className="field-label">{t("attack.range")}</legend>
+        <div className="row attack-range-kinds">
+          {(["none", "melee", "ranged"] as const).map((kind) => (
+            <label key={kind} className="checkbox">
+              <input type="radio" name="attack-range" value={kind} checked={rangeKind === kind} onChange={() => setRangeKind(kind)} />
+              {t(RANGE_KIND_LABELS[kind])}
+            </label>
+          ))}
+        </div>
+        {rangeKind === "melee" && (
+          <div className="attack-range-number">
+            <label htmlFor={rangeInputId}>{t("attack.reach")}</label>
+            <span className="row">
+              <input id={rangeInputId} type="number" inputMode="decimal" step="any" min="0" value={reachText} onChange={(e) => setReachText(e.target.value)} />
+              <span>{env.unitLabel}</span>
+            </span>
+          </div>
+        )}
+        {rangeKind === "ranged" && (
+          <div className="attack-range-number">
+            <label htmlFor={rangeInputId}>{t("attack.distance")}</label>
+            <span className="row">
+              <input id={rangeInputId} type="number" inputMode="decimal" step="any" min="0" value={distanceText} onChange={(e) => setDistanceText(e.target.value)} />
+              <span>{env.unitLabel}</span>
+            </span>
+          </div>
+        )}
+      </fieldset>
+      {/* Said in words, so Automatic reads as the attack's animation, not its range or dice. */}
+      <div className="attack-animation-field">
+        <span className="field-label" aria-hidden="true">{t("attack.animationField")}</span>
+        <SearchablePicker
+          label={t("attack.animationField")}
+          value={animationValue === "" ? AUTOMATIC_ANIMATION : animationValue}
+          onChange={(key) => {
+            if (key === CURRENT_ANIMATION) return;
+            // Copied in: later library edits do not change this attack.
+            setAnimation(key === AUTOMATIC_ANIMATION ? null : [...library, ...builtins].find((a) => a.id === key)?.def ?? null);
+          }}
+          options={[
+            // Only the GM's own animations are tagged; Automatic and the built-ins need no label (attack-range).
+            { key: AUTOMATIC_ANIMATION, label: t("attack.automaticAnimation") },
+            ...(animationValue === CURRENT_ANIMATION ? [{ key: CURRENT_ANIMATION, label: t("attack.savedAnimation"), detail: t("attack.custom") }] : []),
+            ...builtins.map((b) => ({ key: b.id, label: b.name })),
+            ...library.map((a) => ({ key: a.id, label: a.name, detail: t("attack.custom") })),
+          ]}
+        />
+      </div>
+      <div className="attack-editor-preview">
+        <Suspense fallback={<div className="attack-editor-preview-placeholder" />}>
+          <AnimationPreviewStage def={previewDef} autoPlay reducedMotion={env.reducedEffects || motionReduced()} />
+        </Suspense>
+      </div>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -720,3 +853,33 @@ function hitOn(rolls: readonly LoggedRoll[], participantId: string, attackerId: 
 }
 
 const stableJson = (value: object) => JSON.stringify(value, (_k, v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
+
+/**
+ * The chosen attack spelled out on its card (attack-range): its range, which the target list below
+ * is grouped by, then its attack roll and damage roll. Inline, since it sits inside the card's button.
+ */
+function AttackStatsLine({ preset, grid, stacked }: { preset: AttackPreset; grid: GridSpec; stacked: boolean }) {
+  const stats = attackStats(preset, grid);
+  // An icon and the value, with the word for screen readers and on hover: compact, still plain.
+  const item = (Icon: typeof Ruler, label: string, value: string) => (
+    <span className="attack-stat" title={label}>
+      <Icon size={13} aria-hidden="true" className="attack-stat-icon" />
+      <span className="sr-only">{label}</span>
+      <span className="attack-stat-value">{value}</span>
+    </span>
+  );
+  // The rolls stay together: the line breaks only after the range, never between the two rolls.
+  return (
+    <span className={stacked ? "attack-stats stacked" : "attack-stats"}>
+      {item(Ruler, t("attack.range"), stats.range)}
+      <span className="attack-rolls">
+        {stats.toHit && item(Crosshair, t("attack.stat.attackRoll"), stats.toHit)}
+        {stats.damage && item(Drop, t("attack.stat.damageRoll"), stats.damage)}
+        {preset.maxTargets !== undefined && <span className="attack-stat attack-stat-value">{t("attack.upToTargets", { n: preset.maxTargets })}</span>}
+      </span>
+    </span>
+  );
+}
+
+/** Whether the widest attack's one-row line (px) needs more than the card's room (px); half a pixel's grace for rounding. */
+export const needsTwoRows = (widest: number, available: number): boolean => available > 0 && widest > available + 0.5;

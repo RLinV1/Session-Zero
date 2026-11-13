@@ -15,6 +15,7 @@ import { creatureSummary, type CreaturePrefill } from "./creatureDraft";
 import { LibraryPicker } from "./LibraryPicker";
 import { TokenDisc } from "../ui/TokenDisc";
 import { t } from "../i18n/locale";
+import { AttackEditorContext, useGmAttackEditorEnv } from "../panels/attackEditorContext";
 
 /** A creature in the library's Creatures tab (library-creatures): its art or a colour disc, name and stats. */
 export function CreatureCard(props: {
@@ -166,7 +167,11 @@ export function CreatureForm(props: {
     }
   }
 
+  /** A creature's attack ranges are typed in the GM's own units (attack-range, gm-room-defaults). */
+  const attackEditorEnv = useGmAttackEditorEnv();
+
   return (
+    <AttackEditorContext.Provider value={attackEditorEnv}>
     <>
       <form className="stack creature-form" onSubmit={(e) => void save(e)}>
         <label>
@@ -262,6 +267,7 @@ export function CreatureForm(props: {
         />}
       </Modal>
     </>
+    </AttackEditorContext.Provider>
   );
 }
 

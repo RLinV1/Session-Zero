@@ -40,10 +40,16 @@ export interface Spark {
 /** Sparks alive at once, however many bursts overlap. */
 const MAX_LIVE_SPARKS = 160;
 
-export function burst(list: Spark[], at: Point, count: number, speed: number, size: number, colors: number[], life = 0.7, gravity = 0, spin = 6) {
+/** Sparks thrown within `cone` radians either side of `angle`, not all round. */
+export interface BurstAim {
+  angle: number;
+  cone: number;
+}
+
+export function burst(list: Spark[], at: Point, count: number, speed: number, size: number, colors: number[], life = 0.7, gravity = 0, spin = 6, aim?: BurstAim) {
   for (let i = 0; i < count; i++) {
     if (list.length >= MAX_LIVE_SPARKS) return;
-    const angle = Math.random() * Math.PI * 2;
+    const angle = aim ? aim.angle + (Math.random() * 2 - 1) * aim.cone : Math.random() * Math.PI * 2;
     const v = speed * (0.35 + Math.random() * 0.75);
     list.push({
       x: at.x, y: at.y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, age: 0,

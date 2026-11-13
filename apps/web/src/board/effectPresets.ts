@@ -204,6 +204,8 @@ function preset(shape: AnimationShape, look: Look, tuning: Tuning): FullAnimatio
 export const SHAPE_DEFAULTS: Record<AnimationShape, FullAnimationDef> = {
   slash: preset("slash", { duration: 0.9, primary: "#ff8a1f", secondary: "#ffd24a", accent: "#fff1b8", size: 1.4, particles: 28, glow: 0.7, shake: 0.5, flash: 0.45 },
     { count: 1, spread: 0.3, arc: 0.45, trail: 0.6, spin: 0.3, gravity: 0.5, rings: 2, particleShape: "spark" }),
+  pierce: preset("pierce", { duration: 0.9, primary: "#cbd5e1", secondary: "#f8fafc", accent: "#ffffff", size: 1.4, particles: 34, glow: 0.75, shake: 0.45, flash: 0.45 },
+    { count: 1, spread: 0.3, arc: 0, trail: 0.55, spin: 0, gravity: 0.35, rings: 1, particleShape: "spark" }),
   claw: preset("claw", { duration: 0.9, primary: "#e11d48", secondary: "#fda4af", accent: "#fff1f2", size: 1.3, particles: 30, glow: 0.6, shake: 0.55, flash: 0.35 },
     { count: 3, spread: 0.35, arc: 0.45, trail: 0.55, spin: 0.3, gravity: 0.5, rings: 1, particleShape: "shard" }),
   whirlwind: preset("whirlwind", { duration: 1.4, primary: "#38bdf8", secondary: "#e0f2fe", accent: "#a7f3d0", size: 1.3, particles: 30, glow: 0.7, shake: 0.4, flash: 0.3 },
@@ -214,6 +216,8 @@ export const SHAPE_DEFAULTS: Record<AnimationShape, FullAnimationDef> = {
     { count: 5, spread: 0.5, arc: 0.5, trail: 0.7, spin: 0.2, gravity: -0.1, rings: 1, particleShape: "shard" }),
   projectile: preset("projectile", { duration: 1, primary: "#9ad7ff", secondary: "#e8f6ff", accent: "#ffffff", size: 1.1, particles: 22, glow: 0.65, shake: 0.25, flash: 0.35 },
     { count: 1, spread: 0.3, arc: 0.4, trail: 0.55, spin: 0.4, gravity: 0.4, rings: 2, particleShape: "spark" }),
+  arrow: preset("arrow", { duration: 1.1, primary: "#9ca3af", secondary: "#e5e7eb", accent: "#f8fafc", size: 1.8, particles: 12, glow: 0.3, shake: 0.3, flash: 0.25 },
+    { count: 1, spread: 0, arc: 0.35, trail: 0.45, spin: 0, gravity: 0.5, rings: 1, particleShape: "shard" }),
   volley: preset("volley", { duration: 1.3, primary: "#a3e635", secondary: "#ecfccb", accent: "#fef08a", size: 1.1, particles: 24, glow: 0.5, shake: 0.3, flash: 0.25 },
     { count: 7, spread: 0.6, arc: 0.7, trail: 0.5, spin: 0.2, gravity: 0.5, rings: 1, particleShape: "square" }),
   dagger: preset("dagger", { duration: 1, primary: "#cbd5e1", secondary: "#f8fafc", accent: "#fb7185", size: 1.1, particles: 24, glow: 0.55, shake: 0.3, flash: 0.3 },

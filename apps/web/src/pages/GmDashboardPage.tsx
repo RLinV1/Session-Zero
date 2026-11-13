@@ -15,6 +15,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
+import { RoomSettingsButton } from "./RoomSettings";
 import { t } from "../i18n/locale";
 
 import { presetName } from "../i18n/labels";
@@ -52,15 +53,14 @@ function Dashboard() {
   return (
     <>
     <div className="page-shell page-bar">
-      <SiteHeader nav={<HubNav current="rooms" />} account={<AccountMenu />} />
+      <SiteHeader
+        nav={<HubNav current="rooms" />}
+        account={<AccountMenu />}
+        settings={<RoomSettingsButton />}
+      />
     </div>
     <main className="page-shell home gm-page">
-      <div className="page-title-row">
-        <h1>{t("dashboard.title")}</h1>
-        <button type="button" className="primary" onClick={() => setCreating(true)}>
-          <Plus size={16} aria-hidden /> {t("dashboard.create")}
-        </button>
-      </div>
+      <h1>{t("dashboard.title")}</h1>
       <LegacyMoveBanner onMoved={() => setRefresh((n) => n + 1)} />
       <div className="dashboard-grid">
         <div className="room-sections">
@@ -236,7 +236,13 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
   const hosting = state.status === "loaded" ? state.rooms.hosting : [];
   return (
     <section className="room-section" aria-labelledby="hosting-heading" aria-busy={state.status === "loading"}>
-      <h2 id="hosting-heading">{t("dashboard.hosting")}</h2>
+      {/* Creating a room sits with the rooms it adds to. */}
+      <div className="room-section-head">
+        <h2 id="hosting-heading">{t("dashboard.hosting")}</h2>
+        <button type="button" className="primary" onClick={onCreate}>
+          <Plus size={16} aria-hidden /> {t("dashboard.create")}
+        </button>
+      </div>
       {state.status === "loading" && (
         // Cards shaped like the rooms that will replace them, not a spinner.
         <ul className="plain room-grid" aria-hidden="true">

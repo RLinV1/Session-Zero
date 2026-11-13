@@ -1,4 +1,4 @@
-import { areaShape, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DrawColor, type Drawing, type DrawingShape, type DiagonalRule, type FogRegion, type GridSpec, type Point, type PortalState, type TerrainKind, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
+import { areaShape, diagonalSteps, pointInArea, templateArea, DEFAULT_AREA_COLOR, MAX_LINE_WIDTH_CELLS, pointInPolygon, snapTokenCenter, type AreaColor, type AreaGeometry, type AreaShape, type AreaTemplate, type Command, type DrawColor, type Drawing, type DrawingShape, type DiagonalRule, type FogRegion, type GridSpec, type Point, type PortalState, type TerrainKind, type TemplateGeometry, type Token, type Wall } from "@vtt/shared";
 
 export type { AreaShape };
 import type { StrokeShape } from "./terrainStroke";
@@ -232,8 +232,8 @@ export function measure(from: Point, to: Point, grid: GridSpec, free: boolean, r
   const rawDy = Math.abs(b.y - a.y) / grid.cellSize;
   const dx = free || tokenSize !== undefined ? rawDx : Math.round(rawDx);
   const dy = free || tokenSize !== undefined ? rawDy : Math.round(rawDy);
-  const cells = free || rule === "euclidean" ? Math.hypot(dx, dy)
-    : Math.max(dx, dy) + (rule === "alternating" ? Math.floor(Math.min(dx, dy) / 2 + 1e-9) : 0);
+  // The same count as attack range (ADR 0067), so the ruler and the target list agree.
+  const cells = free ? Math.hypot(dx, dy) : diagonalSteps(dx, dy, rule);
   const units = cells * grid.unitsPerCell;
   return { from: a, to: b, units, label: formatDistance(units, grid) };
 }

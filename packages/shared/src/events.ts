@@ -7,6 +7,7 @@ import { ConditionId, TokenStats } from "./conditions";
 import { DiceRoll, GroupRoll, Verdict } from "./dice";
 import { AreaEffect, AreaEffectDamage, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
+import { RoomDefaults } from "./roomDefaults";
 import { AreaTemplate, ChatMessage, Drawing, Checkpoint, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DiceLookOnTable, FogRegion, Id, Initiative, InitiativeScore, MapImage, MAX_WALLS, MAX_FOG_REGIONS, Participant, Portal, TableState, TemplateGeometry, Token, TokenGroup, Wall } from "./state";
 
 /**
@@ -30,6 +31,8 @@ export const DomainEvent = z.discriminatedUnion("type", [
     name: z.string(),
     /** The game preset (KAN-63, ADR 0027). Absent on rooms created before presets: Dungeons & Dragons. */
     preset: z.string().optional(),
+    /** The creating GM's saved defaults: the room starts with these rules and grid units (ADR 0066). Absent: the built-ins. */
+    defaults: RoomDefaults.optional(),
   }),
   z.object({
     type: z.literal("ParticipantJoined"),
