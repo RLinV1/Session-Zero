@@ -173,6 +173,8 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
     const what = cjk`略過${first.rollIds.length}次攻擊檢定`;
     return { verb: what, noun: what };
   }
+  // Unreachable: an exit always follows its TokenDeleted, handled above. Narrows `first`.
+  if (first.type === "InitiativeLeft" || first.type === "InitiativeEnded") return { verb: "先攻順序的變更", noun: "先攻順序的變更" };
   const name = nameOf(first.tokenId);
   if (entry.events.length > 1) return { verb: cjk`編輯${name}`, noun: cjk`對${name}的編輯` };
   switch (first.type) {
@@ -271,8 +273,12 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       return cjk`${a}將戰鬥推進至第${event.initiative.round}輪，輪到${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}`;
     case "InitiativeRewound":
       return cjk`${a}將回合退回第${event.initiative.round}輪，輪到${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}`;
-    case "InitiativeEnded": return cjk`${a}結束了先攻順序`;
+    case "InitiativeEnded": return event.reason === "deleted" ? "最後一枚棋子被刪除，先攻順序結束了" : cjk`${a}結束了先攻順序`;
     case "InitiativeStartUndone": return cjk`${a}復原了開始先攻的操作`;
+    case "InitiativeJoined": return cjk`${a}將${tokenName(event.tokenId)}加入先攻順序，先攻值${event.score}`;
+    case "InitiativeLeft": return event.reason === "deleted"
+      ? "被刪除的棋子離開了先攻順序"
+      : cjk`${a}將${tokenName(event.tokenId)}移出先攻順序`;
     case "GroupCreated": return cjk`${a}建立了群組「${event.group.name}」`;
     case "GroupRenamed": return cjk`${a}將群組「${event.previous}」重新命名為「${event.name}」`;
     case "GroupDeleted": return cjk`${a}刪除了群組「${event.group.name}」`;
@@ -398,6 +404,8 @@ export function neutralSentenceZhTW(event: DomainEvent, actorName: string): stri
     case "InitiativeStarted": return cjk`${actorName}開始了先攻`;
     case "InitiativeAdvanced": return cjk`${actorName}推進了回合`;
     case "InitiativeRewound": return cjk`${actorName}退回了回合`;
+    case "InitiativeJoined":
+    case "InitiativeLeft": return cjk`${actorName}變更了先攻順序`;
     case "FogAdded":
     case "FogRemoved": return cjk`${actorName}變更了迷霧`;
     case "DiceRolled":

@@ -54,6 +54,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     InitiativeStarted: [{ type: "InitiativeStarted", initiative, previous: null }, "Mara started initiative: Goblin"],
     InitiativeAdvanced: [{ type: "InitiativeAdvanced", initiative: { ...initiative, round: 2 }, previous: initiative }, "Mara advanced to round 2, Goblin's turn"],
     InitiativeEnded: [{ type: "InitiativeEnded", previous: initiative }, "Mara ended initiative"],
+    InitiativeJoined: [{ type: "InitiativeJoined", tokenId: token.id, initiative, previous: { ...initiative, order: [] }, score: 14, previousScore: null }, "Mara added Goblin to the turn order with 14"],
+    InitiativeLeft: [{ type: "InitiativeLeft", tokenId: token.id, initiative: { ...initiative, order: ["other"] }, previous: { ...initiative, order: [token.id, "other"] } }, "Mara removed Goblin from the turn order"],
     InitiativeRewound: [{ type: "InitiativeRewound", initiative, previous: { ...initiative, round: 2 } }, "Mara stepped the turn back to round 1, Goblin's turn"],
     InitiativeStartUndone: [{ type: "InitiativeStartUndone", initiative: null, previous: initiative, scores: [] }, "Mara took back the start of initiative"],
     GroupCreated: [{ type: "GroupCreated", group: { id: "g1", name: "Gate guards" } }, 'Mara created group "Gate guards"'],

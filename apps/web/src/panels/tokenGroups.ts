@@ -24,20 +24,27 @@ export function groupedTokens(state: Pick<RoomState, "groups" | "tokenGroups">, 
   return [...sections.values(), ungrouped];
 }
 
+/** Whether an active player owns `token`: what the encounter dialogs' Players' tokens box picks. */
+export function isPlayerToken(state: Pick<RoomState, "participants">, token: Pick<Token, "ownerIds">): boolean {
+  return token.ownerIds.some((id) => {
+    const owner = state.participants[id];
+    return owner?.role === "player" && isActive(owner);
+  });
+}
+
 /**
- * Which tokens the Start encounter dialog includes when started from `groupIds` (KAN-82): those
- * groups' tokens plus every token an active player owns. Unknown groups contribute nothing.
+ * Which tokens the encounter dialogs' filters pick (KAN-82, ADR 0065): the chosen groups' tokens,
+ * plus every token an active player owns when `players` is ticked. Unknown groups contribute nothing.
  */
-export function encounterIncludes(state: Pick<RoomState, "tokens" | "tokenGroups" | "participants">, groupIds: readonly string[]): Set<string> {
+export function encounterIncludes(
+  state: Pick<RoomState, "tokens" | "tokenGroups" | "participants">,
+  groupIds: readonly string[],
+  players: boolean,
+): Set<string> {
   const chosen = new Set(groupIds);
   const included = new Set<string>();
   for (const token of Object.values(state.tokens)) {
-    const inGroup = chosen.has(state.tokenGroups[token.id] ?? "");
-    const playerOwned = token.ownerIds.some((id) => {
-      const owner = state.participants[id];
-      return owner?.role === "player" && isActive(owner);
-    });
-    if (inGroup || playerOwned) included.add(token.id);
+    if (chosen.has(state.tokenGroups[token.id] ?? "") || (players && isPlayerToken(state, token))) included.add(token.id);
   }
   return included;
 }

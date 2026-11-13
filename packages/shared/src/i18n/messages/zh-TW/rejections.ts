@@ -91,6 +91,8 @@ export const rejectionsZhTW = {
   "reject.orderDuplicate": "同一枚棋子不能重複出現在先攻順序中。",
   "reject.noEncounter": "目前沒有進行中的遭遇",
   "reject.turnAlreadyEnded": "這個回合已經結束了",
+  "reject.alreadyInOrder": ({ token }) => cjk`${token}已經在先攻順序中`,
+  "reject.notInOrder": "這枚棋子不在先攻順序中",
   "reject.firstTurn": "這是遭遇的第一個回合",
   "reject.ignoreNeedsAttack": "只有攻擊檢定可以略過",
   "reject.alreadyIgnored": "這次擲骰已經略過了",

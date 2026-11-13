@@ -477,13 +477,17 @@ export function filterEventForViewer(
     case "InitiativeAdvanced":
     case "InitiativeRewound":
     case "InitiativeStartUndone":
+    case "InitiativeJoined": // ADR 0065
+    case "InitiativeLeft":
       // The order may name hidden tokens, so the player gets a filtered snapshot instead
       // of the raw event — same reasoning as a reveal.
       return { kind: "resync" };
     case "InitiativeEnded": {
       // `previous` is the GM's whole order: strip concealed tokens from it, as a snapshot would.
+      // `reason` goes too: "its last token was deleted" would tell a player a hidden token was deleted.
       const visible = filterStateForViewer(before, viewer).tokens;
-      return { kind: "event", committed: { ...withoutCommandId, event: { ...e, previous: initiativeForPlayer(e.previous, visible) } } };
+      const { reason: _reason, ...ended } = e;
+      return { kind: "event", committed: { ...withoutCommandId, event: { ...ended, previous: initiativeForPlayer(e.previous, visible) } } };
     }
     case "TemplateChanged": {
       // Moving an area into or out of fog changes what the viewer may see, as a token's move does (ADR 0058).

@@ -136,8 +136,13 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "InitiativeStarted": return `${actorName} started initiative: ${event.initiative.order.map(tokenName).join(", ") || "no tokens"}`;
     case "InitiativeAdvanced": return `${actorName} advanced to round ${event.initiative.round}, ${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}'s turn`;
     case "InitiativeRewound": return `${actorName} stepped the turn back to round ${event.initiative.round}, ${tokenName(event.initiative.order[event.initiative.activeIndex] ?? "")}'s turn`;
-    case "InitiativeEnded": return `${actorName} ended initiative`;
+    case "InitiativeEnded": return event.reason === "deleted" ? "Initiative ended when its last token was deleted" : `${actorName} ended initiative`;
     case "InitiativeStartUndone": return `${actorName} took back the start of initiative`;
+    case "InitiativeJoined": return `${actorName} added ${tokenName(event.tokenId)} to the turn order with ${event.score}`;
+    // A deleted token is already gone from `before`; the TokenDeleted line just above names it.
+    case "InitiativeLeft": return event.reason === "deleted"
+      ? "The deleted token left the turn order"
+      : `${actorName} removed ${tokenName(event.tokenId)} from the turn order`;
     case "GroupCreated": return `${actorName} created group "${event.group.name}"`;
     case "GroupRenamed": return `${actorName} renamed group "${event.previous}" to "${event.name}"`;
     case "GroupDeleted": return `${actorName} deleted group "${event.group.name}"`;

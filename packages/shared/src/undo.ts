@@ -68,10 +68,16 @@ type CompleteMapSet = MapSetEvent & {
 };
 /** A deletion by the auto-remove option; the only `TokenDeleted` undo can reverse (ADR 0049). */
 type DefeatDeleted = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" };
+/**
+ * A token leaving the turn order because it was deleted (ADR 0065). Part of a defeat's action so
+ * that action stays undoable, but it has no inverse: undo never touches the turn order.
+ */
+type DeletionExit = Extract<DomainEvent, { type: "InitiativeLeft" | "InitiativeEnded" }> & { reason: "deleted" };
 export type ReversibleEvent =
   | Exclude<Extract<DomainEvent, { type: (typeof REVERSIBLE_EVENT_TYPES)[number] }>, MapSetEvent>
   | CompleteMapSet
-  | DefeatDeleted;
+  | DefeatDeleted
+  | DeletionExit;
 
 
 
@@ -111,6 +117,7 @@ export interface EventMeta {
 export function isReversible(event: DomainEvent): event is ReversibleEvent {
   if (event.type === "MapSet") return event.gridChange !== undefined && event.tokenChanges !== undefined;
   if (event.type === "TokenDeleted") return event.reason === "defeated";
+  if (event.type === "InitiativeLeft" || event.type === "InitiativeEnded") return event.reason === "deleted";
   return (REVERSIBLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
 
@@ -245,6 +252,11 @@ export function inverseOf(event: ReversibleEvent): DomainEvent[] {
         changes: tokenIds.map((tokenId) => ({ tokenId, previous: event.groupId })),
       }));
     }
+    case "InitiativeLeft":
+    case "InitiativeEnded":
+      // Undo brings the token back but never touches the turn order: with no encounter id, it
+      // could otherwise change a later encounter (ADR 0065).
+      return [];
     case "AreaEffectResolved":
       // Undo puts back HP and conditions but never reopens the effect (ADR 0046): another may be
       // open by now, and a player should not get a damage prompt back.
@@ -254,7 +266,7 @@ export function inverseOf(event: ReversibleEvent): DomainEvent[] {
   }
 }
 
-type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "TokenDeleted" | "InitiativeStarted" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" | "AreaEffectResolved" }>;
+type SingleInverse = Exclude<ReversibleEvent, { type: "TokenCreated" | "TokenDeleted" | "InitiativeStarted" | "InitiativeLeft" | "InitiativeEnded" | "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" | "AreaEffectResolved" }>;
 
 /** The single compensating event for the reversible types that need only one. */
 function inverseOfOne(event: SingleInverse): DomainEvent {
@@ -460,6 +472,8 @@ export function undoConflict(state: RoomState, entry: UndoEntry): MessageRef | n
     // The blast has no value of its own to compare: the stats changes in the same action are checked.
     // Nor does a resolve's closing mark (ADR 0046).
     if (event.type === "MapNuked" || event.type === "AreaEffectResolved") continue;
+    // A deleted token's exit from the turn order is never undone, so it can't conflict (ADR 0065).
+    if (event.type === "InitiativeLeft" || event.type === "InitiativeEnded") continue;
     // Rolls that aged out of the log or were ruled since just stay as they are; one still ignored is enough (ADR 0060).
     if (event.type === "RollsDismissed") {
       if (!event.rollIds.some((id) => findDiceRoll(state.rolls, id)?.dismissed)) return sharedMsg("undo.rollsSettled");
@@ -699,6 +713,8 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
     const what = `${n} ignored attack ${n === 1 ? "roll" : "rolls"}`;
     return { verb: what, noun: `ignoring ${n} attack ${n === 1 ? "roll" : "rolls"}` };
   }
+  // Unreachable: an exit always follows its TokenDeleted, handled above. Narrows `first`.
+  if (first.type === "InitiativeLeft" || first.type === "InitiativeEnded") return { verb: "turn order change", noun: "the turn order change" };
   const name = nameOf(first.tokenId);
   if (entry.events.length > 1) return { verb: `edit ${name}`, noun: `the edit to ${name}` };
   switch (first.type) {

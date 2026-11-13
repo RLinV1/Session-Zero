@@ -160,6 +160,17 @@ export function decide(
   command: Command,
   ctx: DecideContext,
 ): Decision {
+  const decision = decideCommand(state, actor, command, ctx);
+  // Every way a token is deleted takes it out of the turn order in the same action (ADR 0065).
+  return decision.ok ? { ok: true, events: withInitiativeExits(state, decision.events) } : decision;
+}
+
+function decideCommand(
+  state: RoomState,
+  actor: Participant,
+  command: Command,
+  ctx: DecideContext,
+): Decision {
   // token.move / portal.setState / template.update are player commands: they only guard the scene, never require the GM.
   const playerSceneCommand = command.type === "token.move" || command.type === "portal.setState" || command.type === "template.update";
   const sceneChanged = "expectedSceneId" in command && command.expectedSceneId !== undefined && command.expectedSceneId !== (state.activeSceneId ?? INITIAL_SCENE_ID);
@@ -739,6 +750,44 @@ export function decide(
       const initiative = retreat(current);
       if (!initiative) return reject("invalid", sharedMsg("reject.firstTurn"));
       return accept({ type: "InitiativeRewound", initiative, previous: current });
+    }
+
+    case "initiative.add": {
+      if (!can.administer(actor)) return forbidden();
+      const current = state.initiative;
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
+      // Every entry is checked before any is placed, so nothing is half-added.
+      if (command.entries.some((e) => !state.tokens[e.tokenId])) return notFound("token");
+      const listed = new Set<string>();
+      for (const { tokenId } of command.entries) {
+        const token = state.tokens[tokenId]!;
+        if (current.order.includes(tokenId)) return reject("invalid", sharedMsg("reject.alreadyInOrder", { token: token.name }));
+        if (listed.has(tokenId)) return reject("invalid", sharedMsg("reject.orderDuplicate"));
+        listed.add(tokenId);
+      }
+      // Placed as Start sorts, each against the order the one before left, so the result
+      // doesn't depend on the order the entries were sent in.
+      const sorted = [...command.entries].sort((a, b) => b.score - a.score || a.tokenId.localeCompare(b.tokenId));
+      const events: DomainEvent[] = [];
+      let order = current;
+      let tokens = state.tokens;
+      for (const { tokenId, score } of sorted) {
+        const token = tokens[tokenId]!;
+        const initiative = placeByScore(order, tokens, tokenId, score);
+        events.push({ type: "InitiativeJoined", tokenId, initiative, previous: order, score, previousScore: token.initiative ?? null });
+        order = initiative;
+        tokens = { ...tokens, [tokenId]: { ...token, initiative: score } };
+      }
+      return { ok: true, events };
+    }
+
+    case "initiative.remove": {
+      if (!can.administer(actor)) return forbidden();
+      const current = state.initiative;
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
+      // Checks the order, not the board, so a legacy "(removed)" row can be taken out too.
+      if (!current.order.includes(command.tokenId)) return reject("invalid", sharedMsg("reject.notInOrder"));
+      return accept(initiativeExit(current, command.tokenId));
     }
 
     case "initiative.end": {
@@ -1667,15 +1716,82 @@ const ROOM_LOCKED_MESSAGE = sharedMsg("reject.roomLocked");
 const nameTaken = (name: string) => sharedMsg("reject.displayNameTaken", { name });
 
 /**
- * Next turn. Wrapping past the last entry starts a new round (FR-GM-21).
- * Entries whose token was deleted mid-encounter are skipped rather than removed, because
- * `order` is carried in the event and history is never rewritten.
+ * Next turn. Wrapping past the last entry starts a new round (FR-GM-21). Deleting a token takes it
+ * out of the order (ADR 0065); orders recorded before that may still hold deleted tokens, which
+ * get a turn like any other entry.
  */
 function advance(current: Initiative): Initiative {
   const next = current.activeIndex + 1;
   return next >= current.order.length
     ? { ...current, activeIndex: 0, round: current.round + 1 }
     : { ...current, activeIndex: next };
+}
+
+/**
+ * The order with `tokenId` placed by `score` (ADR 0065), compared as `initiative.start` sorts:
+ * score descending, then token id. Each entry is compared by the score saved on its token; an
+ * entry with no token or no saved score (only in legacy orders) sorts last. The token whose turn
+ * it is keeps the turn, so a token placed at or before it moves `activeIndex` along.
+ */
+export function placeByScore(current: Initiative, tokens: RoomState["tokens"], tokenId: string, score: number): Initiative {
+  const goesBefore = (id: string) => {
+    const saved = tokens[id]?.initiative;
+    if (saved == null) return true;
+    return score > saved || (score === saved && tokenId.localeCompare(id) < 0);
+  };
+  const found = current.order.findIndex(goesBefore);
+  const at = found === -1 ? current.order.length : found;
+  const order = [...current.order.slice(0, at), tokenId, ...current.order.slice(at)];
+  return { ...current, order, activeIndex: at <= current.activeIndex ? current.activeIndex + 1 : current.activeIndex };
+}
+
+/**
+ * The order without `tokenId`, or null when it was the last one (ADR 0065). The token whose turn
+ * it is keeps it; taking out the active token hands the turn to the next, as `advance` would.
+ */
+export function withoutToken(current: Initiative, tokenId: string): Initiative | null {
+  const at = current.order.indexOf(tokenId);
+  if (at === -1) return current;
+  const order = current.order.filter((id) => id !== tokenId);
+  if (order.length === 0) return null;
+  if (at < current.activeIndex) return { ...current, order, activeIndex: current.activeIndex - 1 };
+  if (at > current.activeIndex) return { ...current, order };
+  return current.activeIndex >= order.length
+    ? { ...current, order, activeIndex: 0, round: current.round + 1 }
+    : { ...current, order };
+}
+
+/** `tokenId` leaving the running encounter: `InitiativeLeft`, or `InitiativeEnded` for the last token. */
+function initiativeExit(current: Initiative, tokenId: string, reason?: "deleted"): DomainEvent {
+  const initiative = withoutToken(current, tokenId);
+  if (!initiative) return { type: "InitiativeEnded", previous: current, ...(reason && { reason }) };
+  return { type: "InitiativeLeft", tokenId, initiative, previous: current, ...(reason && { reason }) };
+}
+
+/** Whether `next` is the exit `withInitiativeExits` already added after deleting `tokenId`. */
+const isExitFor = (next: DomainEvent | undefined, tokenId: string) =>
+  (next?.type === "InitiativeLeft" && next.reason === "deleted" && next.tokenId === tokenId) ||
+  (next?.type === "InitiativeEnded" && next.reason === "deleted");
+
+/**
+ * Follows each `TokenDeleted` of a token in the turn order with its exit (ADR 0065). Folds the
+ * batch, so several deletions in one action each see the order the one before left. Idempotent:
+ * a deletion already followed by its exit (from a nested `decide`) gets no second one.
+ */
+export function withInitiativeExits(state: RoomState, events: DomainEvent[]): DomainEvent[] {
+  if (!events.some((e) => e.type === "TokenDeleted")) return events;
+  const out: DomainEvent[] = [];
+  let folded = state;
+  for (const [i, event] of events.entries()) {
+    out.push(event);
+    folded = reduce(folded, event);
+    if (event.type !== "TokenDeleted" || !folded.initiative?.order.includes(event.token.id)) continue;
+    if (isExitFor(events[i + 1], event.token.id)) continue;
+    const exit = initiativeExit(folded.initiative, event.token.id, "deleted");
+    out.push(exit);
+    folded = reduce(folded, exit);
+  }
+  return out;
 }
 
 /** One turn back, into the previous round from the first token; null on round 1's first turn (ADR 0060). */
