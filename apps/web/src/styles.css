@@ -968,7 +968,11 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 
 /* --- Initiative --- */
 .init-setup { display: flex; flex-direction: column; gap: 0.3rem; }
-.init-setup li { display: grid; grid-template-columns: auto auto 1fr 4.5rem; align-items: center; gap: var(--space-2); }
+/* Checkbox, swatch, name, the rolled total kept for reference, and the score (ADR 0065). */
+.init-setup li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) 2.25rem 4.5rem; align-items: center; gap: var(--space-2); }
+.init-rolled { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+.init-left-out .init-rolled { opacity: 0.5; }
+.init-roll > button { align-self: flex-start; }
 .init-hint { font-size: var(--fs-sm); }
 .init-setup input[type="number"] { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
 /* Spinner arrows crowd a 4.5rem field and nobody steps initiative by one. */
@@ -979,7 +983,9 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .init-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .init-order { display: flex; flex-direction: column; }
-.init-focus { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 0.3rem 0.4rem; }
+.init-entry { display: flex; align-items: center; gap: var(--space-1); }
+.init-focus { flex: 1; min-width: 0; width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 0.3rem 0.4rem; }
+.init-remove { flex: none; }
 /* The active turn: marker glyph, weight and a rust rule on the left, not colour alone. */
 .init-entry.active .init-focus { font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
 .init-turn { width: 1.2rem; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -987,7 +993,8 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 /* Previous and Next side by side, the reminder under them, End encounter apart (ADR 0060). */
 .init-controls { display: flex; flex-direction: column; gap: var(--space-2); }
 .init-turn-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.init-end-row { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+/* Add to encounter at the start, End encounter at the end (ADR 0065). */
+.init-end-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 /* `secondary` would otherwise win over `danger` (same specificity, later rule), as on the account page. */
 .init-end-row button.danger { color: var(--danger); }
 :root[data-theme="light"] .init-end-row button.danger { color: var(--danger-strong); }

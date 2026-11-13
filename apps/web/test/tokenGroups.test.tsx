@@ -46,10 +46,12 @@ describe("grouped roster helper (KAN-82)", () => {
     ]);
   });
 
-  it("includes the chosen groups plus active players' tokens when starting an encounter", () => {
-    expect([...encounterIncludes(room(), ["gate"])].sort()).toEqual(["f1", "g1", "g2"]);
-    expect([...encounterIncludes(room(), ["gate", "back"])].sort()).toEqual(["c1", "f1", "g1", "g2"]);
-    expect([...encounterIncludes(room(), [])]).toEqual(["f1"]);
+  it("picks the chosen groups' tokens, and active players' tokens only with Players' tokens ticked", () => {
+    expect([...encounterIncludes(room(), ["gate"], true)].sort()).toEqual(["f1", "g1", "g2"]);
+    expect([...encounterIncludes(room(), ["gate", "back"], true)].sort()).toEqual(["c1", "f1", "g1", "g2"]);
+    expect([...encounterIncludes(room(), [], true)]).toEqual(["f1"]);
+    expect([...encounterIncludes(room(), ["gate"], false)].sort()).toEqual(["g1", "g2"]);
+    expect([...encounterIncludes(room(), [], false)]).toEqual([]);
   });
 });
 
@@ -120,7 +122,7 @@ describe("Start encounter dialog (KAN-82, FR-GM-21)", () => {
   });
 
   it("includes only the groups' and players' tokens once groups are chosen, and lets the GM adjust", () => {
-    const fromGroups = encounterIncludes(room(), ["gate"]);
+    const fromGroups = encounterIncludes(room(), ["gate"], true);
     expect(["g1", "g2", "c1", "f1"].map((id) => includedInEncounter(id, fromGroups, none, none))).toEqual([true, true, false, true]);
     expect(includedInEncounter("c1", fromGroups, none, new Set(["c1"]))).toBe(true);
     expect(includedInEncounter("g1", fromGroups, new Set(["g1"]), none)).toBe(false);

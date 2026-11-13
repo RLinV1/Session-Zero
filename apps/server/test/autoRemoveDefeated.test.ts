@@ -69,6 +69,40 @@ describe("auto-remove defeated tokens over the wire (FR-TAC-07, FR-GM-23, FR-REC
     expect(gm.state.tokens[goblin.id]?.stats.hp).toBe(15);
   });
 
+  it("takes a defeated token out of everyone's turn order, and undo leaves the order alone (FR-GM-21, ADR 0065)", async () => {
+    const { gm, alice, aria, goblin } = await setup();
+    await gm.command({ type: "initiative.start", entries: [{ tokenId: aria.id, score: 20 }, { tokenId: goblin.id, score: 15 }] });
+    await gm.command({ type: "initiative.advance" });
+    const ack = await gm.command({ type: "token.setStats", tokenId: goblin.id, stats: { hp: 0, maxHp: 15, ac: 13 } });
+    await alice.waitForSeq(seqOf(ack));
+    expect(alice.state.initiative?.order).toEqual([aria.id]);
+    expect(alice.state.initiative).toMatchObject({ activeIndex: 0, round: 2 });
+
+    const order = gm.state.initiative;
+    const commandId = gm.state.undo.at(-1)!.commandId;
+    const undone = await gm.command({ type: "history.undo", commandId });
+    expect(undone).toMatchObject({ type: "ack" });
+    await alice.waitForSeq(seqOf(undone));
+    expect(alice.state.tokens[goblin.id]).toBeDefined();
+    expect(gm.state.initiative).toEqual(order);
+    expect(alice.state.initiative?.order).toEqual([aria.id]);
+  });
+
+  it("doesn't tell a player that a hidden last token in the order was defeated (FR-GM-23, ADR 0065)", async () => {
+    const { gm, alice, shadow } = await setup();
+    await gm.command({ type: "initiative.start", entries: [{ tokenId: shadow.id, score: 12 }] });
+    await alice.waitForSeq(gm.seq);
+    const logStart = alice.rawLog.length;
+    const ack = await gm.command({ type: "token.setStats", tokenId: shadow.id, stats: { hp: 0, maxHp: 20, ac: 15 } });
+    await alice.waitForSeq(seqOf(ack));
+    expect(gm.state.initiative).toBeNull();
+    expect(alice.state.initiative).toBeNull();
+    const seen = alice.rawLog.slice(logStart).join("\n");
+    expect(seen).not.toContain('"deleted"');
+    expect(seen).not.toContain(shadow.id);
+    expect(seen).not.toContain("Shadow Lurker");
+  });
+
   it("never tells a player about a defeated hidden token", async () => {
     const { gm, alice, aliceCreds, shadow } = await setup();
     const messages: ServerMessage[] = [];

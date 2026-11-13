@@ -244,6 +244,15 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "InitiativeEnded":
       return { ...state, initiative: null };
 
+    case "InitiativeJoined": {
+      // The score is saved on the token, as a start saves it (ADR 0022, ADR 0065).
+      const t = required(state.tokens[event.tokenId], event);
+      return { ...state, initiative: event.initiative, tokens: { ...state.tokens, [t.id]: { ...t, initiative: event.score } } };
+    }
+
+    case "InitiativeLeft":
+      return { ...state, initiative: event.initiative };
+
     case "InitiativeStartUndone": {
       // Back to the order and saved scores the start replaced (KAN-82).
       const tokens = { ...state.tokens };

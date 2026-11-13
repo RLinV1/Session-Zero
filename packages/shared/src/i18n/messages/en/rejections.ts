@@ -92,6 +92,8 @@ export const rejectionsEn = {
   "reject.orderDuplicate": "A token appears twice in the order",
   "reject.noEncounter": "No encounter is running",
   "reject.turnAlreadyEnded": "That turn has already ended",
+  "reject.alreadyInOrder": ({ token }: Token) => `${token} is already in the turn order`,
+  "reject.notInOrder": "That token isn't in the turn order",
   "reject.firstTurn": "This is the first turn of the encounter",
   "reject.ignoreNeedsAttack": "Only attack rolls can be ignored",
   "reject.alreadyIgnored": "That roll is already ignored",

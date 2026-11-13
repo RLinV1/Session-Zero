@@ -8,7 +8,7 @@ import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MA
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
-import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DrawingShape, Id, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
+import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DrawingShape, Id, InitiativeScore, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
 
 /** Most walls one `wall.remove` names (ADR 0029), keeping the command under the socket limit. */
 export const MAX_WALLS_PER_REMOVE = 500;
@@ -294,6 +294,19 @@ const BoardCommand = z.discriminatedUnion("type", [
   /** GM only: step the turn back one, into the previous round from its first token (ADR 0060). */
   z.object({
     type: z.literal("initiative.previous"),
+  }),
+  /**
+   * GM only: put tokens into the running encounter, each placed by its score; the active turn stays.
+   * All or nothing: one refused entry refuses the whole command (ADR 0065).
+   */
+  z.object({
+    type: z.literal("initiative.add"),
+    entries: z.array(z.object({ tokenId: Id, score: InitiativeScore })).min(1).max(60),
+  }),
+  /** GM only: take a token out of the running encounter; the last one out ends it (ADR 0065). */
+  z.object({
+    type: z.literal("initiative.remove"),
+    tokenId: Id,
   }),
   /** Roll dice (FR-TAC-09). `gm` visibility is GM-only and never reaches players (FR-GM-22). */
   z.object({

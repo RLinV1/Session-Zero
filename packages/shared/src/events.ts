@@ -217,6 +217,31 @@ export const DomainEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("InitiativeEnded"),
     previous: Initiative,
+    /** The encounter ended because its last token was deleted (ADR 0065). */
+    reason: z.literal("deleted").optional(),
+  }),
+  /**
+   * A token joined the running encounter, placed by score (ADR 0065). `score` is saved on the
+   * token, replacing `previousScore`. Players receive a filtered snapshot instead.
+   */
+  z.object({
+    type: z.literal("InitiativeJoined"),
+    tokenId: Id,
+    initiative: Initiative,
+    previous: Initiative,
+    score: InitiativeScore,
+    previousScore: InitiativeScore.nullable(),
+  }),
+  /**
+   * A token left the running encounter (ADR 0065): the GM removed it, or `reason: "deleted"` when
+   * it follows that token's `TokenDeleted`. Players receive a filtered snapshot instead.
+   */
+  z.object({
+    type: z.literal("InitiativeLeft"),
+    tokenId: Id,
+    initiative: Initiative,
+    previous: Initiative,
+    reason: z.literal("deleted").optional(),
   }),
   z.object({
     type: z.literal("DiceRolled"),
