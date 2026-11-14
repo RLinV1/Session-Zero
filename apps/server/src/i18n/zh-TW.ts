@@ -83,6 +83,13 @@ export const serverZhTW = {
   "api.fogNoArea": "迷霧區域必須具有實際面積。",
 
   "api.uvttFileRules": "請上傳單一 UVTT 檔案，大小不得超過 40 MiB，且不能包含額外欄位。",
+  "api.templateHasNoLibraryMap": "請改為儲存範本；編輯範本用的房間沒有對應的素材庫地圖。",
+  "api.applyMapBeforeLibrary": "請先套用地圖，再存入素材庫。",
+  "api.boardTooLargeForLibrary": "這個棋盤太大，無法存入素材庫。",
+  "api.libraryMapGone": "那張素材庫地圖已不存在。",
+  "api.saveToLibraryFailed": "無法將地圖存入素材庫，請再試一次。",
+  "api.saveGridBeforeExport": "請先儲存這張地圖的網格再匯出。",
+  "api.exportFailed": "無法匯出這張地圖，請再試一次。",
   "api.processFailed": "地圖處理失敗，請再試一次。",
   "api.tooManyImports": "匯入嘗試過於頻繁，請等 1 分鐘後再試。",
   "api.signInEndedUpload": "資料驗證期間，登入狀態已失效。請重新登入並上傳檔案。",

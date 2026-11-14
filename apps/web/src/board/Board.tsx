@@ -26,7 +26,7 @@ import { shakeScreen } from "./screenShake";
 import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
 import type { OverlayEffect } from "./EffectsOverlay";
 import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type BoardThrow, type BoardTransform } from "./diceThrow";
-import { cursorSquare, moveCursor, placementCommand, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
+import { cursorSquare, moveCursor, placementCommand, stagedGhost, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
 import { doorsTarget, type BoardTool, type MeasureMode } from "./tools";
 import { TokenCard } from "./TokenCard";
 import { ARROW_STEPS, ownsArrowKeys, stepTo } from "../ui/MoveControl";
@@ -77,6 +77,8 @@ export interface BoardHandle {
   placeToken(draft: TokenDraft): void;
   /** Let the GM place copies of `tokenId`, once per click, until done (token-placement-flow, ADR 0033). */
   duplicateToken(tokenId: string): void;
+  /** Let the GM place these staged tokens with one click (ADR 0068). False when none is staged here. */
+  placeStaged(tokenIds: string[]): boolean;
   /** Pick a target on the board for `tokenId` to attack; the pick goes to `onPickTarget` (attack-targeting). */
   startAttack(tokenId: string): void;
   /** GM: pick a placed template on the board; the pick goes to `onPickTemplate` (ADR 0046). */
@@ -405,6 +407,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     setPlacing((now) => {
       if (now?.source !== current.source) return now;
       if (!result.ok) return { ...now, busy: false, error: result.message };
+      // Carried tokens are placed all at once: nothing is left to place (ADR 0068).
+      if (now.source.kind === "staged") return null;
       const placed = now.placed + 1;
       return { ...now, busy: false, error: null, placed, said: t("board.placedSaid", { name: ghostRef.current?.name ?? t("board.token"), n: placed }) };
     });
@@ -780,6 +784,16 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       startPlacing({ kind: "create", draft: next }, next.size ?? 1);
     },
     duplicateToken,
+    placeStaged: (tokenIds: string[]) => {
+      const current = latest.current.state;
+      const ghost = stagedGhost(current, tokenIds);
+      if (!ghost || latest.current.you.role !== "gm") return false;
+      const ids = tokenIds.filter((id) => Object.hasOwn(current.staged, id));
+      // The rail's tools would compete with placing for the same clicks.
+      setTool({ kind: "select" });
+      startPlacing({ kind: "staged", tokenIds: ids, sceneId: current.activeSceneId ?? INITIAL_SCENE_ID, ghost }, ghost.size);
+      return true;
+    },
     startAttack: (tokenId: string) => {
       // Aiming and placing would compete for the same click; the aim wins.
       setPlacing(null);
@@ -992,10 +1006,14 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       )}
       {placing && (
         <div className="placement-bar">
-          <p>
-            {t("board.placingBefore")}<strong>{ghost?.name}</strong>{t("board.placingAfter")}
-            {placing.placed > 0 ? t("board.placedN", { n: placing.placed }) : ""}
-          </p>
+          {placing.source.kind === "staged" ? (
+            <p>{t("board.placingCarried", { n: placing.source.tokenIds.length })}</p>
+          ) : (
+            <p>
+              {t("board.placingBefore")}<strong>{ghost?.name}</strong>{t("board.placingAfter")}
+              {placing.placed > 0 ? t("board.placedN", { n: placing.placed }) : ""}
+            </p>
+          )}
           {/* Each cursor move and each token placed, for screen readers (token-placement-flow). */}
           <p className="sr-only" aria-live="polite">{placing.said}</p>
           {placing.error && <p role="alert" className="error">{placing.error}</p>}

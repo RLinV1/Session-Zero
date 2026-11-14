@@ -84,7 +84,7 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       const sceneNames = event.type === "SceneCreated"
         ? { ...state.sceneNames, [event.fromId]: event.fromName, [event.sceneId]: event.name }
         : state.sceneNames;
-      return { ...state, ...event.restored.table, terrain: event.restored.table.terrain, walls: event.restored.table.walls ?? {}, drawings: event.restored.table.drawings ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
+      return { ...state, ...event.restored.table, terrain: event.restored.table.terrain, walls: event.restored.table.walls ?? {}, drawings: event.restored.table.drawings ?? {}, staged: event.restored.table.staged ?? {}, groups: event.restored.groups, tokenGroups: event.restored.tokenGroups, activeSceneId: event.sceneId, sceneNames, savedScenes };
     }
     case "SceneRenamed":
       return { ...state, activeSceneId: state.activeSceneId ?? "initial", sceneNames: { ...state.sceneNames, [event.sceneId]: event.name } };
@@ -145,6 +145,10 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       return { ...state, participants: { ...state.participants, [p.id]: { ...p, revoked: true } } };
     }
 
+    case "MapLinked": {
+      const map = required(state.scene.map ?? undefined, event);
+      return { ...state, scene: { ...state.scene, map: { ...map, assetId: event.assetId } } };
+    }
     case "MapSet": {
       const tokens = { ...state.tokens };
       for (const change of event.tokenChanges ?? []) {
@@ -404,11 +408,36 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
     case "CheckpointRestored":
       // Only the board changes: participants, rolls, chat and history stay (ADR 0019). A table
       // from before walls existed had none (ADR 0029).
-      return { ...state, ...event.restored, terrain: event.restored.terrain, walls: event.restored.walls ?? {}, drawings: event.restored.drawings ?? {} };
+      return { ...state, ...event.restored, terrain: event.restored.terrain, walls: event.restored.walls ?? {}, drawings: event.restored.drawings ?? {}, staged: event.restored.staged ?? {} };
 
     case "EncounterApplied":
       // Only the board changes, exactly as a checkpoint restore (ADR 0024).
-      return { ...state, ...event.applied, terrain: event.applied.terrain, walls: event.applied.walls ?? {}, drawings: event.applied.drawings ?? {} };
+      return { ...state, ...event.applied, terrain: event.applied.terrain, walls: event.applied.walls ?? {}, drawings: event.applied.drawings ?? {}, staged: event.applied.staged ?? {} };
+
+    case "StagedTokensPlaced": {
+      // Each token leaves the staging area for the map, at `to` (ADR 0068).
+      const staged = { ...state.staged };
+      const tokens = { ...state.tokens };
+      for (const p of event.placements) {
+        const token = staged[p.tokenId];
+        if (!token) continue;
+        delete staged[p.tokenId];
+        tokens[p.tokenId] = { ...token, position: p.to };
+      }
+      return { ...state, staged, tokens };
+    }
+    case "StagedTokensRestaged": {
+      // Undo of a placement: each token leaves the map for the staging area, at `to` (ADR 0068).
+      const staged = { ...state.staged };
+      const tokens = { ...state.tokens };
+      for (const p of event.placements) {
+        const token = tokens[p.tokenId];
+        if (!token) continue;
+        delete tokens[p.tokenId];
+        staged[p.tokenId] = { ...token, position: p.to };
+      }
+      return { ...state, staged, tokens };
+    }
 
     case "FogAdded":
       return { ...state, fog: { ...state.fog, [event.region.id]: event.region } };

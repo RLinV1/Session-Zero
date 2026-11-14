@@ -61,6 +61,10 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
   if (locale === "zh-TW") return formatActivityZhTW(event, actorName, before, (id) => findDiceRoll(before.rolls, id));
   /** A token's name as it was just before this event. */
   const tokenName = (id: string) => before.tokens[id]?.name ?? "an unknown token";
+  // Carried tokens (ADR 0068): ", carrying 2 tokens".
+  const carrying = (ids: readonly string[] | undefined) => (ids?.length ? `, carrying ${ids.length} ${ids.length === 1 ? "token" : "tokens"}` : "");
+  const stagedNames = (placements: readonly { tokenId: string }[]) =>
+    placements.map((p) => (before.staged?.[p.tokenId] ?? before.tokens[p.tokenId])?.name ?? "an unknown token").join(", ");
   /** A participant's name as it was just before this event. */
   const participantName = (id: string) => before.participants[id]?.displayName ?? "an unknown participant";
   /** A roll still in the log just before this event (ADR 0011). */
@@ -86,7 +90,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "SceneDraftCreated": return `${actorName} prepared scene "${event.name}"`;
     case "ScenePrepared": return `${actorName} edited a private scene`;
     case "SceneCreated": return `${actorName} created scene "${event.name}"`;
-    case "SceneSwitched": return `${actorName} switched to scene "${event.name}"`;
+    case "SceneSwitched": return `${actorName} switched to scene "${event.name}"${carrying(event.carriedTokenIds)}`;
     case "SceneRenamed": return `${actorName} renamed scene "${event.previous}" to "${event.name}"`;
     case "SceneDeleted": return `${actorName} deleted scene "${event.name}"`;
     case "RoomCreated": return `${actorName} created room ${event.name}`;
@@ -112,6 +116,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} removed the map${restored.length ? `, restoring ${restored.join(" and ")}` : ""}`;
     }
     case "GridSet": return `${actorName} updated the grid`;
+    case "MapLinked": return `${actorName} saved the map to the library`;
     case "LineOfSightSet": return `${actorName} turned line of sight ${event.to ? "on" : "off"}`;
     case "IsometricSet": return `${actorName} set the map style to ${event.to ? "2.5D isometric" : "flat"}`;
     case "SightRangeSet": {
@@ -252,7 +257,9 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
     case "CheckpointCreated": return `${actorName} saved checkpoint "${event.checkpoint.name}"`;
     case "CheckpointDeleted": return `${actorName} deleted checkpoint "${event.checkpoint.name}"`;
     case "CheckpointRestored": return `${actorName} restored checkpoint "${event.name}"`;
-    case "EncounterApplied": return `${actorName} applied encounter template "${event.name}"`;
+    case "EncounterApplied": return `${actorName} applied encounter template "${event.name}"${carrying(event.carriedTokenIds)}`;
+    case "StagedTokensPlaced": return `${actorName} placed ${stagedNames(event.placements)}`;
+    case "StagedTokensRestaged": return `${actorName} took ${stagedNames(event.placements)} off the board to wait`;
     case "ActionUndone": {
       // The undone action is still in the history just before this event (ADR 0013).
       const entry = before.undo.find((e) => e.commandId === event.commandId);

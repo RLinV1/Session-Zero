@@ -2885,6 +2885,29 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .scene-activation-popup p { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
 .scene-activation-popup span { display: block; margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--muted); }
 .scene-activation-popup button { flex: none; }
+/* Carried tokens (ADR 0068): the checklist in the apply and activate confirmations, the GM's
+   waiting list and a player's tray, both in the board's top-right corner. */
+.carry-checklist { margin: var(--space-2) 0 0; padding: var(--space-2) 0 0; border: 0; border-top: 1px solid var(--rule); min-width: 0; }
+.carry-checklist legend { padding: 0; font-size: var(--fs-sm); font-weight: 600; }
+.carry-others { margin-top: var(--space-2); }
+.carry-others summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); }
+.carry-others[open] summary { margin-bottom: var(--space-1); }
+.carry-checklist .small-print { margin: var(--space-1) 0; }
+.carry-checklist ul, .staged-list ul { display: flex; flex-direction: column; gap: var(--space-1); max-height: 11rem; overflow-y: auto; }
+.carry-checklist label.checkbox, .staged-list label.checkbox { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--fs-sm); }
+.scene-activation-popup .carry-checklist span { display: inline; margin: 0; font-size: var(--fs-sm); color: inherit; }
+.carry-checklist .muted, .staged-list .muted, .scene-activation-popup .carry-checklist .muted { font-size: var(--fs-xs); color: var(--muted); }
+.staged-list {
+  /* Top-right: the top-left holds Fit, Show and the tool rail. */
+  position: absolute; z-index: 6; top: var(--space-3); right: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  width: min(16rem, calc(100% - 2 * var(--space-3)));
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised); border: 1px solid var(--border-strong); border-radius: var(--radius-surface);
+  box-shadow: 0 10px 28px var(--shadow);
+}
+.staged-list h2 { margin: 0; font-size: var(--fs-sm); }
+.staged-list button { align-self: flex-start; }
 dialog.modal.scene-setup { width: min(23rem, calc(100vw - 2rem)); background: var(--panel); border-color: var(--rule); }
 .scene-setup .modal-body { gap: var(--space-2); padding: var(--space-4); }
 .scene-setup .modal-head { background: var(--panel); padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
@@ -3073,6 +3096,10 @@ dialog.modal.map-editor.is-preparing {
 /* Unsaved walls or fog (map-editor-drafts): the note and its Save and Discard, at the header's end. */
 .map-editor-unsaved { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .map-editor-unsaved .map-editor-draft { margin-left: 0; }
+/* Header actions after the unsaved controls: Export .uvtt (library) and Save to library (room), ADR 0070. */
+.map-editor-export, .map-editor-library { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.map-editor-steps > .map-editor-export, .map-editor-steps > .map-editor-library { margin-left: auto; }
+.map-editor-unsaved ~ .map-editor-export, .map-editor-unsaved ~ .map-editor-library { margin-left: 0; }
 .map-editor-save-error { font-size: var(--fs-sm); }
 .map-editor-body { flex: 1; min-height: 0; overflow: auto; }
 .map-editor-split { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--hud-width, 17rem); grid-template-rows: minmax(0, 1fr); gap: var(--space-2); }
@@ -4263,7 +4290,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .map-editor .modal-head:has(> .map-editor-steps) { gap: var(--space-2); }
   .map-editor .modal-head:has(> .map-editor-steps) .modal-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .map-editor-steps { min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .map-editor-steps:has(.map-editor-unsaved) { flex-wrap: wrap; overflow: visible; }
+  .map-editor-steps:has(.map-editor-unsaved), .map-editor-steps:has(.map-editor-export), .map-editor-steps:has(.map-editor-library) { flex-wrap: wrap; overflow: visible; }
   .map-editor-step { flex: none; padding: 0 var(--space-3); white-space: nowrap; }
   .map-editor-unsaved { margin-left: 0; }
   .map-editor-unsaved .map-editor-draft { display: none; }

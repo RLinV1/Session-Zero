@@ -973,6 +973,20 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
+  async replaceAssetPreparation(id: string, ownerGmId: string, change: { grid: GridSpec; board: LibraryMapBoard }) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM library_assets WHERE id = ${id}::uuid AND owner_gm_id = ${ownerGmId}::uuid FOR UPDATE`;
+      const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId, kind: "map" } });
+      if (!row) return null;
+      const asset = toAssetRecord(row);
+      const problem = preparationProblem(asset, change.grid, change.board, true);
+      if (problem) throw new PreparationConflictError(problem);
+      const board = versionedBoard(change.board);
+      await tx.$executeRaw`UPDATE library_assets SET grid = ${JSON.stringify(change.grid)}::jsonb, board = ${JSON.stringify(board)}::jsonb WHERE id = ${id}::uuid`;
+      return { grid: change.grid, board: publicBoard(board), revision: preparationRevision({ ...asset, grid: change.grid, board }) };
+    });
+  }
+
   async deleteAsset(id: string, ownerGmId: string) {
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId } });

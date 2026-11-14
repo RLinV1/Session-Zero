@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  cellAt, ClientMessage, DEFAULT_GRID, GridSpec, LibraryPatchRequest, normalizeGridOffsets, normalizeLegacyGridForBoard, snapTokenCenter, type GridSpec as GridSpecType,
+  cellAt, ClientMessage, DEFAULT_GRID, footprintsOverlap, GridSpec, LibraryPatchRequest, normalizeGridOffsets, normalizeLegacyGridForBoard, snapTokenCenter, type GridSpec as GridSpecType,
 } from "../src";
 
 const grid: GridSpecType = { cellSize: 50, offsetX: 10, offsetY: 20, unitsPerCell: 5, unitLabel: "ft" };
@@ -63,5 +63,16 @@ describe("grid geometry", () => {
 
   it("snaps even-sized tokens to grid intersections", () => {
     expect(snapTokenCenter({ x: 66, y: 64 }, 2, grid)).toEqual({ x: 60, y: 70 });
+  });
+});
+
+describe("footprint overlap on fractional grids (token-no-stacking)", () => {
+  it("treats squares that only share an edge as not overlapping, despite float rounding", () => {
+    const grid = { ...DEFAULT_GRID, cellSize: 70.3, offsetX: 54, offsetY: 43 };
+    const at = (col: number, row: number) => ({ x: grid.offsetX + grid.cellSize * (col + 0.5), y: grid.offsetY + grid.cellSize * (row + 0.5) });
+    for (let col = 0; col < 30; col++) {
+      expect(footprintsOverlap({ position: at(col, 13), size: 1 }, { position: at(col + 1, 13), size: 1 }, grid)).toBe(false);
+      expect(footprintsOverlap({ position: at(col, 13), size: 1 }, { position: at(col, 13), size: 1 }, grid)).toBe(true);
+    }
   });
 });

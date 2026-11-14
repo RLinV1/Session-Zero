@@ -28,8 +28,15 @@ describe("choosing what happens to tokens on a map change (KAN-67)", () => {
 
   it("sends the choice with the map and grid, and omits it when none is asked", () => {
     const prep = startPrep(newMap, undefined, DEFAULT_GRID, { boardEpoch: 0, revision: 0 });
-    expect(prepCommand(prep, "recenter")).toMatchObject({ type: "scene.setMap", tokenPolicy: "recenter" });
+    expect(prepCommand(prep, { tokenPolicy: "recenter" })).toMatchObject({ type: "scene.setMap", tokenPolicy: "recenter" });
     expect(prepCommand(prep)).not.toHaveProperty("tokenPolicy");
+  });
+
+  it("sends Select and place as the tokens to keep, with no policy (ADR 0068)", () => {
+    const prep = startPrep(newMap, undefined, DEFAULT_GRID, { boardEpoch: 0, revision: 0 });
+    const command = prepCommand(prep, { placeTokenIds: ["aria"] });
+    expect(command).toMatchObject({ type: "scene.setMap", placeTokenIds: ["aria"] });
+    expect(command).not.toHaveProperty("tokenPolicy");
   });
 
   it("words the confirmation, and says nothing when no token moved", () => {
