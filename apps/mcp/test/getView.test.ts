@@ -147,7 +147,8 @@ describe("get_view shows what that player may see (FR-PL-08, FR-GM-23)", () => {
     expect(view.json.doors).toEqual([expect.objectContaining({ kind: "door", state: "closed", column: 3, row: 2 })]);
     expect(view.json.chat).toEqual([expect.objectContaining({ from: "GM", text: "@Oswin (AI) look out", mentionsYou: true })]);
     expect(view.json.rolls).toEqual([expect.objectContaining({ by: "GM", expression: "1d20" })]);
-    expect(view.text).not.toContain("1d6");
+    // The GM-only roll's expression as a value: "1d6" alone can turn up inside a random hex id.
+    expect(view.text).not.toContain('"1d6"');
     expect(view.json.you).toEqual({ id: participantId, name: "Oswin (AI)" });
     gm.close();
   });
