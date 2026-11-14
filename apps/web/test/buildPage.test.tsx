@@ -434,7 +434,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   it("lists what the AI left for the owner, with its reasons", async () => {
     await open(detail({ files: [uvttFile], items: [shop()] }));
     expect(text()).toContain("Could be an archway.");
-    expect(text()).toContain("Left for you at column 7, row 7");
+    expect(text()).toContain("Column 7, row 7");
     expect(text()).toContain("Curved cave wall.");
   });
 
@@ -449,10 +449,118 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   it("removes one line, or everything the AI set", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
     await open(detail({ files: [uvttFile], items: [shop()] }));
-    await click(host.querySelector(".build-wall-list button[aria-label^='Remove line']") ?? undefined);
+    await typeLines("1");
+    await click(editorButton("Remove line"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] }, "2026-11-09T00:00:00Z");
     await click(button("Remove everything your AI set"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [] }, "2026-11-09T00:00:00Z");
+  });
+
+  // Four lines and a mark beside the second.
+  const many = {
+    openings: [],
+    lines: [
+      { from: { column: 4, row: 2 }, to: { column: 6, row: 2 }, kind: "wall" as const },
+      { from: { column: 6, row: 2 }, to: { column: 6, row: 5 }, kind: "wall" as const },
+      { from: { column: 1, row: 6 }, to: { column: 2, row: 6 }, kind: "door" as const, state: "closed" as const },
+      { from: { column: 8, row: 1 }, to: { column: 9, row: 1 }, kind: "window" as const, state: "open" as const },
+    ],
+    marks: [{ square: { column: 5, row: 4 }, reason: "Is this wall curved?" }],
+  };
+  const town = (over: Partial<BuildItemView> = {}) => shop({ data: { ...shop().data, setup: many }, ...over });
+  const lineField = () => host.querySelector<HTMLInputElement>(".build-line-field input")!;
+  const typeLines = async (value: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(lineField(), value);
+      lineField().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  const editorButton = (label: string) => [...host.querySelectorAll(".build-line-editor button")].find((b) => (b.textContent?.trim() || b.getAttribute("aria-label") || "").startsWith(label));
+  const actionButton = (label: string) => [...host.querySelectorAll(".build-line-actions button")].find((b) => b.textContent?.trim() === label);
+  const shown = () => host.querySelector(".build-line-card")?.textContent ?? "";
+  const saved = () => builds.saveMapSetup.mock.lastCall?.[2] as typeof many;
+
+  it("edits a line by typing its number, with no row per line (FR-GM-27)", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    // One field for every line: no tick box, select or button per line.
+    expect(host.querySelectorAll(".build-walls input[type=checkbox]")).toHaveLength(0);
+    expect(host.querySelectorAll(".build-line-editor input, .build-line-editor select")).toHaveLength(1);
+    expect(shown()).toContain("No line chosen.");
+    await typeLines("1");
+    expect(shown()).toContain("Line 1");
+    expect(shown()).toContain("From column 4, row 2 to column 6, row 2");
+    expect(text()).toContain("Any change you make here stops your AI changing this map.");
+    await click(actionButton("Door"));
+    expect(builds.saveMapSetup).toHaveBeenCalledTimes(1);
+    expect(saved().lines.map((l) => [l.kind, l.state])).toEqual([["door", "closed"], ["wall", undefined], ["door", "closed"], ["window", "open"]]);
+  });
+
+  it("edits a range in one save, and sets doors and windows together (FR-GM-27)", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    await typeLines("3-4");
+    expect(shown()).toContain("2 lines");
+    expect(shown()).toContain("1 door and 1 window");
+    // A door and a window: no kind is pressed, and neither is a state, as they differ.
+    expect(host.querySelectorAll(".build-line-actions [aria-pressed='true']")).toHaveLength(0);
+    await click(actionButton("Locked"));
+    expect(saved().lines.slice(2).map((l) => l.state)).toEqual(["locked", "locked"]);
+    // A wall has no state, so with a wall chosen there's nothing to set.
+    await typeLines("1, 3");
+    expect(actionButton("Locked")).toBeUndefined();
+  });
+
+  it("steps through the lines, and chooses a whole kind (FR-GM-27)", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    await click(editorButton("Next line"));
+    expect(lineField().value).toBe("1");
+    await click(editorButton("Next line"));
+    expect(lineField().value).toBe("2");
+    await click(editorButton("Previous line"));
+    await click(editorButton("Previous line"));
+    expect(lineField().value).toBe("4");
+    await click(editorButton("Walls"));
+    expect(lineField().value).toBe("1-2");
+    await click(editorButton("Remove 2 lines"));
+    expect(saved().lines.map((l) => l.kind)).toEqual(["door", "window"]);
+  });
+
+  it("says when a number isn't a line, and saves nothing (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    await typeLines("9");
+    await act(async () => { lineField().form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(text()).toContain("Line numbers go from 1 to 4.");
+    expect(builds.saveMapSetup).not.toHaveBeenCalled();
+  });
+
+  it("picks a line by clicking it on the map, and shows its number there (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    const hit = (i: number) => host.querySelector(`[data-hit='${i}']`)!;
+    await act(async () => { hit(1).dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+    expect(host.querySelector(".build-line-number.is-lit")?.textContent).toBe("2");
+    await click(hit(1));
+    expect(lineField().value).toBe("2");
+    expect(host.querySelector(".build-line-chosen")?.getAttribute("data-line")).toBe("1");
+    await act(async () => { hit(3).dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true })); });
+    expect(lineField().value).toBe("2, 4");
+  });
+
+  it("shows the AI's marks one at a time, with the lines they are about (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    expect(text()).toContain("Is this wall curved?");
+    expect(text()).toContain("Column 5, row 4 · near line 2");
+    await click(button("Edit these lines"));
+    expect(lineField().value).toBe("2");
+    expect(editorButton("Flagged")?.textContent).toBe("Flagged1");
+  });
+
+  it("shows a published map's lines without anything to change (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [town({ published: true })] }));
+    await typeLines("3");
+    expect(shown()).toContain("Line 3");
+    expect(host.querySelector(".build-line-actions")).toBeNull();
   });
 
   const cavePattern = () => host.querySelector(".build-map pattern")?.getAttribute("width");

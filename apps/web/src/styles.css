@@ -1731,6 +1731,99 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-wall-list .chip { cursor: default; font-size: 0.75rem; padding: 0.05rem 0.4rem; min-height: 0; }
 .build-flag-reason { flex-basis: 100%; border-left: 3px solid var(--warn); padding-left: var(--space-2); }
 .build-wall-label { fill: #fff; stroke: #000; paint-order: stroke; font-weight: 700; font-family: var(--font-sans, sans-serif); }
+
+/* Walls, doors and windows (FR-GM-27): one editor beside the map instead of a row per line. A line
+   is chosen by its number, by stepping, by a whole kind, or by clicking it on the map. */
+.build-map-room { container-type: inline-size; min-width: 0; }
+.build-map-review { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.build-map-side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+@container (min-width: 52rem) {
+  /* The map stays in view beside the editor. */
+  .build-map-review { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: var(--space-4); align-items: start; }
+  .build-map-review .build-map-side { position: sticky; top: var(--space-4); }
+}
+@container (min-width: 72rem) { .build-map-review { grid-template-columns: minmax(0, 1fr) 24rem; } }
+.build-walls { min-width: 0; gap: var(--space-3); }
+.build-walls-head h4 { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.build-walls-sum { margin: 0.15rem 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.build-walls-key { display: flex; flex-wrap: wrap; gap: 0.2rem var(--space-3); font-size: var(--fs-xs); color: var(--muted); }
+.build-walls-key li { display: inline-flex; align-items: center; gap: 0.4rem; }
+.build-walls-warn { margin: 0; border-left: 3px solid var(--warn); padding-left: var(--space-2); color: var(--text); }
+.build-walls-sub { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.build-walls-sub svg { color: #ff5fa8; }
+:root[data-theme="light"] .build-walls-sub svg, :root[data-theme="light"] .build-line-focus .build-flag-reason svg { color: #c2185b; }
+
+/* The map's own colours, as the key and beside a chosen line. */
+.build-line-swatch { flex: none; display: inline-block; width: 0.95rem; height: 0.32rem; border-radius: 2px; background: #ff3b30; box-shadow: 0 0 0 1px rgba(21, 23, 27, 0.35); }
+.build-line-swatch[data-kind="door"] { background: #ffd60a; }
+.build-line-swatch[data-kind="window"] { background: #64d2ff; }
+.build-line-swatch[data-kind="opening"] { background: repeating-linear-gradient(90deg, #ff9f0a 0 5px, transparent 5px 8px); box-shadow: none; }
+.build-line-swatch.is-set { background: #fff; box-shadow: 0 0 0 1px var(--border-strong); }
+
+/* The editor: the field, the groups, then what is chosen and what to make it. */
+.build-line-editor { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--raised); }
+.build-line-pick { display: flex; flex-direction: column; gap: var(--space-1); }
+.build-line-pick > label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.build-line-pick .small-print { margin: 0; }
+.build-line-field { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-1); }
+.build-line-field input { min-width: 0; height: 2.5rem; padding: 0 0.7rem; font-family: var(--font-mono); font-size: 1.05rem; font-weight: 600; letter-spacing: 0.02em; background: var(--field); }
+.build-line-field input::placeholder { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.build-line-field .icon-button { width: 2.5rem; height: 2.5rem; }
+.build-line-of { padding-left: var(--space-1); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.build-line-groups { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.build-line-groups button { display: inline-flex; align-items: center; gap: 0.3rem; }
+.build-line-groups button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.build-line-groups .build-seg-count { margin-left: 0.1rem; }
+
+.build-line-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-control); background: var(--panel); border: 1px solid var(--border); min-height: 4.5rem; }
+.build-line-empty { margin: auto 0; font-size: var(--fs-sm); }
+.build-line-focus { display: flex; flex-direction: column; gap: 0.2rem; animation: none; }
+.build-line-name { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--fs-md); }
+.build-line-name b { font-weight: 650; font-variant-numeric: tabular-nums; }
+.build-line-where { margin: 0; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.build-line-focus .build-flag-reason { margin: var(--space-1) 0 0; font-size: var(--fs-sm); color: var(--text); }
+.build-line-focus .build-flag-reason svg { color: #ff5fa8; vertical-align: -1px; }
+.build-line-actions { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--rule); }
+.build-lines-set { display: flex; flex-direction: column; gap: 0.3rem; }
+.build-lines-set-label { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.build-lines-set .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; }
+.build-lines-set .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap; min-height: 0; padding: 0.35rem 0.4rem; }
+.build-line-end { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.build-line-end button { display: inline-flex; align-items: center; gap: 0.35rem; }
+.build-line-end .build-walls-warn { flex: 1 1 12rem; color: var(--muted); }
+
+/* The AI's marks, one at a time, the one shown ringed on the map. */
+.build-mark-pager { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.build-mark-pager-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.build-mark-steps { display: inline-flex; align-items: center; gap: var(--space-1); }
+.build-mark-steps .build-line-of { padding: 0 var(--space-1); }
+.build-mark-reason { margin: 0; border-left: 3px solid var(--warn); padding-left: var(--space-2); color: var(--text); }
+.build-mark-where { margin: 0; padding-left: calc(var(--space-2) + 3px); color: var(--muted); font-size: var(--fs-xs); }
+.build-mark-tools { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.build-mark-tools button { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+/* The map side: a wide invisible stroke takes the click; chosen lines get marching ants; the line
+   pointed at shows its number while the rest dim. Fixed colours: they are drawn on the map image. */
+.build-map svg .build-line-hit { fill: none; stroke: transparent; stroke-width: 16px; stroke-linecap: round; pointer-events: stroke; cursor: pointer; }
+.build-line-rim { fill: none; stroke: #15171b; stroke-width: 11px; stroke-linecap: round; stroke-opacity: 0.9; }
+.build-line-ants { fill: none; stroke: #fff; stroke-width: 7px; stroke-dasharray: 6 5; }
+.build-line-glow { fill: none; stroke: #fff; stroke-width: 15px; stroke-opacity: 0.5; stroke-linecap: round; }
+.build-line-number { pointer-events: none; }
+.build-line-number.is-lit { fill: #ffd60a; }
+.build-mark-current { fill: rgba(255, 45, 149, 0.12); stroke: #ff2d95; stroke-width: 3px; stroke-dasharray: 4 3; }
+.build-walls-drawn { transition: opacity var(--dur-fast); }
+.build-map svg:has(.build-line-picks.has-lit) .build-walls-drawn { opacity: 0.4; }
+
+@media (pointer: coarse) {
+  .build-line-field .icon-button, .build-mark-steps .icon-button { width: 44px; height: 44px; }
+  .build-line-field input { height: 44px; }
+  .build-line-groups button, .build-lines-set .seg button, .build-line-end button, .build-mark-tools button { min-height: 44px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .build-line-focus { animation: build-swap 0.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .build-line-ants { animation: build-ants 0.8s linear infinite; }
+}
+@keyframes build-ants { to { stroke-dashoffset: -11; } }
 @media (max-width: 640px) {
   .build-attack { grid-template-columns: 1fr 1fr; }
   .build-attack input:first-child { grid-column: 1 / -1; }
