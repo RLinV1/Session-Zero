@@ -70,6 +70,8 @@ export class MemoryRoomStore implements RoomStore {
     ownerGmId: string | null; name: string; createdAt: string; temporary: boolean; editsEncounterId: string | null;
   }>();
   private gms = new Map<string, string>();
+  /** Guest identities by owner id, with when they registered (guest-gm-hosting D1). Anyone absent is not a guest. */
+  private guestGms = new Map<string, { createdAt: string }>();
   private assets = new Map<string, LibraryAssetRecord>();
   private creatures = new Map<string, NewCreatureRecord>();
   private encounters = new Map<string, NewEncounterRecord>();
@@ -260,6 +262,42 @@ export class MemoryRoomStore implements RoomStore {
 
   async findGm(tokenHash: string) {
     return this.gms.get(tokenHash) ?? null;
+  }
+
+  async registerGuestGm(tokenHash: string) {
+    const existing = this.gms.get(tokenHash);
+    if (existing) return { ownerId: existing, guest: this.guestGms.has(existing) };
+    const ownerId = randomUUID();
+    this.gms.set(tokenHash, ownerId);
+    this.guestGms.set(ownerId, { createdAt: new Date().toISOString() });
+    return { ownerId, guest: true };
+  }
+
+  async countOwnedRooms(ownerGmId: string) {
+    return [...this.rooms.values()].filter((room) => room.ownerGmId === ownerGmId).length;
+  }
+
+  async isGuestRoom(roomId: string) {
+    const owner = this.rooms.get(roomId)?.ownerGmId;
+    return !!owner && this.guestGms.has(owner);
+  }
+
+  async listIdleGuestRoomsBefore(at: string) {
+    return [...this.rooms.entries()]
+      .filter(([id, room]) => !!room.ownerGmId && this.guestGms.has(room.ownerGmId) && (this.events.get(id)?.at(-1)?.at ?? room.createdAt) < at)
+      .map(([id]) => id);
+  }
+
+  async deleteEmptyGuestOwners(registeredBefore: string) {
+    const held = new Set([...this.rooms.values()].map((room) => room.ownerGmId));
+    let deleted = 0;
+    for (const [ownerId, guest] of this.guestGms) {
+      if (guest.createdAt >= registeredBefore || held.has(ownerId)) continue;
+      for (const [hash, id] of this.gms) if (id === ownerId) this.gms.delete(hash);
+      this.guestGms.delete(ownerId);
+      deleted++;
+    }
+    return deleted;
   }
 
   async listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]> {
@@ -1055,6 +1093,7 @@ export class MemoryRoomStore implements RoomStore {
       assets: count(this.assets.values()),
       creatures: count(this.creatures.values()),
       diceLooks: count(this.diceLooks.values()),
+      guest: this.guestGms.has(ownerGmId),
     };
   }
 
@@ -1068,6 +1107,7 @@ export class MemoryRoomStore implements RoomStore {
       }
     }
     this.gms.delete(device[0]);
+    this.guestGms.delete(deviceOwnerId);
     return moved;
   }
 

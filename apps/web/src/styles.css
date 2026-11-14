@@ -2932,6 +2932,28 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 }
 .board-notice p { margin: 0; }
 
+/* The guest room's interactive demo (guest-gm-hosting): beside its control, or a bottom sheet. */
+.guest-tutorial {
+  position: fixed; z-index: 40;
+  display: flex; flex-direction: column; gap: var(--space-2);
+  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3);
+  background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-surface); box-shadow: 0 10px 28px var(--shadow);
+  font-size: var(--fs-sm);
+}
+.guest-tutorial.sheet {
+  left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  width: auto; max-width: 28rem; margin-inline: auto;
+}
+.guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
+.guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.guest-tutorial p { margin: 0; }
+[data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
+@media (prefers-reduced-motion: no-preference) {
+  .guest-tutorial { animation: modal-in 0.16s ease-out; }
+}
+
 /* What was just rolled (board-dice-rolls, throw-dice-on-board); never takes pointer input. */
 .board-roll-popup {
   /* Bottom right, clear of the notices (top right) and the hint (bottom left). */
@@ -4447,3 +4469,25 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .prepare-step + .prepare-step { margin-top: 2rem; }
   .phone-frame { width: min(15rem, 64vw); }
 }
+
+/* Starting a room with no account (guest-gm-hosting): a map to pick, two names, and the honest note. */
+.start-page { width: min(56rem, 100% - 2rem); display: flex; flex-direction: column; gap: var(--space-5); padding-bottom: var(--space-8); }
+.start-page h1 { margin: 0; }
+.start-lede, .start-account, .start-note { margin: 0; max-width: 60ch; }
+.start-form { display: flex; flex-direction: column; gap: var(--space-5); }
+.start-maps { border: 0; margin: 0; padding: 0; min-width: 0; }
+.start-maps legend { padding: 0; margin-bottom: var(--space-3); font-weight: 650; }
+.start-map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.start-map {
+  display: flex; flex-direction: column; gap: var(--space-2); height: 100%;
+  padding: var(--space-2); cursor: pointer;
+  background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-surface);
+}
+.start-map:hover { border-color: var(--border-strong); }
+.start-map:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.start-map:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.start-map img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-control); }
+.start-map span { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.start-fields { display: flex; flex-direction: column; gap: var(--space-4); max-width: 27rem; }
+.guest-note { max-width: 40ch; }
+@media (max-width: 760px) { .start-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

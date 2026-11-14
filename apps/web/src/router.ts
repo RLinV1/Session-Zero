@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export type Route =
   | { page: "home" }
   | { page: "isometricLighting" }
+  | { page: "start" }
   | { page: "gmDashboard" }
   | { page: "library" }
   | { page: "build"; buildId: string }
@@ -19,6 +20,7 @@ export type Route =
 export function parseRoute(pathname: string): Route {
   if (pathname === "/") return { page: "home" };
   if (/^\/demos\/apartments\/?$/.test(pathname)) return { page: "isometricLighting" };
+  if (/^\/start\/?$/.test(pathname)) return { page: "start" };
   if (/^\/gm-dashboard\/?$/.test(pathname)) return { page: "gmDashboard" };
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
   const build = pathname.match(/^\/builds\/([^/]+)\/?$/);
@@ -40,7 +42,8 @@ export function parseRoute(pathname: string): Route {
 }
 
 const listeners = new Set<() => void>();
-window.addEventListener("popstate", () => listeners.forEach((fn) => fn()));
+// Importing this module outside a browser (node test environments) must not touch window.
+if (typeof window !== "undefined") window.addEventListener("popstate", () => listeners.forEach((fn) => fn()));
 
 export function navigate(path: string, { replace = false } = {}) {
   const from = location.pathname;

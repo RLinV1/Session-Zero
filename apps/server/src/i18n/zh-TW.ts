@@ -20,6 +20,8 @@ export const serverZhTW = {
   "api.inviteNotFound": "找不到邀請連結",
   "api.displayNameBlank": "請填寫顯示名稱。",
   "api.tooManyJoins": "這個網路位址的加入嘗試過於頻繁，請稍後再試。",
+  "api.tooManyGuestRooms": "這個網路位址建立房間過於頻繁，請稍後再試。",
+  "api.guestNeedsShippedMap": "訪客房間必須從內建地圖開始。",
   "api.gmOnly": "僅限 GM",
   "api.notInRoom": "你尚未加入這個房間",
   "api.invalidHistoryQuery": "活動紀錄查詢無效",

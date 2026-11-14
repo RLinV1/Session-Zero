@@ -888,7 +888,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   );
 
   return (
-    <div className="board" data-tour="board">
+    <div className="board" data-tour="board" data-tutorial="move">
       <div
         ref={hostRef}
         className="board-canvas"

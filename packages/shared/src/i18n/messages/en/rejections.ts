@@ -276,6 +276,10 @@ export const rejectionsEn = {
   "reject.templateFormat": ({ name }: Name) => `"${name}" was saved in a format this server can't read.`,
   "reject.templateDamaged": ({ name }: Name) => `"${name}" can't be read. It may be damaged.`,
   "reject.templateMapDeleted": ({ name }: Name) => `The map for "${name}" was deleted from your library.`,
+  "reject.guestUpload": "A free account lets you upload your own images. Sign up to upload.",
+  "reject.guestAsset": "A guest room can only use the maps and art that come with the app. A free account lets you use your own.",
+  "reject.guestRoomLimit": "This browser already has 3 guest rooms. Delete one, or create a free account.",
+  "reject.legacyIdentity": "This browser has rooms from before accounts. Sign in or sign up to keep using them.",
 
   // Nouns used inside the messages above.
   "noun.thatToken": "That token",

@@ -259,6 +259,10 @@ export const rejectionsZhTW = {
   "reject.templateFormat": ({ name }) => cjk`「${name}」使用的儲存格式不受目前伺服器支援，無法讀取。`,
   "reject.templateDamaged": ({ name }) => cjk`無法讀取「${name}」，檔案可能已損壞。`,
   "reject.templateMapDeleted": ({ name }) => cjk`「${name}」使用的地圖已從素材庫刪除。`,
+  "reject.guestUpload": "註冊免費帳號即可上傳自己的圖片。",
+  "reject.guestAsset": "訪客房間只能使用應用程式內建的地圖與圖片。註冊免費帳號即可使用自己的圖片。",
+  "reject.guestRoomLimit": "這個瀏覽器已有 3 個訪客房間。請刪除一個，或註冊免費帳號。",
+  "reject.legacyIdentity": "這個瀏覽器有帳號功能推出前建立的房間。請登入或註冊以繼續使用。",
 
   "noun.thatToken": "這枚棋子",
   "noun.thatRoll": "那次擲骰",

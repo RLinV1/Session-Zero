@@ -35,6 +35,7 @@ What exists today, and what a usable product still needs:
 | --- | --- | --- | --- |
 | `/` | Home — the product, Play, and sign in | Built — a bare create form only | Entry for every journey (§11.5) |
 | `/join/:inviteCode` | Guest join | Built | FR-PL-01, FR-PL-02 |
+| `/start` | Guest start — a signed-out GM picks a built-in map and starts a room | **Planned** | FR-GM-01, `openspec/changes/guest-gm-hosting` |
 | `/r/:roomId` | The table | Built | most of the FR set |
 | — | 404 | Built — an unstyled card | — |
 | `/signup`, `/login` | Account — any role, role is per room | **Missing** | FR-GM-01, [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) §13.1 |
@@ -105,9 +106,9 @@ and the theme toggle on the right.
 **Above the fold: two ways in, and they are not equals** (`Hero.tsx`).
 
 - **Start a room** is the primary action, the page's one rust fill above the fold. It goes to
-  the GM dashboard; a browser that isn't signed in reaches the sign-in page first and carries
-  on from there. Room creation stays behind a free account (`FRONTEND-CONTRACT.md` §13.1
-  records why, and why an unclaimed room was rejected).
+  the GM dashboard; a browser that isn't signed in reaches sign-in, which offers "Continue as guest GM" to
+  the guest start page `/start`. No account is needed to start, on built-in art only; a free account keeps rooms on
+  any device and allows uploads (`FRONTEND-CONTRACT.md` §13.1, ADR 0072).
 - **Join a game** is the second action. It opens the page's only join form in place and moves
   focus to its field, which takes a full invite link or a bare code. A browser that has joined
   rooms before opens with the form showing and those rooms listed above the field, marked as

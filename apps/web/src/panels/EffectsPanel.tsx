@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MAX_NUKE_DAMAGE, presetOf, type LibraryAnimation, type Point, type RoomState } from "@vtt/shared";
-import { useAccount } from "../account/accountStore";
+import { useAccountLibrary } from "../ui/GuestRoom";
 import { DEFAULT_BOARD_SIZE } from "../board/gridRenderLimit";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
@@ -30,7 +30,7 @@ export function EffectsPanel({
   state: RoomState;
 }) {
   const nukeAllowed = presetOf(state).features.attacks;
-  const signedIn = useAccount().status === "signedIn";
+  const signedIn = useAccountLibrary();
   const [library, setLibrary] = useState<LibraryAnimation[]>([]);
   const [amount, setAmount] = useState("10");
   const [animationId, setAnimationId] = useState(BUILTIN);

@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { GM_TOKEN_HEADER, type LegacySummary } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
 import { requireAccount } from "../identity/middleware";
+import type { RoomRegistry } from "../domain/roomRegistry";
 import type { LibraryStore } from "../store/libraryStore";
 
 /**
@@ -9,8 +10,8 @@ import type { LibraryStore } from "../store/libraryStore";
  * proves the device side with its token and the account side with its session; the move takes
  * everything the token owns and deletes the device identity, so the token stops working.
  */
-export function registerLegacyRoutes(app: Express, deps: { store: LibraryStore }) {
-  const { store } = deps;
+export function registerLegacyRoutes(app: Express, deps: { store: LibraryStore; registry: RoomRegistry }) {
+  const { store, registry } = deps;
 
   /** What this browser's legacy token owns, for the dashboard's offer. 401 for a token the server doesn't know. */
   app.get("/api/gm/legacy", (req, res) => {
@@ -28,8 +29,19 @@ export function registerLegacyRoutes(app: Express, deps: { store: LibraryStore }
       const account = requireAccount(res);
       if (!account) return;
       const deviceId = await deviceOwner(req);
+      // Read before the move: afterwards the device owns nothing.
+      const roomIds = deviceId ? await store.listOwnedRoomIds(deviceId) : [];
       const moved = deviceId ? await store.claimDeviceOwner(deviceId, account.user.ownerId) : null;
       if (!moved) return void res.status(404).json({ error: "Nothing to bring over from this browser" });
+      // An open guest room stops being one now, so its built-in-art rule ends with no reconnect (guest-gm-hosting D7).
+      // The claim has committed, so a failed refresh must not turn it into a 500.
+      for (const roomId of roomIds) {
+        try {
+          await (await registry.loaded(roomId))?.refreshGuest();
+        } catch (err) {
+          console.error(`[vtt] could not refresh guest state of room ${roomId} after a claim`, err);
+        }
+      }
       res.json(moved satisfies LegacySummary);
     })().catch(internalError(res));
   });

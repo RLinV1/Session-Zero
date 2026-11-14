@@ -26,11 +26,11 @@ function repoFile(path: string): string {
 const fact = (text: RegExp) => screen.getByText(text).closest("li")!.textContent!.replace(/\s+/g, " ").trim();
 
 describe("the facts row (gm-home: Figures are sourced)", () => {
-  it("states the room's player limit, the ping target, no account for players, and what undo covers", () => {
+  it("states the room's player limit, the ping target, no account needed to start, and what undo covers", () => {
     render(<FactsRow />);
     expect(fact(/players in one room/)).toBe(`Up to ${MAX_PLAYERS_PER_ROOM} players in one room.`);
     expect(fact(/for a ping/)).toBe(`Under ${PING_TARGET_MS} ms for a ping to reach everyone at the table.`);
-    expect(fact(/for players/)).toBe("No account for players. They join from a link, in any browser.");
+    expect(fact(/free account keeps/)).toBe("No account needed to start. A free account keeps your rooms on any device and lets you upload your own maps.");
     expect(fact(/for moves/)).toBe("Undo for moves, fog, walls and hit points.");
   });
 

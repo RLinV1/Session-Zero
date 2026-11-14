@@ -20,6 +20,25 @@ import { clearSessionCookie, sessionCookie, toAccountView, type Sessions } from 
 const MINUTE = 60 * 1000;
 
 /**
+ * The key a client address is limited by (guest-gm-hosting D3): IPv4 as it is, an IPv4-mapped IPv6
+ * address as its IPv4, and any other IPv6 address as its /64, since one machine owns a whole /64.
+ * An address it can't read is returned unchanged.
+ */
+export function addressKey(ip: string | undefined): string {
+  if (!ip) return "unknown";
+  const address = ip.toLowerCase().split("%")[0]!;
+  const mapped = address.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return mapped[1]!;
+  if (!address.includes(":")) return address;
+  const [head = "", tail = ""] = address.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  const groups = address.includes("::") ? [...front, ...Array<string>(8 - front.length - back.length).fill("0"), ...back] : front;
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return address;
+  return `${groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":")}::/64`;
+}
+
+/**
  * The server's HTTP limiters: those of ADR 0017 I4, plus password-change guesses and invite joins
  * (security-hardening). Exposed so tests can run them on a fake clock.
  */
@@ -46,6 +65,8 @@ export function accountLimits(now: () => number = Date.now) {
     buildPassRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Invalid build passes per IP, counted only on failure, so guessing gets refused and working passes don't. */
     buildPassFailuresPerIp: new RateLimiter(60, 15 * MINUTE, now),
+    /** Guest room creations per address (IPv6 by /64, see `addressKey`); every attempt counts, accepted or not (guest-gm-hosting D3). */
+    guestRoomsPerAddress: new RateLimiter(20, 60 * MINUTE, now),
   };
 }
 export type AccountLimits = ReturnType<typeof accountLimits>;

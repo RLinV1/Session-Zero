@@ -78,6 +78,9 @@ function AccountForm(props: {
         {props.busy ? props.busyLabel : props.submitLabel}
       </button>
       <p className="muted small-print">{props.footer}</p>
+      <p className="small-print">
+        <Link href="/start">{t("account.continueGuest")}</Link>
+      </p>
       <Link href="/">{t("account.backHome")}</Link>
     </form>
   );

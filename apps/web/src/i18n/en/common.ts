@@ -21,6 +21,7 @@ export const common = {
   "title.signup": "Create account",
   "title.join": "Join the table",
   "title.notFound": "Page not found",
+  "title.start": "Start a room",
   "title.gmDashboard": "Your rooms",
   "title.library": "Library",
   "title.account": "Your account",

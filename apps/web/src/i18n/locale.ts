@@ -191,6 +191,7 @@ const TITLE_KEYS = {
   signup: "title.signup",
   join: "title.join",
   notFound: "title.notFound",
+  start: "title.start",
   gmDashboard: "title.gmDashboard",
   library: "title.library",
   account: "title.account",

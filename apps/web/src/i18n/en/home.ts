@@ -24,8 +24,8 @@ export const home = {
   "home.hero.joinSubmit": "Join",
 
   "home.facts.label": "At a glance",
-  "home.facts.noAccount": "No account",
-  "home.facts.noAccountDetail": "for players. They join from a link, in any browser.",
+  "home.facts.noAccount": "No account needed to start.",
+  "home.facts.noAccountDetail": "A free account keeps your rooms on any device and lets you upload your own maps.",
   "home.facts.upTo": ({ n }: { n: number }) => `Up to ${n}`,
   "home.facts.players": "players in one room.",
   "home.facts.under": ({ ms }: { ms: number }) => `Under ${ms} ms`,

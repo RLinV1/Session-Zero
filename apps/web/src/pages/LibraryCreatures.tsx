@@ -9,6 +9,7 @@ import { api } from "../net/api";
 import { randomTokenColor } from "../ui/tokenColors";
 import { isBuiltin } from "../net/builtinAssets";
 import { BUILTIN_CREATURES } from "../net/builtinCreatures";
+import { useGuestRoom } from "../ui/GuestRoom";
 import { Modal } from "../ui/Modal";
 import { TokenPreview } from "../ui/TokenPreview";
 import { creatureSummary, type CreaturePrefill } from "./creatureDraft";
@@ -273,11 +274,14 @@ export function CreatureForm(props: {
 
 /** Add Token's "From creature" list (library-creatures): the GM's creatures, searchable by name. */
 export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => void }) {
-  const [creatures, setCreatures] = useState<LibraryCreature[] | null>(null);
+  // A guest room has no saved creatures and never asks for them (guest-gm-hosting).
+  const guest = useGuestRoom();
+  const [creatures, setCreatures] = useState<LibraryCreature[] | null>(guest ? [] : null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    if (guest) return;
     let live = true;
     api.library.creatures.list().then(
       (list) => live && setCreatures(list),
@@ -286,7 +290,7 @@ export function CreaturePicker(props: { onPick: (creature: LibraryCreature) => v
     return () => {
       live = false;
     };
-  }, []);
+  }, [guest]);
 
   const q = query.trim().toLowerCase();
   const shown = [...(creatures ?? []), ...(creatures ? BUILTIN_CREATURES : [])].filter((c) => !q || c.name.toLowerCase().includes(q));

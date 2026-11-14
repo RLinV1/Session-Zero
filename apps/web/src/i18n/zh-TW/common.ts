@@ -17,6 +17,7 @@ export const commonZhTW = {
   "title.signup": "建立帳號",
   "title.join": "加入遊戲桌",
   "title.notFound": "找不到頁面",
+  "title.start": "建立房間",
   "title.gmDashboard": "你的房間",
   "title.library": "素材庫",
   "title.account": "你的帳號",

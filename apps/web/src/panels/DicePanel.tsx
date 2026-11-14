@@ -120,6 +120,7 @@ export function DicePanel({
         <DicePoolInput value={pool} onChange={(next) => { setPool(next); setError(null); }} />
         <div className="dice-row">
           <button className="primary"
+            data-tutorial="roll"
             type="submit"
             disabled={busy || rollThrow.rolling}
             title={rollThrow.rolling ? t("attack.diceOnBoard") : undefined}
