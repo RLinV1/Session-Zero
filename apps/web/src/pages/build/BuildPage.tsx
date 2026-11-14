@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
   EMPTY_MAP_SETUP,
-  describeDraftLine,
   draftMapBoard,
   formatExpression,
   listOpenings,
@@ -12,13 +11,13 @@ import {
   type BuildItemView,
   type BuildPublished,
   type DraftCreatureState,
+  type DraftLine,
   type DraftMapSetup,
   type DraftMapState,
   type DraftMark,
   type DraftProposedGrid,
   type LibraryMapBoard,
   type OpeningView,
-  type PortalState,
   type PublishedBuildItem,
 } from "@vtt/shared";
 import { AccountMenu } from "../../account/AccountPages";
@@ -26,8 +25,7 @@ import { RequireAccount } from "../../account/RequireAccount";
 import { useAccount } from "../../account/accountStore";
 import { ApiError, api } from "../../net/api";
 import { navigate } from "../../router";
-import { Check, Copy, PencilSimple, Trash, X } from "@phosphor-icons/react";
-import { IconAction } from "../../ui/IconAction";
+import { Check, Copy, PencilSimple, Trash } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
@@ -35,6 +33,7 @@ import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type
 import { ContentsRail, DraftMeter, type RailLink } from "./BuildRail";
 import { CreatureRoster, MapViewer } from "./BuildViewers";
 import { EncounterBoard } from "./EncounterBoard";
+import { LINE_COLOUR, LinePickLayer, MapWalls, lineFlags, useLinePicker, type LinePicker } from "./MapLines";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
 import { BuildChoiceFields } from "./LibraryBuilds";
 import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
@@ -702,12 +701,14 @@ export interface MapDrawing {
   marks: readonly DraftMark[];
   /** The ends of lines the AI drew, to mark them as the AI's. */
   aiLines: readonly { a: { x: number; y: number }; b: { x: number; y: number } }[];
+  /** Drawn doors and windows that sit on a wall they don't cut. */
+  blockedLines: readonly number[];
 }
 
-const WALL_COLOUR = { wall: "#ff3b30", door: "#ffd60a", window: "#64d2ff", opening: "#ff9f0a" } as const;
+const WALL_COLOUR = LINE_COLOUR;
 
 /** A map with its grid, walls, doors and windows drawn over it, in the image's own pixels, so what's published is what's seen. */
-export function GridOverlay({ file, grid, drawing }: { file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing }) {
+export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; picker: LinePicker; editable: boolean; flagged: ReadonlySet<number> } }) {
   const patternId = `build-grid-${file.id}`;
   const label = Math.max(file.width, file.height) / 60;
   const segment = (w: { a: { x: number; y: number }; b: { x: number; y: number } }) => `M ${w.a.x} ${w.a.y} L ${w.b.x} ${w.b.y}`;
@@ -745,6 +746,7 @@ export function GridOverlay({ file, grid, drawing }: { file: BuildFileView; grid
               ))}
             </g>
           )}
+          {grid && grid.cellSize > 0 && pick && pick.lines.length > 0 && <LinePickLayer lines={pick.lines} grid={grid} picker={pick.picker} editable={pick.editable} flagged={pick.flagged} />}
         </svg>
       )}
     </div>
@@ -761,90 +763,6 @@ const gridStatusText = (data: DraftMapState) =>
   data.gridBy === "agreement" ? "Grid set by detection and your AI"
     : data.gridDiffers ? "Your AI's grid differs from detection: check it"
       : STATUS_TEXT[data.gridStatus];
-
-const where = (o: Pick<OpeningView, "square">) => (o.square ? ` at column ${o.square.column}, row ${o.square.row}` : "");
-
-/**
- * A map's walls, doors and windows, as the AI and the file left them (ADR 0053). The owner can change
- * any opening and remove anything the AI drew. Drawing and moving walls stays in the map editor.
- */
-function MapWalls({ data, openings, editable, editedByUser, onSave }: { data: DraftMapState; openings: readonly OpeningView[]; editable: boolean; editedByUser: boolean; onSave: (setup: DraftMapSetup) => Promise<void> }) {
-  const setup = data.setup ?? EMPTY_MAP_SETUP;
-  if (openings.length === 0 && setup.lines.length === 0 && setup.marks.length === 0) return null;
-
-  const setOpening = (number: number, kind: string, state: PortalState) => {
-    const others = setup.openings.filter((o) => o.number !== number);
-    const opening = kind === "door" || kind === "window" ? [{ number, kind, state } as const] : [];
-    void onSave({ ...setup, openings: [...others, ...opening].sort((a, b) => a.number - b.number) });
-  };
-  const setLine = (index: number, kind: "wall" | "door" | "window", state: PortalState) =>
-    void onSave({ ...setup, lines: setup.lines.map((l, i) => (i === index ? (kind === "wall" ? { from: l.from, to: l.to, kind } : { from: l.from, to: l.to, kind, state }) : l)) });
-  const removeLine = (index: number) => void onSave({ ...setup, lines: setup.lines.filter((_, i) => i !== index) });
-  const removeMark = (index: number) => void onSave({ ...setup, marks: setup.marks.filter((_, i) => i !== index) });
-  const aiSetSomething = setup.openings.length + setup.lines.length + setup.marks.length > 0;
-
-  const stateSelect = (value: PortalState, onChange: (state: PortalState) => void, label: string) => (
-    <select aria-label={label} value={value} disabled={!editable} onChange={(e) => onChange(e.target.value as PortalState)}>
-      <option value="closed">closed</option><option value="open">open</option><option value="locked">locked</option>
-    </select>
-  );
-
-  return (
-    <details className="build-walls" open={setup.marks.length > 0 || setup.openings.some((o) => o.kind === "leave")}>
-      <summary>Walls, doors and windows: {openings.length} {openings.length === 1 ? "opening" : "openings"}, {setup.lines.length} drawn by {editedByUser ? "your AI or you" : "your AI"}</summary>
-      <p className="muted small-print">Yellow is a door, blue a window, dashed orange an opening as the file has it, red a wall. What was set here has a white edge. To draw or move walls, publish and use the map editor.</p>
-      {editable && !editedByUser && <p className="muted small-print">Any change you make here stops your AI changing this map.</p>}
-      {openings.length > 0 && (
-        <ul className="plain build-wall-list">
-          {openings.map((o) => {
-            const kind = o.now.kind === "left" || o.now.kind === "opening" ? "opening" : o.now.kind;
-            const state = o.now.kind === "left" ? "closed" : o.now.state;
-            return (
-              <li key={o.number}>
-                <span>Opening {o.number}{where(o)}</span>
-                <select aria-label={`Opening ${o.number}`} value={kind} disabled={!editable} onChange={(e) => setOpening(o.number, e.target.value, state === "open" || state === "locked" ? state : "closed")}>
-                  <option value="opening">{o.now.kind === "left" ? "left for you" : "as the file has it"}</option>
-                  <option value="door">door</option>
-                  <option value="window">window</option>
-                </select>
-                {kind !== "opening" && stateSelect(state, (s) => setOpening(o.number, kind, s), `Opening ${o.number} state`)}
-                {o.now.kind === "left" && <span className="build-flag-reason">{o.now.reason}</span>}
-                {/* Once the owner has edited the map, who set what can't be told apart. */}
-                {o.set && o.now.kind !== "left" && <span className="chip">{editedByUser ? "Set" : "Set by your AI"}</span>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {setup.lines.length > 0 && (
-        <ul className="plain build-wall-list">
-          {setup.lines.map((line, i) => (
-            <li key={i}>
-              <span>{describeDraftLine(line, i)}</span>
-              <select aria-label={`Line ${i + 1}`} value={line.kind} disabled={!editable} onChange={(e) => setLine(i, e.target.value as "wall" | "door" | "window", line.state ?? "closed")}>
-                <option value="wall">wall</option><option value="door">door</option><option value="window">window</option>
-              </select>
-              {line.kind !== "wall" && stateSelect(line.state ?? "closed", (s) => setLine(i, line.kind, s), `Line ${i + 1} state`)}
-              {editable && <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove line ${i + 1}`} danger onClick={() => removeLine(i)} />}
-            </li>
-          ))}
-        </ul>
-      )}
-      {setup.marks.length > 0 && (
-        <ul className="plain build-wall-list">
-          {setup.marks.map((mark, i) => (
-            <li key={i}>
-              <span>Left for you at column {mark.square.column}, row {mark.square.row}</span>
-              <span className="build-flag-reason">{mark.reason}</span>
-              {editable && <IconAction icon={<X size={16} aria-hidden="true" />} label={`Clear the mark at column ${mark.square.column}, row ${mark.square.row}`} onClick={() => removeMark(i)} />}
-            </li>
-          ))}
-        </ul>
-      )}
-      {editable && aiSetSomething && <button type="button" className="link danger build-text-action" onClick={() => void onSave(EMPTY_MAP_SETUP)}>Remove everything your AI set on this map</button>}
-    </details>
-  );
-}
 
 function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void> }) {
   const data = mapOf(item);
@@ -875,9 +793,10 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
     fill(suggestion);
   };
   // Drawn with the grid in the fields, so a correction shows where the AI's lines will land.
+  const setup = data.setup ?? EMPTY_MAP_SETUP;
+  const picker = useLinePicker(setup.lines.length);
   const drawing = useMemo<MapDrawing | undefined>(() => {
     if (!file) return undefined;
-    const setup = data.setup ?? EMPTY_MAP_SETUP;
     const built = draftMapBoard(file.board, setup, preview, file);
     return {
       walls: built.ok ? built.board.walls : file.board?.walls ?? [],
@@ -887,8 +806,11 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         a: { x: preview.offsetX + l.from.column * preview.cellSize, y: preview.offsetY + l.from.row * preview.cellSize },
         b: { x: preview.offsetX + l.to.column * preview.cellSize, y: preview.offsetY + l.to.row * preview.cellSize },
       })) : [],
+      blockedLines: built.ok ? built.blockedLines : [],
     };
   }, [file, data.setup, cell, x, y]); // `preview` is rebuilt from these three fields on every render
+  const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;
+  const flagged = useMemo(() => new Set(lineFlags(setup, drawing?.blockedLines ?? []).keys()), [setup, drawing]);
   return (
     <article className="build-card">
       <div className="build-card-head">
@@ -898,9 +820,18 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         </div>
         {checkbox}
       </div>
-      {file ? <GridOverlay file={file} grid={preview} drawing={drawing} /> : <p className="error">This map's file isn't in the build any more.</p>}
-      {file?.fromUvtt && <p className="muted small-print">From a UVTT file, with {file.walls} walls.</p>}
-      {file && drawing && <MapWalls data={data} openings={drawing.openings} editable={!item.published} editedByUser={item.editedByUser} onSave={onSaveSetup} />}
+      {file ? (
+        <div className={walls ? "build-map-room" : undefined}><div className={walls ? "build-map-review" : undefined}>
+          <div className="build-map-side">
+            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls ? { lines: setup.lines, picker, editable: !item.published, flagged } : undefined} />
+            {file.fromUvtt && <p className="muted small-print">From a UVTT file, with {file.walls} walls.</p>}
+          </div>
+          {walls && drawing && (
+            <MapWalls setup={setup} openings={drawing.openings} blocked={drawing.blockedLines} editable={!item.published} editedByUser={item.editedByUser}
+              busy={busy} picker={picker} onSave={onSaveSetup} />
+          )}
+        </div></div>
+      ) : <p className="error">This map's file isn't in the build any more.</p>}
       {fromFile && data.grid && <p className="muted small-print">Grid from the UVTT file: {data.grid.cellSize}-pixel squares. It's exact, so there's nothing to confirm.</p>}
       {!item.published && file && !fromFile && (
         <div className="build-fields">
