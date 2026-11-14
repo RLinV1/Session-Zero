@@ -53,6 +53,7 @@ import { inspectMapUpload } from "../domain/uploadAnalysis";
 import type { WallDetections } from "../domain/wallDetection";
 import { requestLocale } from "../i18n/locale";
 import { sharedText } from "../i18n/localize";
+import { refuseRoomCreation } from "./roomCreation";
 
 /** Registers the REST API: rooms, invite joins, uploads, the library and GM history. */
 export function registerRoutes(
@@ -87,14 +88,13 @@ export function registerRoutes(
       if (!body.success) return res.status(400).json({ error: body.error.issues });
       if (!body.data.displayName.trim()) return res.status(400).json({ error: "Display name can't be blank." });
 
-      // Resolved before anything is created, so a template that is gone leaves no half-made room (ADR 0024).
+      // Validate the template before the lifecycle counts this creation against the account budget.
       let encounter: ResolvedEncounter | null = null;
       if (body.data.templateId) {
         const found = await resolveEncounter(store, account.user.ownerId, body.data.templateId);
         if (!found.ok) return res.status(found.reason === "missing" ? 404 : 409).json({ error: sharedText(requestLocale(res), found.text) });
         encounter = found.encounter;
       }
-
       const { roomId, inviteCode, participantId } = await rooms.createRoomWithSeat({
         ownerGmId: account.user.ownerId,
         userId: account.user.id,
@@ -479,6 +479,7 @@ export function registerRoutes(
  */
 function internalError(req: Request, res: Response) {
   return (err: unknown) => {
+    if (refuseRoomCreation(res, err)) return;
     // The route pattern, not the URL: a join URL carries the invite code, which stays out of logs.
     const route = (req.route as { path?: string } | undefined)?.path ?? "unknown route";
     console.error(`[vtt] ${req.method} ${route} failed:`, err);

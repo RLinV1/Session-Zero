@@ -20,6 +20,7 @@ import type { RoomStore } from "../store/roomStore";
 import { mapDeletedMessage, toSummary } from "./encounters";
 import { requestLocale } from "../i18n/locale";
 import { sharedText } from "../i18n/localize";
+import { refuseRoomCreation } from "./roomCreation";
 
 const RoomIdParam = z.uuid();
 const NEW_ENCOUNTER_ROOM_NAME = "New encounter";
@@ -166,6 +167,7 @@ export function registerEncounterEditRoutes(
       if (!account) return;
       await handler(account);
     } catch (err) {
+      if (refuseRoomCreation(res, err)) return;
       if (err instanceof EncounterNameConflictError) {
         if (!res.headersSent) res.status(409).json({ error: err.message });
         return;

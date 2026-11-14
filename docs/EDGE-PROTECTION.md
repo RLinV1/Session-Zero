@@ -69,6 +69,37 @@ Budgets are per address, so people behind one address share them. They're meant 
 active address holds up to about 38 KB, so 10,000 addresses would take about 380 MB. That's another reason for
 Cloudflare.
 
+## Browser security headers
+
+Caddy sets these on every response (`deploy/Caddyfile`):
+
+- `Strict-Transport-Security` for 1 year with `includeSubDomains`, and no `preload`
+- `X-Frame-Options: DENY`, and `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`, except `/api`, which keeps `no-referrer`
+- a `Content-Security-Policy` with no `'unsafe-eval'` and `frame-ancestors 'none'`
+
+`apps/web/securityHeaders.ts` mirrors the set for `vite preview`, and `apps/web/test/securityHeaders.test.ts` keeps it
+equal to the Caddyfile. PixiJS would otherwise need `eval`, so `apps/web/src/board/Board.tsx` imports
+`pixi.js/unsafe-eval`.
+
+## Account and room limits
+
+The app's own limits, per address or account (they run behind Caddy's budgets above):
+
+- Room creation: 20 per account per hour, and at most 100 owned rooms, including temporary encounter-editing rooms.
+  `POST /api/rooms` and `POST /api/library/encounter-edits` share the limits and owner queue. Over either limit,
+  they return 429 and create nothing; deleting a room frees a place. Invalid templates and maps spend no creation budget.
+- Sign-up: 50 per address per hour, which also bounds guessing which emails are taken
+  ([ADR 0069](adr/0069-sign-up-email-disclosure.md)). A whole class behind one address shares it.
+
+## Development and dependencies
+
+- The dev `docker-compose.yml` binds Postgres, Redis and the S3 port to `127.0.0.1`, so they aren't reachable from the
+  network.
+- The GHSA-ggr8-5vv4-36mx advisory (`deepmerge-ts` via `prisma` → `@prisma/config`) is accepted and allowlisted in
+  `scripts/audit-ci.mjs`. Only the Prisma CLI and config reach it, at build time. It clears with a Prisma upgrade to a
+  release that uses `deepmerge-ts` 8 or later.
+
 ## WebSocket connection limits
 
 Neither Caddy nor Cloudflare Free documents a cap on open connections per address. The limit comes from three things:

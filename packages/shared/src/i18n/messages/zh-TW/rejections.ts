@@ -166,6 +166,8 @@ export const rejectionsZhTW = {
   "reject.displayNameBlank": "顯示名稱不能空白。",
   "reject.displayNameTaken": ({ name }) => cjk`房間內已有人使用「${name}」，請換個名稱。`,
   "reject.roomFull": ({ max }) => cjk`房間已滿，最多容納${max}位玩家。請聯絡 GM 詢問是否有空位。`,
+  "reject.roomCap": ({ max }) => cjk`你已有${max}個房間。請先刪除一個再建立新的房間。`,
+  "reject.roomRate": "你在過去一小時內建立了太多房間，請稍後再試。",
   "reject.roomLocked": "房間已鎖定，暫時無法加入。請聯絡 GM 解鎖房間。",
   "reject.notYourDiceLook": "你只能使用自己的骰子外觀。",
   "reject.chooseClassic": "若要變更自己的骰子，請到「骰子」面板選擇「經典」外觀。",

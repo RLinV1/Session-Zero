@@ -131,7 +131,7 @@ export async function buildApp({
   const stopSweeping = sessions.startSweeping(closeDeletedSeats);
   const stopLimitSweep = setInterval(() => Object.values(limits).forEach((l) => l.sweep()), 60_000);
   stopLimitSweep.unref();
-  const rooms = roomLifecycle({ store, registry, assets: assetStore, walls });
+  const rooms = roomLifecycle({ store, registry, assets: assetStore, walls, limits });
   // A temporary room is deleted when its GM leaves it; this catches the ones left open (ADR 0033).
   const sweepTemporaryRooms = async () => {
     const before = new Date(now() - TEMPORARY_ROOM_LIFETIME_MS).toISOString();

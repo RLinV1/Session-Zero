@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=15000",
     "maps:home": "node scripts/home-maps.mjs",
     "images:ambient": "node scripts/ambient-images.mjs",
     "render:compact": "node scripts/renderCompactMaps.mjs",

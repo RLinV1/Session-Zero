@@ -35,6 +35,16 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
+	# Browser hardening for every response. apps/web/securityHeaders.ts must hold identical values (the test
+	# enforces it). The ? keeps Express's no-referrer on /api.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss: ws:; worker-src 'self' blob:; media-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
+
 	# Per client address, with a short window: each address holds 24 bytes per event in each zone it
 	# touches, so a long window would let many addresses spend the limiter's own memory. The budgets
 	# leave room for a whole class on one address (ADR 0051).

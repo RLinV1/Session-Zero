@@ -20,6 +20,8 @@ import { ThrownDice, type ActiveThrow } from "./ThrownDice";
 import { DroppedDice, type ActiveDrop } from "./DroppedDice";
 import { addDrop, type BoardDrop } from "./tokenDice";
 import type { DiceSkin } from "../ui/diceSkin";
+// Lets Pixi run under a CSP without 'unsafe-eval'.
+import "pixi.js/unsafe-eval";
 import { BoardView, type GmFogView } from "./boardView";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";

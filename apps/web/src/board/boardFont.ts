@@ -15,8 +15,8 @@ export const BOARD_MONO = `"Geist Mono", ui-monospace, "SF Mono", Menlo, ${CJK_T
  */
 export const BOARD_FONT_LOADED = `"Geist Sans", ${CJK_TC}, system-ui, sans-serif`;
 export const BOARD_MONO_LOADED = `"Geist Mono", ui-monospace, ${CJK_TC}, monospace`;
-/** Long enough for a local font file, short enough not to be felt. */
-export const BOARD_FONT_WAIT_MS = 1500;
+/** Slow fonts fall back promptly; relabelWhenFontsReady restores Geist after they arrive. */
+export const BOARD_FONT_WAIT_MS = 100;
 /** The faces the board draws labels in. */
 const FACES = ['400 16px "Geist Sans"', '600 16px "Geist Sans"', '700 16px "Geist Sans"', '600 16px "Geist Mono"'] as const;
 
