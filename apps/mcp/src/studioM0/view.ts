@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
@@ -8,6 +9,13 @@ import { createRequire } from "node:module";
  */
 
 export const VIEW_URI = "ui://session-zero/studio-m0.html";
+
+/**
+ * A URI that changes with the view's content. ChatGPT kept rendering an earlier template under the
+ * stable URI after it re-read new HTML (observed 2026-11-14), so a new view needs a new URI.
+ */
+export const versionedViewUri = (html: string) =>
+  `ui://session-zero/studio-m0.${createHash("sha256").update(html).digest("hex").slice(0, 12)}.html`;
 
 /** The bundle ends in `export{a as App,...}`; expose those names on a global so the view script can use them. */
 export function exposeBundle(source: string): string {
@@ -51,7 +59,7 @@ details{border-top:1px solid var(--line);padding-top:6px}pre{font-size:11px;whit
 <textarea id="instruction" maxlength="500">Make the doorway on this wall a locked door.</textarea>
 <div class="row"><button class="primary" id="send" type="button">Send selection to chat</button><span id="reqstatus" aria-live="polite"></span></div>
 <div class="row"><button id="pick" type="button">Add file from ChatGPT</button><label class="row">Upload from this device <input id="file" type="file" accept="image/png,image/jpeg,image/webp"></label><span id="filestatus" aria-live="polite"></span></div>
-<details><summary>Diagnostics</summary><pre id="diag"></pre></details>
+<details><summary>Diagnostics</summary><p class="row"><button id="probe" type="button">Measure media sizes</button><span id="probestatus" aria-live="polite"></span></p><pre id="diag"></pre></details>
 </main>
 <script type="module">${bundle}</script>
 <script type="module">
@@ -141,6 +149,10 @@ async function loadMap() {
 // Size ceiling probe for E6: called from the diagnostics on demand by the operator through the model-visible tool text.
 window.studioProbe = async (bytes) => { try { const m = await fetchMedia({ workspaceId: state.workspaceId, probeBytes: bytes }); const r = await tryImage("data:" + m.mimeType + ";base64," + m.data, "data"); note("probe", { requested: bytes, bytes: m.bytes, carrier: m.carrier, render: r }); } catch (err) { note("probe_failed", { requested: bytes, message: String(err?.message ?? err).slice(0, 200) }); } };
 
+$("probe").addEventListener("click", async () => {
+  for (const size of [256 * 1024, 1024 * 1024, 4 * 1024 * 1024, 8 * 1024 * 1024]) { $("probestatus").textContent = "probing " + size + " bytes…"; await window.studioProbe(size); }
+  $("probestatus").textContent = "done"; void flushReport();
+});
 // Selection in canonical map pixels; pan and zoom never enter saved geometry.
 let drag = null;
 const stage = $("stage");

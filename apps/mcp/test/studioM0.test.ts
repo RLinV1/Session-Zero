@@ -81,6 +81,8 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     expect(prm).toMatchObject({ resource: `${PUBLIC}/mcp/studio-m0`, authorization_servers: [PUBLIC], scopes_supported: ["studio:m0"] });
     const as = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
     expect(as).toMatchObject({ issuer: PUBLIC, code_challenge_methods_supported: ["S256"], registration_endpoint: `${PUBLIC}/oauth/register` });
+    // Answering the OIDC path made ChatGPT enable OIDC scopes this stub doesn't grant.
+    expect((await fetch(`${base}/.well-known/openid-configuration`)).status).toBe(404);
   });
 
   it("issues a token only through PKCE for its own resource", async () => {
@@ -96,10 +98,11 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     const client = await connect((await signIn()).token);
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    expect(byName.studio_m0_open?._meta).toMatchObject({ ui: { resourceUri: "ui://session-zero/studio-m0.html" } });
+    const openUri = (byName.studio_m0_open?._meta as { ui: { resourceUri: string } }).ui.resourceUri;
+    expect(openUri).toMatch(/^ui:\/\/session-zero\/studio-m0\.[0-9a-f]{12}\.html$/);
     expect(byName.studio_m0_get_media?._meta).toMatchObject({ ui: { visibility: ["app"] } });
     expect(byName.studio_m0_import_file?._meta).toMatchObject({ "openai/fileParams": ["file"] });
-    const resource = await client.readResource({ uri: "ui://session-zero/studio-m0.html" });
+    const resource = await client.readResource({ uri: openUri });
     const content = resource.contents[0] as { mimeType?: string; text?: string };
     expect(content.mimeType).toBe("text/html;profile=mcp-app");
     expect(content.text).toContain("globalThis.__extApps=");
@@ -154,6 +157,9 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     await writeFile(path.join(dataDir, "file-origins.json"), JSON.stringify([filesOrigin]));
     const stored = await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/map.png`) });
     expect(stored.structuredContent).toMatchObject({ sha256: createHash("sha256").update(fixture).digest("hex"), bytes: fixture.length, width: 300, height: 200 });
+    // The operator can replay a held descriptor later (for the expired-link check); only the outcome is reported.
+    expect(await (await operator("replay-descriptor", { hostFileId: "file_1" })).json()).toMatchObject({ outcome: "downloaded", bytes: fixture.length });
+    expect(await (await operator("replay-descriptor", { hostFileId: "nope" })).json()).toMatchObject({ outcome: "unknown" });
     expect((await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/redirect`) })).isError).toBe(true);
     expect((await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/big`) })).isError).toBe(true);
     await client.close();

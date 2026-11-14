@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import express, { type Request, type Response, type Router } from "express";
 import type { EvidenceLog } from "./store";
@@ -79,6 +79,8 @@ export class StudioAuth {
   private now: () => number;
   private accessTtlMs: number;
   operatorKey = "";
+  /** Set by the Studio M0 wiring: re-download a held host descriptor and report only the outcome. */
+  replayDescriptor?: (hostFileId: string) => Promise<Record<string, unknown>>;
 
   constructor(private options: StudioAuthOptions) {
     this.issuer = options.publicOrigin;
@@ -91,6 +93,12 @@ export class StudioAuth {
   /** Writes the operator key and a static fallback client to a private file (mode 0600), never to logs. */
   async init() {
     this.operatorKey = token("op_");
+    // Dynamically registered clients survive a restart, so a host's stored client_id stays valid.
+    // Tokens and codes deliberately do not: a restart behaves like a revocation (fixture only).
+    try {
+      const saved = JSON.parse(await readFile(this.clientsFile(), "utf8")) as Client[];
+      for (const client of saved) if (client.registration === "dcr") this.clients.set(client.clientId, client);
+    } catch { /* first start */ }
     const fallback: Client = {
       clientId: `static_${randomBytes(8).toString("hex")}`, secret: token("cs_"), redirectUris: [],
       authMethod: "client_secret_post", registration: "static", name: "static fallback",
@@ -160,7 +168,9 @@ export class StudioAuth {
       scopes_supported: [STUDIO_SCOPE],
       authorization_response_iss_parameter_supported: true,
     };
-    router.get(["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"], (req, res) => {
+    // OAuth metadata only: also answering /.well-known/openid-configuration made ChatGPT turn OIDC on
+    // by default and request scopes this stub doesn't grant (observed 2026-11-14).
+    router.get("/.well-known/oauth-authorization-server", (req, res) => {
       void this.options.log.write("oauth_metadata", { path: req.path, kind: "authorization-server", userAgent: req.get("user-agent") ?? null });
       res.json(asMetadata);
     });
@@ -178,6 +188,7 @@ export class StudioAuth {
         ...(authMethod !== "none" && { secret: token("cs_") }),
       };
       this.clients.set(client.clientId, client);
+      void this.saveClients();
       // Evidence of what the host registered: names and callbacks only, never the secret.
       void this.options.log.write("oauth_register", {
         clientId: client.clientId, clientName: client.name ?? null, redirectUris, authMethod,
@@ -326,6 +337,15 @@ export class StudioAuth {
           fallback.redirectUris = [uri];
           return void res.json({ clientId: fallback.clientId, redirectUris: fallback.redirectUris });
         }
+        case "replay-descriptor": {
+          const hostFileId = typeof body.hostFileId === "string" ? body.hostFileId : "";
+          if (!this.replayDescriptor) return void res.status(404).end();
+          void this.replayDescriptor(hostFileId).then((outcome) => {
+            void this.options.log.write("operator", { action: "replay-descriptor", hostFileId, ...outcome });
+            res.json(outcome);
+          });
+          return;
+        }
         case "state":
           return void res.json({
             clients: [...this.clients.values()].map((c) => ({ clientId: c.clientId, registration: c.registration, authMethod: c.authMethod, redirectUris: c.redirectUris })),
@@ -336,6 +356,15 @@ export class StudioAuth {
       }
     });
     return router;
+  }
+
+  private clientsFile() {
+    return path.join(this.options.dataDir, "clients.json");
+  }
+
+  private async saveClients() {
+    const dcr = [...this.clients.values()].filter((c) => c.registration === "dcr");
+    await writeFile(this.clientsFile(), JSON.stringify(dcr), { mode: 0o600 });
   }
 
   private checkAuthorize(params: Record<string, string>): string | null {

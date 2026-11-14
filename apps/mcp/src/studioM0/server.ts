@@ -6,7 +6,7 @@ import { STUDIO_SCOPE, type Principal } from "./auth";
 import { renderMarkedCrop, renderProbeImage } from "./crop";
 import { downloadOriginal, type DownloadPolicy } from "./download";
 import { StudioError, summarize, type EvidenceLog, type WorkspaceStore } from "./store";
-import { VIEW_URI } from "./view";
+import { VIEW_URI, versionedViewUri } from "./view";
 
 /**
  * M0 ONLY — the fixture Studio's MCP tools (interactive-ai-scene-studio tasks 1.3–1.8). Every call is
@@ -21,6 +21,24 @@ export interface StudioServerDeps {
   download: DownloadPolicy;
   answerKeyFile: string;
   viewHtml: string;
+  /** M0 operator replay of a host file descriptor after it expires (task 1.4). URLs stay in memory only. */
+  descriptors: Map<string, string>;
+}
+
+/** The provider's own expiry parameter, if the signed URL carries one. It is a timestamp, not a secret. */
+function expiryHint(downloadUrl: string): Record<string, string> {
+  try {
+    const params = new URL(downloadUrl).searchParams;
+    const hint: Record<string, string> = {};
+    for (const key of ["se", "st", "Expires", "X-Amz-Expires", "X-Amz-Date", "exp", "expires"]) {
+      const value = params.get(key);
+      if (value) hint[key] = value.slice(0, 40);
+    }
+    hint.paramNames = [...params.keys()].sort().join(",");
+    return hint;
+  } catch {
+    return {};
+  }
 }
 
 const MAX_PROBE_BYTES = 12 * 1024 * 1024;
@@ -62,20 +80,24 @@ export function createStudioM0Server(deps: StudioServerDeps): McpServer {
   });
   const workspaceFor = async (workspaceId?: string) => (workspaceId ? store.get(subject, workspaceId) : store.open(subject));
 
-  registerAppResource(server, "Session Zero Studio M0", VIEW_URI, {
-    description: "Fixture-only Studio proof view.",
-    _meta: { ui: { prefersBorder: true } },
-  }, async () => {
-    await log.write("resource_read", { subject, uri: VIEW_URI, bytes: Buffer.byteLength(deps.viewHtml) });
-    return { contents: [{ uri: VIEW_URI, mimeType: RESOURCE_MIME_TYPE, text: deps.viewHtml, _meta: { ui: { prefersBorder: true } } }] };
-  });
+  // The open tool names the content-versioned URI; the stable one stays readable for hosts that cached it.
+  const viewUri = versionedViewUri(deps.viewHtml);
+  for (const uri of [viewUri, VIEW_URI]) {
+    registerAppResource(server, uri === VIEW_URI ? "Session Zero Studio M0" : "Session Zero Studio M0 (current)", uri, {
+      description: "Fixture-only Studio proof view.",
+      _meta: { ui: { prefersBorder: true } },
+    }, async () => {
+      await log.write("resource_read", { subject, uri, bytes: Buffer.byteLength(deps.viewHtml) });
+      return { contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: deps.viewHtml, _meta: { ui: { prefersBorder: true } } }] };
+    });
+  }
 
   registerAppTool(server, "studio_m0_open", {
     title: "Open the Studio (M0 test)",
     description: "Show the Session Zero Studio M0 test view for this user's fixture workspace. It shows a synthetic map and the workspace's saved value.",
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, openWorldHint: false },
-    _meta: { ui: { resourceUri: VIEW_URI }, "openai/outputTemplate": VIEW_URI, "openai/widgetAccessible": true, securitySchemes },
+    _meta: { ui: { resourceUri: viewUri }, "openai/outputTemplate": viewUri, "openai/widgetAccessible": true, securitySchemes },
   }, async () => guard("studio_m0_open", log, subject, async () => {
     const workspace = await store.open(subject);
     await log.write("tool", { tool: "studio_m0_open", subject, workspaceId: workspace.id, version: workspace.version });
@@ -117,7 +139,9 @@ export function createStudioM0Server(deps: StudioServerDeps): McpServer {
     const workspace = await workspaceFor(workspaceId);
     let origin: string | null = null;
     try { origin = new URL(file.download_url).origin; } catch { /* reported by the downloader */ }
-    await log.write("import_attempt", { subject, workspaceId: workspace.id, fileId: file.file_id, origin, mimeType: file.mime_type ?? null, fileName: file.file_name ?? null, protocolMeta: ctx.mcpReq._meta ? Object.keys(ctx.mcpReq._meta) : [] });
+    await log.write("import_attempt", { subject, workspaceId: workspace.id, fileId: file.file_id, origin, mimeType: file.mime_type ?? null, fileName: file.file_name ?? null, expiry: expiryHint(file.download_url), protocolMeta: ctx.mcpReq._meta ? Object.keys(ctx.mcpReq._meta) : [] });
+    deps.descriptors.set(file.file_id, file.download_url);
+    while (deps.descriptors.size > 20) deps.descriptors.delete(deps.descriptors.keys().next().value!);
     const downloaded = await downloadOriginal(file.download_url, deps.download);
     let meta: Metadata;
     try {

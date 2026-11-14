@@ -2,6 +2,7 @@ import { access, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { StudioAuth, type Principal } from "./auth";
+import { downloadOriginal } from "./download";
 import { createStudioM0Server } from "./server";
 import { EvidenceLog, WorkspaceStore } from "./store";
 import { buildViewHtml } from "./view";
@@ -43,12 +44,23 @@ export async function createStudioM0(options: StudioM0Options): Promise<StudioM0
   }
   const store = new WorkspaceStore();
   const viewHtml = await buildViewHtml();
+  const descriptors = new Map<string, string>();
+  const download = { originsFile, allowHttp: options.allowHttpDownloads, fetchImpl: options.fetchImpl };
+  auth.replayDescriptor = async (hostFileId) => {
+    const url = descriptors.get(hostFileId);
+    if (!url) return { outcome: "unknown", message: "No descriptor with that host file id is held." };
+    try {
+      const got = await downloadOriginal(url, download);
+      return { outcome: "downloaded", bytes: got.bytes.length, origin: got.origin };
+    } catch (err) {
+      return { outcome: "refused", message: err instanceof Error ? err.message : "unknown" };
+    }
+  };
   await log.write("started", { publicOrigin: options.publicOrigin, resource: auth.resourceUrl, viewBytes: Buffer.byteLength(viewHtml) });
   return {
     auth, store, log,
     makeServer: (principal) => createStudioM0Server({
-      principal, store, log, viewHtml,
-      download: { originsFile, allowHttp: options.allowHttpDownloads, fetchImpl: options.fetchImpl },
+      principal, store, log, viewHtml, descriptors, download,
       answerKeyFile: path.join(options.dataDir, "answer-key.jsonl"),
     }),
   };
