@@ -2,7 +2,9 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { DEFAULT_GRID, UvttDraftEdit, UvttError } from "@vtt/shared";
+import { DEFAULT_GRID, GUEST_UPLOAD, UvttDraftEdit, UvttError, sharedMsg } from "@vtt/shared";
+import { requestLocale } from "../i18n/locale";
+import { sharedText } from "../i18n/localize";
 import { hashToken } from "../domain/credentials";
 import type { LiveRoom } from "../domain/liveRoom";
 import type { RoomRegistry } from "../domain/roomRegistry";
@@ -82,6 +84,8 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
   app.post(`${base}/imports`, guard, (req, res) => {
     void (async () => {
       const auth = auths.get(req)!;
+      // Before the body is read or anything is counted: a guest room stores no files (guest-gm-hosting D4).
+      if (await deps.store.isGuestRoom(auth.roomId)) { res.status(403).json({ error: sharedText(requestLocale(res), sharedMsg("reject.guestUpload")), code: GUEST_UPLOAD }); return; }
       const account = req.query.saveToLibrary === "1" ? requireAccount(res) : null;
       if (req.query.saveToLibrary === "1") {
         if (!account) return;

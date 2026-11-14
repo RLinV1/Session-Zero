@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AssetKind, LibraryAsset } from "@vtt/shared";
-import { useAccount } from "../account/accountStore";
+import { useAccountLibrary } from "../ui/GuestRoom";
 import { api } from "../net/api";
 import { assetDisplayName, builtinsMatching } from "../net/builtinAssets";
 import { t } from "../i18n/locale";
@@ -22,7 +22,8 @@ export function LibraryPicker(props: {
 }) {
   const includeBuiltins = props.includeBuiltins ?? true;
   // A signed-out GM has no library, only the built-in art (builtin-library-assets).
-  const signedIn = useAccount().status === "signedIn";
+  // (and a guest room has none either: it never calls the library, guest-gm-hosting)
+  const signedIn = useAccountLibrary();
   const [assets, setAssets] = useState<LibraryAsset[] | null>(signedIn ? null : []);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);

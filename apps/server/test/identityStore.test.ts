@@ -37,7 +37,7 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
     expect(user.activeDiceLookId).toBeNull();
     expect(await store.findUserByEmail(user.email)).toEqual(user);
     expect(await store.findUserById(user.id)).toEqual(user);
-    expect(await store.ownedCounts(user.ownerId)).toEqual({ rooms: 0, assets: 0, creatures: 0, diceLooks: 0 });
+    expect(await store.ownedCounts(user.ownerId)).toEqual({ rooms: 0, assets: 0, creatures: 0, diceLooks: 0, guest: false });
   });
 
   it("refuses a second account for the same email", async () => {

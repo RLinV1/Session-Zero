@@ -100,13 +100,14 @@ describe("seats and choices this device keeps (room-membership, gm-dashboard)", 
     expect([...storage.data.keys()]).toEqual(["vtt.credentials.r2"]);
   });
 
-  it("drops the retired guest choice and never writes a GM token", async () => {
+  it("drops the retired guest choice and writes no GM token until a guest room starts", async () => {
     const storage = memoryStorage({ "vtt.gmGuest": "1" });
     vi.stubGlobal("localStorage", storage);
     const identity = await import("../src/net/identity");
     identity.dropGuestChoice();
     expect(storage.data.has("vtt.gmGuest")).toBe(false);
     expect(storage.data.has("vtt.gm")).toBe(false);
-    expect("ensureGmToken" in identity).toBe(false);
+    // ensureGmToken exists again, but only the guest-room start calls it; this flow never does.
+    expect(typeof identity.ensureGmToken).toBe("function");
   });
 });

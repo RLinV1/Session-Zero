@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LibraryAnimation } from "@vtt/shared";
-import { useAccount } from "../account/accountStore";
+import { useAccountLibrary } from "../ui/GuestRoom";
 import { api } from "../net/api";
 
 /**
@@ -8,7 +8,7 @@ import { api } from "../net/api";
  * attack editors' Animation select (ADR 0038). Empty when signed out, not a GM, or the request fails.
  */
 export function useStrikeAnimations(): LibraryAnimation[] {
-  const signedIn = useAccount().status === "signedIn";
+  const signedIn = useAccountLibrary();
   const [animations, setAnimations] = useState<LibraryAnimation[]>([]);
   useEffect(() => {
     if (!signedIn) return;

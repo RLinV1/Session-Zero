@@ -105,6 +105,15 @@ export interface RoomStore extends LibraryStore, GridDetectionStore, IdentitySto
    */
   createEncounterForEditRoom(roomId: string, encounter: NewEncounterRecord, maxPerOwner: number):
     Promise<{ created: EncounterRecord } | { linkedTo: string } | null>;
+  /** True when the room's owner is a guest identity (guest-gm-hosting D1). False for no such room. */
+  isGuestRoom(roomId: string): Promise<boolean>;
+  /**
+   * Guest rooms with no activity since `at` (an ISO time), for the idle sweep (guest-gm-hosting D7).
+   * Activity is the latest event's time, else the room's creation.
+   */
+  listIdleGuestRoomsBefore(at: string): Promise<string[]>;
+  /** Deletes guest identities registered before `registeredBefore` that own no rooms; returns how many. */
+  deleteEmptyGuestOwners(registeredBefore: string): Promise<number>;
   /** Temporary rooms opened before `at`, for the sweep that deletes ones left behind. */
   listTemporaryRoomsBefore(at: string): Promise<string[]>;
 }

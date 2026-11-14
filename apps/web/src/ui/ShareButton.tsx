@@ -41,7 +41,7 @@ const AI_PLAY_OPTIONS: { what: "one" | "party" | "stay"; label: TextId; descript
  * reset made in another tab or device is what is shown and copied (FR-GM-20).
  * shortcut: no email sharing, the server has no email sender; add mailto: or a provider later
  */
-export function ShareButton({ roomId, token, yourName = "the GM", connection, joinsLocked, open: openProp, onOpenChange, hideTrigger = false, onAfterClose }: {
+export function ShareButton({ roomId, token, yourName = "the GM", connection, joinsLocked, open: openProp, onOpenChange, hideTrigger = false, onAfterClose, onCopied }: {
   roomId: string;
   token: string;
   /** Whose orders an AI that stays at the table takes. */
@@ -55,6 +55,8 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
   hideTrigger?: boolean;
   /** Where focus goes once the dialog closes, when the opener is gone (phone menu item). */
   onAfterClose?: () => void;
+  /** The invite link was copied (the guest demo watches for it). */
+  onCopied?: () => void;
 }) {
   const [ownOpen, setOwnOpen] = useState(false);
   const open = openProp ?? ownOpen;
@@ -148,6 +150,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
       ok = legacyCopy(text, button.closest("dialog") ?? document.body);
     }
     setCopiedWhat(what);
+    if (ok && what === "link") onCopied?.();
     if (what === "one" || what === "party" || what === "stay") setAiCopy({ what, ok });
     flash(ok ? "copied" : "failed");
   }
@@ -181,7 +184,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
   return (
     <div className="share-group" data-tour="share">
       {!hideTrigger && (
-        <button type="button" className="tool-button share-button" onClick={() => setOpen(true)}>
+        <button type="button" className="tool-button share-button" data-tutorial="invite" onClick={() => setOpen(true)}>
           {t("share.share")}
         </button>
       )}

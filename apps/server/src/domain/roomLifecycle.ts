@@ -22,9 +22,10 @@ import type { WallDetections } from "./wallDetection";
 
 export interface NewRoomWithSeat {
   ownerGmId: string;
-  userId: string;
+  /** Null for a guest GM (guest-gm-hosting D3): no account, so no membership row. */
+  userId: string | null;
   /** The sign-in the GM's seat is bound to (ADR 0017 M4). */
-  sessionHash: string;
+  sessionHash: string | null;
   /** Browser-generated; only its SHA-256 is stored (DESIGN.md §5). */
   guestToken: string;
   roomName: string;
@@ -64,7 +65,7 @@ export function roomLifecycle(deps: {
       editsEncounterId: room.editsEncounterId ?? null,
     });
     await store.saveCredential(hashToken(room.guestToken), { roomId, participantId, sessionHash: room.sessionHash });
-    await store.putMember({ roomId, participantId, userId: room.userId });
+    if (room.userId) await store.putMember({ roomId, participantId, userId: room.userId });
     const live = await registry.get(roomId);
     // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
     const preset = presetOf({ preset: room.preset });

@@ -323,6 +323,7 @@ export function ToolRail({
       key={tool.kind}
       type="button"
       className="tool-button rail-button labelled"
+      data-tutorial={tool.kind === "fog" ? "fog" : undefined}
       aria-pressed={active === tool.kind}
       title={t(tool.label)}
       onClick={() => onSelect(tool.kind)}

@@ -25,8 +25,8 @@ export const homeZhTW = {
   "home.hero.joinSubmit": "加入",
 
   "home.facts.label": "特色一覽",
-  "home.facts.noAccount": "不需要帳號",
-  "home.facts.noAccountDetail": "玩家點開邀請連結，就能用任何瀏覽器加入。",
+  "home.facts.noAccount": "不需要帳號就能開始。",
+  "home.facts.noAccountDetail": "免費帳號能讓你的房間在任何裝置上開啟，還能上傳自己的地圖。",
   "home.facts.upTo": ({ n }) => cjk`最多${n}位`,
   "home.facts.players": "玩家可同時加入一個房間。",
   "home.facts.under": ({ ms }) => cjk`不到${ms} ms`,

@@ -196,7 +196,7 @@ export const hub = {
     items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? "nothing"),
   "dashboard.legacy.moved": ({ what }: { what: string }) => `Moved into your account: ${what}.`,
   "dashboard.legacy.body": ({ what }: { what: string }) =>
-    `This browser has ${what} from before accounts. Move them into your account to open them on any device.`,
+    `This browser has ${what} that you started here, as a guest or from before accounts. Move them into your account to open them on any device. Guest rooms stop expiring once they are moved.`,
   "dashboard.legacy.failed": ({ message }: { message: string }) => `Nothing was moved. ${message}`,
   "library.diceLooks": "Dice looks",
   "library.noUploads.map": "You haven't uploaded any maps yet. The ones below are ready to use.",

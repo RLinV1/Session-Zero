@@ -191,7 +191,7 @@ export const hubZhTW = {
   "dashboard.legacy.diceLook": ({ n }) => cjk`${n}個骰子外觀`,
   "dashboard.legacy.list": ({ items }) => items.join("、") || "沒有任何東西",
   "dashboard.legacy.moved": ({ what }) => cjk`已成功移至帳號：${what}。`,
-  "dashboard.legacy.body": ({ what }) => cjk`瀏覽器中還保留著帳號功能推出前建立的${what}。將這些舊資料移至帳號後，就能在任何裝置上開啟。`,
+  "dashboard.legacy.body": ({ what }) => cjk`這個瀏覽器中有你以訪客身分或在帳號功能推出前建立的${what}。將它們移至帳號後，就能在任何裝置上開啟。訪客房間一旦移入帳號，就不會再過期。`,
   "dashboard.legacy.failed": ({ message }) => `無法移動任何資料。${message}`,
   "library.diceLooks": "骰子外觀",
   "library.noUploads.map": "還沒有上傳地圖？下方有現成地圖，直接選來用！",

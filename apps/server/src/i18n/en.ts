@@ -26,6 +26,8 @@ export const serverEn = {
   "api.inviteNotFound": "Invite not found",
   "api.displayNameBlank": "Display name can't be blank.",
   "api.tooManyJoins": "Too many joins from this address. Try again later.",
+  "api.tooManyGuestRooms": "Too many rooms started from this address. Try again later.",
+  "api.guestNeedsShippedMap": "A guest room starts on one of the shipped maps.",
   "api.gmOnly": "GM only",
   "api.notInRoom": "Not in this room",
   "api.invalidHistoryQuery": "Invalid history query",

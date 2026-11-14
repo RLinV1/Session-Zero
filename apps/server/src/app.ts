@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import { Server as SocketIOServer } from "socket.io";
+import { GUEST_ROOM_IDLE_DAYS } from "@vtt/shared";
 import { accountDeletion } from "./domain/accountDeletion";
 import { roomLifecycle } from "./domain/roomLifecycle";
 import { RoomRegistry } from "./domain/roomRegistry";
@@ -25,6 +26,12 @@ import { attachLocale } from "./i18n/locale";
 
 /** How long a temporary encounter-editing room may be left behind before the sweep deletes it (ADR 0033). */
 export const TEMPORARY_ROOM_LIFETIME_MS = 24 * 60 * 60_000;
+
+/** How long a guest room may sit without room activity before the sweep deletes it (guest-gm-hosting D7). */
+export const GUEST_ROOM_IDLE_MS = GUEST_ROOM_IDLE_DAYS * 24 * 60 * 60_000;
+
+/** A guest identity this young is left alone, so the sweep can't race a room being created for it. */
+const GUEST_OWNER_GRACE_MS = 24 * 60 * 60_000;
 
 export interface AppOptions {
   store: RoomStore;
@@ -73,6 +80,8 @@ export interface App {
   sweep(): Promise<void>;
   /** The hourly sweep of temporary encounter-editing rooms left behind (ADR 0033), on demand. */
   sweepTemporaryRooms(): Promise<void>;
+  /** The hourly sweep of guest rooms idle for 30 days, then of guest identities left with no rooms (guest-gm-hosting D7), on demand. */
+  sweepGuestRooms(): Promise<void>;
   /** The hourly sweep that closes AI builds left unchanged for 14 days (ADR 0053), on demand. */
   sweepAbandonedBuilds(): Promise<void>;
   listen(opts: { port: number; host: string }): Promise<void>;
@@ -142,6 +151,18 @@ export async function buildApp({
   };
   const stopTemporaryRoomSweep = setInterval(() => void sweepTemporaryRooms(), 60 * 60_000);
   stopTemporaryRoomSweep.unref();
+  // Same deletion as a GM's delete (ADR 0009). Pre-account identities are never guests, so they are never listed.
+  const sweepGuestRooms = async () => {
+    const before = new Date(now() - GUEST_ROOM_IDLE_MS).toISOString();
+    for (const roomId of await store.listIdleGuestRoomsBefore(before)) {
+      await rooms.deleteRoomFully(roomId).catch((err: unknown) => {
+        console.error(`[vtt] could not delete idle guest room ${roomId}`, err);
+      });
+    }
+    await store.deleteEmptyGuestOwners(new Date(now() - GUEST_OWNER_GRACE_MS).toISOString());
+  };
+  const stopGuestRoomSweep = setInterval(() => void sweepGuestRooms().catch((err: unknown) => console.error("[vtt] guest room sweep failed", err)), 60 * 60_000);
+  stopGuestRoomSweep.unref();
 
   // Every /api response carries room or account data, so keep it out of shared caches, stop the
   // browser from MIME-sniffing a JSON body into something executable, and never leak the room URL
@@ -217,6 +238,7 @@ export async function buildApp({
       await closeDeletedSeats();
     },
     sweepTemporaryRooms,
+    sweepGuestRooms,
     sweepAbandonedBuilds: builds.sweepAbandoned,
     listen: ({ port, host }) =>
       new Promise((resolve, reject) => {
@@ -229,6 +251,7 @@ export async function buildApp({
       stopSweeping();
       clearInterval(stopLimitSweep);
       clearInterval(stopTemporaryRoomSweep);
+      clearInterval(stopGuestRoomSweep);
       clearInterval(stopBuildSweep);
       await detection.close();
       await walls.close();

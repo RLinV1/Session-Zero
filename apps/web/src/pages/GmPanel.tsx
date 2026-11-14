@@ -3,7 +3,7 @@ import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactN
 import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { libraryAssetId } from "../net/builtinAssets";
-import { useAccount } from "../account/accountStore";
+import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import type { CommandResult, RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
@@ -53,8 +53,9 @@ export function GmPanel({
   features = FULL_ROOM,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
-  // The library belongs to the signed-in account (ADR 0017).
-  const hasLibrary = useAccount().status === "signedIn";
+  // The library belongs to the signed-in account (ADR 0017), and a guest room never reaches it.
+  const hasLibrary = useAccountLibrary();
+  const guest = useGuestRoom();
   /** Sends a command and reports failure to `report`: the panel, or the open modal. */
   const runWith = (report: (message: string | null) => void) => async (p: Promise<CommandResult>) => {
     const result = await p;
@@ -115,7 +116,8 @@ export function GmPanel({
       {features.tableAdmin && (
         <>
           <ScenesPanel connection={connection} state={state} />
-          <EncounterPanel connection={connection} state={state} />
+          {/* Templates are stored for an account (guest-gm-hosting), so a guest room offers the sign-up instead. */}
+          {guest ? <PanelSection id="gm-encounters" title={t("enc.title")}><FreeAccountNote /></PanelSection> : <EncounterPanel connection={connection} state={state} />}
         </>
       )}
     </>
@@ -254,6 +256,9 @@ function MapSection(props: {
   const [changedMapUrl, setChangedMapUrl] = useState<string | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [undoPending, setUndoPending] = useState(false);
+  /** A guest room picks from the built-in maps and stores no file (guest-gm-hosting). */
+  const guest = useGuestRoom();
+  const canPick = props.hasLibrary || guest;
   const askPolicy = offersTokenPolicy(props.room);
   const uploadRef = useRef<HTMLInputElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
@@ -599,26 +604,29 @@ function MapSection(props: {
           </div>
         ) : props.fixedMap ? null : (
           <div className="row button-row" data-tour="gm-grid">
-            <label className="upload-button">
-              <span>{busy ? t("common.uploading") : t("library.uploadMap")}</span>
-              <input
-                ref={emptyUploadRef}
-                type="file"
-                className="sr-only"
-                accept="image/png,image/jpeg,image/webp,.uvtt,.dd2vtt,.df2vtt"
-                disabled={busy}
-                aria-label={t("gmMap.upload")}
-                onChange={(e) => {
-                  void onChange(e.target.files?.[0]);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {props.hasLibrary && (
+            {!guest && (
+              <label className="upload-button">
+                <span>{busy ? t("common.uploading") : t("library.uploadMap")}</span>
+                <input
+                  ref={emptyUploadRef}
+                  type="file"
+                  className="sr-only"
+                  accept="image/png,image/jpeg,image/webp,.uvtt,.dd2vtt,.df2vtt"
+                  disabled={busy}
+                  aria-label={t("gmMap.upload")}
+                  onChange={(e) => {
+                    void onChange(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+            {canPick && (
               <button type="button" className="secondary" disabled={busy} onClick={() => setPicking(true)}>
-                {t("guide.map.library.title")}
+                {guest ? t("add.builtInArt") : t("guide.map.library.title")}
               </button>
             )}
+            {guest && <FreeAccountNote />}
           </div>
         )}
         {prepError && !editorOpen && <p role="alert" className="error">{prepError}</p>}
@@ -672,7 +680,7 @@ function MapSection(props: {
                 </div>
                 <aside className="map-editor-hud" aria-label={t("editor.step.map")}>
                   <h3 className="map-editor-heading">{t("gmMap.battleMap")}</h3>
-                  <p className="muted">{t("gmMap.uploadHint")}</p>
+                  <p className="muted">{guest ? t("guest.mapHint") : t("gmMap.uploadHint")}</p>
                   {props.hasLibrary && (
                     <label className="inline" data-guide="map-save-library">
                       <input type="checkbox" checked={saveToLibrary} disabled={busy} onChange={(e) => setSaveToLibrary(e.target.checked)} />
@@ -680,6 +688,7 @@ function MapSection(props: {
                     </label>
                   )}
                   {props.hasLibrary && saveToLibrary && <p className="muted">{t("gmMap.savedImmediately")}</p>}
+                  {guest ? <FreeAccountNote /> : (
                   <label className="upload-button">
                     <span>{busy ? t("common.uploading") : t("library.uploadMap")}</span>
                     <input
@@ -696,12 +705,13 @@ function MapSection(props: {
                       }}
                     />
                   </label>
+                  )}
                   <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting || preparing} onClick={() => void exportMap()}>{exporting ? t("gmMap.exporting") : t("gmMap.export")}</button>
-                  <p className="muted small-print">{t("gmMap.uvttLimit")}</p>
+                  {!guest && <p className="muted small-print">{t("gmMap.uvttLimit")}</p>}
                   {Object.values(props.room.walls).some((w) => w.portal) && <p className="muted small-print">{t("gmMap.exportNote")}</p>}
-                  {props.hasLibrary && (
+                  {canPick && (
                     <button type="button" className="secondary" data-guide="map-library" disabled={busy} onClick={() => setPicking(true)}>
-                      {t("guide.map.library.title")}
+                      {guest ? t("add.builtInArt") : t("guide.map.library.title")}
                     </button>
                   )}
                   {prepError && !prep && <p role="alert" className="error">{prepError}</p>}
@@ -780,7 +790,7 @@ function MapSection(props: {
           </div>
         </form>
       </Modal>
-      {props.hasLibrary && (
+      {canPick && (
         <Modal
           open={picking}
           title={t("stage.chooseMap")}

@@ -16,7 +16,7 @@ import {
 } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { api } from "../net/api";
-import { useAccount } from "../account/accountStore";
+import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { libraryAssetId } from "../net/builtinAssets";
 import { LibraryPicker } from "../pages/LibraryPicker";
 import { useAttackListEditor } from "./AttackListEditor";
@@ -393,7 +393,8 @@ export function TokenEditor({
   const [size, setSize] = useState(String(token.size));
   const [rotation, setRotation] = useState(String(token.rotation));
   const [image, setImage] = useState({ url: token.imageUrl, assetId: token.assetId ?? null });
-  const hasLibrary = useAccount().status === "signedIn";
+  const hasLibrary = useAccountLibrary();
+  const guest = useGuestRoom();
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -581,11 +582,13 @@ export function TokenEditor({
               </div>
             )}
             <div className="row">
+              {guest ? <FreeAccountNote /> : (
               <label className="upload-button secondary">
                 <span>{uploading ? t("common.uploading") : image.url ? t("roster.replaceImage") : t("roster.uploadImage")}</span>
                 <input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" disabled={uploading}
                   onChange={(e) => { pickArt(e.target.files?.[0]); e.target.value = ""; }} />
               </label>
+              )}
               <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>{hasLibrary ? t("guide.map.library.title") : t("add.builtInArt")}</button>
             </div>
           </div>

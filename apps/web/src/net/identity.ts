@@ -175,9 +175,10 @@ export function gmRoomForInvite(inviteCode: string): string | null {
 }
 
 /**
- * Legacy GM device identity (ADR 0004): owned this browser's rooms and library before accounts.
- * No new token is ever made (ADR 0017); one still in storage is only used to move what it owns
- * into the account, and is forgotten once the server no longer knows it (gm-identity-recovery).
+ * GM device identity (ADR 0004): owned this browser's rooms and library before accounts. Since
+ * guest-gm-hosting only the start page makes one (`ensureGmToken`), for a signed-out GM's guest
+ * rooms. A stored one is otherwise used to list those rooms and to move what it owns into the
+ * account, and is forgotten once the server no longer knows it (gm-identity-recovery).
  */
 const GM_KEY = "vtt.gm";
 
@@ -187,6 +188,19 @@ export function loadGmToken(): string | null {
   } catch {
     return null;
   }
+}
+
+/** This browser's GM token, made (32 random bytes, base64url) and stored on first use, for starting a guest room. */
+export function ensureGmToken(): string {
+  const existing = loadGmToken();
+  if (existing) return existing;
+  const token = newGuestToken();
+  try {
+    localStorage.setItem(GM_KEY, token);
+  } catch {
+    // Storage unavailable: the token lasts this page load, like a room's credentials (saveCredentials).
+  }
+  return token;
 }
 
 export function forgetGmToken() {

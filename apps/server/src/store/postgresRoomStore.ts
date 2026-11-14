@@ -435,6 +435,41 @@ export class PostgresRoomStore implements RoomStore {
     return row?.id ?? null;
   }
 
+  async registerGuestGm(tokenHash: string) {
+    // `update: {}` leaves an existing row exactly as it is, so a pre-account identity stays `guest: false`.
+    const row = await this.prisma.gmIdentity.upsert({
+      where: { tokenHash },
+      create: { id: randomUUID(), tokenHash, guest: true },
+      update: {},
+      select: { id: true, guest: true },
+    });
+    return { ownerId: row.id, guest: row.guest };
+  }
+
+  async countOwnedRooms(ownerGmId: string) {
+    return this.prisma.room.count({ where: { ownerGmId } });
+  }
+
+  async isGuestRoom(roomId: string) {
+    if (!UUID.test(roomId)) return false;
+    return (await this.prisma.room.count({ where: { id: roomId, owner: { guest: true } } })) === 1;
+  }
+
+  async listIdleGuestRoomsBefore(at: string) {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT r.id::text AS id FROM rooms r
+      JOIN gm_identities g ON g.id = r.owner_gm_id AND g.guest
+      WHERE COALESCE((SELECT max(e.created_at) FROM events e WHERE e.room_id = r.id), r.created_at) < ${new Date(at)}`;
+    return rows.map((r) => r.id);
+  }
+
+  async deleteEmptyGuestOwners(registeredBefore: string) {
+    const deleted = await this.prisma.gmIdentity.deleteMany({
+      where: { guest: true, createdAt: { lt: new Date(registeredBefore) }, rooms: { none: {} } },
+    });
+    return deleted.count;
+  }
+
   async listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]> {
     return this.summarize({ ownerGmId, temporary: false });
   }
@@ -1303,7 +1338,8 @@ export class PostgresRoomStore implements RoomStore {
       this.prisma.libraryCreature.count({ where }),
       this.prisma.diceLook.count({ where }),
     ]);
-    return { rooms, assets, creatures, diceLooks };
+    const identity = await this.prisma.gmIdentity.findUnique({ where: { id: ownerGmId }, select: { guest: true } });
+    return { rooms, assets, creatures, diceLooks, guest: identity?.guest ?? false };
   }
 
   /**
@@ -1313,8 +1349,8 @@ export class PostgresRoomStore implements RoomStore {
   async claimDeviceOwner(deviceOwnerId: string, accountOwnerId: string) {
     if (!UUID.test(deviceOwnerId)) return null;
     return this.prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM gm_identities WHERE id = ${deviceOwnerId}::uuid AND token_hash IS NOT NULL FOR UPDATE`;
+      const locked = await tx.$queryRaw<{ id: string; guest: boolean }[]>`
+        SELECT id, guest FROM gm_identities WHERE id = ${deviceOwnerId}::uuid AND token_hash IS NOT NULL FOR UPDATE`;
       if (locked.length === 0) return null;
       const from = { ownerGmId: deviceOwnerId };
       const to = { ownerGmId: accountOwnerId };
@@ -1325,7 +1361,7 @@ export class PostgresRoomStore implements RoomStore {
       // Animations move too, or the foreign key would block deleting the device row.
       await tx.libraryAnimation.updateMany({ where: from, data: to });
       await tx.gmIdentity.delete({ where: { id: deviceOwnerId } });
-      return { rooms: rooms.count, assets: assets.count, creatures: creatures.count, diceLooks: diceLooks.count };
+      return { rooms: rooms.count, assets: assets.count, creatures: creatures.count, diceLooks: diceLooks.count, guest: locked[0]!.guest };
     });
   }
 

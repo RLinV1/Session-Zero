@@ -14,6 +14,7 @@ import { MAX_ENCOUNTER_NAME } from "./encounters";
 import { MAX_EXPRESSION_LENGTH } from "./dice";
 import type { WallDetectionStatus } from "./wallDetection";
 import type { UvttIssue } from "./uvtt";
+import { SHIPPED_MAP_SLUGS } from "./shippedMaps";
 
 /**
  * WebSocket wire protocol. One socket per client carries two logical channels:
@@ -119,7 +120,7 @@ export type ServerMessage =
   | { type: "redacted"; seq: number }
   | { type: "ack"; clientCommandId: string; seq: number | null }
   | {
-    type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request";
+    type: "rejected"; clientCommandId: string; code: RejectionCode | "bad_request" | typeof GUEST_ASSET;
     /** English, as it always was: what a client shows when it can't format `messageId`. */
     message: string;
     /** The shared catalog id `message` was written from, for the client to show in its own language (ADR 0054). */
@@ -158,6 +159,8 @@ export const CreateRoomRequest = z.object({
   templateId: z.uuid().optional(),
   /** The game preset (KAN-63); Free Mode (DEFAULT_PRESET_ID) when omitted. */
   preset: GamePresetId.optional(),
+  /** Start on one of the maps that ship with the app, on its grid (guest-gm-hosting D3). */
+  shippedMap: z.enum(SHIPPED_MAP_SLUGS).optional(),
   // `gmToken` was removed (ADR 0017): the signed-in account owns the room. zod strips unknown
   // keys, so an older client that still sends it parses unchanged.
 });
@@ -169,6 +172,22 @@ export const JoinRoomRequest = z.object({
   guestToken: z.string().min(16).max(256),
 });
 export type JoinRoomRequest = z.infer<typeof JoinRoomRequest>;
+
+/** 403 `code` for an upload or UVTT import into a guest room (guest-gm-hosting D4). */
+export const GUEST_UPLOAD = "guest_upload";
+/** Command rejection `code` for board art that is not built-in, in a guest room (guest-gm-hosting D5). */
+export const GUEST_ASSET = "guest_asset";
+/** 409 `code` when a guest identity already holds its 3 guest rooms (guest-gm-hosting D3). */
+export const GUEST_ROOM_LIMIT = "guest_room_limit";
+/** 409 `code` for a guest room creation that carries a pre-account GM token (guest-gm-hosting D2). */
+export const LEGACY_IDENTITY = "legacy_identity";
+
+/** Days without room activity after which a guest room is deleted. */
+export const GUEST_ROOM_IDLE_DAYS = 30;
+
+/** `GET /api/rooms/:roomId/guest`, GM only (guest-gm-hosting D8). */
+export const GuestRoomStatus = z.object({ guest: z.boolean(), idleDays: z.number().int().positive() });
+export type GuestRoomStatus = z.infer<typeof GuestRoomStatus>;
 
 /** The 409 `code` for a join to a room that already holds `MAX_PLAYERS_PER_ROOM` players (room-player-cap). */
 export const ROOM_FULL = "room_full";

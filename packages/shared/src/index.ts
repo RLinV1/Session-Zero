@@ -19,6 +19,7 @@ export * from "./decide";
 export * from "./visibility";
 export * from "./assets";
 export * from "./shippedMaps";
+export * from "./builtinArt";
 export * from "./libraryBoard";
 export * from "./protocol";
 export * from "./auth";

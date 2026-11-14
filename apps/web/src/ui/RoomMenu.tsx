@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { ClockCounterClockwise, DotsThree, Rewind, GearSix, ShareNetwork } from "@phosphor-icons/react";
+import { ClockCounterClockwise, DotsThree, FloppyDisk, Rewind, GearSix, Play, ShareNetwork } from "@phosphor-icons/react";
 import { GuideIcon } from "./GuideTour";
 import { PopoverButton } from "./Popover";
 import { t } from "../i18n/locale";
@@ -9,7 +9,7 @@ import { t } from "../i18n/locale";
  * the bar stays short. Each item closes the menu, then opens its own view. Settings has its own
  * button on desktop and folds in here only on phones (client-settings).
  */
-export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare, onSettings, buttonRef }: {
+export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare, onSettings, onDemo, onSave, buttonRef }: {
   /** Phone only: Settings folds into this menu instead of the top bar's gear. */
   onSettings?: () => void;
   /** GM only; omitted for everyone else. */
@@ -20,6 +20,10 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
   onGuide: () => void;
   /** Phone only: Share folds into this menu instead of a button of its own. */
   onShare?: () => void;
+  /** Guest GM only: starts the interactive demo again. */
+  onDemo?: () => void;
+  /** Guest GM only: to sign-up, keeping this room. Always offered, so "Not now" never hides saving. */
+  onSave?: () => void;
   /** The menu button, so the guide and Settings can hand focus back to it. */
   buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
@@ -56,6 +60,16 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
               <button type="button" className="tool-button" aria-pressed={replaying} onClick={item(onReplay)}>
                 <Rewind size={16} aria-hidden="true" />
                 {replaying ? t("menu.exitReplay") : t("menu.replay")}
+              </button>
+            )}
+            {onDemo && (
+              <button type="button" className="tool-button" onClick={item(onDemo)}>
+                <Play size={16} aria-hidden="true" /> {t("menu.demo")}
+              </button>
+            )}
+            {onSave && (
+              <button type="button" className="tool-button" onClick={item(onSave)}>
+                <FloppyDisk size={16} aria-hidden="true" /> {t("guest.save")}
               </button>
             )}
             <button type="button" className="tool-button" onClick={item(onGuide)}>
