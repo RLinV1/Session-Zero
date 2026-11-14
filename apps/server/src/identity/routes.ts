@@ -28,6 +28,8 @@ export function accountLimits(now: () => number = Date.now) {
     signInFailuresPerEmail: new RateLimiter(10, 15 * MINUTE, now),
     signInPerIp: new RateLimiter(150, 15 * MINUTE, now),
     signUpPerIp: new RateLimiter(50, 60 * MINUTE, now),
+    /** Rooms created per account, so a script can't fill the database one room at a time (FR-GM-01). */
+    roomCreationsPerAccount: new RateLimiter(20, 60 * MINUTE, now),
     /** Wrong current passwords on a password change, per account: the sign-in budget, so a stolen cookie gains nothing. */
     passwordChangeFailuresPerUser: new RateLimiter(10, 15 * MINUTE, now),
     /** Invite join attempts per IP per room, so join-and-leave can't grow a room's log without bound. */

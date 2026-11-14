@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { realpathSync } from "node:fs";
 import { createLogger, defineConfig, searchForWorkspaceRoot } from "vite";
+import { SECURITY_HEADERS } from "./securityHeaders";
 
 // 127.0.0.1, not localhost: Node resolves localhost to ::1 first, and the server listens on
 // IPv4 only (0.0.0.0), so the proxy would get ECONNREFUSED.
@@ -30,6 +31,8 @@ logger.error = (message, options) => {
 export default defineConfig({
   customLogger: logger,
   plugins: [react()],
+  // Not on the dev server: Vite's HMR needs inline and eval scripts.
+  preview: { headers: SECURITY_HEADERS },
   server: {
     // Worktrees may reuse an installation through a directory junction. Serve its font assets too.
     fs: { allow: [searchForWorkspaceRoot(process.cwd()), realpathSync(new URL("../../node_modules", import.meta.url))] },

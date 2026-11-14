@@ -175,6 +175,8 @@ export const rejectionsEn = {
   "reject.displayNameBlank": "Display name can't be blank.",
   "reject.displayNameTaken": ({ name }: Name) => `The name "${name}" is already taken in this room. Choose another name.`,
   "reject.roomFull": ({ max }: Max) => `This room is full: it holds ${max} players. Ask the GM for a seat.`,
+  "reject.roomCap": ({ max }: Max) => `You have ${max} rooms. Delete one before creating another.`,
+  "reject.roomRate": "You've created a lot of rooms in the last hour. Try again later.",
   "reject.roomLocked": "This room is locked, so no one new can join. Ask the GM to unlock it.",
   "reject.notYourDiceLook": "You can only use your own dice looks.",
   "reject.chooseClassic": "Choose Classic in your Dice panel to change your own dice.",

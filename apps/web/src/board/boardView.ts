@@ -400,6 +400,8 @@ export class BoardView {
    */
   private fogMist = new Container();
   private fogBody: FogBody | null = null;
+  private fogArtRequested = false;
+  private conditionArtRequested = false;
   private fogPuffLayer = new ParticleContainer({ dynamicProperties: { position: true, rotation: true, vertex: true, color: true } });
   private fogPuffs: Array<{ puff: FogPuff; particle: Particle }> = [];
   private fogShape = "";
@@ -608,22 +610,6 @@ export class BoardView {
   ) {}
 
   async init() {
-    // Fetched in the background: until they arrive, attacks draw their vector look.
-    void loadFxTextures();
-    // Until the condition icons arrive, markers draw their shape and abbreviation.
-    void loadConditionIcons().then(() => {
-      if (!this.initialized) return;
-      for (const view of this.tokens.values()) view.drawnKey = "";
-      if (this.state && this.you) this.syncTokens();
-      this.invalidate();
-    });
-    // Until the painted fog arrives, the fog body reads procedural clouds and has no puffs.
-    void loadFogArt().then((art) => {
-      if (!art || !this.initialized) return;
-      this.fogBody?.setBank(art.bank);
-      this.fogShape = "";
-      this.invalidateFog();
-    });
     armSound();
     // Labels are rasterised once, in whatever face has loaded: wait for Geist alongside Pixi's
     // own start-up, so the first token name is already in it (design-language: "One typeface").
@@ -2108,6 +2094,16 @@ export class BoardView {
    * the puffs and wisps.
    */
   private syncFogMist(state: RoomState, regions: Point[][]) {
+    if (!this.fogArtRequested) {
+      this.fogArtRequested = true;
+      // Procedural fog draws immediately; painted art is needed only when a player sees fog.
+      void loadFogArt().then((art) => {
+        if (!art || !this.initialized) return;
+        this.fogBody?.setBank(art.bank);
+        this.fogShape = "";
+        this.invalidateFog();
+      });
+    }
     const { width, height } = this.boardSize();
     const cell = state.scene.grid.cellSize;
     const art = fogArt();
@@ -3215,6 +3211,8 @@ export class BoardView {
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
+    // The vector look works until the art arrives; avoid these requests while opening a board.
+    void loadFxTextures();
     const host = this.fxHost();
     this.startFx(withSound(
       playStrike(host, {
@@ -3229,6 +3227,7 @@ export class BoardView {
   }
 
   private playNukeFx(effect: Extract<AttackEffect, { kind: "nuke" }>) {
+    void loadFxTextures();
     // One large blast at a time: repeated clicks replace the previous effect and free its objects.
     for (const entry of [...this.fxRuns]) this.endFx(entry);
     const { width, height } = this.app.screen;
@@ -3343,6 +3342,15 @@ export class BoardView {
   private drawConditions(view: TokenView, conditions: ConditionId[], r: number) {
     view.markers.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (conditions.length === 0) return;
+    if (!this.conditionArtRequested) {
+      this.conditionArtRequested = true;
+      void loadConditionIcons().then(() => {
+        if (!this.initialized) return;
+        for (const token of this.tokens.values()) token.drawnKey = "";
+        if (this.state && this.you) this.syncTokens();
+        this.invalidate();
+      });
+    }
 
     const size = Math.max(11, r * 0.34);
     // An icon is drawn a little larger than a shape: a painting needs the room to read.
