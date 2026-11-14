@@ -11,7 +11,7 @@
 - Feature implementation: **none**. No application code, dependency, migration, deployment or runtime configuration was changed by this planning session.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
-- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 host experiments: **not started**. Production: **unverified**.
+- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 research: **done (documentation and local probes only; see below)**. M0 host experiments: **not started**. Production: **unverified**.
 
 ## Read order
 
@@ -90,4 +90,44 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-**Latest implementation session:** none. The next action is product review of the planning packet, not automatic implementation.
+**Latest implementation session:** none. The next action is product review of the planning packet and of the M0 research recommendation below, not automatic implementation.
+
+## Latest research session — M0 research, 2026-11-14
+
+**Requested scope:** research M0 only, without implementing application code or building the prototype. Requested deliverables: resolve or investigate SDK/ext-apps compatibility, rendering and refresh, original-image transfer and model-visible crops, selection-to-chat, and scoped OAuth with protected images. Then recommend one approach and a bounded M0 plan, and update this file and research.md. No deployment, provisioning or M1.
+
+- **Branch/worktree:** new branch `docs/interactive-ai-scene-studio-m0-research` from planning commit `5159b88a`, worktree `/Users/chrispsimadas/Projects/VirtualTableTop/studio-m0-research`. A new branch was used because `docs/interactive-ai-scene-studio-plan` is already checked out in `/private/tmp/session-zero-studio-planning`; that worktree was not touched. `origin/main` is `16a9262a` (+1 web-only commit since `a86160f5`, irrelevant to M0 paths).
+- **Preserved:** `feat/mcp-scene-preparation` (`2d19d1ec`, local-only) and its worktree's uncommitted files were read, never modified. The original session worktree was not edited.
+- **Changed:** `research.md` (new "M0 research — 2026-11-14" section; R9 note) and this file. No code, dependency, lockfile, tasks.md checkbox, deployment, tunnel, OAuth registration or host connection.
+- **Checks:** documentation-only change; runtime tests not claimed. Local protocol probes ran against installed SDK packages outside the repo (recorded in research.md Q1). Primary sources were read on 2026-11-14 (R1–R3, R14–R21).
+
+### Conclusions (details and labels in research.md)
+
+| Question | Status | Conclusion |
+| --- | --- | --- |
+| SDK/ext-apps | Recommendation; local probes only | Migrate `apps/mcp` to SDK v2 (`server` 2.4.0, `node` 2.1.2, `core`/`client` 2.4.0) with `createMcpHandler({ legacy: "stateless" })` and ext-apps 2.0.4. v1 1.32.2 returns HTTP 400 to `2026-07-28` requests (observed locally), and ChatGPT was seen sending `2026-07-28` (old branch). |
+| Render/refresh | Documented; unobserved | One `open` tool carries `resourceUri`. The spec does not deliver later tool results to an open view, so poll app-only reads while visible and recover from the backend on reopen. |
+| Originals / crops | Documented, plus prior observation without a view | fileParams original transfer and model-visible MCP image blocks were observed on 2026-11-12 (old branch, no MCP Apps view). Widget file helpers are OpenAI extensions with undocumented limits. Crops must be tool results; image model-context is unsupported on web. |
+| Selection→chat | Documented; unobserved | Save a request through an app-only tool first, then `ui/message` naming its ID (ChatGPT defaults to `send: true`). Track handed off vs observed via the model's later read. |
+| OAuth / media | Proposed; unobserved | Session Zero as authorization server issuing opaque hashed delegated tokens, verified by `apps/server` via introspection. Media goes through app-only host-proxied tool bytes rendered as `data:`/`blob:`, with no public URL. Whether app calls carry the bearer is unobserved. |
+
+**Design amendment candidates (not applied; need review):** D2 could state that polling is required by the spec, not optional. D8 could record that `data:` is the spec's default-allowed image scheme while `blob:` is unproven. D7 could name the proposed introspection-based grant verification. D9 already excludes bulk bytes in JSON tool arguments, so the view-file route must use host file helpers.
+
+### Required user decisions and access before M0 execution
+
+1. **Authorization to start M0** with the recommended approach: the SDK v2 migration of `apps/mcp` plus a flag-gated fixture-only `/mcp/studio-m0`. The packet's product review remains pending; this research is not that approval.
+2. A **ChatGPT web account** whose plan and workspace policy allow adding a custom MCP server with OAuth (old branch path: Plugins → + → Add custom MCP server). The user performs the chat actions and consent, and transcribes or screenshots results, because browser automation was unreliable last time.
+3. An **authorized public HTTPS development endpoint**: a user-chosen tunnel to local `apps/mcp`. No production, DNS or edge change is implied.
+4. **OAuth test setup:** the stub authorization server rides the same tunnel. The user copies the exact ChatGPT callback URL and signs in with the fixture test identity. An external IdP (such as Cognito) needs separate provisioning authorization and is not the default.
+5. **Fixtures:** synthetic, non-sensitive map PNG and token art generated in the session. No private art.
+6. Chrome with devtools access to capture console/CSP output from the view.
+
+### Proposed M0 execution steps
+
+1. Preflight per tasks.md 1.1: verify this branch/commit, fetch main, confirm `apps/mcp`/build paths are unchanged, then record surface, plan, model and browser (E0).
+2. Migrate `apps/mcp` to v2 with exact pins. Run the existing MCP tests plus local dual-era probes for `/mcp`, `/mcp/build` and `/mcp/studio-m0`, then `npm run lint && npm run typecheck && npm test`.
+3. Build `/mcp/studio-m0` (fixture store, inline `ui://` view, eight M0 tools, stub AS, bounded downloader) with unit tests for auth refusal/expiry/revocation, download bounds and hash checks.
+4. Ask the user for items 2–4 above. Then run E1 → E6 in real ChatGPT web in that order, because rendering and auth gate the rest. Record each result with its label.
+5. Run E7: independent diff review and repository checks. Update research.md, this handoff and tasks.md, checking only boxes whose real-host criterion passed. Raise any host limitation as a concrete design amendment before M1.
+
+Unresolved questions are numbered 1–10 in research.md. None blocks starting M0. Items 2, 4, 5 and 6 are what E5/E6/E2 exist to answer.
