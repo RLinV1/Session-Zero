@@ -32,6 +32,8 @@ model Build {
   /// The owner's choices (ADR 0053): let the AI's grid count when detection agrees, and let it set walls, doors and windows.
   aiGrid        Boolean   @default(false) @map("ai_grid")
   aiWalls       Boolean   @default(false) @map("ai_walls")
+  /// The owner's choice (ADR 0071): let the AI propose permanent Difficult and Blocked squares.
+  aiTerrain     Boolean   @default(false) @map("ai_terrain")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 

@@ -98,6 +98,14 @@ function mapOf(state: RoomState) {
   };
 }
 
+/** Why the seat has no token on the map: none yet, or one carried here and waiting for the GM to place it (ADR 0068). */
+function waitingHint(state: RoomState, you: Participant): string {
+  const waiting = Object.values(state.staged ?? {}).filter((t) => t.ownerIds.includes(you.id)).map((t) => t.name);
+  return waiting.length > 0
+    ? `Your token${waiting.length === 1 ? "" : "s"} (${waiting.join(", ")}) ${waiting.length === 1 ? "is" : "are"} waiting for the GM to place ${waiting.length === 1 ? "it" : "them"} on this map. You can't move ${waiting.length === 1 ? "it" : "them"} until then.`
+    : "This seat owns no tokens yet. Ask the GM to assign you one.";
+}
+
 /** `get_view`: everything here comes from the state the server already filtered for this seat. */
 export function buildView(state: RoomState, you: Participant, pings: readonly { fromId: string; at: Point }[] = []) {
   const tokens = Object.values(state.tokens).map((token) => tokenOf(state, token, you));
@@ -113,7 +121,7 @@ export function buildView(state: RoomState, you: Participant, pings: readonly { 
     note: ROOM_TEXT_NOTE,
     room: state.name,
     you: { id: you.id, name: you.displayName },
-    ...(tokens.some((t) => t.yours) ? {} : { hint: "This seat owns no tokens yet. Ask the GM to assign you one." }),
+    ...(tokens.some((t) => t.yours) ? {} : { hint: waitingHint(state, you) }),
     map: mapOf(state),
     grid: {
       unitsPerSquare: state.scene.grid.unitsPerCell,

@@ -226,6 +226,11 @@ export interface LibraryStore {
   setAssetBoard(id: string, ownerGmId: string, board: LibraryMapBoard): Promise<boolean>;
   findAssetPreparation(id: string, ownerGmId: string): Promise<import("@vtt/shared").LibraryPreparation | null>;
   saveAssetPreparation(id: string, ownerGmId: string, change: import("@vtt/shared").SaveLibraryPreparation): Promise<import("@vtt/shared").LibraryPreparation | null>;
+  /**
+   * Replaces the map's grid and prepared board outright, with no revision check, and bumps its
+   * revision (Save to library, ADR 0070). Null when the owner has no such map.
+   */
+  replaceAssetPreparation(id: string, ownerGmId: string, change: { grid: GridSpec; board: LibraryMapBoard }): Promise<import("@vtt/shared").LibraryPreparation | null>;
   /** Removes the row and its reference index entries. Returns the removed row. */
   deleteAsset(id: string, ownerGmId: string): Promise<LibraryAssetRecord | null>;
 

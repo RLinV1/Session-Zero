@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { Eye, EyeSlash, PencilSimple } from "@phosphor-icons/react";
-import type { BuildFileView, BuildItemView, DraftCreatureState } from "@vtt/shared";
+import { DEFAULT_GRID, draftTerrainState, type BuildFileView, type BuildItemView, type DraftCreatureState } from "@vtt/shared";
+import { TerrainCells } from "../mapEditor/TerrainSetup";
 import { encounterOf, mapOf } from "./buildProgress";
 import { roleOf, tokenOrder, type Role } from "./buildOrder";
 import { useHashKey } from "./buildHooks";
@@ -58,6 +59,8 @@ export function EncounterBoard({ encounters, maps, files, creature, idFor, check
   const mapData = map ? mapOf(map) : null;
   const file = mapData ? files.find((f) => f.id === mapData.fileId) : undefined;
   const grid: Grid | null = mapData?.grid ?? mapData?.proposedGrid ?? (file?.grid ? { cellSize: file.grid.cellSize, offsetX: file.grid.offsetX, offsetY: file.grid.offsetY } : null);
+  // The map's proposed terrain, drawn under the tokens while it is on this grid (ADR 0071).
+  const terrain = mapData && draftTerrainState(mapData.setup, grid) === "ready" ? mapData.setup?.terrain ?? [] : [];
   const order = tokenOrder(data.tokens, creature);
   const tokens = order.map((i) => ({ index: i, token: data.tokens[i]!, of: creature(data.tokens[i]!.creatureKey) }));
   const placed = tokens.filter((t) => t.token.square);
@@ -123,6 +126,7 @@ export function EncounterBoard({ encounters, maps, files, creature, idFor, check
               <img src={file.url} alt="" loading="lazy" />
               {grid && (
                 <svg viewBox={`0 0 ${file.width} ${file.height}`} preserveAspectRatio="none" aria-hidden="true">
+                  {terrain.length > 0 && <TerrainCells runs={[...terrain]} grid={{ ...DEFAULT_GRID, ...grid }} />}
                   {placed.map((t) => {
                     const size = Math.max(1, t.of?.size ?? 1);
                     const cx = grid.offsetX + (t.token.square!.column + size / 2) * grid.cellSize;

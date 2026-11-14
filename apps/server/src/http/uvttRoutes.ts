@@ -13,7 +13,6 @@ import { refused } from "../identity/routes";
 import type { AssetStore } from "../store/assetStore";
 import { UPLOAD_ALLOWANCE, UploadAllowanceError, type LibraryAssetRecord } from "../store/libraryStore";
 import type { RoomStore } from "../store/roomStore";
-import { exportUvttScene } from "../uvtt/exportScene";
 import type { UvttPreparations } from "../uvtt/preparations";
 import type { UvttValidationPool } from "../uvtt/validationPool";
 import { createUvttLibraryMap, receiveUvtt, writeUvttImage } from "../uvtt/uploads";
@@ -153,19 +152,6 @@ export function registerUvttRoutes(app: Express, deps: Deps) {
     const auth = auths.get(req)!;
     if (!deps.preparations.discard(auth.roomId, auth.actorId, String(req.params.id))) res.status(404).json({ error: expired });
     else res.status(204).end();
-  });
-  app.get(`${base}/export`, guard, (req, res) => {
-    void (async () => {
-      const auth = auths.get(req)!;
-      const snapshot = await auth.room.captureScene(auth.actorId);
-      if (!snapshot) { res.status(403).json({ error: "Your GM seat ended." }); return; }
-      const result = await exportUvttScene(snapshot, auth.roomId, deps.store, deps.assets, deps.builtinImageDir);
-      if (Object.values(snapshot.walls).some((w) => w.portal)) res.setHeader("X-UVTT-Warnings", "portal_identity_omitted,portal_lock_omitted");
-      res.setHeader("Content-Disposition", 'attachment; filename="map.uvtt"');
-      res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-UVTT-Scene-Sequence", String(snapshot.seq));
-      res.type("application/json").send(JSON.stringify(result));
-    })().catch((error: unknown) => failure(res, error));
   });
   app.use(base, (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const type = error && typeof error === "object" && "type" in error ? error.type : null;

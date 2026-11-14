@@ -94,6 +94,14 @@ export const serverEn = {
 
   // UVTT import and export.
   "api.uvttFileRules": "Use one UVTT file, at most 40 MiB, without additional fields.",
+  // Save to library and library export (ADR 0070).
+  "api.templateHasNoLibraryMap": "Save the template instead; a template-editing room has no library map.",
+  "api.applyMapBeforeLibrary": "Apply a map before saving it to the library.",
+  "api.boardTooLargeForLibrary": "This board is too large to save to the library.",
+  "api.libraryMapGone": "That library map is gone.",
+  "api.saveToLibraryFailed": "Couldn't save the map to the library. Try again.",
+  "api.saveGridBeforeExport": "Save this map's grid before exporting it.",
+  "api.exportFailed": "Couldn't export this map. Try again.",
   "api.processFailed": "Could not process this map. Try again.",
   "api.tooManyImports": "Too many import attempts. Try again in a minute.",
   "api.signInEndedUpload": "Your sign-in ended during validation. Sign in and upload again.",

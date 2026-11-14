@@ -39,6 +39,7 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     ],
     MapSet: [{ type: "MapSet", map: { url: "/map.png", width: 100, height: 100 }, previous: null }, "Mara set the map"],
     GridSet: [{ type: "GridSet", grid: state.scene.grid, previous: state.scene.grid }, "Mara updated the grid"],
+    MapLinked: [{ type: "MapLinked", assetId: "asset-1", previous: null }, "Mara saved the map to the library"],
     IsometricSet: [{ type: "IsometricSet", from: false, to: true }, "Mara set the map style to 2.5D isometric"],
     LineOfSightSet: [{ type: "LineOfSightSet", from: false, to: true }, "Mara turned line of sight on"],
     SightRangeSet: [{ type: "SightRangeSet", from: null, to: 60 }, "Mara set sight range to 60 ft"],
@@ -111,6 +112,8 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     CheckpointDeleted: [{ type: "CheckpointDeleted", checkpoint: { id: "c1", name: "Before the ambush", seq: 3 } }, 'Mara deleted checkpoint "Before the ambush"'],
     CheckpointRestored: [{ type: "CheckpointRestored", checkpointId: "c1", name: "Before the ambush", restored: tableOf(state), previous: tableOf(state) }, 'Mara restored checkpoint "Before the ambush"'],
     EncounterApplied: [{ type: "EncounterApplied", templateId: "t1", name: "Goblin ambush", applied: tableOf(state), previous: tableOf(state) }, 'Mara applied encounter template "Goblin ambush"'],
+    StagedTokensPlaced: [{ type: "StagedTokensPlaced", placements: [{ tokenId: token.id, from: { x: 0, y: 0 }, to: { x: 70, y: 70 } }] }, "Mara placed Goblin"],
+    StagedTokensRestaged: [{ type: "StagedTokensRestaged", placements: [{ tokenId: token.id, from: { x: 70, y: 70 }, to: { x: 0, y: 0 } }] }, "Mara took Goblin off the board to wait"],
     ActionUndone: [{ type: "ActionUndone", commandId: "gone" }, "Mara undid an action"],
   };
   it.each(Object.entries(cases))("formats %s", (_type, [event, sentence]) => {

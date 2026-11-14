@@ -26,6 +26,15 @@ async function upload(roomId: string, token: string, value: unknown = null, file
   const body = new FormData(); body.append("file", new Blob([JSON.stringify(value ?? await document())]), filename);
   return fetch(url(roomId), { method: "POST", headers: { authorization: `Bearer ${token}` }, body });
 }
+/** Export lives in the library (ADR 0070): save the room's map there, then export that library map. */
+async function exportFromLibrary(creds: { roomId: string; guestToken: string; cookie: string }) {
+  const saved = await fetch(`${server.base}/api/rooms/${creds.roomId}/map/library`, {
+    method: "POST", headers: { authorization: `Bearer ${creds.guestToken}`, cookie: creds.cookie, "content-type": "application/json" }, body: "{}",
+  });
+  expect(saved.ok).toBe(true);
+  const { assetId } = (await saved.json()) as { assetId: string };
+  return fetch(`${server.base}/api/library/${assetId}/export`, { headers: { cookie: creds.cookie } });
+}
 const prepared = async (roomId: string, token: string) => { const res = await upload(roomId, token); expect(res.status).toBe(201); return UvttPreparation.parse(await res.json()); };
 const terrainContext = (client: TestClient) => ({ boardEpoch: client.state.boardEpoch ?? 0, revision: client.state.terrainRevision ?? 0 });
 async function seedTerrain(client: TestClient) {
@@ -48,7 +57,7 @@ async function setup() {
   return { creds, gm, gm2, alice, bob, ac, bc };
 }
 
-describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/23)", () => {
+describe("private atomic UVTT room import, and export through the library (KAN-43/44/49, FR-GM-06/07/12/23)", () => {
   it("keeps drafts private, uses current tokens, delivers one scene, retries once, undoes exactly and survives reload", async () => {
     const { creds, gm, gm2, alice, bob, ac, bc } = await setup();
     await seedTerrain(gm);
@@ -78,13 +87,6 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(Object.values(gm.state.walls).find((w) => w.uvttPortal)?.uvttPortal).toEqual({ closed: false, freestanding: true, rotation: 0.8, position: { x: 62.5, y: -25 } });
     const retry = await ok(gm, { type: "scene.importUVTT", importId: prep.id, revision: prep.revision });
     expect(retry.seq).toBe(ack.seq); expect((await store.loadEvents(creds.roomId)).length).toBe(oldSeq + 1);
-    const exported = await fetch(url(creds.roomId, "export"), { headers: { authorization: `Bearer ${creds.guestToken}` } });
-    expect(exported.status).toBe(200); const text = await exported.text();
-    for (const secret of [creds.roomId, hero.id, "Secret dragon", '"tokens"', '"fog"', '"history"', '"url"']) expect(text).not.toContain(secret);
-    const roundTrip = await upload(creds.roomId, creds.guestToken, JSON.parse(text), "map.uvtt");
-    expect(roundTrip.status).toBe(201); const next = UvttPreparation.parse(await roundTrip.json());
-    expect(next.grid).toEqual(prep.grid); expect(next.walls).toEqual(prep.walls);
-    expect(await sharp(await readFile(`${server.uploadDir}/${next.map.url.split("/").at(-1)}`)).raw().toBuffer()).toEqual(await sharp(await readFile(`${server.uploadDir}/${prep.map.url.split("/").at(-1)}`)).raw().toBuffer());
     await ok(gm, { type: "history.undo", commandId });
     expect(gm.state.scene).toEqual(before.scene); expect(gm.state.walls).toEqual(before.walls); expect(gm.state.fog).toEqual(before.fog); expect(gm.state.tokens).toEqual(before.tokens);
     expect(gm.state.terrain).toEqual(before.terrain);
@@ -96,6 +98,8 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     }
     const log = await store.loadEvents(creds.roomId);
     expect(log.slice(oldSeq).map((e) => e.event.type)).toEqual(["MapSet", "MapSet", "ActionUndone"]);
+    // A draft prepared before the restart is gone after it (preparations live in memory).
+    const next = await prepared(creds.roomId, creds.guestToken);
     const restart = await startServer(store);
     try {
       const reconnected = await restart.connect(creds);
@@ -109,6 +113,20 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
       expect(missing.type).toBe("rejected"); restarted.close();
     } finally { await restart.close(); }
   });
+  it("round trips an imported map through Save to library, library export and re-import (ADR 0070)", async () => {
+    const { creds, gm } = await setup();
+    const prep = await prepared(creds.roomId, creds.guestToken);
+    const hero = Object.values(gm.state.tokens).find((t) => t.name === "Hero")!;
+    await ok(gm, { type: "scene.importUVTT", importId: prep.id, revision: prep.revision, tokenPolicy: "keep" });
+    const exported = await exportFromLibrary(creds);
+    expect(exported.status).toBe(200); const text = await exported.text();
+    for (const secret of [creds.roomId, hero.id, "Secret dragon", '"tokens"', '"fog"', '"history"', '"url"']) expect(text).not.toContain(secret);
+    const roundTrip = await upload(creds.roomId, creds.guestToken, JSON.parse(text), "map.uvtt");
+    expect(roundTrip.status).toBe(201); const next = UvttPreparation.parse(await roundTrip.json());
+    expect(next.grid).toEqual(prep.grid); expect(next.walls).toEqual(prep.walls);
+    expect(await sharp(await readFile(`${server.uploadDir}/${next.map.url.split("/").at(-1)}`)).raw().toBuffer()).toEqual(await sharp(await readFile(`${server.uploadDir}/${prep.map.url.split("/").at(-1)}`)).raw().toBuffer());
+  });
+
   it("publishes explicitly designated portals through existing player controls without UVTT metadata", async () => {
     const { creds, gm, gm2, alice, bob } = await setup();
     const prep = await prepared(creds.roomId, creds.guestToken);
@@ -131,7 +149,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     expect(gm.state.walls[door.id]!.uvttPortal).toEqual(door.uvttPortal);
     expect(bob.state.walls[door.id]!.portal?.state).toBe("open");
     expect((await gm.command({ type: "history.undo", commandId })).type).toBe("rejected");
-    const exported = await fetch(url(creds.roomId, "export"), { headers: { authorization: `Bearer ${creds.guestToken}` } });
+    const exported = await exportFromLibrary(creds);
     expect(exported.headers.get("x-uvtt-warnings")).toContain("portal_lock_omitted");
     const output = await exported.json() as { portals: { closed: boolean; position: { x: number; y: number } }[] };
     expect(output.portals[0]!.closed).toBe(false); expect(output.portals[0]!.position).toEqual({ x: 2, y: 0 });
@@ -247,7 +265,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     const before = gm.seq;
     expect((await upload(creds.roomId, ac.guestToken)).status).toBe(403);
     expect((await upload(creds.roomId, other.guestToken)).status).toBe(403);
-    expect((await fetch(url(creds.roomId, "export"), { headers: { authorization: `Bearer ${ac.guestToken}` } })).status).toBe(403);
+    expect((await fetch(`${server.base}/api/rooms/${creds.roomId}/map/library`, { method: "POST", headers: { authorization: `Bearer ${ac.guestToken}`, cookie: creds.cookie, "content-type": "application/json" }, body: "{}" })).status).toBe(403);
     expect((await upload(creds.roomId, creds.guestToken, { format: 2, image: "private" })).status).toBe(422);
     expect((await upload(creds.roomId, creds.guestToken, null, "malware.txt")).status).toBe(415);
     const prep = await prepared(creds.roomId, creds.guestToken);

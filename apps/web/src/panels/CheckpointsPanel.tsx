@@ -85,7 +85,7 @@ export function CheckpointsPanel({ connection, state, token }: { connection: Roo
 
   // The saved table drawn on the real board: the live room's people and chat, the checkpoint's map, tokens, areas, fog, walls and initiative.
   const previewState = useMemo<RoomState | null>(
-    () => (preview ? { ...state, ...preview.table, walls: preview.table.walls ?? {}, drawings: preview.table.drawings ?? {} } : null),
+    () => (preview ? { ...state, ...preview.table, walls: preview.table.walls ?? {}, drawings: preview.table.drawings ?? {}, staged: preview.table.staged ?? {} } : null),
     [preview, state],
   );
   const gm = Object.values(state.participants).find((p) => p.role === "gm") ?? null;

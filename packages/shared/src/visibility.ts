@@ -216,12 +216,18 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // as the pieces the player can already see, clipped at fog and sight edges, with opaque ids:
   // whole walls inside fog would outline rooms the players haven't seen (ADR 0029, ADR 0056).
   const walls = wallsForViewer(state, viewer, c);
+  // Staged tokens are off the map (ADR 0068): a player gets only their own visible ones, for the
+  // waiting tray. Who else is waiting, and hidden ones even if theirs, stay the GM's.
+  const staged = Object.fromEntries(
+    Object.entries(state.staged ?? {}).filter(([, t]) => !t.hidden && t.ownerIds.includes(viewer.id))
+      .map(([id, token]) => [id, tokenForViewer(token, viewer, state)]),
+  );
   // Groups are the GM's organisation and would say which group a hidden token is in (KAN-82, ADR 0026).
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
   const { terrain: _terrain, terrainRevision: _terrainRevision, terrainView: _terrainView, sight: _sight, ...publicState } = state;
-  return { ...publicState, terrainView: terrainForViewer(state, c), tokens, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
+  return { ...publicState, terrainView: terrainForViewer(state, c), tokens, staged, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =
@@ -533,12 +539,19 @@ export function filterEventForViewer(
     case "CheckpointRestored":
       // Both tables hold hidden tokens and GM-only areas; a filtered snapshot carries the rest.
       return { kind: "resync" };
+    case "MapLinked":
+      // The link is an opaque library id players already receive on MapImage (ADR 0004, 0070).
+      return pass;
     case "MapSet":
       // Nested changes contain hidden IDs and prior positions. Only the filtered result
       // reaches players, including inverse first-map removal and empty adjustments (ADR 0042).
       return e.terrainChange !== undefined || e.tokenChanges !== undefined || e.wallChange !== undefined || e.fogChange !== undefined ? { kind: "resync" } : pass;
     case "EncounterApplied":
       // Both boards hold hidden tokens, fog and owners; a filtered snapshot carries the rest (ADR 0024).
+      return { kind: "resync" };
+    case "StagedTokensPlaced":
+    case "StagedTokensRestaged":
+      // Non-owners never had a staged token, so a position alone can't show or hide it (ADR 0068).
       return { kind: "resync" };
     case "ActionUndone":
       // Players have no undo or activity log; the compensating events before it already

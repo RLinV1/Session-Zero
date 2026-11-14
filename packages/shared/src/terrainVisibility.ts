@@ -1,5 +1,6 @@
 import { cellRect, clippedArea, compressTerrain, effectiveTerrain, emptyTerrain, footprintInterval, rectPoints, terrainCells, type Rect, type TerrainView } from "./terrain";
-import { cellAt, type Point } from "./geometry";
+import { cellAt, inFogRegion, type Point } from "./geometry";
+import { inSight } from "./sight";
 import type { RoomState } from "./state";
 import type { Concealment } from "./visibility";
 
@@ -31,6 +32,34 @@ export function terrainKnowledge(state: KnowledgeState, concealment?: Concealmen
     return sight.some((polygon) => polygon.bounds.minX <= r.minX && polygon.bounds.minY <= r.minY && polygon.bounds.maxX >= r.maxX && polygon.bounds.maxY >= r.maxY && clippedArea(polygon.points, rectPoints(r)) >= area - Math.max(1e-8, area * 1e-10));
   };
 }
+/** Points per side of a square's sample lattice (ADR 0069): the centres of its quarters. */
+const SEEN_SAMPLES = 4;
+
+/**
+ * Whether a viewer can see any part of a square (ADR 0069), the test for which terrain they are
+ * sent: a lattice point inside the square and on the map lies outside every fog region and, with
+ * line of sight on, inside sight. Sampled as areas are (ADR 0059), so a visible sliver narrower
+ * than a quarter square can be missed. Movement knowledge keeps the whole-square `terrainKnowledge`.
+ */
+export function terrainSeen(state: KnowledgeState, concealment?: Concealment): (col: number, row: number) => boolean {
+  const map = state.scene.map, grid = state.scene.grid;
+  const fog = Object.values(concealment?.fog ?? state.fog).map((region) => ({ points: region.points, bounds: bounds(region.points) }));
+  const sight = concealment ? concealment.sight : state.sight ?? null;
+  const fogged = (p: Point) => fog.some((region) => p.x >= region.bounds.minX - 1 && p.x <= region.bounds.maxX + 1 && p.y >= region.bounds.minY - 1 && p.y <= region.bounds.maxY + 1 && inFogRegion(region.points, p));
+  return (col, row) => {
+    if (!map) return false;
+    const cell = cellRect(col, row, grid);
+    const r = { minX: Math.max(0, cell.minX), minY: Math.max(0, cell.minY), maxX: Math.min(map.width, cell.maxX), maxY: Math.min(map.height, cell.maxY) };
+    if (r.minX >= r.maxX || r.minY >= r.maxY) return false;
+    for (let i = 0; i < SEEN_SAMPLES; i++) for (let j = 0; j < SEEN_SAMPLES; j++) {
+      const p = { x: r.minX + (r.maxX - r.minX) * (i + .5) / SEEN_SAMPLES, y: r.minY + (r.maxY - r.minY) * (j + .5) / SEEN_SAMPLES };
+      // Strictly inside sight: the 1 px edge allowance would count points just past a wall on tiny grids.
+      if (!fogged(p) && (sight === null || inSight(sight, p, 0))) return true;
+    }
+    return false;
+  };
+}
+
 /** Whole-cell knowledge comes only from committed fog/sight, never from painted overrides. */
 export function terrainCellKnown(state: KnowledgeState, col: number, row: number, concealment?: Concealment): boolean {
   return terrainKnowledge(state, concealment)(col, row);
@@ -65,7 +94,8 @@ export function movementRouteKnown(state: KnowledgeState, from: Point, to: Point
 }
 
 export function terrainForViewer(state: RoomState, c: Concealment): TerrainView {
-  const terrain = state.terrain ?? emptyTerrain(), permittedCell = terrainKnowledge(state, c);
+  // Any part visible, not the whole square (ADR 0069); movement keeps `terrainKnowledge`.
+  const terrain = state.terrain ?? emptyTerrain(), permittedCell = terrainSeen(state, c);
   const known = new Map<string, boolean>();
   const permitted = (runs: ReturnType<typeof effectiveTerrain>) => {
     const cells = terrainCells(runs);

@@ -59,6 +59,8 @@ export const REVERSIBLE_EVENT_TYPES = [
   "LineOfSightSet", // ADR 0044
   "SightRangeSet",
   "IsometricSet", // ADR 0048
+  "StagedTokensPlaced", // ADR 0068
+  "StagedTokensRestaged", // ADR 0068: Select and place on a new map
 ] as const;
 
 type MapSetEvent = Extract<DomainEvent, { type: "MapSet" }>;
@@ -67,7 +69,7 @@ type CompleteMapSet = MapSetEvent & {
   tokenChanges: NonNullable<MapSetEvent["tokenChanges"]>;
 };
 /** A deletion by the auto-remove option; the only `TokenDeleted` undo can reverse (ADR 0049). */
-type DefeatDeleted = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" };
+type DefeatDeleted = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" | "mapReplaced" };
 /**
  * A token leaving the turn order because it was deleted (ADR 0065). Part of a defeat's action so
  * that action stays undoable, but it has no inverse: undo never touches the turn order.
@@ -116,7 +118,7 @@ export interface EventMeta {
 /** Whether an event type can take part in an undoable action. */
 export function isReversible(event: DomainEvent): event is ReversibleEvent {
   if (event.type === "MapSet") return event.gridChange !== undefined && event.tokenChanges !== undefined;
-  if (event.type === "TokenDeleted") return event.reason === "defeated";
+  if (event.type === "TokenDeleted") return event.reason === "defeated" || event.reason === "mapReplaced";
   if (event.type === "InitiativeLeft" || event.type === "InitiativeEnded") return event.reason === "deleted";
   return (REVERSIBLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
@@ -179,6 +181,14 @@ function withLabels(
   }
 
   if (event.type === "TokenCreated" || event.type === "TokenDeleted") return { tokenNames: { ...tokenNames, [event.token.id]: event.token.name }, rollLabels };
+  if (event.type === "StagedTokensPlaced" || event.type === "StagedTokensRestaged") {
+    // Recorded before the event, wherever the tokens are then (ADR 0068).
+    const names = Object.fromEntries(event.placements.flatMap(({ tokenId }) => {
+      const token = state.staged[tokenId] ?? state.tokens[tokenId];
+      return token ? [[tokenId, token.name]] : [];
+    }));
+    return { tokenNames: { ...tokenNames, ...names }, rollLabels };
+  }
   if (event.type === "TokensGrouped") {
     const names = Object.fromEntries(event.changes.flatMap(({ tokenId }) => {
       const token = state.tokens[tokenId];
@@ -326,9 +336,17 @@ function inverseOfOne(event: SingleInverse): DomainEvent {
     case "CheckpointRestored":
       // Puts back the board the restore replaced (ADR 0019).
       return { ...event, restored: event.previous, previous: event.restored };
-    case "EncounterApplied":
-      // Puts back the board the apply replaced (ADR 0024).
-      return { ...event, applied: event.previous, previous: event.applied };
+    case "EncounterApplied": {
+      // Puts back the board the apply replaced (ADR 0024). Nothing is carried by the undo itself (ADR 0068).
+      const { carriedTokenIds: _carried, ...apply } = event;
+      return { ...apply, applied: event.previous, previous: event.applied };
+    }
+    case "StagedTokensPlaced":
+      // Back to the staging area, each at the position it waited at (ADR 0068).
+      return { type: "StagedTokensRestaged", placements: event.placements.map((p) => ({ tokenId: p.tokenId, from: p.to, to: p.from })) };
+    case "StagedTokensRestaged":
+      // Select and place undone: back on the map where each stood (ADR 0068).
+      return { type: "StagedTokensPlaced", placements: event.placements.map((p) => ({ tokenId: p.tokenId, from: p.to, to: p.from })) };
   }
 }
 
@@ -400,6 +418,25 @@ export function undoConflict(state: RoomState, entry: UndoEntry): MessageRef | n
       if (state.tokens[event.token.id]) return sharedMsg("undo.alreadyBack", { name: event.token.name });
       const wanted = normalizeName(event.token.name);
       if (Object.values(state.tokens).some((t) => normalizeName(t.name) === wanted)) return sharedMsg("undo.tokenNameTaken", { name: event.token.name });
+      continue;
+    }
+    if (event.type === "StagedTokensRestaged") {
+      // Each must still be waiting, so undo can put it back on the map (ADR 0068).
+      for (const p of event.placements) {
+        if (!Object.hasOwn(state.staged, p.tokenId)) return sharedMsg("undo.gone", { name: entry.tokenNames[p.tokenId] ?? sharedMsg("noun.thatToken") });
+      }
+      continue;
+    }
+    if (event.type === "StagedTokensPlaced") {
+      // Each placed token must still be on the map where it was put (ADR 0068).
+      for (const p of event.placements) {
+        const token = state.tokens[p.tokenId];
+        const name = token?.name ?? entry.tokenNames[p.tokenId] ?? sharedMsg("noun.thatToken");
+        if (!token) return sharedMsg("undo.gone", { name });
+        if (token.position.x !== p.to.x || token.position.y !== p.to.y) return sharedMsg("undo.changed", { name });
+        // A staged token takes no turn: one now in the turn order can't go back to waiting.
+        if (state.initiative?.order.includes(p.tokenId)) return sharedMsg("undo.changed", { name });
+      }
       continue;
     }
     if (event.type === "TokenCreated") {
@@ -505,7 +542,11 @@ export function undoConflict(state: RoomState, entry: UndoEntry): MessageRef | n
 
 /** A table as `reduce` applies it: one from before walls existed had none (ADR 0029). */
 
-const withWalls = (table: TableState): TableState => ({ ...table, walls: table.walls ?? {}, drawings: table.drawings ?? {} });
+const withWalls = ({ staged, ...table }: TableState): TableState => ({
+  ...table, walls: table.walls ?? {}, drawings: table.drawings ?? {},
+  // `tableOf` leaves out an empty staging area (ADR 0068).
+  ...(staged && Object.keys(staged).length > 0 ? { staged } : {}),
+});
 
 type GroupEvent = Extract<ReversibleEvent, { type: "GroupCreated" | "GroupRenamed" | "GroupDeleted" | "TokensGrouped" }>;
 
@@ -639,7 +680,8 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
   }
   const first = entry.events[0];
   if (!first) return { verb: "last action", noun: "an action" };
-  const defeats = entry.events.filter((e) => e.type === "TokenDeleted");
+  // Tokens removed by Select and place follow their map change, which names itself below (ADR 0068).
+  const defeats = entry.events.filter((e): e is DefeatDeleted => e.type === "TokenDeleted" && e.reason === "defeated");
   if (first.type === "TokenDeleted" || defeats.length > 0) {
     const names = defeats.map((e) => e.token.name);
     const who = names.length === 1 ? names[0]! : `${names.length} tokens`;
@@ -661,6 +703,12 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
   }
   if (first.type === "EncounterApplied") {
     return { verb: `apply of "${first.name}"`, noun: `applying encounter template "${first.name}"` };
+  }
+  if (first.type === "StagedTokensRestaged") return { verb: "select and place", noun: "sending tokens back to wait" };
+  if (first.type === "StagedTokensPlaced") {
+    const count = first.placements.length;
+    const who = count === 1 ? nameOf(first.placements[0]!.tokenId) : `${count} carried tokens`;
+    return { verb: `placing ${who}`, noun: `placing ${who}` };
   }
   // Applying walls replaces the old ones, so the action reads as the apply (ADR 0029).
   const wallsAdded = entry.events.find((e) => e.type === "WallsAdded");

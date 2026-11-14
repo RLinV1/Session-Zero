@@ -325,12 +325,17 @@ export const TableState = z.object({
   terrain: Terrain.optional(),
   /** Optional: tables from before drawings were shared have none (ADR 0064). */
   drawings: z.record(Id, Drawing).optional(),
+  /**
+   * Tokens carried here from another board, waiting for the GM to place them (ADR 0068). Not on
+   * the map: no sight, no turn, no target. Optional: tables from before carrying have none.
+   */
+  staged: z.record(Id, Token).optional(),
 });
 export type TableState = z.infer<typeof TableState>;
 
 /** The table part of a room state. */
 export function tableOf(state: Pick<RoomState, keyof TableState>): TableState {
-  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls, drawings: state.drawings, ...(state.terrain ? { terrain: state.terrain } : {}) };
+  return { scene: state.scene, tokens: state.tokens, templates: state.templates, fog: state.fog, initiative: state.initiative, walls: state.walls, drawings: state.drawings, ...(state.staged && Object.keys(state.staged).length > 0 ? { staged: state.staged } : {}), ...(state.terrain ? { terrain: state.terrain } : {}) };
 }
 
 /** Most checkpoints a room keeps; the oldest drops off past this (ADR 0019). */
@@ -420,6 +425,8 @@ export interface RoomState {
   templates: Record<Id, AreaTemplate>;
   /** Drawings on the active scene, everyone's, shown to everyone (FR-TAC-04, ADR 0064). */
   drawings: Record<Id, Drawing>;
+  /** Carried tokens waiting for the GM to place them (ADR 0068). GM-only, except a player's own visible ones. */
+  staged: Record<Id, Token>;
   /** Most recent chat messages, oldest first, public to the whole room (KAN-75, ADR 0015). Capped at CHAT_LOG_LIMIT. */
   chat: ChatMessage[];
   /** Fog regions, in the order they were added (FR-GM-17, ADR 0016). Sent to players: they are the mask. */
@@ -526,6 +533,7 @@ export function emptyRoomState(roomId: Id): RoomState {
     rolls: [],
     templates: {},
     drawings: {},
+    staged: {},
     chat: [],
     fog: {},
     walls: {},

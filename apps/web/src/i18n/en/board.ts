@@ -88,4 +88,6 @@ export const board = {
   "board.hint.terrain": "Drag to paint squares · everyone sees terrain · Esc or right-click cancels",
   "board.hint.doors": "Click a door or window to change it · Esc to stop",
   "card.quickHp": "Quick HP",
+  "board.placingCarried": ({ n }: { n: number }) => `Placing ${n} waiting ${n === 1 ? "token" : "tokens"}: click a square`,
+  "board.carriedGhost": ({ name, n }: { name: string; n: number }) => (n > 1 ? `${name} and ${n - 1} more` : name),
 } as const satisfies CatalogSource;

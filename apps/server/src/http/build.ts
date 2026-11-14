@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   BUILD_LIMITS,
   BUILD_PASS_PREFIX,
-  BuildChoices,
+  BuildChoicesChange,
   BuildKey,
   BuildPass,
   DEFAULT_GRID,
@@ -24,15 +24,21 @@ import {
   MAX_ENCOUNTER_TEMPLATES,
   UvttError,
   canRenderGrid,
+  changesWalls,
   checkBuild,
   creatureProblems,
   describeDraftLine,
   draftMapBoard,
+  draftTerrainProblems,
+  draftTerrainState,
   footprintCenter,
   listOpenings,
   mapOpenings,
   mapSetupProblems,
+  normalizeTerrain,
   readDraftMap,
+  terrainGridOf,
+  terrainTally,
   type DraftCreatureState,
   type DraftEncounterState,
   type DraftMapState,
@@ -77,11 +83,17 @@ const PASS_EXPIRED = "That build pass has expired. Ask the user to make a new on
 const WRONG_FILE_TYPE = "A build takes PNG, JPEG or WebP images and UVTT files. Rules and character sheets stay in your AI app.";
 const NOT_FOUND = "No such build.";
 const WALLS_NOT_ALLOWED = 'The owner hasn\'t let the AI set walls, doors and windows on this build. They can tick "Let my AI set walls, doors and windows" on the build page.';
+const TERRAIN_NOT_ALLOWED = 'The owner hasn\'t let the AI propose terrain on this build. They can tick "Let my AI propose terrain" on the build page.';
+/** Said after a refusal of a save that had a part the owner allows, so the AI knows that part wasn't saved either. */
+const NOTHING_SAVED = " Nothing was saved. Send only what's allowed.";
+const OWNER_TERRAIN_CLEAR_ONLY = "Here you can only clear the terrain your AI proposed. Paint terrain in the map editor after publishing.";
 const AI_READ_OLD_VERSION = "This map changed while you were saving, perhaps by another save at the same moment. Read it again with get_map_setup, then save once more.";
 const OWNER_SAW_OLD_VERSION = "Your AI changed this map since you looked. Check it again, then make your change.";
 
-/** Both choices are off unless the owner ticks them (ADR 0053). */
-const StartBuild = z.strictObject({ name: z.string().trim().min(1).max(80), aiGrid: z.boolean().default(false), aiWalls: z.boolean().default(false) });
+/** Every choice is off unless the owner ticks it (ADR 0053, ADR 0071). */
+const StartBuild = z.strictObject({
+  name: z.string().trim().min(1).max(80), aiGrid: z.boolean().default(false), aiWalls: z.boolean().default(false), aiTerrain: z.boolean().default(false),
+});
 const UploadKind = z.enum(["map", "token", "uvtt"]);
 const ItemKind = z.enum(["creature", "map", "encounter"]);
 const FileId = z.uuid();
@@ -94,8 +106,19 @@ const PublishRequest = z.strictObject({
   reviewed: z.record(z.string().max(80), z.string().max(40)),
 }).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
 const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
-/** The owner's whole setup for a map, and the version of the map the page showed. */
+/**
+ * The owner's whole setup for a map, and the version of the map the page showed. Terrain left out
+ * stays as it was, and `terrain: []` clears it (ADR 0071); the page can't paint terrain.
+ */
 const OwnerSetupSave = z.strictObject({ setup: DraftMapSetup, updatedAt: z.string().max(40) });
+const WALL_PARTS = ["openings", "lines", "marks"] as const;
+
+/** Whether two JSON values are the same, whatever their keys' order: Postgres's jsonb doesn't keep it. */
+function sameJson(a: unknown, b: unknown): boolean {
+  const stable = (v: unknown): unknown => Array.isArray(v) ? v.map(stable)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => x.localeCompare(y)).map(([k, value]) => [k, stable(value)])) : v;
+  return JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+}
 const Square = z.coerce.number().int().min(0).max(100_000);
 /** `view_file`'s options: the grid, walls and numbered openings drawn on a map, whole or a block of squares. */
 const PreviewQuery = z.object({
@@ -160,8 +183,22 @@ function buildSummary(build: BuildRecord) {
     passExpiresAt: build.passExpiresAt,
     /** When the 14-day sweep will close it, if nothing changes before then. */
     closesAt: new Date(Date.parse(build.updatedAt) + BUILD_LIMITS.abandonedAfterDays * 24 * 60 * 60_000).toISOString(),
-    choices: { aiGrid: build.aiGrid, aiWalls: build.aiWalls },
+    choices: { aiGrid: build.aiGrid, aiWalls: build.aiWalls, aiTerrain: build.aiTerrain },
   };
+}
+
+/** What the owner lets the AI do, as a pass reads it. Only the owner can change these. */
+const allowedOf = (build: BuildRecord) => ({ grids: build.aiGrid, walls: build.aiWalls, terrain: build.aiTerrain });
+
+/** Why a map's terrain can't be used as it stands, in the AI's words (ADR 0071). */
+function terrainProblems(setup: DraftMapSetup, grid: Parameters<typeof draftTerrainState>[1], file: BuildFileRecord): string[] {
+  const state = draftTerrainState(setup, grid);
+  if (state === "noGrid") return ["The terrain needs a grid. Propose one with save_map."];
+  if (state === "otherGrid") {
+    const was = setup.terrainGrid!;
+    return [`The terrain was proposed on ${was.cellSize}-pixel squares at offset (${was.offsetX}, ${was.offsetY}), not on the grid the map has now. Save it again, or clear it with terrain: [].`];
+  }
+  return state === "ready" ? draftTerrainProblems(setup.terrain ?? [], grid, file) : [];
 }
 
 /** A map's walls, doors and windows as the AI sees them: numbered openings, its lines and marks, and what's allowed. */
@@ -170,19 +207,39 @@ function setupView(build: BuildRecord, key: string, data: DraftMapState, file: B
   const grid = read.grid ?? read.proposedGrid;
   const setup = data.setup ?? EMPTY_MAP_SETUP;
   const board = file ? draftMapBoard(file.board, setup, grid, file) : null;
+  const columns = grid && file ? Math.ceil((file.width - grid.offsetX) / grid.cellSize) : null;
+  const rows = grid && file ? Math.ceil((file.height - grid.offsetY) / grid.cellSize) : null;
+  const terrain = setup.terrain ?? [];
   return {
     map: key,
-    allowed: { grids: build.aiGrid, walls: build.aiWalls },
+    allowed: allowedOf(build),
     grid: grid ? { cellSize: grid.cellSize, offsetX: grid.offsetX, offsetY: grid.offsetY, status: read.gridStatus, by: read.gridBy ?? null } : null,
-    columns: grid && file ? Math.ceil((file.width - grid.offsetX) / grid.cellSize) : null,
-    rows: grid && file ? Math.ceil((file.height - grid.offsetY) / grid.cellSize) : null,
+    columns,
+    rows,
+    /**
+     * Every square terrain can cover, inclusive. With an offset, column -1 or row -1 is the strip
+     * the map's edge crops, as is a last column or row that runs past the edge.
+     */
+    terrainSquares: grid && columns !== null && rows !== null
+      ? { columns: { from: grid.offsetX > 0 ? -1 : 0, to: columns - 1 }, rows: { from: grid.offsetY > 0 ? -1 : 0, to: rows - 1 } }
+      : null,
     plainWalls: (file?.board?.walls.length ?? 0) - mapOpenings(file?.board ?? null).length,
     openings: listOpenings(file?.board ?? null, setup, grid).map(({ a: _a, b: _b, ...opening }) => opening),
     lines: setup.lines.map((line, index) => ({ line: index + 1, ...line })),
     marks: setup.marks,
-    problems: !board ? [] : board.ok
-      ? board.blockedLines.map((i) => `${describeDraftLine(setup.lines[i]!, i)} sits on a wall it doesn't cut, so the wall still blocks it.`)
-      : board.problems,
+    /** Permanent terrain you proposed (ADR 0071). Squares not listed are Normal. */
+    terrain: {
+      runs: terrain,
+      squares: terrainTally(terrain),
+      proposedOn: setup.terrainGrid ?? null,
+      state: draftTerrainState(setup, grid),
+    },
+    problems: [
+      ...(!board ? [] : board.ok
+        ? board.blockedLines.map((i) => `${describeDraftLine(setup.lines[i]!, i)} sits on a wall it doesn't cut, so the wall still blocks it.`)
+        : board.problems),
+      ...(file ? terrainProblems(setup, grid, file) : []),
+    ],
   };
 }
 
@@ -288,8 +345,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     void (async () => {
       const found = await ownerBuild(req, res);
       if (!found) return;
-      const body = BuildChoices.safeParse(req.body);
+      const body = BuildChoicesChange.safeParse(req.body);
       if (!body.success) return void res.status(400).json({ error: issueText(body.error) });
+      // A page from before the terrain choice doesn't send it; the store keeps it, inside its write (ADR 0071).
       const build = await store.setBuildChoices(found.build.id, found.build.ownerGmId, body.data);
       if (!build) return void res.status(409).json({ error: "This build is closed." });
       res.json({ build: buildSummary(build) });
@@ -403,10 +461,20 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const map = item.data as unknown as DraftMapState;
       const file = await store.findBuildFile(build.id, map.fileId);
       if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
+      const before = map.setup ?? EMPTY_MAP_SETUP;
+      // The server keeps the grid terrain was proposed on; the page's copy is never taken.
+      const { terrain, terrainGrid: _shown, ...walls } = body.data.setup;
+      const kept = before.terrain?.length ? { terrain: before.terrain, ...(before.terrainGrid ? { terrainGrid: before.terrainGrid } : {}) } : {};
+      if (terrain?.length && !sameJson(normalizeTerrain(terrain), normalizeTerrain(before.terrain ?? []))) {
+        return void res.status(422).json({ error: OWNER_TERRAIN_CLEAR_ONLY });
+      }
+      const setup: DraftMapSetup = { ...walls, ...(terrain?.length === 0 ? {} : kept) };
+      // Clearing terrain alone isn't held back by walls a grid correction has since put off the map.
+      const wallsChanged = WALL_PARTS.some((part) => !sameJson(walls[part], before[part]));
       const read = readMap(build, map, file);
-      const problems = mapSetupProblems(file.board, body.data.setup, read.grid ?? read.proposedGrid, file);
+      const problems = wallsChanged ? mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file) : [];
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup: body.data.setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
+      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
     })().catch(failed(res));
   });
 
@@ -628,7 +696,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         build: { id: build.id, name: build.name, passExpiresAt: build.passExpiresAt },
         ownerName: await store.findBuildOwnerName(build.ownerGmId),
         /** What the owner lets the AI set up on maps (ADR 0053). Only the owner can change these. */
-        allowed: { grids: build.aiGrid, walls: build.aiWalls },
+        allowed: allowedOf(build),
         profile: build.gameProfile,
         files: files.map(fileForPass),
         items: items.map((item) => itemView(item, read)),
@@ -767,30 +835,59 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   });
 
   /**
-   * Sets a map's openings, lines and marks, when the owner allows it (ADR 0053). Each part sent
-   * replaces that part. A map the owner edited, or one already published, is refused by the store.
-   * The store checks again, in the write, that walls are still allowed and that the map is still the
-   * version read here, so the owner turning walls off, or another save at the same moment, wins.
+   * Sets a map's openings, lines and marks (ADR 0053) and its permanent terrain (ADR 0071), each as
+   * far as the owner allows: walls for openings, lines and marks, terrain for terrain, judged by the
+   * parts actually sent, so a terrain-only save works with walls off. A save with any part not
+   * allowed writes nothing. Each part sent replaces that part; `terrain: []` clears it. A map the
+   * owner edited, or one already published, is refused by the store. The store checks again, in the
+   * write, that the parts sent are still allowed and that the map is still the version read here, so
+   * the owner turning a choice off, or another save at the same moment, wins.
    */
   app.put("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
     void (async () => {
       const build = passBuild(res);
-      if (!build.aiWalls) return void res.status(403).json({ error: WALLS_NOT_ALLOWED });
+      // Judged on what was sent before it is checked, so a part not allowed is refused, not explained.
+      const sent = typeof req.body === "object" && req.body !== null ? req.body as Record<string, unknown> : {};
+      const wantsWalls = WALL_PARTS.some((part) => sent[part] !== undefined), wantsTerrain = sent.terrain !== undefined;
+      /** Why the parts sent aren't all allowed, or null. */
+      const refusal = (allows: Pick<BuildRecord, "aiWalls" | "aiTerrain">) => {
+        const wallsOff = wantsWalls && !allows.aiWalls, terrainOff = wantsTerrain && !allows.aiTerrain;
+        if (!wallsOff && !terrainOff) return null;
+        const reason = [wallsOff ? WALLS_NOT_ALLOWED : "", terrainOff ? TERRAIN_NOT_ALLOWED : ""].filter(Boolean).join(" ");
+        // When the other part was allowed, say it wasn't saved either.
+        return wallsOff !== terrainOff && wantsWalls && wantsTerrain ? `${reason}${NOTHING_SAVED}` : reason;
+      };
+      if (!wantsWalls && !wantsTerrain && !build.aiWalls && !build.aiTerrain) return void res.status(403).json({ error: WALLS_NOT_ALLOWED });
+      const refused_ = refusal(build);
+      if (refused_) return void res.status(403).json({ error: refused_ });
       const change = DraftMapSetupChange.safeParse(req.body);
       if (!change.success) return void res.status(422).json({ error: issueText(change.error) });
       const found = await passMap(res, build, String(req.params.key));
       if (!found) return;
       const { item, data, file } = found;
       if (!file) return void res.status(409).json({ error: "This map's file isn't in the build any more." });
-      const setup = { ...(data.setup ?? EMPTY_MAP_SETUP), ...change.data };
       const read = readMap(build, data, file);
-      const problems = mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file);
+      const grid = read.grid ?? read.proposedGrid;
+      const { terrain, ...wallParts } = change.data;
+      const { terrain: _terrain, terrainGrid: _terrainGrid, ...rest } = { ...(data.setup ?? EMPTY_MAP_SETUP), ...wallParts };
+      const before = data.setup ?? EMPTY_MAP_SETUP;
+      let setup: DraftMapSetup = { ...rest, ...(before.terrain?.length ? { terrain: before.terrain, ...(before.terrainGrid ? { terrainGrid: before.terrainGrid } : {}) } : {}) };
+      // Each part is checked only when sent, so saving one isn't held back by another the grid has since moved.
+      const problems = changesWalls(change.data) ? mapSetupProblems(file.board, setup, grid, file) : [];
+      if (terrain !== undefined) {
+        problems.push(...draftTerrainProblems(terrain, grid, file));
+        // Stored with the grid it was proposed on, so a grid correction can't silently move it (ADR 0071).
+        setup = { ...rest, ...(terrain.length > 0 && grid ? { terrain: normalizeTerrain(terrain), terrainGrid: terrainGridOf(grid) } : {}) };
+      }
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
       try {
         await store.saveBuildItem({ buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, BUILD_LIMITS.mapsPerBuild,
-          { requireAiWalls: true, expectedUpdatedAt: item.updatedAt });
+          { requireAiWalls: wantsWalls, requireAiTerrain: wantsTerrain, expectedUpdatedAt: item.updatedAt });
       } catch (err) {
-        if (err instanceof BuildChoiceOffError) return void res.status(403).json({ error: WALLS_NOT_ALLOWED });
+        if (err instanceof BuildChoiceOffError) {
+          const now_ = await store.findBuild(build.id, build.ownerGmId);
+          return void res.status(403).json({ error: refusal(now_ ?? { aiWalls: false, aiTerrain: false }) ?? WALLS_NOT_ALLOWED });
+        }
         if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: AI_READ_OLD_VERSION });
         if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
         return void res.status(409).json({ error: err.message });
@@ -864,6 +961,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       walls: built.ok ? built.board.walls : file.board?.walls ?? [],
       openings: listOpenings(file.board, setup, grid),
       marks: grid ? setup?.marks ?? [] : [],
+      // Only terrain that fits this grid: stale terrain would be drawn in the wrong squares (ADR 0071).
+      terrain: grid && draftTerrainState(setup, grid) === "ready" ? setup?.terrain ?? [] : [],
     });
     return { layout, gridShown: grid !== null };
   }

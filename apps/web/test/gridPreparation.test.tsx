@@ -345,7 +345,7 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     }) })]);
   });
 
-  it("keeps fitted setup private through the token-placement dialog and retains the Sight step", async () => {
+  it("keeps fitted setup private through the token-placement dialog and keeps the Change map steps", async () => {
     signedIn();
     const lookup = deferred<GridDetectionStatus | null>();
     vi.mocked(api.detection.library).mockReturnValue(lookup.promise);
@@ -353,20 +353,22 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     state.tokens.hero = { id: "hero", name: "Hero", position: { x: 100, y: 100 }, size: 1, rotation: 0,
       color: "#ffffff", imageUrl: null, assetId: null, ownerIds: [], hidden: false, stats: EMPTY_STATS, conditions: [] };
     const fake = roomEditor(state);
-    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
-    const editor = screen.getByRole("dialog", { name: "Edit map" });
+    fireEvent.click(screen.getByRole("button", { name: "Change map" }));
+    const editor = screen.getByRole("dialog", { name: "Change map" });
     fireEvent.click(within(editor).getByRole("button", { name: "From library" })); await flush();
     fireEvent.click(screen.getByTitle(asset.name)); await flush();
     expect(screen.getByText("Checking grid…")).toBeTruthy();
     expect(screen.queryByRole("tab")).toBeNull();
     await act(async () => lookup.resolve(fitted));
     expect(cell().value).toBe("64.125");
-    expect(within(editor).getByRole("tab", { name: "5 · Sight" })).toBeTruthy();
+    expect(within(editor).getByRole("tab", { name: "2 · Grid" })).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Apply map" })); await flush();
     const policy = within(screen.getByRole("dialog", { name: "Tokens already on the table" }));
     expect(fake.commands).toEqual([]); expect(api.library.update).not.toHaveBeenCalled();
     fireEvent.click(policy.getByRole("radio", { name: /^Keep positions/ }));
     fireEvent.click(policy.getByRole("button", { name: "Apply map" })); await flush();
+    // Any token choice returns to the board once the map is applied (map-editor).
+    expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull();
     expect(fake.commands).toEqual([expect.objectContaining({ type: "scene.setMap", tokenPolicy: "keep",
       map: expect.objectContaining({ assetId: asset.id }), grid: expect.objectContaining({
         cellSize: 64.125, offsetX: 7.25, offsetY: 13.5, unitsPerCell: 10, unitLabel: "m",
@@ -380,7 +382,7 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     const fake = roomEditor();
     fireEvent.click(screen.getByRole("button", { name: "From library" })); await flush();
     fireEvent.click(screen.getByTitle(asset.name)); await flush();
-    const dialog = screen.getByRole("dialog", { name: "Edit map" });
+    const dialog = screen.getByRole("dialog", { name: "Change map" });
     expect(screen.getByText("Checking grid…")).toBeTruthy();
     if (action === "X") fireEvent.click(dialog.querySelector(".modal-close")!);
     else if (action === "button") fireEvent.click(screen.getByText("Set up manually"));
@@ -392,7 +394,7 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     expect(api.detection.library).toHaveBeenCalledWith(asset.id, expect.any(AbortSignal));
     expect(api.detection.room).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByLabelText("Close"));
-    expect(screen.queryByRole("dialog", { name: "Edit map" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull();
     expect(fake.commands).toEqual([]);
   });
 
@@ -416,7 +418,7 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     fireEvent.click(screen.getByTitle(asset.name)); await flush();
     fireEvent.click(screen.getByText("Set up manually"));
     fireEvent.click(screen.getByRole("tab", { name: /· Map$/ }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Edit map" })).getByRole("button", { name: "From library" })); await flush();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Change map" })).getByRole("button", { name: "From library" })); await flush();
     fireEvent.click(screen.getByTitle(nextAsset.name)); await flush();
     expect(screen.getByText("Checking grid…")).toBeTruthy();
     await act(async () => old.resolve({ status: "suggested", attempt: 1, candidate: { cellSize: 120, offsetX: 0, offsetY: 0 } }));
@@ -444,7 +446,7 @@ describe("upload and room preparation entry points (FR-GM-03, KAN-59)", () => {
     const fake = roomEditor();
     const choose = async (selected: LibraryAsset, fromEditor = false) => {
       if (fromEditor) {
-        const dialog = screen.getByRole("dialog", { name: "Edit map" });
+        const dialog = screen.getByRole("dialog", { name: "Change map" });
         fireEvent.click(within(dialog).getByRole("tab", { name: /· Map$/ }));
         fireEvent.click(within(dialog).getByRole("button", { name: "From library" }));
       } else fireEvent.click(screen.getByRole("button", { name: "From library" }));

@@ -1,9 +1,11 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Check, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { PopoverButton } from "../ui/Popover";
 import { INITIAL_SCENE_ID, MAX_SCENES, MAX_SCENE_NAME, sceneNamesOf, type CommandInput, type RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { ScenePreparationContext } from "./ScenePreparationContext";
+import { CarryChecklist, carriedByDefault, carryCandidates, useTicks } from "./CarryChecklist";
+import { CarryContext } from "./CarryContext";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
 import { t } from "../i18n/locale";
@@ -78,18 +80,32 @@ function SceneOptions({ scenes, viewed, liveId, onPick }: { scenes: [string, str
   </div>;
 }
 
-/** A nonmodal popup leaves the private board available for preparation. */
+/**
+ * A nonmodal popup leaves the private board available for preparation. Activating is the switch,
+ * so this is where the GM chooses which tokens to carry from the live board (ADR 0068).
+ */
 export function SceneActivationNotice({ state, connection }: Props) {
   const preparation = useContext(ScenePreparationContext);
+  const carry = useContext(CarryContext);
   const { busy, error, run } = useSceneCommand(connection);
+  const live = preparation?.live ?? null;
+  const candidateIds = useMemo(() => (live ? carryCandidates(live).map((t) => t.id) : []), [live]);
+  const byDefault = useMemo(() => (live ? carriedByDefault(live) : () => false), [live]);
+  const ticks = useTicks(candidateIds, byDefault);
   if (!preparation?.preparing) return null;
+  const activate = async () => {
+    const tokenIds = carry ? [...ticks.ticked] : [];
+    const ok = await run({ type: "scene.switch", sceneId: state.activeSceneId ?? INITIAL_SCENE_ID, ...(tokenIds.length > 0 && { carryTokenIds: tokenIds }) });
+    if (ok && tokenIds.length > 0) carry?.carried(tokenIds);
+  };
   return <section className="scene-activation-popup" aria-label={t("scenes.activation")}>
     <div>
       <p>{t("scenes.notActive")}</p>
       <span>{t("scenes.activateHint")}</span>
+      {live && carry && <CarryChecklist state={live} ticked={ticks.ticked} onToggle={ticks.toggle} disabled={busy} />}
       {error && <p className="error" role="alert">{error}</p>}
     </div>
-    <button type="button" disabled={busy} onClick={() => { void run({ type: "scene.switch", sceneId: state.activeSceneId ?? INITIAL_SCENE_ID }); }}>{t("scenes.activate")}</button>
+    <button type="button" disabled={busy} onClick={() => { void activate(); }}>{t("scenes.activate")}</button>
   </section>;
 }
 

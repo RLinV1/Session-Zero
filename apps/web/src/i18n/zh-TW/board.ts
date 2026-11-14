@@ -89,4 +89,6 @@ export const boardZhTW = {
   "board.hint.terrain": "拖曳塗上地形格 · 所有玩家都看得到地形 · Esc 或滑鼠右鍵取消",
   "board.hint.doors": "按一下門或窗以改變狀態 · Esc 結束",
   "card.quickHp": "快速調整 HP",
+  "board.placingCarried": ({ n }) => `正在放置 ${n} 枚等待中的棋子：按一下格子`,
+  "board.carriedGhost": ({ name, n }) => (n > 1 ? `${name}與其他 ${n - 1} 枚` : name),
 } satisfies Catalog<typeof board>;

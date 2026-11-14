@@ -29,6 +29,8 @@ Every Traditional Chinese string in the app, the board, server messages and the 
 | Board | 棋盤 | The map surface at the table. |
 | Token | 棋子 | Alternative to confirm: 標記. 棋子 reads as a tabletop piece; 標記 collides with "mark"/"marker". Measure word 枚: 一枚棋子, 3 枚棋子, 這枚棋子 (settled in the task 8.4 review). |
 | Map | 地圖 | |
+| Change map / Edit map | 更換地圖／編輯地圖 | Change map replaces the image; Edit map prepares the one on the table. |
+| Save to library | 存入素材庫 | Saves the room's map, grid, walls, fog and terrain to the library. |
 | Grid / cell | 網格／格 | "5 ft per cell" → 每格 5 ft. |
 | Grid calibration | 網格校準 | |
 | Scene | 場景 | |
