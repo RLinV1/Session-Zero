@@ -650,6 +650,16 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
       }),
     );
   };
+  /** The guest demo's Show me: bring the step's control on screen, without doing the step. */
+  const revealTutorialStep = (step: string) => {
+    if (step === "map") return chooseMap();
+    if (step === "token" || step === "roll") {
+      setTab(step === "token" ? "tokens" : "dice");
+      return openSidebar(() => {});
+    }
+    // A hidden tool rail leaves only its toggle.
+    document.querySelector<HTMLButtonElement>('.rail-toggle[aria-expanded="false"]')?.click();
+  };
   /** The editor lives in the Tokens tab, so editing from the board goes there (token-card-actions). */
   const editToken = (tokenId: string | null) => {
     if (tokenId === null) return setEditingTokenId(null);
@@ -807,7 +817,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         }
       />
       {features.tableChrome && you.role === "gm" && !readOnly && (
-        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} />
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} />
       )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}

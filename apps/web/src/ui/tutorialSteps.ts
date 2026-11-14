@@ -1,6 +1,6 @@
 /** The step logic of the guest room's interactive demo (guest-gm-hosting, D8a). Pure, no React. */
 
-export const TUTORIAL_STEPS = ["table", "invite", "token", "move", "fog", "roll", "done"] as const;
+export const TUTORIAL_STEPS = ["table", "invite", "map", "terrain", "token", "move", "fog", "roll", "done"] as const;
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number];
 
 /** A step index, "declined" or "done"; null means the question has not been asked yet. */
@@ -13,11 +13,17 @@ export interface TutorialFacts {
   gmRolls: number;
   moves: number;
   invites: number;
+  /** Changes to the grid, map image or walls. */
+  mapEdits: number;
+  /** Changes to the terrain. */
+  terrainEdits: number;
 }
 
 const isDone: Record<TutorialStep, (f: TutorialFacts) => boolean> = {
   table: () => false, // moves on with the Start button
   invite: (f) => f.invites > 0,
+  map: (f) => f.mapEdits > 0,
+  terrain: (f) => f.terrainEdits > 0,
   token: (f) => f.tokens > 0,
   move: (f) => f.moves > 0,
   fog: (f) => f.fog > 0,
@@ -36,6 +42,9 @@ export function settle(index: number, facts: TutorialFacts): number {
 export function countMoves(prev: Record<string, string>, next: Record<string, string>): number {
   return Object.keys(next).filter((id) => prev[id] !== undefined && prev[id] !== next[id]).length;
 }
+
+/** 1 when a state key (a JSON string of what the GM edits) is not the one seen before, else 0. */
+export const countKeyChange = (prev: string, next: string): number => (prev === next ? 0 : 1);
 
 const storageKey = (roomId: string) => `vtt.tutorial.${roomId}`;
 

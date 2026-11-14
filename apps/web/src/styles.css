@@ -94,6 +94,7 @@
   --vignette: rgba(3, 5, 8, 0.66);
   --bloom-strength: 0.5;
   --shadow-tint: rgba(4, 7, 12, 0.85);
+  --tutorial-dim: rgba(4, 6, 10, 0.5);
   --grain-opacity: 0.055;
 
   color-scheme: dark;
@@ -2281,6 +2282,7 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
   --control-border: #7a8394;   /* 3.28:1 */
   --bloom-strength: 0.42;
   --shadow-tint: rgba(44, 58, 84, 0.34);
+  --tutorial-dim: rgba(28, 36, 52, 0.42);
   --grain-opacity: 0.022;
   color-scheme: light;
 }
@@ -2946,13 +2948,28 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
   left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
   width: auto; max-width: 28rem; margin-inline: auto;
 }
+.guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
+/* The dim is the ring's own shadow, so it needs no mask and never takes a click. Under the card (40). */
+.tutorial-spotlight {
+  position: fixed; z-index: 39; pointer-events: none;
+  border: 2px solid var(--focus); border-radius: var(--radius-control);
+  box-shadow: 0 0 0 9999px var(--tutorial-dim);
+}
+.guest-tutorial.beside::before {
+  content: ""; position: absolute; left: var(--arrow-x, 1.5rem); width: 12px; height: 12px;
+  background: var(--raised); transform: translateX(-50%) rotate(45deg);
+}
+.guest-tutorial.beside[data-side="below"]::before { top: -7px; border-left: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong); }
+.guest-tutorial.beside[data-side="above"]::before { bottom: -7px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 @media (prefers-reduced-motion: no-preference) {
   .guest-tutorial { animation: modal-in 0.16s ease-out; }
+  .tutorial-spotlight { animation: tutorial-ring 1.6s ease-in-out infinite; }
 }
+@keyframes tutorial-ring { 50% { border-color: color-mix(in srgb, var(--focus) 30%, transparent); } }
 
 /* What was just rolled (board-dice-rolls, throw-dice-on-board); never takes pointer input. */
 .board-roll-popup {
@@ -4505,7 +4522,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .start-form { display: flex; flex-direction: column; gap: var(--space-5); }
 .start-maps { border: 0; margin: 0; padding: 0; min-width: 0; }
 .start-maps legend { padding: 0; margin-bottom: var(--space-3); font-weight: 650; }
-.start-map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.start-map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 16rem)); gap: var(--space-3); }
 .start-map {
   display: flex; flex-direction: column; gap: var(--space-2); height: 100%;
   padding: var(--space-2); cursor: pointer;
@@ -4514,7 +4531,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .start-map:hover { border-color: var(--border-strong); }
 .start-map:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .start-map:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.start-map img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-control); }
+.start-map img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-control); }
 .start-map span { font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .start-fields { display: flex; flex-direction: column; gap: var(--space-4); max-width: 27rem; }
 .guest-note { max-width: 40ch; }

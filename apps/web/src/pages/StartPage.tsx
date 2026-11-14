@@ -165,7 +165,7 @@ function StartForm({ onPreAccount }: { onPreAccount: () => void }) {
             <li key={map.slug}>
               <label className="start-map">
                 <input type="radio" name="shippedMap" className="sr-only" value={map.slug} checked={slug === map.slug} onChange={() => setSlug(map.slug as ShippedMapSlug)} />
-                <img src={SHIPPED_MAP_THUMBS[map.slug]?.src ?? map.url} alt="" width={640} height={457} loading="lazy" decoding="async" />
+                <img src={SHIPPED_MAP_THUMBS[map.slug]?.src ?? map.url} alt="" width={640} height={360} loading="lazy" decoding="async" />
                 <span>{mapName(map.slug)}</span>
               </label>
             </li>
