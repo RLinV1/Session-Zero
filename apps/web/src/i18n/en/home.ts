@@ -11,8 +11,8 @@ export const home = {
   "home.signIn": "Sign in",
   "home.createAccount": "Create account",
 
-  "home.hero.title": "Your battle map, ready to play tonight.",
-  "home.hero.body": "Upload a map, set the fog and walls, send a link. Players join from any browser without an account.",
+  "home.hero.title": "Free forever, and ready to play tonight.",
+  "home.hero.body": "Session Zero suggests your grid and walls, and lets your own AI app take a player seat. Players still join from a link, with no account.",
   "home.hero.start": "Start a room",
   "home.hero.join": "Join a game",
   "home.hero.joined.title": "Rooms you've joined",
@@ -26,12 +26,45 @@ export const home = {
   "home.facts.label": "At a glance",
   "home.facts.noAccount": "No account",
   "home.facts.noAccountDetail": "for players. They join from a link, in any browser.",
+  "home.facts.free": "Free forever",
+  "home.facts.freeDetail": "for every feature, with no paid tier.",
   "home.facts.upTo": ({ n }: { n: number }) => `Up to ${n}`,
   "home.facts.players": "players in one room.",
-  "home.facts.under": ({ ms }: { ms: number }) => `Under ${ms} ms`,
-  "home.facts.ping": "for a ping to reach everyone at the table.",
   "home.facts.undo": "Undo",
   "home.facts.undoDetail": "for moves, fog, walls and hit points.",
+
+  "home.diff.title": "What sets Session Zero apart.",
+  "home.diff.body": "Help with setup, a seat for your own AI, and nothing to pay for.",
+  "home.diff.aiNote": "Session Zero doesn't run an AI itself. Its use counts against your own AI app's usage limits, and a person is still the GM.",
+  "home.diff.detect.title": "Grid and walls, suggested.",
+  "home.diff.detect.body":
+    "Upload a map and Session Zero suggests the grid and detects the walls. You check a preview, then apply it or discard it. Detection can miss or add walls, so look it over. Find it in the map editor.",
+  "home.diff.detect.grid": ({ px }: { px: number }) => `Suggested grid: ${px} px squares.`,
+  "home.diff.detect.apply": "Apply",
+  "home.diff.detect.discard": "Discard",
+  "home.diff.detect.again": "Detect again",
+  "home.diff.detect.suggested": "Dashed lines are suggested walls. Apply keeps them, Discard drops them.",
+  "home.diff.detect.applied": "Applied. The walls are now part of the map.",
+  "home.diff.detect.discarded": "Discarded. The map is as it was.",
+  "home.diff.seat.title": "Give your own AI a player seat.",
+  "home.diff.seat.body":
+    "Add Session Zero to your own AI app as a connector (MCP). The AI joins your room as a player and sees only what a player can see. Tell it what to do in plain words. Find it under Share › Play with your AI.",
+  "home.diff.seat.preview": "Preview only. No AI is running here.",
+  "home.diff.seat.name": "Oswin (AI)",
+  "home.diff.seat.orders": "Tell the AI what to do",
+  "home.diff.seat.north": "Move Oswin two squares north",
+  "home.diff.seat.goblin": "Move Oswin next to the goblin",
+  "home.diff.seat.back": "Move Oswin back to the start",
+  "home.diff.seat.idle": "Pick an instruction. Oswin (AI) waits at the start.",
+  "home.diff.seat.northDone": "Oswin (AI) moved two squares north.",
+  "home.diff.seat.goblinDone": "Oswin (AI) moved next to the goblin.",
+  "home.diff.seat.backDone": "Oswin (AI) moved back to the start.",
+  "home.diff.build.title": "Let your AI fill in your game.",
+  "home.diff.build.body":
+    "Your AI app reads your rules, character sheets and art, then fills a private draft. You review it, fix what's wrong and publish what you choose. Find it under AI builds in the library.",
+  "home.diff.open.title": "Open source.",
+  "home.diff.open.body": "Session Zero is MIT licensed, so anyone can host their own copy.",
+  "home.diff.open.link": "View the source code",
 
   "home.prepare.title": "Bring the map you already have.",
   "home.prepare.body":
@@ -136,7 +169,7 @@ export const home = {
   "home.alt.forge-hall":
     "A pencil-drawn battle map of a dwarven forge hall on toned paper: square flagstones, two glowing hearths, an anvil, a quench trough and a cart track across the floor.",
   "home.alt.moor-inn":
-    "An ink floor plan of a timber-framed coaching inn: common room with long tables and a hearth, kitchen, corridor, two guest rooms, a stair, and doors and windows in every wall.",
+    "An ink map of the ground floor of a timber-framed coaching inn: common room with long tables and a hearth, kitchen, corridor, two guest rooms, a stair, and doors and windows in every wall.",
   "home.alt.goblin-camp": "A linocut battle map of a goblin raiding camp in the ruins of a forest watchtower.",
   "home.alt.merchant-deck":
     "A two-colour risograph battle map of a merchant ship's deck at anchor: planked deck, two masts, a cargo hatch, cannons along the rails and a quarterdeck with the wheel.",

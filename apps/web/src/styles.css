@@ -4327,3 +4327,31 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .prepare-step + .prepare-step { margin-top: 2rem; }
   .phone-frame { width: min(15rem, 64vw); }
 }
+
+/* ---- Differentiators: what sets the product apart (DifferentiatorsSection) ---- */
+.diff-section { padding-top: 0; }
+.diff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.diff-tile {
+  display: flex; flex-direction: column; gap: var(--space-3); min-width: 0;
+  padding: var(--space-5); background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-surface);
+}
+.diff-tile > p { margin: 0; color: var(--muted); line-height: 1.5; }
+.diff-tile h4 { margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }
+.diff-tile > .diff-note { font-size: 0.9rem; color: var(--text); }
+.diff-preview {
+  align-self: flex-start; margin: 0; padding: 0.2rem 0.6rem; font-size: 0.85rem; color: var(--text);
+  border: 1px solid var(--control-border); border-radius: var(--radius-control);
+}
+.diff-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.diff-orders { flex-wrap: wrap; }
+.diff-link { align-self: flex-start; color: var(--accent-text); font-weight: 600; text-underline-offset: 3px; }
+.diff-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+/* Suggested walls are dashed until the GM applies them. */
+.walls-drawing .wall-stroke.is-suggested { stroke-dasharray: 14 10; stroke-linecap: butt; }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="reduced"]) .seat-token { transition: left 0.5s cubic-bezier(0.16, 1, 0.3, 1), top 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+}
+@media (max-width: 760px) {
+  .diff-grid { grid-template-columns: 1fr; }
+  .diff-tile { padding: var(--space-4); }
+}

@@ -87,3 +87,13 @@ describe("the page's calls to action (gm-home: Each path names its reader)", () 
     expect(main.textContent).not.toMatch(/Set up a room/);
   });
 });
+
+describe("the differentiators come first under Running a game (gm-home: A differentiators section opens the running-a-game part)", () => {
+  it("is the first child of the running-a-game part, before the prepare section", () => {
+    render(<HomePage />);
+    const part = document.querySelector<HTMLElement>('section[aria-labelledby="running-a-game"]')!;
+    const sections = [...part.querySelectorAll(":scope > section")];
+    expect(sections[0]!.classList.contains("diff-section")).toBe(true);
+    expect(sections[1]!.classList.contains("prepare-section")).toBe(true);
+  });
+});
