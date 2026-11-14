@@ -668,7 +668,7 @@ function MapSection(props: {
                 {t("editor.title.change")}
               </button>
             )}
-            <button ref={editMapRef} type="button" className="secondary small" onClick={(e) => {
+            <button ref={editMapRef} type="button" className="secondary small" data-tutorial="map" onClick={(e) => {
               e.currentTarget.focus();
               openEditor("edit");
             }}>
