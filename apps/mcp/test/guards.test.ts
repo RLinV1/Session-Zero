@@ -174,7 +174,11 @@ describe("limits on joins (FR-PL-08, FR-PL-09)", () => {
     const polite = await AiClient.connect(stack.mcp.url, { "x-forwarded-for": "203.0.113.2" });
 
     // The room server allows 300 invite requests per 15 minutes per address, and wrong codes count (ADR 0051).
-    const batches = await Promise.all(Array.from({ length: 300 }, (_, i) => noisy.call("join_room", { invite: `wrong${i}`, name: "Spammer" })));
+    // Sent 25 at a time: Windows loopback refuses connections past the listen backlog.
+    const batches = [];
+    for (let start = 0; start < 300; start += 25) {
+      batches.push(...(await Promise.all(Array.from({ length: 25 }, (_, j) => noisy.call("join_room", { invite: `wrong${start + j}`, name: "Spammer" })))));
+    }
     expect(batches.every((r) => /Invite not found/.test(r.text))).toBe(true);
     const blocked = await noisy.call("join_room", { invite: inviteCode, name: "Spammer" });
     expect(blocked.isError).toBe(true);

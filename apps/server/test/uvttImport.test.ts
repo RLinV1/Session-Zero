@@ -49,6 +49,7 @@ async function setup() {
 }
 
 describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/23)", () => {
+  // First test pays the UVTT validator's cold start; slow under a loaded full run.
   it("keeps drafts private, uses current tokens, delivers one scene, retries once, undoes exactly and survives reload", async () => {
     const { creds, gm, gm2, alice, bob, ac, bc } = await setup();
     await seedTerrain(gm);
@@ -108,7 +109,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
       const missing = await restarted.command({ type: "scene.importUVTT", importId: next.id, revision: next.revision });
       expect(missing.type).toBe("rejected"); restarted.close();
     } finally { await restart.close(); }
-  });
+  }, 15_000);
   it("publishes explicitly designated portals through existing player controls without UVTT metadata", async () => {
     const { creds, gm, gm2, alice, bob } = await setup();
     const prep = await prepared(creds.roomId, creds.guestToken);
@@ -287,6 +288,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     await prepared(creds.roomId, creds.guestToken);
     expect(validate).toHaveBeenCalledTimes(1); expect(put).toHaveBeenCalledTimes(1); expect(record).toHaveBeenCalledTimes(1);
   });
+  // 20 UVTT preparations run about 24s on Windows.
   it("shares the owner's draft quota across distinct GM seats without blocking another owner", async () => {
     let now = Date.now();
     await server.close(); server = await startServer(store, { now: () => now });
@@ -306,7 +308,7 @@ describe("private atomic UVTT room import/export (KAN-43/44/49, FR-GM-06/07/12/2
     const other = await server.createRoom("Other owner");
     await prepared(other.roomId, other.guestToken);
     expect(validate).toHaveBeenCalledTimes(1);
-  }, 15_000);
+  }, 60_000);
   it("keeps the general JSON limit and supports large draft geometry within the dedicated limit", async () => {
     const creds = await server.createRoom(); const prep = await prepared(creds.roomId, creds.guestToken);
     const walls = Array.from({ length: 1500 }, (_, i) => ({ a: { x: i % 399, y: 0 }, b: { x: i % 399 + 1, y: 100 }, source: "objects_line_of_sight", uvttPortal: { position: { x: 20, y: 30 }, rotation: 1, closed: false, freestanding: true } }));

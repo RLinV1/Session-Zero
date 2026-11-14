@@ -32,7 +32,7 @@ Continue the existing implementation and verify the final branch. Sign-up remain
 
 ## 6. Verification (orchestrator)
 
-- [ ] 6.1 Run `npm run lint && npm run typecheck && npm test` once. Verify all three pass.
+- [x] 6.1 Run `npm run lint && npm run typecheck && npm test` once. Verify all three pass.
 - [x] 6.2 With Playwright Chromium, against `vite preview` with the headers on and the server on the isolated ports: sign in with the seeded dev account, open the dashboard, create a room, upload a map, place tokens, roll dice, and join from the invite in a second context. Verify console/page-error collectors report no CSP violations, and that an iframe of the app on another origin is refused.
 - [x] 6.3 Verify `openspec validate security-review-findings --strict` passes.
 
@@ -43,4 +43,4 @@ Continue the existing implementation and verify the final branch. Sign-up remain
 - [x] 7.2 Reduce the font grace period to 100 ms, preserving the existing fallback and late-font relabeling. Load effect, condition and fog art only when used.
 - [x] 7.3 Verify production browser startup stays below the font-gate budget, starts no decorative requests before the empty board appears, and still loads condition and player-fog art when needed. See verification-log.md for the measured results.
 
-- Verification note: lint, typecheck, production build, targeted regressions, browser checks, audit gate, Compose config and OpenSpec validation pass. The full local test run has unresolved integration failures; 6.1 remains unchecked. See verification-log.md.
+- Verification note: lint, typecheck, production build, targeted regressions, browser checks, audit gate, Compose config and OpenSpec validation pass. The full local run now passes on Windows too: image checks read a buffer so libvips never locks the upload, the MCP join burst goes in batches, and server and web tests default to a 15 s timeout. See verification-log.md.
