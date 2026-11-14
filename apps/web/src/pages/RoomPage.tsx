@@ -1,5 +1,5 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { GearSix, House } from "@phosphor-icons/react";
 import { areaEffectStage, can, diceRollsOf, type AttackRange, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { Board, type BoardHandle, type DiceBoard } from "../board/Board";
@@ -28,6 +28,8 @@ import { createScenePreparation } from "../net/scenePreparation";
 import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { SceneSetupModal } from "../panels/SceneSetupModal";
 import { SceneActivationNotice, SceneSwitcher } from "../panels/ScenesPanel";
+import { CarryContext } from "../panels/CarryContext";
+import { StagedWaitingList, WaitingTray } from "../panels/StagedTokens";
 import { ChatPanel } from "../panels/ChatPanel";
 import { PanelTabs, RoomPanel, isTabId, type TabBadges, type TabId } from "../panels/RoomPanel";
 import { trayRoll, type RollThrow } from "../panels/DicePanel";
@@ -209,7 +211,7 @@ function SceneRoom(props: { roomId: string; connection: RoomConnection; token: s
   const activeId = live.state?.activeSceneId ?? "initial";
   const preparing = viewed.you?.role === "gm" && preparation.preparing;
   const features = preparing ? { ...props.features, tabs: ["tokens", "gm"] as const, notices: false } : props.features;
-  return <ScenePreparationContext.Provider value={{ activeId, preparing, preview: preparation.preview }}>
+  return <ScenePreparationContext.Provider value={{ activeId, preparing, preview: preparation.preview, live: live.state }}>
     <Room {...props} connection={preparation.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
   </ScenePreparationContext.Provider>;
 }
@@ -290,6 +292,17 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   const toggleGroupToken = useCallback((tokenId: string) => setGroupTokenIds((ids) => (ids.includes(tokenId) ? ids.filter((id) => id !== tokenId) : [...ids, tokenId])), []);
   const latestState = useRef(state);
   latestState.current = state;
+  // Carried tokens (ADR 0068): only this client's own apply or Activate starts placing them, once,
+  // when they arrive. The board remounts on a scene switch, so this waits here, not in the board.
+  const scenePreparation = useContext(ScenePreparationContext);
+  const [pendingPlacement, setPendingPlacement] = useState<string[] | null>(null);
+  const carryContext = useMemo(() => ({ carried: (tokenIds: string[]) => setPendingPlacement(tokenIds) }), []);
+  const stagedNow = state?.staged;
+  useEffect(() => {
+    if (!pendingPlacement || !stagedNow) return;
+    const waiting = pendingPlacement.filter((id) => Object.hasOwn(stagedNow, id));
+    if (waiting.length > 0 && boardRef.current?.placeStaged(waiting)) setPendingPlacement(null);
+  }, [pendingPlacement, stagedNow]);
   /** Every token the picked template touches, hidden ones included: the GM sees them all. */
   const pickTemplate = useCallback((templateId: string) => {
     const room = latestState.current;
@@ -645,7 +658,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   };
 
   return (
-    <NukeHealthContext.Provider value={nukeHealth.held}><div
+    <NukeHealthContext.Provider value={nukeHealth.held}><CarryContext.Provider value={editing ? null : carryContext}><div
       className={["room", compact && "compact", collapsed && "sidebar-collapsed"].filter(Boolean).join(" ")}
       style={panelWidth !== null && !compact ? ({ "--panel-width": `${clampPanelWidth(panelWidth, window.innerWidth)}px` } as CSSProperties) : undefined}
     >
@@ -781,6 +794,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         overlay={
           <>
             {!readOnly && you.role === "gm" && <SceneActivationNotice state={state} connection={connection} />}
+            {/* Carried tokens waiting off the map (ADR 0068): the GM's list on the live board, a player's own tray. */}
+            {!readOnly && !editing && you.role === "gm" && !scenePreparation?.preparing && (
+              <StagedWaitingList state={state} onPlace={(tokenIds) => { boardRef.current?.placeStaged(tokenIds); }} />
+            )}
+            {!readOnly && you.role === "player" && <WaitingTray state={state} you={you} />}
             {!shownState!.scene.map && !replaying && (
               <BoardEmptyState isGm={you.role === "gm" && !readOnly} onChooseMap={() => chooseMap()} />
             )}
@@ -887,7 +905,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           onClose={() => setReviewing(null)}
         />
       )}
-    </div></NukeHealthContext.Provider>
+    </div></CarryContext.Provider></NukeHealthContext.Provider>
   );
 }
 

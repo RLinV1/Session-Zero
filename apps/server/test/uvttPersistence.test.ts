@@ -106,7 +106,10 @@ describe.skipIf(!database || !endpoint)("UVTT Postgres/S3 persistence (FR-REC-02
         expect(player.state.walls[restoredPortal.id]).toEqual({ id: restoredPortal.id, a: restoredPortal.a, b: restoredPortal.b, portal: restoredPortal.portal });
         expect(player.rawLog.join("\n")).not.toContain('"uvttPortal"');
       }
-      const exported = await fetch(`${base}/api/rooms/${roomId}/uvtt/export`, { headers: { authorization: `Bearer ${guestToken}` } });
+      // Export lives in the library (ADR 0070): save the room's map there, then export that copy.
+      const saved = await fetch(`${base}/api/rooms/${roomId}/map/library`, { method: "POST", headers: { authorization: `Bearer ${guestToken}`, cookie: owner.cookie, "content-type": "application/json" }, body: "{}" });
+      expect(saved.status).toBe(201); const { assetId } = await saved.json() as { assetId: string };
+      const exported = await fetch(`${base}/api/library/${assetId}/export`, { headers: { cookie: owner.cookie } });
       expect(exported.status).toBe(200); const output = await exported.json() as { image: string; portals: { closed: boolean }[] };
       expect(Buffer.from(output.image, "base64")).toEqual(bytes); expect(output.portals[0]?.closed).toBe(false);
       expect((await gm.command({ type: "scene.importUVTT", importId: prep.id, revision: 1 })).type).toBe("rejected");

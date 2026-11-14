@@ -17,10 +17,10 @@ is not evidence that it ships.
 
 ## 13.1 Product scope, identity and entry
 
-**A signed-out GM may start a guest room on built-in art only** ([ADR 0068](adr/0068-guest-gm-hosting.md)).
+**A signed-out GM may start a guest room on built-in art only** ([ADR 0072](adr/0072-guest-gm-hosting.md)).
 Uploads, the library and saved rooms need a free account. Keep FR-GM-01 and the
 non-null `rooms.owner_user_id`. Do not introduce unclaimed-room authority, expiry or
-ownership transfer in the Core Loop, with two exceptions from ADR 0068: a guest room
+ownership transfer in the Core Loop, with two exceptions from ADR 0072: a guest room
 expires after 30 days without play, and the explicit move transfers it into an account.
 Home says “No account needed to start. A free account keeps your rooms on any device and
 lets you upload your own maps.” beside the primary action.

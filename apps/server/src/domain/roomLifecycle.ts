@@ -19,6 +19,16 @@ import type { RoomStore } from "../store/roomStore";
 import { hashToken, newInviteCode } from "./credentials";
 import type { RoomRegistry } from "./roomRegistry";
 import type { WallDetections } from "./wallDetection";
+import type { AccountLimits } from "../identity/routes";
+
+/** Includes temporary encounter-editing rooms (FR-GM-01). */
+export const MAX_OWNED_ROOMS = 100;
+
+export class RoomCreationRefused extends Error {
+  constructor(readonly reason: "cap" | "rate", readonly retryAfterSec?: number) {
+    super(`Room creation refused: ${reason}`);
+  }
+}
 
 export interface NewRoomWithSeat {
   ownerGmId: string;
@@ -50,10 +60,30 @@ export function roomLifecycle(deps: {
   registry: RoomRegistry;
   assets: AssetStore;
   walls: Pick<WallDetections, "forgetRoom">;
+  limits: Pick<AccountLimits, "roomCreationsPerAccount">;
 }) {
-  const { store, registry, assets, walls } = deps;
+  const { store, registry, assets, walls, limits } = deps;
+  const roomCreationTails = new Map<string, Promise<unknown>>();
 
   async function createRoomWithSeat(room: NewRoomWithSeat) {
+    // Both HTTP entrypoints share this queue: the count and insert must stay together.
+    const previous = roomCreationTails.get(room.ownerGmId) ?? Promise.resolve();
+    const create = async () => {
+      if ((await store.listOwnedRoomIds(room.ownerGmId)).length >= MAX_OWNED_ROOMS) throw new RoomCreationRefused("cap");
+      const rate = limits.roomCreationsPerAccount.hit(`rooms:${room.userId}`);
+      if (!rate.ok) throw new RoomCreationRefused("rate", rate.retryAfterSec);
+      return insertRoomWithSeat(room);
+    };
+    const result = previous.then(create, create);
+    roomCreationTails.set(room.ownerGmId, result);
+    try {
+      return await result;
+    } finally {
+      if (roomCreationTails.get(room.ownerGmId) === result) roomCreationTails.delete(room.ownerGmId);
+    }
+  }
+
+  async function insertRoomWithSeat(room: NewRoomWithSeat) {
     const roomId = randomUUID();
     const inviteCode = newInviteCode();
     const participantId = randomUUID();

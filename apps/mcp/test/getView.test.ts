@@ -75,6 +75,26 @@ describe("get_view shows what that player may see (FR-PL-08, FR-GM-23)", () => {
     gm.close();
   });
 
+  it("says a carried token is waiting for the GM, and can't move it until placed (ADR 0068)", async () => {
+    const { gm, inviteCode } = await openTable(stack.room);
+    const { seat, participantId } = await joinAs(stack.ai, inviteCode, "Oswin");
+    const token = await addToken(gm, { name: "Oswin", position: squareCenter(gm, 1, 1), ownerIds: [participantId] });
+    await gmDoes(gm, { type: "scene.create", name: "Crypt", activate: false });
+    const cryptId = Object.keys(gm.state.savedScenes!).find((id) => gm.state.sceneNames![id] === "Crypt")!;
+    await gmDoes(gm, { type: "scene.prepare", sceneId: cryptId, command: { type: "scene.setMap", map: { url: "/uploads/crypt.png", width: 1400, height: 1400 }, expectedSceneId: cryptId } });
+    await gmDoes(gm, { type: "scene.switch", sceneId: cryptId, carryTokenIds: [token] });
+
+    const waiting = await eventually(() => see(seat), (v) => /waiting for the GM/.test(String(v.json.hint)));
+    expect(waiting.json.hint).toContain("Oswin");
+    expect(viewTokens(waiting)).toEqual([]);
+    expect((await stack.ai.call("move_token", { seat, tokenId: token, column: 3, row: 3 })).isError).toBe(true);
+
+    await gmDoes(gm, { type: "token.placeStaged", origin: squareCenter(gm, 2, 2) });
+    const placed = await eventually(() => see(seat), (v) => viewTokens(v).some((t) => t.id === token && t.yours));
+    expect(placed.json.hint).toBeUndefined();
+    gm.close();
+  });
+
   it("doesn't name a removed seat as a token's owner, which could be mistaken for a new seat of the same name", async () => {
     const { gm, inviteCode } = await openTable(stack.room);
     const old = await joinAs(stack.ai, inviteCode, "Oswin");
@@ -127,7 +147,8 @@ describe("get_view shows what that player may see (FR-PL-08, FR-GM-23)", () => {
     expect(view.json.doors).toEqual([expect.objectContaining({ kind: "door", state: "closed", column: 3, row: 2 })]);
     expect(view.json.chat).toEqual([expect.objectContaining({ from: "GM", text: "@Oswin (AI) look out", mentionsYou: true })]);
     expect(view.json.rolls).toEqual([expect.objectContaining({ by: "GM", expression: "1d20" })]);
-    expect(view.text).not.toContain("1d6");
+    // The GM-only roll's expression as a value: "1d6" alone can turn up inside a random hex id.
+    expect(view.text).not.toContain('"1d6"');
     expect(view.json.you).toEqual({ id: participantId, name: "Oswin (AI)" });
     gm.close();
   });

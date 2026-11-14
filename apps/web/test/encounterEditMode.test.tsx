@@ -64,11 +64,13 @@ describe("template-editing mode shows only map, fog and token tools (encounter-t
     );
     expect(screen.queryByText("Checkpoints")).toBeNull();
     expect(screen.queryByText("Encounter templates")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Change Map" })).toBeNull();
+    // A fixed map can't be changed: only Edit map, with Grid and Fog, and no Save to library (map-editor, ADR 0070).
+    expect(screen.queryByRole("button", { name: "Change map" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage Walls" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
     const editor = screen.getByRole("dialog", { name: "Edit map" });
     expect(within(editor).getAllByRole("tab").map((t) => t.textContent)).toEqual(["1 · Grid", "2 · Fog"]);
+    expect(within(editor).queryByRole("button", { name: "Save to library" })).toBeNull();
     fireEvent.click(within(editor).getByRole("tab", { name: "2 · Fog" }));
     expect(within(editor).getByRole("button", { name: "Fog whole map" })).toBeTruthy();
   });

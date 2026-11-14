@@ -462,6 +462,16 @@ export const panels = {
   "init.removed": "(removed)",
   "attack.hiddenSuffix": " (hidden)",
   "room.roleParen": ({ role }: { role: string }) => ` (${role})`,
+  "carry.legend": "Carry to the new board",
+  "carry.hint": "Ticked tokens wait off the map until you place them.",
+  "carry.waiting": "waiting",
+  "carry.noOwner": "no owner",
+  "carry.others": ({ n }: { n: number }) => `Other tokens (${n})`,
+  "carry.noPlayerTokens": "No player tokens on this board.",
+  "staged.title": "Waiting to be placed",
+  "staged.placeSelected": "Place selected",
+  "staged.hidden": "hidden",
+  "staged.tray": "Waiting for the GM to place you",
 
   // Guest hosting (guest-gm-hosting): the start page, and what a guest room shows in place of account features.
   "start.title": "Start a room",

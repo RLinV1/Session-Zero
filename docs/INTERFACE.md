@@ -108,7 +108,7 @@ and the theme toggle on the right.
 - **Start a room** is the primary action, the page's one rust fill above the fold. It goes to
   the GM dashboard; a browser that isn't signed in reaches sign-in, which offers "Continue as guest GM" to
   the guest start page `/start`. No account is needed to start, on built-in art only; a free account keeps rooms on
-  any device and allows uploads (`FRONTEND-CONTRACT.md` §13.1, ADR 0068).
+  any device and allows uploads (`FRONTEND-CONTRACT.md` §13.1, ADR 0072).
 - **Join a game** is the second action. It opens the page's only join form in place and moves
   focus to its field, which takes a full invite link or a bare code. A browser that has joined
   rooms before opens with the form showing and those rooms listed above the field, marked as

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TerrainRuns } from "./terrain";
 import { polygonArea, Point, GridSpec } from "./geometry";
-import { FogShape, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_WALLS, Wall, type MapImage } from "./state";
+import { FogShape, Id, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_WALLS, Wall, type MapImage } from "./state";
 import { wallsFitMap } from "./wallDetection";
 
 /**
@@ -39,3 +39,10 @@ export const LibraryPreparation = z.object({ grid: GridSpec.nullable(), board: L
 export type LibraryPreparation = z.infer<typeof LibraryPreparation>;
 export const SaveLibraryPreparation = z.object({ grid: GridSpec, board: LibraryMapBoard, revision: z.string().min(1).max(128), resetTerrain: z.boolean().optional() }).strict();
 export type SaveLibraryPreparation = z.infer<typeof SaveLibraryPreparation>;
+
+/** Save to library from a room's map editor (ADR 0070). `sceneId` only while preparing that scene privately. */
+export const SaveMapToLibraryRequest = z.object({ sceneId: Id.optional() }).strict();
+export type SaveMapToLibraryRequest = z.infer<typeof SaveMapToLibraryRequest>;
+/** Which library map was written, and whether it was created (and the room's map linked to it). */
+export const SaveMapToLibraryResult = z.object({ assetId: Id, name: z.string().min(1).max(80), created: z.boolean() }).strict();
+export type SaveMapToLibraryResult = z.infer<typeof SaveMapToLibraryResult>;

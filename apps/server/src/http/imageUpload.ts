@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { Request, Response } from "express";
 import multer from "multer";
@@ -51,7 +51,8 @@ export type ImageUploadResult =
  * browser draws, so a JPEG stored on its side reports its turned width and height.
  */
 export async function checkImageBytes(file: string): Promise<ImageCheck> {
-  const metadata = await sharp(file, { limitInputPixels: false }).metadata().catch(() => null);
+  // Buffer, not path: libvips never opens the file, so Windows cannot hold it against the rename/unlink after (uploads are size-capped).
+  const metadata = await readFile(file).then((bytes) => sharp(bytes, { limitInputPixels: false }).metadata()).catch(() => null);
   const contentType = metadata?.format ? REAL_FORMATS.get(metadata.format) : undefined;
   if (!metadata || !contentType || !metadata.width || !metadata.height) return { ok: false, status: 415, error: UNSUPPORTED };
   const turned = (metadata.orientation ?? 1) >= 5;

@@ -23,4 +23,4 @@ Implementation note: implement with Sonnet 5.5 subagents. Group 1 first; then gr
 
 ## 4. Done check
 
-- [ ] 4.1 Run `npm run lint && npm run typecheck && npm test`
+- [x] 4.1 Run `npm run lint && npm run typecheck && npm test`

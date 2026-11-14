@@ -1,6 +1,6 @@
 ## 0. Before starting
 
-- [ ] 0.1 Get ADR 0068 (`docs/adr/0068-guest-gm-hosting.md`) reviewed by the Real-Time Architecture owner, and record the outcome in its Status line. Verify: the Status no longer says "Draft".
+- [ ] 0.1 Get ADR 0072 (`docs/adr/0072-guest-gm-hosting.md`) reviewed by the Real-Time Architecture owner, and record the outcome in its Status line. Verify: the Status no longer says "Draft".
 - [ ] 0.2 Confirm `user-accounts` is archived (or archive it first). Then run `openspec validate guest-gm-hosting --strict`. Verify: it shows no "Archive would refuse" info lines.
 
 How to run implementation:
@@ -66,13 +66,13 @@ How to run implementation:
   - a room active 8 days ago stays;
   - a pre-account device room idle 60 days stays;
   - an empty guest identity is deleted, and its token then gets 401.
-- [ ] 3.6 Run the `visibility-auditor` and `sync-reviewer` agents on the server diff. Verify: no findings about room payloads, purity of `decide`/`reduce` or event ordering, or each finding fixed.
+- [x] 3.6 Run the `visibility-auditor` and `sync-reviewer` agents on the server diff. Verify: no findings about room payloads, purity of `decide`/`reduce` or event ordering, or each finding fixed.
 
 ## 4. Docs
 
 - [x] 4.1 Update these docs:
   - `docs/FRONTEND-CONTRACT.md` §13.1: the hosting rule, the expiry and transfer exceptions, and the new home line;
-  - `docs/DESIGN.md` §5 Identity, the §6 FR-GM-01 row, and the §8 ADR index (0068);
+  - `docs/DESIGN.md` §5 Identity, the §6 FR-GM-01 row, and the §8 ADR index (0072);
   - `docs/INTERFACE.md`: the home section and a `/start` route row.
 
   Verify: `grep -rn "requires an authenticated account to create a room\|Room creation stays behind a free account" docs` finds nothing outdated.
@@ -129,8 +129,8 @@ How to run implementation:
 
 ## 8. Final verification
 
-- [ ] 8.1 Run `npm run lint && npm run typecheck && npm test` once, after all groups. Verify: all pass; paste the summary lines.
-- [ ] 8.2 Playwright MCP, Chrome only, on `npm run dev`. Steps:
+- [x] 8.1 Run `npm run lint && npm run typecheck && npm test` once, after all groups. Verify: all pass; paste the summary lines.
+- [x] 8.2 Playwright MCP, Chrome only, on `npm run dev`. Steps:
   1. Signed out, Start a room from `/` reaches sign-in, and "Continue as guest GM" opens `/start`.
   2. Pick Sunken Crypt and start: the room opens with that map and grid.
   3. The room asks about the demo; Yes starts it, and it advances on real actions (invite, token, move, fog, roll). The guest notice shows, the pickers list only built-ins, and no upload control is offered.
@@ -142,4 +142,4 @@ How to run implementation:
   9. Re-check the home page at 1366×768 and 390×844.
 
   Verify: screenshots of steps 2, 3, 4 and 7.
-- [ ] 8.3 Update existing QA and Playwright notes that assume Start a room leads to sign-in. Verify: `grep -rn "Continue as guest\|Start a room" docs/qa* apps/web/e2e 2>/dev/null` finds no stale step.
+- [x] 8.3 Update existing QA and Playwright notes that assume Start a room leads to sign-in. Verify: `grep -rn "Continue as guest\|Start a room" docs/qa* apps/web/e2e 2>/dev/null` finds no stale step.

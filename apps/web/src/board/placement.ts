@@ -57,7 +57,9 @@ export function autoPlacementPoint(state: RoomState, size: number): Point {
  */
 export type PlacingSource =
   | { kind: "create"; draft: TokenDraft }
-  | { kind: "duplicate"; tokenId: string; ghost: PlacementGhost };
+  | { kind: "duplicate"; tokenId: string; ghost: PlacementGhost }
+  /** Carried tokens waiting off the map (ADR 0068): one click places them all, spread by the server. */
+  | { kind: "staged"; tokenIds: string[]; sceneId: string; ghost: PlacementGhost };
 
 /**
  * The command one placement sends: always one token at `at`. Placing repeats until the GM ends it,
@@ -65,6 +67,7 @@ export type PlacingSource =
  */
 export function placementCommand(source: PlacingSource, at: Point): CommandInput {
   if (source.kind === "duplicate") return { type: "token.duplicate", tokenId: source.tokenId, position: at };
+  if (source.kind === "staged") return { type: "token.placeStaged", origin: at, tokenIds: source.tokenIds, expectedSceneId: source.sceneId };
   const { count: _count, ...draft } = source.draft;
   return { ...draft, count: 1, position: at };
 }
@@ -92,4 +95,17 @@ export function cursorSquare(cursor: Point, size: number, grid: GridSpec): strin
   const column = Math.floor((cursor.x - half - grid.offsetX + grid.cellSize / 2) / grid.cellSize) + 1;
   const row = Math.floor((cursor.y - half - grid.offsetY + grid.cellSize / 2) / grid.cellSize) + 1;
   return `${t("fog.column", { n: column })}${t("common.listSep")}${t("fog.row", { n: row })}`;
+}
+
+/**
+ * What the board draws under the pointer while placing carried tokens (ADR 0068): the largest one,
+ * which the server puts on the clicked square, named for the whole group. Null when none of
+ * `tokenIds` is staged.
+ */
+export function stagedGhost(state: RoomState, tokenIds: readonly string[]): PlacementGhost | null {
+  const tokens = tokenIds.flatMap((id) => (Object.hasOwn(state.staged, id) ? [state.staged[id]!] : []));
+  const first = [...tokens].sort((a, b) => b.size - a.size)[0];
+  if (!first) return null;
+  const { name, size, rotation, color, imageUrl, hidden, stats } = first;
+  return { name: t("board.carriedGhost", { name, n: tokens.length }), size, rotation, color, imageUrl, hidden, stats };
 }

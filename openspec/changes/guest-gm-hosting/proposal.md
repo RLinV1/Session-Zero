@@ -52,7 +52,7 @@ These deltas target requirements that `user-accounts` adds or rewrites. That cha
 
 - **Room kernel (`Command`, `DomainEvent`, `RoomState`, `decide`, `reduce`, visibility filters, `HandshakeAuth`): untouched.** Being a guest is access data on the owner row. It never enters room state or any room payload. The built-in-art rule is a server guard in `LiveRoom` after `decide`, not a kernel change.
 - **packages/shared:**
-  - `CreateRoomRequest` gains an optional `shippedMap` slug, and `LegacySummary` gains `guest`. Both are additive changes to existing schemas, so they need ADR 0068 and review by the Real-Time Architecture owner.
+  - `CreateRoomRequest` gains an optional `shippedMap` slug, and `LegacySummary` gains `guest`. Both are additive changes to existing schemas, so they need ADR 0072 and review by the Real-Time Architecture owner.
   - New `GuestRoomStatus` response schema.
   - New pure helpers `boardImageUrls` and `isBuiltinImageUrl`.
   - New codes `guest_upload`, `guest_asset`, `guest_room_limit` and `legacy_identity`.
@@ -71,7 +71,7 @@ These deltas target requirements that `user-accounts` adds or rewrites. That cha
   - the dashboard move offer's wording;
   - new strings in the en and zh-TW catalogs.
 - **Docs:**
-  - new ADR 0068 "Guest GM hosting" (draft, Proposed);
+  - new ADR 0072 "Guest GM hosting" (draft, Proposed);
   - FRONTEND-CONTRACT.md §13.1 "Play requires an authenticated account to create a room" and "Do not introduce unclaimed-room authority, expiry or ownership transfer". `docs/DESIGN.md` §5 Identity points to it as "§13.1", so this is the hosting rule the task calls DESIGN.md §13.1;
   - DESIGN.md §5 Identity ("Creating a room requires an account");
   - DESIGN.md §6 traceability row for FR-GM-01;

@@ -1,7 +1,9 @@
 import { ArrowsClockwise, Plus, Play } from "@phosphor-icons/react";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { MAX_ENCOUNTER_NAME, gridGeometryChanged, type EncounterSummary, type RoomState } from "@vtt/shared";
 import { ScenePreparationContext } from "./ScenePreparationContext";
+import { CarryChecklist, carriedByDefault, carryCandidates, useTicks } from "./CarryChecklist";
+import { CarryContext } from "./CarryContext";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
 import { EncounterThumb, encounterSummary, useLibraryMaps } from "../pages/LibraryEncounters";
@@ -28,6 +30,13 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
   const [status, setStatus] = useState("");
   const [confirming, setConfirming] = useState<EncounterSummary | null>(null);
   const [keepSetup, setKeepSetup] = useState(false);
+  // Carrying only ever happens onto the live board, never into a private scene, and only at a real
+  // table: a temporary template-editing room provides no CarryContext (ADR 0068).
+  const carry = useContext(CarryContext);
+  const candidateIds = useMemo(() => carryCandidates(state).map((t) => t.id), [state]);
+  const byDefault = useMemo(() => carriedByDefault(state), [state]);
+  const carryTicks = useTicks(candidateIds, byDefault);
+  const carried = preparing || !carry ? [] : carryTicks.ticked;
   const maps = useLibraryMaps();
   const tokenCount = Object.keys(state.tokens).length;
   const roomMapId = state.scene.map?.assetId ?? null;
@@ -91,9 +100,16 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
     if (busy) return;
     setBusy(true);
     try {
-      const result = await connection.command({ type: "encounter.apply", templateId: template.id, ...(keepSetup && canKeepSetup(template) && { keepMapSetup: true }) });
+      const tokenIds = [...carried];
+      const result = await connection.command({
+        type: "encounter.apply", templateId: template.id,
+        ...(keepSetup && canKeepSetup(template) && { keepMapSetup: true }),
+        ...(tokenIds.length > 0 && { carryTokenIds: tokenIds }),
+      });
       setError(result.ok ? null : result.message);
       if (result.ok) setStatus(t(preparing ? "enc.appliedScene" : "enc.applied", { name: template.name }));
+      // The board starts placing them at once; the waiting list has them after that (ADR 0068).
+      if (result.ok && tokenIds.length > 0) carry?.carried(tokenIds);
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -148,7 +164,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
                 disabled={busy || template.mapName === null}
                 aria-label={t("enc.applyNamed", { name: template.name })}
                 title={t("enc.applyNamed", { name: template.name })}
-                onClick={() => { setKeepSetup(false); setConfirming(template); }}
+                onClick={() => { setKeepSetup(false); carryTicks.reset(); setConfirming(template); }}
               >
                 <Play size={16} aria-hidden="true" /> {t("enc.apply")}
               </button>
@@ -200,6 +216,7 @@ export function EncounterPanel({ connection, state }: { connection: RoomConnecti
                 {t("enc.keepMap")}
               </label>
             )}
+            {!preparing && carry && <CarryChecklist state={state} ticked={carried} onToggle={carryTicks.toggle} disabled={busy} />}
             <div className="row button-row">
               <button className="primary" type="button" disabled={busy} onClick={() => void apply(confirming)}>
                 {t("enc.apply")} {confirming.name}

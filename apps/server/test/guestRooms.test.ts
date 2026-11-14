@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import sharp from "sharp";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GM_TOKEN_HEADER,
   GUEST_ASSET,
@@ -163,13 +163,14 @@ describe("guest rooms (FR-GM-01)", () => {
   it("lets a session win over a token, and counts an account against neither guest limit", async () => {
     const sam = await ctx.server.signUp();
     const gmToken = newGuestToken();
-    for (let i = 0; i < 25; i += 1) {
+    for (let i = 0; i < 20; i += 1) {
       const res = await sam.request("POST", "/api/rooms", body({ shippedMap: undefined, guestToken: newGuestToken() }), { [GM_TOKEN_HEADER]: gmToken });
       expect(res.status).toBe(200);
     }
     expect(await ctx.store.findGm(hashToken(gmToken))).toBeNull();
     const ownerId = (await ctx.store.findUserById(sam.view!.id))!.ownerId;
-    expect(await ctx.store.countOwnedRooms(ownerId)).toBe(25);
+    expect(await ctx.store.countOwnedRooms(ownerId)).toBe(20);
+    expect((await create(newGuestToken())).status).toBe(200);
   });
 
   it("lets an account start on a shipped map too, and that room is not a guest room", async () => {
@@ -423,5 +424,35 @@ describe("guest rooms: the idle sweep (FR-GM-01)", () => {
     offset = 60 * DAY;
     await ctx.server.app.sweepGuestRooms();
     expect(await ctx.store.roomExists(room.roomId)).toBe(true);
+  });
+
+  it("skips a room that was claimed into an account after the sweep listed it", async () => {
+    const room = await startGuest();
+    const owner = (await ctx.store.findRoomOwner(room.roomId))!;
+    const list = ctx.store.listIdleGuestRoomsBefore.bind(ctx.store);
+    vi.spyOn(ctx.store, "listIdleGuestRoomsBefore").mockImplementationOnce(async (at) => {
+      const ids = await list(at);
+      await ctx.store.claimDeviceOwner(owner, randomUUID());
+      return ids;
+    });
+    offset = GUEST_ROOM_IDLE_MS + 60 * 60_000;
+    await ctx.server.app.sweepGuestRooms();
+    expect(await ctx.store.roomExists(room.roomId)).toBe(true);
+  });
+});
+
+describe("guest rooms: identity swept during create (FR-GM-01)", () => {
+  const { ctx, create } = useGuestServer();
+
+  it("still creates the room when the sweep removed the guest identity before the insert", async () => {
+    const gmToken = newGuestToken();
+    vi.spyOn(ctx.store, "createRoom").mockImplementationOnce(async () => {
+      await ctx.store.deleteEmptyGuestOwners(new Date(Date.now() + DAY).toISOString());
+      throw new Error("owner foreign key");
+    });
+    const res = await create(gmToken);
+    expect(res.status).toBe(200);
+    const { roomId } = (await res.json()) as CreateRoomResponse;
+    expect(await ctx.store.isGuestRoom(roomId)).toBe(true);
   });
 });

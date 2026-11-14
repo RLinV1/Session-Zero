@@ -1,4 +1,4 @@
-# ADR 0068: Guest GM hosting on built-in art
+# ADR 0072: Guest GM hosting on built-in art
 
 **Status:** Proposed. Draft; needs review by the Real-Time Architecture owner (Raymond) before implementation starts. · **Amends:** ADR 0017 (accounts; in `openspec/changes/user-accounts/design.md`), `docs/FRONTEND-CONTRACT.md` §13.1 · **Relates to:** ADR 0002 (transport and identity), ADR 0004 (asset library), ADR 0009 (room deletion), ADR 0033 (temporary rooms), ADR 0036 (seeded shipped maps), ADR 0051 (seat limits), ADR 0052 (AI seats)
 **Change:** `openspec/changes/guest-gm-hosting`

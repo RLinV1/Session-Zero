@@ -58,6 +58,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart }: {
     invites: invites - baseInvites.current,
   };
 
+  const focusNext = useRef(progress === null);
   const set = (next: Exclude<Progress, null>) => {
     setProgress(next);
     saveProgress(roomId, next);
@@ -76,6 +77,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart }: {
     seenRestart.current = restart;
     baseInvites.current = invites;
     setMoves(0);
+    focusNext.current = true;
     set(0);
   }, [restart]);
 
@@ -116,9 +118,12 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart }: {
     };
   }, [shown, stepName]);
 
+  // Focus follows the GM's own move through the card (question, Yes, Start, restart); a step reached by acting
+  // elsewhere is only announced, so the board keeps focus and its Escape.
   useEffect(() => {
-    if (shown) headingRef.current?.focus();
-  }, [shown, step]);
+    if (shown && focusNext.current) headingRef.current?.focus();
+    focusNext.current = false;
+  }, [shown, step, restart]);
 
   if (!shown) return null;
 
@@ -141,12 +146,13 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart }: {
       style={place ?? undefined}
       onKeyDown={onKeyDown}
     >
+      <span className="sr-only" role="status" aria-live="polite">{stepName ? t(TITLE[stepName]) : ""}</span>
       {asking ? (
         <>
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t("tutorial.ask.title")}</h2>
           <p>{t("tutorial.ask.body")}</p>
           <div className="row">
-            <button type="button" className="small primary" onClick={() => set(0)}>{t("tutorial.yes")}</button>
+            <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(0); }}>{t("tutorial.yes")}</button>
             <button type="button" className="secondary small" onClick={() => set("declined")}>{t("tutorial.no")}</button>
           </div>
         </>
@@ -161,7 +167,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart }: {
           </p>
           <div className="row">
             {stepName === "table" && (
-              <button type="button" className="small primary" onClick={() => set(settle(1, facts))}>{t("tutorial.start")}</button>
+              <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>
             )}
             {stepName === "done" ? (
               <>

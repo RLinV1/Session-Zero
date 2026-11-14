@@ -25,6 +25,8 @@ import {
   type EncounterPreview,
   type LibraryMapBoard,
   type LibraryPreparation,
+  SaveMapToLibraryResult,
+  type SaveMapToLibraryRequest,
   type SaveLibraryPreparation,
   type LibraryUvttImportResponse,
   type EncounterSummary,
@@ -197,11 +199,18 @@ export const api = {
       const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/imports/${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
       if (!res.ok && res.status !== 404) throw await errorFrom(res);
     },
-    async export(roomId: string, token: string) {
-      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/uvtt/export`, { headers: { authorization: `Bearer ${token}` } });
-      if (!res.ok) throw await errorFrom(res);
-      return res.blob();
-    },
+  },
+  /**
+   * Save to library (ADR 0070): the server reads this room's map, grid, walls, fog and terrain and
+   * writes them to the library map it came from, or to a new copy it then links the room to.
+   */
+  async saveMapToLibrary(roomId: string, token: string, request: SaveMapToLibraryRequest = {}) {
+    const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/map/library`, {
+      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(request),
+    });
+    if (res.status === 401) onSignedOut();
+    if (!res.ok) throw await errorFrom(res);
+    return SaveMapToLibraryResult.parse(await res.json());
   },
   async history(roomId: string, token: string, player: string, before?: number, signal?: AbortSignal) {
     const query = new URLSearchParams({ player });
@@ -512,6 +521,13 @@ export const api = {
     preparation: (id: string) => accountRequest<LibraryPreparation>(`/api/library/${encodeURIComponent(id)}/preparation`),
     savePreparation: (id: string, change: SaveLibraryPreparation) => accountRequest<LibraryPreparation>(`/api/library/${encodeURIComponent(id)}/preparation`, { method: "PUT", ...jsonBody(change) }),
     board: (id: string) => accountRequest<LibraryMapBoard>(`/api/library/${encodeURIComponent(id)}/board`),
+    /** The library map as last saved, as a UVTT file (ADR 0070). */
+    async export(id: string) {
+      const res = await apiFetch(`/api/library/${encodeURIComponent(id)}/export`);
+      if (res.status === 401) onSignedOut();
+      if (!res.ok) throw await errorFrom(res);
+      return res.blob();
+    },
     setBoard: (id: string, board: LibraryMapBoard) =>
       accountRequest<LibraryMapBoard>(`/api/library/${encodeURIComponent(id)}/board`, { method: "PUT", ...jsonBody(board) }),
 

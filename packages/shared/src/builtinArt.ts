@@ -59,7 +59,7 @@ export function boardImageUrls(event: DomainEvent): string[] {
     case "RollDamageUnapplied": case "ChatMessageSent": case "TemplatePlaced": case "TemplateChanged":
     case "TemplateRemoved": case "DrawingAdded": case "DrawingRemoved": case "FogAdded": case "FogRemoved":
     case "WallsAdded": case "WallsRemoved": case "WallUpdated": case "PortalChanged": case "CheckpointCreated":
-    case "CheckpointDeleted": case "ActionUndone":
+    case "CheckpointDeleted": case "ActionUndone": case "MapLinked": case "StagedTokensPlaced": case "StagedTokensRestaged":
       return [];
     default: {
       const unclassified: never = event;

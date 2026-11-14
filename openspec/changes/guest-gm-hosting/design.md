@@ -90,7 +90,7 @@ else                → 401
 - **Address key:** IPv4 as is, and IPv6 cut to its /64 (`addressKey()` beside the limiter). This closes the EDGE-PROTECTION "Still open" gap for this limiter only. Moving other limiters is a separate change.
 - **20 per hour:** a classroom behind one NAT can still start a room each. One machine cannot make more than 480 a day, and step 5 bounds what each browser keeps.
 - **Step 5 is not atomic** with step 6. Two parallel requests from one browser could make a 4th room. That is accepted: the address limit still bounds it, and the count is a nudge, not a security boundary.
-- **`shippedMap`** is the new optional `CreateRoomRequest` field: `z.enum(SHIPPED_MAP_SLUGS).optional()`. The account path accepts it too, so the dashboard could use it later, but no account UI sends it in this change. It is additive, so old clients parse unchanged, and it is recorded in ADR 0068.
+- **`shippedMap`** is the new optional `CreateRoomRequest` field: `z.enum(SHIPPED_MAP_SLUGS).optional()`. The account path accepts it too, so the dashboard could use it later, but no account UI sends it in this change. It is additive, so old clients parse unchanged, and it is recorded in ADR 0072.
 - **Walls** are not applied at creation. Map setup's Detect walls already offers a shipped map's stored walls with no job (FR-GM-19). Room creation matches the library placement of the same map.
 
 ### D4. Upload refusal sits beside the existing room checks
@@ -222,7 +222,7 @@ That change (branch `feat/product-funnel-metrics`, parked as a draft) counts `ro
   - `boardImageUrls` and `isBuiltinImageUrl` (pure helpers, not schemas);
   - the codes `guest_upload`, `guest_asset`, `guest_room_limit` and `legacy_identity`, with their message ids in en and zh-TW.
 - `Command`, `DomainEvent`, `RoomState`, `HandshakeAuth`, `decide`, `reduce` and `visibility.ts` are unchanged.
-- ADR 0068 records:
+- ADR 0072 records:
   - the reversal of §13.1's account-only hosting;
   - the new expiry;
   - the built-in-art guard in the room pipeline;
@@ -234,7 +234,7 @@ That change (branch `feat/product-funnel-metrics`, parked as a draft) counts `ro
 - [Guest spam fills the database with rooms] → 20 per hour per address (/64 for IPv6), 3 per browser, 30-day expiry, empty-identity cleanup. A global ceiling is a one-line follow-up (D6).
 - [Many-address floods bypass per-address limits] → Same as every per-address limit today. EDGE-PROTECTION's Cloudflare step is the planned answer.
 - [A guest loses their room by clearing site data or by 30 idle days] → Said plainly on `/start` and in the room. Saving to a free account removes both risks.
-- [Reverses an accepted product decision] → ADR 0068 and Real-Time Architecture owner review before implementation starts. The scope is narrower than the removed "Continue as guest": no library, no uploads, built-in art only, expiry.
+- [Reverses an accepted product decision] → ADR 0072 and Real-Time Architecture owner review before implementation starts. The scope is narrower than the removed "Continue as guest": no library, no uploads, built-in art only, expiry.
 - [A pre-account GM who clicks Start a room signed out is asked to sign in] → Intended. Their rooms and uploads are real, and signing in plus the move keeps them all.
 - [A guest GM who signs in but hasn't moved the room yet can't use their account art in it] → The room is still a guest room until the move. The "free account" note links to the dashboard offer, and the move ends the limit at once (D7).
 - [A new event type that carries an image is missed by `boardImageUrls`] → Its unit test runs every `DomainEvent` type and fails on an unknown one.
@@ -247,7 +247,7 @@ That change (branch `feat/product-funnel-metrics`, parked as a draft) counts `ro
 1. Migration `…_guest_identities`: add `gm_identities.guest` with default false. It is additive, so old code ignores it, and every existing identity stays pre-account.
 2. Ship server and web together. No existing room changes behaviour, because no existing identity is a guest.
 3. **Rollback:** revert the code. Guest identities then behave like pre-account ones: they keep their rooms through the token, and nothing sweeps them or checks their art. The column can stay.
-4. Docs land with the code: ADR 0068, FRONTEND-CONTRACT §13.1, DESIGN.md §5, §6 and §8, and INTERFACE.md.
+4. Docs land with the code: ADR 0072, FRONTEND-CONTRACT §13.1, DESIGN.md §5, §6 and §8, and INTERFACE.md.
 
 ## Open Questions
 

@@ -34,7 +34,14 @@ export function registerLegacyRoutes(app: Express, deps: { store: LibraryStore; 
       const moved = deviceId ? await store.claimDeviceOwner(deviceId, account.user.ownerId) : null;
       if (!moved) return void res.status(404).json({ error: "Nothing to bring over from this browser" });
       // An open guest room stops being one now, so its built-in-art rule ends with no reconnect (guest-gm-hosting D7).
-      for (const roomId of roomIds) await (await registry.loaded(roomId))?.refreshGuest();
+      // The claim has committed, so a failed refresh must not turn it into a 500.
+      for (const roomId of roomIds) {
+        try {
+          await (await registry.loaded(roomId))?.refreshGuest();
+        } catch (err) {
+          console.error(`[vtt] could not refresh guest state of room ${roomId} after a claim`, err);
+        }
+      }
       res.json(moved satisfies LegacySummary);
     })().catch(internalError(res));
   });

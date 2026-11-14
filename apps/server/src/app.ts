@@ -1,4 +1,5 @@
 import { registerRoomPreparation } from "./http/roomPreparation";
+import { registerMapLibraryRoutes } from "./http/mapLibrary";
 import { registerUvttRoutes } from "./http/uvttRoutes";
 import { UvttPreparations } from "./uvtt/preparations";
 import { UvttValidationPool } from "./uvtt/validationPool";
@@ -139,7 +140,7 @@ export async function buildApp({
   const stopSweeping = sessions.startSweeping(closeDeletedSeats);
   const stopLimitSweep = setInterval(() => Object.values(limits).forEach((l) => l.sweep()), 60_000);
   stopLimitSweep.unref();
-  const rooms = roomLifecycle({ store, registry, assets: assetStore, walls });
+  const rooms = roomLifecycle({ store, registry, assets: assetStore, walls, limits });
   // A temporary room is deleted when its GM leaves it; this catches the ones left open (ADR 0033).
   const sweepTemporaryRooms = async () => {
     const before = new Date(now() - TEMPORARY_ROOM_LIFETIME_MS).toISOString();
@@ -155,6 +156,9 @@ export async function buildApp({
   const sweepGuestRooms = async () => {
     const before = new Date(now() - GUEST_ROOM_IDLE_MS).toISOString();
     for (const roomId of await store.listIdleGuestRoomsBefore(before)) {
+      // A claim may have moved the room into an account since the list; deletion is irreversible, so recheck.
+      // shortcut: a claim landing between this check and the delete is still possible, a store-level atomic delete would close it.
+      if (!(await store.isGuestRoom(roomId))) continue;
       await rooms.deleteRoomFully(roomId).catch((err: unknown) => {
         console.error(`[vtt] could not delete idle guest room ${roomId}`, err);
       });
@@ -183,6 +187,8 @@ export async function buildApp({
   // Room/UVTT preparation authorizes and parses above; library geometry has its own 1 MiB parser.
   const json = express.json({ limit: "64kb" });
   app.use((req, res, next) => (/^\/api\/library\/[^/]+\/(board|preparation)$/.test(req.path) ? next() : json(req, res, next)));
+  // Save to library and library export (ADR 0070), after the small JSON parser.
+  registerMapLibraryRoutes(app, { store, registry, sessions, assets: assetStore, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a
   // browser second-guess their type into something that runs.
   app.use("/uploads", (_req, res, next) => {

@@ -132,7 +132,18 @@ export const PreparationSave = z.object({
   edits: z.array(PreparationEdit).min(1).max(MAX_PREPARATION_EDITS),
 }).strict().refine((command) => new TextEncoder().encode(JSON.stringify(command)).length < MAX_PREPARATION_BYTES, "Preparation is too large.");
 
+/** Tokens carried to a new board, or placed from staging (ADR 0068). Max 60, matching an initiative order. */
+export const MAX_CARRIED_TOKENS = 60;
+const CarryTokenIds = z.array(Id).min(1).max(MAX_CARRIED_TOKENS).refine((ids) => new Set(ids).size === ids.length, "Duplicate token");
+
+/**
+ * Select and place on a new map (ADR 0068): the tokens on the map to keep, waiting off it until
+ * the GM places them; every other token on the map is removed. Empty removes them all.
+ */
+const PlaceTokenIds = z.array(Id).max(1000).refine((ids) => new Set(ids).size === ids.length, "Duplicate token");
+
 /** Atomic preparation for either the live board or one GM-only inactive scene. */
+
 export const PreparationRequest = z.union([PreparationSave, z.object({
   type: z.literal("scene.prepare"), sceneId: Id, command: PreparationSave,
 }).strict()]).refine((command) => new TextEncoder().encode(JSON.stringify(command)).length < MAX_PREPARATION_BYTES, "Preparation is too large.");
@@ -142,7 +153,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({ type: z.literal("scene.create"), name: SceneName, activate: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("scene.copyCurrent"), sceneId: Id }).strict(),
   z.object({ type: z.literal("scene.rename"), sceneId: Id, name: SceneName }).strict(),
-  z.object({ type: z.literal("scene.switch"), sceneId: Id }).strict(),
+  z.object({ type: z.literal("scene.switch"), sceneId: Id, carryTokenIds: CarryTokenIds.optional() }).strict(),
   z.object({ type: z.literal("scene.delete"), sceneId: Id }).strict(),
   ...PreparationEdit.options,
   PreparationSave,
@@ -151,13 +162,25 @@ const BoardCommand = z.discriminatedUnion("type", [
     resetTerrain: z.boolean().optional(),
     terrainContext: TerrainContext.optional(),
     tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional(),
+    /** Select and place instead of a `tokenPolicy` (ADR 0068). */
+    placeTokenIds: PlaceTokenIds.optional(),
     map: MapImage,
     /** A library map's saved grid, copied into the room in the same event (ADR 0004). */
     grid: GridSpec.optional(),
     /** Resolve the owned map's saved geometry on the server and apply it in the same MapSet. */
     includeLibraryBoard: z.boolean().optional(),
   }),
-  z.object({ type: z.literal("scene.importUVTT"), expectedSceneId: Id.optional(), importId: Id, revision: z.number().int().positive(), tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional() }).strict(),
+  z.object({ type: z.literal("scene.importUVTT"), expectedSceneId: Id.optional(), importId: Id, revision: z.number().int().positive(), tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional(), placeTokenIds: PlaceTokenIds.optional() }).strict(),
+  /**
+   * Links the board's map to the GM's library map it was just saved as (ADR 0070). Sent by the
+   * server's Save to library route; a saved scene is linked inside `scene.prepare`.
+   */
+  z.object({
+    type: z.literal("scene.linkMap"), expectedSceneId: Id.optional(), expectedMapUrl: z.string().min(1).max(2048),
+    /** The link the server saw when it read the board: refused if it changed since (no double copies). */
+    expectedAssetId: Id.nullable(),
+    assetId: Id,
+  }).strict(),
   z.object({
     type: z.literal("scene.setGrid"), expectedSceneId: Id.optional(),
     resetTerrain: z.boolean().optional(),
@@ -188,6 +211,16 @@ const BoardCommand = z.discriminatedUnion("type", [
    * GM copies a token, 1–20 times, onto the nearest free squares beside it (KAN-82), or starting
    * at `position` when the GM chose the square (ADR 0033).
    */
+  /**
+   * GM places staged tokens with one click (ADR 0068): the first on `origin`, the rest spread
+   * around it. `tokenIds` picks some of them; absent places every staged token.
+   */
+  z.object({
+    type: z.literal("token.placeStaged"),
+    origin: Point,
+    tokenIds: CarryTokenIds.optional(),
+    expectedSceneId: Id.optional(),
+  }).strict(),
   z.object({
     type: z.literal("token.duplicate"),
     tokenId: Id,
@@ -590,6 +623,8 @@ const BoardCommand = z.discriminatedUnion("type", [
     templateId: Id,
     /** Keep the room's walls, fog, terrain and lighting; only valid on the template's own map and grid (ADR 0050). */
     keepMapSetup: z.boolean().optional(),
+    /** Tokens to move onto the applied board, staged until the GM places them (ADR 0068). */
+    carryTokenIds: CarryTokenIds.optional(),
   }).strict(),
   /** GM reverses one recent action, picked from the activity log by its `commandId` (FR-REC-02, ADR 0013). */
   z.object({

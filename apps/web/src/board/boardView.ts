@@ -1,5 +1,5 @@
 import { effectiveTerrain, emptyTerrain, cellAt, cellRect, type PaintRun, type TerrainRun, conditionAbbr, type AttackRange } from "@vtt/shared";
-import { MAP_PALETTE, terrainColour, terrainHatch } from "./mapPalette";
+import { MAP_PALETTE, outlineSegment, outlineTone, outlineVisibility, terrainColour, terrainHatch, terrainOutline } from "./mapPalette";
 import type { DoorsMode } from "./tools";
 import { extendStroke, startStroke, strokePaint, strokeRuns, type TerrainContext, type TerrainStroke } from "./terrainStroke";
 import { plainWallLines } from "./wallLines";
@@ -360,6 +360,9 @@ interface AttackFx {
  * Imperative PixiJS renderer. React owns the panels; this owns the canvas.
  * All positions it reports are board coordinates; each viewer's pan/zoom is local (FR-TAC-01).
  */
+/** Same entries by identity (null matches only null). */
+const sameItems = (a: readonly unknown[] | null, b: readonly unknown[] | null) =>
+  a === b || (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]));
 /** Whether a placement this board sent is the template that came back (it has no id until then). */
 const sameArea = (a: Extract<Mark, { kind: "area" }>, t: AreaTemplate) =>
   a.shape === t.shape && a.size === t.size && a.gmOnly === t.gmOnly &&
@@ -400,6 +403,8 @@ export class BoardView {
    */
   private fogMist = new Container();
   private fogBody: FogBody | null = null;
+  private fogArtRequested = false;
+  private conditionArtRequested = false;
   private fogPuffLayer = new ParticleContainer({ dynamicProperties: { position: true, rotation: true, vertex: true, color: true } });
   private fogPuffs: Array<{ puff: FogPuff; particle: Particle }> = [];
   private fogShape = "";
@@ -432,6 +437,8 @@ export class BoardView {
   private drawnTerrain: unknown = null;
   private drawnTerrainGrid: unknown = null;
   private drawnTerrainShown = true;
+  /** A player's fog, sight and map when terrain was last drawn; null for the GM. */
+  private drawnTerrainSeen: readonly unknown[] | null = null;
   private repositionToken: string | null = null;
   private wallGraphics = new Graphics();
   private drawnWalls: RoomState["walls"] | null = null;
@@ -608,22 +615,6 @@ export class BoardView {
   ) {}
 
   async init() {
-    // Fetched in the background: until they arrive, attacks draw their vector look.
-    void loadFxTextures();
-    // Until the condition icons arrive, markers draw their shape and abbreviation.
-    void loadConditionIcons().then(() => {
-      if (!this.initialized) return;
-      for (const view of this.tokens.values()) view.drawnKey = "";
-      if (this.state && this.you) this.syncTokens();
-      this.invalidate();
-    });
-    // Until the painted fog arrives, the fog body reads procedural clouds and has no puffs.
-    void loadFogArt().then((art) => {
-      if (!art || !this.initialized) return;
-      this.fogBody?.setBank(art.bank);
-      this.fogShape = "";
-      this.invalidateFog();
-    });
     armSound();
     // Labels are rasterised once, in whatever face has loaded: wait for Geist alongside Pixi's
     // own start-up, so the first token name is already in it (design-language: "One typeface").
@@ -1025,13 +1016,16 @@ export class BoardView {
   private drawTerrain() {
     const state = this.state;
     if (!state) return;
-    const content = this.you?.role === "gm" ? state.terrain : state.terrainView;
-    if (this.drawnTerrain === content && this.drawnTerrainGrid === state.scene.grid && this.drawnTerrainShown === this.showTerrain) return;
-    this.drawnTerrain = content; this.drawnTerrainGrid = state.scene.grid; this.drawnTerrainShown = this.showTerrain;
+    const gm = this.you?.role === "gm";
+    const content = gm ? state.terrain : state.terrainView;
+    // A player's area outlines also follow what they can see, so fog and sight redraw them (board-palette).
+    const seen = gm ? null : [state.fog, state.sight, state.scene.map];
+    if (this.drawnTerrain === content && this.drawnTerrainGrid === state.scene.grid && this.drawnTerrainShown === this.showTerrain && sameItems(this.drawnTerrainSeen, seen)) return;
+    this.drawnTerrain = content; this.drawnTerrainGrid = state.scene.grid; this.drawnTerrainShown = this.showTerrain; this.drawnTerrainSeen = seen;
     const g = this.terrainGraphics.clear();
     const terrain = state.terrain ?? emptyTerrain();
-    const runs = this.you?.role === "gm" ? effectiveTerrain(terrain) : state.terrainView?.runs ?? [];
-    const temporary = this.you?.role === "gm" ? effectiveTerrain({ base: [], effects: terrain.effects }) : state.terrainView?.temporary ?? [];
+    const runs = gm ? effectiveTerrain(terrain) : state.terrainView?.runs ?? [];
+    const temporary = gm ? effectiveTerrain({ base: [], effects: terrain.effects }) : state.terrainView?.temporary ?? [];
     const s = state.scene.grid.cellSize;
     const draw = (list: TerrainRun[], marker: boolean) => {
       for (const run of list) for (let col = run.start; col <= run.end; col++) {
@@ -1042,18 +1036,29 @@ export class BoardView {
           g.rect(r.minX + .73 * s, r.minY + .05 * s, .2 * s, .2 * s).fill({ color: colour.inner, alpha: .95 }).stroke({ color: colour.outer, alpha: .9, width: s / 35 });
           continue;
         }
-        // Two-tone, so the square reads on light and dark maps alike (board-palette).
-        const inset = s / 60;
         g.rect(r.minX, r.minY, s, s).fill({ color: colour.inner, alpha: .22 });
-        // Difficult: single hatching; Blocked: crosshatching. Two-tone, no glyphs, under the border (board-palette).
+        // Difficult: single hatching; Blocked: crosshatching. Two-tone, no glyphs, under the outline (board-palette).
         const hatch = () => { for (const [p, q] of terrainHatch(run.kind, s)) g.moveTo(r.minX + p.x, r.minY + p.y).lineTo(r.minX + q.x, r.minY + q.y); };
         hatch(); g.stroke({ color: colour.outer, alpha: .5, width: s / 30 });
         hatch(); g.stroke({ color: colour.inner, alpha: .85, width: s / 60 });
-        g.rect(r.minX + inset, r.minY + inset, s - 2 * inset, s - 2 * inset).stroke({ color: colour.outer, alpha: .85, width: s / 30 });
-        g.rect(r.minX + inset * 2.5, r.minY + inset * 2.5, s - 5 * inset, s - 5 * inset).stroke({ color: colour.inner, alpha: .95, width: s / 60 });
       }
     };
-    if (this.showTerrain) draw(runs, false);
+    if (this.showTerrain) {
+      draw(runs, false);
+      // One two-tone outline per area, along its edge inside it (board-palette): a dark band with the
+      // bright line just inside, every dark line first.
+      const sides = terrainOutline(runs, outlineVisibility(state, gm));
+      for (const tone of ["outer", "inner"] as const) for (const kind of ["difficult", "blocked"] as const) {
+        const { inset, width, alpha } = outlineTone(tone, s);
+        let any = false;
+        for (const side of sides) {
+          if (side.kind !== kind) continue;
+          const [p, q] = outlineSegment(side, cellRect(side.col, side.row, state.scene.grid), inset);
+          g.moveTo(p.x, p.y).lineTo(q.x, q.y); any = true;
+        }
+        if (any) g.stroke({ color: terrainColour(kind)[tone], alpha, width, cap: "square" });
+      }
+    }
     draw(temporary, true);
   }
 
@@ -2108,6 +2113,16 @@ export class BoardView {
    * the puffs and wisps.
    */
   private syncFogMist(state: RoomState, regions: Point[][]) {
+    if (!this.fogArtRequested) {
+      this.fogArtRequested = true;
+      // Procedural fog draws immediately; painted art is needed only when a player sees fog.
+      void loadFogArt().then((art) => {
+        if (!art || !this.initialized) return;
+        this.fogBody?.setBank(art.bank);
+        this.fogShape = "";
+        this.invalidateFog();
+      });
+    }
     const { width, height } = this.boardSize();
     const cell = state.scene.grid.cellSize;
     const art = fogArt();
@@ -3215,6 +3230,8 @@ export class BoardView {
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
+    // The vector look works until the art arrives; avoid these requests while opening a board.
+    void loadFxTextures();
     const host = this.fxHost();
     this.startFx(withSound(
       playStrike(host, {
@@ -3229,6 +3246,7 @@ export class BoardView {
   }
 
   private playNukeFx(effect: Extract<AttackEffect, { kind: "nuke" }>) {
+    void loadFxTextures();
     // One large blast at a time: repeated clicks replace the previous effect and free its objects.
     for (const entry of [...this.fxRuns]) this.endFx(entry);
     const { width, height } = this.app.screen;
@@ -3343,6 +3361,15 @@ export class BoardView {
   private drawConditions(view: TokenView, conditions: ConditionId[], r: number) {
     view.markers.removeChildren().forEach((c) => c.destroy({ children: true }));
     if (conditions.length === 0) return;
+    if (!this.conditionArtRequested) {
+      this.conditionArtRequested = true;
+      void loadConditionIcons().then(() => {
+        if (!this.initialized) return;
+        for (const token of this.tokens.values()) token.drawnKey = "";
+        if (this.state && this.you) this.syncTokens();
+        this.invalidate();
+      });
+    }
 
     const size = Math.max(11, r * 0.34);
     // An icon is drawn a little larger than a shape: a painting needs the room to read.

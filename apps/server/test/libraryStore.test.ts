@@ -63,6 +63,28 @@ for (const [label, store] of stores) {
       expect(await s().findAssetPreparation(map.id, randomUUID())).toBeNull();
     });
 
+    it("replaces a map's grid and board outright for Save to library (FR-GM-17, ADR 0070)", async () => {
+      const owner = await s().registerGm(randomUUID());
+      const map = asset(owner); await s().createAsset(map, UPLOAD_ALLOWANCE);
+      const old = (await s().findAssetPreparation(map.id, owner))!;
+      await s().saveAssetPreparation(map.id, owner, { revision: old.revision, grid: DEFAULT_GRID, board: {
+        walls: [{ a: { x: 0, y: 0 }, b: { x: 70, y: 0 } }],
+        fog: [{ shape: "polygon", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }] }],
+        terrain: [{ row: 1, start: 1, end: 3, kind: "difficult" }],
+      } });
+      const stale = (await s().findAssetPreparation(map.id, owner))!;
+      const board = { walls: [{ a: { x: 10, y: 10 }, b: { x: 10, y: 80 } }], fog: [], terrain: [{ row: 0, start: 0, end: 0, kind: "blocked" as const }] };
+      const grid = { ...DEFAULT_GRID, cellSize: 80 };
+      // No revision and no terrain reset needed: the room's board replaces everything.
+      const replaced = (await s().replaceAssetPreparation(map.id, owner, { grid, board }))!;
+      expect(replaced.grid).toEqual(grid); expect(replaced.board).toEqual(board);
+      expect(replaced.revision).not.toBe(stale.revision);
+      expect(await s().findAssetPreparation(map.id, owner)).toEqual(replaced);
+      // An editor still holding the old revision is told the map changed.
+      await expect(s().saveAssetPreparation(map.id, owner, { revision: stale.revision, grid: DEFAULT_GRID, board: { walls: [], fog: [] } })).rejects.toThrow(/changed/);
+      expect(await s().replaceAssetPreparation(map.id, randomUUID(), { grid, board })).toBeNull();
+    });
+
     it("registers a GM identity idempotently", async () => {
       const hash = randomUUID();
       const a = await s().registerGm(hash);

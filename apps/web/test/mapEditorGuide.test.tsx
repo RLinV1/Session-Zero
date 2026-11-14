@@ -33,9 +33,10 @@ function mount() {
     />,
   );
 }
-const editor = () => screen.getByRole("dialog", { name: "Edit map" });
+const editor = () => screen.getByRole("dialog", { name: /^(Edit|Change) map$/ });
+/** The Map step is in Change map; every other step is in Edit map. */
 const openStep = (tab: string) => {
-  fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+  fireEvent.click(screen.getByRole("button", { name: tab === "1 · Map" ? "Change map" : "Edit map" }));
   fireEvent.click(within(editor()).getByRole("tab", { name: tab }));
 };
 const guide = () => within(editor()).getByRole("button", { name: "Guide" });
@@ -44,10 +45,10 @@ const title = () => within(editor()).getByRole("heading", { level: 2, name: (_, 
 describe("map editor step guides (map-editor-step-guides)", () => {
   it.each([
     ["1 · Map", "The map"],
-    ["2 · Grid", "Place the grid"],
-    ["3 · Walls", "The walls"],
-    ["4 · Fog", "The fog"],
-    ["5 · Sight", "Test tokens"],
+    ["1 · Grid", "Place the grid"],
+    ["2 · Walls", "The walls"],
+    ["3 · Fog", "The fog"],
+    ["4 · Sight", "Test tokens"],
   ])("%s has a Guide button that opens a tour for that step", (tab, first) => {
     mount();
     openStep(tab);
@@ -57,7 +58,7 @@ describe("map editor step guides (map-editor-step-guides)", () => {
 
   it("walks Next, Back and Done, and skips steps whose control is not on screen", () => {
     mount();
-    openStep("4 · Fog");
+    openStep("3 · Fog");
     fireEvent.click(guide());
     const seen: string[] = [];
     for (;;) {
@@ -77,7 +78,7 @@ describe("map editor step guides (map-editor-step-guides)", () => {
 
   it("closes on Escape without closing the editor", () => {
     mount();
-    openStep("5 · Sight");
+    openStep("4 · Sight");
     fireEvent.click(guide());
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(editor().querySelector(".guide-layer")).toBeNull();
@@ -86,7 +87,7 @@ describe("map editor step guides (map-editor-step-guides)", () => {
 
   it("tours the Sight controls", () => {
     mount();
-    openStep("5 · Sight");
+    openStep("4 · Sight");
     fireEvent.click(guide());
     const seen: string[] = [];
     for (;;) {
