@@ -21,7 +21,8 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, RoomDefaults, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
-  BuildChoiceOffError,
+  assertChoicesAllow,
+  type BuildChoiceValues,
   BuildItemChangedError,
   BuildItemLockedError,
   type BuildWriteGuard,
@@ -102,14 +103,14 @@ async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetR
 /** One writer per build at a time, and only while it's open, so checks and writes are one step. */
 async function lockOpenBuild(tx: Prisma.TransactionClient, buildId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
-  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true, aiWalls: true } });
+  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true, aiWalls: true, aiTerrain: true } });
   if (build?.status !== "open") throw new BuildClosedError();
   return build;
 }
 
 /** A write's guard, checked under the build's lock (ADR 0053). */
-function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean }, existing: { updatedAt: Date } | null) {
-  if (guard.requireAiWalls && !build.aiWalls) throw new BuildChoiceOffError();
+function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean; aiTerrain: boolean }, existing: { updatedAt: Date } | null) {
+  assertChoicesAllow(guard, build);
   if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt.toISOString() ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
 }
 
@@ -126,7 +127,7 @@ function toBuildRecord(row: Build): BuildRecord {
     id: row.id, ownerGmId: row.ownerGmId, name: row.name, status: row.status as BuildStatus,
     gameProfile: row.gameProfile as GameProfile | null,
     passHash: row.passHash, passExpiresAt: row.passExpiresAt?.toISOString() ?? null,
-    aiGrid: row.aiGrid, aiWalls: row.aiWalls,
+    aiGrid: row.aiGrid, aiWalls: row.aiWalls, aiTerrain: row.aiTerrain,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -727,12 +728,12 @@ export class PostgresRoomStore implements RoomStore {
     if (result.count !== 1) throw new BuildClosedError();
   }
 
-  async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
+  async setBuildChoices(id: string, ownerGmId: string, choices: BuildChoiceValues) {
     // Under the same lock as the AI's writes, so a write that saw walls allowed finishes first.
     const changed = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       const result = await tx.build.updateMany({
-        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, updatedAt: new Date() },
+        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, ...(choices.aiTerrain === undefined ? {} : { aiTerrain: choices.aiTerrain }), updatedAt: new Date() },
       });
       return result.count === 1;
     });

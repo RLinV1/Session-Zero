@@ -426,7 +426,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
           </ul>
         </>
       )}
-      {editable && aiSetSomething && <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => void onSave(EMPTY_MAP_SETUP)}>Remove everything your AI set on this map</button>}
+      {editable && aiSetSomething && <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => void onSave({ ...EMPTY_MAP_SETUP, terrain: [] })}>Remove everything your AI set on this map</button>}
     </section>
   );
 }

@@ -66,7 +66,7 @@ const map = (over: Record<string, unknown> = {}) => item({ kind: "map", key: "ca
 const encounter = (tokens: unknown[] = [{ creatureKey: "goblin", square: { column: 1, row: 2 }, hidden: true }]) => item({ kind: "encounter", key: "ambush", data: { name: "Bridge ambush", mapKey: "cave", tokens } });
 
 const detail = (over: Partial<BuildDetail> = {}): BuildDetail => ({
-  build: { id: "b1", name: "Hollow Coast", status: "open", createdAt: "2026-11-09T00:00:00Z", updatedAt: "2026-11-09T00:00:00Z", passExpiresAt: "2099-01-01T00:00:00Z", closesAt: "2026-11-23T00:00:00Z", choices: { aiGrid: false, aiWalls: false } },
+  build: { id: "b1", name: "Hollow Coast", status: "open", createdAt: "2026-11-09T00:00:00Z", updatedAt: "2026-11-09T00:00:00Z", passExpiresAt: "2099-01-01T00:00:00Z", closesAt: "2026-11-23T00:00:00Z", choices: { aiGrid: false, aiWalls: false, aiTerrain: false } },
   profile: { name: "Lanternfall", features: { hitPoints: true, armorClass: true, attacks: true, conditions: true }, unitsPerCell: 5, unitLabel: "ft", notes: "", flags: [] },
   files: [file()],
   items: [],
@@ -411,13 +411,13 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     });
   };
 
-  it("shows the two choices on the build page, and only the owner's page changes them", async () => {
+  it("shows the three choices on the build page, and only the owner's page changes them (ADR 0071)", async () => {
     builds.setChoices.mockResolvedValue({ build: detail().build });
     await open(detail());
     const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-choices input[type=checkbox]")];
-    expect(boxes.map((b) => b.checked)).toEqual([false, false]);
+    expect(boxes.map((b) => b.checked)).toEqual([false, false, false]);
     await click(boxes[0]);
-    expect(builds.setChoices).toHaveBeenCalledWith("b1", { aiGrid: true, aiWalls: false });
+    expect(builds.setChoices).toHaveBeenCalledWith("b1", { aiGrid: true, aiWalls: false, aiTerrain: false });
   });
 
   it("draws every wall, door, window and opening, numbered, and marks what the AI set", async () => {
@@ -453,7 +453,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     await click(editorButton("Remove line"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] }, "2026-11-09T00:00:00Z");
     await click(button("Remove everything your AI set"));
-    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [] }, "2026-11-09T00:00:00Z");
+    expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [], terrain: [] }, "2026-11-09T00:00:00Z");
   });
 
   // Four lines and a mark beside the second.
@@ -987,5 +987,50 @@ describe("a build page that reads in parts (FR-GM-27, build page layout 2026-11-
   it("keeps a note that has one label as the AI wrote it", async () => {
     await open(detail({ items: [goblin({ notCarriedOver: "Note: one line only." })] }));
     expect(host.querySelector(".build-carried .build-text")?.textContent).toBe("Note: one line only.");
+  });
+});
+
+describe("the AI's terrain in review (FR-GM-27, ADR 0071)", () => {
+  const terrain = [{ row: 1, start: 1, end: 2, kind: "difficult" as const }, { row: 3, start: 3, end: 3, kind: "blocked" as const }];
+  const setup = { openings: [], lines: [], marks: [], terrain, terrainGrid: { cellSize: 70, offsetX: 0, offsetY: 0 } };
+  const cave = (over: Record<string, unknown> = {}) => map({ gridStatus: "confirmed", grid: { cellSize: 70, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" }, setup, ...over });
+  const drawn = (selector: string) => [...host.querySelectorAll(`${selector} [data-terrain]`)].map((g) => g.getAttribute("data-terrain"));
+
+  it("draws each square as the map editor does, Difficult and Blocked apart, and counts them", async () => {
+    await open(detail({ items: [cave()] }));
+    expect(drawn(".build-map")).toEqual(["difficult", "difficult", "blocked"]);
+    expect(text()).toContain("Terrain: 2 Difficult squares and 1 Blocked square, proposed by your AI");
+    // The picture stays the clean original under it.
+    expect(host.querySelector(".build-map img")?.getAttribute("src")).toBe("/uploads/cave.webp");
+  });
+
+  it("clears all terrain, sending the setup with no terrain and the version the page showed", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: cave({ setup: { openings: [], lines: [], marks: [] } }) });
+    await open(detail({ items: [cave()] }));
+    expect(text()).toContain("Clearing it stops your AI changing this map.");
+    await click(button("Clear all terrain"));
+    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "cave", { ...setup, terrain: [] }, "2026-11-09T00:00:00Z");
+  });
+
+  it("says when the terrain was proposed on another grid, and the check lists it to fix", async () => {
+    await open(detail({ items: [cave({ grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } })] }));
+    expect(text()).toContain("Your AI proposed this terrain on 70-pixel squares at offset (0, 0), not on the grid this map has now. Clear it, or put the grid back.");
+    // Not drawn on a grid it doesn't fit, where it would sit in the wrong squares.
+    expect(drawn(".build-map")).toEqual([]);
+    expect(text()).toMatch(/Your AI proposed its terrain on 70-pixel squares at offset \(0, 0\), and the grid is now 50-pixel squares/);
+  });
+
+  it("shows nothing about terrain on a map without it, and no clear button on a published one", async () => {
+    await open(detail({ items: [map()] }));
+    expect(text()).not.toContain("Terrain:");
+    expect(button("Clear all terrain")).toBeUndefined();
+    await open(detail({ items: [{ ...cave(), published: true }] }));
+    expect(button("Clear all terrain")).toBeUndefined();
+  });
+
+  it("draws the terrain under an encounter's tokens, and lists a token on Blocked terrain to fix", async () => {
+    await open(detail({ items: [cave(), goblin(), encounter([{ creatureKey: "goblin", square: { column: 3, row: 3 }, hidden: false }])] }));
+    expect(drawn(".build-plot")).toEqual(["difficult", "difficult", "blocked"]);
+    expect(text()).toContain("Goblin at column 3, row 3 stands on Blocked terrain, so it couldn't move. Move it in the encounter's editor, or clear the terrain.");
   });
 });

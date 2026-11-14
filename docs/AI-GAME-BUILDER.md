@@ -61,7 +61,7 @@ Your AI is told never to invent a value. Anything the source doesn't clearly giv
 - **A plain image** gets a suggested grid from automatic detection, or a size you told your AI.
 - An encounter can't be published until its map's grid is confirmed.
 
-Two choices let your AI do more. Both are off unless you turn them on when you start a build, and you can change them on the build page at any time. Your AI can't change them. New build offers the usual combinations as one choice: **You set up maps** (both off), **Your AI sets grids**, or **Your AI sets grids, walls, doors and windows**. **Choose each one separately** has the two on their own.
+Three choices let your AI do more. Each is off unless you turn it on when you start a build, and you can change them on the build page at any time. Your AI can't change them. New build offers the usual combinations as one choice: **You set up maps** (all off), **Your AI sets grids**, **Your AI sets grids, walls, doors and windows**, or **Your AI sets grids, walls and terrain**. **Choose each one separately** has the three on their own.
 
 - **Let my AI set grids.** Your AI's grid counts as confirmed only when automatic detection agrees with it: the square size within half a pixel, and the grid's position within one pixel. The map then uses the detected grid, which is measured across the whole map. Otherwise you confirm it, as before.
 - **Let my AI set walls, doors and windows.** Your AI reads your materials and the map, then:
@@ -69,10 +69,15 @@ Two choices let your AI do more. Both are off unless you turn them on when you s
   - draws walls, doors and windows on a map with a grid, from grid corner to grid corner;
   - traces curved walls and cave edges with short straight lines between whole and half-square corners, so the outline is close but not exact. It leaves cave mouths and fallen walls open;
   - leaves anything it can't work out for you, with a reason. That covers broken walls, an opening that might be an archway, and anywhere your materials and the map disagree.
+- **Let my AI propose terrain.** Your AI marks squares that stay **Difficult** (they cost extra movement, such as rubble or deep snow) or **Blocked** (no token can enter, such as a pillar or a chasm). Every other square stays Normal. It works with walls off too.
+  - It is told not to take water, shadow or a dark patch as Blocked by itself. Where it can't tell, it leaves the square Normal and marks or flags it for you.
+  - Its terrain is stored with the grid it was proposed on. If you correct that grid, the map says so, and it can't be published until you clear the terrain or put the grid back.
+  - A token standing on Blocked terrain could never move, so the check lists it, and its encounter can't be published until it is moved.
+  - Turning the choice off stops your AI changing terrain. What it already proposed stays for you to review.
 
 Your AI reads positions off a picture of the map with numbered columns, rows and openings, so it never guesses pixels. Its walls are stored in squares, so if you correct a grid, they move with it.
 
-Nothing your AI sets is used until you publish, and you see every wall, door and window first. Your AI can't add fog or terrain. To draw or move walls yourself, publish and use the map editor.
+Nothing your AI sets is used until you publish, and you see every wall, door, window and terrain square first. Your AI can't add fog. To draw or move walls, or to paint terrain yourself, publish and use the map editor.
 
 **Maps you published before these choices existed** keep their openings as they were, because a build only adds to your library. To get doors on them, either:
 
@@ -88,6 +93,7 @@ Tick **Choose** on anything, or use **Choose what's ready**. A bar then appears 
 - change any value, which also stops your AI from overwriting that item;
 - confirm or correct each map's grid;
 - see every wall, door and window drawn on each map, change any door or window, and remove anything your AI drew. That also stops your AI from changing that map;
+- see your AI's terrain drawn on each map and under each encounter's tokens, and **Clear all terrain** on a map. That too stops your AI from changing that map. A published map and its encounters keep the terrain, and a room started from them has it;
 - check which token names players will see, and which tokens are hidden;
 - choose what to publish. An encounter brings its map, creatures and art with it.
 
@@ -116,6 +122,7 @@ Characters arrive with no owner. Once a player has joined, open the token and se
 | Encounters per build | 20 |
 | Walls, doors and windows your AI draws | 500 per map |
 | Places left for you | 50 per map |
+| Terrain your AI proposes | 10,000 squares per map |
 | Requests per pass | 120 a minute |
 
 ## Staying safe

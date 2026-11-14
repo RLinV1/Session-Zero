@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
+  DEFAULT_GRID,
   EMPTY_MAP_SETUP,
   draftMapBoard,
+  draftTerrainState,
   formatExpression,
   listOpenings,
   squareSizeOf,
+  terrainTally,
   type BuildCheckIssue,
   type BuildDetail,
   type BuildFileView,
@@ -19,6 +22,7 @@ import {
   type LibraryMapBoard,
   type OpeningView,
   type PublishedBuildItem,
+  type TerrainRun,
 } from "@vtt/shared";
 import { AccountMenu } from "../../account/AccountPages";
 import { RequireAccount } from "../../account/RequireAccount";
@@ -29,6 +33,7 @@ import { Check, Copy, PencilSimple, Trash } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
+import { TerrainCells } from "../mapEditor/TerrainSetup";
 import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type ThumbFor } from "./BuildLayout";
 import { ContentsRail, DraftMeter, type RailLink } from "./BuildRail";
 import { CreatureRoster, MapViewer } from "./BuildViewers";
@@ -375,7 +380,7 @@ function Build({ id }: { id: string }) {
                   renderPanel={(item) => (
                     <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)} busy={busy}
                       onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
-                      onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change these walls.")} />
+                      onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change this map's setup.")} />
                   )} />
               )}
 
@@ -452,7 +457,7 @@ function Build({ id }: { id: string }) {
                     {detail.build.passExpiresAt && <button type="button" disabled={busy} onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.", "Cancelling…")}>{pending === "Cancelling…" ? "Cancelling…" : "Cancel pass"}</button>}
                   </div>
                   <BuildChoiceFields choices={detail.build.choices} disabled={busy} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
-                  <p className="muted small-print">Turning walls off stops your AI making more changes. What it already set stays above, where you can remove it.</p>
+                  <p className="muted small-print">Turning a choice off stops your AI making more of those changes. What it already set stays above, where you can remove it.</p>
                 </Fold>
               )}
 
@@ -703,6 +708,8 @@ export interface MapDrawing {
   aiLines: readonly { a: { x: number; y: number }; b: { x: number; y: number } }[];
   /** Drawn doors and windows that sit on a wall they don't cut. */
   blockedLines: readonly number[];
+  /** The terrain the AI proposed, in squares of the grid drawn (ADR 0071). */
+  terrain: readonly TerrainRun[];
 }
 
 const WALL_COLOUR = LINE_COLOUR;
@@ -728,6 +735,8 @@ export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView
               <rect width={file.width} height={file.height} fill={`url(#${patternId})`} />
             </>
           )}
+          {/* As the map editor draws terrain, under the walls so none is hidden (board-palette). */}
+          {grid && grid.cellSize > 0 && drawing && drawing.terrain.length > 0 && <TerrainCells runs={[...drawing.terrain]} grid={{ ...DEFAULT_GRID, ...grid }} />}
           {drawing && (
             <g className="build-walls-drawn">
               {aiSet.length > 0 && <path d={aiSet.map(segment).join(" ")} stroke="#fff" strokeWidth={9} strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" data-ai-set={aiSet.length} />}
@@ -763,6 +772,30 @@ const gridStatusText = (data: DraftMapState) =>
   data.gridBy === "agreement" ? "Grid set by detection and your AI"
     : data.gridDiffers ? "Your AI's grid differs from detection: check it"
       : STATUS_TEXT[data.gridStatus];
+
+/**
+ * The permanent terrain the AI proposed (ADR 0071), drawn on the map above. The owner can clear it
+ * all here; painting terrain stays in the map editor after publishing.
+ */
+function MapTerrain({ data, editable, editedByUser, onSave }: { data: DraftMapState; editable: boolean; editedByUser: boolean; onSave: (setup: DraftMapSetup) => Promise<void> }) {
+  const setup = data.setup ?? EMPTY_MAP_SETUP;
+  const terrain = setup.terrain ?? [];
+  if (terrain.length === 0) return null;
+  const tally = terrainTally(terrain);
+  const otherGrid = draftTerrainState(setup, data.grid ?? data.proposedGrid) === "otherGrid";
+  const was = setup.terrainGrid;
+  return (
+    <details className="build-walls" open={otherGrid}>
+      <summary>Terrain: {plural(tally.difficult, "Difficult square")} and {plural(tally.blocked, "Blocked square")}, proposed by your AI</summary>
+      <p className="muted small-print">Violet single hatching is Difficult, red crosshatching Blocked. Every other square is Normal. To paint terrain, publish and use the map editor.</p>
+      {otherGrid && was && (
+        <p className="build-blocked" role="status">Your AI proposed this terrain on {was.cellSize}-pixel squares at offset ({was.offsetX}, {was.offsetY}), not on the grid this map has now. Clear it, or put the grid back.</p>
+      )}
+      {editable && !editedByUser && <p className="muted small-print">Clearing it stops your AI changing this map.</p>}
+      {editable && <button type="button" className="link danger build-text-action" onClick={() => void onSave({ ...setup, terrain: [] })}>Clear all terrain</button>}
+    </details>
+  );
+}
 
 function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void> }) {
   const data = mapOf(item);
@@ -807,6 +840,8 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         b: { x: preview.offsetX + l.to.column * preview.cellSize, y: preview.offsetY + l.to.row * preview.cellSize },
       })) : [],
       blockedLines: built.ok ? built.blockedLines : [],
+      // Drawn only on a grid it fits, so a grid being corrected shows the terrain wouldn't carry over (ADR 0071).
+      terrain: draftTerrainState(setup, preview) === "ready" ? setup.terrain ?? [] : [],
     };
   }, [file, data.setup, cell, x, y]); // `preview` is rebuilt from these three fields on every render
   const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;
@@ -831,6 +866,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
           )}
         </div></div>
       ) : <p className="error">This map's file isn't in the build any more.</p>}
+      {file && <MapTerrain data={data} editable={!item.published} editedByUser={item.editedByUser} onSave={onSaveSetup} />}
       {fromFile && data.grid && <p className="muted small-print">Grid from the UVTT file: {data.grid.cellSize}-pixel squares. It's exact, so there's nothing to confirm.</p>}
       {!item.published && file && !fromFile && (
         <div className="build-fields">
