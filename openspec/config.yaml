@@ -21,10 +21,18 @@ context: |
       (React, TypeScript, PixiJS board).
     - Persistence adapters include Prisma/Postgres, Redis, and asset storage;
       memory implementations support development and tests.
-    - Room access uses guest credentials; GM device tokens own rooms and
-      library assets. Account sign-in is planned, not yet implemented.
-    - Grid metadata uses map-image pixels. Manual grid correction and a
-      GM-local preview exist; automatic detection (FR-GM-03) is planned.
+    - Accounts and cookie sessions are implemented. Signed-in owners have
+      libraries and private AI builds. Guest hosting supports limited rooms;
+      guest room credentials do not authorize library or build access.
+    - Grid metadata uses map-image pixels. Manual correction, automatic grid
+      detection and private map editors are implemented.
+    - apps/mcp serves player tools at /mcp and deterministic private-build
+      tools at /mcp/build. Builds support files, grids, walls, doors/windows,
+      permanent terrain, creatures, encounters and owner-only publication.
+      Users supply their own AI; the builder does not invoke a backend LLM.
+    - Inspect deployed behavior separately from checked-in code. Public MCP
+      reachability and real chat-client compatibility are not established by
+      local tests or an edge proxy's browser challenge response.
 
   Design rules:
     - The server owns persistent room state. Commands are authorized in
