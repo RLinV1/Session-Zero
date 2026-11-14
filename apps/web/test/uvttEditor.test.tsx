@@ -35,7 +35,7 @@ function mount(state = room()) {
   return { ...fake, rerender: (next: RoomState) => view.rerender(panel(next)) };
 }
 async function importFile() {
-  fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change map" }));
   fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["json"], "map.dd2vtt")] } });
   await screen.findByText(/Unsaved changes: only you see them/);
 }
@@ -101,7 +101,7 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     const discard = await screen.findByRole("button", { name: "Discard" }); fireEvent.click(discard);
     await waitFor(() => expect(api.uvtt.discard).toHaveBeenCalledWith("r1", TOKEN, "opaque"));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit map" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Change map" })));
   });
   it("switches between Grid and Walls with edited UVTT geometry without applying it", async () => {
     const fake = mount(); await importFile();
@@ -117,21 +117,20 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
     expect(screen.queryByRole("dialog", { name: "Apply this map?" })).toBeNull();
     expect(fake.commands).toEqual([]);
   });
-  it("retains a rejected import in the step-switch prompt and enters Fog only after successful Apply", async () => {
+  it("keeps a rejected import for retry, and returns to the board only after a successful Apply (map-editor)", async () => {
     const fake = mount(); await importFile();
     const send = vi.mocked(fake.connection.command);
     send.mockResolvedValueOnce({ ok: false, code: "invalid", message: "Import refused. Draft kept." }).mockResolvedValue({ ok: true, seq: 3 });
     const revise = vi.spyOn(api.uvtt, "revise");
-    fireEvent.click(screen.getByRole("tab", { name: /· Fog$/ }));
-    const prompt = screen.getByRole("dialog", { name: "Apply this map?" });
-    expect(send).not.toHaveBeenCalled();
-    fireEvent.click(within(prompt).getByRole("button", { name: "Apply map" }));
-    expect(await within(prompt).findByRole("alert")).toHaveProperty("textContent", "Import refused. Draft kept.");
+    const dialog = screen.getByRole("dialog", { name: "Change map" });
+    // Change map offers no Fog step: fog is set up in Edit map once the map is on the table.
+    expect(within(dialog).queryByRole("tab", { name: /· Fog$/ })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
+    expect(await within(dialog).findByText("Import refused. Draft kept.")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /· Grid$/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText(/Unsaved changes: only you see them/)).toBeTruthy();
-    fireEvent.click(within(prompt).getByRole("button", { name: "Apply map" }));
-    await waitFor(() => expect(screen.getByRole("tab", { name: /· Fog$/ }).getAttribute("aria-selected")).toBe("true"));
-    expect(screen.queryByRole("dialog", { name: "Apply this map?" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull());
     expect(send.mock.calls).toEqual([
       [{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1 }],
       [{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1 }],
@@ -200,6 +199,8 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Apply map" }));
       await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", expectedSceneId: "initial", importId: "opaque", revision: 1, placeTokenIds: ["aria"] }]));
       await waitFor(() => expect(carried).toHaveBeenCalledWith(["aria"]));
+      // Change map closes itself, so placement is waiting on the board, not behind the editor (map-editor).
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull());
     });
     it("doesn't offer Select and place away from a table", async () => {
       mount(withToken()); await importFile();
@@ -263,7 +264,8 @@ describe("private UVTT editor (FR-GM-06/07/09/12)", () => {
       gridChange: { grid: preparation.grid, previous: state.scene.grid },
       tokenChanges: [{ tokenId: "hero", from: state.tokens.hero.position, to: { x: 50, y: 50 } }],
     }, { commandId: "import-action", actorId: "gm" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // Change map closes itself once the map is applied (map-editor).
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull());
     const send = vi.mocked(fake.connection.command);
     send.mockResolvedValueOnce({ ok: false, code: "invalid", message: "Earlier undo failed." });
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));

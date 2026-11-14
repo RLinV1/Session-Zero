@@ -337,6 +337,13 @@ function decideCommand(
       });
     }
 
+    case "scene.linkMap": {
+      // The shared `expectedMapUrl` guard above already required the GM and this board's map (ADR 0070).
+      if (!can.administer(actor)) return forbidden();
+      const map = state.scene.map;
+      if (!map || (map.assetId ?? null) !== command.expectedAssetId) return reject("invalid", sharedMsg("reject.mapChangedSave"));
+      return accept({ type: "MapLinked", assetId: command.assetId, previous: map.assetId ?? null });
+    }
     case "scene.setGrid": {
       if (!can.administer(actor)) return forbidden();
       if (command.terrainContext && (command.terrainContext.boardEpoch !== (state.boardEpoch ?? 0) || command.terrainContext.revision !== (state.terrainRevision ?? 0))) return reject("invalid", sharedMsg("reject.terrainChangedReview"));

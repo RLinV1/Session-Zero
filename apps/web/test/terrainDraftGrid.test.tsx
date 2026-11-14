@@ -28,13 +28,13 @@ function mount() {
   }
   render(<Harness />);
   fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
-  fireEvent.click(screen.getByRole("tab", { name: "6 · Terrain" }));
+  fireEvent.click(screen.getByRole("tab", { name: "5 · Terrain" }));
   const canvas = screen.getByRole("application", { name: "Terrain preparation canvas" });
   fireEvent.keyDown(canvas, { key: "Enter" }); fireEvent.keyDown(canvas, { key: "Enter" });
   return { ...fake, apply, committed: () => committed };
 }
 const editGrid = () => {
-  fireEvent.click(screen.getByRole("tab", { name: "2 · Grid" }));
+  fireEvent.click(screen.getByRole("tab", { name: "1 · Grid" }));
   const ask = screen.getByRole("dialog", { name: "Save changes?" });
   fireEvent.click(within(ask).getByRole("button", { name: "Keep draft and edit grid" }));
 };
@@ -49,7 +49,7 @@ describe("private terrain across grid editing (FR-GM-15, FR-REC-02)", () => {
     saveGrid(); await waitFor(() => expect(fake.apply).toHaveBeenCalledOnce());
     expect(fake.committed().terrain).toBeUndefined();
     expect(screen.getByText(/Unsaved changes/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "6 · Terrain" }));
+    fireEvent.click(screen.getByRole("tab", { name: "5 · Terrain" }));
     expect(document.querySelectorAll('[data-terrain="difficult"]').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fake.committed().terrain?.base).toEqual([{ row: 0, start: 0, end: 0, kind: "difficult" }]));
@@ -57,10 +57,10 @@ describe("private terrain across grid editing (FR-GM-15, FR-REC-02)", () => {
   });
   it("guards Terrain navigation and refuses implicit private resets on geometry apply", async () => {
     const fake = mount(); await screen.findByRole("button", { name: "Save changes" });
-    fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
+    fireEvent.click(screen.getByRole("tab", { name: "2 · Walls" }));
     const ask = screen.getByRole("dialog", { name: "Save changes?" });
     fireEvent.click(within(ask).getByRole("button", { name: "Keep editing" }));
-    expect(screen.getByRole("tab", { name: "6 · Terrain" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "5 · Terrain" }).getAttribute("aria-selected")).toBe("true");
     editGrid(); fireEvent.change(screen.getByLabelText("Cell size"), { target: { value: "100" } }); saveGrid();
     await screen.findByText("Save or discard private terrain before changing grid spacing or origin.");
     expect(fake.apply).not.toHaveBeenCalled(); expect(fake.commands).toEqual([]);

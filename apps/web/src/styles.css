@@ -3096,6 +3096,10 @@ dialog.modal.map-editor.is-preparing {
 /* Unsaved walls or fog (map-editor-drafts): the note and its Save and Discard, at the header's end. */
 .map-editor-unsaved { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .map-editor-unsaved .map-editor-draft { margin-left: 0; }
+/* Header actions after the unsaved controls: Export .uvtt (library) and Save to library (room), ADR 0070. */
+.map-editor-export, .map-editor-library { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.map-editor-steps > .map-editor-export, .map-editor-steps > .map-editor-library { margin-left: auto; }
+.map-editor-unsaved ~ .map-editor-export, .map-editor-unsaved ~ .map-editor-library { margin-left: 0; }
 .map-editor-save-error { font-size: var(--fs-sm); }
 .map-editor-body { flex: 1; min-height: 0; overflow: auto; }
 .map-editor-split { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--hud-width, 17rem); grid-template-rows: minmax(0, 1fr); gap: var(--space-2); }
@@ -4286,7 +4290,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .map-editor .modal-head:has(> .map-editor-steps) { gap: var(--space-2); }
   .map-editor .modal-head:has(> .map-editor-steps) .modal-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .map-editor-steps { min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .map-editor-steps:has(.map-editor-unsaved) { flex-wrap: wrap; overflow: visible; }
+  .map-editor-steps:has(.map-editor-unsaved), .map-editor-steps:has(.map-editor-export), .map-editor-steps:has(.map-editor-library) { flex-wrap: wrap; overflow: visible; }
   .map-editor-step { flex: none; padding: 0 var(--space-3); white-space: nowrap; }
   .map-editor-unsaved { margin-left: 0; }
   .map-editor-unsaved .map-editor-draft { display: none; }

@@ -39,6 +39,7 @@ describe("Human-readable activity formatter (FR-REC-01)", () => {
     ],
     MapSet: [{ type: "MapSet", map: { url: "/map.png", width: 100, height: 100 }, previous: null }, "Mara set the map"],
     GridSet: [{ type: "GridSet", grid: state.scene.grid, previous: state.scene.grid }, "Mara updated the grid"],
+    MapLinked: [{ type: "MapLinked", assetId: "asset-1", previous: null }, "Mara saved the map to the library"],
     IsometricSet: [{ type: "IsometricSet", from: false, to: true }, "Mara set the map style to 2.5D isometric"],
     LineOfSightSet: [{ type: "LineOfSightSet", from: false, to: true }, "Mara turned line of sight on"],
     SightRangeSet: [{ type: "SightRangeSet", from: null, to: 60 }, "Mara set sight range to 60 ft"],

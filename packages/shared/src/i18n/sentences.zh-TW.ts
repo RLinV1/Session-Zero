@@ -250,6 +250,7 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
       return cjk`${a}移除了地圖` + (restored.length ? `，並還原了${restored.join("與")}` : "");
     }
     case "GridSet": return cjk`${a}更新了網格`;
+    case "MapLinked": return cjk`${a}將地圖儲存到素材庫`;
     case "LineOfSightSet": return cjk`${a}${event.to ? "啟用" : "關閉"}了視線判定`;
     case "IsometricSet": return cjk`${a}將地圖切換為${event.to ? "2.5D 等角視角" : "平面視角"}`;
     case "SightRangeSet": {

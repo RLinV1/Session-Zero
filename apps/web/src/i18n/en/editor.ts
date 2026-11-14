@@ -41,6 +41,7 @@ export const editor = {
   "common.addToken": "Add token",
 
   "editor.title.edit": "Edit map",
+  "editor.title.change": "Change map",
   "editor.title.setUp": "Set up map",
   "editor.steps": "Map setup steps",
   "editor.unsaved": "Unsaved changes: not saved to this map yet",
@@ -209,7 +210,7 @@ export const editor = {
   "guide.map.save.title": "Keep a copy",
   "guide.map.save.body": "Tick this to save uploads to your library too.",
   "guide.map.export.title": "Export",
-  "guide.map.export.body": "Download the applied map, walls and all, as a UVTT file.",
+  "guide.map.export.body": "Download this map as last saved, walls and all, as a UVTT file.",
   "guide.grid.canvas.title": "Place the grid",
   "guide.grid.canvas.body": "Click two opposite corners of one square: A, then B.",
   "guide.grid.sample.title": "Sample size",

@@ -21,7 +21,7 @@ export function sceneNamesOf(state: RoomState): Record<string, string> {
 
 /** Only board preparation: room-wide actions and live combat stay on the active scene. */
 export function isScenePreparationCommand(command: { type: string }): boolean {
-  return /^(token\.(create|duplicate|move|delete|setAppearance|configure|setImage|setOwners|setHidden|setStats|setConditions)|group\.(create|rename|delete|assign|unassign)|scene\.(setMap|setGrid|setLineOfSight|setIsometric|setSightRange|importUVTT|savePreparation)|terrain\.(paint|effect\.(create|rename|remove))|wall\.(add|update|remove|clear|applyDetected)|portal\.(set|setState)|fog\.(add|remove|replace)|template\.(place|remove)|encounter\.apply|checkpoint\.restore)$/.test(command.type);
+  return /^(token\.(create|duplicate|move|delete|setAppearance|configure|setImage|setOwners|setHidden|setStats|setConditions)|group\.(create|rename|delete|assign|unassign)|scene\.(setMap|linkMap|setGrid|setLineOfSight|setIsometric|setSightRange|importUVTT|savePreparation)|terrain\.(paint|effect\.(create|rename|remove))|wall\.(add|update|remove|clear|applyDetected)|portal\.(set|setState)|fog\.(add|remove|replace)|template\.(place|remove)|encounter\.apply|checkpoint\.restore)$/.test(command.type);
 }
 
 /** Own-property reads only: a scene id like `__proto__` or `constructor` must not resolve via Object.prototype. */

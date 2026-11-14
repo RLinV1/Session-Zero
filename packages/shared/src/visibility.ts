@@ -539,6 +539,9 @@ export function filterEventForViewer(
     case "CheckpointRestored":
       // Both tables hold hidden tokens and GM-only areas; a filtered snapshot carries the rest.
       return { kind: "resync" };
+    case "MapLinked":
+      // The link is an opaque library id players already receive on MapImage (ADR 0004, 0070).
+      return pass;
     case "MapSet":
       // Nested changes contain hidden IDs and prior positions. Only the filtered result
       // reaches players, including inverse first-map removal and empty adjustments (ADR 0042).

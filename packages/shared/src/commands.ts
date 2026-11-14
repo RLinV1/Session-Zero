@@ -171,6 +171,16 @@ const BoardCommand = z.discriminatedUnion("type", [
     includeLibraryBoard: z.boolean().optional(),
   }),
   z.object({ type: z.literal("scene.importUVTT"), expectedSceneId: Id.optional(), importId: Id, revision: z.number().int().positive(), tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional(), placeTokenIds: PlaceTokenIds.optional() }).strict(),
+  /**
+   * Links the board's map to the GM's library map it was just saved as (ADR 0070). Sent by the
+   * server's Save to library route; a saved scene is linked inside `scene.prepare`.
+   */
+  z.object({
+    type: z.literal("scene.linkMap"), expectedSceneId: Id.optional(), expectedMapUrl: z.string().min(1).max(2048),
+    /** The link the server saw when it read the board: refused if it changed since (no double copies). */
+    expectedAssetId: Id.nullable(),
+    assetId: Id,
+  }).strict(),
   z.object({
     type: z.literal("scene.setGrid"), expectedSceneId: Id.optional(),
     resetTerrain: z.boolean().optional(),

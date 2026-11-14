@@ -42,6 +42,7 @@ export const editorZhTW = {
   "common.addToken": "新增棋子",
 
   "editor.title.edit": "編輯地圖",
+  "editor.title.change": "更換地圖",
   "editor.title.setUp": "設定地圖",
   "editor.steps": "地圖設定流程",
   "editor.unsaved": "變更尚未儲存至地圖",
@@ -210,7 +211,7 @@ export const editorZhTW = {
   "guide.map.save.title": "保留副本",
   "guide.map.save.body": "勾選後，也會將上傳的檔案儲存至素材庫。",
   "guide.map.export.title": "匯出",
-  "guide.map.export.body": "將已套用的地圖、牆壁等設定一起匯出為 UVTT 檔案。",
+  "guide.map.export.body": "將最後儲存的地圖連同牆壁等設定一起匯出為 UVTT 檔案。",
   "guide.grid.canvas.title": "放置網格",
   "guide.grid.canvas.body": "找出同一格的兩個對角，先點 A，再點 B。",
   "guide.grid.sample.title": "取樣大小",

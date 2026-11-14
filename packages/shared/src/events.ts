@@ -89,6 +89,8 @@ export const DomainEvent = z.discriminatedUnion("type", [
     wallChange: z.object({ walls: z.array(Wall).max(MAX_WALLS), previous: z.array(Wall).max(MAX_WALLS) }).optional(),
     fogChange: z.object({ fog: z.array(FogRegion).max(MAX_FOG_REGIONS), previous: z.array(FogRegion).max(MAX_FOG_REGIONS) }).optional(),
   }),
+  /** The board's map now names this library map (ADR 0070). Not undoable; `previous` is the replaced link. */
+  z.object({ type: z.literal("MapLinked"), assetId: Id, previous: Id.nullable() }),
   z.object({
     type: z.literal("GridSet"),
     terrainChange: z.object({ terrain: Terrain, previous: Terrain }).optional(),

@@ -815,6 +815,16 @@ export class MemoryRoomStore implements RoomStore {
     return structuredClone({ grid: next.grid, board: publicBoard(next.board), revision: preparationRevision(next) });
   }
 
+  async replaceAssetPreparation(id: string, ownerGmId: string, change: { grid: GridSpec; board: LibraryMapBoard }) {
+    const asset = this.assets.get(id);
+    if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return null;
+    const problem = preparationProblem(asset, change.grid, change.board, true);
+    if (problem) throw new PreparationConflictError(problem);
+    const next = { ...asset, grid: structuredClone(change.grid), board: versionedBoard(structuredClone(change.board)) };
+    this.assets.set(id, next);
+    return structuredClone({ grid: next.grid, board: publicBoard(next.board), revision: preparationRevision(next) });
+  }
+
   async deleteAsset(id: string, ownerGmId: string) {
     const asset = this.assets.get(id);
     if (!asset || asset.ownerGmId !== ownerGmId) return null;

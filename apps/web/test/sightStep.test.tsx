@@ -31,7 +31,7 @@ const withPlayer = (state: RoomState) => {
   return state;
 };
 const token = { id: "hero", name: "Hero", position: { x: 100, y: 100 }, size: 1, rotation: 0, color: "#ffffff", imageUrl: null, assetId: null, ownerIds: [], hidden: false, stats: EMPTY_STATS, conditions: [] };
-const openSight = () => { fireEvent.click(screen.getByRole("button", { name: "Edit map" })); fireEvent.click(within(editor()).getByRole("tab", { name: "5 · Sight" })); };
+const openSight = () => { fireEvent.click(screen.getByRole("button", { name: "Edit map" })); fireEvent.click(within(editor()).getByRole("tab", { name: "4 · Sight" })); };
 const lineOfSightBox = () => within(editor()).getByRole("radio", { name: /^On$/ });
 const limited = () => within(editor()).getByRole("radio", { name: /^Limited$/ });
 const unlimited = () => within(editor()).getByRole("radio", { name: /^Unlimited$/ });
@@ -39,17 +39,20 @@ const unlimited = () => within(editor()).getByRole("radio", { name: /^Unlimited$
 const placeInCentre = () => fireEvent.keyDown(document.querySelector(".map-editor-sight-preview")!, { key: "Enter" });
 
 describe("map editor Sight step (FR-GM-19)", () => {
-  it("has a tab after Fog and asks for a map when there is none", async () => {
+  it("has a tab after Fog in Edit map; a UVTT import in Change map reviews only its grid and walls", async () => {
+    mount(room());
+    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    expect(within(editor()).getAllByRole("tab").map((t) => t.textContent)).toEqual(["1 · Grid", "2 · Walls", "3 · Fog", "4 · Sight", "5 · Terrain"]);
+    fireEvent.click(within(editor()).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit map" })).toBeNull());
+    cleanup();
     vi.spyOn(api.uvtt, "prepare").mockResolvedValue({ id: "opaque", revision: 1, map: { url: "/uploads/import.png", width: 800, height: 600 }, grid: GRID, walls: [], diagnostics: [] });
     vi.spyOn(api.uvtt, "discard").mockResolvedValue();
     mount(room({ withMap: false }));
     fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["json"], "map.dd2vtt")] } });
     await screen.findByText(/Unsaved changes: only you see them/);
-    const tabs = within(editor()).getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["1 · Map", "2 · Grid", "3 · Walls", "4 · Fog", "5 · Sight", "6 · Terrain"]);
-    fireEvent.click(within(editor()).getByRole("tab", { name: "5 · Sight" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Apply this map?" })).getByRole("button", { name: "Discard" }));
-    expect(await screen.findByText("Apply a map before setting up sight.")).toBeTruthy();
+    const changing = screen.getByRole("dialog", { name: "Change map" });
+    expect(within(changing).getAllByRole("tab").map((t) => t.textContent)).toEqual(["1 · Map", "2 · Grid", "3 · Walls"]);
   });
 
   it("shows the grid on Sight, Walls and Fog, and one Show-menu Grid choice carries over and sends nothing (FR-GM-19)", () => {
@@ -64,16 +67,16 @@ describe("map editor Sight step (FR-GM-19)", () => {
     expect(gridBox().checked).toBe(true);
     fireEvent.click(gridBox());
     expect(lines()).toBe(0);
-    step("3 · Walls");
+    step("2 · Walls");
     expect(gridBox().checked).toBe(false);
     expect(lines()).toBe(0);
-    step("4 · Fog");
+    step("3 · Fog");
     expect(lines()).toBe(0);
     fireEvent.click(gridBox());
     expect(lines()).toBeGreaterThan(0);
-    step("3 · Walls");
+    step("2 · Walls");
     expect(lines()).toBeGreaterThan(0);
-    step("5 · Sight");
+    step("4 · Sight");
     expect(lines()).toBeGreaterThan(0);
     expect(fake.commands).toEqual([]);
   });
@@ -254,7 +257,7 @@ describe("map editor Sight step (FR-GM-19)", () => {
   it("asks before leaving Sight with unsaved changes", () => {
     const fake = mount(withPlayer(room())); openSight();
     fireEvent.click(lineOfSightBox());
-    fireEvent.click(within(editor()).getByRole("tab", { name: "3 · Walls" }));
+    fireEvent.click(within(editor()).getByRole("tab", { name: "2 · Walls" }));
     expect(screen.getByRole("dialog", { name: "Save changes?" })).toBeTruthy();
     expect(fake.commands).toEqual([]);
   });
@@ -278,15 +281,20 @@ describe("token dialog hand-off from the leave-step prompt (FR-GM-04)", () => {
     const state = room(); state.tokens.hero = token;
     return mount(state);
   };
+  const changing = () => screen.getByRole("dialog", { name: "Change map" });
+  /** Change map, pick a library map, edit its grid, then close: the prompt asks about the draft map. */
   const prepared = async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change map" }));
     fireEvent.click(screen.getByRole("button", { name: "From library" }));
     fireEvent.click(await screen.findByTitle(replacement.name));
-    fireEvent.click(within(editor()).getByRole("tab", { name: "3 · Walls" }));
+    await waitFor(() => expect(within(changing()).getByRole("tab", { name: "2 · Grid" }).getAttribute("aria-selected")).toBe("true"));
+    // An edited draft map asks before closing; an untouched one just closes.
+    fireEvent.change(within(changing()).getByLabelText("Distance per square"), { target: { value: "10" } });
+    fireEvent.click(changing().querySelector<HTMLElement>(".modal-close")!);
     return within(await screen.findByRole("dialog", { name: "Apply this map?" }));
   };
 
-  it("Apply map opens the tokens dialog, then sends setMap with the policy and moves on", async () => {
+  it("Apply map opens the tokens dialog, then sends setMap with the policy and returns to the board", async () => {
     const fake = setup();
     const prompt = await prepared();
     fireEvent.click(prompt.getByRole("button", { name: "Apply map" }));
@@ -295,7 +303,7 @@ describe("token dialog hand-off from the leave-step prompt (FR-GM-04)", () => {
     fireEvent.click(dialog.getByRole("radio", { name: /^Keep positions/ }));
     fireEvent.click(dialog.getByRole("button", { name: "Apply map" }));
     await waitFor(() => expect(fake.commands).toEqual([expect.objectContaining({ type: "scene.setMap", tokenPolicy: "keep" })]));
-    await waitFor(() => expect(within(editor()).getByRole("tab", { name: "3 · Walls" }).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change map" })).toBeNull());
   });
 
   it("Cancel in the tokens dialog sends nothing", async () => {

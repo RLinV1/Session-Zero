@@ -145,6 +145,10 @@ function apply(state: RoomState, event: DomainEvent, at: string | null): RoomSta
       return { ...state, participants: { ...state.participants, [p.id]: { ...p, revoked: true } } };
     }
 
+    case "MapLinked": {
+      const map = required(state.scene.map ?? undefined, event);
+      return { ...state, scene: { ...state.scene, map: { ...map, assetId: event.assetId } } };
+    }
     case "MapSet": {
       const tokens = { ...state.tokens };
       for (const change of event.tokenChanges ?? []) {

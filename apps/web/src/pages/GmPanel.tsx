@@ -108,9 +108,6 @@ export function GmPanel({
             applying={gridApplying}
             error={gridError}
           >
-            {hasLibrary && state.scene.map?.assetId && (
-              <SaveGridToLibrary assetId={state.scene.map.assetId} grid={state.scene.grid} />
-            )}
           </GridForm>
         )}
       />
@@ -158,22 +155,32 @@ function draftScene(scene: RoomState["scene"], draft: MapDraft): RoomState["scen
 
 type EditorStep = "map" | "grid" | "walls" | "fog" | "sight" | "terrain";
 /** Unsaved work the editor asks about, and where it goes once the GM answers (map-section-step-buttons). */
-type PendingKind = "map" | "grid" | "draft";
+/** `library`: Save to library pressed with unsaved changes (asset-library, ADR 0070). */
+type PendingKind = "map" | "grid" | "draft" | "library";
 type Pending = { kind: PendingKind; then: EditorStep | "close" };
 const PENDING_TEXT: Record<PendingKind, { title: TextId; body: TextId; save: TextId }> = {
   map: { title: "gmMap.applyMapQ", body: "gmMap.applyMapBody", save: "gmMap.applyMap" },
   grid: { title: "gmMap.applyGridQ", body: "gmMap.applyGridBody", save: "grid.apply" },
   draft: { title: "common.saveChangesQ", body: "gmMap.saveGeometryBody", save: "common.save" },
+  library: { title: "gmMap.libraryUnsavedQ", body: "gmMap.libraryUnsavedBody", save: "gmMap.saveChangesFirst" },
 };
-/** The editor's steps, numbered in this order when shown. */
-const STEPS: { key: EditorStep; label: TextId }[] = [
+/** Change map: choose a new image and line up its grid (map-editor). Apply returns to the board. */
+const CHANGE_STEPS: { key: EditorStep; label: TextId }[] = [
   { key: "map", label: "editor.step.map" },
+  { key: "grid", label: "editor.step.grid" },
+];
+/** A UVTT import also lets the GM review its walls before Apply. */
+const CHANGE_UVTT_STEPS: { key: EditorStep; label: TextId }[] = [...CHANGE_STEPS, { key: "walls", label: "editor.step.walls" }];
+/** Edit map: everything about the map already on the table, numbered in this order. */
+const EDIT_STEPS: { key: EditorStep; label: TextId }[] = [
   { key: "grid", label: "editor.step.grid" },
   { key: "walls", label: "editor.step.walls" },
   { key: "fog", label: "editor.step.fog" },
   { key: "sight", label: "editor.step.sight" },
   { key: "terrain", label: "editor.step.terrain" },
 ];
+/** Which button opened the editor (map-editor): it decides the steps and what Apply does. */
+type EditorMode = "change" | "edit";
 /** Encounter templates inherit walls from their map; only grid and fog are editable here. */
 const FIXED_MAP_STEPS: { key: EditorStep; label: TextId }[] = [
   { key: "grid", label: "editor.step.grid" },
@@ -223,7 +230,6 @@ function MapSection(props: {
   /** The Sight step, the same for line of sight and sight range. */
   sight: (connection: RoomConnection, state: RoomState) => ReactNode;
 }) {
-  const preparing = useContext(ScenePreparationContext)?.preparing ?? false;
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
@@ -244,7 +250,6 @@ function MapSection(props: {
   const { detection, waiting } = preparation;
   const [prepError, setPrepError] = useState<string | null>(null);
   const [applyingMap, setApplyingMap] = useState(false);
-  const [exporting, setExporting] = useState(false);
   /** What to do with existing tokens (KAN-67); only asked when a map and tokens are there to move. */
   const [policy, setPolicy] = useState<MapTokenPolicy | "place">("scale");
   // Select and place (ADR 0068): only at a real table, on the live board, where placing can follow.
@@ -268,6 +273,10 @@ function MapSection(props: {
   const uploadRef = useRef<HTMLInputElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
   const editMapRef = useRef<HTMLButtonElement>(null);
+  const changeMapRef = useRef<HTMLButtonElement>(null);
+  const [mode, setMode] = useState<EditorMode>("edit");
+  /** Set when Apply map closed the editor itself: focus goes to the board, where placement may be waiting. */
+  const closedByApply = useRef(false);
   /** Whether a map uploaded here is also kept in the account's library (on by default, ADR 0004). */
   const [saveToLibrary, setSaveToLibrary] = useState(true);
   /** Bumped when a library map is picked, so an upload still in flight can't replace that draft. */
@@ -422,6 +431,32 @@ function MapSection(props: {
     if (busyNow) return;
     if (!ask("close")) closeEditor();
   };
+  /** Save to library (asset-library, ADR 0070): a GM with a library, on Edit map, not for a fixed map. */
+  const offersLibrary = props.hasLibrary && !props.fixedMap && props.map !== null;
+  const [libraryStatus, setLibraryStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  useEffect(() => { setLibraryStatus("idle"); setLibraryError(null); }, [editorOpen, liveMapUrl]);
+  const saveMapToLibrary = async () => {
+    setLibraryStatus("saving"); setLibraryError(null);
+    try {
+      // The server reads the board itself; while a scene is prepared privately, it reads that scene.
+      await api.saveMapToLibrary(props.roomId, props.token, preparingScene ? { sceneId: props.sceneId } : {});
+      setLibraryStatus("saved");
+    } catch (err) {
+      setLibraryStatus("idle");
+      setLibraryError(err instanceof Error ? err.message : t("gmMap.saveToLibraryFailed"));
+    }
+  };
+  /** Unsaved edits warn first; otherwise the room's map is saved straight away. */
+  const requestLibrarySave = () => {
+    if (busyNow || libraryStatus === "saving") return;
+    if (gridDirty || unsaved) {
+      setPendingError(null);
+      setPending({ kind: "library", then: step });
+      return;
+    }
+    void saveMapToLibrary();
+  };
   const finishPending = (then: EditorStep | "close") => {
     setPending(null);
     setPendingError(null);
@@ -431,7 +466,7 @@ function MapSection(props: {
   /** Why Save can't run for this kind of change, or null when it can. */
   const pendingBlocked = (kind: PendingKind): string | null => {
     if (kind === "map" && prep && !prepCommand(prep)) return t("gmMap.fixGridStepMap");
-    if (kind === "grid" && editedGrid === null) return t("gmMap.fixGridStep");
+    if ((kind === "grid" || kind === "library") && gridDirty && editedGrid === null) return t("gmMap.fixGridStep");
     return null;
   };
   const savePending = async () => {
@@ -446,6 +481,14 @@ function MapSection(props: {
     setPendingSaving(true);
     setPendingError(null);
     try {
+      if (pending.kind === "library") {
+        // Save changes first: the grid, then walls, fog, sight and terrain; the library only if both saved.
+        if (gridDirty && !(editedGrid !== null && await applyGrid(editedGrid))) return setPendingError(props.gridError ?? t("gmMap.applyGridFailed"));
+        if (unsaved && !await saveDraft()) return;
+        finishPending(pending.then);
+        await saveMapToLibrary();
+        return;
+      }
       const ok = pending.kind === "map" ? await applyPrep()
         : pending.kind === "grid" ? editedGrid !== null && await applyGrid(editedGrid)
         : await saveDraft();
@@ -457,6 +500,12 @@ function MapSection(props: {
   };
   const discardPending = () => {
     if (!pending || pendingSaving) return;
+    // Save to library without them: the table's map as it is, with the edits kept unsaved here.
+    if (pending.kind === "library") {
+      finishPending(pending.then);
+      void saveMapToLibrary();
+      return;
+    }
     if (pending.kind === "map") discardPrep();
     else if (pending.kind === "grid") props.onGridClose();
     else discardDraft();
@@ -501,25 +550,17 @@ function MapSection(props: {
       if (applied) {
         const current = props.connection.snapshot?.state;
         if (current) setDraft(draftFrom(current));
-        setChangedMapUrl(askPolicy ? prep.map.url : null); setUndoError(null); discardPrep();
-        setStep("walls");
+        setChangedMapUrl(askPolicy ? prep.map.url : null); setUndoError(null);
+        // Change map is done once the map is on the table: back to the board, whatever the token
+        // choice; with Select and place, placement is already waiting there (map-editor, ADR 0068).
+        closedByApply.current = true;
+        closeEditor();
       }
       return applied;
     } catch (err) {
       setPrepError(err instanceof Error ? err.message : t("gmMap.applyMapFailed"));
       return false;
     } finally { setApplyingMap(false); }
-  };
-  const exportMap = async () => {
-    setExporting(true); setPrepError(null);
-    try {
-      const blob = await api.uvtt.export(props.roomId, props.token);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a"); link.href = url; link.download = "map.uvtt";
-      document.body.append(link); link.click(); link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) { setPrepError(err instanceof Error ? err.message : t("gmMap.exportFailed")); }
-    finally { setExporting(false); }
   };
   // A grid being edited belongs to the map it was edited for.
   const previousMap = useRef(props.mapUrl);
@@ -534,7 +575,7 @@ function MapSection(props: {
     if (!file) return;
     // Capture before image decoding/upload: room updates must not rebase this preparation.
     const terrainContext = { boardEpoch: props.room.boardEpoch ?? 0, revision: props.room.terrainRevision ?? 0 };
-    if (/\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file.name)) { setEditorOpen(true); if (!prep) setStep("map"); }
+    if (/\.(?:uvtt|dd2vtt|df2vtt)$/i.test(file.name)) { setMode("change"); setEditorOpen(true); if (!prep) setStep("map"); }
     setBusy(true);
     const generation = ++prepGeneration.current;
     try {
@@ -542,7 +583,7 @@ function MapSection(props: {
         const result = await api.uvtt.prepare(props.roomId, props.token, file, { saveToLibrary: props.hasLibrary && saveToLibrary, sceneId: props.sceneId });
         if (generation !== prepGeneration.current) { await api.uvtt.discard(props.roomId, props.token, result.id); return; }
         if (prep?.uvtt) void api.uvtt.discard(props.roomId, props.token, prep.uvtt.id).catch(() => {});
-        setPrep(startUvttPrep(result)); setPrepError(null); setStep("grid"); setEditorOpen(true); return;
+        setPrep(startUvttPrep(result)); setPrepError(null); setMode("change"); setStep("grid"); setEditorOpen(true); return;
       }
       // Read the size first: a map upload carries it so the server can analyze it (grid-detection).
       const { width, height } = await imageSize(file);
@@ -559,7 +600,8 @@ function MapSection(props: {
       if (prep?.uvtt) void api.uvtt.discard(props.roomId, props.token, prep.uvtt.id).catch(() => {});
       setPrep(startPrep({ url, width, height, ...(asset && { assetId: asset.id }) }, undefined, props.currentGrid, terrainContext));
       setStep("grid");
-      // An upload from the Manage tab opens the editor to line up its grid.
+      // An upload from the Manage tab opens the editor (Change map) to line up its grid.
+      setMode("change");
       setEditorOpen(true);
     } catch (err) {
       setPrepError(err instanceof Error ? err.message : t("common.uploadFailed"));
@@ -578,6 +620,7 @@ function MapSection(props: {
       setPicking(false);
       setPickError(null);
       setPrep(next);
+      setMode("change");
       setStep("grid");
       setEditorOpen(true);
       return;
@@ -592,7 +635,14 @@ function MapSection(props: {
 
   const [gridActionSlot, setGridActionSlot] = useState<HTMLElement | null>(null);
   const shown = prep?.map ?? props.map;
-  const steps = props.fixedMap ? FIXED_MAP_STEPS : STEPS;
+  const steps = props.fixedMap ? FIXED_MAP_STEPS : mode === "edit" ? EDIT_STEPS : prep?.uvtt ? CHANGE_UVTT_STEPS : CHANGE_STEPS;
+  const openEditor = (opening: EditorMode) => {
+    const first = (props.fixedMap ? FIXED_MAP_STEPS : opening === "edit" ? EDIT_STEPS : CHANGE_STEPS)[0]!.key;
+    closedByApply.current = false;
+    setMode(opening);
+    setStep(first);
+    setEditorOpen(true);
+  };
   return (
     <PanelSection id="gm-map" title={t("gmMap.battleMap")}>
       <div className="stack">
@@ -602,12 +652,20 @@ function MapSection(props: {
             : t("gmMap.noMap")}
         </p>
         {props.map ? (
-          // Opens the editor on its first step (Grid for a fixed map, ADR 0033); its tabs reach the others.
+          // Change map replaces the image; Edit map prepares the one on the table (map-editor).
+          // A fixed map (a template being edited, ADR 0033) offers only Edit map, with Grid and Fog.
           <div className="row button-row" data-tour="gm-grid">
+            {!props.fixedMap && (
+              <button ref={changeMapRef} type="button" className="secondary small" onClick={(e) => {
+                e.currentTarget.focus();
+                openEditor("change");
+              }}>
+                {t("editor.title.change")}
+              </button>
+            )}
             <button ref={editMapRef} type="button" className="secondary small" onClick={(e) => {
               e.currentTarget.focus();
-              setStep(steps[0]!.key);
-              setEditorOpen(true);
+              openEditor("edit");
             }}>
               {t("editor.title.edit")}
             </button>
@@ -640,11 +698,19 @@ function MapSection(props: {
       </div>
       <Modal
         open={editorOpen}
-        title={t("editor.title.edit")}
+        title={t(mode === "change" ? "editor.title.change" : "editor.title.edit")}
         className={`map-editor${waiting ? " is-preparing" : ""}`}
         onClose={requestClose}
         closeLabel={waiting ? t("editor.setUpManually") : t("common.close")}
-        onAfterClose={() => (editMapRef.current ?? emptyUploadRef.current)?.focus()}
+        onAfterClose={() => {
+          if (closedByApply.current) {
+            closedByApply.current = false;
+            // The board's own surface, so the arrow keys and Enter can place carried tokens.
+            document.querySelector<HTMLElement>(".board-canvas")?.focus();
+            return;
+          }
+          ((mode === "change" ? changeMapRef.current : editMapRef.current) ?? emptyUploadRef.current)?.focus();
+        }}
         headerContent={!waiting && (
           <nav className="map-editor-steps" role="tablist" aria-label={t("editor.steps")}>
             {steps.map(({ key, label }, i) => (
@@ -671,6 +737,15 @@ function MapSection(props: {
               </span>
             )}
             {saveError && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
+            {mode === "edit" && offersLibrary && (
+              <span className="map-editor-library">
+                <button type="button" className="secondary small" disabled={busyNow || libraryStatus === "saving"} onClick={requestLibrarySave}>
+                  {libraryStatus === "saving" ? t("gmMap.savingToLibrary") : t("gmMap.saveToLibrary")}
+                </button>
+                {libraryStatus === "saved" && <span role="status" className="muted">{t("gmMap.savedToLibrary")}</span>}
+                {libraryError && <span role="alert" className="error">{libraryError}</span>}
+              </span>
+            )}
           </nav>
         )}
       >
@@ -711,9 +786,7 @@ function MapSection(props: {
                       }}
                     />
                   </label>
-                  <button type="button" className="secondary" data-guide="map-export" disabled={!props.map || exporting || preparing} onClick={() => void exportMap()}>{exporting ? t("gmMap.exporting") : t("gmMap.export")}</button>
                   <p className="muted small-print">{t("gmMap.uvttLimit")}</p>
-                  {Object.values(props.room.walls).some((w) => w.portal) && <p className="muted small-print">{t("gmMap.exportNote")}</p>}
                   {props.hasLibrary && (
                     <button type="button" className="secondary" data-guide="map-library" disabled={busy} onClick={() => setPicking(true)}>
                       {t("guide.map.library.title")}
@@ -861,7 +934,7 @@ function MapSection(props: {
                 <button type="button" className="primary" disabled={pendingSaving || blocked !== null} onClick={() => void savePending()}>
                   {pendingSaving ? t("common.saving") : t(text.save)}
                 </button>
-                <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>{t("common.discard")}</button>
+                <button type="button" className="secondary" disabled={pendingSaving} onClick={discardPending}>{t(pending?.kind === "library" ? "gmMap.saveWithoutThem" : "common.discard")}</button>
                 {pending?.kind === "draft" && pending.then === "grid" && <button type="button" className="secondary" disabled={pendingSaving} onClick={() => finishPending("grid")}>{t("gmMap.keepDraft")}</button>}
                 <button type="button" className="secondary" disabled={pendingSaving} onClick={() => setPending(null)}>{t("common.keepEditing")}</button>
               </div>
@@ -873,36 +946,3 @@ function MapSection(props: {
   );
 }
 
-/** Explicitly writes the room's current grid back to the library map it came from. */
-function SaveGridToLibrary({ assetId, grid }: { assetId: string; grid: GridSpec }) {
-  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setStatus("idle");
-    setError(null);
-  }, [assetId, grid]);
-  return (
-    <div className="stack">
-      <button
-        type="button"
-        className="secondary"
-        disabled={status === "saving"}
-        onClick={async () => {
-          setStatus("saving");
-          setError(null);
-          try {
-            await api.library.update(assetId, { grid });
-            setStatus("saved");
-          } catch (err) {
-            setError(err instanceof Error ? err.message : t("gmMap.saveGridFailed"));
-            setStatus("idle");
-          }
-        }}
-      >
-        {status === "saving" ? t("common.saving") : t("gmMap.saveGridToLibrary")}
-      </button>
-      {status === "saved" && <p className="muted" role="status">{t("gmMap.gridSaved")}</p>}
-      {error && <p role="alert" className="error">{error}</p>}
-    </div>
-  );
-}

@@ -116,6 +116,7 @@ export function formatActivity(event: DomainEvent, actorName: string, before: Ro
       return `${actorName} removed the map${restored.length ? `, restoring ${restored.join(" and ")}` : ""}`;
     }
     case "GridSet": return `${actorName} updated the grid`;
+    case "MapLinked": return `${actorName} saved the map to the library`;
     case "LineOfSightSet": return `${actorName} turned line of sight ${event.to ? "on" : "off"}`;
     case "IsometricSet": return `${actorName} set the map style to ${event.to ? "2.5D isometric" : "flat"}`;
     case "SightRangeSet": {

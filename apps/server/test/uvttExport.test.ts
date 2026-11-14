@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Command, DEFAULT_GRID, UvttError, parseUvtt, normalizeUvtt, type GridSpec } from "@vtt/shared";
 import { LiveRoom } from "../src/domain/liveRoom";
-import { exportUvttScene, type CapturedScene } from "../src/uvtt/exportScene";
+import { exportUvttScene, mapImageReader, type CapturedScene } from "../src/uvtt/exportScene";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { animatedPng, animatedWebp } from "./uvttImageFixtures";
@@ -32,7 +32,7 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
     const key = `${randomUUID()}.${format}`; const original = await image(format); await writeFile(path.join(dir, key), original);
     await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     const scene = snapshot(`/uploads/${key}`);
-    const output = await exportUvttScene(scene, "room", store, assets, null);
+    const output = await exportUvttScene(scene, mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null));
     const bytes = Buffer.from(output.image, "base64");
     if (format !== "jpeg") expect(bytes).toEqual(original);
     expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(original).raw().toBuffer());
@@ -51,36 +51,36 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
   it("reads only owned library records, including legacy references without assetId", async () => {
     const key = `${randomUUID()}.png`; const bytes = await image("png"); await writeFile(path.join(dir, key), bytes);
     await store.createAsset({ id: "art", ownerGmId: "owner", kind: "map", objectKey: key, url: `/uploads/${key}`, name: "Secret filename", width: 400, height: 300, grid: null, createdAt: new Date().toISOString() }, UPLOAD_ALLOWANCE);
-    expect((await exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).image).toBe(bytes.toString("base64"));
+    expect((await exportUvttScene(snapshot(`/uploads/${key}`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).image).toBe(bytes.toString("base64"));
     const noOwnership = snapshot(`/uploads/${key}`);
     noOwnership.map = { ...noOwnership.map!, assetId: "another-owner" };
-    await expect(exportUvttScene(noOwnership, "room", store, assets, null)).rejects.toThrow(/Upload/);
+    await expect(exportUvttScene(noOwnership, mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/Upload/);
   });
   it("supports shipped example maps through an explicit allowlist", async () => {
     await writeFile(path.join(dir, "map-ice.webp"), await image("webp"));
-    expect((await exportUvttScene(snapshot("/img/map-ice.webp"), "room", store, assets, dir)).format).toBe(0.3);
+    expect((await exportUvttScene(snapshot("/img/map-ice.webp"), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, dir))).format).toBe(0.3);
     await writeFile(path.join(dir, "secret.webp"), await image("webp"));
-    await expect(exportUvttScene(snapshot("/img/secret.webp"), "room", store, assets, dir)).rejects.toThrow(/Upload/);
-    await expect(exportUvttScene(snapshot("/img/../secret.webp"), "room", store, assets, dir)).rejects.toThrow(UvttError);
+    await expect(exportUvttScene(snapshot("/img/secret.webp"), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, dir))).rejects.toThrow(/Upload/);
+    await expect(exportUvttScene(snapshot("/img/../secret.webp"), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, dir))).rejects.toThrow(UvttError);
   });
   it("rejects external URLs, foreign room uploads, fractional grids and changed image dimensions", async () => {
     const key = `${randomUUID()}.png`; await writeFile(path.join(dir, key), await image("png"));
     await store.createRoom("other", "invite2"); await store.recordRoomUpload("other", key, UPLOAD_ALLOWANCE);
-    await expect(exportUvttScene(snapshot(`https://example.com/map.png`), "room", store, assets, null)).rejects.toThrow(/External/);
-    await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/Upload/);
-    await expect(exportUvttScene(snapshot(`/uploads/${key}`, { ...grid, cellSize: 50.2 }), "room", store, assets, null)).rejects.toThrow(/integer/);
+    await expect(exportUvttScene(snapshot(`https://example.com/map.png`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/External/);
+    await expect(exportUvttScene(snapshot(`/uploads/${key}`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/Upload/);
+    await expect(exportUvttScene(snapshot(`/uploads/${key}`, { ...grid, cellSize: 50.2 }), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/integer/);
     await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
     const wrong = snapshot(`/uploads/${key}`); wrong.map = { ...wrong.map!, width: 399 };
-    await expect(exportUvttScene(wrong, "room", store, assets, null)).rejects.toThrow(/dimensions/);
+    await expect(exportUvttScene(wrong, mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/dimensions/);
   });
   it("refuses animated and missing stored images with bounded guidance", async () => {
     const key = `${randomUUID()}.png`; await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
-    await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/unavailable/);
+    await expect(exportUvttScene(snapshot(`/uploads/${key}`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/unavailable/);
     for (const bytes of [await animatedPng(), await animatedWebp()]) {
       await writeFile(path.join(dir, key), bytes);
-      await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, assets, null)).rejects.toThrow(/single-frame|animated/);
+      await expect(exportUvttScene(snapshot(`/uploads/${key}`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, null))).rejects.toThrow(/single-frame|animated/);
     }
-    await expect(exportUvttScene(snapshot(`/uploads/${key}`), "room", store, { ...assets, put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { throw new Error("Secret object path"); } }, null)).rejects.toThrow(/25 MiB/);
+    await expect(exportUvttScene(snapshot(`/uploads/${key}`), mapImageReader({ ownerId: "owner", roomId: "room" }, store, { ...assets, put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { throw new Error("Secret object path"); } }, null))).rejects.toThrow(/25 MiB/);
   });
   it("reads an immutable captured scene while later room activity proceeds", async () => {
     const key = `${randomUUID()}.png`; const bytes = await image("png"); await writeFile(path.join(dir, key), bytes); await store.recordRoomUpload("room", key, UPLOAD_ALLOWANCE);
@@ -95,11 +95,13 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
     const painting = room.submit("gm", Command.parse({ type: "terrain.paint", layerId: "base", paint: [{ row: 0, start: 0, end: 0, kind: "difficult" }], context: { boardEpoch: 1, revision: 1 } }));
     const captured = (await room.captureScene("gm"))!;
     expect((await painting).ok).toBe(true); expect(captured.terrainRevision).toBe(2);
+    // Save to library reads base terrain from the same capture (ADR 0070).
+    expect(captured.terrain).toEqual([{ row: 0, start: 0, end: 0, kind: "difficult" }]);
     expect(await room.captureScene("player")).toBeNull();
     let release!: () => void, started!: () => void;
     const reading = new Promise<void>((resolve) => { started = resolve; });
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const exporting = exportUvttScene(captured, "room", store, { put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { started(); await gate; return bytes; } }, null);
+    const exporting = exportUvttScene(captured, mapImageReader({ ownerId: "owner", roomId: "room" }, store, { put: assets.put.bind(assets), delete: assets.delete.bind(assets), sizeOf: assets.sizeOf.bind(assets), readPrivate: async () => { started(); await gate; return bytes; } }, null));
     try {
       await reading;
       expect((await room.submit("gm", Command.parse({ type: "scene.setGrid", grid: { ...grid, cellSize: 70 }, resetTerrain: true }))).ok).toBe(true);
@@ -119,7 +121,7 @@ describe("UVTT safe applied-scene export (FR-GM-12, FR-GM-23)", () => {
       map: { url: "/img/map-ice.webp", width: dimensions.width!, height: dimensions.height! },
       grid: { ...DEFAULT_GRID, cellSize: 70, offsetX: 47, offsetY: 46 }, walls: {}, seq: 3,
     };
-    const builtInOutput = await exportUvttScene(example, "room", store, assets, builtInDir);
+    const builtInOutput = await exportUvttScene(example, mapImageReader({ ownerId: "owner", roomId: "room" }, store, assets, builtInDir));
     expect(Buffer.from(builtInOutput.image, "base64")).toEqual(builtIn);
     const imported = normalizeUvtt(parseUvtt(builtInOutput), example.map!, DEFAULT_GRID);
     expect(imported.grid.cellSize).toBe(70);
