@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, type AttackPreset, type DiagonalRule, type Participant, type RoomState, type Token } from "@vtt/shared";
 import type { RoomConnection } from "../src/net/roomConnection";
@@ -34,19 +34,48 @@ function room(attacks: AttackPreset[], tokens: Token[], rule: DiagonalRule = "eq
 function panel(state: RoomState, targetId: string | null = null, onAttackRange = vi.fn()) {
   const connection = { command: vi.fn(async () => ({ ok: true as const, seq: null })), ephemeral: vi.fn(), snapshot: { seq: 0, state: null } } as unknown as RoomConnection;
   const onPick = vi.fn();
+  const onPickOnBoard = vi.fn();
   render(
     <AttackPanel
       connection={connection} state={state} you={gm} pick={{ attackerId: "Aria", targetId }} onPick={onPick}
       reset={{ count: 0, clearedRollId: null }} rolling={false} onAttackRange={onAttackRange}
-      onPickOnBoard={() => {}} onShowPing={() => {}} visibility="public" onVisibility={() => {}}
+      onPickOnBoard={onPickOnBoard} onShowPing={() => {}} visibility="public" onVisibility={() => {}}
     />,
   );
-  return { onPick, onAttackRange };
+  return { onPick, onAttackRange, onPickOnBoard, connection };
 }
 
 const optionNames = () => within(screen.getByRole("listbox", { name: "Target" })).getAllByRole("option").map((o) => o.textContent);
 
 describe("targets grouped by the chosen attack's range (attack-range)", () => {
+  it.each([false, true])("lets Choose a target start board picking instead of being a dead button (custom: %s)", (custom) => {
+    const { onPickOnBoard, connection } = panel(room([LONGSWORD], [token("Goblin", 1, 0)]));
+    if (custom) {
+      fireEvent.click(screen.getByRole("button", { name: "Attack options" }));
+      fireEvent.click(screen.getByRole("button", { name: "Custom roll" }));
+    }
+    const choose = screen.getByRole("button", { name: "Choose a target" }) as HTMLButtonElement;
+    expect(choose.disabled).toBe(false);
+    fireEvent.click(choose);
+    expect(onPickOnBoard).toHaveBeenCalledWith("Aria");
+    expect(connection.command).not.toHaveBeenCalled();
+  });
+
+  it("does not offer target picking when there are no visible targets", () => {
+    panel(room([LONGSWORD], []));
+    expect((screen.getByRole("button", { name: "Choose a target" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps the named damage follow-up visible when Custom roll was left open", async () => {
+    localStorage.setItem("vtt.ui.customRoll", "true");
+    const sword = { ...LONGSWORD, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } };
+    const state = room([sword], [token("Goblin", 1, 0)]);
+    state.rolls = [{ id: "hit", expression: "1d20+5", byParticipantId: "gm", dice: [15], modifier: 5, total: 20, visibility: "public", verdict: "hit",
+      attack: { actor: { tokenId: "Aria", name: "Aria", hidden: false }, target: { tokenId: "Goblin", name: "Goblin", hidden: false }, label: "Longsword", kind: "toHit" } }];
+    const { connection } = panel(state, "Goblin");
+    fireEvent.click(screen.getByRole("button", { name: /^Roll damage 1d8\+3/ }));
+    await waitFor(() => expect(connection.command).toHaveBeenCalledWith(expect.objectContaining({ expression: "1d8+3", attack: expect.objectContaining({ kind: "damage" }) })));
+  });
   it("measures under the room's Diagonals rule and marks who is in range", () => {
     const state = room([], [token("Goblin", 2, 2)], "alternating");
     expect(targetsByDistance(state, "Aria")[0]).toMatchObject({ distance: "15 ft", inRange: true });

@@ -821,7 +821,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           <div className="board-notices" role="status" aria-live="polite">
             {!readOnly && <DepartureNotices state={state} onReview={you.role === "gm" ? setReviewing : undefined} />}
             <KeepSeatNotice roomId={roomId} token={token} name={you.displayName} />
-            {you.role === "gm" && !readOnly && <GuestRoomNotice />}
+            {you.role === "gm" && !readOnly && <GuestRoomNotice key={roomId} roomId={roomId} />}
           </div>
         )}
         overlay={

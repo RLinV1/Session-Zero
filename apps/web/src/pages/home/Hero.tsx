@@ -79,7 +79,7 @@ function HeroActions() {
   return (
     <div className="hero-actions enter enter-3">
       <div className="hero-buttons">
-        <Link href="/gm-dashboard" className="cta">
+        <Link href="/start" className="cta">
           {t("home.hero.start")}
           <ArrowRight aria-hidden="true" />
         </Link>

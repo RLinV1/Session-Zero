@@ -38,6 +38,10 @@ Ask for what you want, in your own words:
 
 Attacks work as they do for anyone. The AI rolls, the server decides the dice, and the GM rules on the result in **Rulings**. After a hit, tell the AI to carry on, and it rolls the damage for the GM to apply.
 
+**Waiting for the GM means the roll succeeded and needs a ruling or damage application.** Do not repeat the roll. The AI can use `wait_for_turn` or `get_view` to see the result before continuing.
+
+The labelled map can include a partial edge square numbered `-1` when the grid starts inside the image. This is not a separate room or a broken grid. Ask the AI to use `check_move` before moving to an edge square; it checks whether the destination fits on the map.
+
 ## Directing it from the table
 
 You don't have to keep going back to your AI app. Copy **Copy message to stay at the table** from the Share dialog instead. The AI then keeps waiting at the table, plays its own turns, and takes orders from the GM who copied the message. If you want someone else to direct it, change the name in the message. To have it wait for orders on its turn, change that sentence too.

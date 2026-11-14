@@ -79,9 +79,9 @@ describe("the page's calls to action (gm-home: Each path names its reader)", () 
   it("words each intent one way: every way into running a game says Start a room, every way into joining says Join a game", () => {
     render(<HomePage />);
     const main = document.querySelector("main")!;
-    const run = [...main.querySelectorAll('a[href="/gm-dashboard"]')].map((a) => a.textContent!.trim());
-    expect(run).toEqual(["Start a room", "Start a room"]);
-    expect([...main.querySelectorAll("a.cta")].map((a) => a.getAttribute("href"))).toEqual(["/gm-dashboard", "/gm-dashboard"]);
+    const run = [...main.querySelectorAll('a[href="/start"]')].map((a) => a.textContent!.trim());
+    expect(run).toEqual(["Start a room", "Start a room", "Start a room"]);
+    expect([...main.querySelectorAll("a.cta")].map((a) => a.getAttribute("href"))).toEqual(["/start", "/start"]);
     const join = within(main).getAllByRole("button", { name: /join/i }).map((b) => b.textContent!.trim());
     expect(join).toEqual(["Join a game", "Join a game"]);
     expect(main.textContent).not.toMatch(/Set up a room/);

@@ -14,7 +14,7 @@ export function ClosingBand() {
       <div className="closing-copy">
         <h2 id="closing-heading">{t("home.closing.title")}</h2>
         <p>{t("home.closing.body")}</p>
-        <Link href="/gm-dashboard" className="cta">
+        <Link href="/start" className="cta">
           {t("home.closing.start")}
           <ArrowRight aria-hidden="true" />
         </Link>

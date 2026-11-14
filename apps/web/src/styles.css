@@ -2933,6 +2933,27 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
   font-size: var(--fs-sm);
 }
 .board-notice p { margin: 0; }
+/* Let the first-use walkthrough finish before asking a guest to save their room. */
+.room:has(.guest-tutorial) .guest-room-notice { display: none; }
+
+/* The landing page's closing explanation: one sequence, two ways to keep playing. */
+.session-walkthrough { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 3rem); margin: 0 0 var(--space-6); padding-left: 1.5rem; }
+.session-walkthrough li { padding-left: var(--space-2); }
+.session-walkthrough li::marker { color: var(--accent-text); font-weight: 700; }
+.session-guide h4 { margin: 0 0 var(--space-2); font-size: var(--fs-lg); }
+.session-guide p { margin: 0; max-width: 65ch; }
+.session-walkthrough p, .session-account-options .small-print, .session-table-notes dd { color: var(--muted); }
+.session-account-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.5rem, 5vw, 4rem); }
+.session-account-options > div { border-top: 1px solid var(--rule); padding-top: var(--space-5); display: flex; flex-direction: column; align-items: start; gap: var(--space-3); }
+.session-account-options .ui-button { margin-top: var(--space-2); }
+.session-table-notes { margin-top: clamp(2.5rem, 6vw, 4rem); padding-top: var(--space-5); border-top: 1px solid var(--rule); }
+.session-table-notes dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin: var(--space-4) 0 0; }
+.session-table-notes dt { font-weight: 600; margin-bottom: var(--space-2); }
+.session-table-notes dd { margin: 0; max-width: 60ch; }
+@media (max-width: 700px) {
+  .session-walkthrough, .session-account-options, .session-table-notes dl { grid-template-columns: minmax(0, 1fr); }
+  .session-walkthrough { gap: var(--space-5); }
+}
 
 /* The guest room's interactive demo (guest-gm-hosting): beside its control, or a bottom sheet. */
 .guest-tutorial {

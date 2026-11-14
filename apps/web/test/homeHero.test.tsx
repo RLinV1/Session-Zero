@@ -32,7 +32,7 @@ describe("the hero's two ways in (gm-home: Both paths in the first screen)", () 
   it("makes running a game the primary action, into the GM flow", () => {
     render(<Hero />);
     const start = screen.getByRole("link", { name: "Start a room" });
-    expect(start.getAttribute("href")).toBe("/gm-dashboard");
+    expect(start.getAttribute("href")).toBe("/start");
     expect(start.className).toContain("cta");
   });
 
