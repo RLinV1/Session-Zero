@@ -17,13 +17,16 @@ is not evidence that it ships.
 
 ## 13.1 Product scope, identity and entry
 
-**Play requires an authenticated account to create a room.** Keep FR-GM-01 and the
+**A signed-out GM may start a guest room on built-in art only** ([ADR 0072](adr/0072-guest-gm-hosting.md)).
+Uploads, the library and saved rooms need a free account. Keep FR-GM-01 and the
 non-null `rooms.owner_user_id`. Do not introduce unclaimed-room authority, expiry or
-ownership transfer in the Core Loop. Home explains “Free account required to host;
-players join without one” beside the primary action.
+ownership transfer in the Core Loop, with two exceptions from ADR 0072: a guest room
+expires after 30 days without play, and the explicit move transfers it into an account.
+Home says “No account needed to start. A free account keeps your rooms on any device and
+lets you upload your own maps.” beside the primary action.
 
-- Signed-in Play creates one room and opens its table. Signed-out Play opens login/signup
-  with a same-origin return intent; successful authentication continues room creation.
+- Signed-in Play creates one room and opens its table. Signed-out Play opens sign-in,
+  which offers "Continue as guest GM" to the guest start page `/start`.
 - Creation is idempotent. A retry with the same request key returns the existing result,
   rather than creating another room. Failed creation preserves the authenticated session.
 - Accounts represent people; GM/player role remains per room. An authenticated player

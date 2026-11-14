@@ -10,6 +10,7 @@ import { legacyOffer } from "../net/legacy";
 import { ensureSeat } from "../net/seats";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
+import { DeleteRoomModal } from "../ui/DeleteRoomModal";
 import { formatRelative } from "../ui/formatRelative";
 import { EmptyState } from "../ui/EmptyState";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
@@ -216,7 +217,6 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
   const [confirming, setConfirming] = useState<GmRoomSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
 
   async function deleteRoom(room: GmRoomSummary) {
     setDeleting(true);
@@ -287,32 +287,7 @@ function HostingCard({ state, onDeleted, onCreate }: { state: RoomsState; onDele
           ))}
         </ul>
       )}
-      <Modal
-        open={confirming !== null}
-        title={t("common.deleteNamedQ", { name: confirming?.name || t("common.untitledRoom") })}
-        onClose={() => !deleting && setConfirming(null)}
-        initialFocus={cancelRef}
-      >
-        <p>
-          <strong>{confirming?.name || t("common.untitledRoom")}</strong> {t("dashboard.deleteBody")}
-        </p>
-        <p className="muted">
-          {t("dashboard.deleteNote")}
-        </p>
-        <div className="row modal-actions">
-          <button ref={cancelRef} type="button" className="secondary" onClick={() => setConfirming(null)} disabled={deleting}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            className="danger-fill"
-            onClick={() => confirming && void deleteRoom(confirming)}
-            disabled={deleting}
-          >
-            {deleting ? t("common.deleting") : t("dashboard.deleteRoom")}
-          </button>
-        </div>
-      </Modal>
+      <DeleteRoomModal room={confirming} deleting={deleting} onCancel={() => setConfirming(null)} onConfirm={(room) => void deleteRoom(room)} />
     </section>
   );
 }
@@ -354,24 +329,34 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
   const [token, setToken] = useState<string | null>(null);
   const [state, setState] = useState<LegacyState>({ status: "none" });
   const [dismissed, setDismissed] = useState(false);
+  // Read during render, before any effect strips it, so StrictMode's second effect run still sees it.
+  const [save] = useState(() => new URLSearchParams(location.search).get("save") === "1");
 
   useEffect(() => {
     let live = true;
+    // "Save to a free account" lands here with ?save=1: move at once, then drop the flag.
+    const params = new URLSearchParams(location.search);
+    if (params.has("save")) {
+      params.delete("save");
+      const rest = params.toString();
+      history.replaceState(history.state, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
+    }
     void legacyOffer().then((offer) => {
+      // Under StrictMode the first run's `live` is false by now, so only one run ever claims.
       if (!live || !offer) return;
       setToken(offer.token);
       setState({ status: "offer", summary: offer.summary });
+      if (save) void move(offer.token, offer.summary);
     });
     return () => {
       live = false;
     };
   }, []);
 
-  async function move(summary: LegacySummary) {
-    if (!token) return;
+  async function move(claimToken: string, summary: LegacySummary) {
     setState({ status: "moving", summary });
     try {
-      const moved = await api.legacy.claim(token);
+      const moved = await api.legacy.claim(claimToken);
       forgetGmToken();
       setState({ status: "moved", summary: moved });
       onMoved();
@@ -405,7 +390,7 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
         </p>
       )}
       <div className="row">
-        <button type="button" className="primary" onClick={() => void move(state.summary)} disabled={state.status === "moving"}>
+        <button type="button" className="primary" onClick={() => token && void move(token, state.summary)} disabled={state.status === "moving"}>
           {state.status === "moving" ? t("common.moving") : t("dashboard.legacy.move")}
         </button>
         <button type="button" className="secondary" onClick={() => setDismissed(true)} disabled={state.status === "moving"}>

@@ -26,7 +26,7 @@ export const homeZhTW = {
 
   "home.facts.label": "特色一覽",
   "home.facts.noAccount": "不需要帳號",
-  "home.facts.noAccountDetail": "玩家點開邀請連結，就能用任何瀏覽器加入。",
+  "home.facts.noAccountDetail": "玩家與 GM 都能直接開始。免費帳號能讓你的房間在任何裝置上開啟，還能上傳自己的地圖。",
   "home.facts.free": "永久免費",
   "home.facts.freeDetail": "所有功能都能用，沒有付費版本。",
   "home.facts.upTo": ({ n }) => cjk`最多${n}位`,

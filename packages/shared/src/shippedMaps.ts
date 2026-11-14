@@ -52,6 +52,10 @@ export const SHIPPED_MAPS: readonly ShippedMap[] = [
   shipped("moonwater-baths", "Moonwater Baths", "/img/map-moonwater-baths.webp", { width: 1960, height: 1400 }, { cellSize: 70, offsetX: 0, offsetY: 0 }, MOONWATER_BATHS_WALLS),
 ];
 
+/** The slugs of `SHIPPED_MAPS`, as a tuple for `z.enum`; a test keeps the two in step (guest-gm-hosting). */
+export const SHIPPED_MAP_SLUGS = ["broken-span", "hollowfrost-keep", "temple-green-sun", "sunken-crypt", "emberwatch-archive", "moonwater-baths"] as const;
+export type ShippedMapSlug = (typeof SHIPPED_MAP_SLUGS)[number];
+
 export function shippedMapByUrl(url: string): ShippedMap | undefined {
   return SHIPPED_MAPS.find((m) => m.url === url);
 }

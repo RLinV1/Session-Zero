@@ -19,12 +19,23 @@ import type { RoomStore } from "../store/roomStore";
 import { hashToken, newInviteCode } from "./credentials";
 import type { RoomRegistry } from "./roomRegistry";
 import type { WallDetections } from "./wallDetection";
+import type { AccountLimits } from "../identity/routes";
+
+/** Includes temporary encounter-editing rooms (FR-GM-01). */
+export const MAX_OWNED_ROOMS = 100;
+
+export class RoomCreationRefused extends Error {
+  constructor(readonly reason: "cap" | "rate", readonly retryAfterSec?: number) {
+    super(`Room creation refused: ${reason}`);
+  }
+}
 
 export interface NewRoomWithSeat {
   ownerGmId: string;
-  userId: string;
+  /** Null for a guest GM (guest-gm-hosting D3): no account, so no membership row. */
+  userId: string | null;
   /** The sign-in the GM's seat is bound to (ADR 0017 M4). */
-  sessionHash: string;
+  sessionHash: string | null;
   /** Browser-generated; only its SHA-256 is stored (DESIGN.md §5). */
   guestToken: string;
   roomName: string;
@@ -49,10 +60,30 @@ export function roomLifecycle(deps: {
   registry: RoomRegistry;
   assets: AssetStore;
   walls: Pick<WallDetections, "forgetRoom">;
+  limits: Pick<AccountLimits, "roomCreationsPerAccount">;
 }) {
-  const { store, registry, assets, walls } = deps;
+  const { store, registry, assets, walls, limits } = deps;
+  const roomCreationTails = new Map<string, Promise<unknown>>();
 
   async function createRoomWithSeat(room: NewRoomWithSeat) {
+    // Both HTTP entrypoints share this queue: the count and insert must stay together.
+    const previous = roomCreationTails.get(room.ownerGmId) ?? Promise.resolve();
+    const create = async () => {
+      if ((await store.listOwnedRoomIds(room.ownerGmId)).length >= MAX_OWNED_ROOMS) throw new RoomCreationRefused("cap");
+      const rate = limits.roomCreationsPerAccount.hit(`rooms:${room.userId}`);
+      if (!rate.ok) throw new RoomCreationRefused("rate", rate.retryAfterSec);
+      return insertRoomWithSeat(room);
+    };
+    const result = previous.then(create, create);
+    roomCreationTails.set(room.ownerGmId, result);
+    try {
+      return await result;
+    } finally {
+      if (roomCreationTails.get(room.ownerGmId) === result) roomCreationTails.delete(room.ownerGmId);
+    }
+  }
+
+  async function insertRoomWithSeat(room: NewRoomWithSeat) {
     const roomId = randomUUID();
     const inviteCode = newInviteCode();
     const participantId = randomUUID();
@@ -64,7 +95,7 @@ export function roomLifecycle(deps: {
       editsEncounterId: room.editsEncounterId ?? null,
     });
     await store.saveCredential(hashToken(room.guestToken), { roomId, participantId, sessionHash: room.sessionHash });
-    await store.putMember({ roomId, participantId, userId: room.userId });
+    if (room.userId) await store.putMember({ roomId, participantId, userId: room.userId });
     const live = await registry.get(roomId);
     // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
     const preset = presetOf({ preset: room.preset });

@@ -37,6 +37,8 @@ import {
   WallDetectionAvailability,
   type WallDetectionRequest,
   type InviteSeatResponse,
+  type GmRoomSummary,
+  type GuestRoomStatus,
   type LegacySummary,
   type LibraryAsset,
   type LibraryAnimation,
@@ -258,6 +260,24 @@ export const api = {
     accountRequest<CreateRoomResponse>("/api/rooms", { method: "POST", ...jsonBody(req) }),
 
   /**
+   * A guest room, started with no account (guest-gm-hosting): this browser's GM token says who is
+   * asking. A 429's wait comes from the Retry-After header when the body doesn't carry it.
+   */
+  async createGuestRoom(gmToken: string, req: CreateRoomRequest): Promise<CreateRoomResponse> {
+    const res = await apiFetch("/api/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json", [GM_TOKEN_HEADER]: gmToken },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = await errorFrom(res);
+      const wait = Number(res.headers.get("retry-after"));
+      throw err.detail.retryAfterSec === undefined && wait > 0 ? new ApiError(err.message, err.status, { ...err.detail, retryAfterSec: wait }) : err;
+    }
+    return (await res.json()) as CreateRoomResponse;
+  },
+
+  /**
    * Joining needs no account. When signed in, the seat is also kept on the account; a 409 with
    * `code: "already_member"` means the account already has a seat here, to resume instead.
    */
@@ -398,6 +418,13 @@ export const api = {
   inviteSeat: (inviteCode: string) => accountRequest<InviteSeatResponse>(`/api/invites/${encodeURIComponent(inviteCode)}/seat`),
 
   rooms: {
+    /** Whether the room is a guest room (guest-gm-hosting), asked with the GM's room credential; 403 for anyone else. */
+    async guestStatus(roomId: string, token: string): Promise<GuestRoomStatus> {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/guest`, { headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) throw await errorFrom(res);
+      return (await res.json()) as GuestRoomStatus;
+    },
+
     /** A new credential for the account's seat in the room, from this device (ADR 0017 M2). */
     seat: (roomId: string, guestToken: string) =>
       accountRequest<SeatResponse>(`/api/rooms/${encodeURIComponent(roomId)}/seat`, {
@@ -425,6 +452,13 @@ export const api = {
   legacy: {
     summary: (gmToken: string) => legacyRequest<LegacySummary>(gmToken, "/api/gm/legacy"),
     claim: (gmToken: string) => legacyRequest<LegacySummary>(gmToken, "/api/gm/legacy/claim", { method: "POST" }),
+    /** The rooms this token owns: a signed-out GM's guest rooms (guest-gm-hosting). */
+    rooms: (gmToken: string) => legacyRequest<GmRoomSummary[]>(gmToken, "/api/gm/rooms"),
+    /** Deletes one of them, for good. Already gone counts as deleted. */
+    async removeRoom(gmToken: string, roomId: string): Promise<void> {
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}`, { method: "DELETE", headers: { [GM_TOKEN_HEADER]: gmToken } });
+      if (!res.ok && res.status !== 404) throw await errorFrom(res);
+    },
   },
 
   /** AI builds: private drafts the owner reviews and publishes (FR-GM-26, FR-GM-27, ADR 0053). */

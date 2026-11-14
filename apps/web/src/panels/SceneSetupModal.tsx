@@ -3,6 +3,7 @@ import { CaretRight, Copy, Image, SquaresFour } from "@phosphor-icons/react";
 import type { CommandInput, EncounterSummary, RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import type { RoomConnection } from "../net/roomConnection";
+import { FreeAccountNote, useGuestRoom } from "../ui/GuestRoom";
 import { Modal } from "../ui/Modal";
 import { t } from "../i18n/locale";
 
@@ -10,6 +11,8 @@ import { t } from "../i18n/locale";
 export function SceneSetupModal({ open, state, connection, onClose, onChooseMap }: {
   open: boolean; state: RoomState; connection: RoomConnection; onClose: () => void; onChooseMap: () => void;
 }) {
+  // Templates are an account's (guest-gm-hosting): a guest room gets the sign-up where the template choice is.
+  const guest = useGuestRoom();
   const [choice, setChoice] = useState<"template" | null>(null);
   const [templates, setTemplates] = useState<EncounterSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +42,7 @@ export function SceneSetupModal({ open, state, connection, onClose, onChooseMap 
     <p className="muted">{t("sceneSetup.private")}</p>
     <div className="scene-setup-choices">
       <button type="button" className="secondary" aria-label={t("sceneSetup.currentMap")} title={t("sceneSetup.copyLiveHint")} disabled={busy} onClick={() => void apply({ type: "scene.copyCurrent", sceneId: state.activeSceneId ?? "initial" })}><Copy size={18} aria-hidden="true" /><span>{t("sceneSetup.currentMap")}<small>{t("sceneSetup.copyLive")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
-      <button type="button" className="secondary" aria-label={t("encounterEdit.template")} aria-pressed={choice === "template"} disabled={busy} onClick={() => { setChoice("template"); setError(null); }}><SquaresFour size={18} aria-hidden="true" /><span>{t("encounterEdit.template")}<small>{t("sceneSetup.fromEncounter")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
+      {guest ? <FreeAccountNote /> : <button type="button" className="secondary" aria-label={t("encounterEdit.template")} aria-pressed={choice === "template"} disabled={busy} onClick={() => { setChoice("template"); setError(null); }}><SquaresFour size={18} aria-hidden="true" /><span>{t("encounterEdit.template")}<small>{t("sceneSetup.fromEncounter")}</small></span><CaretRight size={14} aria-hidden="true" /></button>}
       <button type="button" className="secondary" aria-label={t("common.map")} disabled={busy} onClick={() => { setMapRequested(true); onClose(); }}><Image size={18} aria-hidden="true" /><span>{t("common.map")}<small>{t("sceneSetup.newLocation")}</small></span><CaretRight size={14} aria-hidden="true" /></button>
     </div>
     {error && <p className="error" role="alert">{error}</p>}

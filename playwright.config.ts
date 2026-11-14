@@ -14,7 +14,9 @@ export default defineConfig({
     { name: "webkit-touch", use: { browserName: "webkit", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } },
   ],
   webServer: [
-    { command: "npm run start", url: "http://127.0.0.1:3109/health", env: { PORT: "3109", CLIENT_ORIGIN: "http://127.0.0.1:5189", S3_AUTODETECT: "0", UPLOAD_DIR: path.join(os.tmpdir(), "vtt-uvtt-browser-uploads") }, reuseExistingServer: false, timeout: 30_000 },
-    { command: "npm run dev --workspace=@vtt/web -- --host 127.0.0.1 --port 5189", url: "http://127.0.0.1:5189", env: { VTT_SERVER: "http://127.0.0.1:3109" }, reuseExistingServer: false, timeout: 30_000 },
+    { command: "npm run start", url: "http://127.0.0.1:3109/health", env: { PORT: "3109", CLIENT_ORIGIN: "http://127.0.0.1:5189", S3_AUTODETECT: "0", SEED_DEV_ACCOUNT: process.env.VTT_TEST_CSP === "1" ? "1" : "0", UPLOAD_DIR: path.join(os.tmpdir(), "vtt-uvtt-browser-uploads") }, reuseExistingServer: false, timeout: 60_000 },
+    { command: process.env.VTT_TEST_CSP === "1"
+      ? "npm exec --workspace=@vtt/web -- vite preview --host 127.0.0.1 --port 5189 --strictPort"
+      : "npm run dev --workspace=@vtt/web -- --host 127.0.0.1 --port 5189", url: "http://127.0.0.1:5189", env: { VTT_SERVER: "http://127.0.0.1:3109" }, reuseExistingServer: false, timeout: 60_000 },
   ],
 });

@@ -191,6 +191,14 @@ export interface LibraryStore {
   /** Idempotent: returns the existing identity for a hash already registered. */
   registerGm(tokenHash: string): Promise<string>;
   findGm(tokenHash: string): Promise<string | null>;
+  /**
+   * The guest path of room creation (guest-gm-hosting D1). Creates a guest identity for an unknown
+   * hash; otherwise returns the existing row as it is, so a pre-account token reads `guest: false`
+   * and is never turned into a guest.
+   */
+  registerGuestGm(tokenHash: string): Promise<{ ownerId: string; guest: boolean }>;
+  /** How many rooms this owner holds, without summarising them. */
+  countOwnedRooms(ownerGmId: string): Promise<number>;
   /** Rooms the GM owns, most recently active first. */
   listOwnedRooms(ownerGmId: string): Promise<GmRoomSummary[]>;
   /** Every room the owner has, temporary encounter-editing rooms included (account deletion). */

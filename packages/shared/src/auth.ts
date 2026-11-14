@@ -78,4 +78,6 @@ export interface LegacySummary {
   assets: number;
   creatures: number;
   diceLooks: number;
+  /** True for a guest identity (guest-gm-hosting D1); false for a pre-account device or an account. */
+  guest: boolean;
 }

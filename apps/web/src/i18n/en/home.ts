@@ -25,7 +25,7 @@ export const home = {
 
   "home.facts.label": "At a glance",
   "home.facts.noAccount": "No account",
-  "home.facts.noAccountDetail": "for players. They join from a link, in any browser.",
+  "home.facts.noAccountDetail": "needed to start, for players or GMs. A free account keeps your rooms on any device and lets you upload your own maps.",
   "home.facts.free": "Free forever",
   "home.facts.freeDetail": "for every feature, with no paid tier.",
   "home.facts.upTo": ({ n }: { n: number }) => `Up to ${n}`,

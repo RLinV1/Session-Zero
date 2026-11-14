@@ -524,8 +524,11 @@ FR-PL-05). A signed-in player's seat is also recorded in `room_members`, so they
 their rooms again and recover a seat from another browser.
 
 **GMs** have accounts (FR-GM-01): argon2id password hashes, opaque session cookies stored
-hashed, and rate-limited sign-in and join. Creating a room requires an account, as decided
-in [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) §13.1. Rooms and library items created by
+hashed, and rate-limited sign-in and join. A signed-out GM may also start a guest room on
+built-in art only, as decided in [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) §13.1 and
+[ADR 0072](adr/0072-guest-gm-hosting.md). A guest GM is a device identity (`gm_identities.guest`);
+creation is limited to 20 per hour per address and 3 per browser. Guest rooms expire after
+30 days without play, and a free account can move them in with the legacy claim. Rooms and library items created by
 a pre-account GM device identity can be claimed by an account (`/api/gm/legacy/claim`).
 
 `participants` is the identity the game uses. Tokens are owned by participants, not
@@ -553,7 +556,7 @@ checkpoint previews are built through the same filters.
 
 | ID | Requirement | Where | |
 | --- | --- | --- | --- |
-| FR-GM-01 | Authenticated GM session | `identity/`, `users`, `sessions`, argon2id | B |
+| FR-GM-01 | Authenticated GM session; guest hosting on built-in art ([ADR 0072](adr/0072-guest-gm-hosting.md)) | `identity/`, `users`, `sessions`, argon2id | B |
 | FR-GM-02 | Battle-map setup | `POST /api/uploads` or library → `scene.setMap` | B |
 | FR-GM-03 | Automatic grid detection | `grid-detection` queue → `vision` (ADR 0028) | B |
 | FR-GM-04 | Grid preview and correction | `MapGridPreview`, `GridForm`, map editor | B |
@@ -706,6 +709,7 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0064](adr/0064-shared-drawings.md) | Shared drawings: persisted per scene, public, erasable by the drawer or GM, not undoable | Proposed |
 | [0066](adr/0066-gm-room-defaults.md) | A GM's defaults for new rooms: saved per account, carried on `RoomCreated` | Proposed |
 | [0067](adr/0067-attack-range-and-shapes.md) | Attack range, the range kind on rolls, and the arrow and pierce shapes | Proposed |
+| [0072](adr/0072-guest-gm-hosting.md) | Guest GM hosting: a signed-out GM starts a room on built-in art, expiring after 30 days idle, movable into an account | Proposed |
 
 Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.

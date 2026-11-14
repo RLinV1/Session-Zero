@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { GM_TOKEN_HEADER, type GmRoomSummary, type LegacySummary, type LibraryAsset } from "@vtt/shared";
+import { GM_TOKEN_HEADER, LEGACY_IDENTITY, SHIPPED_MAP_SLUGS, type GmRoomSummary, type LegacySummary, type LibraryAsset } from "@vtt/shared";
 import { hashToken } from "../src/domain/credentials";
 import type { RoomStore } from "../src/store/roomStore";
 import { newGuestToken, startServer } from "./helpers";
@@ -54,14 +54,20 @@ describe("only accounts create (asset-library, library-creatures, gm-dashboard; 
     return form;
   };
 
-  it("refuses room creation, library upload and creature creation with no session, even with a legacy token", async () => {
+  it("refuses room creation (401 with no token, 409 legacy_identity with a legacy token), library upload and creature creation with no session", async () => {
     const legacy = await seedLegacy(server.store);
     const variants: Record<string, string>[] = [{}, { [GM_TOKEN_HEADER]: legacy.token }];
     for (const headers of variants) {
       const room = await fetch(`${server.base}/api/rooms`, {
-        method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(roomBody()),
+        method: "POST", headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ ...roomBody(), shippedMap: SHIPPED_MAP_SLUGS[0] }),
       });
-      expect(room.status).toBe(401);
+      if (headers[GM_TOKEN_HEADER]) {
+        expect(room.status).toBe(409);
+        expect(((await room.json()) as { code: string }).code).toBe(LEGACY_IDENTITY);
+      } else {
+        expect(room.status).toBe(401);
+      }
       const upload = await fetch(`${server.base}/api/library`, { method: "POST", headers, body: imageForm() });
       expect(upload.status).toBe(401);
       const creature = await fetch(`${server.base}/api/library/creatures`, {
@@ -69,7 +75,7 @@ describe("only accounts create (asset-library, library-creatures, gm-dashboard; 
       });
       expect(creature.status).toBe(401);
     }
-    expect(await server.store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect(await server.store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
   });
 
   it("makes what a signed-in account creates its own", async () => {
@@ -82,7 +88,7 @@ describe("only accounts create (asset-library, library-creatures, gm-dashboard; 
 
     const ownerId = (await server.store.findUserById(sam.view!.id))!.ownerId;
     expect(await server.store.findRoomOwner(room.roomId)).toBe(ownerId);
-    expect(await server.store.ownedCounts(ownerId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 0 });
+    expect(await server.store.ownedCounts(ownerId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 0, guest: false });
   });
 
   it("still parses a room request from an older client that sends gmToken", async () => {
@@ -119,7 +125,7 @@ describe("moving a legacy device identity into an account (user-accounts, ADR 00
   it("reports what the token owns, and 401 for a token the server doesn't know", async () => {
     const legacy = await seedLegacy(server.store);
     const ok = await fetch(`${server.base}/api/gm/legacy`, { headers: { [GM_TOKEN_HEADER]: legacy.token } });
-    expect(await ok.json()).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect(await ok.json()).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
     const unknown = await fetch(`${server.base}/api/gm/legacy`, { headers: { [GM_TOKEN_HEADER]: newGuestToken() } });
     expect(unknown.status).toBe(401);
   });
@@ -129,10 +135,10 @@ describe("moving a legacy device identity into an account (user-accounts, ADR 00
     const sam = await server.signUp();
     const res = await claim(sam.cookie, legacy.token);
     expect(res.status).toBe(200);
-    expect((await res.json()) as LegacySummary).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect((await res.json()) as LegacySummary).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
 
     const ownerId = (await server.store.findUserById(sam.view!.id))!.ownerId;
-    expect(await server.store.ownedCounts(ownerId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect(await server.store.ownedCounts(ownerId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
     expect((await sam.json<GmRoomSummary[]>("GET", "/api/gm/rooms")).map((r) => r.name)).toEqual(["Old cave"]);
     const old = await fetch(`${server.base}/api/library`, { headers: { [GM_TOKEN_HEADER]: legacy.token } });
     expect(old.status).toBe(401);
@@ -146,7 +152,7 @@ describe("moving a legacy device identity into an account (user-accounts, ADR 00
     expect((await claim(sam.cookie, legacy.token)).status).toBe(404);
     expect((await claim(alex.cookie, legacy.token)).status).toBe(404);
     const alexOwner = (await server.store.findUserById(alex.view!.id))!.ownerId;
-    expect(await server.store.ownedCounts(alexOwner)).toEqual({ rooms: 0, assets: 0, creatures: 0, diceLooks: 0 });
+    expect(await server.store.ownedCounts(alexOwner)).toEqual({ rooms: 0, assets: 0, creatures: 0, diceLooks: 0, guest: false });
   });
 
   it("needs a session; signing in alone moves nothing", async () => {
@@ -154,7 +160,7 @@ describe("moving a legacy device identity into an account (user-accounts, ADR 00
     const res = await fetch(`${server.base}/api/gm/legacy/claim`, { method: "POST", headers: { [GM_TOKEN_HEADER]: legacy.token } });
     expect(res.status).toBe(401);
     await server.signUp();
-    expect(await server.store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect(await server.store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
   });
 });
 
@@ -173,7 +179,7 @@ describe.each(storeCases)("claiming in the %s store (ADR 0017 O2)", (_name, make
     // memory store has no foreign keys, so only Postgres can fail here.
     if (_name !== "postgres") return;
     await expect(store.claimDeviceOwner(legacy.ownerGmId, randomUUID())).rejects.toThrow();
-    expect(await store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1 });
+    expect(await store.ownedCounts(legacy.ownerGmId)).toEqual({ rooms: 1, assets: 1, creatures: 1, diceLooks: 1, guest: false });
     expect(await store.findGm(hashToken(legacy.token))).toBe(legacy.ownerGmId);
   });
 });

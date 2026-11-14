@@ -43,7 +43,7 @@ import {
   type TableState,
   type SessionEndReason,
 } from "@vtt/shared";
-import { englishText, sharedMsg, type MessageRef } from "@vtt/shared";
+import { boardImageUrls, englishText, GUEST_ASSET, isBuiltinImageUrl, sharedMsg, type MessageRef } from "@vtt/shared";
 import type { RoomStore } from "../store/roomStore";
 import { resolveEncounter, type ResolveEncounterResult } from "./encounterTemplates";
 
@@ -91,7 +91,7 @@ export type JoinResult =
 
 export type SubmitResult =
   | { ok: true; seq: number | null }
-  | { ok: false; code: RejectionCode; message: string; text: MessageRef };
+  | { ok: false; code: RejectionCode | typeof GUEST_ASSET; message: string; text: MessageRef };
 
 /** A refusal in English for `message`, and as data for the client's own language (ADR 0054). */
 const refuse = <C extends string>(code: C, text: MessageRef) => ({ ok: false as const, code, message: englishText(text), text });
@@ -113,6 +113,8 @@ export class LiveRoom {
   private assetRefsKey: string | null = null;
   /** Set once the room is being deleted (ADR 0009). Nothing is committed or relayed after. */
   private isClosed = false;
+  /** True while the room's owner is a guest identity, so only built-in art may reach the board (guest-gm-hosting D5). */
+  private guest = false;
 
   private constructor(
     readonly roomId: string,
@@ -128,6 +130,7 @@ export class LiveRoom {
   /** Replays the room's log, then heals the derived projections: the asset index and removed players' credential locks. */
   static async load(roomId: string, store: RoomStore, hooks: RoomHooks = {}) {
     const room = new LiveRoom(roomId, store, await store.loadEvents(roomId), hooks);
+    room.guest = await store.isGuestRoom(roomId);
     // Heals an index left stale by a crash between append and projection (ADR 0004).
     await room.syncAssetRefs();
     // Same for the credential-row lock on removed participants (FR-GM-20). Idempotent.
@@ -153,6 +156,16 @@ export class LiveRoom {
         client.send({ type: "sessionEnded", reason });
         client.close();
       }
+    });
+  }
+
+  /**
+   * Reads whether the room is still a guest room. Called after its guest owner moved it into an
+   * account, so the built-in-art rule ends at once, with no reconnect (guest-gm-hosting D7).
+   */
+  refreshGuest() {
+    return this.runExclusive(async () => {
+      this.guest = await this.store.isGuestRoom(this.roomId);
     });
   }
 
@@ -327,6 +340,10 @@ export class LiveRoom {
             : undefined,
         });
         if (!decision.ok) return decision;
+        // After decide, so decide stays pure: whatever route named the image, the events show it (guest-gm-hosting D5).
+        if (this.guest && decision.events.some((event) => boardImageUrls(event).some((url) => !isBuiltinImageUrl(url)))) {
+          return refuse(GUEST_ASSET, sharedMsg("reject.guestAsset"));
+        }
         const committed = await this.commit(actorId, decision.events);
         const seq = committed.at(-1)?.seq ?? null;
         if (lease?.ok) lease.finish?.(seq);

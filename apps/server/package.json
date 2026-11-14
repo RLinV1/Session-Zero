@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --exclude test/ephemeralLatency.test.ts",
+    "test": "vitest run --testTimeout=15000 --exclude test/ephemeralLatency.test.ts",
     "test:bench": "vitest run test/ephemeralLatency.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

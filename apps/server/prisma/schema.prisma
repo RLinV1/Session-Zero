@@ -140,6 +140,8 @@ model GmIdentity {
   shippedMapsSeeded String[] @default([]) @map("shipped_maps_seeded")
   /// The owner's defaults for new rooms (ADR 0066), as `RoomDefaults`; null until first saved.
   roomDefaults Json? @map("room_defaults")
+  /// A guest GM identity (guest-gm-hosting D1): hosts guest rooms with no account. False for accounts and pre-account devices.
+  guest Boolean @default(false)
 
   rooms     Room[]
   assets    LibraryAsset[]

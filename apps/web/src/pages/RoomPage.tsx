@@ -19,6 +19,9 @@ import type { DiceSkin } from "../ui/diceSkin";
 import { useActiveDiceLook, useDiceLooks } from "../ui/diceSkinStore";
 import { readySkin, tableSkin, usePreloadTableLooks, useShowOthersDice } from "../ui/tableLooks";
 import { ensureSeat } from "../net/seats";
+import { GuestRoomNotice, GuestRoomProvider, SAVE_ACCOUNT_HREF, useGuestRoom, useGuestStatus } from "../ui/GuestRoom";
+import { navigate } from "../router";
+import { GuestTutorial } from "../ui/GuestTutorial";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
 import { createScenePreparation } from "../net/scenePreparation";
@@ -113,6 +116,8 @@ export function RoomPage({ roomId, editing = false }: {
   const [creds, setCreds] = useState(() => loadCredentials(roomId));
   const [resuming, setResuming] = useState<"idle" | "trying" | "failed">("idle");
   const connection = useMemo(() => (creds ? new RoomConnection(roomId, creds.guestToken) : null), [roomId, creds]);
+  // Only the GM is told (a GM seat holds the invite code); players see nothing of it (guest-gm-hosting).
+  const guest = useGuestStatus(roomId, creds?.guestToken ?? null, !editing && !!creds?.inviteCode);
 
   // Attacks used to be kept in this browser; they are the token's now, so drop the old copies (ADR 0034).
   useEffect(() => {
@@ -150,7 +155,11 @@ export function RoomPage({ roomId, editing = false }: {
       </main>
     );
   }
-  return <SceneRoom roomId={roomId} connection={connection} token={creds.guestToken} features={editing ? ENCOUNTER_EDITING : FULL_ROOM} />;
+  return (
+    <GuestRoomProvider value={guest}>
+      <SceneRoom roomId={roomId} connection={connection} token={creds.guestToken} features={editing ? ENCOUNTER_EDITING : FULL_ROOM} />
+    </GuestRoomProvider>
+  );
 }
 
 /** What the ended screen says, per reason; built when shown, in the current language. */
@@ -264,6 +273,10 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   const compact = useCompactLayout();
   // On a phone Share lives in the More menu and opens its dialog from there.
   const [shareOpen, setShareOpen] = useState(false);
+  /** The guest demo watches these: invite links copied, and the room menu's "start again" (guest-gm-hosting). */
+  const [invitesCopied, setInvitesCopied] = useState(0);
+  const [demoRestart, setDemoRestart] = useState(0);
+  const guestRoom = useGuestRoom();
   const focusToken = useCallback((tokenId: string) => boardRef.current?.focusToken(tokenId), []);
   // Who attacks whom (attack-targeting): chosen in the Play tab's Attack section or on the board.
   const [attackPick, setAttackPick] = useState<AttackPick>({ attackerId: null, targetId: null });
@@ -629,7 +642,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         requestAnimationFrame(() => {
           section?.scrollIntoView({ block: "start" });
           if (openPicker) {
-            const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => button.textContent?.trim() === t("guide.map.library.title"));
+            const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => [t("guide.map.library.title"), t("add.builtInArt")].includes(button.textContent?.trim() ?? ""));
             if (library) library.click();
             else section?.querySelector<HTMLInputElement>('input[type="file"]')?.click();
           } else section?.querySelector<HTMLElement>(".panel-section-body button, .panel-section-body input, .panel-section-body label")?.focus();
@@ -676,7 +689,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           )}
           {!editing && (
             <>
-              <h1 className="room-title">{state.name}</h1>
+              <h1 className="room-title" data-tutorial="table">{state.name}</h1>
               {you.role === "gm" && !readOnly && <SceneSwitcher state={state} connection={connection} />}
             </>
           )}
@@ -719,6 +732,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             // The sidebar's steps need it open.
             onGuide={() => openSidebar(() => setGuideOpen(true))}
             onShare={compact && you.role === "gm" && !readOnly ? () => setShareOpen(true) : undefined}
+            onDemo={guestRoom && you.role === "gm" && !readOnly ? () => setDemoRestart((n) => n + 1) : undefined}
+            onSave={guestRoom && you.role === "gm" && !readOnly ? () => navigate(SAVE_ACCOUNT_HREF) : undefined}
           />}
           {features.tableChrome && (
             <SettingsMenu
@@ -732,7 +747,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
             <ActivityLog open={logOpen} onClose={() => setLogOpen(false)} roomId={state.roomId} token={token} seq={seq} state={state} connection={connection} />
           )}
           {/* Last, in the top-right corner: visible with the sidebar shown or hidden. */}
-          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} yourName={you.displayName} connection={connection} joinsLocked={state.joinsLocked ?? false} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
+          {features.tableChrome && you.role === "gm" && !readOnly && <ShareButton roomId={roomId} token={token} yourName={you.displayName} connection={connection} joinsLocked={state.joinsLocked ?? false} hideTrigger={compact} open={shareOpen} onOpenChange={setShareOpen} onCopied={() => setInvitesCopied((n) => n + 1)} onAfterClose={compact ? () => guideButtonRef.current?.focus() : undefined} />}
         </div>
         {/* Across the top, for the whole of the viewer's turn (turn-notice, ADR 0060). */}
         {features.notices && (
@@ -773,6 +788,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           <div className="board-notices" role="status" aria-live="polite">
             {!readOnly && <DepartureNotices state={state} onReview={you.role === "gm" ? setReviewing : undefined} />}
             <KeepSeatNotice roomId={roomId} token={token} name={you.displayName} />
+            {you.role === "gm" && !readOnly && <GuestRoomNotice />}
           </div>
         )}
         overlay={
@@ -790,6 +806,9 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           </>
         }
       />
+      {features.tableChrome && you.role === "gm" && !readOnly && (
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} />
+      )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}
         {!compact && (

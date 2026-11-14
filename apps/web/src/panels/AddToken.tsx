@@ -3,7 +3,7 @@ import { presetOf, type PresetFeatures } from "@vtt/shared";
 import { DEFAULT_TOKEN_COLOR, isActive, type AttackPreset, type ConditionId, type LibraryCreature, type RoomState, type TokenStats } from "@vtt/shared";
 import type { TokenDraft } from "../board/placement";
 import { api } from "../net/api";
-import { useAccount } from "../account/accountStore";
+import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { libraryAssetId } from "../net/builtinAssets";
 import { creatureDraft } from "../pages/creatureDraft";
 import { CreaturePicker } from "../pages/LibraryCreatures";
@@ -54,16 +54,19 @@ export function AddTokenButton({
   /** Filled in and waiting for the dialog to finish closing, so the board takes focus after it. */
   const pending = useRef<TokenDraft | null>(null);
   // The library belongs to the signed-in account (ADR 0017); a signed-out GM uploads directly.
-  const hasLibrary = useAccount().status === "signedIn";
+  const hasLibrary = useAccountLibrary();
+  // A guest room has no saved creatures, but the built-in ones are listed (guest-gm-hosting).
+  const guestRoom = useGuestRoom();
+  const canPickCreature = hasLibrary || guestRoom;
   const players = Object.values(state.participants).filter((p) => p.role === "player" && isActive(p));
 
   return (
     <>
-      <div className="row add-token-buttons" data-tour="gm-add-token">
+      <div className="row add-token-buttons" data-tour="gm-add-token" data-tutorial="token">
         <button type="button" className="primary" onClick={() => { setGroupId(""); setOpen(true); }}>
           {t("add.newToken")}
         </button>
-        {hasLibrary && (
+        {canPickCreature && (
           <button type="button" onClick={() => { setCreatureHidden(false); setGroupId(""); setCreaturesOpen(true); }}>
             {t("add.savedCreatures")}
           </button>
@@ -91,7 +94,7 @@ export function AddTokenButton({
           }}
         />
       </Modal>
-      {hasLibrary && (
+      {canPickCreature && (
         <Modal
           open={creaturesOpen}
           title={t("add.savedCreatures")}
@@ -163,6 +166,7 @@ function AddToken(props: {
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guest = useGuestRoom();
   const typedStats = { hp: optionalNumber(hp), maxHp: optionalNumber(maxHp), ac: optionalNumber(ac) };
   // What each blank field will become, given the others as typed now (token-stat-defaults).
   const defaults = statsWithDefaults(typedStats);
@@ -257,6 +261,7 @@ function AddToken(props: {
             </div>
           ) : (
             <div className="row">
+              {guest ? <FreeAccountNote /> : (
               <label className="upload-button secondary">
                 <span>{uploading ? t("common.uploading") : t("add.uploadNew")}</span>
                 <input
@@ -270,6 +275,7 @@ function AddToken(props: {
                   }}
                 />
               </label>
+              )}
               <button type="button" className="secondary" disabled={uploading} onClick={() => setPicking(true)}>
                 {props.hasLibrary ? t("guide.map.library.title") : t("add.builtInArt")}
               </button>
