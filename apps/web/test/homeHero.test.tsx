@@ -17,6 +17,17 @@ afterEach(() => {
 
 const field = () => screen.queryByLabelText("Paste the link your GM sent you") as HTMLInputElement | null;
 
+describe("the hero leads with what sets the product apart (gm-home: The hero leads with what sets the product apart)", () => {
+  it("mentions free forever, suggestions, the GM's own AI app and joining without an account", () => {
+    render(<Hero />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/^Free forever/);
+    const body = document.querySelector(".landing-sub")!.textContent!;
+    expect(body).toMatch(/suggests your grid and walls/);
+    expect(body).toMatch(/your own AI app take a player seat/);
+    expect(body).toMatch(/join from a link, with no account/);
+  });
+});
+
 describe("the hero's two ways in (gm-home: Both paths in the first screen)", () => {
   it("makes running a game the primary action, into the GM flow", () => {
     render(<Hero />);

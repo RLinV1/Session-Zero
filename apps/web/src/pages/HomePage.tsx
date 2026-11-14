@@ -3,6 +3,7 @@ import { SiteFooter } from "../ui/SiteFooter";
 import { SiteHeader } from "../ui/SiteHeader";
 import { AccountLinks } from "./home/AccountLinks";
 import { ClosingBand } from "./home/ClosingBand";
+import { DifferentiatorsSection } from "./home/DifferentiatorsSection";
 import { FactsRow } from "./home/FactsRow";
 import { FogDivider } from "./home/FogDivider";
 import { Hero } from "./home/Hero";
@@ -39,6 +40,7 @@ export function HomePage() {
             <h2 id="running-a-game">{t("home.running.title")}</h2>
             <p>{t("home.running.body")}</p>
           </header>
+          <DifferentiatorsSection />
           <PrepareSection />
           <PlaySection />
           <RecoverSection />

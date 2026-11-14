@@ -62,7 +62,7 @@ function MapIntake() {
 }
 
 /** A plain wall as the board draws it in the editor (boardView: width and colour scale with the grid). */
-const WALL_WIDTH = Math.max(2, CROP.cell * 0.05);
+export const WALL_WIDTH = Math.max(2, CROP.cell * 0.05);
 /** A door or window is drawn a fifth of a square thick, so it reads as something to act on (ADR 0030). */
 const PORTAL_WIDTH = CROP.cell * 0.2;
 
