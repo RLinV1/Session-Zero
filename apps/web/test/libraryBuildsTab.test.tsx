@@ -20,7 +20,7 @@ const at = (fromNow: number) => new Date(Date.now() + fromNow).toISOString();
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 const build = (over: Partial<BuildSummary> = {}): BuildSummary => ({
   id: "b1", name: "Hollow Coast", status: "open", createdAt: at(-DAY), updatedAt: at(-HOUR), passExpiresAt: at(20 * HOUR), closesAt: at(13 * DAY),
-  choices: { aiGrid: false, aiWalls: false }, ...over,
+  choices: { aiGrid: false, aiWalls: false, aiTerrain: false }, ...over,
 });
 
 // What each build's draft holds, by build id, as its page reads it. Empty unless a test says.
@@ -112,12 +112,24 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     expect((within(form).getByRole("radio", { name: /^You set up maps/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls, doors and windows/ }));
     const boxes = within(form).getAllByRole("checkbox") as HTMLInputElement[];
-    expect(boxes.map((b) => b.checked)).toEqual([true, true]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids It/ }));
-    expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, false]);
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Lanternfall" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
-    expect(start).toHaveBeenCalledWith("Lanternfall", { aiGrid: true, aiWalls: false });
+    expect(start).toHaveBeenCalledWith("Lanternfall", { aiGrid: true, aiWalls: false, aiTerrain: false });
+  });
+
+  it("offers terrain as a preset and as its own choice, off unless chosen (ADR 0071)", async () => {
+    const start = vi.spyOn(api.builds, "start").mockResolvedValue({ build: build(), pass: "szb_new", expiresAt: at(DAY) });
+    await openTab([]);
+    const form = await newBuildDialog();
+    expect((within(form).getByRole("checkbox", { name: /^Let my AI propose terrain/ }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls and terrain/ }));
+    expect((within(form).getAllByRole("checkbox") as HTMLInputElement[]).map((b) => b.checked)).toEqual([true, true, true]);
+    fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Everything" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
+    expect(start).toHaveBeenCalledWith("Everything", { aiGrid: true, aiWalls: true, aiTerrain: true });
   });
 
   it("still takes each choice on its own, which no preset matches", async () => {
@@ -128,7 +140,7 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     expect((within(form).getAllByRole("radio") as HTMLInputElement[]).some((r) => r.checked)).toBe(false);
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Walls only" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
-    expect(start).toHaveBeenCalledWith("Walls only", { aiGrid: false, aiWalls: true });
+    expect(start).toHaveBeenCalledWith("Walls only", { aiGrid: false, aiWalls: true, aiTerrain: false });
   });
 
   it("then shows the pass with what happens next, and lists the new build with its working pass", async () => {
@@ -178,15 +190,20 @@ describe("the builds in progress (FR-GM-26, AI builds redesign 2026-11-10)", () 
     const soon = at(DAY);
     await openTab([
       build({ id: "b1", name: "Hollow Coast" }),
-      build({ id: "b2", name: "Sunken Archive", passExpiresAt: at(-HOUR), choices: { aiGrid: true, aiWalls: true } }),
-      build({ id: "b3", name: "Gloomwood Fair", passExpiresAt: null, closesAt: soon, choices: { aiGrid: true, aiWalls: false } }),
+      build({ id: "b2", name: "Sunken Archive", passExpiresAt: at(-HOUR), choices: { aiGrid: true, aiWalls: true, aiTerrain: false } }),
+      build({ id: "b3", name: "Gloomwood Fair", passExpiresAt: null, closesAt: soon, choices: { aiGrid: true, aiWalls: false, aiTerrain: false } }),
+      build({ id: "b4", name: "Ashen Steps", choices: { aiGrid: true, aiWalls: true, aiTerrain: true } }),
+      build({ id: "b5", name: "Salt Marsh", choices: { aiGrid: false, aiWalls: false, aiTerrain: true } }),
     ]);
+    expect(card("Ashen Steps").textContent).toContain("AI sets grids, walls and terrain");
+    expect(card("Salt Marsh").textContent).toContain("AI sets terrain");
     const hollow = card("Hollow Coast").textContent ?? "";
     expect(hollow).toContain("Pass works");
     expect(hollow).toContain("You set up maps");
     expect(hollow).not.toMatch(/Closes \w+ \d+Last/);
     expect(card("Sunken Archive").textContent).toContain("Pass ended");
     expect(card("Sunken Archive").textContent).toContain("AI sets grids and walls");
+    expect(card("Sunken Archive").textContent).not.toContain("terrain");
     const gloomwood = card("Gloomwood Fair");
     expect(gloomwood.textContent).toContain("No pass");
     expect(gloomwood.textContent).toContain("AI sets grids");

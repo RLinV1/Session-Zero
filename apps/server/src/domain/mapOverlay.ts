@@ -1,8 +1,8 @@
-import type { DraftMark, GridSpec, LibraryMapBoard, OpeningView, Point } from "@vtt/shared";
+import type { DraftMark, GridSpec, LibraryMapBoard, OpeningView, Point, TerrainKind, TerrainRun } from "@vtt/shared";
 
 /**
  * The picture `view_file` gives an AI setting up a map (ADR 0053): the map with its grid, column and
- * row numbers, walls and numbered openings drawn on it, so the AI reads positions off numbers
+ * row numbers, walls, numbered openings and proposed terrain drawn on it, so the AI reads positions off numbers
  * instead of guessing pixels. Pure layout: the route renders the SVG over the image with sharp.
  *
  * Numbers are drawn as strokes, not text, so the picture doesn't depend on fonts in the container.
@@ -21,6 +21,8 @@ export interface OverlayInput {
   walls: LibraryMapBoard["walls"];
   openings: readonly Pick<OpeningView, "number" | "a" | "b">[];
   marks: readonly DraftMark[];
+  /** Proposed permanent terrain, in squares of `grid` (ADR 0071). Drawn only with a grid. */
+  terrain?: readonly TerrainRun[];
   region: OverlayRegion | null;
   /** Longest side of the picture. */
   maxEdge: number;
@@ -82,6 +84,39 @@ const WALL_STYLE = {
   opening: 'stroke="#ff9f0a" stroke-width="5" stroke-dasharray="6 4"',
 } as const;
 
+/**
+ * Terrain as the board draws it (board-palette in apps/web/src/board/mapPalette.ts): the same colour
+ * families, Difficult single-hatched in violet, Blocked crosshatched in red over a dark tint, so the
+ * kinds differ by pattern as well as colour and Blocked never reads as a red wall line.
+ */
+const TERRAIN_STYLE: Record<TerrainKind, { inner: string; outer: string; tint: string; tintOpacity: number; cross: boolean }> = {
+  difficult: { inner: "#9b4de8", outer: "#160b26", tint: "#9b4de8", tintOpacity: 0.22, cross: false },
+  blocked: { inner: "#e0525a", outer: "#1f0a0c", tint: "#1f0a0c", tintOpacity: 0.45, cross: true },
+};
+
+/** One pattern per kind, a quarter square apart, and each run as one rectangle filled with it. */
+function terrainParts(terrain: readonly TerrainRun[], grid: GridNumbers, scale: number, at: (p: Point) => Point, out: { width: number; height: number }): string[] {
+  const step = Math.max(4, (grid.cellSize * scale) / 4);
+  const defs = (Object.keys(TERRAIN_STYLE) as TerrainKind[]).map((kind) => {
+    const style = TERRAIN_STYLE[kind];
+    const lines = `M0 0L${round(step)} ${round(step)}${style.cross ? `M${round(step)} 0L0 ${round(step)}` : ""}`;
+    return `<pattern id="terrain-${kind}" width="${round(step)}" height="${round(step)}" patternUnits="userSpaceOnUse">`
+      + `<path d="${lines}" stroke="${style.outer}" stroke-opacity="0.5" stroke-width="3" fill="none"/>`
+      + `<path d="${lines}" stroke="${style.inner}" stroke-opacity="0.9" stroke-width="1.5" fill="none"/></pattern>`;
+  });
+  const rects: string[] = [];
+  for (const run of terrain) {
+    const a = at({ x: grid.offsetX + run.start * grid.cellSize, y: grid.offsetY + run.row * grid.cellSize });
+    const b = at({ x: grid.offsetX + (run.end + 1) * grid.cellSize, y: grid.offsetY + (run.row + 1) * grid.cellSize });
+    const left = Math.max(0, a.x), top = Math.max(0, a.y), right = Math.min(out.width, b.x), bottom = Math.min(out.height, b.y);
+    if (right <= left || bottom <= top) continue;
+    const style = TERRAIN_STYLE[run.kind];
+    const box = `x="${round(left)}" y="${round(top)}" width="${round(right - left)}" height="${round(bottom - top)}"`;
+    rects.push(`<rect ${box} fill="${style.tint}" fill-opacity="${style.tintOpacity}"/><rect ${box} fill="url(#terrain-${run.kind})" stroke="${style.inner}" stroke-opacity="0.9" stroke-width="1.5" data-terrain="${run.kind}"/>`);
+  }
+  return rects.length > 0 ? [`<defs>${defs.join("")}</defs>`, ...rects] : [];
+}
+
 export function mapOverlay(input: OverlayInput): OverlayLayout {
   const { grid } = input;
   let left = 0, top = 0, right = input.width, bottom = input.height;
@@ -101,6 +136,9 @@ export function mapOverlay(input: OverlayInput): OverlayLayout {
 
   const parts: string[] = [];
   const labels: OverlayLabel[] = [];
+
+  // Under the grid lines and walls, so neither is hidden by it.
+  if (grid && input.terrain?.length) parts.push(...terrainParts(input.terrain, grid, scale, at, out));
 
   if (grid) {
     const cell = grid.cellSize * scale;

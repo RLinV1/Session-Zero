@@ -10,13 +10,14 @@ import { blocksMovement } from "./portals";
 import { CreatureFields, LibraryUploadFields } from "./protocol";
 import { MAX_WALLS, PortalState, type Portal, type Wall } from "./state";
 import { hasPortalBounds, removePortalOverlaps } from "./uvtt";
+import { compressTerrain, movementTerrain, runOnMap, terrainCells, TerrainRuns, type TerrainKind, type TerrainRun } from "./terrain";
 
 /**
  * The AI game builder's contract (FR-GM-26, FR-GM-27, ADR 0053). What an AI may put in a private
  * draft, and the pure step that turns an approved draft encounter into a template.
  *
  * Every input is strict: a field the app has no place for is refused, so nothing can arrive that
- * a person wouldn't see in review. No existing schema changes.
+ * a person wouldn't see in review. ADR 0071 adds the terrain choice and a map's proposed terrain.
  */
 
 export const BUILD_LIMITS = {
@@ -41,15 +42,20 @@ export const BUILD_LIMITS = {
   marksPerMap: 50,
 } as const;
 
-/** What the owner lets the AI set up on maps, chosen per build (ADR 0053). Both are off unless ticked. */
+/** What the owner lets the AI set up on maps, chosen per build (ADR 0053, ADR 0071). Each is off unless ticked. */
 export const BuildChoices = z.strictObject({
   /** The AI's grid counts as confirmed when grid detection agrees with it. */
   aiGrid: z.boolean(),
   /** The AI may set openings, and draw walls, doors and windows. */
   aiWalls: z.boolean(),
+  /** The AI may propose permanent Difficult and Blocked squares (ADR 0071). */
+  aiTerrain: z.boolean(),
 });
 export type BuildChoices = z.infer<typeof BuildChoices>;
-export const NO_BUILD_CHOICES: BuildChoices = { aiGrid: false, aiWalls: false };
+export const NO_BUILD_CHOICES: BuildChoices = { aiGrid: false, aiWalls: false, aiTerrain: false };
+/** What the owner's page sends. A page from before ADR 0071 sends no `aiTerrain`, which leaves it as it was. */
+export const BuildChoicesChange = BuildChoices.partial({ aiTerrain: true });
+export type BuildChoicesChange = z.infer<typeof BuildChoicesChange>;
 
 /**
  * A build pass: 256 random bits in base64url, 43 characters. The prefix keeps it from being
@@ -191,15 +197,34 @@ const SetupOpenings = z.array(DraftOpening).max(MAX_WALLS)
 const SetupLines = z.array(DraftLine).max(BUILD_LIMITS.linesPerMap);
 const SetupMarks = z.array(DraftMark).max(BUILD_LIMITS.marksPerMap);
 
-/** A draft map's walls, doors and windows beyond what its file has. Stored on the draft map; never room state. */
-export const DraftMapSetup = z.strictObject({ openings: SetupOpenings, lines: SetupLines, marks: SetupMarks });
+/** The squares of a grid, in map pixels: where a map's terrain was proposed (ADR 0071). */
+export const TerrainGrid = z.strictObject({ cellSize: GridSpec.shape.cellSize, offsetX: GridSpec.shape.offsetX, offsetY: GridSpec.shape.offsetY });
+export type TerrainGrid = z.infer<typeof TerrainGrid>;
+
+/**
+ * A draft map's walls, doors and windows beyond what its file has, and its proposed permanent
+ * terrain. Stored on the draft map; never room state. `terrain` is the Base layer in the room's own
+ * runs (ADR 0046), relative to `terrainGrid`, which only the server sets (ADR 0071). Normal squares
+ * are implicit, and an older draft has neither field.
+ */
+export const DraftMapSetup = z.strictObject({
+  openings: SetupOpenings, lines: SetupLines, marks: SetupMarks,
+  terrain: TerrainRuns.optional(),
+  terrainGrid: TerrainGrid.optional(),
+});
 export type DraftMapSetup = z.infer<typeof DraftMapSetup>;
 export const EMPTY_MAP_SETUP: DraftMapSetup = { openings: [], lines: [], marks: [] };
 
-/** What the AI sends: each part it gives replaces that part, and a part it leaves out stays as it was. */
-export const DraftMapSetupChange = z.strictObject({ openings: SetupOpenings.optional(), lines: SetupLines.optional(), marks: SetupMarks.optional() })
-  .refine((c) => c.openings !== undefined || c.lines !== undefined || c.marks !== undefined, { message: "Send openings, lines or marks." });
+/**
+ * What the AI sends: each part it gives replaces that part, and a part it leaves out stays as it was.
+ * `terrain: []` clears the terrain. Openings, lines and marks need the walls choice; terrain needs the terrain choice.
+ */
+export const DraftMapSetupChange = z.strictObject({ openings: SetupOpenings.optional(), lines: SetupLines.optional(), marks: SetupMarks.optional(), terrain: TerrainRuns.optional() })
+  .refine((c) => c.openings !== undefined || c.lines !== undefined || c.marks !== undefined || c.terrain !== undefined, { message: "Send openings, lines, marks or terrain." });
 export type DraftMapSetupChange = z.infer<typeof DraftMapSetupChange>;
+
+/** Whether a change sets walls, doors, windows or marks, which need the walls choice. */
+export const changesWalls = (change: DraftMapSetupChange) => change.openings !== undefined || change.lines !== undefined || change.marks !== undefined;
 
 /** A map from one of this build's files. Its walls, doors and windows are set separately, and only when the owner allows it. */
 export const DraftMap = z.strictObject({
@@ -386,7 +411,7 @@ export interface DraftMapState {
   gridBy?: BuildGridBy | null;
   /** Detection's suggestion, when the owner allows AI grids and the AI's proposal differs from it. Worked out when read. */
   gridDiffers?: DraftProposedGrid | null;
-  /** Openings, lines and marks the AI or the owner set (ADR 0053). Absent means none. */
+  /** Openings, lines and marks the AI or the owner set (ADR 0053), and the AI's terrain (ADR 0071). Absent means none. */
   setup?: DraftMapSetup;
 }
 
@@ -580,6 +605,67 @@ export function mapSetupProblems(fileBoard: LibraryMapBoard | null, setup: Draft
   return result.ok ? [] : result.problems;
 }
 
+/** The squares of a grid, without its units. */
+export const terrainGridOf = (grid: GridNumbers): TerrainGrid => ({ cellSize: grid.cellSize, offsetX: grid.offsetX, offsetY: grid.offsetY });
+
+/**
+ * Whether terrain proposed on grid `a` lies in the same squares on grid `b` (ADR 0071): within
+ * `GRID_AGREEMENT`, as an agreed grid is, but offsets aren't compared across the cell, because a
+ * wrapped offset numbers every square one off.
+ */
+export function sameTerrainGrid(a: GridNumbers, b: GridNumbers): boolean {
+  return Math.abs(a.cellSize - b.cellSize) <= GRID_AGREEMENT.cellSize
+    && Math.abs(a.offsetX - b.offsetX) <= GRID_AGREEMENT.offset
+    && Math.abs(a.offsetY - b.offsetY) <= GRID_AGREEMENT.offset;
+}
+
+/** A terrain run in words, numbered from 1 as the AI sent them. */
+export const describeTerrainRun = (run: TerrainRun, index: number) =>
+  `Terrain run ${index + 1} (${run.kind}, row ${run.row}, ${run.start === run.end ? `column ${run.start}` : `columns ${run.start} to ${run.end}`})`;
+
+/** At most this many runs are named one by one; the rest are counted. */
+const NAMED_RUNS = 5;
+
+/**
+ * Why terrain can't sit on a map with this grid, or nothing (ADR 0071): it needs a grid, and every
+ * square must overlap the map, by the terrain editor's own rule, so a cropped edge square counts.
+ * Structure, order, overlap and the cell limit are `TerrainRuns`' checks.
+ */
+export function draftTerrainProblems(terrain: readonly TerrainRun[], grid: GridNumbers | null, map: { width: number; height: number }): string[] {
+  if (terrain.length === 0) return [];
+  if (!grid) return ["Terrain needs a grid first. Propose one with save_map."];
+  const off = terrain.flatMap((run, index) => (runOnMap(run, grid, map) ? [] : [describeTerrainRun(run, index)]));
+  if (off.length === 0) return [];
+  const named = off.slice(0, NAMED_RUNS).map((run) => `${run} has a square off the map.`);
+  return off.length > NAMED_RUNS ? [...named, `${off.length - NAMED_RUNS} more terrain runs have squares off the map.`] : named;
+}
+
+/** Runs as stored: next-door runs of one kind joined, so the same squares always read the same. */
+export const normalizeTerrain = (terrain: readonly TerrainRun[]): TerrainRun[] => compressTerrain(terrainCells(terrain));
+
+/** How many squares of each kind. */
+export function terrainTally(terrain: readonly TerrainRun[]): Record<TerrainKind, number> {
+  const tally = { difficult: 0, blocked: 0 };
+  for (const run of terrain) tally[run.kind] += run.end - run.start + 1;
+  return tally;
+}
+
+/**
+ * Where a map's terrain stands against the grid it has now (ADR 0071): none, on this grid, waiting
+ * for a grid, or proposed on another grid, which a grid correction causes. Only `ready` terrain
+ * may be published or used to check tokens.
+ */
+export type DraftTerrainState = "none" | "ready" | "noGrid" | "otherGrid";
+export function draftTerrainState(setup: DraftMapSetup | undefined, grid: GridNumbers | null): DraftTerrainState {
+  if (!setup?.terrain?.length) return "none";
+  if (!grid) return "noGrid";
+  return !setup.terrainGrid || sameTerrainGrid(setup.terrainGrid, grid) ? "ready" : "otherGrid";
+}
+
+/** Whether a token of `size` centred at `center` stands on a Blocked square, by the room's own rule (ADR 0046). */
+export const footprintOnBlocked = (center: Point, size: number, grid: GridNumbers, terrain: readonly TerrainRun[]): boolean =>
+  terrain.length > 0 && movementTerrain(center, center, size, { ...DEFAULT_GRID, ...terrainGridOf(grid) }, terrain).blocked;
+
 export type DraftCreatureState = Omit<DraftCreature, "key" | "flags" | "notCarriedOver">;
 export type DraftEncounterState = Omit<DraftEncounter, "key" | "flags" | "notCarriedOver">;
 
@@ -686,6 +772,26 @@ function mapSetupIssues(data: DraftMapState, file: BuildCheckInput["files"][numb
   }
 }
 
+/** What still needs work on one map's terrain (ADR 0071). */
+function mapTerrainIssues(data: DraftMapState, file: BuildCheckInput["files"][number] | undefined, add: AddIssue, say: Say) {
+  const terrain = data.setup?.terrain ?? [];
+  const grid = data.grid ?? data.proposedGrid;
+  const state = draftTerrainState(data.setup, grid);
+  if (state === "none") return;
+  if (state === "noGrid") return add("problem", say("Its terrain needs a grid. Propose one with save_map.", "Its terrain needs a grid. Set the map's grid first."));
+  if (state === "otherGrid") {
+    const was = gridWords(data.setup!.terrainGrid!), now = gridWords(grid!);
+    return add("problem", say(
+      `Its terrain was proposed on ${was}, and the grid is now ${now}. Look at the map again, then save the terrain again, or clear it with terrain: [].`,
+      `Your AI proposed its terrain on ${was}, and the grid is now ${now}. Clear the terrain below, or put the grid back.`,
+    ));
+  }
+  if (!file) return;
+  for (const message of draftTerrainProblems(terrain, grid, file)) {
+    add("problem", say(message, `${message.replace(/\.$/, "")}. Clear the terrain below, or fix it in the map editor after publishing.`));
+  }
+}
+
 /** Every problem and flag in a draft, in plain words. Reads only: it changes and publishes nothing. */
 export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
   const issues: BuildCheckIssue[] = [];
@@ -732,6 +838,7 @@ export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
     const file = files.get(data.fileId);
     if (!file) add("problem", "Its file isn't in this build any more.");
     mapSetupIssues(data, file, input.aiWalls ?? false, add, say);
+    mapTerrainIssues(data, file, add, say);
   }
 
   for (const { key, data, flags } of input.encounters) {
@@ -741,12 +848,24 @@ export function checkBuild(input: BuildCheckInput): BuildCheckIssue[] {
     if (!map) add("problem", `It names map "${data.mapKey}", which isn't in this build.`);
     const file = map ? files.get(map.data.fileId) : undefined;
     const grid = map?.data.grid ?? map?.data.proposedGrid ?? null;
+    // Only terrain on the map's grid places Blocked squares; terrain waiting on a grid is reported on the map.
+    const terrain = map && draftTerrainState(map.data.setup, grid) === "ready" ? map.data.setup?.terrain ?? [] : [];
     data.tokens.forEach((token, index) => {
       const creature = creatures.get(token.creatureKey);
       const label = token.name ?? creature?.data.name ?? token.creatureKey;
       if (!creature) add("problem", `Token ${index + 1} names creature "${token.creatureKey}", which isn't in this build.`);
       if (!token.square) add("problem", say(`${label} has no square yet.`, `${label} has no square yet. Place it in the encounter's editor, or remove it.`));
-      else if (creature && grid && file && !footprintCenter(token.square, creature.data.size, grid, file)) add("problem", `${label} is off the map.`);
+      else if (creature && grid && file) {
+        const center = footprintCenter(token.square, creature.data.size, grid, file);
+        if (!center) add("problem", `${label} is off the map.`);
+        else if (footprintOnBlocked(center, creature.data.size, grid, terrain)) {
+          const at = `column ${token.square.column}, row ${token.square.row}`;
+          add("problem", say(
+            `${label} at ${at} stands on Blocked terrain, so it couldn't move. Move it, or change the terrain.`,
+            `${label} at ${at} stands on Blocked terrain, so it couldn't move. Move it in the encounter's editor, or clear the terrain.`,
+          ));
+        }
+      }
     });
   }
   return issues;
@@ -774,6 +893,8 @@ export function draftEncounterToTemplate(source: DraftEncounterSource): DraftEnc
     const position = footprintCenter(draft.square, creature.size, grid, map);
     if (!position) { refuse("Its square is off the map."); continue; }
     if (clearanceTouchesWall(position, creature.size, grid, walls)) { refuse("It would stand across a wall. Move it or remove it."); continue; }
+    // A token on Blocked ground could never move off it (ADR 0046), so the encounter would be unusable.
+    if (footprintOnBlocked(position, creature.size, grid, board.terrain ?? [])) { refuse("It would stand on Blocked terrain. Move it, or change the terrain."); continue; }
     const hp = creature.hp ?? creature.maxHp;
     if (hp !== null && creature.maxHp !== null && hp > creature.maxHp) { refuse("Its HP is more than its Max HP."); continue; }
 

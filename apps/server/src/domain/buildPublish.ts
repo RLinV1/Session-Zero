@@ -5,6 +5,8 @@ import {
   EMPTY_LIBRARY_BOARD,
   draftEncounterToTemplate,
   draftMapBoard,
+  draftTerrainProblems,
+  draftTerrainState,
   readDraftMap,
   squareSizeOf,
   type BuildCreatureValues,
@@ -133,10 +135,22 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
       const file = fileById.get(data.fileId);
       // Lines are in squares, so they need the grid that will be published with them.
       if (data.setup.lines.length > 0 && data.gridStatus !== "confirmed") { problem(`map ${key}`, "Its drawn walls need a confirmed grid first."); continue; }
+      // So is terrain, and it must be the grid it was proposed on, so a correction can't move it (ADR 0071).
+      const terrain = data.setup.terrain ?? [];
+      if (terrain.length > 0) {
+        if (data.gridStatus !== "confirmed") { problem(`map ${key}`, "Its terrain needs a confirmed grid first."); continue; }
+        if (draftTerrainState(data.setup, data.grid) === "otherGrid") {
+          problem(`map ${key}`, "Its terrain was proposed on a different grid from the one confirmed. Clear the terrain, or put the grid back.");
+          continue;
+        }
+        const off = file ? draftTerrainProblems(terrain, data.grid, file) : [];
+        if (off.length > 0) { for (const message of off) problem(`map ${key}`, message); continue; }
+      }
       // Marks are notes for the person and never go on the board, so they don't hold a map back.
       const built = file ? draftMapBoard(file.board, { ...data.setup, marks: [] }, data.grid, file) : null;
       if (built && !built.ok) { for (const message of built.problems) problem(`map ${key}`, message); continue; }
-      if (built) board = built.board;
+      // The proposed terrain is the published Base layer; no terrain keeps what the file had.
+      if (built) board = terrain.length > 0 ? { ...built.board, terrain } : built.board;
     }
     const asset = await assetOf(data.fileId, `map ${key}`, data.name, { grid: data.grid, board });
     if (!asset) continue;

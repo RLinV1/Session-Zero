@@ -257,7 +257,7 @@ describe("the build tools (FR-GM-26)", () => {
 });
 
 describe("setting up maps, as far as the owner allows (FR-GM-26, ADR 0053)", () => {
-  async function startWith(choices: { aiGrid?: boolean; aiWalls?: boolean }) {
+  async function startWith(choices: { aiGrid?: boolean; aiWalls?: boolean; aiTerrain?: boolean }) {
     const account = await stack.room.signUp({ displayName: "Vincent" });
     const { build, pass } = await account.json<{ build: { id: string }; pass: string }>("POST", "/api/builds", { name: "Lanternfall", ...choices });
     return { account, id: build.id, pass };
@@ -284,7 +284,7 @@ describe("setting up maps, as far as the owner allows (FR-GM-26, ADR 0053)", () 
   it("tells the AI what the owner allows, and how to read positions", async () => {
     const { pass } = await startWith({ aiWalls: true });
     const { json, text } = await ai.call("get_build", { pass });
-    expect(json.allowed).toEqual({ grids: false, walls: true });
+    expect(json.allowed).toEqual({ grids: false, walls: true, terrain: false });
     expect(text).toMatch(/Corner \(c, r\) is the top-left corner of square \(c, r\)/);
     expect(text).toMatch(/Don't guess/);
     expect(ai.instructions).toMatch(/only as far as get_build's allowed/);
@@ -325,5 +325,48 @@ describe("setting up maps, as far as the owner allows (FR-GM-26, ADR 0053)", () 
     const result = await ai.call("view_file", { pass, fileId, overlay: true, fromColumn: 2, toColumn: 4, fromRow: 1, toRow: 2 });
     expect(result.isError).toBe(false);
     expect(await sharp(Buffer.from(result.images[0]!.data, "base64")).metadata()).toMatchObject({ width: 600, height: 400 });
+  });
+
+  describe("terrain (ADR 0071)", () => {
+    const terrain = [{ row: 0, start: 0, end: 2, kind: "difficult" }, { row: 3, start: 5, end: 5, kind: "blocked" }];
+
+    it("saves terrain alone with walls off, reads it back, draws it and checks it", async () => {
+      const { pass } = await startWith({ aiTerrain: true });
+      const fileId = await uvttMap(pass);
+      expect((await ai.call("get_build", { pass })).json.allowed).toEqual({ grids: false, walls: false, terrain: true });
+      const saved = await ai.call("save_map_setup", { pass, mapKey: "shop", terrain });
+      expect(saved.isError).toBe(false);
+      expect(saved.json).toMatchObject({ terrain: { runs: terrain, squares: { difficult: 3, blocked: 1 }, state: "ready" }, terrainSquares: { columns: { from: 0, to: 7 } } });
+      expect((await ai.call("get_map_setup", { pass, mapKey: "shop" })).json).toMatchObject({ terrain: { runs: terrain } });
+      const picture = await ai.call("view_file", { pass, fileId, overlay: true });
+      expect(picture.isError).toBe(false);
+      expect((await ai.call("check_build", { pass })).json).toMatchObject({ issues: expect.not.arrayContaining([expect.objectContaining({ item: "map shop", type: "problem" })]) });
+    });
+
+    it("refuses terrain the owner hasn't allowed, and a mixed save with either part not allowed", async () => {
+      const { pass } = await startWith({ aiWalls: true });
+      await uvttMap(pass);
+      expect(await ai.call("save_map_setup", { pass, mapKey: "shop", terrain })).toMatchObject({ isError: true, text: expect.stringMatching(/Let my AI propose terrain/) });
+      const mixed = await ai.call("save_map_setup", { pass, mapKey: "shop", openings: [{ number: 1, kind: "door", state: "open" }], terrain });
+      expect(mixed).toMatchObject({ isError: true, text: expect.stringMatching(/Nothing was saved/) });
+      expect((await ai.call("get_map_setup", { pass, mapKey: "shop" })).json).toMatchObject({ openings: [{ set: false }], terrain: { runs: [] } });
+    });
+
+    it("passes on the room server's message naming a run off the map", async () => {
+      const { pass } = await startWith({ aiTerrain: true });
+      await uvttMap(pass);
+      const refused = await ai.call("save_map_setup", { pass, mapKey: "shop", terrain: [{ row: 1, start: 7, end: 8, kind: "blocked" }] });
+      expect(refused).toMatchObject({ isError: true, text: expect.stringMatching(/Terrain run 1 \(blocked, row 1, columns 7 to 8\) has a square off the map/) });
+    });
+
+    it("guides the AI not to take water or shadow as Blocked, and to mark what it can't tell", async () => {
+      const { text } = await ai.call("get_build", { pass: (await startWith({ aiTerrain: true })).pass });
+      expect(text).toMatch(/Water, shadow, darkness, colour and texture alone don't make a square Blocked/);
+      expect(text).toMatch(/leave the square Normal and put a mark/);
+      expect(text).toMatch(/column -1 and row -1/);
+      expect(ai.instructions).toMatch(/grids, walls or terrain only as far as get_build's allowed/);
+      const tool = (await ai.listTools()).tools.find((t) => t.name === "save_map_setup")!;
+      expect(Object.keys((tool.inputSchema as { properties: object }).properties)).toContain("terrain");
+    });
   });
 });
