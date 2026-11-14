@@ -1,5 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import {
   INITIAL_SCENE_ID,
   MAX_CHAT_LENGTH,
@@ -250,11 +249,11 @@ export function createMcpServer(deps: ToolDeps): McpServer {
       ordersFrom: z.string().min(1).max(64).optional().describe("The id, from the people get_view lists, of the one person your user told you to take orders from."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
-  }, async ({ seat, maxSeconds, ordersFrom }, extra) => guarded("wait_for_turn", () => pool.withSeat(seat, async ({ connection, memory }) => {
+  }, async ({ seat, maxSeconds, ordersFrom }, ctx) => guarded("wait_for_turn", () => pool.withSeat(seat, async ({ connection, memory }) => {
     if (ordersFrom !== undefined) requireOrderGiver(connection.state, ordersFrom);
     return success(await waitForTurn(connection, memory, {
       limitMs: maxSeconds === undefined ? deps.waitLimitMs : maxSeconds * 1000,
-      signal: extra.signal,
+      signal: ctx.mcpReq.signal,
       ordersFrom,
     }));
   })));

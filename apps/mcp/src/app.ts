@@ -1,8 +1,8 @@
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { NodeStreamableHTTPServerTransport, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
+import { createMcpHandler, isLegacyRequest, type McpServer } from "@modelcontextprotocol/server";
 import { createBuildMcpServer } from "./buildTools";
 import { scrubbed } from "./errors";
 import { Limits } from "./limits";
@@ -52,17 +52,29 @@ export function buildMcpApp(options: McpAppOptions) {
   // Every type, so no Content-Type can carry a body past this limit to the transport's own parser.
   const jsonBody = express.json({ limit: "64kb", type: () => true });
 
+  /**
+   * Both protocol eras on one stateless endpoint. 2025-era clients (an `initialize` handshake, no
+   * per-request envelope) get the same per-request JSON transport as before. 2026-07-28 clients send
+   * the envelope on every request and are served by the SDK's modern handler, also as plain JSON.
+   * Either way nothing is streamed, and a proxy has nothing to buffer (design D5).
+   */
   const serve = (makeServer: (req: Request) => McpServer) => (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
-      const server = makeServer(req);
-      // Stateless, with a plain JSON reply: nothing is streamed, and a proxy has nothing to buffer (design D5).
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-      res.on("close", () => {
-        void transport.close();
-        void server.close();
-      });
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      const webRequest = await toWebRequest(req, req.body);
+      if (await isLegacyRequest(webRequest, req.body)) {
+        const server = makeServer(req);
+        const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+        res.on("close", () => {
+          void transport.close();
+          void server.close();
+        });
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+      const modern = createMcpHandler(() => makeServer(req), { legacy: "reject", responseMode: "json" });
+      res.on("close", () => void modern.close());
+      await toNodeHandler(modern)(req, res, req.body);
     })().catch(next);
   };
 
