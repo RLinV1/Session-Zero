@@ -608,15 +608,23 @@ export function mapSetupProblems(fileBoard: LibraryMapBoard | null, setup: Draft
 /** The squares of a grid, without its units. */
 export const terrainGridOf = (grid: GridNumbers): TerrainGrid => ({ cellSize: grid.cellSize, offsetX: grid.offsetX, offsetY: grid.offsetY });
 
+/** How far apart two grids put a square's edges, at most a quarter square, so the same squares mean the same ground. */
+const TERRAIN_DRIFT = 0.25;
+
 /**
- * Whether terrain proposed on grid `a` lies in the same squares on grid `b` (ADR 0071): within
- * `GRID_AGREEMENT`, as an agreed grid is, but offsets aren't compared across the cell, because a
- * wrapped offset numbers every square one off.
+ * Whether terrain proposed on grid `a` lies in the same squares on grid `b` (ADR 0071). The drift
+ * is measured at the terrain's farthest square edges, not only at the origin: half a pixel per
+ * square adds up across a large map. Offsets aren't compared across the cell, because a wrapped
+ * offset numbers every square one off. With no terrain, the first square is compared.
  */
-export function sameTerrainGrid(a: GridNumbers, b: GridNumbers): boolean {
-  return Math.abs(a.cellSize - b.cellSize) <= GRID_AGREEMENT.cellSize
-    && Math.abs(a.offsetX - b.offsetX) <= GRID_AGREEMENT.offset
-    && Math.abs(a.offsetY - b.offsetY) <= GRID_AGREEMENT.offset;
+export function sameTerrainGrid(a: GridNumbers, b: GridNumbers, terrain: readonly TerrainRun[] = []): boolean {
+  const edges = (lo: number, hi: number) => [lo, hi + 1];
+  const columns = terrain.length ? edges(Math.min(...terrain.map((r) => r.start)), Math.max(...terrain.map((r) => r.end))) : [0, 1];
+  const rows = terrain.length ? edges(Math.min(...terrain.map((r) => r.row)), Math.max(...terrain.map((r) => r.row))) : [0, 1];
+  const drift = (offset: number, cell: number, at: number[]) => Math.max(...at.map((n) => Math.abs(offset + n * cell)));
+  const allowed = Math.min(a.cellSize, b.cellSize) * TERRAIN_DRIFT;
+  return drift(a.offsetX - b.offsetX, a.cellSize - b.cellSize, columns) <= allowed
+    && drift(a.offsetY - b.offsetY, a.cellSize - b.cellSize, rows) <= allowed;
 }
 
 /** A terrain run in words, numbered from 1 as the AI sent them. */
@@ -652,14 +660,15 @@ export function terrainTally(terrain: readonly TerrainRun[]): Record<TerrainKind
 
 /**
  * Where a map's terrain stands against the grid it has now (ADR 0071): none, on this grid, waiting
- * for a grid, or proposed on another grid, which a grid correction causes. Only `ready` terrain
+ * for a grid, or proposed on another grid, which a grid correction causes, or a grid that drifts
+ * more than a quarter square from it anywhere under the terrain. Only `ready` terrain
  * may be published or used to check tokens.
  */
 export type DraftTerrainState = "none" | "ready" | "noGrid" | "otherGrid";
 export function draftTerrainState(setup: DraftMapSetup | undefined, grid: GridNumbers | null): DraftTerrainState {
   if (!setup?.terrain?.length) return "none";
   if (!grid) return "noGrid";
-  return !setup.terrainGrid || sameTerrainGrid(setup.terrainGrid, grid) ? "ready" : "otherGrid";
+  return !setup.terrainGrid || sameTerrainGrid(setup.terrainGrid, grid, setup.terrain) ? "ready" : "otherGrid";
 }
 
 /** Whether a token of `size` centred at `center` stands on a Blocked square, by the room's own rule (ADR 0046). */

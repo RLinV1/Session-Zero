@@ -379,6 +379,29 @@ describe.each(storeCases)("AI terrain in a build on %s (FR-GM-26, ADR 0071)", (_
       }
     });
 
+    it("sends a player only the terrain they can see, never the room's raw terrain (ADR 0069)", async () => {
+      const { account, id, ownerId } = await terrainEncounter(terrain);
+      expect((await publish(account, id, { encounters: ["ambush"] })).status).toBe(200);
+      const [encounter] = await store.listEncounters(ownerId);
+      const guestToken = newGuestToken();
+      const created = await (await account.request("POST", "/api/rooms", { roomName: "From build", displayName: "GM", guestToken, templateId: encounter!.id })).json() as CreateRoomResponse;
+      const gm = await server.connect({ roomId: created.roomId, guestToken });
+      // Fog over the Blocked run at row 3, columns 5 to 6 (x 250 to 350, y 150 to 200), before the player arrives.
+      expect(await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 240, y: 140 }, to: { x: 360, y: 210 } } })).toMatchObject({ type: "ack" });
+      const player = await server.connect(await server.join(created.inviteCode, "Pat"));
+      try {
+        await player.waitForSeq(gm.seq);
+        expect(player.state.terrain).toBeUndefined();
+        expect(player.state.terrainView?.runs).toEqual([run(0, 0, 2), run(4, 1, 1)]);
+        const payloads = player.rawLog.join("\n");
+        expect(payloads).not.toContain('"blocked"');
+        expect(payloads).not.toContain('"base"');
+      } finally {
+        gm.close();
+        player.close();
+      }
+    });
+
     it("places a published map's terrain in a room through the library board", async () => {
       const { account, id } = await terrainEncounter(terrain);
       expect((await publish(account, id, { maps: ["shop"] })).status).toBe(200);
@@ -462,6 +485,8 @@ describe.each(storeCases)("the build store's terrain choice on %s (ADR 0071)", (
     expect(await newBuild(store)).toMatchObject({ aiTerrain: false });
     const ticked = await newBuild(store, { aiTerrain: true });
     expect(await store.findBuild(ticked.id, ticked.ownerGmId)).toMatchObject({ aiGrid: false, aiWalls: false, aiTerrain: true });
+    // Left out, it keeps what is stored, so an older page can't undo a change made at the same moment.
+    expect(await store.setBuildChoices(ticked.id, ticked.ownerGmId, { aiGrid: true, aiWalls: true })).toMatchObject({ aiGrid: true, aiWalls: true, aiTerrain: true });
     expect(await store.setBuildChoices(ticked.id, ticked.ownerGmId, { aiGrid: true, aiWalls: true, aiTerrain: false })).toMatchObject({ aiGrid: true, aiWalls: true, aiTerrain: false });
   });
 

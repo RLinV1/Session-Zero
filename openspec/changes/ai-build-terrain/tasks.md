@@ -12,7 +12,7 @@
 
 ## 2. Setup tools and routes
 
-- [x] 2.1 `PUT /api/builds/:id/choices`: an omitted `aiTerrain` keeps the stored value. Start-build takes `aiTerrain`, and a pass's `allowed` includes it.
+- [x] 2.1 `PUT /api/builds/:id/choices`: an omitted `aiTerrain` keeps the stored value, decided by the store inside its locked write. Start-build takes `aiTerrain`, and a pass's `allowed` includes it.
 - [x] 2.2 `PUT /api/build/:id/maps/:key/setup`:
   - authorized by the parts sent, with a mixed refusal writing nothing;
   - omitting terrain keeps it, `[]` clears it, a list replaces it;
@@ -45,5 +45,12 @@
 - [x] 4.3 Local end-to-end on the dev servers (room server with Postgres, MCP server, web), on alternate ports with local-disk uploads:
   - get_build, a curl upload, save_map with detection's grid, get_map_setup, save_map_setup terrain (a mixed save refused), view_file and check_build (a Blocked token reported);
   - then in the browser: review, Clear all terrain on a second map (the AI's later save refused), moving the token, publishing, and starting a room that shows the terrain.
-- [ ] 4.4 Real-Time Architecture owner review of ADR 0071. Pending.
-- [ ] 4.5 Real AI-client qualification through a connector (the Claude app, ChatGPT, Claude Code's own `claude mcp add`). Pending. The end-to-end run in 4.3 was driven by Claude Code (Opus 5.5) through a scripted MCP client: one session judging terrain from `view_file` pictures. It is not a qualification of model accuracy.
+- [x] 4.4 Run the `sync-reviewer` and `visibility-auditor` agents on the diff. Neither found an invariant violation or a leak. Changes made from their findings:
+  - the omitted terrain choice is kept inside the store's write (a lost update);
+  - grid drift is measured at the terrain's farthest squares, allowing a quarter square;
+  - pictures draw only terrain that fits the grid shown;
+  - a test checks a player's raw payloads under fog.
+  
+  Not changed: `check_build` checks tokens on an already-published map against the draft's terrain rather than the library's. Publishing checks the library's, so it stays safe. This is the same pattern as existing wall and token checks.
+- [ ] 4.5 Real-Time Architecture owner review of ADR 0071. Pending.
+- [ ] 4.6 Real AI-client qualification through a connector (the Claude app, ChatGPT, Claude Code's own `claude mcp add`). Pending. The end-to-end run in 4.3 was driven by Claude Code (Opus 5.5) through a scripted MCP client: one session judging terrain from `view_file` pictures. It is not a qualification of model accuracy.

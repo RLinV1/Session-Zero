@@ -131,8 +131,11 @@ export interface BuildWriteGuard {
   requireAiTerrain?: boolean;
 }
 
-/** The owner's choices, as a build stores them. */
-export type BuildChoiceValues = Pick<BuildRecord, "aiGrid" | "aiWalls" | "aiTerrain">;
+/**
+ * The owner's choices, as a build stores them. An absent `aiTerrain` keeps the stored value, decided
+ * inside the write, so a page from before ADR 0071 can't undo a change made at the same moment.
+ */
+export type BuildChoiceValues = Pick<BuildRecord, "aiGrid" | "aiWalls"> & { aiTerrain?: boolean };
 
 /** A guard's choices, checked against the build as it is inside the write. */
 export function assertChoicesAllow(guard: BuildWriteGuard, build: Pick<BuildRecord, "aiWalls" | "aiTerrain">) {
@@ -201,7 +204,7 @@ export interface BuildStore {
   endBuildPasses(ownerGmId: string): Promise<void>;
   /** Throws `BuildClosedError` when the build isn't open. */
   saveGameProfile(buildId: string, profile: GameProfile): Promise<void>;
-  /** The owner's choices. Null when the owner has no such open build. Only the owner's routes call this. */
+  /** The owner's choices; an absent `aiTerrain` is kept. Null when the owner has no such open build. Only the owner's routes call this. */
   setBuildChoices(id: string, ownerGmId: string, choices: BuildChoiceValues): Promise<BuildRecord | null>;
 
   buildFileUsage(buildId: string): Promise<BuildFileUsage>;

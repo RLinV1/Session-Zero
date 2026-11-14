@@ -840,7 +840,8 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         b: { x: preview.offsetX + l.to.column * preview.cellSize, y: preview.offsetY + l.to.row * preview.cellSize },
       })) : [],
       blockedLines: built.ok ? built.blockedLines : [],
-      terrain: setup.terrain ?? [],
+      // Drawn only on a grid it fits, so a grid being corrected shows the terrain wouldn't carry over (ADR 0071).
+      terrain: draftTerrainState(setup, preview) === "ready" ? setup.terrain ?? [] : [],
     };
   }, [file, data.setup, cell, x, y]); // `preview` is rebuilt from these three fields on every render
   const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;

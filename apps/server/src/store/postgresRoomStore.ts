@@ -733,7 +733,7 @@ export class PostgresRoomStore implements RoomStore {
     const changed = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       const result = await tx.build.updateMany({
-        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, aiTerrain: choices.aiTerrain, updatedAt: new Date() },
+        where: { id, ownerGmId, status: "open" }, data: { aiGrid: choices.aiGrid, aiWalls: choices.aiWalls, ...(choices.aiTerrain === undefined ? {} : { aiTerrain: choices.aiTerrain }), updatedAt: new Date() },
       });
       return result.count === 1;
     });

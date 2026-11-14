@@ -1015,6 +1015,8 @@ describe("the AI's terrain in review (FR-GM-27, ADR 0071)", () => {
   it("says when the terrain was proposed on another grid, and the check lists it to fix", async () => {
     await open(detail({ items: [cave({ grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } })] }));
     expect(text()).toContain("Your AI proposed this terrain on 70-pixel squares at offset (0, 0), not on the grid this map has now. Clear it, or put the grid back.");
+    // Not drawn on a grid it doesn't fit, where it would sit in the wrong squares.
+    expect(drawn(".build-map")).toEqual([]);
     expect(text()).toMatch(/Your AI proposed its terrain on 70-pixel squares at offset \(0, 0\), and the grid is now 50-pixel squares/);
   });
 

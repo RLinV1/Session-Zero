@@ -55,7 +55,7 @@ Lines are stored in grid corners and move with a correction by design (ADR 0053)
 
 - `none`: there is no terrain;
 - `noGrid`: there is no grid;
-- `ready`: `sameTerrainGrid` holds, meaning within `GRID_AGREEMENT`, with offsets compared without wrapping;
+- `ready`: `sameTerrainGrid` holds, meaning no square edge under the terrain moves more than a quarter of a square. The drift is measured at the terrain's farthest squares, since half a pixel per square adds up, and offsets are compared without wrapping;
 - `otherGrid`: anything else.
 
 Only `ready` terrain is used to check tokens, drawn under encounter tokens, or published. `planPublish` also needs `gridStatus === "confirmed"`.
@@ -74,6 +74,7 @@ The owner's `PUT setup` keeps the stored terrain and `terrainGrid` when `terrain
 
 - `mapOverlay` emits two SVG patterns, single hatching and crosshatching, and one rectangle per run clipped to the crop, under the grid lines, walls and labels. Its colours come from `MAP_PALETTE`'s `difficult` and `blocked` families. Blocked sits on a dark tint, so it doesn't read as a red wall line.
 - The web review uses `TerrainCells` from `pages/mapEditor/TerrainSetup.tsx` as-is, drawn on the existing SVG over `<img>`, so the image file is never changed.
+- Both pictures, and the encounter board, draw terrain only when it is `ready` for the grid shown. Stale terrain would otherwise sit in the wrong squares; the text notices say it is stale.
 
 ## Risks / Trade-offs
 

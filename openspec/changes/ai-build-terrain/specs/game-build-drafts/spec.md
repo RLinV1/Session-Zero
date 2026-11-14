@@ -44,7 +44,7 @@ Terrain SHALL need a grid. Runs SHALL be ordered by row and then column, SHALL N
 - **THEN** the save is refused, naming the run, and the terrain saved before stays
 
 ### Requirement: Terrain stays on the grid it was proposed on
-Terrain SHALL be stored with the grid it was proposed on. When the map's grid later differs from that grid (beyond the grid agreement's tolerance, with offsets compared without wrapping), `get_map_setup` and `check_build` SHALL report it. The terrain SHALL NOT be used to check tokens, and SHALL NOT be published, until it is saved again on the new grid or cleared.
+Terrain SHALL be stored with the grid it was proposed on. When the map's grid later differs from that grid (any square edge under the terrain moving more than a quarter of a square, measured at its farthest squares, with offsets compared without wrapping), `get_map_setup` and `check_build` SHALL report it. The terrain SHALL NOT be used to check tokens, and SHALL NOT be published, until it is saved again on the new grid or cleared.
 
 #### Scenario: A grid correction
 - **WHEN** the AI proposed terrain on 70-pixel squares and the map's grid is now 50-pixel squares

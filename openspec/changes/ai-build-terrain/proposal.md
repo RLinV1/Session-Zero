@@ -18,7 +18,7 @@ The AI game builder (`mcp-game-builder`, ADR 0053) lets an owner's AI propose a 
   - The owner's map review and encounter board draw them with the map editor's own terrain drawing, over the clean original image, beside the existing walls, portals and tokens.
   - The owner gets "Clear all terrain", which is an owner edit, so the AI can't change that map afterwards. Painting stays in the map editor after publishing.
 - **Grid, placement and publication.**
-  - Publishing terrain needs a confirmed grid, and the grid the terrain was proposed on, within the grid agreement's tolerance. After a correction, `check_build`, `get_map_setup` and the owner's page say so, and publishing refuses until the terrain is saved again or cleared.
+  - Publishing terrain needs a confirmed grid, and the grid the terrain was proposed on: no square edge under the terrain may move more than a quarter of a square. After a correction, `check_build`, `get_map_setup` and the owner's page say so, and publishing refuses until the terrain is saved again or cleared.
   - A token whose footprint lies on Blocked ground is reported by the check and refused at publish, by the room's own movement rule. Difficult ground is fine.
   - The proposed terrain becomes the published `LibraryMapBoard.terrain` and the encounter's `terrain`, through the existing single publish transaction. A room started from the encounter, or placing the map with its library board, gets it through the existing paths.
 - **Guidance.** The field guide explains Difficult and Blocked, the run format, cropped edges and grid changes. It says that water, shadow, darkness, colour or texture alone don't make a square Blocked, and that unclear squares stay Normal with a mark or flag.

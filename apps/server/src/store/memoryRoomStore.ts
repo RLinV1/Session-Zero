@@ -571,7 +571,7 @@ export class MemoryRoomStore implements RoomStore {
     if (!build || build.ownerGmId !== ownerGmId || build.status !== "open") return null;
     build.aiGrid = choices.aiGrid;
     build.aiWalls = choices.aiWalls;
-    build.aiTerrain = choices.aiTerrain;
+    build.aiTerrain = choices.aiTerrain ?? build.aiTerrain;
     this.touchBuild(build);
     return structuredClone(build);
   }

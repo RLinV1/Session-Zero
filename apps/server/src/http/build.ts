@@ -347,8 +347,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (!found) return;
       const body = BuildChoicesChange.safeParse(req.body);
       if (!body.success) return void res.status(400).json({ error: issueText(body.error) });
-      // A page from before the terrain choice doesn't send it, which leaves it as it was (ADR 0071).
-      const build = await store.setBuildChoices(found.build.id, found.build.ownerGmId, { ...body.data, aiTerrain: body.data.aiTerrain ?? found.build.aiTerrain });
+      // A page from before the terrain choice doesn't send it; the store keeps it, inside its write (ADR 0071).
+      const build = await store.setBuildChoices(found.build.id, found.build.ownerGmId, body.data);
       if (!build) return void res.status(409).json({ error: "This build is closed." });
       res.json({ build: buildSummary(build) });
     })().catch(failed(res));
@@ -961,7 +961,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       walls: built.ok ? built.board.walls : file.board?.walls ?? [],
       openings: listOpenings(file.board, setup, grid),
       marks: grid ? setup?.marks ?? [] : [],
-      terrain: grid ? setup?.terrain ?? [] : [],
+      // Only terrain that fits this grid: stale terrain would be drawn in the wrong squares (ADR 0071).
+      terrain: grid && draftTerrainState(setup, grid) === "ready" ? setup?.terrain ?? [] : [],
     });
     return { layout, gridShown: grid !== null };
   }

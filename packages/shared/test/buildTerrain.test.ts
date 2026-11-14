@@ -105,6 +105,11 @@ describe("a draft map's proposed terrain (FR-GM-26, ADR 0071)", () => {
     // 69.5 and 0 agree as grid lines, but every square would be numbered one off.
     expect(sameTerrainGrid(GRID, { cellSize: 70, offsetX: 69.5, offsetY: 0 })).toBe(false);
     expect(draftTerrainState(setup, null)).toBe("noGrid");
+    // Half a pixel per square is nothing near the origin, and most of a square at column 30.
+    const near = { openings: [], lines: [], marks: [], terrain: [run(1, 1, 1)], terrainGrid: { cellSize: 25, offsetX: 0, offsetY: 0 } };
+    expect(draftTerrainState(near, { cellSize: 25.5, offsetX: 0, offsetY: 0 })).toBe("ready");
+    expect(draftTerrainState({ ...near, terrain: [run(1, 30, 30)] }, { cellSize: 25.5, offsetX: 0, offsetY: 0 })).toBe("otherGrid");
+    expect(draftTerrainState({ ...near, terrain: [run(30, 1, 1)] }, { cellSize: 25.5, offsetX: 0, offsetY: 0 })).toBe("otherGrid");
     expect(draftTerrainState({ ...setup, terrain: [] }, null)).toBe("none");
     expect(draftTerrainState(undefined, GRID)).toBe("none");
   });
