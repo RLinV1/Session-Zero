@@ -1,8 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
-import { Flag, Trash, X } from "@phosphor-icons/react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { CaretLeft, CaretRight, Flag, Trash, X } from "@phosphor-icons/react";
 import {
   EMPTY_MAP_SETUP,
-  describeDraftLine,
   type DraftCorner,
   type DraftLine,
   type DraftMapSetup,
@@ -10,28 +9,26 @@ import {
   type OpeningView,
   type PortalState,
 } from "@vtt/shared";
-import { IconAction } from "../../ui/IconAction";
 
 /**
- * The walls, doors and windows the AI drew on a map, reviewed as a set rather than a select on
- * every row (FR-GM-27, ADR 0053): the owner picks lines on the map or in the list, by number or by
- * kind, and changes or removes them all in one action. Each action is one save of the whole setup.
+ * The walls, doors and windows the AI drew on a map, edited from one place rather than a row per
+ * line (FR-GM-27, ADR 0053). The owner types a line's number, steps through them, clicks one on the
+ * map or picks a whole kind, and the editor changes or removes what is chosen in one save.
  */
 
 export type LineKind = DraftLine["kind"];
-export type LineFilter = "all" | LineKind | "flagged";
+type Group = LineKind | "flagged";
 
 const KINDS: readonly LineKind[] = ["wall", "door", "window"];
 const STATES: readonly PortalState[] = ["closed", "open", "locked"];
-const KIND_PLURAL: Record<LineKind, string> = { wall: "walls", door: "doors", window: "windows" };
 const KIND_TITLE: Record<LineKind, string> = { wall: "Wall", door: "Door", window: "Window" };
-/** The colours the map preview draws each kind in, so the list's swatches are the map's key. */
+const GROUP_TITLE: Record<Group, string> = { wall: "Walls", door: "Doors", window: "Windows", flagged: "Flagged" };
+/** The colours the map preview draws each kind in, so the editor's swatches are the map's key. */
 export const LINE_COLOUR = { wall: "#ff3b30", door: "#ffd60a", window: "#64d2ff", opening: "#ff9f0a" } as const;
 
-/** After the next paint, when a row the choice just showed is in the list. */
-const afterPaint = (run: () => void) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(run) : run());
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const andList = (parts: readonly string[]) => (parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`);
+const title = (word: string) => word[0]!.toUpperCase() + word.slice(1);
 
 /**
  * Reads "3, 7-12, 40" as zero-based line indices. Spaces or commas separate; a range takes a hyphen,
@@ -40,17 +37,30 @@ const andList = (parts: readonly string[]) => (parts.length <= 1 ? parts.join(""
 export function parseLineNumbers(text: string, count: number): { ok: true; indices: number[] } | { ok: false; error: string } {
   const outOfRange = count === 1 ? "This map has only line 1." : `Line numbers go from 1 to ${count}.`;
   const parts = text.replace(/\s*(?:-|–|—|\bto\b)\s*/gi, "-").split(/[\s,;]+/).filter(Boolean);
-  if (parts.length === 0) return { ok: false, error: "Type line numbers, such as 3, 7-12." };
+  if (parts.length === 0) return { ok: false, error: "Type a line number, such as 1, or a range, such as 3-7." };
   const indices = new Set<number>();
   for (const part of parts) {
     const range = /^(\d+)(?:-(\d+))?$/.exec(part);
-    if (!range) return { ok: false, error: `"${part}" isn't a line number. Type numbers, such as 3, 7-12.` };
+    if (!range) return { ok: false, error: `"${part}" isn't a line number. Type numbers, such as 1 or 3-7.` };
     const a = Number(range[1]), b = Number(range[2] ?? range[1]);
     const [lo, hi] = a <= b ? [a, b] : [b, a];
     if (lo < 1 || hi > count) return { ok: false, error: outOfRange };
     for (let n = lo; n <= hi; n++) indices.add(n - 1);
   }
   return { ok: true, indices: [...indices].sort((x, y) => x - y) };
+}
+
+/** Zero-based indices written back as line numbers, runs joined: [0, 1, 2, 6] is "1-3, 7". */
+export function formatLineNumbers(indices: Iterable<number>): string {
+  const sorted = [...new Set(indices)].sort((a, b) => a - b);
+  const runs: string[] = [];
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j]! + 1) j++;
+    runs.push(j === i ? `${sorted[i]! + 1}` : `${sorted[i]! + 1}-${sorted[j]! + 1}`);
+    i = j + 1;
+  }
+  return runs.join(", ");
 }
 
 /** How far, in squares, from the middle of a square to a line. */
@@ -80,114 +90,122 @@ const withKind = (line: DraftLine, kind: LineKind, state?: PortalState): DraftLi
 
 export interface LinePicker {
   chosen: ReadonlySet<number>;
+  /** The line pointed at on the map, which shows its number. */
   lit: number | null;
-  filter: LineFilter;
-  setFilter: (filter: LineFilter) => void;
   light: (index: number | null) => void;
-  /** Adds or takes away one line; with `range`, adds every line from the last one picked. */
-  toggle: (index: number, range?: boolean) => void;
-  /** Chooses these lines, beside the ones chosen already or in their place. */
+  /** Chooses these lines, in place of the ones chosen, or beside them. */
   choose: (indices: readonly number[], add?: boolean) => void;
+  /** Adds or takes away one line. */
+  toggle: (index: number) => void;
   clear: () => void;
-  /** Scrolls the list, and only the list, to a line's row. */
-  reveal: (index: number) => void;
-  listRef: RefObject<HTMLUListElement | null>;
+  /** The mark the editor shows, ringed on the map. */
+  mark: number;
+  setMark: (index: number) => void;
 }
 
 /**
- * Which lines are chosen and which one is pointed at, shared by the map preview and the list.
+ * Which lines are chosen and which one is pointed at, shared by the map preview and the editor.
  * A removal renumbers the lines, so the choice is cleared whenever the number of lines changes.
  */
-export function useLinePicker(count: number): LinePicker {
+export function useLinePicker(count: number, marks: number): LinePicker {
   const [raw, setRaw] = useState<ReadonlySet<number>>(() => new Set());
   const [lit, setLit] = useState<number | null>(null);
-  const [filter, setFilter] = useState<LineFilter>("all");
-  const anchor = useRef<number | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
-  useEffect(() => { setRaw(new Set()); setLit(null); anchor.current = null; }, [count]);
+  const [mark, setMark] = useState(0);
+  useEffect(() => { setRaw(new Set()); setLit(null); }, [count]);
   const chosen = useMemo(() => new Set([...raw].filter((i) => i < count)), [raw, count]);
-
-  const toggle = (index: number, range = false) => {
+  const toggle = (index: number) => {
     const next = new Set(chosen);
-    if (range && anchor.current !== null && anchor.current !== index) {
-      const [lo, hi] = anchor.current < index ? [anchor.current, index] : [index, anchor.current];
-      for (let i = lo; i <= hi; i++) next.add(i);
-    } else if (next.has(index)) next.delete(index);
-    else next.add(index);
-    anchor.current = index;
+    if (next.has(index)) next.delete(index); else next.add(index);
     setRaw(next);
   };
-  const choose = (indices: readonly number[], add = true) => {
-    setRaw(new Set([...(add ? chosen : []), ...indices]));
-    anchor.current = indices.at(-1) ?? anchor.current;
+  return {
+    chosen, lit, light: setLit, toggle,
+    choose: (indices, add = false) => setRaw(new Set([...(add ? chosen : []), ...indices])),
+    clear: () => setRaw(new Set()),
+    mark: Math.min(mark, Math.max(0, marks - 1)), setMark,
   };
-  const reveal = (index: number) => {
-    const list = listRef.current;
-    const row = list?.querySelector<HTMLElement>(`[data-line="${index}"]`);
-    if (!list || !row || list.scrollHeight <= list.clientHeight) return;
-    const top = row.offsetTop, bottom = top + row.offsetHeight;
-    if (top < list.scrollTop) list.scrollTop = top;
-    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
-  };
-  return { chosen, lit, filter, setFilter, light: setLit, toggle, choose, clear: () => setRaw(new Set()), reveal, listRef };
 }
-
-const matches = (filter: LineFilter, line: DraftLine, flagged: boolean) =>
-  filter === "all" || (filter === "flagged" ? flagged : line.kind === filter);
 
 /**
  * The AI's lines drawn again over the map preview, to pick from: an invisible wide stroke on each
- * takes the click, the chosen ones get a marching-ants edge, and the one pointed at stands out
- * while the rest dim. The list stays the keyboard and screen-reader way in; this layer is hidden from both.
+ * takes the click (shift-click adds), the chosen ones get a marching-ants edge, and the one pointed
+ * at shows its number while the rest dim. The editor is the keyboard and screen-reader way in; this
+ * layer is hidden from both.
  */
-export function LinePickLayer({ lines, grid, picker, editable, flagged }: {
+export function LinePickLayer({ lines, marks, grid, picker, labelSize }: {
   lines: readonly DraftLine[];
+  marks: readonly DraftMark[];
   grid: { cellSize: number; offsetX: number; offsetY: number };
   picker: LinePicker;
-  editable: boolean;
-  flagged: ReadonlySet<number>;
+  labelSize: number;
 }) {
-  const d = (line: DraftLine) =>
-    `M ${grid.offsetX + line.from.column * grid.cellSize} ${grid.offsetY + line.from.row * grid.cellSize} L ${grid.offsetX + line.to.column * grid.cellSize} ${grid.offsetY + line.to.row * grid.cellSize}`;
-  const pick = (index: number, range: boolean) => {
-    const line = lines[index]!;
-    if (!matches(picker.filter, line, flagged.has(index))) picker.setFilter("all");
-    if (editable) picker.toggle(index, range);
-    picker.light(index);
-    afterPaint(() => picker.reveal(index));
+  const at = (c: DraftCorner) => ({ x: grid.offsetX + c.column * grid.cellSize, y: grid.offsetY + c.row * grid.cellSize });
+  const d = (line: DraftLine) => { const a = at(line.from), b = at(line.to); return `M ${a.x} ${a.y} L ${b.x} ${b.y}`; };
+  const middle = (line: DraftLine) => { const a = at(line.from), b = at(line.to); return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+  const label = (i: number, className: string) => {
+    const m = middle(lines[i]!);
+    return <text key={`n${i}`} x={m.x} y={m.y - labelSize * 0.9} fontSize={labelSize} strokeWidth={labelSize / 5} textAnchor="middle" dominantBaseline="central" className={className}>{i + 1}</text>;
   };
   const lit = picker.lit !== null ? lines[picker.lit] : undefined;
+  const chosen = [...picker.chosen].filter((i) => lines[i]);
+  const ring = marks[picker.mark];
   return (
     <g className={lit ? "build-line-picks has-lit" : "build-line-picks"}>
-      {[...picker.chosen].map((i) => lines[i] && (
+      {ring && (
+        <circle className="build-mark-current" cx={grid.offsetX + (ring.square.column + 0.5) * grid.cellSize} cy={grid.offsetY + (ring.square.row + 0.5) * grid.cellSize}
+          r={grid.cellSize * 0.75} vectorEffect="non-scaling-stroke" />
+      )}
+      {chosen.map((i) => (
         <g key={i} className="build-line-chosen" data-line={i}>
           <path d={d(lines[i]!)} className="build-line-rim" vectorEffect="non-scaling-stroke" />
           <path d={d(lines[i]!)} className="build-line-ants" vectorEffect="non-scaling-stroke" />
           <path d={d(lines[i]!)} stroke={LINE_COLOUR[lines[i]!.kind]} strokeWidth={3} strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />
         </g>
       ))}
+      {/* Numbers for a few chosen lines, so a typed number is found on the map at once. */}
+      {chosen.length <= 12 && chosen.filter((i) => i !== picker.lit).map((i) => label(i, "build-wall-label build-line-number"))}
       {lit && (
         <g className="build-line-lit">
           <path d={d(lit)} className="build-line-glow" vectorEffect="non-scaling-stroke" />
           <path d={d(lit)} stroke={LINE_COLOUR[lit.kind]} strokeWidth={5} strokeLinecap="round" fill="none" vectorEffect="non-scaling-stroke" />
+          {label(picker.lit!, "build-wall-label build-line-number is-lit")}
         </g>
       )}
       {lines.map((line, i) => (
         <path key={i} d={d(line)} className="build-line-hit" data-hit={i} vectorEffect="non-scaling-stroke"
-          onClick={(e) => pick(i, e.shiftKey)} onMouseEnter={() => picker.light(i)} onMouseLeave={() => picker.light(null)} />
+          onClick={(e) => (e.shiftKey ? picker.toggle(i) : picker.choose([i]))} onMouseEnter={() => picker.light(i)} onMouseLeave={() => picker.light(null)} />
       ))}
     </g>
   );
 }
 
 const where = (o: Pick<OpeningView, "square">) => (o.square ? ` at column ${o.square.column}, row ${o.square.row}` : "");
-const corner = (c: DraftCorner) => `${c.column},${c.row}`;
+const corner = (c: DraftCorner) => `column ${c.column}, row ${c.row}`;
 
-/** A tick box that shows "some" when part of the list is chosen. */
-function AllBox({ all, some, label, onChange }: { all: boolean; some: boolean; label: string; onChange: () => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = some && !all; }, [some, all]);
-  return <input ref={ref} type="checkbox" checked={all} aria-label={label} onChange={onChange} />;
+/** What is chosen, said once: the line itself, or how many of each kind. */
+function Chosen({ lines, chosen, flags }: { lines: readonly DraftLine[]; chosen: readonly number[]; flags: Map<number, string[]> }) {
+  if (chosen.length === 1) {
+    const i = chosen[0]!, line = lines[i]!, why = flags.get(i);
+    return (
+      <div className="build-line-focus">
+        <p className="build-line-name">
+          <span className="build-line-swatch" data-kind={line.kind} aria-hidden="true" />
+          <b>Line {i + 1}</b>
+          <span>{title(line.kind)}{line.kind !== "wall" && <span className="muted"> · {line.state ?? "closed"}</span>}</span>
+        </p>
+        <p className="build-line-where">From {corner(line.from)} to {corner(line.to)}</p>
+        {why && <p className="build-flag-reason"><Flag size={13} weight="fill" aria-hidden="true" /> {why.join(" ")}</p>}
+      </div>
+    );
+  }
+  const of = (kind: LineKind) => chosen.filter((i) => lines[i]!.kind === kind).length;
+  const flagged = chosen.filter((i) => flags.has(i)).length;
+  return (
+    <div className="build-line-focus">
+      <p className="build-line-name"><b>{plural(chosen.length, "line")}</b></p>
+      <p className="build-line-where">{andList(KINDS.filter((k) => of(k) > 0).map((k) => plural(of(k), k)))}{flagged > 0 && `, ${flagged} flagged`}</p>
+    </div>
+  );
 }
 
 /**
@@ -206,22 +224,54 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   onSave: (setup: DraftMapSetup) => Promise<void>;
 }) {
   const headId = useId();
-  const [numbers, setNumbers] = useState("");
-  const [numbersError, setNumbersError] = useState<string | null>(null);
-  const shift = useRef(false);
   const lines = setup.lines;
   const flags = useMemo(() => lineFlags(setup, blocked), [setup, blocked]);
-  const near = useMemo(() => setup.marks.map((m) => linesNearMark(lines, m)), [setup.marks, lines]);
-  const count = (kind: LineKind) => lines.filter((l) => l.kind === kind).length;
-  const counts: Record<LineFilter, number> = { all: lines.length, wall: count("wall"), door: count("door"), window: count("window"), flagged: flags.size };
-  const shown = lines.flatMap((line, i) => (matches(picker.filter, line, flags.has(i)) ? [i] : []));
-  const chosenShown = shown.filter((i) => picker.chosen.has(i)).length;
-  const chosenLines = [...picker.chosen].map((i) => lines[i]!).filter(Boolean);
+  const chosen = [...picker.chosen].sort((a, b) => a - b);
+  const chosenKey = chosen.join(",");
+  // The field shows the choice, however it was made; what is typed chooses as it is typed.
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const typed = useRef(false);
+  useEffect(() => {
+    if (typed.current) { typed.current = false; return; }
+    setDraft(formatLineNumbers(chosen));
+    setError(null);
+  }, [chosenKey]); // `chosen` is rebuilt every render; its contents are in `chosenKey`
+
+  const groups: Record<Group, number[]> = {
+    wall: [], door: [], window: [],
+    flagged: lines.flatMap((_, i) => (flags.has(i) ? [i] : [])),
+  };
+  lines.forEach((l, i) => groups[l.kind].push(i));
+  const chosenLines = chosen.map((i) => lines[i]!);
   const chosenKinds = new Set(chosenLines.map((l) => l.kind));
   const chosenStates = new Set(chosenLines.map((l) => l.state));
   const allPortals = chosenLines.length > 0 && !chosenKinds.has("wall");
   const by = editedByUser ? "your AI or you" : "your AI";
   const aiSetSomething = setup.openings.length + lines.length + setup.marks.length > 0;
+
+  const type = (value: string) => {
+    setDraft(value);
+    setError(null);
+    if (value.trim() === "") { typed.current = chosen.length > 0; picker.clear(); return; }
+    const parsed = parseLineNumbers(value, lines.length);
+    if (parsed.ok && parsed.indices.join(",") !== chosenKey) { typed.current = true; picker.choose(parsed.indices); }
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const parsed = parseLineNumbers(draft, lines.length);
+    if (!parsed.ok) return setError(parsed.error);
+    picker.choose(parsed.indices);
+  };
+  /** One line before the first chosen, or after the last, wrapping round. */
+  const step = (by: -1 | 1) => {
+    const from = chosen.length === 0 ? (by > 0 ? -1 : lines.length) : by > 0 ? chosen.at(-1)! : chosen[0]!;
+    picker.choose([(from + by + lines.length) % lines.length]);
+  };
+  const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); step(e.key === "ArrowUp" ? -1 : 1); }
+    if (e.key === "Escape" && chosen.length > 0) { e.preventDefault(); picker.clear(); }
+  };
 
   const setOpening = (number: number, kind: string, state: PortalState) => {
     const others = setup.openings.filter((o) => o.number !== number);
@@ -234,33 +284,15 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   const makeState = (state: PortalState) => { if (chosenStates.size !== 1 || !chosenStates.has(state)) changeChosen((l) => withKind(l, l.kind, state)); };
   const removeChosen = () => void onSave({ ...setup, lines: lines.filter((_, i) => !picker.chosen.has(i)) });
   const removeMark = (index: number) => void onSave({ ...setup, marks: setup.marks.filter((_, i) => i !== index) });
-  const chooseNumbers = (e: FormEvent) => {
-    e.preventDefault();
-    const parsed = parseLineNumbers(numbers, lines.length);
-    if (!parsed.ok) return setNumbersError(parsed.error);
-    setNumbersError(null);
-    setNumbers("");
-    if (parsed.indices.some((i) => !shown.includes(i))) picker.setFilter("all");
-    picker.choose(parsed.indices);
-    afterPaint(() => picker.reveal(parsed.indices[0]!));
-  };
-  const chooseNear = (indices: readonly number[]) => {
-    picker.setFilter("all");
-    picker.choose(indices, false);
-    afterPaint(() => picker.reveal(indices[0]!));
-  };
-  const toggleShown = () => (chosenShown === shown.length
-    ? picker.choose([...picker.chosen].filter((i) => !shown.includes(i)), false)
-    : picker.choose(shown));
 
-  const drawn = KINDS.filter((k) => counts[k] > 0).map((k) => plural(counts[k], k));
+  const drawn = KINDS.filter((k) => groups[k].length > 0).map((k) => plural(groups[k].length, k));
   const summary = [
     lines.length > 0 ? `${andList(drawn)} drawn by ${by}` : null,
     openings.length > 0 ? `${plural(openings.length, "opening")} in the file` : null,
     setup.marks.length > 0 ? `${plural(setup.marks.length, "place")} left for you` : null,
   ].filter(Boolean).join(" · ");
-  const filterLabel: Record<LineFilter, string> = { all: "All", wall: "Walls", door: "Doors", window: "Windows", flagged: "Flagged" };
-  const shownWord = picker.filter === "all" ? plural(shown.length, "line") : picker.filter === "flagged" ? `${shown.length} flagged` : plural(shown.length, picker.filter, KIND_PLURAL[picker.filter]);
+  const mark = setup.marks[picker.mark];
+  const markLines = mark ? linesNearMark(lines, mark) : [];
 
   return (
     <section className="build-walls" aria-labelledby={headId}>
@@ -275,108 +307,94 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
         {openings.length > 0 && <li><span className="build-line-swatch" data-kind="opening" aria-hidden="true" />Opening as the file has it</li>}
         {aiSetSomething && <li><span className="build-line-swatch is-set" aria-hidden="true" />White edge: set here</li>}
       </ul>
-      {editable && lines.length > 0 && <p className="muted small-print">Click lines on the map or tick them below, then change them all at once. To draw or move walls, publish and use the map editor.</p>}
-      {editable && !editedByUser && <p className="build-walls-warn small-print">Any change you make here stops your AI changing this map.</p>}
 
       {lines.length > 0 && (
-        <div className="build-lines">
-          <div className="build-lines-tools">
-            <div className="seg seg-small build-lines-filter" role="group" aria-label="Show">
-              {(["all", "wall", "door", "window", "flagged"] as const).map((f) => (
-                <button key={f} type="button" aria-pressed={picker.filter === f} disabled={f !== "all" && counts[f] === 0 && picker.filter !== f} onClick={() => picker.setFilter(f)}>
-                  <span>{f === "flagged" && <Flag size={12} weight="fill" aria-hidden="true" />}{filterLabel[f]}</span>
-                  <span className="build-seg-count">{counts[f]}</span>
-                </button>
-              ))}
+        <div className="build-line-editor">
+          <form className="build-line-pick" onSubmit={submit}>
+            <label htmlFor={`${headId}-line`}>Line</label>
+            <div className="build-line-field">
+              <button type="button" className="icon-button" aria-label="Previous line" title="Previous line" onClick={() => step(-1)}><CaretLeft size={16} aria-hidden="true" /></button>
+              <input id={`${headId}-line`} value={draft} placeholder="1, or 3-7" autoComplete="off" spellCheck={false} inputMode="text"
+                aria-invalid={error ? true : undefined} aria-describedby={`${headId}-line-help`} onChange={(e) => type(e.target.value)} onKeyDown={keys} />
+              <button type="button" className="icon-button" aria-label="Next line" title="Next line" onClick={() => step(1)}><CaretRight size={16} aria-hidden="true" /></button>
+              <span className="build-line-of">of {lines.length}</span>
             </div>
-            {editable && (
-              <form className="build-lines-numbers" onSubmit={chooseNumbers}>
-                <label>
-                  <span className="sr-only">Choose lines by number</span>
-                  <input value={numbers} inputMode="text" placeholder="Lines, e.g. 3, 7-12" aria-invalid={numbersError ? true : undefined}
-                    aria-describedby={numbersError ? `${headId}-numbers` : undefined} onChange={(e) => { setNumbers(e.target.value); setNumbersError(null); }} />
-                </label>
-                <button type="submit" className="small">Choose</button>
-              </form>
-            )}
-          </div>
-          {numbersError && <p className="error small-print" id={`${headId}-numbers`}>{numbersError}</p>}
+            {error
+              ? <p className="error small-print" id={`${headId}-line-help`}>{error}</p>
+              : <p className="muted small-print" id={`${headId}-line-help`}>Type a number, use the arrows, or click a line on the map. Point at a line to see its number.</p>}
+          </form>
 
-          <div className="build-lines-frame">
-            <div className="build-lines-listhead">
-              {editable && shown.length > 0
-                ? <label className="build-lines-all"><AllBox all={chosenShown === shown.length} some={chosenShown > 0} label={`Choose all ${shownWord} shown`} onChange={toggleShown} /><span>{shownWord}</span></label>
-                : <span>{shownWord}</span>}
-            </div>
-            {shown.length === 0
-              ? <p className="muted small-print build-lines-empty">No {picker.filter === "flagged" ? "flagged lines" : (picker.filter === "all" ? "lines" : KIND_PLURAL[picker.filter])} on this map. <button type="button" className="link" onClick={() => picker.setFilter("all")}>Show all lines</button></p>
-              : (
-                <ul ref={picker.listRef} className="plain build-lines-list" aria-label={`Lines drawn by ${by}`}>
-                  {shown.map((i) => {
-                    const line = lines[i]!;
-                    const why = flags.get(i);
-                    const state = line.kind === "wall" ? "" : `, ${line.state ?? "closed"}`;
-                    const content = (
-                      <>
-                        <span className="build-line-swatch" data-kind={line.kind} aria-hidden="true" />
-                        <span className="build-line-no">{i + 1}</span>
-                        <span className="build-line-kind">{line.kind}{line.kind !== "wall" && <span className="muted"> · {line.state ?? "closed"}</span>}</span>
-                        <span className="build-line-at" title={`${corner(line.from)} → ${corner(line.to)}`}>{corner(line.from)} → {corner(line.to)}</span>
-                        {why ? <span className="build-line-flag" title={why.join(" ")}><Flag size={14} weight="fill" aria-hidden="true" /><span className="sr-only">Flagged: {why.join(" ")}</span></span> : <span aria-hidden="true" />}
-                      </>
-                    );
-                    const className = ["build-line", picker.chosen.has(i) && "is-chosen", picker.lit === i && "is-lit"].filter(Boolean).join(" ");
-                    return (
-                      <li key={i} data-line={i} className={className} onMouseEnter={() => picker.light(i)} onMouseLeave={() => picker.light(null)}>
-                        {editable ? (
-                          <label onPointerDown={(e) => { shift.current = e.shiftKey; }}>
-                            <input type="checkbox" checked={picker.chosen.has(i)} aria-label={`${describeDraftLine(line, i)}${state}`}
-                              onKeyDown={(e) => { shift.current = e.shiftKey; }} onFocus={() => picker.light(i)} onBlur={() => picker.light(null)}
-                              onChange={() => { picker.toggle(i, shift.current); shift.current = false; }} />
-                            {content}
-                          </label>
-                        ) : <div className="build-line-row">{content}</div>}
-                        {why && picker.filter === "flagged" && <p className="build-flag-reason">{why.join(" ")}</p>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+          <div className="build-line-groups" role="group" aria-label="Choose every">
+            {(["wall", "door", "window", "flagged"] as const).map((g) => (
+              <button key={g} type="button" className="small" disabled={groups[g].length === 0}
+                aria-pressed={groups[g].length > 0 && groups[g].join(",") === chosenKey} onClick={() => picker.choose(groups[g])}>
+                {g === "flagged" && <Flag size={12} weight="fill" aria-hidden="true" />}{GROUP_TITLE[g]}<span className="build-seg-count">{groups[g].length}</span>
+              </button>
+            ))}
           </div>
 
-          <p className="sr-only" role="status">{picker.chosen.size > 0 ? `${plural(picker.chosen.size, "line")} chosen` : ""}</p>
-          {editable && picker.chosen.size > 0 && (
-            <div className="build-lines-bar" role="group" aria-label="Change the chosen lines">
-              <p className="build-lines-count"><b>{picker.chosen.size}</b> chosen</p>
-              <div className="build-lines-set">
-                <span className="build-lines-set-label" id={`${headId}-make`}>Make</span>
-                <div className="seg seg-small" role="group" aria-labelledby={`${headId}-make`}>
-                  {KINDS.map((k) => (
-                    <button key={k} type="button" aria-pressed={chosenKinds.size === 1 && chosenKinds.has(k)} disabled={busy} onClick={() => makeKind(k)}>
-                      <span className="build-line-swatch" data-kind={k} aria-hidden="true" />{KIND_TITLE[k]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {allPortals && (
+          <div className="build-line-card" aria-live="polite">
+            {chosen.length === 0
+              ? <p className="muted build-line-empty">No line chosen.</p>
+              : <Chosen key={chosenKey} lines={lines} chosen={chosen} flags={flags} />}
+            {editable && chosen.length > 0 && (
+              <div className="build-line-actions" role="group" aria-label={`Change ${chosen.length === 1 ? `line ${chosen[0]! + 1}` : `the ${chosen.length} chosen lines`}`}>
                 <div className="build-lines-set">
-                  <span className="build-lines-set-label" id={`${headId}-state`}>State</span>
-                  <div className="seg seg-small" role="group" aria-labelledby={`${headId}-state`}>
-                    {STATES.map((s) => (
-                      <button key={s} type="button" aria-pressed={chosenStates.size === 1 && chosenStates.has(s)} disabled={busy} onClick={() => makeState(s)}>{s[0]!.toUpperCase() + s.slice(1)}</button>
+                  <span className="build-lines-set-label" id={`${headId}-make`}>Make</span>
+                  <div className="seg seg-small" role="group" aria-labelledby={`${headId}-make`}>
+                    {KINDS.map((k) => (
+                      <button key={k} type="button" aria-pressed={chosenKinds.size === 1 && chosenKinds.has(k)} disabled={busy} onClick={() => makeKind(k)}>
+                        <span className="build-line-swatch" data-kind={k} aria-hidden="true" />{KIND_TITLE[k]}
+                      </button>
                     ))}
                   </div>
                 </div>
-              )}
-              <div className="build-lines-end">
-                <button type="button" className="small danger build-text-action" disabled={busy} onClick={removeChosen}>
-                  <Trash size={15} aria-hidden="true" />Remove {picker.chosen.size === 1 ? "it" : `all ${picker.chosen.size}`}
-                </button>
-                <button type="button" className="small" onClick={picker.clear}>Done</button>
+                {allPortals && (
+                  <div className="build-lines-set">
+                    <span className="build-lines-set-label" id={`${headId}-state`}>State</span>
+                    <div className="seg seg-small" role="group" aria-labelledby={`${headId}-state`}>
+                      {STATES.map((s) => (
+                        <button key={s} type="button" aria-pressed={chosenStates.size === 1 && chosenStates.has(s)} disabled={busy} onClick={() => makeState(s)}>{title(s)}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="build-line-end">
+                  <button type="button" className="small danger build-text-action" disabled={busy} onClick={removeChosen}>
+                    <Trash size={15} aria-hidden="true" />{chosen.length === 1 ? "Remove line" : `Remove ${chosen.length} lines`}
+                  </button>
+                  {!editedByUser && <span className="build-walls-warn small-print">Any change you make here stops your AI changing this map.</span>}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      )}
+      {editable && !editedByUser && lines.length === 0 && <p className="build-walls-warn small-print">Any change you make here stops your AI changing this map.</p>}
+
+      {mark && (
+        <section className="build-mark-pager" aria-labelledby={`${headId}-marks`}>
+          <div className="build-mark-pager-head">
+            <h5 id={`${headId}-marks`} className="build-walls-sub"><Flag size={13} weight="fill" aria-hidden="true" />Left for you</h5>
+            {setup.marks.length > 1 && (
+              <div className="build-mark-steps">
+                <button type="button" className="icon-button" aria-label="Previous place" title="Previous place" onClick={() => picker.setMark((picker.mark - 1 + setup.marks.length) % setup.marks.length)}><CaretLeft size={16} aria-hidden="true" /></button>
+                <span className="build-line-of">{picker.mark + 1} of {setup.marks.length}</span>
+                <button type="button" className="icon-button" aria-label="Next place" title="Next place" onClick={() => picker.setMark((picker.mark + 1) % setup.marks.length)}><CaretRight size={16} aria-hidden="true" /></button>
+              </div>
+            )}
+          </div>
+          <p className="build-mark-reason">{mark.reason}</p>
+          <p className="build-mark-where">Column {mark.square.column}, row {mark.square.row}{markLines.length > 0 && ` · near ${markLines.length === 1 ? "line" : "lines"} ${formatLineNumbers(markLines)}`}</p>
+          <div className="build-mark-tools">
+            {markLines.length > 0 && <button type="button" className="small" onClick={() => picker.choose(markLines)}>{editable ? "Edit these lines" : "Show these lines"}</button>}
+            {editable && (
+              <button type="button" className="small build-text-action" disabled={busy} onClick={() => removeMark(picker.mark)} aria-label={`Clear the mark at column ${mark.square.column}, row ${mark.square.row}`}>
+                <X size={14} aria-hidden="true" />Clear this mark
+              </button>
+            )}
+          </div>
+        </section>
       )}
 
       {openings.length > 0 && (
@@ -402,30 +420,6 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
                   {o.now.kind === "left" && <span className="build-flag-reason">{o.now.reason}</span>}
                   {/* Once the owner has edited the map, who set what can't be told apart. */}
                   {o.set && o.now.kind !== "left" && <span className="chip">{editedByUser ? "Set" : "Set by your AI"}</span>}
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-
-      {setup.marks.length > 0 && (
-        <>
-          <h5 className="build-walls-sub"><Flag size={13} weight="fill" aria-hidden="true" />Left for you <span className="build-group-count">{setup.marks.length}</span></h5>
-          <ul className="plain build-marks">
-            {setup.marks.map((mark, i) => {
-              const lineNumbers = near[i] ?? [];
-              return (
-                <li key={i} className="build-mark-row">
-                  <span className="build-mark-reason">{mark.reason}</span>
-                  <span className="build-mark-where">
-                    Column {mark.square.column}, row {mark.square.row}
-                    {lineNumbers.length > 0 && <> · near {lineNumbers.length === 1 ? "line" : "lines"} {lineNumbers.map((n) => n + 1).join(", ")}</>}
-                  </span>
-                  <span className="build-mark-tools">
-                    {editable && lineNumbers.length > 0 && <button type="button" className="small" onClick={() => chooseNear(lineNumbers)}>Choose {lineNumbers.length === 1 ? "it" : "them"}</button>}
-                    {editable && <IconAction icon={<X size={16} aria-hidden="true" />} label={`Clear the mark at column ${mark.square.column}, row ${mark.square.row}`} onClick={() => removeMark(i)} />}
-                  </span>
                 </li>
               );
             })}

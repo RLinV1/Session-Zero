@@ -33,7 +33,7 @@ import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type
 import { ContentsRail, DraftMeter, type RailLink } from "./BuildRail";
 import { CreatureRoster, MapViewer } from "./BuildViewers";
 import { EncounterBoard } from "./EncounterBoard";
-import { LINE_COLOUR, LinePickLayer, MapWalls, lineFlags, useLinePicker, type LinePicker } from "./MapLines";
+import { LINE_COLOUR, LinePickLayer, MapWalls, useLinePicker, type LinePicker } from "./MapLines";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
 import { BuildChoiceFields } from "./LibraryBuilds";
 import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
@@ -708,7 +708,7 @@ export interface MapDrawing {
 const WALL_COLOUR = LINE_COLOUR;
 
 /** A map with its grid, walls, doors and windows drawn over it, in the image's own pixels, so what's published is what's seen. */
-export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; picker: LinePicker; editable: boolean; flagged: ReadonlySet<number> } }) {
+export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; marks: readonly DraftMark[]; picker: LinePicker } }) {
   const patternId = `build-grid-${file.id}`;
   const label = Math.max(file.width, file.height) / 60;
   const segment = (w: { a: { x: number; y: number }; b: { x: number; y: number } }) => `M ${w.a.x} ${w.a.y} L ${w.b.x} ${w.b.y}`;
@@ -746,7 +746,7 @@ export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView
               ))}
             </g>
           )}
-          {grid && grid.cellSize > 0 && pick && pick.lines.length > 0 && <LinePickLayer lines={pick.lines} grid={grid} picker={pick.picker} editable={pick.editable} flagged={pick.flagged} />}
+          {grid && grid.cellSize > 0 && pick && pick.lines.length > 0 && <LinePickLayer lines={pick.lines} marks={pick.marks} grid={grid} picker={pick.picker} labelSize={label} />}
         </svg>
       )}
     </div>
@@ -794,7 +794,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
   };
   // Drawn with the grid in the fields, so a correction shows where the AI's lines will land.
   const setup = data.setup ?? EMPTY_MAP_SETUP;
-  const picker = useLinePicker(setup.lines.length);
+  const picker = useLinePicker(setup.lines.length, setup.marks.length);
   const drawing = useMemo<MapDrawing | undefined>(() => {
     if (!file) return undefined;
     const built = draftMapBoard(file.board, setup, preview, file);
@@ -810,7 +810,6 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
     };
   }, [file, data.setup, cell, x, y]); // `preview` is rebuilt from these three fields on every render
   const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;
-  const flagged = useMemo(() => new Set(lineFlags(setup, drawing?.blockedLines ?? []).keys()), [setup, drawing]);
   return (
     <article className="build-card">
       <div className="build-card-head">
@@ -823,7 +822,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
       {file ? (
         <div className={walls ? "build-map-room" : undefined}><div className={walls ? "build-map-review" : undefined}>
           <div className="build-map-side">
-            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls ? { lines: setup.lines, picker, editable: !item.published, flagged } : undefined} />
+            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls ? { lines: setup.lines, marks: setup.marks, picker } : undefined} />
             {file.fromUvtt && <p className="muted small-print">From a UVTT file, with {file.walls} walls.</p>}
           </div>
           {walls && drawing && (

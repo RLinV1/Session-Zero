@@ -1732,114 +1732,95 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-flag-reason { flex-basis: 100%; border-left: 3px solid var(--warn); padding-left: var(--space-2); }
 .build-wall-label { fill: #fff; stroke: #000; paint-order: stroke; font-weight: 700; font-family: var(--font-sans, sans-serif); }
 
-/* Walls, doors and windows (FR-GM-27): beside the map on a wide screen, so a line clicked on the
-   map is found in the list at a glance. Lines are chosen on the map or in the list and changed in
-   one action from the bar, instead of a select on every row. */
+/* Walls, doors and windows (FR-GM-27): one editor beside the map instead of a row per line. A line
+   is chosen by its number, by stepping, by a whole kind, or by clicking it on the map. */
+.build-map-room { container-type: inline-size; min-width: 0; }
 .build-map-review { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .build-map-side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.build-map-room { container-type: inline-size; min-width: 0; }
 @container (min-width: 52rem) {
-  /* The map stays in view while the list and the marks beside it scroll. */
-  .build-map-review { display: grid; grid-template-columns: minmax(0, 1fr) 21.5rem; gap: var(--space-4); align-items: start; }
+  /* The map stays in view beside the editor. */
+  .build-map-review { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: var(--space-4); align-items: start; }
   .build-map-review .build-map-side { position: sticky; top: var(--space-4); }
 }
-@container (min-width: 72rem) { .build-map-review { grid-template-columns: minmax(0, 1fr) 26rem; } }
-.build-walls { min-width: 0; }
+@container (min-width: 72rem) { .build-map-review { grid-template-columns: minmax(0, 1fr) 24rem; } }
+.build-walls { min-width: 0; gap: var(--space-3); }
 .build-walls-head h4 { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
 .build-walls-sum { margin: 0.15rem 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .build-walls-key { display: flex; flex-wrap: wrap; gap: 0.2rem var(--space-3); font-size: var(--fs-xs); color: var(--muted); }
 .build-walls-key li { display: inline-flex; align-items: center; gap: 0.4rem; }
 .build-walls-warn { margin: 0; border-left: 3px solid var(--warn); padding-left: var(--space-2); color: var(--text); }
-.build-walls-sub { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
-.build-walls-sub svg { color: #ff2d95; }
-.build-marks { display: flex; flex-direction: column; }
-.build-mark-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "reason tools" "where tools"; align-items: center; gap: 0.1rem var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--rule); }
-.build-mark-row:first-child { border-top: 0; }
-.build-mark-reason { grid-area: reason; border-left: 3px solid var(--warn); padding-left: var(--space-2); color: var(--text); }
-.build-mark-where { grid-area: where; padding-left: calc(var(--space-2) + 3px); color: var(--muted); font-size: var(--fs-xs); }
-.build-mark-tools { grid-area: tools; display: inline-flex; align-items: center; gap: var(--space-1); }
+.build-walls-sub { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.build-walls-sub svg { color: #ff5fa8; }
+:root[data-theme="light"] .build-walls-sub svg, :root[data-theme="light"] .build-line-focus .build-flag-reason svg { color: #c2185b; }
 
-/* The map's own colours, as the key and in each row. */
+/* The map's own colours, as the key and beside a chosen line. */
 .build-line-swatch { flex: none; display: inline-block; width: 0.95rem; height: 0.32rem; border-radius: 2px; background: #ff3b30; box-shadow: 0 0 0 1px rgba(21, 23, 27, 0.35); }
 .build-line-swatch[data-kind="door"] { background: #ffd60a; }
 .build-line-swatch[data-kind="window"] { background: #64d2ff; }
 .build-line-swatch[data-kind="opening"] { background: repeating-linear-gradient(90deg, #ff9f0a 0 5px, transparent 5px 8px); box-shadow: none; }
 .build-line-swatch.is-set { background: #fff; box-shadow: 0 0 0 1px var(--border-strong); }
 
-.build-lines { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.build-lines-tools { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); }
-/* Five equal cells, each count under its word, so the filter is also the summary and fits a phone. */
-.build-lines-filter { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 100%; }
-.build-lines-filter button { display: flex; flex-direction: column; align-items: center; gap: 0.05rem; min-width: 0; min-height: 0; padding: 0.3rem 0.25rem; white-space: nowrap; line-height: 1.2; }
-.build-lines-filter button > span:first-child { display: inline-flex; align-items: center; gap: 0.25rem; }
-.build-lines-filter .build-seg-count { margin-left: 0; }
-.build-lines-filter button[aria-pressed="true"] .build-seg-count { color: var(--text); }
-.build-lines-set .seg button { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; min-height: 0; }
-.build-lines-numbers { display: flex; align-items: center; gap: var(--space-1); }
-.build-lines-numbers label { display: block; flex: 1; }
-.build-lines-numbers input { width: 100%; min-height: 0; padding: 0.3rem 0.5rem; font-family: var(--font-mono); font-size: var(--fs-sm); }
-.build-lines-numbers input::placeholder { font-family: var(--font-ui); color: var(--muted); }
-.build-lines-numbers + .error { margin: 0; }
+/* The editor: the field, the groups, then what is chosen and what to make it. */
+.build-line-editor { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--raised); }
+.build-line-pick { display: flex; flex-direction: column; gap: var(--space-1); }
+.build-line-pick > label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.build-line-pick .small-print { margin: 0; }
+.build-line-field { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-1); }
+.build-line-field input { min-width: 0; height: 2.5rem; padding: 0 0.7rem; font-family: var(--font-mono); font-size: 1.05rem; font-weight: 600; letter-spacing: 0.02em; background: var(--field); }
+.build-line-field input::placeholder { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.build-line-field .icon-button { width: 2.5rem; height: 2.5rem; }
+.build-line-of { padding-left: var(--space-1); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.build-line-groups { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.build-line-groups button { display: inline-flex; align-items: center; gap: 0.3rem; }
+.build-line-groups button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.build-line-groups .build-seg-count { margin-left: 0.1rem; }
 
-.build-lines-frame { border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--panel); overflow: hidden; }
-.build-lines-listhead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 2.25rem; padding: 0 0.6rem; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-.build-lines-all { flex-direction: row; align-items: center; gap: var(--space-2); font-size: var(--fs-xs); cursor: pointer; }
-.build-lines-listhead button.link { font-size: var(--fs-xs); }
-.build-lines-empty { margin: 0; padding: var(--space-3) 0.6rem; }
-.build-lines-list { position: relative; display: flex; flex-direction: column; max-height: min(58dvh, 34rem); overflow: auto; overscroll-behavior: contain; padding: 0.2rem; }
-.build-line > label, .build-line-row {
-  display: grid; grid-template-columns: 1rem 0.95rem 2.1rem minmax(6rem, 1fr) minmax(0, max-content) 0.9rem; align-items: center; gap: 0.15rem var(--space-2);
-  min-height: 2rem; padding: 0.15rem 0.45rem; border-radius: var(--radius-control); color: var(--text); font-size: var(--fs-sm);
-  transition: background-color var(--dur-fast), box-shadow var(--dur-fast);
-}
-.build-line > label { cursor: pointer; }
-.build-line-row { grid-template-columns: 0.95rem 2.1rem minmax(6rem, 1fr) minmax(0, max-content) 0.9rem; }
-.build-line-no { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-.build-line-kind { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.build-line-at { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.build-line-flag { display: inline-flex; color: #ff5fa8; }
-:root[data-theme="light"] .build-line-flag, :root[data-theme="light"] .build-walls-sub svg { color: #c2185b; }
-.build-line:hover > label, .build-line:hover > .build-line-row, .build-line.is-lit > label, .build-line.is-lit > .build-line-row { background: var(--hover); }
-.build-line.is-chosen > label { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
-.build-line .build-flag-reason { margin: 0 0.5rem 0.35rem 4.6rem; font-size: var(--fs-xs); }
+.build-line-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-control); background: var(--panel); border: 1px solid var(--border); min-height: 4.5rem; }
+.build-line-empty { margin: auto 0; font-size: var(--fs-sm); }
+.build-line-focus { display: flex; flex-direction: column; gap: 0.2rem; animation: none; }
+.build-line-name { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--fs-md); }
+.build-line-name b { font-weight: 650; font-variant-numeric: tabular-nums; }
+.build-line-where { margin: 0; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.build-line-focus .build-flag-reason { margin: var(--space-1) 0 0; font-size: var(--fs-sm); color: var(--text); }
+.build-line-focus .build-flag-reason svg { color: #ff5fa8; vertical-align: -1px; }
+.build-line-actions { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--rule); }
+.build-lines-set { display: flex; flex-direction: column; gap: 0.3rem; }
+.build-lines-set-label { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.build-lines-set .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; }
+.build-lines-set .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap; min-height: 0; padding: 0.35rem 0.4rem; }
+.build-line-end { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.build-line-end button { display: inline-flex; align-items: center; gap: 0.35rem; }
+.build-line-end .build-walls-warn { flex: 1 1 12rem; color: var(--muted); }
 
-/* One bar for everything chosen. It stays at the bottom of the window while the list is long. */
-.build-lines-bar {
-  position: sticky; bottom: var(--space-2); z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-3); background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface);
-  box-shadow: 0 10px 28px -14px var(--shadow), inset 0 1px 0 var(--hover);
-}
-.build-lines-count { margin: 0; color: var(--muted); white-space: nowrap; }
-.build-lines-count b { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
-.build-lines-set { display: inline-flex; align-items: center; gap: var(--space-2); }
-.build-lines-set-label { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
-.build-lines-set .seg { margin: 0; }
-.build-lines-end { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; }
-.build-lines-end button { display: inline-flex; align-items: center; gap: 0.35rem; }
+/* The AI's marks, one at a time, the one shown ringed on the map. */
+.build-mark-pager { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.build-mark-pager-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.build-mark-steps { display: inline-flex; align-items: center; gap: var(--space-1); }
+.build-mark-steps .build-line-of { padding: 0 var(--space-1); }
+.build-mark-reason { margin: 0; border-left: 3px solid var(--warn); padding-left: var(--space-2); color: var(--text); }
+.build-mark-where { margin: 0; padding-left: calc(var(--space-2) + 3px); color: var(--muted); font-size: var(--fs-xs); }
+.build-mark-tools { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.build-mark-tools button { display: inline-flex; align-items: center; gap: 0.3rem; }
 
 /* The map side: a wide invisible stroke takes the click; chosen lines get marching ants; the line
-   pointed at stands out while the rest dim. Fixed colours: they are drawn on the map image. */
+   pointed at shows its number while the rest dim. Fixed colours: they are drawn on the map image. */
 .build-map svg .build-line-hit { fill: none; stroke: transparent; stroke-width: 16px; stroke-linecap: round; pointer-events: stroke; cursor: pointer; }
 .build-line-rim { fill: none; stroke: #15171b; stroke-width: 11px; stroke-linecap: round; stroke-opacity: 0.9; }
 .build-line-ants { fill: none; stroke: #fff; stroke-width: 7px; stroke-dasharray: 6 5; }
 .build-line-glow { fill: none; stroke: #fff; stroke-width: 15px; stroke-opacity: 0.5; stroke-linecap: round; }
+.build-line-number { pointer-events: none; }
+.build-line-number.is-lit { fill: #ffd60a; }
+.build-mark-current { fill: rgba(255, 45, 149, 0.12); stroke: #ff2d95; stroke-width: 3px; stroke-dasharray: 4 3; }
 .build-walls-drawn { transition: opacity var(--dur-fast); }
 .build-map svg:has(.build-line-picks.has-lit) .build-walls-drawn { opacity: 0.4; }
 
-@media (max-width: 640px) {
-  .build-line > label, .build-line-row { grid-template-columns: 1rem 0.95rem 2.1rem minmax(0, 1fr) 0.9rem; }
-  .build-line-row { grid-template-columns: 0.95rem 2.1rem minmax(0, 1fr) 0.9rem; }
-  .build-line-at { grid-column: 4; grid-row: 2; margin-top: -0.2rem; }
-  .build-lines-list { max-height: 60dvh; }
-  .build-lines-end { margin-left: 0; flex: 1 1 100%; justify-content: space-between; }
-}
 @media (pointer: coarse) {
-  .build-line > label, .build-line-row { min-height: 44px; }
-  .build-lines-bar .seg button, .build-lines-end button, .build-lines-filter button, .build-lines-numbers input, .build-lines-numbers button { min-height: 44px; }
-  .build-lines-all { min-height: 44px; }
+  .build-line-field .icon-button, .build-mark-steps .icon-button { width: 44px; height: 44px; }
+  .build-line-field input { height: 44px; }
+  .build-line-groups button, .build-lines-set .seg button, .build-line-end button, .build-mark-tools button { min-height: 44px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .build-lines-bar { animation: build-swap 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .build-line-focus { animation: build-swap 0.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
   .build-line-ants { animation: build-ants 0.8s linear infinite; }
 }
 @keyframes build-ants { to { stroke-dashoffset: -11; } }
