@@ -3,6 +3,7 @@ import { Plus } from "@phosphor-icons/react";
 import { presetOf } from "@vtt/shared";
 import type { EncounterSummary, GmRoomSummary, LegacySummary, MyRoomsResponse } from "@vtt/shared";
 import { AccountMenu } from "../account/AccountPages";
+import { useAccount } from "../account/accountStore";
 import { RequireAccount } from "../account/RequireAccount";
 import { api, ApiError } from "../net/api";
 import { forgetGmToken } from "../net/identity";
@@ -36,6 +37,7 @@ export function GmDashboardPage() {
 type RoomsState = { status: "loading" } | { status: "loaded"; rooms: MyRoomsResponse } | { status: "failed" };
 
 function Dashboard() {
+  const account = useAccount();
   const [rooms, setRooms] = useState<RoomsState>({ status: "loading" });
   const [refresh, setRefresh] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -62,7 +64,9 @@ function Dashboard() {
     </div>
     <main className="page-shell home gm-page">
       <h1>{t("dashboard.title")}</h1>
-      <LegacyMoveBanner onMoved={() => setRefresh((n) => n + 1)} />
+      {account.status === "signedIn" && (
+        <LegacyMoveBanner key={account.account.id} accountId={account.account.id} onMoved={() => setRefresh((n) => n + 1)} />
+      )}
       <div className="dashboard-grid">
         <div className="room-sections">
           <HostingCard state={rooms} onDeleted={(id) => setRooms((s) => withoutRoom(s, id))} onCreate={() => setCreating(true)} />
@@ -324,13 +328,22 @@ type LegacyState =
  * A browser that still holds a GM token from before accounts is offered, here and only when the
  * person chooses, to move what that token owns into the account (gm-dashboard, ADR 0017 O2).
  * A token the server no longer knows is forgotten without asking (gm-identity-recovery).
+ * Not now is remembered for this account on this browser; an explicit save still proceeds.
  */
-function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
+function LegacyMoveBanner({ accountId, onMoved }: { accountId: string; onMoved: () => void }) {
+  const dismissalKey = `vtt.legacyMoveDismissed.${accountId}`;
   const [token, setToken] = useState<string | null>(null);
   const [state, setState] = useState<LegacyState>({ status: "none" });
-  const [dismissed, setDismissed] = useState(false);
   // Read during render, before any effect strips it, so StrictMode's second effect run still sees it.
   const [save] = useState(() => new URLSearchParams(location.search).get("save") === "1");
+  const [dismissed, setDismissed] = useState(() => {
+    if (save) return false;
+    try {
+      return localStorage.getItem(dismissalKey) === "true";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     let live = true;
@@ -352,6 +365,15 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
       live = false;
     };
   }, []);
+
+  function dismiss() {
+    setDismissed(true);
+    try {
+      localStorage.setItem(dismissalKey, "true");
+    } catch {
+      // Storage unavailable: dismissal lasts for this visit.
+    }
+  }
 
   async function move(claimToken: string, summary: LegacySummary) {
     setState({ status: "moving", summary });
@@ -393,7 +415,7 @@ function LegacyMoveBanner({ onMoved }: { onMoved: () => void }) {
         <button type="button" className="primary" onClick={() => token && void move(token, state.summary)} disabled={state.status === "moving"}>
           {state.status === "moving" ? t("common.moving") : t("dashboard.legacy.move")}
         </button>
-        <button type="button" className="secondary" onClick={() => setDismissed(true)} disabled={state.status === "moving"}>
+        <button type="button" className="secondary" onClick={dismiss} disabled={state.status === "moving"}>
           {t("common.notNow")}
         </button>
       </div>

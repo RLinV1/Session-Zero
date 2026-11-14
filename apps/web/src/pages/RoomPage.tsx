@@ -22,6 +22,7 @@ import { ensureSeat } from "../net/seats";
 import { GuestRoomNotice, GuestRoomProvider, SAVE_ACCOUNT_HREF, useGuestRoom, useGuestStatus } from "../ui/GuestRoom";
 import { navigate } from "../router";
 import { GuestTutorial } from "../ui/GuestTutorial";
+import { EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
 import { createScenePreparation } from "../net/scenePreparation";
@@ -632,7 +633,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
    * The empty board's one action: the Battle map section of the Manage tab, opened if it was
    * folded, brought into view, and its first control focused.
    */
-  const chooseMap = (openPicker = false) => {
+  const chooseMap = (openPicker = false, onReady?: () => void) => {
     setTab("gm");
     openSidebar(() =>
       requestAnimationFrame(() => {
@@ -640,6 +641,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         const toggle = section?.querySelector<HTMLButtonElement>('.section-toggle[aria-expanded="false"]');
         toggle?.click();
         requestAnimationFrame(() => {
+          if (onReady) { onReady(); return; }
           section?.scrollIntoView({ block: "start" });
           if (openPicker) {
             const library = Array.from(section?.querySelectorAll<HTMLButtonElement>(".panel-section-body button") ?? []).find((button) => [t("guide.map.library.title"), t("add.builtInArt")].includes(button.textContent?.trim() ?? ""));
@@ -652,8 +654,29 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   };
   /** The guest demo's Show me: bring the step's control on screen, without doing the step. */
   const revealTutorialStep = (step: string) => {
+    if (EDITOR_TUTORIAL_STEPS.has(step)) {
+      const selectStep = () => {
+        const tab = document.querySelector<HTMLButtonElement>(`dialog[open] [data-tutorial-editor-step="${step}"]`);
+        tab?.click();
+        tab?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      };
+      const editor = document.querySelector("dialog.map-editor[open]");
+      if (editor) {
+        if (editor.querySelector(`[data-tutorial-editor-step="${step}"]`)) return selectStep();
+        // Change map has fewer tabs. Close it through its normal draft prompt before opening Edit map.
+        editor.querySelector<HTMLButtonElement>(".modal-close")?.click();
+        return;
+      }
+      return chooseMap(false, () => {
+        document.querySelector<HTMLButtonElement>("[data-tutorial-editor-open]")?.click();
+        requestAnimationFrame(selectStep);
+      });
+    }
     if (step === "map") return chooseMap();
     if (step === "token" || step === "roll") {
+      const closeEditor = document.querySelector<HTMLButtonElement>("dialog.map-editor[open] .modal-close");
+      // Let Save/Discard finish before switching tabs, which would unmount the private draft.
+      if (closeEditor) { closeEditor.click(); return; }
       setTab(step === "token" ? "tokens" : "dice");
       return openSidebar(() => {});
     }
