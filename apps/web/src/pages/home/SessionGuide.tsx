@@ -36,10 +36,10 @@ export function SessionGuide() {
 
       <div className="session-table-notes">
         <h4>{t("home.session.table.title")}</h4>
-        <dl>
-          <div><dt>{t("home.session.table.join")}</dt><dd>{t("home.session.table.joinBody")}</dd></div>
-          <div><dt>{t("home.session.table.together")}</dt><dd>{t("home.session.table.togetherBody")}</dd></div>
-        </dl>
+        <div className="session-quotes">
+          <figure><blockquote><p>{t("home.session.table.join")}</p></blockquote><figcaption>{t("home.session.table.joinBody")}</figcaption></figure>
+          <figure><blockquote><p>{t("home.session.table.together")}</p></blockquote><figcaption>{t("home.session.table.togetherBody")}</figcaption></figure>
+        </div>
       </div>
     </section>
   );

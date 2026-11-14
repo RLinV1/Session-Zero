@@ -2942,16 +2942,17 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .session-walkthrough li::marker { color: var(--accent-text); font-weight: 700; }
 .session-guide h4 { margin: 0 0 var(--space-2); font-size: var(--fs-lg); }
 .session-guide p { margin: 0; max-width: 65ch; }
-.session-walkthrough p, .session-account-options .small-print, .session-table-notes dd { color: var(--muted); }
+.session-walkthrough p, .session-account-options .small-print { color: var(--muted); }
 .session-account-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.5rem, 5vw, 4rem); }
 .session-account-options > div { border-top: 1px solid var(--rule); padding-top: var(--space-5); display: flex; flex-direction: column; align-items: start; gap: var(--space-3); }
 .session-account-options .ui-button { margin-top: var(--space-2); }
 .session-table-notes { margin-top: clamp(2.5rem, 6vw, 4rem); padding-top: var(--space-5); border-top: 1px solid var(--rule); }
-.session-table-notes dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin: var(--space-4) 0 0; }
-.session-table-notes dt { font-weight: 600; margin-bottom: var(--space-2); }
-.session-table-notes dd { margin: 0; max-width: 60ch; }
+.session-quotes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.5rem, 5vw, 4rem); margin-top: var(--space-4); }
+.session-quotes figure, .session-quotes blockquote { margin: 0; }
+.session-quotes blockquote { font-size: var(--fs-lg); line-height: 1.6; }
+.session-quotes figcaption { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); }
 @media (max-width: 700px) {
-  .session-walkthrough, .session-account-options, .session-table-notes dl { grid-template-columns: minmax(0, 1fr); }
+  .session-walkthrough, .session-account-options, .session-quotes { grid-template-columns: minmax(0, 1fr); }
   .session-walkthrough { gap: var(--space-5); }
 }
 

@@ -1,5 +1,16 @@
 import { expect, test } from "@playwright/test";
 
+test("the landing page explains the first session and account choices without overflow", async ({ page }, info) => {
+  await page.goto("/");
+  const guide = page.getByRole("region", { name: "From map to first move." });
+  await guide.scrollIntoViewIfNeeded();
+  await expect(guide.getByRole("listitem")).toHaveCount(3);
+  await expect(guide.getByRole("link", { name: "Start a room", exact: true })).toHaveAttribute("href", "/start");
+  await expect(guide.getByRole("link", { name: "Create a free account", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await guide.screenshot({ path: info.outputPath("landing-session-guide.png") });
+});
+
 test("a first-time GM reaches guest setup directly and sees one onboarding prompt (M5/M6)", async ({ page }, info) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Start a room", exact: true }).first().click();
