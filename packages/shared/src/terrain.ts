@@ -104,10 +104,22 @@ export function paintProblem(paint: readonly PaintRun[]): MessageRef | null {
 }
 
 export interface Rect { minX: number; minY: number; maxX: number; maxY: number }
-export function cellRect(col: number, row: number, grid: GridSpec): Rect {
+export function cellRect(col: number, row: number, grid: Pick<GridSpec, "cellSize" | "offsetX" | "offsetY">): Rect {
   const minX = grid.offsetX + col * grid.cellSize, minY = grid.offsetY + row * grid.cellSize;
   return { minX, minY, maxX: minX + grid.cellSize, maxY: minY + grid.cellSize };
 }
+/**
+ * Whether a square overlaps the map by some area, as the terrain editor paints (`cellInMap`): a
+ * square the map's edge crops counts, one that only touches the edge doesn't. With a grid offset,
+ * column -1 and row -1 are such cropped squares.
+ */
+export function cellOverlapsMap(col: number, row: number, grid: Pick<GridSpec, "cellSize" | "offsetX" | "offsetY">, map: { width: number; height: number }): boolean {
+  const r = cellRect(col, row, grid);
+  return r.minX < map.width && r.maxX > 0 && r.minY < map.height && r.maxY > 0;
+}
+/** Whether every square of a run overlaps the map: its two ends do, so the squares between them do too. */
+export const runOnMap = (run: Pick<TerrainRun, "row" | "start" | "end">, grid: Pick<GridSpec, "cellSize" | "offsetX" | "offsetY">, map: { width: number; height: number }): boolean =>
+  run.end >= run.start && cellOverlapsMap(run.start, run.row, grid, map) && cellOverlapsMap(run.end, run.row, grid, map);
 export const rectPoints = (r: Rect): Point[] => [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }];
 const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 function hull(points: Point[]): Point[] {

@@ -47,7 +47,7 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
   it("saves an applied map's openings as portal designations, open or closed as the file marks them", async () => {
     const fake = mountRoom(room({ walls: walls.map((wall, i) => ({ ...wall, id: `w${i}` })) }));
     fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
-    fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
+    fireEvent.click(screen.getByRole("tab", { name: "2 · Walls" }));
     const editor = screen.getByRole("dialog", { name: "Edit map" });
     expect(within(editor).getByText(/the 2 openings from the map file/)).toBeTruthy();
     await makeDoors(editor);
@@ -64,7 +64,7 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
   it("leaves the button out when no imported opening is left", () => {
     mountRoom(room({ walls: [{ ...walls[2]!, id: "plain" }, { ...walls[3]!, id: "window" }] }));
     fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
-    fireEvent.click(screen.getByRole("tab", { name: "3 · Walls" }));
+    fireEvent.click(screen.getByRole("tab", { name: "2 · Walls" }));
     expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
   });
 
@@ -75,11 +75,12 @@ describe("Make all imported openings doors (FR-GM-09, FR-GM-18)", () => {
     vi.spyOn(api.uvtt, "discard").mockResolvedValue();
     const revise = vi.spyOn(api.uvtt, "revise").mockImplementation(async (_room, _token, _id, edit) => ({ ...preparation, ...edit, revision: 2 }));
     const fake = mountRoom(room());
-    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change map" }));
     fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["json"], "map.dd2vtt")] } });
     await screen.findByText(/Unsaved changes: only you see them/);
+    // A UVTT import keeps a Walls step in Change map, to review its geometry before Apply.
     fireEvent.click(screen.getByRole("tab", { name: /· Walls$/ }));
-    await makeDoors(screen.getByRole("dialog", { name: "Edit map" }));
+    await makeDoors(screen.getByRole("dialog", { name: "Change map" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply map" }));
     await waitFor(() => expect(fake.commands).toEqual([{ type: "scene.importUVTT", importId: "opaque", revision: 2, expectedSceneId: "initial" }]));
     expect(revise.mock.calls[0]?.[3].walls).toEqual([

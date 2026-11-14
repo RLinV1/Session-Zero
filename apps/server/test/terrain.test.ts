@@ -419,3 +419,26 @@ describe("terrain over the ordered wire (FR-PL-04, FR-GM-23, FR-REC-02)", () => 
     expect(history.status).toBe(403); expect(await history.text()).not.toContain('"TerrainPainted"');
   });
 });
+
+describe("terrain for partly visible squares over the wire (FR-GM-17, FR-GM-23)", () => {
+  it("sends a partly fogged square and never a wholly fogged one, live, on reconnect and in REST replay (ADR 0069)", async () => {
+    const { gm, player, gmCreds, playerCreds } = await setup();
+    const s = gm.state.scene.grid.cellSize, ox = gm.state.scene.grid.offsetX, oy = gm.state.scene.grid.offsetY;
+    // Fog covers the right half of square 5 and all of squares 6 to 8 on row 0.
+    const fogged = await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: ox + 5.5 * s, y: oy - 1 }, to: { x: ox + 9 * s, y: oy + s + 1 } } });
+    await player.waitForSeq(seq(fogged));
+    const partly = await gm.command(paint(gm, "difficult", 5)); await player.waitForSeq(seq(partly));
+    const hidden = await gm.command(paint(gm, "blocked", 7)); await player.waitForSeq(seq(hidden));
+    expect(gm.state.terrain?.base).toEqual([{ row: 0, start: 5, end: 5, kind: "difficult" }, { row: 0, start: 7, end: 7, kind: "blocked" }]);
+    expect(player.state.terrainView?.runs).toEqual([{ row: 0, start: 5, end: 5, kind: "difficult" }]);
+    const fresh = await server!.connect(playerCreds); clients.push(fresh);
+    expect(fresh.state.terrainView?.runs).toEqual([{ row: 0, start: 5, end: 5, kind: "difficult" }]);
+    const response = await fetch(`${server!.base}/api/rooms/${gmCreds.roomId}/replay/start`, { headers: { authorization: `Bearer ${playerCreds.guestToken}` } });
+    expect(response.status).toBe(200);
+    const replay = ReplayResponse.parse(await response.json());
+    for (const payload of [player.rawLog.join("\n"), fresh.rawLog.join("\n"), JSON.stringify(replay)]) {
+      expect(payload).not.toContain('"kind":"blocked"');
+      expect(payload).not.toContain('"start":7');
+    }
+  });
+});

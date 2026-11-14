@@ -81,7 +81,7 @@ function upload(saveToLibrary: boolean) {
   fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [new File(["image"], "map.png", { type: "image/png" })] } });
 }
 async function prepare(source: "upload" | "library") {
-  fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change map" }));
   if (source === "upload") upload(false);
   else {
     fireEvent.click(screen.getByRole("button", { name: "From library" }));
@@ -137,7 +137,7 @@ describe("preparation entry points retain their baseline (FR-TAC-03, FR-GM-02/03
     vi.mocked(api.library.upload).mockReturnValue(uploaded.promise);
     vi.mocked(saveToLibrary ? api.detection.library : api.detection.room).mockReturnValue(fitted.promise);
     const view = mount();
-    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change map" }));
     upload(saveToLibrary);
     view.otherGm(paint(view.state()));
     await act(async () => size.resolve({ width: 800, height: 600 }));

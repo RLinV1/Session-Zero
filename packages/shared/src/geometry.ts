@@ -177,9 +177,14 @@ export interface Footprint { position: Point; size: number }
  * summed half-sides. Sharing only an edge or a corner is not overlap.
  */
 export function footprintsOverlap(a: Footprint, b: Footprint, grid: GridSpec): boolean {
-  const reach = ((a.size + b.size) * grid.cellSize) / 2;
+  // Less a hair: on a fractional grid (70.3 px) neighbours' centres land a float rounding inside
+  // `reach`, and touching squares must not read as overlapping.
+  const reach = ((a.size + b.size) * grid.cellSize) / 2 - FOOTPRINT_EPSILON;
   return Math.abs(a.position.x - b.position.x) < reach && Math.abs(a.position.y - b.position.y) < reach;
 }
+
+/** Board pixels: far below any real overlap, far above float rounding. */
+const FOOTPRINT_EPSILON = 1e-6;
 
 /** A token at 0 HP or below is down (downed-token-marker); a token with no HP never is. */
 export function isDowned(token: { stats: { hp: number | null } }): boolean {

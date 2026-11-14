@@ -129,7 +129,7 @@ describe("UVTT maps in the asset library (KAN-43/44, FR-GM-06/07/12)", () => {
     expect(await store.hasRoomUpload(creds.roomId, prep.map.url.split("/").at(-1)!)).toBe(true);
   });
 
-  it("round trips edited library portals and fractional phase through room export and library re-import", async () => {
+  it("round trips edited library portals and fractional phase through library export and re-import", async () => {
     const creds = await server.createRoom(); const gm = await connect(creds); const input = await document("webp");
     const { asset } = await (await upload(creds.cookie, JSON.stringify(input))).json() as LibraryUvttImportResponse;
     const owner = (await store.findRoomOwner(creds.roomId))!;
@@ -138,7 +138,7 @@ describe("UVTT maps in the asset library (KAN-43/44, FR-GM-06/07/12)", () => {
     const response = await fetch(`${server.base}/api/library/${asset.id}/board`, { method: "PUT", headers: { cookie: creds.cookie, "content-type": "application/json" }, body: JSON.stringify(edited) });
     expect(response.status).toBe(200);
     await ok(gm, { type: "scene.setMap", map: { url: asset.url, width: asset.width, height: asset.height, assetId: asset.id }, grid: asset.grid!, includeLibraryBoard: true });
-    const exported = await fetch(`${server.base}/api/rooms/${creds.roomId}/uvtt/export`, { headers: { authorization: `Bearer ${creds.guestToken}` } });
+    const exported = await fetch(`${server.base}/api/library/${asset.id}/export`, { headers: { cookie: creds.cookie } });
     expect(exported.status).toBe(200);
     const next = await upload(creds.cookie, await exported.text()); expect(next.status).toBe(201);
     const roundTrip = (await next.json() as LibraryUvttImportResponse).asset;

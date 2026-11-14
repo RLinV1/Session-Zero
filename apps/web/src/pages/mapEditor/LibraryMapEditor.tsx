@@ -52,6 +52,10 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(false);
+  /** Export .uvtt lives here, not in rooms (asset-library, ADR 0070). */
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState(false);
   const busy = useRef(false);
   const active = useRef(true);
   const suggestionSession = setup.suggestionSession;
@@ -138,6 +142,26 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
       if (active.current) setSaving(false);
     }
   };
+  /** Why Export .uvtt can't run now, or null when it can: it exports the map as last saved. */
+  const exportBlocked = !savedAsset.grid ? t("library.exportNeedsGrid") : dirty ? t("library.exportSaveFirst") : null;
+  const exportMap = async () => {
+    if (exportBlocked || exporting) return;
+    setExporting(true); setExportError(null); setExportNote(false);
+    try {
+      const blob = await api.library.export(asset.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url;
+      link.download = `${savedAsset.name.replace(/[^\p{L}\p{N} _-]+/gu, "").trim() || "map"}.uvtt`;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // UVTT keeps a door's open or closed state but not that it is a door, or its lock.
+      if (active.current) setExportNote(!!stored?.walls.some((w) => w.portal));
+    } catch (err) {
+      if (active.current) setExportError(err instanceof Error ? err.message : t("gmMap.exportFailed"));
+    } finally {
+      if (active.current) setExporting(false);
+    }
+  };
   const close = () => {
     if (waiting) return preparation.skip();
     suggestionSession.blocked = true;
@@ -158,6 +182,15 @@ function MapSession({ asset, importDiagnostics, onSaved, onClose }: Omit<Props, 
           <button type="button" className="small primary" disabled={saving || !parsedGrid || !revision} onClick={() => void save()}>{saving ? t("common.saving") : t("common.saveChanges")}</button>
         </span>}
         {saveError && !prompt && <span role="alert" className="error map-editor-save-error">{saveError}</span>}
+        <span className="map-editor-export">
+          <button type="button" className="secondary small" data-guide="map-export" disabled={exporting || saving || exportBlocked !== null}
+            aria-describedby={exportBlocked ? "library-export-blocked" : undefined} onClick={() => void exportMap()}>
+            {exporting ? t("gmMap.exporting") : t("library.exportUvtt")}
+          </button>
+          {exportBlocked && <span id="library-export-blocked" className="muted small-print">{exportBlocked}</span>}
+          {exportNote && <span role="status" className="muted small-print">{t("gmMap.exportNote")}</span>}
+          {exportError && <span role="alert" className="error">{exportError}</span>}
+        </span>
       </nav>}>
       {loadError && <p role="alert" className="error">{loadError}</p>}
       {waiting ? <GridPreparation label={preparation.label} onSkip={preparation.skip} /> :

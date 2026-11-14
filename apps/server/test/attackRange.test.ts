@@ -16,6 +16,8 @@ afterEach(async () => {
 const d20 = { terms: [{ count: 1, sides: 20 }], modifier: 5 };
 const LONGSWORD: AttackPreset = { name: "Longsword", toHit: d20, damage: null, range: { kind: "melee" } };
 const LONGBOW: AttackPreset = { name: "Longbow", toHit: d20, damage: null, range: { kind: "ranged", distance: 4321 } };
+/** The longbow's distance as a number of its own, not four digits inside a random hex id in the same payload. */
+const SECRET_DISTANCE = /(?<![0-9a-f-])4321(?![0-9a-f-])/i;
 
 async function connect(creds: Parameters<typeof server.connect>[0]) {
   const c = await server.connect(creds);
@@ -46,7 +48,7 @@ describe("attack range over the wire (attack-range)", () => {
     expect(gm.state.tokens[aria.id]!.attacks?.map((a) => a.range)).toEqual([{ kind: "melee" }, { kind: "ranged", distance: 4321 }]);
     expect(alice.state.tokens[aria.id]!.attacks?.[1]?.range).toEqual({ kind: "ranged", distance: 4321 });
     expect(bob.state.tokens[aria.id]!.attacks ?? []).toEqual([]);
-    expect(bob.rawLog.join("\n")).not.toContain("4321");
+    expect(bob.rawLog.join("\n")).not.toMatch(SECRET_DISTANCE);
   });
 
   it("refuses a range outside the limits", async () => {
@@ -70,7 +72,7 @@ describe("attack range over the wire (attack-range)", () => {
     await alice.command({ type: "dice.roll", expression: "1d20+5", attack: { actorTokenId: aria.id, targetTokenId: goblin.id, label: "Longbow", kind: "toHit" } });
     const bow = await bob.waitFor(rolled);
     expect(bow.committed.event.type === "DiceRolled" && bow.committed.event.roll.attack?.range).toBe("ranged");
-    expect(bob.rawLog.join("\n")).not.toContain("4321");
+    expect(bob.rawLog.join("\n")).not.toMatch(SECRET_DISTANCE);
   });
 
   it("stores the attack's real kind of range, whatever the client claims", async () => {

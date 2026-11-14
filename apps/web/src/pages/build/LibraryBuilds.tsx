@@ -29,13 +29,17 @@ function ChoiceBoxes({ choices, onChange }: { choices: BuildChoices; onChange: (
         <input type="checkbox" checked={choices.aiWalls} onChange={(e) => onChange({ ...choices, aiWalls: e.target.checked })} />
         <span>Let my AI set walls, doors and windows <span className="muted small-print">You see every one before publishing. Anything it can't work out is left for you.</span></span>
       </label>
+      <label className="build-choice">
+        <input type="checkbox" checked={choices.aiTerrain} onChange={(e) => onChange({ ...choices, aiTerrain: e.target.checked })} />
+        <span>Let my AI propose terrain <span className="muted small-print">Difficult and Blocked squares that stay on the map. You see them before publishing and can clear them.</span></span>
+      </label>
     </>
   );
 }
 
 /**
- * The owner's two choices for what their AI may set up on maps (ADR 0053). Off unless ticked,
- * both when starting a build and on its page.
+ * The owner's choices for what their AI may set up on maps (ADR 0053, ADR 0071). Off unless
+ * ticked, both when starting a build and on its page.
  */
 export function BuildChoiceFields({ choices, onChange, disabled }: { choices: BuildChoices; onChange: (choices: BuildChoices) => void; disabled?: boolean }) {
   return (
@@ -46,14 +50,17 @@ export function BuildChoiceFields({ choices, onChange, disabled }: { choices: Bu
   );
 }
 
-/** The usual answers to "how much map setup does my AI do", over the same two choices. */
+/** The usual answers to "how much map setup does my AI do", over the same choices. */
 const MAP_SETUPS: { label: string; detail: string; choices: BuildChoices }[] = [
-  { label: "You set up maps", detail: "Your AI suggests each grid and you confirm it. It doesn't draw walls, doors or windows.", choices: { aiGrid: false, aiWalls: false } },
-  { label: "Your AI sets grids", detail: "Its grid counts only when grid detection agrees. You confirm the rest. It doesn't draw walls, doors or windows.", choices: { aiGrid: true, aiWalls: false } },
-  { label: "Your AI sets grids, walls, doors and windows", detail: "Its grid counts only when grid detection agrees. You see every wall, door and window before publishing, and anything it can't work out is left for you.", choices: { aiGrid: true, aiWalls: true } },
+  { label: "You set up maps", detail: "Your AI suggests each grid and you confirm it. It doesn't draw walls, doors or windows.", choices: { aiGrid: false, aiWalls: false, aiTerrain: false } },
+  { label: "Your AI sets grids", detail: "Its grid counts only when grid detection agrees. You confirm the rest. It doesn't draw walls, doors or windows.", choices: { aiGrid: true, aiWalls: false, aiTerrain: false } },
+  { label: "Your AI sets grids, walls, doors and windows", detail: "Its grid counts only when grid detection agrees. You see every wall, door and window before publishing, and anything it can't work out is left for you.", choices: { aiGrid: true, aiWalls: true, aiTerrain: false } },
+  { label: "Your AI sets grids, walls and terrain", detail: "As above, and it also proposes Difficult and Blocked squares. You see them before publishing and can clear them.", choices: { aiGrid: true, aiWalls: true, aiTerrain: true } },
 ];
 
-/** One choice for the usual cases, and each of the two on its own for the rest. */
+const sameChoices = (a: BuildChoices, b: BuildChoices) => a.aiGrid === b.aiGrid && a.aiWalls === b.aiWalls && a.aiTerrain === b.aiTerrain;
+
+/** One choice for the usual cases, and each one on its own for the rest. */
 function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange: (choices: BuildChoices) => void }) {
   const group = useId();
   return (
@@ -64,7 +71,7 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
           <input
             type="radio"
             name={group}
-            checked={setup.choices.aiGrid === choices.aiGrid && setup.choices.aiWalls === choices.aiWalls}
+            checked={sameChoices(setup.choices, choices)}
             onChange={() => onChange(setup.choices)}
           />
           <span>{setup.label} <span className="muted small-print">{setup.detail}</span></span>
@@ -78,8 +85,11 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
   );
 }
 
-const mapSetupLabel = ({ aiGrid, aiWalls }: BuildChoices) =>
-  aiGrid && aiWalls ? "AI sets grids and walls" : aiGrid ? "AI sets grids" : aiWalls ? "AI sets walls" : "You set up maps";
+const mapSetupLabel = ({ aiGrid, aiWalls, aiTerrain }: BuildChoices) => {
+  const parts = [aiGrid && "grids", aiWalls && "walls", aiTerrain && "terrain"].filter((p): p is string => typeof p === "string");
+  if (parts.length === 0) return "You set up maps";
+  return `AI sets ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}`;
+};
 
 /** Whether the build's AI can still add to it, from the pass's expiry alone. */
 function passState(build: BuildSummary, now: number): { live: boolean; chip: string; text: string } {

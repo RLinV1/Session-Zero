@@ -21,6 +21,7 @@ import {
   LibraryMapBoard,
   INITIAL_SCENE_ID,
   sceneState,
+  sceneNamesOf,
   type ResolvedLibraryMap,
   type Command,
   type CommittedEvent,
@@ -175,10 +176,14 @@ export class LiveRoom {
       const actor = this.activeParticipant(actorId);
       if (this.isClosed || !actor || !can.administer(actor)) return null;
       // A private scene's baseline is that scene's board, not the live one (FR-GM-25).
-      const board = sceneId === undefined ? this.state : sceneState(this.state, sceneId);
+      const activeId = this.state.activeSceneId ?? INITIAL_SCENE_ID;
+      const live = sceneId === undefined || sceneId === activeId;
+      const board = live ? this.state : sceneState(this.state, sceneId);
       if (!board) return null;
       const view = filterStateForViewer(board, actor);
-      return structuredClone({ map: view.scene.map, grid: view.scene.grid, walls: view.walls, fog: view.fog, terrainRevision: view.terrainRevision ?? 0, seq: this.seq });
+      // The scene's name and whether it is the live board, for Save to library (ADR 0070).
+      const sceneName = sceneNamesOf(this.state)[live ? activeId : sceneId] ?? null;
+      return structuredClone({ map: view.scene.map, grid: view.scene.grid, walls: view.walls, fog: view.fog, terrain: view.terrain?.base ?? [], terrainRevision: view.terrainRevision ?? 0, seq: this.seq, live, sceneId: live ? activeId : sceneId, sceneName, roomName: this.state.name });
     });
   }
 

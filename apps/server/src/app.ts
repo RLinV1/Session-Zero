@@ -1,4 +1,5 @@
 import { registerRoomPreparation } from "./http/roomPreparation";
+import { registerMapLibraryRoutes } from "./http/mapLibrary";
 import { registerUvttRoutes } from "./http/uvttRoutes";
 import { UvttPreparations } from "./uvtt/preparations";
 import { UvttValidationPool } from "./uvtt/validationPool";
@@ -162,6 +163,8 @@ export async function buildApp({
   // Room/UVTT preparation authorizes and parses above; library geometry has its own 1 MiB parser.
   const json = express.json({ limit: "64kb" });
   app.use((req, res, next) => (/^\/api\/library\/[^/]+\/(board|preparation)$/.test(req.path) ? next() : json(req, res, next)));
+  // Save to library and library export (ADR 0070), after the small JSON parser.
+  registerMapLibraryRoutes(app, { store, registry, sessions, assets: assetStore, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a
   // browser second-guess their type into something that runs.
   app.use("/uploads", (_req, res, next) => {

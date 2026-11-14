@@ -6,7 +6,8 @@ import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectio
 import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type RoomDefaults, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
-  BuildChoiceOffError,
+  assertChoicesAllow,
+  type BuildChoiceValues,
   BuildItemChangedError,
   BuildItemLockedError,
   type BuildWriteGuard,
@@ -507,7 +508,7 @@ export class MemoryRoomStore implements RoomStore {
     const open = [...this.builds.values()].filter((b) => b.ownerGmId === build.ownerGmId && b.status === "open").length;
     if (open >= maxOpen) throw new BuildLimitError(`You can have up to ${maxOpen} open builds. Finish or discard one first.`);
     const at = new Date().toISOString();
-    const row: BuildRecord = { aiGrid: false, aiWalls: false, ...build, status: "open", gameProfile: null, passHash: null, passExpiresAt: null, createdAt: at, updatedAt: at };
+    const row: BuildRecord = { aiGrid: false, aiWalls: false, aiTerrain: false, ...build, status: "open", gameProfile: null, passHash: null, passExpiresAt: null, createdAt: at, updatedAt: at };
     this.builds.set(build.id, row);
     return structuredClone(row);
   }
@@ -565,11 +566,12 @@ export class MemoryRoomStore implements RoomStore {
     this.touchBuild(build);
   }
 
-  async setBuildChoices(id: string, ownerGmId: string, choices: { aiGrid: boolean; aiWalls: boolean }) {
+  async setBuildChoices(id: string, ownerGmId: string, choices: BuildChoiceValues) {
     const build = this.builds.get(id);
     if (!build || build.ownerGmId !== ownerGmId || build.status !== "open") return null;
     build.aiGrid = choices.aiGrid;
     build.aiWalls = choices.aiWalls;
+    build.aiTerrain = choices.aiTerrain ?? build.aiTerrain;
     this.touchBuild(build);
     return structuredClone(build);
   }
@@ -611,7 +613,7 @@ export class MemoryRoomStore implements RoomStore {
     const existing = this.buildItems.get(id);
     if (existing?.publishedId) throw new BuildItemLockedError("published");
     if (existing?.editedByUser) throw new BuildItemLockedError("edited");
-    if (guard.requireAiWalls && !build.aiWalls) throw new BuildChoiceOffError();
+    assertChoicesAllow(guard, build);
     if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
     if (!existing && maxForKind !== null) {
       const count = [...this.buildItems.values()].filter((i) => i.buildId === item.buildId && i.kind === item.kind).length;
@@ -809,6 +811,16 @@ export class MemoryRoomStore implements RoomStore {
     if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return null;
     if (change.revision !== preparationRevision(asset)) throw new PreparationConflictError("This map changed. Reopen it before saving; your draft has been kept.");
     const problem = preparationProblem(asset, change.grid, change.board, change.resetTerrain);
+    if (problem) throw new PreparationConflictError(problem);
+    const next = { ...asset, grid: structuredClone(change.grid), board: versionedBoard(structuredClone(change.board)) };
+    this.assets.set(id, next);
+    return structuredClone({ grid: next.grid, board: publicBoard(next.board), revision: preparationRevision(next) });
+  }
+
+  async replaceAssetPreparation(id: string, ownerGmId: string, change: { grid: GridSpec; board: LibraryMapBoard }) {
+    const asset = this.assets.get(id);
+    if (!asset || asset.ownerGmId !== ownerGmId || asset.kind !== "map") return null;
+    const problem = preparationProblem(asset, change.grid, change.board, true);
     if (problem) throw new PreparationConflictError(problem);
     const next = { ...asset, grid: structuredClone(change.grid), board: versionedBoard(structuredClone(change.board)) };
     this.assets.set(id, next);

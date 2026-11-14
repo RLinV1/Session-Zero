@@ -202,7 +202,7 @@ function neutralSentence(event: DomainEvent, actorName: string): string {
 /** The client's fold of one frame onto the replayed state. */
 export function applyReplayFrame(state: RoomState, frame: ReplayFrame): RoomState {
   if (frame.kind === "event") return reduceReceived(state, frame.committed);
-  return { ...state, ...frame.table, terrain: frame.table.terrain, drawings: frame.table.drawings ?? {}, sight: frame.sight ?? undefined, terrainView: frame.terrainView, boardEpoch: frame.boardEpoch, rolls: frame.rolls, ...(frame.areaEffect !== undefined && { areaEffect: frame.areaEffect }) };
+  return { ...state, ...frame.table, terrain: frame.table.terrain, drawings: frame.table.drawings ?? {}, staged: frame.table.staged ?? {}, sight: frame.sight ?? undefined, terrainView: frame.terrainView, boardEpoch: frame.boardEpoch, rolls: frame.rolls, ...(frame.areaEffect !== undefined && { areaEffect: frame.areaEffect }) };
 }
 
 /** Every replayed state, `[start, after frame 1, …]`, so stepping back is a lookup. */

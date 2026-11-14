@@ -87,3 +87,39 @@ describe("one library map draft across Grid, Walls and Fog", () => {
     expect(api.library.savePreparation).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Export .uvtt from the library map editor (asset-library, ADR 0070)", () => {
+  const exportButton = () => screen.getByRole("button", { name: "Export .uvtt" }) as HTMLButtonElement;
+  it("downloads the map as last saved, and says doors lose their identity", async () => {
+    vi.mocked(api.library.preparation).mockResolvedValue({ grid: DEFAULT_GRID, board: { walls: [{ a: { x: 0, y: 0 }, b: { x: 70, y: 0 }, portal: { kind: "door", state: "closed" } }], fog: [] }, revision: "r1" });
+    const download = vi.spyOn(api.library, "export").mockResolvedValue(new Blob(["{}"]));
+    vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:map", revokeObjectURL: () => {} });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mount();
+    await waitFor(() => expect(api.library.preparation).toHaveBeenCalled());
+    await waitFor(() => expect(exportButton().disabled).toBe(false));
+    fireEvent.click(exportButton());
+    await waitFor(() => expect(download).toHaveBeenCalledWith("map1"));
+    expect(click).toHaveBeenCalled();
+    expect(await screen.findByText(/UVTT does not carry door\/window identity or locks/)).toBeTruthy();
+  });
+  it("is unavailable while there are unsaved changes", async () => {
+    const download = vi.spyOn(api.library, "export");
+    mount();
+    await gridChange();
+    expect(exportButton().disabled).toBe(true);
+    expect(screen.getByText("Save your changes before exporting.")).toBeTruthy();
+    fireEvent.click(exportButton());
+    expect(download).not.toHaveBeenCalled();
+  });
+  it("is unavailable for a map with no saved grid", async () => {
+    vi.mocked(api.library.preparation).mockResolvedValue({ grid: null, board: { walls: [], fog: [] }, revision: "r1" });
+    render(<LibraryMapEditor asset={{ ...asset, grid: null }} onClose={() => {}} onSaved={() => {}} />);
+    await waitFor(() => expect(api.library.preparation).toHaveBeenCalled());
+    // A map with no grid may first wait for grid detection; skip straight to manual setup.
+    const skip = screen.queryByText("Set up manually");
+    if (skip) fireEvent.click(skip);
+    await waitFor(() => expect(exportButton().disabled).toBe(true));
+    expect(screen.getByText("Save this map's grid before exporting.")).toBeTruthy();
+  });
+});

@@ -91,7 +91,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
   it.each([true, false])("honors save-to-library=%s while keeping the room private until Apply", async (save) => {
     const prepare = vi.spyOn(api.uvtt, "prepare").mockResolvedValue({ id: "private", revision: 1,
       map: { url: asset.url, width: asset.width, height: asset.height }, grid: asset.grid!, walls: board.walls, diagnostics: [] });
-    const fake = mountRoom(); fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    const fake = mountRoom(); fireEvent.click(screen.getByRole("button", { name: "Change map" }));
     if (!save) fireEvent.click(screen.getByLabelText("Also save uploads to my library"));
     const selected = file(); fireEvent.change(screen.getByLabelText("Upload battle map"), { target: { files: [selected] } });
     await screen.findByText(/Unsaved changes: only you see them/);
@@ -101,7 +101,7 @@ describe("reusable UVTT maps from a room (KAN-43, FR-GM-06/12)", () => {
 
   it("places a library map with one reference command and no client-side wall/fog copy", async () => {
     vi.mocked(api.library.list).mockResolvedValue([asset]); const fake = mountRoom();
-    fireEvent.click(screen.getByRole("button", { name: "Edit map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change map" }));
     fireEvent.click(screen.getByRole("button", { name: "From library" }));
     fireEvent.click(await screen.findByTitle(asset.name));
     expect(fake.commands).toEqual([]);

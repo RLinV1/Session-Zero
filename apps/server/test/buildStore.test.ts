@@ -48,9 +48,9 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
 
   it("starts with both of the owner's choices off, unless they were ticked (ADR 0053)", async () => {
     const store = makeStore();
-    expect(await newBuild(store)).toMatchObject({ aiGrid: false, aiWalls: false });
+    expect(await newBuild(store)).toMatchObject({ aiGrid: false, aiWalls: false, aiTerrain: false });
     const ticked = await store.createBuild({ id: randomUUID(), ownerGmId: await newOwner(store), name: "Lanternfall", aiGrid: true, aiWalls: true }, 3);
-    expect(await store.findBuild(ticked.id, ticked.ownerGmId)).toMatchObject({ aiGrid: true, aiWalls: true });
+    expect(await store.findBuild(ticked.id, ticked.ownerGmId)).toMatchObject({ aiGrid: true, aiWalls: true, aiTerrain: false });
   });
 
   it("checks a write's guard inside the write: walls still allowed, and the version read (ADR 0053)", async () => {
@@ -60,7 +60,7 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
     // Turned off between the AI's read and its write: refused, and nothing written.
     await expect(store.saveBuildItem(map, 20, { requireAiWalls: true })).rejects.toBeInstanceOf(BuildChoiceOffError);
     expect(await store.findBuildItem(build.id, "map", "shop")).toBeNull();
-    await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true });
+    await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true, aiTerrain: false });
     // A new item is expected not to exist yet.
     const first = await store.saveBuildItem(map, 20, { requireAiWalls: true, expectedUpdatedAt: null });
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -75,11 +75,11 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
   it("changes the choices only for the owner of an open build", async () => {
     const store = makeStore();
     const build = await newBuild(store);
-    expect(await store.setBuildChoices(build.id, await newOwner(store), { aiGrid: true, aiWalls: true })).toBeNull();
-    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true })).toMatchObject({ aiGrid: false, aiWalls: true });
+    expect(await store.setBuildChoices(build.id, await newOwner(store), { aiGrid: true, aiWalls: true, aiTerrain: false })).toBeNull();
+    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: false, aiWalls: true, aiTerrain: false })).toMatchObject({ aiGrid: false, aiWalls: true, aiTerrain: false });
     await store.closeBuild(build.id, build.ownerGmId);
-    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: true, aiWalls: true })).toBeNull();
-    expect(await store.findBuild(build.id, build.ownerGmId)).toMatchObject({ aiGrid: false, aiWalls: true });
+    expect(await store.setBuildChoices(build.id, build.ownerGmId, { aiGrid: true, aiWalls: true, aiTerrain: false })).toBeNull();
+    expect(await store.findBuild(build.id, build.ownerGmId)).toMatchObject({ aiGrid: false, aiWalls: true, aiTerrain: false });
   });
 
   it("allows only so many open builds per owner", async () => {

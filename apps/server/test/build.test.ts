@@ -742,16 +742,16 @@ describe("the owner's choices for maps (FR-GM-26, ADR 0053)", () => {
 
   it("starts with both off, and shows them to the owner and the AI", async () => {
     const { account, id, pass } = await start();
-    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false });
-    expect((await (await withPass(pass, "GET", "/api/build/current")).json() as { allowed: unknown }).allowed).toEqual({ grids: false, walls: false });
+    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false, aiTerrain: false });
+    expect((await (await withPass(pass, "GET", "/api/build/current")).json() as { allowed: unknown }).allowed).toEqual({ grids: false, walls: false, terrain: false });
   });
 
   it("takes the choices ticked at the start, and only the owner changes them", async () => {
     const { account, id, choices } = await startWith({ aiGrid: true, aiWalls: true });
-    expect(choices).toEqual({ aiGrid: true, aiWalls: true });
+    expect(choices).toEqual({ aiGrid: true, aiWalls: true, aiTerrain: false });
     const changed = await account.request("PUT", `/api/builds/${id}/choices`, { aiGrid: false, aiWalls: true });
     expect(changed.status).toBe(200);
-    expect((await changed.json() as { build: { choices: unknown } }).build.choices).toEqual({ aiGrid: false, aiWalls: true });
+    expect((await changed.json() as { build: { choices: unknown } }).build.choices).toEqual({ aiGrid: false, aiWalls: true, aiTerrain: false });
     const other = await server.signUp();
     expect((await other.request("PUT", `/api/builds/${id}/choices`, { aiGrid: true, aiWalls: true })).status).toBe(404);
   });
@@ -760,7 +760,7 @@ describe("the owner's choices for maps (FR-GM-26, ADR 0053)", () => {
     const { account, id, pass } = await start();
     expect((await withPass(pass, "PUT", `/api/builds/${id}/choices`, { aiGrid: true, aiWalls: true })).status).toBe(401);
     expect((await withPass(pass, "PUT", "/api/build/current/choices", { aiGrid: true, aiWalls: true })).status).toBe(404);
-    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false });
+    expect((await account.json<{ build: { choices: unknown } }>("GET", `/api/builds/${id}`)).build.choices).toEqual({ aiGrid: false, aiWalls: false, aiTerrain: false });
   });
 
   it("refuses the AI's walls when the owner hasn't allowed them, but still lets it look", async () => {

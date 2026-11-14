@@ -59,3 +59,30 @@ describe("the map picture an AI reads positions from (FR-GM-26, ADR 0053)", () =
     expect(layout.labels).toEqual([]);
   });
 });
+
+describe("the AI's terrain in the map picture (FR-GM-26, ADR 0071)", () => {
+  const terrain = [{ row: 0, start: 0, end: 2, kind: "difficult" as const }, { row: 1, start: 40, end: 41, kind: "blocked" as const }];
+  const rects = (svg: string) => [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="url\(#terrain-(\w+)\)"/g)]
+    .map((m) => ({ x: Number(m[1]), y: Number(m[2]), width: Number(m[3]), height: Number(m[4]), kind: m[5] }));
+
+  it("draws each run as one area, Difficult single-hatched and Blocked crosshatched, under the grid", () => {
+    const layout = mapOverlay(input({ terrain }));
+    const scale = 1500 / 3000;
+    expect(rects(layout.svg)).toEqual([
+      { x: 0, y: 0, width: 210 * scale, height: 70 * scale, kind: "difficult" },
+      { x: 2800 * scale, y: 70 * scale, width: 140 * scale, height: 70 * scale, kind: "blocked" },
+    ]);
+    // Two patterns: one hatch direction for Difficult, both for Blocked.
+    expect(layout.svg.match(/<pattern id="terrain-difficult"[^]*?<\/pattern>/)?.[0].match(/M/g)).toHaveLength(2);
+    expect(layout.svg.match(/<pattern id="terrain-blocked"[^]*?<\/pattern>/)?.[0].match(/M/g)).toHaveLength(4);
+    expect(layout.svg.indexOf("terrain-difficult")).toBeLessThan(layout.svg.indexOf('stroke="#00e5ff"'));
+  });
+
+  it("draws only the part of a run inside a block of squares, and nothing without a grid", () => {
+    const close = mapOverlay(input({ terrain, region: { fromColumn: 1, toColumn: 4, fromRow: 0, toRow: 1 } }));
+    expect(rects(close.svg).map((r) => r.kind)).toEqual(["difficult"]);
+    expect(rects(close.svg)[0]).toMatchObject({ x: 0, y: 0 });
+    expect(mapOverlay(input({ grid: null, terrain })).svg).not.toContain("terrain-");
+    expect(mapOverlay(input()).svg).not.toContain("terrain-");
+  });
+});

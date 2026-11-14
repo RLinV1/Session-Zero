@@ -347,10 +347,41 @@ describe("terrain privacy (FR-GM-23)", () => {
     expect(movementFeedbackForViewer(limited, alice, request)).toBe("unknown");
     expect(movementFeedbackForViewer({ ...limited, walls: blocked.walls }, alice, request)).toBe("unknown");
   });
-  it("withholds partly concealed cells, all canonical data and unchanged edits", () => {
+  // Square (1, 0) spans x 10..20, y 0..10.
+  const fogRect = (x0: number, y0: number, x1: number, y1: number) => ({ f: { id: "f", shape: "rect" as const, points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] } });
+  it("sends a partly concealed square but keeps movement over it unknown (ADR 0069)", () => {
     const { state } = setup();
     const painted = paint(state).state;
-    const hidden = { ...painted, fog: { f: { id: "f", shape: "rect" as const, points: [{ x: 11, y: 1 }, { x: 12, y: 1 }, { x: 12, y: 2 }, { x: 11, y: 2 }] } } };
+    for (const fog of [fogRect(11, 1, 12, 2), fogRect(15, 0, 20, 10)]) {
+      const partly = { ...painted, fog };
+      const visible = filterStateForViewer(partly, alice);
+      expect(visible).not.toHaveProperty("terrain"); expect(visible).not.toHaveProperty("terrainRevision");
+      expect(visible.terrainView?.runs).toEqual(one("difficult"));
+      // Movement knowledge keeps the whole-square rule (ADR 0046).
+      expect(terrainCellKnown(visible, 1, 0)).toBe(false);
+      const event = paint(partly, "blocked").events[0]!;
+      expect(filterEventForViewer({ seq: 1, actorId: gm.id, at: "x", event }, partly, alice).kind).toBe("resync");
+    }
+  });
+  it("keeps route feedback unknown over a partly fogged square hiding a wall (ADR 0069)", () => {
+    const { state, token } = setup();
+    // The wall at x = 20 lies under fog covering the right half of square 1 and the left of square 2.
+    const walled = { ...paint(state, "blocked").state, walls: { private: { id: "private", a: { x: 20, y: 0 }, b: { x: 20, y: 50 } } } };
+    const request: MovementPreviewRequest = { type: "tokenMovePreview", requestId: "move1", tokenId: token.id, from: token.position, to: { x: 35, y: 5 }, boardEpoch: walled.boardEpoch ?? 0 };
+    expect(movementFeedbackForViewer(walled, alice, request)).toBe("blocked");
+    const fogged = { ...walled, fog: fogRect(15, -1, 25, 51) };
+    expect(filterStateForViewer(fogged, alice).terrainView?.runs).toEqual(one("blocked"));
+    expect(movementFeedbackForViewer(fogged, alice, request)).toBe("unknown");
+  });
+  it("sends a square that only touches fog along an edge (ADR 0069)", () => {
+    const { state } = setup();
+    const edged = { ...paint(state).state, fog: fogRect(20, 0, 30, 10) };
+    expect(filterStateForViewer(edged, alice).terrainView?.runs).toEqual(one("difficult"));
+  });
+  it("withholds a wholly concealed square, all canonical data and unchanged edits", () => {
+    const { state } = setup();
+    const painted = paint(state).state;
+    const hidden = { ...painted, fog: fogRect(9, -1, 21, 11) };
     const visible = filterStateForViewer(hidden, alice);
     expect(visible).not.toHaveProperty("terrain"); expect(visible).not.toHaveProperty("terrainRevision");
     expect(visible.terrainView?.runs).toEqual([]);
@@ -374,6 +405,15 @@ describe("terrain privacy (FR-GM-23)", () => {
     expect(terrainCellKnown(visible, 6, 0)).toBe(false);
     expect(attempt(limited, alice, { type: "token.move", tokenId: token.id, to: { x: 65, y: 5 } }).ok).toBe(true);
     expect(state.tokens[token.id]!.position).toEqual({ x: 5, y: 5 });
+  });
+  it("with line of sight, sends a square partly in sight and withholds one wholly outside it (ADR 0069)", () => {
+    const { state } = setup();
+    // Sight reaches one square (10 px) from the token at (5, 5): into square 1, not square 2.
+    const limited = { ...state, scene: { ...state.scene, lineOfSight: true, sightRange: 5 } };
+    const painted = paint(paint(limited, "difficult", 1).state, "blocked", 2).state;
+    const visible = filterStateForViewer(painted, alice);
+    expect(visible.terrainView?.runs).toEqual(one("difficult"));
+    expect(terrainCellKnown(visible, 1, 0)).toBe(false);
   });
 });
 describe("terrain.effect.create with a client effect id (FR-GM-15)", () => {
