@@ -1,14 +1,18 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
 import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
-import { TUTORIAL_STEPS, countKeyChange, countMoves, loadProgress, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
+import { EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMoves, loadProgress, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
 const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
   table: "tutorial.table.title",
   invite: "tutorial.invite.title",
   map: "tutorial.map.title",
+  grid: "tutorial.grid.title",
+  walls: "tutorial.walls.title",
+  sight: "tutorial.sight.title",
   terrain: "tutorial.terrain.title",
   token: "tutorial.token.title",
   move: "tutorial.move.title",
@@ -21,9 +25,11 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
 const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
-const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", "terrain", "token", "fog", "roll"]);
+const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll"]);
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
+const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
+  ?? document.querySelector<HTMLElement>(`[data-tutorial="${step}"]`);
 
 const positionsOf = (tokens: RoomState["tokens"]) =>
   Object.fromEntries(Object.entries(tokens).map(([id, token]) => [id, `${token.position.x},${token.position.y}`]));
@@ -49,6 +55,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
   const [progress, setProgress] = useState<Progress>(() => loadProgress(roomId));
   const [moves, setMoves] = useState(0);
   const [mapEdits, setMapEdits] = useState(0);
+  const [gridEdits, setGridEdits] = useState(0);
+  const [wallEdits, setWallEdits] = useState(0);
+  const [sightEdits, setSightEdits] = useState(0);
   const [terrainEdits, setTerrainEdits] = useState(0);
   const baseInvites = useRef(invites);
   const positions = useRef(positionsOf(state.tokens));
@@ -60,17 +69,26 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     if (moved > 0) setMoves((n) => n + moved);
   }, [nextPositions]);
 
-  // The map setup (grid, map image, walls) and the terrain, as one string each: a different string is one edit.
-  const mapKey = useMemo(() => JSON.stringify([state.scene.grid, state.scene.map, state.walls]), [state.scene.grid, state.scene.map, state.walls]);
+  // Saving one editor section must not complete the lessons for the other sections.
+  const mapKey = useMemo(() => JSON.stringify(state.scene.map), [state.scene.map]);
+  const gridKey = useMemo(() => JSON.stringify(state.scene.grid), [state.scene.grid]);
+  const wallKey = useMemo(() => JSON.stringify(state.walls), [state.walls]);
+  const sightKey = useMemo(() => JSON.stringify([state.scene.lineOfSight, state.scene.sightRange]), [state.scene.lineOfSight, state.scene.sightRange]);
   const terrainKey = useMemo(() => JSON.stringify(state.terrain ?? null), [state.terrain]);
-  const keys = useRef({ mapKey, terrainKey });
+  const keys = useRef({ mapKey, gridKey, wallKey, sightKey, terrainKey });
   useEffect(() => {
     const map = countKeyChange(keys.current.mapKey, mapKey);
+    const grid = countKeyChange(keys.current.gridKey, gridKey);
+    const walls = countKeyChange(keys.current.wallKey, wallKey);
+    const sight = countKeyChange(keys.current.sightKey, sightKey);
     const terrain = countKeyChange(keys.current.terrainKey, terrainKey);
-    keys.current = { mapKey, terrainKey };
+    keys.current = { mapKey, gridKey, wallKey, sightKey, terrainKey };
     if (map) setMapEdits((n) => n + map);
+    if (grid) setGridEdits((n) => n + grid);
+    if (walls) setWallEdits((n) => n + walls);
+    if (sight) setSightEdits((n) => n + sight);
     if (terrain) setTerrainEdits((n) => n + terrain);
-  }, [mapKey, terrainKey]);
+  }, [mapKey, gridKey, wallKey, sightKey, terrainKey]);
 
   const facts: TutorialFacts = {
     tokens: Object.keys(state.tokens).length,
@@ -78,6 +96,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     gmRolls: state.rolls.filter((roll) => roll.byParticipantId === selfId).length,
     moves,
     mapEdits,
+    gridEdits,
+    wallEdits,
+    sightEdits,
     terrainEdits,
     invites: invites - baseInvites.current,
   };
@@ -102,6 +123,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     baseInvites.current = invites;
     setMoves(0);
     setMapEdits(0);
+    setGridEdits(0);
+    setWallEdits(0);
+    setSightEdits(0);
     setTerrainEdits(0);
     focusNext.current = true;
     set(0);
@@ -111,6 +135,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [hidden, setHidden] = useState(false);
   const [dockTop, setDockTop] = useState(false);
+  const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
@@ -120,10 +145,18 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
   // Next to the step's control; a bottom sheet when it is hidden, huge (the board) or the screen is narrow.
   useLayoutEffect(() => {
     if (!shown) return;
-    const anchor = stepName ? document.querySelector<HTMLElement>(`[data-tutorial="${stepName}"]`) : null;
+    let anchor: HTMLElement | null = null;
     const measure = () => {
       const card = cardRef.current;
-      const found = stepName ? document.querySelector<HTMLElement>(`[data-tutorial="${stepName}"]`) : null;
+      const found = stepName ? anchorFor(stepName) : null;
+      if (found !== anchor) {
+        anchor?.removeAttribute("data-tutorial-active");
+        anchor = found;
+        anchor?.setAttribute("data-tutorial-active", "");
+      }
+      // Stay in the editor's top layer so its dialog does not hide or disable the demo.
+      const editor = document.querySelector<HTMLDialogElement>("dialog.map-editor[open]");
+      setEditorHost(editor);
       const rect = found?.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -134,7 +167,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
       const ring = small ? { top: rect.top - RING_PAD, left: rect.left - RING_PAD, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * RING_PAD } : null;
       setSpot((old) => (old && ring && old.top === ring.top && old.left === ring.left && old.width === ring.width && old.height === ring.height ? old : ring));
       // A bottom sheet that would cover the spotlit control moves to the top instead.
-      setDockTop(!!card && !!rect && small && vw < BESIDE_MIN_WIDTH && rect.bottom > vh - GUTTER - card.offsetHeight);
+      setDockTop(vw < BESIDE_MIN_WIDTH && (!!editor || !!card && !!rect && small && rect.bottom > vh - GUTTER - card.offsetHeight));
       if (!card || !small || vw < BESIDE_MIN_WIDTH) return setPlace(null);
       const below = rect.bottom + 8 + card.offsetHeight <= vh - GUTTER;
       const top = below ? rect.bottom + 8 : Math.max(GUTTER, rect.top - 8 - card.offsetHeight);
@@ -144,7 +177,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
       setPlace((old) => (old && old.top === top && old.left === left && old.side === side && old.arrowX === arrowX ? old : { top, left, side, arrowX }));
     };
     measure();
-    anchor?.setAttribute("data-tutorial-active", "");
     // Panels and menus open and close under the demo, so look again now and then.
     const timer = window.setInterval(measure, 400);
     window.addEventListener("resize", measure);
@@ -172,6 +204,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
   // Escape is No on the question and Skip on a step; only while focus is in the card, so a dialog's own Escape is left alone.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      event.preventDefault();
       event.stopPropagation();
       set(asking ? "declined" : "done");
     }
@@ -181,10 +214,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     focusNext.current = false;
     reveal(stepName!);
     // Tabs and the sidebar open on their own timing; look for the control once they have.
-    window.setTimeout(() => document.querySelector(`[data-tutorial="${stepName}"]`)?.scrollIntoView({ block: "center" }), 500);
+    window.setTimeout(() => anchorFor(stepName!)?.scrollIntoView({ block: "center" }), 500);
   };
 
-  return (
+  const content = (
     <>
     {spot && !asking && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
     <div
@@ -217,11 +250,19 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
               : t(`tutorial.${stepName!}.body` as TextId)}
           </p>
           <div className="row">
-            {hidden && REVEALABLE.has(stepName!) && (
+            {(hidden || EDITOR_TUTORIAL_STEPS.has(stepName!)) && REVEALABLE.has(stepName!) && (
               <button type="button" className="small primary" onClick={showMe}>{t("tutorial.showMe")}</button>
             )}
             {stepName === "table" && (
               <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>
+            )}
+            {(stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!)) && (
+              <button type="button" className="small secondary" onClick={() => {
+                focusNext.current = true;
+                const next = settle(step + 1, facts);
+                set(next);
+                reveal(TUTORIAL_STEPS[next]!);
+              }}>{t("tutorial.next")}</button>
             )}
             {stepName === "done" ? (
               <>
@@ -237,4 +278,5 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     </div>
     </>
   );
+  return editorHost ? createPortal(content, editorHost) : content;
 }

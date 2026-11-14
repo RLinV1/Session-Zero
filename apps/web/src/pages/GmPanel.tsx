@@ -668,7 +668,7 @@ function MapSection(props: {
                 {t("editor.title.change")}
               </button>
             )}
-            <button ref={editMapRef} type="button" className="secondary small" data-tutorial="map" onClick={(e) => {
+            <button ref={editMapRef} type="button" className="secondary small" data-tutorial="map" data-tutorial-editor-open onClick={(e) => {
               e.currentTarget.focus();
               openEditor("edit");
             }}>
@@ -726,6 +726,8 @@ function MapSection(props: {
                 key={key}
                 type="button"
                 role="tab"
+                data-tutorial={key}
+                data-tutorial-editor-step={key}
                 aria-selected={step === key}
                 className="map-editor-step"
                 onClick={() => requestStep(key)}
