@@ -11,7 +11,7 @@
 - Feature implementation: **none**. No application code, dependency, migration, deployment or runtime configuration was changed by this planning session.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
-- Product review of the complete packet: **pending**. Architecture review of ADR 0073: **pending**. M0 host experiments: **not started**. Production: **unverified**.
+- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 host experiments: **not started**. Production: **unverified**.
 
 ## Read order
 
@@ -31,6 +31,8 @@ The agreed direction is a raw-map journey with visible saved work and precise co
 
 The user explicitly selected **protected unpublished images**, including new Studio originals and derivatives. Do not downgrade this to unguessable public URLs for convenience. Previously public files cannot be retroactively described as never disclosed.
 
+The user confirmed that image maps and AI-traced geometry fit the first release, with arbitrary editing of imported UVTT walls deferred and existing UVTT workflows preserved. They then asked about starting milestone research. Research can inspect code and primary documentation and update planning evidence; it does not itself authorize a runtime prototype or establish real-host qualification. The first milestone in the packet is M0; M1's auth/private-file implementation depends on the M0 findings.
+
 The user wants autonomous implementation in fresh bounded sessions after the design is agreed. They have authorized planning now. No fresh implementation session has been selected or authorized in this handoff. Do not interpret task files, this handoff or the presence of an M0 prompt as that authorization.
 
 ## Review points
@@ -38,7 +40,7 @@ The user wants autonomous implementation in fresh bounded sessions after the des
 The following are proposed defaults for the packet review, not unrecorded external approvals:
 
 - ChatGPT web first; standard MCP Apps foundation; Claude compatibility follows available access.
-- One active image-based map and encounter per working context; preserve other build items and existing UVTT workflows. Arbitrary imported source-wall topology editing is deferred.
+- One active map and encounter per working context remains the proposed implementation scope. The image-first release boundary and deferral of arbitrary imported UVTT wall editing are now confirmed.
 - Scoped OAuth for the hosted release; existing passes can support controlled proof/local workflows.
 - Immutable candidates, stable authoring identities and server-enforced scopes. Conflicts preserve stale work and require regeneration; no automatic merge.
 - Website-only final publication. Private working candidates can advance through chat corrections without an intermediate owner acceptance.

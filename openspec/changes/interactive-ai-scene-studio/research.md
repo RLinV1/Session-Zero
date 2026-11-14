@@ -14,11 +14,11 @@
 | First host | Proposed default | User has no preference; ChatGPT web addresses the described current workflow. Claude is the next compatibility target. |
 | Final authority | Proposed design consistent with the agreed journey | Website owner session publishes; the AI and embedded app propose. In-chat iteration does not require a website visit between corrections. |
 | Credentials | Proposed design | Scoped OAuth for hosted release; existing expiring passes can support controlled proof/local workflows. |
-| Initial scope | Proposed default | One active image-based map and encounter at a time; existing multi-map builds continue to work. |
+| Initial scope | First-release boundary confirmed 2026-11-14 | The user confirmed image maps and AI-traced geometry first, with arbitrary editing of imported UVTT walls deferred. Existing UVTT workflows remain available; one active map/encounter per working context remains the proposed implementation scope. |
 | Comparison and concurrency | Proposed default | Same-camera comparison, atomic corrections, explicit stale conflicts, no automatic merging. |
 | Delivery | Proposed for review | M0–M5, fresh bounded sessions, primary-source preflight and evidence-based completion. |
 
-The earlier idea of requiring a website Keep action after every correction is superseded by private iteration in chat and one final website review. No product or architecture approval for the complete packet has yet been recorded.
+The earlier idea of requiring a website Keep action after every correction is superseded by private iteration in chat and one final website review. Acceptance of the image-first release boundary does not record architecture sign-off or select a runtime implementation session. The user next asked whether to start an agent's milestone research; research and actual M0 qualification remain distinct.
 
 ## Observed implementation and reuse
 
