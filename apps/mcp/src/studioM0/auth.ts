@@ -202,6 +202,7 @@ export class StudioAuth {
     });
 
     router.get("/oauth/authorize", (req, res) => {
+      this.prune();
       const params = Object.fromEntries(Object.entries(req.query).filter((e): e is [string, string] => typeof e[1] === "string"));
       const problem = this.checkAuthorize(params);
       void this.options.log.write("oauth_authorize_view", {
@@ -356,6 +357,14 @@ export class StudioAuth {
       }
     });
     return router;
+  }
+
+  /** Drops expired sign-in forms, codes and grants so a public test endpoint can't grow them without bound. */
+  private prune() {
+    const now = this.now();
+    for (const [key, expires] of this.forms) if (expires <= now) this.forms.delete(key);
+    for (const [key, code] of this.codes) if (code.expiresAt <= now) this.codes.delete(key);
+    for (const [key, grant] of this.grants) if (grant.expiresAt <= now) this.grants.delete(key);
   }
 
   private clientsFile() {

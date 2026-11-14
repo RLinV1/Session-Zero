@@ -268,6 +268,44 @@ Rejected for M0: staying on v1 (it depends on unobserved dual-era fallback and t
 
 Two throwaway Node scripts constructed the SDK 1.32.2 transport exactly as `apps/mcp/src/app.ts` does, and the v2 `createMcpHandler({ legacy: "stateless" })`. Both used installed packages: the main checkout's `node_modules` for 1.32.2 and the old branch worktree's for `server` 2.4.0. They posted the JSON-RPC bodies shown in Q1. The scripts lived in a session scratch directory and were not committed; the request and response facts above are the durable record. Rerun them during E1 from the migrated workspace instead of relying on these.
 
+## M0 host results — 2026-11-14 (real ChatGPT web)
+
+**Label [H]:** observed in real ChatGPT web by this change's M0 harness (`/mcp/studio-m0`, fixture data, stub OAuth, development tunnel). Full redacted record: [evidence/m0-2026-11-14.md](evidence/m0-2026-11-14.md). Code: branch `feat/interactive-ai-scene-studio-m0` (`5f0d7919` SDK migration, `2190ec48` harness, `90e11bc8` live-run fixes). Host: ChatGPT web Work mode, Plus, GPT-6.1 Terra · Light, Chrome/macOS, driven through the Claude in Chrome extension with the user's authorization.
+
+### Resolution of the open questions
+
+| # | Question | Result | Label |
+| --- | --- | --- | --- |
+| 1 | Is ChatGPT dual-era? | Moot for the chosen stack: ChatGPT sent only `2026-07-28` (`server/discover`, `Mcp-Method`), 0 `initialize` calls in 267 requests. A v1-only server would have answered 400 (Q1 [L]); whether ChatGPT then falls back was not tested and is no longer needed. **SDK v2 is confirmed.** | [H] |
+| 2 | Do app-originated calls carry the bearer? | **Yes.** App-only tool calls arrived with the same bearer/subject; expired, revoked and foreign tokens were refused on app calls too. | [H] |
+| 3 | Reopen behavior | Reload remounts the view, re-reads the resource and **re-delivers the original tool result** (stale); backend refresh is what shows current state. Re-delivered results stay in the conversation after revocation. No teardown on page reload. | [H] |
+| 4 | `ui/message` behavior | Posted **immediately as a user turn**, `{}` after 192 ms, no consent, no draft. Refusal/timeout path not observed. | [H] |
+| 5 | File helpers | `selectFiles` opens the host Library picker; `getFileDownloadUrl` returns an **Azure Blob origin** different from the composer's `oaiusercontent.com` origin; both delivered byte-identical originals. Composer descriptors expire after **5 minutes** (SAS `se`); expired → HTTP 403. Composer attachments are saved to the user's ChatGPT Library. `uploadFile` not run. | [H] |
+| 6 | Image scheme and size | **`data:` works, `blob:` is blocked** by host CSP `img-src`. App results carried up to **8.4 MB** in `_meta` (no ceiling found). | [H] |
+| 7 | Do image blocks reach the model? | **Yes** on GPT-6.1 Terra · Light: 2/2 correct shape and position, image-omitted control refused to guess. | [H] |
+| 8 | Surface naming | The tested surface is ChatGPT web **Work** mode, personal plugin in DEVELOPMENT status; "Allow low-risk" permission showed no per-tool confirmations. | [H] |
+| 9 | M1 AS implementation | Still M1's decision. The stub shape (DCR public client + PKCE + resource-bound opaque tokens) is what ChatGPT used; it did **not** use refresh tokens on 401. | [H] partial |
+| 10 | ext-apps 2.1.0 | Unchanged: pinned 2.0.4 worked. | — |
+
+### New host facts that affect the design
+
+1. **Templates and tool metadata are snapshotted per connector version.** ChatGPT kept rendering the `ui://` HTML it read at connector creation even after the server changed it; tool lists are not re-fetched on reconnect. *Settings → Refresh tools* re-lists and pre-reads templates. → Use content-versioned `ui://` URIs and keep server behavior backward compatible with the last refreshed tool list; a release that changes tools/templates needs a user-visible refresh step (or a new connector version).
+2. **Tool results are retained by the host and re-delivered on remount**, independent of later authorization. → Never put private media, crops or sensitive values in a tool result (`content`, `structuredContent` or `_meta`) meant to be gated; deliver them only through app-initiated calls that recheck the grant. The open tool returns identifiers and non-sensitive status only.
+3. **`blob:` images are blocked; `data:` works.** → D8's "view-local object URLs" must become `data:` URLs (or canvas drawing from decoded bytes).
+4. **Host file URLs vary by route** (composer: `*.oaiusercontent.com`; view helpers: `oaisdmntpreastus3.blob.core.windows.net`) and the view-supplied URL is client-provided, not host-attested. → Keep the exact-origin allowlist plus byte/time/redirect bounds; record each origin's provenance; prefer the composer/fileParams route where possible; treat a new origin as a reevaluation trigger. The 5-minute lifetime means intake must download promptly.
+5. **Composer attachments persist in the user's ChatGPT Library** and ChatGPT's consent text allows model-training use when the user has opted in. → The Studio's privacy notice must say that artwork shared through the chat is also held by the AI provider; Session Zero's protection covers its own storage and delivery only (consistent with D8's existing caveat, now concrete).
+6. **ChatGPT does not refresh tokens on 401; it asks the user to reconnect** (modal over a view; inline card for a model call), and a model call is not always retried afterwards. → Size access-token lifetime for a working session, keep the view's stale state and recovery path, and tell the user to resend if the AI did not continue.
+7. **OIDC is enabled by default if `/.well-known/openid-configuration` answers.** → The M1 authorization server must either support the OIDC scopes ChatGPT requests or not advertise OIDC.
+8. **Request `_meta` carries `openai/userLocation`, `openai/subject`, `openai/session`, `openai/organization`.** → M1 must not log or store these beyond what is needed; `openai/subject` is not an authorization input.
+9. **Fullscreen is a large side panel on web** with resize notifications. Adequate for the canvas; layouts must handle container-dimension changes.
+
+### Design amendment candidates (for review; not applied to design.md)
+
+- **D2:** polling is required (confirmed); add content-versioned template URIs and the connector refresh step; the open tool result carries no gated data.
+- **D7:** record that ChatGPT used DCR with a public PKCE client, sends `resource`, does not refresh on 401, and needs OIDC either supported or not advertised. Proposed M1 shape stands: Session Zero authorization server, opaque hashed tokens, `apps/server` introspection.
+- **D8:** replace "object URLs" with `data:` rendering; app-only media calls are the only gated channel; tool results are not.
+- **D9:** two observed host origins with different provenance; 5-minute descriptor lifetime; Library side effect and provider-retention notice.
+
 ## Recording a later finding
 
 Append the question, code commit, dated primary source, exact experiment, observed result, selected approach and reevaluation trigger. Identify stubs and unavailable prerequisites. Store redacted evidence in a durable repository artifact or an explicitly retained location; temporary paths alone are not continuity. Do not commit credentials, private user art or raw authenticated URLs.

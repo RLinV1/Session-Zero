@@ -8,10 +8,10 @@
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
-- Feature implementation: **none**. No application code, dependency, migration, deployment or runtime configuration was changed by this planning session.
+- Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
-- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 research: **done (documentation and local probes only; see below)**. M0 host experiments: **not started**. Production: **unverified**.
+- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 research: **done**. M0 host experiments: **run in real ChatGPT web on 2026-11-14; tasks 1.1–1.6 and 1.8 pass, 1.7 and 1.9 have small pending items** (see below). M0 is therefore **not yet fully qualified**. Production: **unverified**.
 
 ## Read order
 
@@ -90,9 +90,51 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-**Latest implementation session:** none. The next action is product review of the planning packet and of the M0 research recommendation below, not automatic implementation.
+## Latest implementation session — M0, 2026-11-14 (overnight, autonomous)
 
-## Latest research session — M0 research, 2026-11-14
+**Authorization:** the user authorized autonomous overnight work to complete M0. That covered driving their logged-in Chrome to add a test connector and run ChatGPT test chats, installing `cloudflared` for a quick tunnel, and committing and pushing the branch with no PR. It did not authorize M1, a PR, a merge, production changes or cloud provisioning, and none were done.
+
+**Branches/commits:** research on `docs/interactive-ai-scene-studio-m0-research` (`497eda71`, from planning commit `5159b88a`). M0 on `feat/interactive-ai-scene-studio-m0`, which descends from it:
+
+| Commit | Content |
+| --- | --- |
+| `5f0d7919` | `apps/mcp` moved from `@modelcontextprotocol/sdk` 1.32.2 to `server` 2.4.0 / `node` 2.1.2 / `core` + `client` 2.4.0 / `express` 2.0.2, with `ext-apps` 2.0.4 (exact pins). 2025-era requests keep the per-request JSON transport; 2026-07-28 requests are served by `createMcpHandler` in JSON mode. New `test/protocolEras.test.ts`. One test adjusted: v2 answers an unknown tool with a protocol error instead of an `isError` result. |
+| `2190ec48` | Flag-gated `/mcp/studio-m0` (`STUDIO_M0=1`, `STUDIO_M0_ONLY=1`): inline `ui://` view, 9 tools, fixture store, bounded downloader, overlay-marker crops, stub OAuth server and resource check. `test/studioM0.test.ts`. |
+| `90e11bc8` | Fixes found in the live run: stop answering the OIDC well-known path, content-versioned view URI, persisted DCR clients, media-size probe, expiry hint and operator descriptor replay. |
+| later commits | Evidence, `apps/mcp/README.studio-m0.md`, research/tasks/handoff updates. Resolve the exact HEAD with Git. |
+
+The predecessor planning branch is unmerged; this branch carries it. Nothing outside `apps/mcp`, `package-lock.json` and this change folder was modified. `/mcp` and `/mcp/build` behavior is unchanged apart from the SDK swap and the unknown-tool error form.
+
+**What now exists:** a proof endpoint only. It touches no Session Zero builds, accounts, storage, room server, shared contracts or web UI, and its state is in memory. It is off unless `STUDIO_M0=1`.
+
+**Results (real ChatGPT web, Work mode, Plus, GPT-6.1 Terra · Light):** see the research.md section "M0 host results" and [evidence/m0-2026-11-14.md](evidence/m0-2026-11-14.md).
+- Pass: view render and fullscreen panel; SDK v2 / protocol `2026-07-28` (no `initialize`); DCR + PKCE + `resource`; app calls carry the bearer; mounted-view refresh in ≈2.3 s; reopen recovers backend state; byte-identical originals by two routes; 5-minute descriptor expiry refused with HTTP 403; model-visible crops 2/2 with a refusing control; selection request traced to the model's read; expired/revoked/foreign access refused with no bytes; `data:` media up to 8.4 MB.
+- Design-affecting findings (research.md "New host facts"): template/tool snapshotting per connector version; tool results are retained and re-delivered regardless of later authorization; `blob:` images blocked; two different host file origins; Library retention of attachments; no token refresh on 401; OIDC default when advertised.
+
+**Checks:**
+- Automated: `npm run lint` and `npm run typecheck` exit 0; `npm test` exit 0, with 5,101 passed and 56 skipped. The skips are server optional-service tests; the MCP workspace has 17 files / 260 tests, up from 245.
+- Local probes: recorded in research.md.
+- Actual host: everything above.
+- Deployed/production: none.
+- Diff review: by the implementing agent only, so an independent review is pending.
+
+**State left behind:**
+- Tunnel and server **stopped**. The trycloudflare URL is dead, so the ChatGPT connector "Session Zero Studio M0 (test)" now points at nothing. It is **still installed** in the user's ChatGPT (Plugins → Personal → … → Uninstall to remove).
+- Test chats remain in the user's ChatGPT history ("Open Test View", "Describe Image Mark", "Import error reported", "Open Session Zero View", "Import Map File Report").
+- The synthetic `e2-fixture-map` is in the user's ChatGPT Library.
+- `cloudflared` remains installed via Homebrew.
+- Private evidence, keys and the fixture registration are in Git-ignored `apps/mcp/.local/studio-m0/`.
+
+**Pending before M0 is fully qualified:**
+1. **View device upload** (`uploadFile`): needs a person at the browser, since a native file picker opens inside the sandbox. Run the README steps; in the Studio view, use "Upload from this device" with a synthetic PNG; confirm the stored SHA-256 matches. The tunnel URL will be new, so recreate the connector or edit its URL, then **Refresh tools**.
+2. **`ui/message` refusal/timeout** (task 1.7): try "Send selection to chat" while the model is still answering, and record what the host does.
+3. **Independent diff review** (task 1.9) of `5f0d7919..HEAD` in `apps/mcp`, then rerun the repository checks.
+
+**Review status:** product review of the packet and the ADR 0073 architecture review remain **pending**. No reviewer has seen this work.
+
+**Next:** finish the three pending M0 items, then review the design amendment candidates in research.md (D2, D7, D8, D9) with the user and the Real-Time Architecture owner before M1. M1 (M1a delegated access, M1b private storage and intake) is **not authorized** by this session and was not started.
+
+## Research session — M0 research, 2026-11-14 (before the M0 run)
 
 **Requested scope:** research M0 only, without implementing application code or building the prototype. Requested deliverables: resolve or investigate SDK/ext-apps compatibility, rendering and refresh, original-image transfer and model-visible crops, selection-to-chat, and scoped OAuth with protected images. Then recommend one approach and a bounded M0 plan, and update this file and research.md. No deployment, provisioning or M1.
 
