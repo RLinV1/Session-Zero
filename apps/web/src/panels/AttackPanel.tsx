@@ -371,7 +371,7 @@ function AttackForm({
 
   const rollCustom = async (e: FormEvent) => {
     e.preventDefault();
-    if (!target) return;
+    if (!target) { onPickOnBoard(); return; }
     const label = settings.label.trim();
     if (await send({ expression, kind, label, targetId: target.token.id })) onRolledCustom({ ...settings, label, kind });
   };
@@ -555,7 +555,7 @@ function AttackForm({
               <Picker
                 label={t("stage.target")}
                 icon={<Target size={16} aria-hidden="true" />}
-                placeholder={targets.length === 0 ? t("attack.noTargets") : t("stage.target")}
+                placeholder={targets.length === 0 ? t("attack.noTargets") : t("attack.chooseTarget")}
                 disabled={targets.length === 0}
                 value={target?.token.id ?? null}
                 onChange={onTarget}
@@ -574,14 +574,14 @@ function AttackForm({
               {t("attack.hiddenWarning", { name: attacker.hidden ? attacker.name : target!.token.name })}
             </p>
           )}
-          {chosen && !customOpen && (
+          {chosen && (!customOpen || followUp) && (
             <div className="attack-roll-row">
               <button
                 type="button"
                 className="attack-roll primary"
-                disabled={!target || busy || rolling}
+                disabled={busy || rolling || (!target && targets.length === 0)}
                 title={rolling ? t("attack.diceOnBoard") : undefined}
-                onClick={() => (followUp ? rollDamage(chosen, hits) : rollPreset(chosen))}
+                onClick={() => (!target ? onPickOnBoard() : followUp ? rollDamage(chosen, hits) : rollPreset(chosen))}
                 // Starts with the visible words (WCAG 2.5.3), then says which attack at whom.
                 aria-label={target ? t("attack.rollAgainst", { roll: rollLabel, attack: chosen.name, target: target.token.name }) : undefined}
               >
@@ -628,7 +628,7 @@ function AttackForm({
               <button
                 type="submit"
                 className="attack-roll primary"
-                disabled={busy || rolling || !target}
+                disabled={busy || rolling || (!target && targets.length === 0)}
                 title={rolling ? t("attack.diceOnBoard") : undefined}
               >
                 <DiceFive size={18} aria-hidden="true" />

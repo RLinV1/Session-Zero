@@ -12,6 +12,7 @@ import { PlayersSection } from "./home/PlayersSection";
 import { PlaySection } from "./home/PlaySection";
 import { PrepareSection } from "./home/PrepareSection";
 import { RecoverSection } from "./home/RecoverSection";
+import { SessionGuide } from "./home/SessionGuide";
 import { t } from "../i18n/locale";
 
 /**
@@ -58,6 +59,7 @@ export function HomePage() {
           <PlayersSection />
         </section>
 
+        <SessionGuide />
         <ClosingBand />
       </main>
 

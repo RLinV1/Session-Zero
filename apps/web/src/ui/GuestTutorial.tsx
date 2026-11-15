@@ -29,6 +29,7 @@ const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTO
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
+  ?? (EDITOR_TUTORIAL_STEPS.has(step) ? document.querySelector<HTMLElement>("[data-tutorial-editor-open]") : null)
   ?? document.querySelector<HTMLElement>(`[data-tutorial="${step}"]`);
 
 const positionsOf = (tokens: RoomState["tokens"]) =>

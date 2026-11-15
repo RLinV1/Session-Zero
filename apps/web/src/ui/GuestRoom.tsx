@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { GUEST_ROOM_IDLE_DAYS, type GuestRoomStatus } from "@vtt/shared";
 import { useAccount } from "../account/accountStore";
+import { isBoolean, usePersistentState } from "./usePersistentState";
 import { Link } from "../Link";
 import { api } from "../net/api";
 import { navigate } from "../router";
@@ -50,10 +51,10 @@ export function FreeAccountNote() {
   );
 }
 
-/** The GM's one-line explanation of a guest room, dismissed for this visit. */
-export function GuestRoomNotice() {
+/** The GM's explanation of a guest room, dismissed for this room in this browser. */
+export function GuestRoomNotice({ roomId }: { roomId: string }) {
   const { guest, idleDays } = useContext(GuestRoomContext);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = usePersistentState(`vtt.guestRoomNotice.${roomId}`, false, isBoolean);
   if (!guest || dismissed) return null;
   return (
     <div className="board-notice guest-room-notice">

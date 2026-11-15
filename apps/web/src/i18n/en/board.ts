@@ -3,7 +3,7 @@ import type { CatalogSource } from "@vtt/shared";
 /** The board's own words: hints, the toolbar, the token card, filters, the ruler and placement. */
 export const board = {
   "board.placingHint": "Click squares to place · or arrow keys, then Enter · drag to pan · hold Alt to place freely · Esc when done",
-  "board.hint.select": "Drag to pan · scroll to zoom · double-click to ping · hold Alt to place freely",
+  "board.hint.select": "Drag tokens you control to move · drag empty space to pan · scroll or pinch to zoom · double-click to ping · Alt: place freely",
   "board.hint.measure": "Drag to measure · Alt: straight line · Esc: stop",
   "board.hint.measureRoute": "Click to add points · Enter to finish · Backspace removes a point · Esc cancels · Alt: straight line",
   "board.hint.draw": "Drag to draw · everyone sees your drawings · Esc to stop",

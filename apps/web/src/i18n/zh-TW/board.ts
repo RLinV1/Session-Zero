@@ -4,7 +4,7 @@ import type { board } from "../en/board";
 /** Traditional Chinese for `en/board.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const boardZhTW = {
   "board.placingHint": "按一下格子放置棋子 · 方向鍵移動、Enter 確認 · 拖曳平移畫面 · 按住 Alt 自由放置 · Esc 結束",
-  "board.hint.select": "拖曳平移畫面 · 滾輪縮放 · 按兩下標出提示點 · 按住 Alt 自由放置",
+  "board.hint.select": "拖曳你能操控的棋子來移動 · 拖曳空白處平移畫面 · 滾輪或雙指縮放 · 按兩下標出提示點 · 按住 Alt 自由放置",
   "board.hint.measure": "拖曳量尺測量距離 · 按住 Alt 畫直線 · Esc 結束",
   "board.hint.measureRoute": "依序按一下以加入路徑點 · 按 Enter 完成 · Backspace 刪除上一個點 · Esc 取消 · 按住 Alt 畫直線",
   "board.hint.draw": "拖曳即可繪製，所有人都看得到你的繪圖 · Esc 結束",

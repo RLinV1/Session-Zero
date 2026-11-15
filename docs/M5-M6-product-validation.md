@@ -1,6 +1,15 @@
 # M5/M6: validate the first playable session
 
-Status: proposed experiments, not user-research results. Prepared 2026-11-13 from the class memo, README §8, and `docs/QA-grid-sample.md`.
+Status: experiment plan with a separate live simulated-user trial and engineering retests recorded on 2026-11-14. Prepared 2026-11-13 from the class memo, README §8, and `docs/QA-grid-sample.md`.
+
+## M5/M6 write-down from the live trial
+
+The observations, ranked bottlenecks, fixes and retest boundaries are in [M5-M6-live-usability-findings.md](M5-M6-live-usability-findings.md).
+
+- **M5:** GPT-6 Luna personas tried guest hosting, browser play and MCP play on `sessionzero.codes`, with a dedicated GM account and board. Initial friction was the sign-in detour and competing prompts; movement, target selection and damage discovery added in-session confusion. These are simulated observations, not independent human testimonials, completion-rate measurements or adoption evidence.
+- **M6:** Follow-up fixes make guest setup direct, defer retention during the walkthrough, persist dismissal per room, clarify movement and pinch zoom, make target selection actionable, and keep named damage visible with Custom roll open. Regressions preserve the observed failures; the report distinguishes local retests from pending post-deployment checks.
+
+The independent participant study and return-session gates below remain pending. This trial selects concrete engineering work and does not replace those product-validation outcomes.
 
 ## The decision we need to make
 
