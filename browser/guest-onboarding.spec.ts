@@ -8,6 +8,7 @@ test("the landing page explains the first session and account choices without ov
   await expect(guide.getByRole("link", { name: "Start a room", exact: true })).toHaveAttribute("href", "/start");
   await expect(guide.getByRole("link", { name: "Create a free account", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await guide.locator("p").evaluateAll((paragraphs) => paragraphs.filter((p) => p.scrollWidth > p.clientWidth + 1).map((p) => p.textContent))).toEqual([]);
   await guide.screenshot({ path: info.outputPath("landing-session-guide.png") });
 });
 
