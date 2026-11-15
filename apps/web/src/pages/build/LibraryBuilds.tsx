@@ -52,10 +52,10 @@ export function BuildChoiceFields({ choices, onChange, disabled }: { choices: Bu
 
 /** The usual answers to "how much map setup does my AI do", over the same choices. */
 const MAP_SETUPS: { label: string; detail: string; choices: BuildChoices }[] = [
-  { label: "You set up maps", detail: "Your AI suggests each grid and you confirm it. It doesn't draw walls, doors or windows.", choices: { aiGrid: false, aiWalls: false, aiTerrain: false } },
-  { label: "Your AI sets grids", detail: "Its grid counts only when grid detection agrees. You confirm the rest. It doesn't draw walls, doors or windows.", choices: { aiGrid: true, aiWalls: false, aiTerrain: false } },
-  { label: "Your AI sets grids, walls, doors and windows", detail: "Its grid counts only when grid detection agrees. You see every wall, door and window before publishing, and anything it can't work out is left for you.", choices: { aiGrid: true, aiWalls: true, aiTerrain: false } },
-  { label: "Your AI sets grids, walls and terrain", detail: "As above, and it also proposes Difficult and Blocked squares. You see them before publishing and can clear them.", choices: { aiGrid: true, aiWalls: true, aiTerrain: true } },
+  { label: "You set up maps", detail: "Your AI suggests grids for you to confirm. You add walls, doors, windows and terrain yourself.", choices: { aiGrid: false, aiWalls: false, aiTerrain: false } },
+  { label: "Your AI sets grids", detail: "Your AI sets up map grids. You add walls, doors, windows and terrain yourself.", choices: { aiGrid: true, aiWalls: false, aiTerrain: false } },
+  { label: "Your AI sets grids, walls, doors and windows", detail: "Your AI sets up grids and draws walls, doors and windows. You add terrain yourself.", choices: { aiGrid: true, aiWalls: true, aiTerrain: false } },
+  { label: "Your AI sets grids, walls and terrain", detail: "Your AI also adds doors and windows, and proposes Difficult and Blocked terrain squares that you can clear.", choices: { aiGrid: true, aiWalls: true, aiTerrain: true } },
 ];
 
 const sameChoices = (a: BuildChoices, b: BuildChoices) => a.aiGrid === b.aiGrid && a.aiWalls === b.aiWalls && a.aiTerrain === b.aiTerrain;
@@ -64,8 +64,8 @@ const sameChoices = (a: BuildChoices, b: BuildChoices) => a.aiGrid === b.aiGrid 
 function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange: (choices: BuildChoices) => void }) {
   const group = useId();
   return (
-    <fieldset className="build-choices">
-      <legend>How much map setup your AI does</legend>
+    <fieldset className="build-choices build-map-setups">
+      <legend>How much map setup should your AI do?</legend>
       {MAP_SETUPS.map((setup) => (
         <label key={setup.label} className="build-choice">
           <input
@@ -74,11 +74,11 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
             checked={sameChoices(setup.choices, choices)}
             onChange={() => onChange(setup.choices)}
           />
-          <span>{setup.label} <span className="muted small-print">{setup.detail}</span></span>
+          <span><strong>{setup.label}</strong> <span className="muted small-print">{setup.detail}</span></span>
         </label>
       ))}
       <details className="build-disclosure">
-        <summary>Choose each one separately</summary>
+        <summary>Customize what your AI can set up</summary>
         <ChoiceBoxes choices={choices} onChange={onChange} />
       </details>
     </fieldset>
@@ -127,12 +127,12 @@ function NewBuildDialog({ open, onClose, onAfterClose, onStarted }: { open: bool
   }
 
   return (
-    <Modal open={open} title="New build" onClose={cancel} onAfterClose={onAfterClose} closeLabel="Cancel" initialFocus={nameField}>
+    <Modal open={open} title="New build" className="build-new-modal" onClose={cancel} onAfterClose={onAfterClose} closeLabel="Cancel" initialFocus={nameField}>
       <form className="build-form build-new" onSubmit={(e) => void start(e)}>
-        <p className="muted small-print">Your AI app reads your own folder of rules, sheets and art, and adds what it finds to a private draft.</p>
+        <p className="muted small-print">Use your AI app to turn your rules, character sheets and art into a private game draft. You review the results before publishing.</p>
         <label>Name of this build<input ref={nameField} value={name} maxLength={80} required onChange={(e) => setName(e.target.value)} /></label>
         <MapSetupFields choices={choices} onChange={setChoices} />
-        <p className="muted small-print">You can change this on the build page. Only you can publish.</p>
+        <p className="muted small-print">AI grids are accepted only when grid detection agrees; you confirm the rest. Review all map changes before publishing and finish anything your AI leaves incomplete. You can change these settings on the build page. Only you can publish.</p>
         {error && <p role="alert" className="error">{error}</p>}
         <p className="muted small-print">{RIGHTS_NOTICE}</p>
         <div className="row build-form-actions">
