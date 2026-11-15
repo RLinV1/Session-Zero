@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("the homepage torch bearer stays centered when dragging starts", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const lead = page.locator(".sight-lead");
   await lead.scrollIntoViewIfNeeded();
   const disc = lead.locator(".token-disc");
