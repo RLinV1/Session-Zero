@@ -113,7 +113,7 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls, doors and windows/ }));
     const boxes = within(form).getAllByRole("checkbox") as HTMLInputElement[];
     expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
-    fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids It/ }));
+    fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids Your/ }));
     expect(boxes.map((b) => b.checked)).toEqual([true, false, false]);
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Lanternfall" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });

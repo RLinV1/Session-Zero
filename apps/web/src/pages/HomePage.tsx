@@ -63,7 +63,6 @@ export function HomePage() {
         <ClosingBand />
       </main>
 
-      <p className="landing-shell home-footer"><a href="/demos/apartments">{t("home.isometricLink")}</a></p>
       <SiteFooter />
     </div>
   );
