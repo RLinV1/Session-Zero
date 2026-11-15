@@ -676,7 +676,7 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
     const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-roster-row .build-check input")];
     await click(boxes[0]);
     await click(boxes[2]);
-    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("2 chosenClearRemove from draftPublish 2");
+    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("2 chosenCancelRemove from draftPublish 2");
     await click(button("Remove from draft"));
     const dialog = document.querySelector("dialog[open]")!;
     expect(dialog.querySelector("h2")?.textContent).toBe("Remove 2 items from this draft?");
@@ -710,7 +710,21 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
     await open(detail({ items: [goblin()] }));
     expect(host.querySelector(".build-publish-bar")).toBeNull();
     await click(host.querySelector(".build-check input") ?? undefined);
-    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("1 chosenClearRemove from draftPublish 1");
+    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("1 chosenCancelRemove from draftPublish 1");
+  });
+
+  it("puts publishing and Cancel by the heading, before review, and Cancel clears only the selection", async () => {
+    await open(detail({ items: [goblin(), map()] }));
+    const publish = host.querySelector("#build-publish")!;
+    expect(publish.compareDocumentPosition(host.querySelector(".build-layout")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await click(button("Choose everything"));
+    const bar = host.querySelector(".build-publish-bar-top")!;
+    expect(bar.compareDocumentPosition(host.querySelector(".build-layout")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await click([...bar.querySelectorAll("button")].find((b) => b.textContent === "Cancel"));
+    expect(host.querySelector(".build-publish-bar-top")).toBeNull();
+    expect(host.querySelector("#build-publish .build-section-sum")?.textContent).toBe("0 of 2 chosen");
+    expect(builds.publish).not.toHaveBeenCalled();
+    expect(builds.removeItem).not.toHaveBeenCalled();
   });
 
   it("offers no grid to confirm on a UVTT map, whose grid is exact", async () => {
@@ -1032,5 +1046,75 @@ describe("the AI's terrain in review (FR-GM-27, ADR 0071)", () => {
     await open(detail({ items: [cave(), goblin(), encounter([{ creatureKey: "goblin", square: { column: 3, row: 3 }, hidden: false }])] }));
     expect(drawn(".build-plot")).toEqual(["difficult", "difficult", "blocked"]);
     expect(text()).toContain("Goblin at column 3, row 3 stands on Blocked terrain, so it couldn't move. Move it in the encounter's editor, or clear the terrain.");
+  });
+});
+
+
+describe("fixing encounter positions on their map", () => {
+  const grid = { cellSize: 70, offsetX: 18, offsetY: 26, unitsPerCell: 5, unitLabel: "ft" };
+  const setup = async (square: { column: number; row: number } | null = { column: 1, row: 2 }, terrain: unknown[] = []) => {
+    const scene = encounter([{ creatureKey: "goblin", name: "Guardian", square, hidden: true }]);
+    builds.editEncounter.mockResolvedValue({ item: scene });
+    await open(detail({ files: [file(), file({ id: "art", kind: "token", url: "/uploads/guardian.webp" })], items: [
+      goblin({}, { size: 2, imageFileId: "art" }),
+      map({ gridStatus: "confirmed", grid, setup: { openings: [], lines: [], marks: [], terrain, terrainGrid: grid } }), scene,
+    ] }));
+    await click(button(square ? "Edit tokens" : "Edit token positions"));
+    const svg = host.querySelector<SVGSVGElement>("dialog[open] .build-token-map > svg")!;
+    svg.getBoundingClientRect = () => ({ left: 100, top: 50, width: 350, height: 350 } as DOMRect);
+    svg.setPointerCapture = vi.fn();
+    svg.releasePointerCapture = vi.fn();
+    return svg;
+  };
+  const pointer = async (svg: SVGSVGElement, type: string, x: number, y: number, token = false) => {
+    const target = token ? svg.querySelector("[data-token-index]")! : svg;
+    await act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      target.dispatchEvent(event);
+    });
+  };
+  const save = async () => {
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Save"));
+    return builds.editEncounter.mock.calls[0]![2] as { tokens: { square: { column: number; row: number } | null }[] };
+  };
+
+  it("opens directly from To fix, uses portraits, and places unplaced tokens without coordinate inputs", async () => {
+    const svg = await setup(null);
+    expect(host.querySelector("input[aria-label$='column'], input[aria-label$='row']")).toBeNull();
+    await click(button("Place on map"));
+    // Display coordinates are half of native map pixels, with a shifted grid and a two-square token.
+    await pointer(svg, "pointerdown", 214, 168);
+    await pointer(svg, "pointerup", 214, 168);
+    expect(svg.querySelector("image")?.getAttribute("href")).toBe("/uploads/guardian.webp");
+    expect((await save()).tokens[0]!.square).toEqual({ column: 2, row: 2 });
+  });
+
+  it("keeps the grab point stable while dragging on a scaled map, then saves the new square", async () => {
+    const svg = await setup();
+    await pointer(svg, "pointerdown", 179, 168, true);
+    await pointer(svg, "pointermove", 249, 203);
+    await pointer(svg, "pointerup", 249, 203);
+    expect(svg.setPointerCapture).toHaveBeenCalledWith(1);
+    expect((await save()).tokens[0]!.square).toEqual({ column: 3, row: 3 });
+  });
+
+  it("keeps large tokens wholly on the map and restores the position when a drag is cancelled", async () => {
+    const svg = await setup();
+    await pointer(svg, "pointerdown", 179, 168, true);
+    await pointer(svg, "pointermove", 999, 999);
+    expect(svg.querySelector(".build-edit-token-disc")?.getAttribute("cx")).toBe("578");
+    await pointer(svg, "pointercancel", 999, 999);
+    expect((await save()).tokens[0]!.square).toEqual({ column: 1, row: 2 });
+  });
+
+  it("rejects Blocked terrain and lets the focused token move with arrow keys", async () => {
+    const svg = await setup({ column: 1, row: 2 }, [{ row: 3, start: 3, end: 4, kind: "blocked" }]);
+    await pointer(svg, "pointerdown", 179, 168, true);
+    await pointer(svg, "pointermove", 249, 203);
+    await pointer(svg, "pointerup", 249, 203);
+    expect(host.querySelector(".build-placement-status")?.textContent).toContain("Blocked terrain");
+    await act(async () => { svg.querySelector("[data-token-index]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    expect((await save()).tokens[0]!.square).toEqual({ column: 0, row: 2 });
   });
 });

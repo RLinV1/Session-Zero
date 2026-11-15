@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Plus, Trash } from "@phosphor-icons/react";
-import { CONDITIONS, type AttackRange, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState } from "@vtt/shared";
+import { CONDITIONS, type AttackRange, type BuildFileView, type ConditionId, type DraftCreatureState, type DraftEncounterState, type TerrainRun } from "@vtt/shared";
 import { IconAction } from "../../ui/IconAction";
 import { DiceField } from "../../panels/AttackPanel";
 import { poolOf, type DicePool } from "../../ui/dicePool";
 import { tokenOrder } from "./buildOrder";
+import { DraftEncounterMap, type EncounterEditGrid } from "./DraftEncounterMap";
 
 const optionalNumber = (text: string): number | null => (text.trim() === "" ? null : Number(text));
 /** A draft attack: its rolls are built with the dice builder (dice-pool); null is a blank roll. */
@@ -107,17 +108,20 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
   );
 }
 
-interface TokenRow { creatureKey: string; name: string; column: string; row: string; hidden: boolean }
+interface TokenRow { creatureKey: string; name: string; square: { column: number; row: number } | null; hidden: boolean }
 
 /**
  * A draft encounter's name and tokens. Squares are the top-left square a token covers.
  *
- * Tokens are listed in the page's order (buildOrder.ts), with each creature's tokens together and
- * its name said once. Column headings are said once too, and Remove is an icon, so a long list
- * reads as a table rather than a wall of repeated words. Saving keeps the AI's own order.
+ * Place tokens directly on their map. The roster groups each creature's tokens for readability;
+ * saving preserves the AI's original order.
  */
-export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
+export function DraftEncounterEditor({ data, mapFile, files, grid, terrain, onSave, onCancel, creature }: {
   data: DraftEncounterState;
+  mapFile?: BuildFileView;
+  files: readonly BuildFileView[];
+  grid: EncounterEditGrid | null;
+  terrain: readonly TerrainRun[];
   creature: (key: string) => DraftCreatureState | undefined;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
@@ -125,8 +129,9 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
   const creatureName = (key: string) => creature(key)?.name ?? key;
   const [name, setName] = useState(data.name);
   const [tokens, setTokens] = useState<TokenRow[]>(data.tokens.map((t) => ({
-    creatureKey: t.creatureKey, name: t.name ?? "", column: t.square ? String(t.square.column) : "", row: t.square ? String(t.square.row) : "", hidden: t.hidden,
+    creatureKey: t.creatureKey, name: t.name ?? "", square: t.square, hidden: t.hidden,
   })));
+  const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const setToken = (index: number, change: Partial<TokenRow>) => setTokens((all) => all.map((t, i) => (i === index ? { ...t, ...change } : t)));
@@ -141,7 +146,7 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
         tokens: tokens.map((t) => ({
           creatureKey: t.creatureKey,
           ...(t.name.trim() ? { name: t.name.trim() } : {}),
-          square: t.column.trim() === "" || t.row.trim() === "" ? null : { column: Number(t.column), row: Number(t.row) },
+          square: t.square,
           hidden: t.hidden,
         })),
       });
@@ -156,12 +161,14 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
       <label>Name<input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></label>
       <fieldset>
         <legend>Tokens</legend>
-        <p className="muted small-print">A square is the top-left square the token covers. Leave column and row blank to place it later.</p>
-        {tokens.length > 0 && (
-          <div className="build-token-row build-token-head" aria-hidden="true">
-            <span>Creature</span><span>Name on the board</span><span>Column</span><span>Row</span><span>Hidden</span><span />
-          </div>
-        )}
+        <p className="muted small-print">Drag tokens to move them. Choose Place on map for an unplaced token, then click an open space. Changes are applied when you save.</p>
+        {mapFile && grid ? (
+          <DraftEncounterMap file={mapFile} files={files} grid={grid} terrain={terrain} tokens={tokens} creature={creature}
+            selected={selected} onSelect={setSelected} disabled={saving} onMove={(index, square) => setToken(index, { square })} />
+        ) : <p className="muted small-print">{mapFile ? "Set this map's grid before placing tokens." : "Add this encounter's map before placing tokens."}</p>}
+        {tokens.length > 0 && <div className="build-token-row build-token-head" aria-hidden="true">
+          <span>Creature</span><span>Name on the board</span><span>Position</span><span>Hidden</span><span />
+        </div>}
         {tokenOrder(tokens, creature).map((i, n, order) => {
           const token = tokens[i]!;
           const of = creatureName(token.creatureKey);
@@ -169,24 +176,19 @@ export function DraftEncounterEditor({ data, onSave, onCancel, creature }: {
           const firstOfCreature = n === 0 || tokens[order[n - 1]!]!.creatureKey !== token.creatureKey;
           const who = token.name.trim() || of;
           return (
-            <div className={firstOfCreature ? "build-token-row build-token-first" : "build-token-row"} key={i}>
+            <div className={`build-token-row${firstOfCreature ? " build-token-first" : ""}${selected === i ? " is-selected" : ""}`} key={i}>
               <span className="build-token-of">{firstOfCreature ? of : ""}</span>
               <input aria-label={`${who}: name on the board`} placeholder={of} value={token.name} maxLength={60} onChange={(e) => setToken(i, { name: e.target.value })} />
-              {/* The words show only on a phone, where the table's headings are gone. */}
-              <label className="build-token-field">
-                <span className="build-token-field-word" aria-hidden="true">Column</span>
-                <input aria-label={`${who}: column`} placeholder="Column" inputMode="numeric" value={token.column} onChange={(e) => setToken(i, { column: e.target.value })} />
-              </label>
-              <label className="build-token-field">
-                <span className="build-token-field-word" aria-hidden="true">Row</span>
-                <input aria-label={`${who}: row`} placeholder="Row" inputMode="numeric" value={token.row} onChange={(e) => setToken(i, { row: e.target.value })} />
-              </label>
+              <button type="button" className="small build-token-place" aria-label={`${token.square ? "Reposition" : "Place"} ${who} on map`}
+                aria-pressed={selected === i} disabled={!mapFile || !grid || saving} onClick={() => setSelected(selected === i ? null : i)}>
+                {selected === i ? "Click map to place" : token.square ? "Reposition" : "Place on map"}
+              </button>
               <label className="build-token-hidden">
                 <input type="checkbox" checked={token.hidden} onChange={(e) => setToken(i, { hidden: e.target.checked })} />
                 <span className="build-token-hidden-word" aria-hidden="true">Hidden</span>
                 <span className="sr-only">{who} is hidden</span>
               </label>
-              <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove ${who}`} danger onClick={() => setTokens((all) => all.filter((_, x) => x !== i))} />
+              <IconAction icon={<Trash size={16} aria-hidden="true" />} label={`Remove ${who}`} danger onClick={() => { setSelected(null); setTokens((all) => all.filter((_, x) => x !== i)); }} />
             </div>
           );
         })}

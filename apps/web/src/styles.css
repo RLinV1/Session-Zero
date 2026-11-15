@@ -1618,17 +1618,23 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .build-conditions { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--space-1); }
 .build-attack { align-items: center; }
 /* The token editor as a table: headings said once, a creature's name once above its tokens. */
-.build-token-row { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(8rem, 1.4fr) 4rem 4rem 3.25rem 2.1rem; gap: var(--space-1) var(--space-2); align-items: center; }
+.build-token-row { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(8rem, 1.4fr) minmax(8rem, auto) 3.25rem 2.1rem; gap: var(--space-1) var(--space-2); align-items: center; }
 .build-token-head { font-size: 0.8rem; color: var(--muted); }
-.build-token-head span:nth-child(5) { text-align: center; }
+.build-token-head span:nth-child(4) { text-align: center; }
 .build-token-first:not(.build-token-head + .build-token-first) { border-top: 1px solid var(--border); padding-top: var(--space-2); margin-top: var(--space-1); }
 .build-token-of { font-size: 0.85rem; font-weight: 600; min-width: 0; }
 .build-token-hidden { display: flex; align-items: center; justify-content: center; gap: 0.3rem; font-size: 0.85rem; }
 .build-token-hidden input { width: auto; min-height: 0; }
 .build-token-hidden-word { display: none; }
-.build-token-field { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.build-token-field input { width: 100%; min-width: 0; }
-.build-token-field-word { display: none; font-size: 0.75rem; color: var(--muted); }
+.build-token-row.is-selected .build-token-place { border-color: var(--accent); color: var(--accent-text); }
+.build-token-map { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); line-height: 0; }
+.build-token-map > img { display: block; width: 100%; height: 100%; object-fit: fill; user-select: none; pointer-events: none; }
+.build-token-map > svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; cursor: crosshair; }
+.build-edit-token { cursor: grab; outline: none; }
+.build-edit-token:active { cursor: grabbing; }
+.build-edit-token.is-selected .build-edit-token-outline, .build-edit-token:focus-visible .build-edit-token-outline { stroke: var(--accent); stroke-width: 5px; }
+.build-edit-token text { fill: #fff; stroke: #10151a; stroke-width: 3px; paint-order: stroke; pointer-events: none; font-weight: 600; }
+.build-placement-status { margin: 0; min-height: 2.5em; color: var(--muted); line-height: 1.4; }
 /* Per-card and per-row actions are icons, set apart at the card's foot; text actions read as links. */
 .build-card-tools { display: flex; justify-content: flex-end; gap: var(--space-1); margin-top: auto; margin-left: auto; }
 .build-text-action { display: inline-flex; align-items: center; gap: 0.35rem; align-self: flex-start; }
@@ -1693,7 +1699,8 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   .build-facts dd { margin-bottom: 0.35rem; }
 }
 /* The selection stays in view while ticking items far up the page. */
-.build-publish-bar { position: sticky; bottom: var(--space-2); z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface); box-shadow: 0 16px 48px rgb(15 20 24 / 45%); }
+.build-publish-bar { position: sticky; bottom: var(--space-2); z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface); box-shadow: 0 16px 48px rgb(15 20 24 / 45%); }
+.build-publish-bar-top { top: var(--space-2); bottom: auto; margin-top: var(--space-3); }
 @media (pointer: coarse) {
   .build-check { min-height: 44px; padding-block: var(--space-1); }
 }
@@ -1833,13 +1840,12 @@ dialog.modal.build-new-modal { width: min(52rem, calc(100vw - 2rem)); }
 @media (max-width: 640px) {
   .build-attack { grid-template-columns: 1fr 1fr; }
   .build-attack input:first-child { grid-column: 1 / -1; }
-  .build-token-row { grid-template-columns: 1fr 1fr auto auto; }
+  .build-token-row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .build-token-head { display: none; }
   .build-token-of { grid-column: 1 / -1; }
   .build-token-row:not(.build-token-first) .build-token-of { display: none; }
   .build-token-row input:nth-of-type(1) { grid-column: 1 / -1; }
   .build-token-hidden-word { display: inline; }
-  .build-token-field-word { display: block; }
   .build-token-row { align-items: end; }
 }
 
@@ -2127,6 +2133,7 @@ dialog.modal::backdrop { background: rgba(6, 8, 11, 0.62); }
 dialog.modal.grid-editor-modal { width: min(68rem, calc(100vw - 2rem)); }
 /* Room for the token table: a name column wide enough to read. */
 dialog.modal.build-editor-modal { width: min(46rem, calc(100vw - 2rem)); }
+dialog.modal.build-encounter-editor-modal { width: min(64rem, calc(100vw - 2rem)); }
 /* Preparing a new map (KAN-59): aligning a grid is a comparison that needs width (contract §13.3). */
 dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .grid-editor { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }

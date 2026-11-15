@@ -131,7 +131,7 @@ function Thumb({ url }: { url: string | null }) {
  * What still needs fixing, one row per item. When every fix on an item ends with the same
  * instruction, such as where to do it, it is said once under the list rather than on every line.
  */
-export function ProblemGroups({ groups, linkTo, thumbFor }: { groups: readonly IssueGroup[]; linkTo: LinkTo; thumbFor?: ThumbFor }) {
+export function ProblemGroups({ groups, linkTo, thumbFor, editEncounter }: { groups: readonly IssueGroup[]; linkTo: LinkTo; thumbFor?: ThumbFor; editEncounter?: (key: string) => void }) {
   return (
     <ul className="plain build-groups">
       {groups.map((group) => {
@@ -146,6 +146,7 @@ export function ProblemGroups({ groups, linkTo, thumbFor }: { groups: readonly I
                 {group.issues.map((issue, i) => <li key={i}>{shared ? parts[i]![0] : issue.message}</li>)}
               </ul>
               {shared && <p className="muted small-print">{shared}</p>}
+              {group.target?.kind === "encounter" && editEncounter && <button type="button" className="small build-text-action" onClick={() => editEncounter(group.target!.key)}>Edit token positions</button>}
             </div>
           </li>
         );
@@ -180,7 +181,7 @@ export function NoteGroups({ groups, linkTo, thumbFor }: { groups: readonly Issu
  * Fixes and notes as one queue, switched with a segmented control rather than two long sections.
  * Fixes come first while there are any. A link to `#build-notes` switches to the notes.
  */
-export function ReviewQueue({ problems, notes, linkTo, thumbFor }: { problems: readonly IssueGroup[]; notes: readonly IssueGroup[]; linkTo: LinkTo; thumbFor: ThumbFor }) {
+export function ReviewQueue({ problems, notes, linkTo, thumbFor, editEncounter }: { problems: readonly IssueGroup[]; notes: readonly IssueGroup[]; linkTo: LinkTo; thumbFor: ThumbFor; editEncounter?: (key: string) => void }) {
   const count = (groups: readonly IssueGroup[]) => groups.reduce((n, g) => n + g.issues.length, 0);
   const [tab, setTab] = useState<"fix" | "notes">(problems.length > 0 ? "fix" : "notes");
   const shown = tab === "fix" && problems.length === 0 ? "notes" : tab === "notes" && notes.length === 0 ? "fix" : tab;
@@ -207,7 +208,7 @@ export function ReviewQueue({ problems, notes, linkTo, thumbFor }: { problems: r
         </div>
       </div>
       {shown === "fix"
-        ? <ProblemGroups groups={problems} linkTo={linkTo} thumbFor={thumbFor} />
+        ? <ProblemGroups groups={problems} linkTo={linkTo} thumbFor={thumbFor} editEncounter={editEncounter} />
         : (
           <>
             <p className="muted small-print">What your AI wasn't sure of, or couldn't store. Nothing here stops publishing.</p>
