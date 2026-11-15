@@ -267,6 +267,11 @@ function Build({ id }: { id: string }) {
     const map = maps.find((m) => m.key === key);
     return map ? files.find((f) => f.id === mapOf(map).fileId) : undefined;
   };
+  const editingMap = editingEncounter ? maps.find((m) => m.key === encounterOf(editingEncounter).mapKey) : undefined;
+  const editingMapData = editingMap ? mapOf(editingMap) : undefined;
+  const editingMapFile = editingMapData ? files.find((f) => f.id === editingMapData.fileId) : undefined;
+  const editingMapGrid = editingMapData?.grid ?? editingMapData?.proposedGrid ?? editingMapFile?.grid ?? null;
+  const editingTerrain = editingMapData && draftTerrainState(editingMapData.setup, editingMapGrid) === "ready" ? editingMapData.setup?.terrain ?? [] : [];
   const thumbFor: ThumbFor = (target) => {
     if (!target) return null;
     if (target.kind === "map") return fileOfMap(target.key)?.url ?? null;
@@ -332,6 +337,35 @@ function Build({ id }: { id: string }) {
               : <>{problems.length === 0 ? "Nothing needs fixing. Check each item, then " : "Fix what's listed, check each item, then "}<a href="#build-publish">publish what you choose</a>.</>}
           </p>
         )}
+        {detail && open && draftItems.length > 0 && (
+          <section className="build-section build-publish" aria-labelledby="build-publish-title" id="build-publish">
+            <div className="build-section-head">
+              <h2 id="build-publish-title">Publish</h2>
+              <span className="build-section-sum">{chosen.length} of {draftItems.length} chosen</span>
+            </div>
+            <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
+            <div className="row">
+              <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Choose everything</button>
+              {ready.length > 0 && ready.length < draftItems.length && (
+                <button type="button" disabled={busy} onClick={() => setSelected(new Set(ready.map(itemId)))}>Choose what's ready ({ready.length})</button>
+              )}
+            </div>
+            {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed below before publishing.</p>}
+            {chosen.length === 0 && <p className="muted small-print">Choose items below, or choose everything here. Publish adds your selection to your library; Cancel clears your selection.</p>}
+          </section>
+        )}
+        {detail && open && chosen.length > 0 && (
+          <div className="build-publish-bar build-publish-bar-top" role="region" aria-label="Chosen items">
+            <span><strong>{chosen.length}</strong> chosen</span>
+            <div className="row">
+              <button type="button" className="link" onClick={() => setSelected(new Set())}>Cancel</button>
+              <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => setRemovingDraft(chosen)}>
+                <Trash size={16} aria-hidden="true" />Remove from draft
+              </button>
+              <button type="button" className="primary" disabled={chosenChanged || busy} onClick={startPublish}>{publishLabel}</button>
+            </div>
+          </div>
+        )}
         {error && <p ref={errorRef} tabIndex={-1} role="alert" className="error build-error">{error}</p>}
         {!detail && !error && <p className="muted" aria-busy="true">Loading…</p>}
 
@@ -372,7 +406,8 @@ function Build({ id }: { id: string }) {
               )}
 
               {open && issues.length > 0 && (
-                <ReviewQueue problems={issueGroups(problems)} notes={issueGroups(notes)} linkTo={linkTo} thumbFor={thumbFor} />
+                <ReviewQueue problems={issueGroups(problems)} notes={issueGroups(notes)} linkTo={linkTo} thumbFor={thumbFor}
+                  editEncounter={(key) => { const found = encounters.find((item) => item.key === key); if (found) setEditingEncounter(found); }} />
               )}
 
               {open && maps.length > 0 && (
@@ -393,24 +428,6 @@ function Build({ id }: { id: string }) {
                 <EncounterBoard encounters={encounters} maps={maps} files={files} creature={creatureData} idFor={cardId}
                   checkbox={checkbox} blockedText={blockedText} busy={busy} onEdit={setEditingEncounter}
                   extras={(item) => <Flags item={item} />} />
-              )}
-
-              {open && draftItems.length > 0 && (
-                <section className="build-section build-publish" aria-labelledby="build-publish-title" id="build-publish">
-                  <div className="build-section-head">
-                    <h2 id="build-publish-title">Publish</h2>
-                    <span className="build-section-sum">{chosen.length} of {draftItems.length} chosen</span>
-                  </div>
-                  <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
-                  <div className="row">
-                    <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Choose everything</button>
-                    {ready.length > 0 && ready.length < draftItems.length && (
-                      <button type="button" disabled={busy} onClick={() => setSelected(new Set(ready.map(itemId)))}>Choose what's ready ({ready.length})</button>
-                    )}
-                  </div>
-                  {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed, above, before publishing.</p>}
-                  {chosen.length === 0 && <p className="muted small-print">Tick Choose on what you want. A bar then appears to publish it or remove it from the draft.</p>}
-                </section>
               )}
 
               {/* Stays while the build has encounters in the library, not only just after publishing. */}
@@ -467,19 +484,6 @@ function Build({ id }: { id: string }) {
                 </section>
               )}
 
-              {/* One bar for what's chosen: publish it, or take it out of the draft. */}
-              {open && chosen.length > 0 && (
-                <div className="build-publish-bar" role="region" aria-label="Chosen items">
-                  <span><strong>{chosen.length}</strong> chosen</span>
-                  <div className="row">
-                    <button type="button" className="link" onClick={() => setSelected(new Set())}>Clear</button>
-                    <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => setRemovingDraft(chosen)}>
-                      <Trash size={16} aria-hidden="true" />Remove from draft
-                    </button>
-                    <button type="button" className="primary" disabled={chosenChanged || busy} onClick={startPublish}>{publishLabel}</button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -537,9 +541,10 @@ function Build({ id }: { id: string }) {
           )}
         </Modal>
 
-        <Modal open={editingEncounter !== null} title={editingEncounter ? `Edit ${nameOf(editingEncounter)}` : "Edit"} className="build-editor-modal" onClose={() => setEditingEncounter(null)}>
+        <Modal open={editingEncounter !== null} title={editingEncounter ? `Edit ${nameOf(editingEncounter)}` : "Edit"} className="build-editor-modal build-encounter-editor-modal" onClose={() => setEditingEncounter(null)}>
           {editingEncounter && (
-            <DraftEncounterEditor data={encounterOf(editingEncounter)} creature={(key) => { const c = creatures.find((x) => x.key === key); return c ? creatureOf(c) : undefined; }}
+            <DraftEncounterEditor data={encounterOf(editingEncounter)} mapFile={editingMapFile} files={files} grid={editingMapGrid} terrain={editingTerrain}
+              creature={(key) => { const c = creatures.find((x) => x.key === key); return c ? creatureOf(c) : undefined; }}
               onCancel={() => setEditingEncounter(null)}
               onSave={async (patch) => {
                 markReviewed((await api.builds.editEncounter(id, editingEncounter.key, patch)).item);
