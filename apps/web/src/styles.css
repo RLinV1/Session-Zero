@@ -2997,8 +2997,10 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }
-.guest-tutorial .tutorial-skip { margin-left: auto; flex: 0 0 auto; width: auto; padding: 0.15rem 0.5rem; font-size: var(--fs-xs, 0.75rem); }
-.guest-tutorial .icon-only { display: inline-flex; align-items: center; justify-content: center; padding-inline: var(--space-2); font-size: 1.1em; }
+.guest-tutorial .tutorial-nav { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.guest-tutorial .tutorial-nav:empty { display: none; }
+.guest-tutorial .tutorial-nav button { min-width: 5rem; }
+.guest-tutorial .guide-skip { margin-left: auto; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
 /* Highlight the control without dimming the map or taking clicks. Under the card (40). */
 .tutorial-spotlight {
@@ -3041,14 +3043,14 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:not(:last-child) { display: none; }
 .guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:last-child { display: list-item; list-style: none; }
 .guest-tutorial.has-example[data-playing="true"] .tutorial-body,
-.guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
+.guest-tutorial.has-example[data-playing="true"] .tutorial-progress .guide-count { display: none; }
 .guest-tutorial.is-following::before { display: none; }
 .guest-tutorial.is-following { max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; }
 @media (min-width: 640px) {
   .guest-tutorial.has-example.sheet { left: auto; right: var(--space-4); margin-inline: 0; width: min(20rem, calc(100vw - 2 * var(--space-4))); top: auto; bottom: var(--space-4); }
 }
 @media (max-width: 639px) {
-  .guest-tutorial.has-example .tutorial-body, .guest-tutorial.has-example .tutorial-progress { display: none; }
+  .guest-tutorial.has-example .tutorial-body, .guest-tutorial.has-example .tutorial-progress .guide-count { display: none; }
   .guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
 }
 

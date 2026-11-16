@@ -1,4 +1,3 @@
-import { ArrowLeft, ArrowRight } from "@phosphor-icons/react";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
@@ -149,11 +148,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
-  // A step the guest went back to stays put, even when its work is already done.
   // Any pointer or key press stops a running example first, so what Skip was pressed during is noted before that re-render.
   const skipWhilePlaying = useRef(false);
-  const [pinned, setPinned] = useState<number | null>(null);
-  const settled = !run.playing && !demoBusy && step !== null && step > 0 && step !== pinned ? settle(step, facts) : step;
+  const settled = !run.playing && !demoBusy && step !== null && step > 0 ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
@@ -191,10 +188,22 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const pointerRoute = useRef<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
+  const [introAt, setIntroAt] = useState<{ x: number; y: number } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
   const shown = (guest || offered) && (progress === null || typeof progress === "number");
   const stepName = step === null ? null : TUTORIAL_STEPS[step]!;
+  // The first question sits in the middle of the map, not of the window.
+  useLayoutEffect(() => {
+    if (!shown || step !== null) return;
+    const centre = () => {
+      const r = document.querySelector(".board")?.getBoundingClientRect();
+      setIntroAt(r && r.width > 0 && r.height > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null);
+    };
+    centre();
+    window.addEventListener("resize", centre);
+    return () => window.removeEventListener("resize", centre);
+  }, [shown, step]);
 
   // Next to the step's control; a bottom sheet when it is hidden, huge (the board) or the screen is narrow.
   useLayoutEffect(() => {
@@ -368,7 +377,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
       data-side={place?.side}
       data-step={stepName}
       data-playing={run.playing}
-      style={place && !docked && !asking ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
+      style={asking && introAt ? ({ top: introAt.y, left: introAt.x, right: "auto", bottom: "auto", margin: 0, transform: "translate(-50%, -50%)" } as CSSProperties) : place && !docked && !asking ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
     >
       <span className="sr-only" role="status" aria-live="polite">{stepName ? t(TITLE[stepName]) : ""}</span>
@@ -383,7 +392,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
         </>
       ) : (
         <>
-          <p className="muted small-print tutorial-progress">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</p>
+          <div className="guide-card-head tutorial-progress">
+            <span className="guide-count">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</span>
+            {stepName !== "done" && <button type="button" className="link guide-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>}
+          </div>
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
           <p className="tutorial-body">
             {stepName === "done"
@@ -419,28 +431,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             {stepName === "table" && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>
             )}
-            {stepName === "done" ? (
+            {stepName === "done" && (
               <>
                 {guest && <button type="button" className="small primary" onClick={() => { set("done"); navigate(SAVE_ACCOUNT_HREF); }}>{t("guest.save")}</button>}
                 <button type="button" className="secondary small" onClick={() => set("done")}>{t("tutorial.finish")}</button>
               </>
-            ) : (
-              <button type="button" className="secondary small tutorial-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>
             )}
-          {step! > 1 && !run.playing && (
-            <button type="button" className="small secondary icon-only" aria-label={t("tutorial.back")} title={t("tutorial.back")} onClick={() => {
-              focusNext.current = true;
-              setPinned(step! - 1);
-              set(step! - 1);
-              const openBack = () => reveal(TUTORIAL_STEPS[step! - 1]!);
-              if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) void clear(stepName!).then(openBack);
-              else openBack();
-            }}><ArrowLeft aria-hidden="true" /></button>
-          )}
+          </div>
+          <div className="tutorial-nav">
           {stepName !== "table" && stepName !== "done" && !run.playing && (
-            <button type="button" className="small secondary icon-only" aria-label={t("tutorial.next")} title={t("tutorial.next")} onClick={() => {
+            <button type="button" className="small primary" onClick={() => {
               focusNext.current = true;
-              setPinned(null);
               const next = settle(step! + 1, facts);
               set(next);
               // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
@@ -449,7 +450,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
               if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) {
                 void clear(stepName!).then(openNext);
               } else openNext();
-            }}><ArrowRight aria-hidden="true" /></button>
+            }}>{t("tour.next")}</button>
           )}
           </div>
         </>
