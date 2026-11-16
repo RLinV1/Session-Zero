@@ -4,7 +4,7 @@ import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
 import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
-import { EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMoves, loadProgress, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
+import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
 const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
   table: "tutorial.table.title",
@@ -16,6 +16,10 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
   terrain: "tutorial.terrain.title",
   token: "tutorial.token.title",
   move: "tutorial.move.title",
+  encounter: "tutorial.encounter.title",
+  attack: "tutorial.attack.title",
+  ruling: "tutorial.ruling.title",
+  damage: "tutorial.damage.title",
   fog: "tutorial.fog.title",
   roll: "tutorial.roll.title",
   done: "tutorial.done.title",
@@ -25,7 +29,8 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
 const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
-const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll"]);
+const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll", ...COMBAT_TUTORIAL_STEPS]);
+const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open]";
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
@@ -61,6 +66,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
   const [sightEdits, setSightEdits] = useState(0);
   const [terrainEdits, setTerrainEdits] = useState(0);
   const baseInvites = useRef(invites);
+  // The roll log outlives the demo, so only attacks made after it began (or restarted) count.
+  const baseMarks = useRef(rollMarks(state.rolls));
   const positions = useRef(positionsOf(state.tokens));
 
   const nextPositions = useMemo(() => positionsOf(state.tokens), [state.tokens]);
@@ -91,6 +98,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     if (terrain) setTerrainEdits((n) => n + terrain);
   }, [mapKey, gridKey, wallKey, sightKey, terrainKey]);
 
+  const marks = useMemo(() => rollMarks(state.rolls), [state.rolls]);
   const facts: TutorialFacts = {
     tokens: Object.keys(state.tokens).length,
     fog: Object.keys(state.fog).length,
@@ -102,6 +110,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     sightEdits,
     terrainEdits,
     invites: invites - baseInvites.current,
+    encounters: state.initiative !== null ? 1 : 0,
+    attackRolls: countMarks(marks, baseMarks.current, "attack"),
+    rulings: countMarks(marks, baseMarks.current, "ruling"),
+    damageApplied: countMarks(marks, baseMarks.current, "damage"),
   };
 
   const focusNext = useRef(progress === null);
@@ -122,6 +134,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     if (restart === seenRestart.current) return;
     seenRestart.current = restart;
     baseInvites.current = invites;
+    baseMarks.current = marks;
     setMoves(0);
     setMapEdits(0);
     setGridEdits(0);
@@ -155,8 +168,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
         anchor = found;
         anchor?.setAttribute("data-tutorial-active", "");
       }
-      // Stay in the editor's top layer so its dialog does not hide or disable the demo.
-      const editor = document.querySelector<HTMLDialogElement>("dialog.map-editor[open]");
+      // Stay in the top layer of the dialog a lesson opens (map editor, map chooser, Share), or it would hide and disable the demo.
+      const editor = document.querySelector<HTMLDialogElement>(MODAL_HOSTS);
       setEditorHost(editor);
       const rect = found?.getBoundingClientRect();
       const vw = window.innerWidth;
@@ -257,7 +270,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
             {stepName === "table" && (
               <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>
             )}
-            {(stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!)) && (
+            {(stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) && (
               <button type="button" className="small secondary" onClick={() => {
                 focusNext.current = true;
                 const next = settle(step + 1, facts);

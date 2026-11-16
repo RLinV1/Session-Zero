@@ -454,7 +454,7 @@ function AttackForm({
                 options={presets.map((p, i) => ({ key: String(i), label: p.name, summary: <AttackStatsLine preset={p} grid={state.scene.grid} stacked={statsStacked} /> }))}
               />
             ) : (
-              <button type="button" className="secondary attack-add-first" onClick={() => setEditing("new")}>
+              <button type="button" className="secondary attack-add-first" data-tutorial="attack" onClick={() => setEditing("new")}>
                 <Plus size={14} aria-hidden="true" /> {t("attack.addAttack")}
               </button>
             )}
@@ -579,6 +579,7 @@ function AttackForm({
               <button
                 type="button"
                 className="attack-roll primary"
+                data-tutorial={followUp ? "damage" : "attack"}
                 disabled={busy || rolling || (!target && targets.length === 0)}
                 title={rolling ? t("attack.diceOnBoard") : undefined}
                 onClick={() => (!target ? onPickOnBoard() : followUp ? rollDamage(chosen, hits) : rollPreset(chosen))}

@@ -661,7 +661,7 @@ function MapSection(props: {
           // A fixed map (a template being edited, ADR 0033) offers only Edit map, with Grid and Fog.
           <div className="row button-row" data-tour="gm-grid">
             {!props.fixedMap && (
-              <button ref={changeMapRef} type="button" className="secondary small" onClick={(e) => {
+              <button ref={changeMapRef} type="button" className="secondary small" data-tutorial-change-open onClick={(e) => {
                 e.currentTarget.focus();
                 openEditor("change");
               }}>
@@ -695,7 +695,7 @@ function MapSection(props: {
               </label>
             )}
             {canPick && (
-              <button type="button" className="secondary" disabled={busy} onClick={() => setPicking(true)}>
+              <button type="button" className="secondary" disabled={busy} data-tutorial-change-open onClick={() => setPicking(true)}>
                 {guest ? t("add.builtInArt") : t("guide.map.library.title")}
               </button>
             )}
@@ -892,6 +892,7 @@ function MapSection(props: {
       {canPick && (
         <Modal
           open={picking}
+          className="map-picker"
           title={t("stage.chooseMap")}
           onClose={() => {
             setPicking(false);

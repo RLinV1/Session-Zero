@@ -217,6 +217,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                   <button
                     type="button"
                     className="icon-button share-copy"
+                    data-tutorial="invite"
                     aria-label={t("share.copyLink")}
                     title={t("share.copyLink")}
                     onClick={(e) => void copy(e.currentTarget, link, "link")}

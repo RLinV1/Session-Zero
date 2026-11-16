@@ -2988,7 +2988,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
 /* In the map editor, keep the mobile HUD and the tab bar available around the lesson. */
-.map-editor .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
+.map-editor .guest-tutorial.sheet-top, .map-picker .guest-tutorial.sheet-top, .share-modal .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }

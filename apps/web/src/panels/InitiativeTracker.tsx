@@ -105,7 +105,7 @@ export function InitiativeTracker({
             ) : (
               <>
                 <p className="muted">{t("init.none")}</p>
-                <button className="primary" type="button" data-tour="start-encounter" onClick={openSetup}>
+                <button className="primary" type="button" data-tour="start-encounter" data-tutorial="encounter" onClick={openSetup}>
                   {t("init.start")}
                 </button>
               </>
