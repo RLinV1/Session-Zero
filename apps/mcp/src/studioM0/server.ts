@@ -6,7 +6,7 @@ import { STUDIO_SCOPE, type Principal } from "./auth";
 import { renderMarkedCrop, renderProbeImage } from "./crop";
 import { downloadOriginal, type DownloadPolicy } from "./download";
 import { StudioError, summarize, type EvidenceLog, type WorkspaceStore } from "./store";
-import { VIEW_URI, versionedViewUri } from "./view";
+import { VIEW_URI } from "./view";
 
 /**
  * M0 ONLY — the fixture Studio's MCP tools (interactive-ai-scene-studio tasks 1.3–1.8). Every call is
@@ -21,6 +21,8 @@ export interface StudioServerDeps {
   download: DownloadPolicy;
   answerKeyFile: string;
   viewHtml: string;
+  /** versionedViewUri(viewHtml), hashed once at startup: the HTML never changes while running. */
+  viewUri: string;
   /** M0 operator replay of a host file descriptor after it expires (task 1.4). URLs stay in memory only. */
   descriptors: Map<string, string>;
 }
@@ -81,7 +83,7 @@ export function createStudioM0Server(deps: StudioServerDeps): McpServer {
   const workspaceFor = async (workspaceId?: string) => (workspaceId ? store.get(subject, workspaceId) : store.open(subject));
 
   // The open tool names the content-versioned URI; the stable one stays readable for hosts that cached it.
-  const viewUri = versionedViewUri(deps.viewHtml);
+  const { viewUri } = deps;
   for (const uri of [viewUri, VIEW_URI]) {
     registerAppResource(server, uri === VIEW_URI ? "Session Zero Studio M0" : "Session Zero Studio M0 (current)", uri, {
       description: "Fixture-only Studio proof view.",
@@ -146,7 +148,9 @@ export function createStudioM0Server(deps: StudioServerDeps): McpServer {
     let meta: Metadata;
     try {
       meta = await sharp(downloaded.bytes, { limitInputPixels: MAX_DECODED_PIXELS }).metadata();
-      await sharp(downloaded.bytes, { limitInputPixels: MAX_DECODED_PIXELS }).raw().toBuffer(); // full decode
+      // Decodes every pixel, so a truncated or corrupt file is refused, but keeps only a thumbnail:
+      // a sequential read streams the decode, where a raw buffer of the whole image could be 160 MB.
+      await sharp(downloaded.bytes, { limitInputPixels: MAX_DECODED_PIXELS, sequentialRead: true }).resize(64, 64, { fit: "inside" }).raw().toBuffer();
     } catch {
       throw new StudioError("That file isn't a readable PNG, JPEG or WebP image (or it's too large to decode). Nothing was stored.");
     }

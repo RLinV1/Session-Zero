@@ -1,8 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { NodeStreamableHTTPServerTransport, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
-import { createMcpHandler, isLegacyRequest, type McpServer } from "@modelcontextprotocol/server";
+import { NodeStreamableHTTPServerTransport, toNodeHandler } from "@modelcontextprotocol/node";
+import { createMcpHandler, isLegacyRequest, type McpHttpHandler, type McpServer } from "@modelcontextprotocol/server";
 import { createBuildMcpServer } from "./buildTools";
 import type { Principal } from "./studioM0/auth";
 import { createStudioM0, STUDIO_PATH, type StudioM0, type StudioM0Options } from "./studioM0";
@@ -37,6 +38,19 @@ export interface McpAppOptions {
 const rpcError = (res: Response, status: number, code: number, message: string) =>
   res.status(status).json({ jsonrpc: "2.0", error: { code, message }, id: null });
 
+/**
+ * What isLegacyRequest reads when it's handed the parsed body: the method, URL and headers. It
+ * classifies from the parsed value directly, so the body isn't serialized again just to route it.
+ */
+function classifyingRequest(req: Request): globalThis.Request {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (typeof value === "string") headers.set(name, value);
+    else if (Array.isArray(value)) for (const item of value) headers.append(name, item);
+  }
+  return new globalThis.Request(new URL(req.originalUrl, "http://mcp.invalid"), { method: req.method, headers });
+}
+
 export function buildMcpApp(options: McpAppOptions) {
   const pool = new SeatPool({ roomServerUrl: options.roomServerUrl, maxSockets: options.maxSockets, now: options.now });
   const limits = new Limits(options.now);
@@ -66,10 +80,22 @@ export function buildMcpApp(options: McpAppOptions) {
    * the envelope on every request and are served by the SDK's modern handler, also as plain JSON.
    * Either way nothing is streamed, and a proxy has nothing to buffer (design D5).
    */
-  const serve = (makeServer: (req: Request) => McpServer) => (req: Request, res: Response, next: NextFunction) => {
-    void (async () => {
-      const webRequest = await toWebRequest(req, req.body);
-      if (await isLegacyRequest(webRequest, req.body)) {
+  const modernHandlers: McpHttpHandler[] = [];
+  const serve = (makeServer: (req: Request) => McpServer) => {
+    // One modern handler per route, as the SDK intends: it tracks and closes each request's server
+    // itself, and toNodeHandler aborts an exchange whose client goes away. Its factory only gets the
+    // web Request, so the Express request (for req.ip, or the Studio principal) rides along in
+    // AsyncLocalStorage, which stays separate for concurrent requests.
+    const current = new AsyncLocalStorage<Request>();
+    const modern = createMcpHandler(() => {
+      const req = current.getStore();
+      if (!req) throw new Error("MCP server factory called outside a request");
+      return makeServer(req);
+    }, { legacy: "reject", responseMode: "json" });
+    modernHandlers.push(modern);
+    const modernNode = toNodeHandler(modern);
+    return (req: Request, res: Response, next: NextFunction) => void (async () => {
+      if (await isLegacyRequest(classifyingRequest(req), req.body)) {
         const server = makeServer(req);
         const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
         res.on("close", () => {
@@ -80,9 +106,7 @@ export function buildMcpApp(options: McpAppOptions) {
         await transport.handleRequest(req, res, req.body);
         return;
       }
-      const modern = createMcpHandler(() => makeServer(req), { legacy: "reject", responseMode: "json" });
-      res.on("close", () => void modern.close());
-      await toNodeHandler(modern)(req, res, req.body);
+      await current.run(req, () => modernNode(req, res, req.body));
     })().catch(next);
   };
 
@@ -141,7 +165,12 @@ export function buildMcpApp(options: McpAppOptions) {
   }, SWEEP_EVERY_MS);
   sweeper.unref();
 
-  return { app, pool, limits, stopSweeping: () => clearInterval(sweeper) };
+  return {
+    app, pool, limits,
+    stopSweeping: () => clearInterval(sweeper),
+    /** Aborts any modern exchange still in flight; the legacy leg holds nothing between requests. */
+    closeHandlers: () => Promise.all(modernHandlers.map((handler) => handler.close())),
+  };
 }
 
 /** Starts listening and returns the base URL and a way to stop, closing every seat socket. */
@@ -160,6 +189,7 @@ export async function startMcpServer(options: McpAppOptions & { port?: number; h
     port,
     close: async () => {
       built.stopSweeping();
+      await built.closeHandlers();
       built.pool.closeAll();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -8,7 +8,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMcpServer } from "../src/app";
-import { renderFixtureMap } from "../src/studioM0/store";
+import { MAX_IMPORTS_PER_WORKSPACE, renderFixtureMap } from "../src/studioM0/store";
 
 /**
  * interactive-ai-scene-studio M0: the fixture-only Studio proof endpoint. These are local checks of
@@ -23,6 +23,7 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
   let files: Server;
   let filesOrigin: string;
   let fixture: Buffer;
+  let truncated: Buffer;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(path.join(tmpdir(), "studio-m0-"));
@@ -32,8 +33,12 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     });
     base = `http://127.0.0.1:${mcp.port}`;
     fixture = await sharp({ create: { width: 300, height: 200, channels: 3, background: "#336699" } }).png().toBuffer();
+    // Noise, so the pixel data is long enough that cutting it in half leaves a header that still reads.
+    const noise = await sharp(randomBytes(300 * 200 * 3), { raw: { width: 300, height: 200, channels: 3 } }).png().toBuffer();
+    truncated = noise.subarray(0, Math.floor(noise.length / 2));
     files = createServer((req, res) => {
       if (req.url === "/map.png") return void res.writeHead(200, { "content-type": "image/png", "content-length": fixture.length }).end(fixture);
+      if (req.url === "/truncated.png") return void res.writeHead(200, { "content-type": "image/png" }).end(truncated);
       if (req.url === "/redirect") return void res.writeHead(302, { location: "/map.png" }).end();
       if (req.url === "/big") return void res.writeHead(200, { "content-length": String(30 * 1024 * 1024) }).end();
       res.writeHead(404).end();
@@ -172,6 +177,39 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     expect((await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/redirect`) })).isError).toBe(true);
     expect((await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/big`) })).isError).toBe(true);
     await client.close();
+  });
+
+  it("refuses a truncated image, and keeps only the latest few imports in memory", async () => {
+    await writeFile(path.join(dataDir, "file-origins.json"), JSON.stringify([filesOrigin]));
+    const client = await connect((await signIn("m0-tester-b")).token);
+    const file = (url: string) => ({ file: { download_url: url, file_id: "file_t", mime_type: "image/png", file_name: "map.png" } });
+    const cut = await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/truncated.png`) });
+    expect(cut.isError).toBe(true);
+    expect(JSON.stringify(cut.content)).toMatch(/isn't a readable/);
+    let last = "";
+    for (let i = 0; i < MAX_IMPORTS_PER_WORKSPACE + 2; i++) {
+      last = ((await client.callTool({ name: "studio_m0_import_file", arguments: file(`${filesOrigin}/map.png`) })).structuredContent as { fileId: string }).fileId;
+    }
+    const workspace = (await client.callTool({ name: "studio_m0_open", arguments: {} })).structuredContent as { mapFileId: string; files: { source: string }[] };
+    expect(workspace.files.filter((f) => f.source === "import")).toHaveLength(MAX_IMPORTS_PER_WORKSPACE);
+    expect(workspace.files.filter((f) => f.source === "fixture")).toHaveLength(1);
+    expect(workspace.mapFileId).toBe(last);
+    await client.close();
+  });
+
+  it("gives each concurrent 2026-07-28 request its own principal", async () => {
+    const modernCall = (token: string) => fetch(`${base}/mcp/studio-m0`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${token}`, "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/call", "mcp-name": "studio_m0_open" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "studio_m0_open", arguments: {}, _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "t", version: "0" }, "io.modelcontextprotocol/clientCapabilities": {} } } }),
+    }).then(async (res) => ((await res.json()) as { result: { structuredContent: { workspaceId: string } } }).result.structuredContent.workspaceId);
+    const [a, b] = await Promise.all([signIn("m0-tester-a"), signIn("m0-tester-b")]);
+    const legacyA = await connect(a.token);
+    const ownA = ((await legacyA.callTool({ name: "studio_m0_open", arguments: {} })).structuredContent as { workspaceId: string }).workspaceId;
+    await legacyA.close();
+    const ids = await Promise.all(Array.from({ length: 10 }, (_, i) => modernCall(i % 2 ? b.token : a.token)));
+    ids.forEach((id, i) => (i % 2 ? expect(id).not.toBe(ownA) : expect(id).toBe(ownA)));
+    expect(new Set(ids).size).toBe(2);
   });
 
   it("keeps one tester's workspace from another, and stops working on revocation", async () => {

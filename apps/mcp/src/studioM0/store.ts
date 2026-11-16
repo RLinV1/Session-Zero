@@ -48,6 +48,7 @@ export interface Workspace {
 export const MAP_WIDTH = 1024;
 export const MAP_HEIGHT = 768;
 export const GRID = 64;
+export const MAX_IMPORTS_PER_WORKSPACE = 5;
 
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
@@ -134,6 +135,16 @@ export class WorkspaceStore {
     const stored: StudioFile = { ...file, id: randomUUID(), sha256: sha256(file.bytes), createdAt: this.stamp() };
     workspace.files.set(stored.id, stored);
     if (file.source === "import" && file.width > 0) workspace.mapFileId = stored.id;
+    // Imports hold up to 25 MiB each in memory for the life of the process, so only the latest few
+    // are kept. The fixture and the current map are never dropped; a Map iterates oldest first.
+    let imports = [...workspace.files.values()].filter((f) => f.source === "import").length;
+    for (const old of workspace.files.values()) {
+      if (imports <= MAX_IMPORTS_PER_WORKSPACE) break;
+      if (old.source === "import" && old.id !== workspace.mapFileId) {
+        workspace.files.delete(old.id);
+        imports--;
+      }
+    }
     workspace.version++;
     workspace.updatedAt = this.stamp();
     return stored;

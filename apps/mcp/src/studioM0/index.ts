@@ -5,7 +5,7 @@ import { StudioAuth, type Principal } from "./auth";
 import { downloadOriginal } from "./download";
 import { createStudioM0Server } from "./server";
 import { EvidenceLog, WorkspaceStore } from "./store";
-import { buildViewHtml } from "./view";
+import { buildViewHtml, versionedViewUri } from "./view";
 
 /**
  * M0 ONLY (interactive-ai-scene-studio): a flag-gated, fixture-only proof endpoint. It never reaches
@@ -44,6 +44,7 @@ export async function createStudioM0(options: StudioM0Options): Promise<StudioM0
   }
   const store = new WorkspaceStore();
   const viewHtml = await buildViewHtml();
+  const viewUri = versionedViewUri(viewHtml);
   const descriptors = new Map<string, string>();
   const download = { originsFile, allowHttp: options.allowHttpDownloads, fetchImpl: options.fetchImpl };
   auth.replayDescriptor = async (hostFileId) => {
@@ -60,7 +61,7 @@ export async function createStudioM0(options: StudioM0Options): Promise<StudioM0
   return {
     auth, store, log,
     makeServer: (principal) => createStudioM0Server({
-      principal, store, log, viewHtml, descriptors, download,
+      principal, store, log, viewHtml, viewUri, descriptors, download,
       answerKeyFile: path.join(options.dataDir, "answer-key.jsonl"),
     }),
   };
