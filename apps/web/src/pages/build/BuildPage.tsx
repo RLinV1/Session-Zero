@@ -7,7 +7,7 @@ import {
   formatExpression,
   listOpenings,
   squareSizeOf,
-  terrainTally,
+  paintTerrain,
   type BuildCheckIssue,
   type BuildDetail,
   type BuildFileView,
@@ -29,7 +29,7 @@ import { RequireAccount } from "../../account/RequireAccount";
 import { useAccount } from "../../account/accountStore";
 import { ApiError, api } from "../../net/api";
 import { navigate } from "../../router";
-import { Check, Copy, PencilSimple, Trash } from "@phosphor-icons/react";
+import { Check, Copy, PencilSimple, Trash, LineSegments, Door, SquaresFour } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
@@ -45,6 +45,7 @@ import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildP
 import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
 import { PassPanel } from "./PassPanel";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
+import { TerrainReview } from "./TerrainReview";
 
 const POLL_MS = 5000;
 const message = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
@@ -87,6 +88,7 @@ function Build({ id }: { id: string }) {
   const [published, setPublished] = useState<PublishedBuildItem[]>([]);
   const [justPublished, setJustPublished] = useState<BuildPublished | null>(null);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
+  const [unpublishingMap, setUnpublishingMap] = useState<{ id: string; name: string } | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [confirmingNewPass, setConfirmingNewPass] = useState(false);
   /** Whether the pass now shown replaced one the AI may still be using. */
@@ -109,7 +111,6 @@ function Build({ id }: { id: string }) {
       setDetail(latest);
       setReviewed((all) => {
         const next = { ...all };
-        for (const item of latest.items) next[itemId(item)] ??= item.updatedAt;
         // A grid detection and the AI agreed on takes the profile's square size, so a change needs a look too.
         next[PROFILE_REVIEWED] ??= squareSizeOf(latest.profile);
         return next;
@@ -209,15 +210,24 @@ function Build({ id }: { id: string }) {
   });
   const draftItems = items.filter((i) => !i.published);
   const chosen = draftItems.filter((i) => selected.has(itemId(i)));
+  const requiredIds = new Set(chosen.map(itemId));
+  for (const item of chosen) {
+    if (item.kind !== "encounter") continue;
+    const encounter = encounterOf(item);
+    requiredIds.add(`map/${encounter.mapKey}`);
+    for (const token of encounter.tokens) requiredIds.add(`creature/${token.creatureKey}`);
+  }
+  const requiredItems = draftItems.filter((item) => requiredIds.has(itemId(item)));
   // A map the AI left openings or places on needs a look too, chosen or brought along by an encounter.
   const mapsLeftForYou = new Set(maps.filter((m) => !m.published && leftForYou(m)).map((m) => m.key));
-  const flaggedChosen = chosen.filter((i) => i.flags.length > 0
+  const flaggedChosen = requiredItems.filter((i) => i.flags.length > 0
     || (i.kind === "map" && mapsLeftForYou.has(i.key))
     || (i.kind === "encounter" && mapsLeftForYou.has(encounterOf(i).mapKey))).length;
-  const changed = draftItems.filter((i) => reviewed[itemId(i)] !== undefined && reviewed[itemId(i)] !== i.updatedAt);
+  const changed = draftItems.filter((i) => reviewed[itemId(i)] !== i.updatedAt);
   const squareSize = squareSizeOf(detail?.profile ?? null);
   const profileChanged = reviewed[PROFILE_REVIEWED] !== undefined && reviewed[PROFILE_REVIEWED] !== squareSize;
-  const chosenChanged = profileChanged || chosen.some((i) => changed.includes(i));
+  const requiredReviews = requiredItems.filter((i) => changed.includes(i));
+  const chosenChanged = profileChanged || requiredReviews.length > 0;
 
   async function doPublish() {
     setConfirmingPublish(false);
@@ -229,15 +239,6 @@ function Build({ id }: { id: string }) {
     }, "Couldn't publish.", "Publishing…");
   }
 
-  // "Choose" is one selection for the whole draft: the bar it brings up publishes or removes it.
-  const checkbox = (item: BuildItemView) => (open && !item.published
-    ? (
-      <label className="build-check">
-        <input type="checkbox" aria-label={`Choose ${nameOf(item)}`} checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />
-        <span aria-hidden="true">Choose</span>
-      </label>
-    )
-    : null);
   const busy = pending !== null;
   const problems = issues.filter((i) => i.type === "problem");
   const notes = issues.filter((i) => i.type === "flag");
@@ -307,7 +308,6 @@ function Build({ id }: { id: string }) {
     const map = maps.find((m) => m.key === encounterOf(item).mapKey);
     return !map ? "Its map isn't in this build." : mapOf(map).gridStatus !== "confirmed" ? `Confirm the grid on ${mapOf(map).name} first.` : null;
   };
-  const startPublish = () => { if (flaggedChosen > 0) setConfirmingPublish(true); else void doPublish(); };
 
   const railLinks: RailLink[] = [
     ...(open && problems.length > 0 ? [{ id: "build-issues", label: "To fix", count: problems.length, urgent: true }] : []),
@@ -315,7 +315,7 @@ function Build({ id }: { id: string }) {
     ...(open && maps.length > 0 ? [{ id: "build-maps", label: "Maps", count: maps.length }] : []),
     ...(open && creatures.length > 0 ? [{ id: "build-creatures", label: "Creatures", count: creatures.length }] : []),
     ...(open && encounters.length > 0 ? [{ id: "build-encounters", label: "Encounters", count: encounters.length }] : []),
-    ...(open && draftItems.length > 0 ? [{ id: "build-publish", label: "Publish", count: chosen.length > 0 ? chosen.length : undefined }] : []),
+    ...(open && draftItems.length > 0 ? [{ id: "build-publish", label: "Publish", count: chosen.length > 0 ? chosen.length : undefined, onClick: () => setConfirmingPublish(true) }] : []),
     ...(roomChoices.length > 0 ? [{ id: "build-start", label: "Start a room" }] : []),
     ...(published.length > 0 ? [{ id: "build-published", label: "In your library", count: published.length }] : []),
     ...(open && detail?.profile ? [{ id: PROFILE_ID, label: "Game" }] : []),
@@ -329,43 +329,11 @@ function Build({ id }: { id: string }) {
       </div>
       <main className="page-shell home gm-page build-page">
         <p className="small-print"><a href="/library?tab=builds" onClick={(e) => { e.preventDefault(); navigate("/library?tab=builds"); }}>AI builds</a></p>
-        <h1>{detail?.build.name ?? "AI build"}</h1>
-        {detail && open && (
-          <p className="build-summary">
-            {draftItems.length === 0
-              ? "Nothing in the draft yet. Your AI's work appears here as it saves it."
-              : <>{problems.length === 0 ? "Nothing needs fixing. Check each item, then " : "Fix what's listed, check each item, then "}<a href="#build-publish">publish what you choose</a>.</>}
-          </p>
-        )}
-        {detail && open && draftItems.length > 0 && (
-          <section className="build-section build-publish" aria-labelledby="build-publish-title" id="build-publish">
-            <div className="build-section-head">
-              <h2 id="build-publish-title">Publish</h2>
-              <span className="build-section-sum">{chosen.length} of {draftItems.length} chosen</span>
-            </div>
-            <p className="muted">Published items become ordinary library items. An encounter brings its map, creatures and art with it. {RIGHTS_NOTICE}</p>
-            <div className="row">
-              <button type="button" disabled={busy} onClick={() => setSelected(new Set(draftItems.map(itemId)))}>Choose everything</button>
-              {ready.length > 0 && ready.length < draftItems.length && (
-                <button type="button" disabled={busy} onClick={() => setSelected(new Set(ready.map(itemId)))}>Choose what's ready ({ready.length})</button>
-              )}
-            </div>
-            {chosenChanged && chosen.length > 0 && <p className="muted small-print">Check what your AI changed below before publishing.</p>}
-            {chosen.length === 0 && <p className="muted small-print">Choose items below, or choose everything here. Publish adds your selection to your library; Cancel clears your selection.</p>}
-          </section>
-        )}
-        {detail && open && chosen.length > 0 && (
-          <div className="build-publish-bar build-publish-bar-top" role="region" aria-label="Chosen items">
-            <span><strong>{chosen.length}</strong> chosen</span>
-            <div className="row">
-              <button type="button" className="link" onClick={() => setSelected(new Set())}>Cancel</button>
-              <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => setRemovingDraft(chosen)}>
-                <Trash size={16} aria-hidden="true" />Remove from draft
-              </button>
-              <button type="button" className="primary" disabled={chosenChanged || busy} onClick={startPublish}>{publishLabel}</button>
-            </div>
-          </div>
-        )}
+        <div className="build-page-heading">
+          <h1>{detail?.build.name ?? "AI build"}</h1>
+          {detail && open && draftItems.length > 0 && <button id="build-publish" type="button" className="primary" disabled={busy} onClick={() => setConfirmingPublish(true)}>Publish</button>}
+        </div>
+        {detail && open && draftItems.length === 0 && <p className="muted small-print">Nothing in the draft yet.</p>}
         {error && <p ref={errorRef} tabIndex={-1} role="alert" className="error build-error">{error}</p>}
         {!detail && !error && <p className="muted" aria-busy="true">Loading…</p>}
 
@@ -386,7 +354,7 @@ function Build({ id }: { id: string }) {
 
               {open && (changed.length > 0 || profileChanged) && (
                 <section className="build-section build-changed" aria-labelledby="build-changed">
-                  <h2 id="build-changed">Changed by your AI since you looked</h2>
+                  <h2 id="build-changed">Suggestions to review</h2>
                   <p className="muted small-print">These can't be published until you've checked them.</p>
                   <ul className="plain build-published">
                     {profileChanged && (
@@ -413,20 +381,24 @@ function Build({ id }: { id: string }) {
               {open && maps.length > 0 && (
                 <MapViewer maps={maps} files={files} idFor={cardId} statusFor={mapStatus}
                   renderPanel={(item) => (
-                    <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={checkbox(item)} busy={busy}
+                    <MapCard item={item} file={files.find((f) => f.id === mapOf(item).fileId)} checkbox={item.published ? <button type="button" className="small" disabled={busy} onClick={() => {
+                      const assetId = item.publishedId;
+                      if (!assetId) { setError("Couldn't find this published map. Refresh and try again."); return; }
+                      setUnpublishingMap({ id: assetId, name: mapOf(item).name });
+                    }}>Unpublish map</button> : null} busy={busy}
                       onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
                       onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change this map's setup.")} />
                   )} />
               )}
 
               {open && creatures.length > 0 && (
-                <CreatureRoster creatures={creatures} files={files} idFor={cardId} checkbox={checkbox} attention={attention}
-                  renderDetail={(item) => <CreatureDetail item={item} files={files} checkbox={checkbox(item)} busy={busy} onEdit={() => setEditingCreature(item)} />} />
+                <CreatureRoster creatures={creatures} files={files} idFor={cardId} checkbox={() => null} attention={attention}
+                  renderDetail={(item) => <CreatureDetail item={item} files={files} checkbox={null} busy={busy} onEdit={() => setEditingCreature(item)} />} />
               )}
 
               {open && encounters.length > 0 && (
                 <EncounterBoard encounters={encounters} maps={maps} files={files} creature={creatureData} idFor={cardId}
-                  checkbox={checkbox} blockedText={blockedText} busy={busy} onEdit={setEditingEncounter}
+                  checkbox={() => null} blockedText={blockedText} busy={busy} onEdit={setEditingEncounter}
                   extras={(item) => <Flags item={item} />} />
               )}
 
@@ -488,12 +460,45 @@ function Build({ id }: { id: string }) {
           </div>
         )}
 
-        <Modal open={confirmingPublish} title="Publish with open flags?" onClose={() => setConfirmingPublish(false)}>
+        <Modal open={unpublishingMap !== null} title="Unpublish map?" onClose={() => setUnpublishingMap(null)}>
           <div className="confirm">
-            <p>{flaggedChosen} of the items you chose still {flaggedChosen === 1 ? "has a flag or something left for you" : "have flags or things left for you"}. Blank values stay blank, and openings left for you publish as the file had them.</p>
-            <div className="row">
-              <button type="button" onClick={() => setConfirmingPublish(false)}>Keep reviewing</button>
-              <button type="button" className="primary" onClick={() => void doPublish()}>Publish anyway</button>
+            <p>{unpublishingMap?.name} will return to this draft for editing and review.</p>
+            <div className="row build-editor-actions">
+              <button type="button" disabled={busy} onClick={() => setUnpublishingMap(null)}>Cancel</button>
+              <button type="button" className="primary" disabled={busy} onClick={() => {
+                if (!unpublishingMap) return;
+                const assetId = unpublishingMap.id;
+                setUnpublishingMap(null);
+                void run(() => api.builds.removePublished(id, [assetId], true), "Couldn't unpublish this map.", "Unpublishing…");
+              }}>Unpublish map</button>
+            </div>
+          </div>
+        </Modal>
+        <Modal open={confirmingPublish} title="Publish draft" onClose={() => setConfirmingPublish(false)}>
+          <div className="confirm build-publish-confirm">
+            <div className="build-publish-list-head">
+              <label className="build-publish-select-all"><input type="checkbox" disabled={busy}
+                checked={draftItems.length > 0 && chosen.length === draftItems.length}
+                ref={(node) => { if (node) node.indeterminate = chosen.length > 0 && chosen.length < draftItems.length; }}
+                onChange={(e) => setSelected(e.target.checked ? new Set(draftItems.map(itemId)) : new Set())} /><span>Select all</span></label>
+              <span className="muted small-print">{draftItems.length} available</span>
+            </div>
+            <ul className="plain build-publish-options">
+              {draftItems.map((item) => <li key={itemId(item)}>
+                <label className="build-publish-option">
+                  <input type="checkbox" disabled={busy} checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />
+                  <span className="build-publish-option-name"><strong>{nameOf(item)}</strong><span className="muted small-print">{item.kind === "map" ? "Map" : item.kind === "creature" ? "Character / creature" : "Encounter"}</span></span>
+                  <span className={reviewed[itemId(item)] === item.updatedAt ? "chip" : "chip build-chip-warn"}>{reviewed[itemId(item)] === item.updatedAt ? "Reviewed" : "Needs review"}</span>
+                </label>
+              </li>)}
+            </ul>
+            {chosenChanged && chosen.length > 0 && <p className="muted small-print">Review {requiredReviews.map(nameOf).concat(profileChanged ? ["the game profile"] : []).join(", ")} before publishing.</p>}
+            {flaggedChosen > 0 && <p>{flaggedChosen} selected {flaggedChosen === 1 ? "item has" : "items have"} open flags. Blank values stay blank.</p>}
+            <details className="small-print"><summary>Publishing details</summary><p className="muted">{RIGHTS_NOTICE}</p></details>
+            <div className="row build-editor-actions">
+              {chosen.length > 0 && <button type="button" className="small danger" disabled={busy} onClick={() => { setConfirmingPublish(false); setRemovingDraft(chosen); }}>Remove from draft</button>}
+              <button type="button" onClick={() => setConfirmingPublish(false)}>Cancel</button>
+              <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged || busy} onClick={() => void doPublish()}>{publishLabel}</button>
             </div>
           </div>
         </Modal>
@@ -720,13 +725,30 @@ export interface MapDrawing {
 const WALL_COLOUR = LINE_COLOUR;
 
 /** A map with its grid, walls, doors and windows drawn over it, in the image's own pixels, so what's published is what's seen. */
-export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; marks: readonly DraftMark[]; picker: LinePicker } }) {
+export function GridOverlay({ file, grid, drawing, pick, onPaint, corners = false }: { corners?: boolean; onPaint?: (column: number, row: number) => void; file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; marks: readonly DraftMark[]; picker: LinePicker } }) {
+  const painting = useRef(false);
+  const [cursor, setCursor] = useState({ column: 0, row: 0 });
+  const paintAt = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!onPaint || !grid) return;
+    const box = e.currentTarget.ownerSVGElement!.getBoundingClientRect();
+    const x = (e.clientX - box.left) / box.width * file.width;
+    const y = (e.clientY - box.top) / box.height * file.height;
+    if (x < 0 || y < 0 || x >= file.width || y >= file.height) return;
+    const snap = corners ? Math.round : Math.floor;
+    const column = snap((x - grid.offsetX) / grid.cellSize), row = snap((y - grid.offsetY) / grid.cellSize);
+    setCursor({ column, row }); onPaint(column, row);
+  };
   const patternId = `build-grid-${file.id}`;
   const label = Math.max(file.width, file.height) / 60;
   const segment = (w: { a: { x: number; y: number }; b: { x: number; y: number } }) => `M ${w.a.x} ${w.a.y} L ${w.b.x} ${w.b.y}`;
   const aiSet = drawing ? [...drawing.aiLines, ...drawing.openings.filter((o) => o.set && o.now.kind !== "left")] : [];
   return (
-    <div className="build-map">
+    <div className="build-map" tabIndex={onPaint ? 0 : undefined} role={onPaint ? "application" : undefined} aria-label={onPaint ? "Paint terrain on map" : undefined} onKeyDown={(e) => {
+      if (!onPaint || !grid) return;
+      const move = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (move) { e.preventDefault(); setCursor((c) => ({ column: c.column + move[0]!, row: c.row + move[1]! })); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPaint(cursor.column, cursor.row); }
+    }}>
       <img src={file.url} alt="" loading="lazy" />
       {((grid && grid.cellSize > 0) || drawing) && (
         <svg viewBox={`0 0 ${file.width} ${file.height}`} preserveAspectRatio="none" aria-hidden>
@@ -761,6 +783,14 @@ export function GridOverlay({ file, grid, drawing, pick }: { file: BuildFileView
             </g>
           )}
           {grid && grid.cellSize > 0 && pick && pick.lines.length > 0 && <LinePickLayer lines={pick.lines} marks={pick.marks} grid={grid} picker={pick.picker} labelSize={label} />}
+          {onPaint && grid && <>
+            <rect x={grid.offsetX + cursor.column * grid.cellSize} y={grid.offsetY + cursor.row * grid.cellSize} width={grid.cellSize} height={grid.cellSize} fill="none" stroke="white" strokeWidth="2" pointerEvents="none" />
+            <rect width={file.width} height={file.height} fill="transparent" style={{ pointerEvents: "all", touchAction: "none", cursor: "crosshair" }}
+              onPointerDown={(e) => { if (e.button !== 0) return; painting.current = true; e.currentTarget.setPointerCapture(e.pointerId); paintAt(e); }}
+              onPointerMove={(e) => { if (painting.current && !corners) paintAt(e); }}
+              onPointerUp={(e) => { painting.current = false; e.currentTarget.releasePointerCapture(e.pointerId); }}
+              onPointerCancel={() => { painting.current = false; }} />
+          </>}
         </svg>
       )}
     </div>
@@ -777,30 +807,6 @@ const gridStatusText = (data: DraftMapState) =>
   data.gridBy === "agreement" ? "Grid set by detection and your AI"
     : data.gridDiffers ? "Your AI's grid differs from detection: check it"
       : STATUS_TEXT[data.gridStatus];
-
-/**
- * The permanent terrain the AI proposed (ADR 0071), drawn on the map above. The owner can clear it
- * all here; painting terrain stays in the map editor after publishing.
- */
-function MapTerrain({ data, editable, editedByUser, onSave }: { data: DraftMapState; editable: boolean; editedByUser: boolean; onSave: (setup: DraftMapSetup) => Promise<void> }) {
-  const setup = data.setup ?? EMPTY_MAP_SETUP;
-  const terrain = setup.terrain ?? [];
-  if (terrain.length === 0) return null;
-  const tally = terrainTally(terrain);
-  const otherGrid = draftTerrainState(setup, data.grid ?? data.proposedGrid) === "otherGrid";
-  const was = setup.terrainGrid;
-  return (
-    <details className="build-walls" open={otherGrid}>
-      <summary>Terrain: {plural(tally.difficult, "Difficult square")} and {plural(tally.blocked, "Blocked square")}, proposed by your AI</summary>
-      <p className="muted small-print">Violet single hatching is Difficult, red crosshatching Blocked. Every other square is Normal. To paint terrain, publish and use the map editor.</p>
-      {otherGrid && was && (
-        <p className="build-blocked" role="status">Your AI proposed this terrain on {was.cellSize}-pixel squares at offset ({was.offsetX}, {was.offsetY}), not on the grid this map has now. Clear it, or put the grid back.</p>
-      )}
-      {editable && !editedByUser && <p className="muted small-print">Clearing it stops your AI changing this map.</p>}
-      {editable && <button type="button" className="link danger build-text-action" onClick={() => void onSave({ ...setup, terrain: [] })}>Clear all terrain</button>}
-    </details>
-  );
-}
 
 function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void> }) {
   const data = mapOf(item);
@@ -832,23 +838,32 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
   };
   // Drawn with the grid in the fields, so a correction shows where the AI's lines will land.
   const setup = data.setup ?? EMPTY_MAP_SETUP;
+  const [drawKind, setDrawKind] = useState<DraftLine["kind"] | null>(null);
+  const [lineStart, setLineStart] = useState<{ column: number; row: number } | null>(null);
+  const [draftLines, setDraftLines] = useState<DraftLine[]>(setup.lines);
+  useEffect(() => { setDraftLines(setup.lines); setLineStart(null); setDrawKind(null); }, [item.key, item.updatedAt]);
+  const [tab, setTab] = useState<"walls" | "terrain">("walls");
+  const [terrain, setTerrain] = useState<TerrainRun[]>(setup.terrain ?? []);
+  const [paintKind, setPaintKind] = useState<TerrainRun["kind"] | null | undefined>(undefined);
+  useEffect(() => { setTerrain(setup.terrain ?? []); setPaintKind(undefined); }, [item.key, item.updatedAt]);
+  const terrainOtherGrid = draftTerrainState(setup, preview) === "otherGrid";
   const picker = useLinePicker(setup.lines.length, setup.marks.length);
   const drawing = useMemo<MapDrawing | undefined>(() => {
     if (!file) return undefined;
-    const built = draftMapBoard(file.board, setup, preview, file);
+    const built = draftMapBoard(file.board, { ...setup, lines: draftLines }, preview, file);
     return {
       walls: built.ok ? built.board.walls : file.board?.walls ?? [],
       openings: listOpenings(file.board, setup, preview),
       marks: setup.marks,
-      aiLines: preview ? setup.lines.map((l) => ({
+      aiLines: preview ? draftLines.map((l) => ({
         a: { x: preview.offsetX + l.from.column * preview.cellSize, y: preview.offsetY + l.from.row * preview.cellSize },
         b: { x: preview.offsetX + l.to.column * preview.cellSize, y: preview.offsetY + l.to.row * preview.cellSize },
       })) : [],
       blockedLines: built.ok ? built.blockedLines : [],
       // Drawn only on a grid it fits, so a grid being corrected shows the terrain wouldn't carry over (ADR 0071).
-      terrain: draftTerrainState(setup, preview) === "ready" ? setup.terrain ?? [] : [],
+      terrain: tab === "terrain" && !terrainOtherGrid ? terrain : draftTerrainState(setup, preview) === "ready" ? setup.terrain ?? [] : [],
     };
-  }, [file, data.setup, cell, x, y]); // `preview` is rebuilt from these three fields on every render
+  }, [file, data.setup, cell, x, y, terrain, tab, draftLines, terrainOtherGrid]); // `preview` is rebuilt from these three fields on every render
   const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;
   return (
     <article className="build-card">
@@ -860,18 +875,18 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         {checkbox}
       </div>
       {file ? (
-        <div className={walls ? "build-map-room" : undefined}><div className={walls ? "build-map-review" : undefined}>
+        <div className="build-map-room"><div className="build-map-review">
           <div className="build-map-side">
-            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls ? { lines: setup.lines, marks: setup.marks, picker } : undefined} />
+            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls && tab === "walls" ? { lines: setup.lines, marks: setup.marks, picker } : undefined}
+              corners={tab === "walls"}
+              onPaint={tab === "walls" && drawKind && !item.published && !unsaved ? (column, row) => {
+                if (!lineStart) { setLineStart({ column, row }); return; }
+                if (lineStart.column === column && lineStart.row === row) return;
+                setDraftLines((lines) => [...lines, { from: lineStart, to: { column, row }, kind: drawKind, ...(drawKind !== "wall" ? { state: "closed" as const } : {}) }]);
+                setLineStart(null);
+              } : tab === "terrain" && !item.published && !unsaved && !terrainOtherGrid && paintKind !== undefined ? (column, row) => setTerrain((runs) => paintTerrain(runs, [{ row, start: column, end: column, kind: paintKind }])) : undefined} />
             {file.fromUvtt && <p className="muted small-print">From a UVTT file, with {file.walls} walls.</p>}
-          </div>
-          {walls && drawing && (
-            <MapWalls setup={setup} openings={drawing.openings} blocked={drawing.blockedLines} editable={!item.published} editedByUser={item.editedByUser}
-              busy={busy} picker={picker} onSave={onSaveSetup} />
-          )}
-        </div></div>
-      ) : <p className="error">This map's file isn't in the build any more.</p>}
-      {file && <MapTerrain data={data} editable={!item.published} editedByUser={item.editedByUser} onSave={onSaveSetup} />}
+            <div className="build-map-grid-controls">
       {fromFile && data.grid && <p className="muted small-print">Grid from the UVTT file: {data.grid.cellSize}-pixel squares. It's exact, so there's nothing to confirm.</p>}
       {!item.published && file && !fromFile && (
         <div className="build-fields">
@@ -899,6 +914,33 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
         </div>
       )}
       {!item.published && !fromFile && data.gridStatus === "confirmed" && !unsaved && <p className="muted small-print">The grid is confirmed. Change the numbers to save a different one.</p>}
+            </div>
+          </div>
+          <div className="build-map-inspector">
+          {unsaved && <p className="muted small-print">Save the grid before editing lines or terrain.</p>}
+          <div role="tablist" aria-label="Map setup" className="build-setup-tabs">
+            <button type="button" role="tab" aria-selected={tab === "walls"} aria-pressed={tab === "walls"} onClick={() => setTab("walls")}>Walls & openings</button>
+            <button type="button" role="tab" aria-selected={tab === "terrain"} aria-pressed={tab === "terrain"} onClick={() => setTab("terrain")}>Terrain</button>
+          </div>
+          {tab === "terrain" && <TerrainReview runs={terrain} otherGrid={terrainOtherGrid} onDiscard={() => { setTerrain([]); setPaintKind(undefined); }} kind={paintKind} onKind={setPaintKind} busy={busy} editable={!item.published && !unsaved}
+            onCancel={() => { setTerrain(setup.terrain ?? []); setPaintKind(undefined); }} onSave={() => { void onSaveSetup({ ...setup, terrain }); setPaintKind(undefined); }} />}
+          {tab === "walls" && drawing && (
+            <MapWalls setup={setup} openings={drawing.openings} blocked={drawing.blockedLines} editable={!item.published && !unsaved} editedByUser={item.editedByUser}
+              busy={busy} picker={picker} onSave={onSaveSetup} />
+          )}
+          {tab === "walls" && !item.published && !unsaved && <section className="build-draw-tools" aria-label="Add map lines">
+            <h4>Add to the map</h4>
+            <div className="build-tool-buttons" role="group" aria-label="Draw map lines">
+              {([["wall", "Wall", LineSegments], ["door", "Door", Door], ["window", "Window", SquaresFour]] as const).map(([kind, label, Icon]) => <button type="button" key={kind} aria-pressed={drawKind === kind} disabled={busy} onClick={() => { setDrawKind(drawKind === kind ? null : kind); setLineStart(null); }}><Icon size={18} aria-hidden="true" />{label}</button>)}
+            </div>
+            <p className="muted small-print" role="status">{drawKind ? lineStart ? "Click the end corner to add the line." : "Click a grid corner to start a line." : "Choose a tool, then click two grid corners on the map."}</p>
+            {JSON.stringify(draftLines) !== JSON.stringify(setup.lines) && <div className="row build-editor-actions"><button type="button" className="small primary" disabled={busy} onClick={() => void onSaveSetup({ ...setup, lines: draftLines })}>Save</button><button type="button" disabled={busy} onClick={() => { setDraftLines(setup.lines); setLineStart(null); }}>Cancel</button></div>}
+          </section>}
+
+          </div>
+        </div></div>
+      ) : <p className="error">This map's file isn't in the build any more.</p>}
+
     </article>
   );
 }

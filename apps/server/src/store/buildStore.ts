@@ -246,5 +246,5 @@ export interface BuildStore {
   /** Open builds not changed since `before`, for the 14-day sweep. */
   listAbandonedBuilds(before: string): Promise<{ id: string; ownerGmId: string }[]>;
   /** After published items were removed: drops those files, and returns those items to draft (or drops them from a closed build). */
-  forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }): Promise<void>;
+  forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }): Promise<void>;
 }

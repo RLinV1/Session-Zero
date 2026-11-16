@@ -307,14 +307,14 @@ describe.each(storeCases)("AI terrain in a build on %s (FR-GM-26, ADR 0071)", (_
       expect((await mapItem(account, id)).data.setup.terrain).toEqual([run(1, 1, 2)]);
     });
 
-    it("can't paint terrain from the build page", async () => {
+    it("lets the owner correct suggested terrain from the build page", async () => {
       const { account, id, pass } = await startWith({ aiTerrain: true });
       await uvttMap(pass);
       await saveSetup(pass, { terrain: [run(1, 1, 2)] });
       const item = await mapItem(account, id);
       const painted = await ownerSetup(account, id, { ...item.data.setup, terrain: [run(1, 1, 3)] }, item.updatedAt);
-      expect(painted.status).toBe(422);
-      expect(await painted.text()).toMatch(/only clear the terrain/);
+      expect(painted.status).toBe(200);
+      expect((await mapItem(account, id)).data.setup.terrain).toEqual([run(1, 1, 3)]);
     });
 
     it("clears terrain on a version the AI hasn't changed since, and not otherwise", async () => {

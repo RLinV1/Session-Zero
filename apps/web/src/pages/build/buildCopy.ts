@@ -11,6 +11,7 @@ export function buildMessage(origin: string, pass: string): string {
     "",
     "Call get_build first, and tell me whose build it is before uploading anything.",
     "Then read my rules and character sheets and fill in the draft. Leave anything unclear blank and flag it. Don't invent values.",
+    "Read allowed in get_build and complete every enabled map setup task for every map without waiting for another request: grids, walls including doors and windows, and terrain. Inspect the map image, use the detected grid where it agrees, save the enabled setup, and check_build before finishing. Flag anything uncertain for my review; do not invent obstacles or terrain. Disabled tasks stay for me to set up.",
     "I'll review it and publish it myself on the build page.",
   ].join("\n");
 }

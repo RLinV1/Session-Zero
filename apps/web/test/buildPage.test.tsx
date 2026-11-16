@@ -45,13 +45,21 @@ const render = async (element: React.ReactNode) => {
 };
 const text = () => host.textContent ?? "";
 /** A button by its words, or by its name when it's an icon. */
-const button = (label: string) => [...host.querySelectorAll("button")].find((b) => (b.textContent?.trim() || b.getAttribute("aria-label") || "").startsWith(label));
-/** The one Publish button, on the bar that appears once something is chosen. */
-const publishNow = () => host.querySelector<HTMLButtonElement>(".build-publish-bar button.primary") ?? undefined;
+const button = (label: string) => [...host.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || b.textContent?.trim() || "").startsWith(label));
+/** The final action in the publish picker. */
+const publishNow = () => host.querySelector<HTMLButtonElement>("dialog[open] .build-publish-confirm button.primary") ?? undefined;
+const publishOptions = () => [...host.querySelectorAll<HTMLInputElement>("dialog[open] .build-publish-option input")];
+const openPublish = () => click(host.querySelector("#build-publish") ?? undefined);
 const click = async (el: Element | undefined) => {
   expect(el).toBeTruthy();
   await act(async () => { (el as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   await act(async () => { await Promise.resolve(); });
+};
+
+const reviewAllAndChoose = async () => {
+  while (button("I've checked it")) await click(button("I've checked it"));
+  await openPublish();
+  await click(host.querySelector("dialog[open] .build-publish-select-all input") ?? undefined);
 };
 
 const file = (over: Partial<BuildFileView> = {}): BuildFileView => ({
@@ -130,7 +138,7 @@ describe("arriving from the AI builds tab (FR-GM-27, AI builds redesign 2026-11-
     Element.prototype.scrollIntoView = vi.fn();
     history.replaceState(null, "", "/builds/b1#build-publish");
     await open(detail({ items: [goblin()] }));
-    expect(document.activeElement?.id).toBe("build-publish-title");
+    expect(document.activeElement?.id).toBe("build-publish");
   });
 
   it("stays at the top without one", async () => {
@@ -209,10 +217,60 @@ describe("reviewing a build (FR-GM-27)", () => {
     expect((host.querySelector(".build-fields input") as HTMLInputElement).value).toBe("64");
   });
 
+  it("requires review of the map and creatures an encounter brings with it", async () => {
+    await open(detail({ items: [goblin(), map({ gridStatus: "confirmed", grid: { cellSize: 70, offsetX: 0, offsetY: 0 } }), encounter()] }));
+    const reviewItem = async (name: string) => {
+      const row = [...host.querySelectorAll(".build-changed li")].find((li) => li.querySelector("a")?.textContent === name)!;
+      await click(row.querySelector("button") ?? undefined);
+    };
+    await reviewItem("Bridge ambush");
+    await openPublish();
+    const row = [...host.querySelectorAll(".build-publish-option")].find((label) => label.querySelector("strong")?.textContent === "Bridge ambush")!;
+    await click(row.querySelector("input") ?? undefined);
+    expect(publishNow()?.disabled).toBe(true);
+    expect(host.querySelector("dialog[open]")?.textContent).toContain("Review Goblin, Cave before publishing.");
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Cancel"));
+    await reviewItem("Cave");
+    await reviewItem("Goblin");
+    await openPublish();
+    expect(publishNow()?.disabled).toBe(false);
+  });
+
+  it("requires saving the grid before drawing lines or painting terrain", async () => {
+    await open(detail({ items: [map({ gridStatus: "confirmed", grid: { cellSize: 70, offsetX: 0, offsetY: 0 } })] }));
+    expect(host.querySelector("[aria-label='Draw map lines']")).toBeTruthy();
+    const field = host.querySelector(".build-fields input") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "75");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(text()).toContain("Save the grid before editing lines or terrain.");
+    expect(host.querySelector("[aria-label='Draw map lines']")).toBeNull();
+    expect(host.querySelector(".build-map[role=application]")).toBeNull();
+    await click(button("Terrain"));
+    expect(host.querySelector(".build-map[role=application]")).toBeNull();
+    expect(host.querySelector(".terrain-controls")).toBeNull();
+  });
+
+  it("confirms unpublishing a map in the app modal", async () => {
+    builds.removePublished.mockResolvedValue({ removed: 1 });
+    await open(detail({ items: [{ ...map(), published: true, publishedId: "asset-map" }] }));
+    await click(button("Unpublish map"));
+    expect(host.querySelector("dialog[open] h2")?.textContent).toBe("Unpublish map?");
+    expect(builds.removePublished).not.toHaveBeenCalled();
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Cancel"));
+    expect(host.querySelector("dialog[open]")).toBeNull();
+    await click(button("Unpublish map"));
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Unpublish map"));
+    expect(builds.removePublished).toHaveBeenCalledWith("b1", ["asset-map"], true);
+  });
+
   it("publishes only what's selected", async () => {
     builds.publish.mockResolvedValue({ published: { assets: 0, creatures: [{ key: "a", id: "c1" }], maps: [], encounters: [] } });
     await open(detail({ items: [goblin({ key: "a" }), goblin({ key: "b" })] }));
-    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-roster-row input[type=checkbox]")];
+    while (button("I've checked it")) await click(button("I've checked it"));
+    await openPublish();
+    const boxes = publishOptions();
     await click(boxes[0]);
     await click(publishNow());
     expect(builds.publish).toHaveBeenCalledWith("b1", { creatures: ["a"], maps: [], encounters: [], reviewed: { "creature/a": "2026-11-09T00:00:00Z", "creature/b": "2026-11-09T00:00:00Z", profile: "5 ft" } });
@@ -222,13 +280,13 @@ describe("reviewing a build (FR-GM-27)", () => {
     builds.cancelPass.mockResolvedValue(undefined);
     builds.publish.mockResolvedValue({ published: { assets: 0, creatures: [{ key: "goblin", id: "c1" }], maps: [], encounters: [] } });
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     builds.get.mockResolvedValue(detail({ items: [goblin({ updatedAt: "2026-11-09T00:05:00Z" }, { hp: 99, maxHp: 99 })] }));
     await click(button("Cancel pass"));
-    expect(text()).toContain("Changed by your AI since you looked");
+    expect(text()).toContain("Suggestions to review");
     expect(publishNow()?.disabled).toBe(true);
     await click(button("I've checked it"));
-    expect(text()).not.toContain("Changed by your AI since you looked");
+    expect(text()).not.toContain("Suggestions to review");
     await click(publishNow());
     expect(builds.publish).toHaveBeenCalledWith("b1", expect.objectContaining({ reviewed: { "creature/goblin": "2026-11-09T00:05:00Z", profile: "5 ft" } }));
   });
@@ -240,27 +298,26 @@ describe("reviewing a build (FR-GM-27)", () => {
     await click(button("Edit"));
     await act(async () => { document.querySelector("dialog[open] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     await act(async () => { await Promise.resolve(); });
-    expect(text()).not.toContain("Changed by your AI since you looked");
+    expect(text()).not.toContain("Suggestions to review");
   });
 
-  it("asks first when something chosen still has flags", async () => {
+  it("shows open flags in the publish picker before publishing", async () => {
     await open(detail({ items: [goblin({ flags: [{ field: "hp", message: "unclear" }] })] }));
-    await click(button("Choose everything"));
-    await click(publishNow());
+    await reviewAllAndChoose();
     expect(builds.publish).not.toHaveBeenCalled();
-    expect(text()).toMatch(/Blank values stay blank/);
+    expect(host.querySelector("dialog[open]")?.textContent).toMatch(/Blank values stay blank/);
   });
 
   it("publishing repeats the rights notice", async () => {
     await open(detail({ items: [goblin()] }));
-    const section = host.querySelector("#build-publish");
-    expect(section?.textContent).toContain(RIGHTS_NOTICE);
+    await openPublish();
+    expect(host.querySelector("dialog[open]")?.textContent).toContain(RIGHTS_NOTICE);
   });
 
   it("shows the server's reasons when publishing fails", async () => {
     builds.publish.mockRejectedValue(new Error("encounter ambush: Goblin: It would stand across a wall."));
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     await click(publishNow());
     expect(host.querySelector("[role=alert]")?.textContent).toContain("across a wall");
   });
@@ -268,7 +325,7 @@ describe("reviewing a build (FR-GM-27)", () => {
   it("offers a room for a published encounter", async () => {
     builds.publish.mockResolvedValue({ published: { assets: 0, creatures: [], maps: [], encounters: [{ key: "ambush", id: "t1", name: "Bridge ambush" }] } });
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     await click(publishNow());
     expect(button("Start a room")).toBeTruthy();
   });
@@ -452,7 +509,8 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     await typeLines("1");
     await click(editorButton("Remove line"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] }, "2026-11-09T00:00:00Z");
-    await click(button("Remove everything your AI set"));
+    await click(button("Reset map setup"));
+    await click(button("Reset setup"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { openings: [], lines: [], marks: [], terrain: [] }, "2026-11-09T00:00:00Z");
   });
 
@@ -525,6 +583,19 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     expect(lineField().value).toBe("1-2");
     await click(editorButton("Remove 2 lines"));
     expect(saved().lines.map((l) => l.kind)).toEqual(["door", "window"]);
+  });
+
+  it("deselects a chosen Walls group and toggles Make Wall off without saving", async () => {
+    await open(detail({ files: [uvttFile], items: [town()] }));
+    await click(editorButton("Walls"));
+    expect(lineField().value).toBe("1-2");
+    await click(editorButton("Walls"));
+    expect(lineField().value).toBe("");
+    expect(shown()).toContain("No line chosen.");
+    await click(editorButton("Walls"));
+    await click(actionButton("Wall"));
+    expect(actionButton("Wall")?.getAttribute("aria-pressed")).toBe("false");
+    expect(builds.saveMapSetup).not.toHaveBeenCalled();
   });
 
   it("says when a number isn't a line, and saves nothing (FR-GM-27)", async () => {
@@ -600,7 +671,10 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     const profile = { ...detail().profile!, unitsPerCell: 10 };
     await refreshWith(detail({ items: [cave], profile }));
     expect(text()).toContain("Game profile: one square is now 10 ft");
-    await click(host.querySelector(".build-check input") ?? undefined);
+    const mapReview = [...host.querySelectorAll(".build-changed li")].find((li) => li.querySelector("a")?.textContent === "Cave")!;
+    await click(mapReview.querySelector("button") ?? undefined);
+    await openPublish();
+    await click(publishOptions()[0]);
     expect(publishNow()?.hasAttribute("disabled")).toBe(true);
     await click(button("I've checked it"));
     await click(publishNow());
@@ -622,11 +696,10 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   it("asks first before publishing a map with openings or places left for the owner", async () => {
     builds.publish.mockResolvedValue({ published: { assets: 1, creatures: [], maps: [{ key: "shop", id: "m1" }], encounters: [] } });
     await open(detail({ files: [uvttFile], items: [shop()] }));
-    await click(host.querySelector(".build-check input") ?? undefined);
-    await click(publishNow());
+    await reviewAllAndChoose();
     expect(builds.publish).not.toHaveBeenCalled();
-    expect(text()).toContain("openings left for you publish as the file had them");
-    await click(button("Publish anyway"));
+    expect(host.querySelector("dialog[open]")?.textContent).toContain("open flags");
+    await click(publishNow());
     expect(builds.publish).toHaveBeenCalled();
   });
 });
@@ -639,9 +712,9 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
     const links = [...host.querySelectorAll<HTMLAnchorElement>(".build-rail-links a")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(links.slice(0, 4)).toEqual([["To fix1", "#build-issues"], ["Notes from your AI1", "#build-notes"], ["Maps1", "#build-maps"], ["Creatures1", "#build-creatures"]]);
     expect(host.querySelector(".build-rail-links .build-rail-urgent")?.textContent).toBe("1");
-    const summary = host.querySelector(".build-summary");
-    expect(summary?.textContent).toBe("Fix what's listed, check each item, then publish what you choose.");
-    expect(summary?.querySelector("a")?.getAttribute("href")).toBe("#build-publish");
+    expect(host.querySelector(".build-page-heading #build-publish")?.textContent).toBe("Publish");
+    await openPublish();
+    expect(host.querySelector("dialog[open] h2")?.textContent).toBe("Publish draft");
   });
 
   it("groups issues under words, names each item and links to its card, in the owner's words", async () => {
@@ -662,7 +735,7 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
   it("asks before removing a draft item, naming it", async () => {
     builds.removeItem.mockResolvedValue(undefined);
     await open(detail({ items: [goblin()] }));
-    await click(host.querySelector(".build-roster-row .build-check input") ?? undefined);
+    await reviewAllAndChoose();
     await click(button("Remove from draft"));
     expect(builds.removeItem).not.toHaveBeenCalled();
     expect(document.querySelector("dialog[open] h2")?.textContent).toBe("Remove Goblin from this draft?");
@@ -673,10 +746,13 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
   it("removes several chosen draft items with one confirmation that names them", async () => {
     builds.removeItem.mockResolvedValue(undefined);
     await open(detail({ items: [goblin({ key: "a" }, { name: "Rimehand" }), goblin({ key: "b" }, { name: "White-coat" }), goblin({ key: "c" }, { name: "Scree Goat" })] }));
-    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-roster-row .build-check input")];
-    await click(boxes[0]);
-    await click(boxes[2]);
-    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("2 chosenCancelRemove from draftPublish 2");
+    while (button("I've checked it")) await click(button("I've checked it"));
+    await openPublish();
+    for (const name of ["Rimehand", "White-coat"]) {
+      const option = [...host.querySelectorAll(".build-publish-option")].find((row) => row.querySelector("strong")?.textContent === name)!;
+      await click(option.querySelector("input") ?? undefined);
+    }
+    expect(publishOptions().filter((box) => box.checked)).toHaveLength(2);
     await click(button("Remove from draft"));
     const dialog = document.querySelector("dialog[open]")!;
     expect(dialog.querySelector("h2")?.textContent).toBe("Remove 2 items from this draft?");
@@ -685,14 +761,17 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
     expect(builds.removeItem.mock.calls).toEqual([["b1", "creature", "a"], ["b1", "creature", "b"]]);
   });
 
-  it("shows a publish in progress, and sends nothing twice", async () => {
+  it("disables publishing while the request is in progress, and sends nothing twice", async () => {
     let finish: (value: unknown) => void = () => {};
     builds.publish.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     await click(publishNow());
-    expect(button("Publishing…")?.hasAttribute("disabled")).toBe(true);
-    expect(button("Remove from draft")?.hasAttribute("disabled")).toBe(true);
+    const publish = host.querySelector<HTMLButtonElement>("#build-publish")!;
+    expect(publish.disabled).toBe(true);
+    expect(host.querySelector("dialog[open]")).toBeNull();
+    await click(publish);
+    expect(builds.publish).toHaveBeenCalledTimes(1);
     await act(async () => { finish({ published: { assets: 0, creatures: [], maps: [], encounters: [] } }); });
     expect(builds.publish).toHaveBeenCalledTimes(1);
   });
@@ -700,7 +779,7 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
   it("brings an error into view and focuses it", async () => {
     builds.publish.mockRejectedValue(new Error("Something changed since you looked at it."));
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     await click(publishNow());
     expect(document.activeElement?.getAttribute("role")).toBe("alert");
     expect(document.activeElement?.textContent).toBe("Something changed since you looked at it.");
@@ -709,20 +788,19 @@ describe("the build page reads as the owner's, not the AI's (FR-GM-27, design re
   it("keeps the selection in view while ticking items", async () => {
     await open(detail({ items: [goblin()] }));
     expect(host.querySelector(".build-publish-bar")).toBeNull();
-    await click(host.querySelector(".build-check input") ?? undefined);
-    expect(host.querySelector(".build-publish-bar")?.textContent).toBe("1 chosenCancelRemove from draftPublish 1");
+    await reviewAllAndChoose();
+    expect(publishOptions().map((box) => box.checked)).toEqual([true]);
+    expect(publishNow()?.textContent).toBe("Publish 1");
   });
 
-  it("puts publishing and Cancel by the heading, before review, and Cancel clears only the selection", async () => {
+  it("puts Publish by the heading and Cancel closes the picker without changing the draft", async () => {
     await open(detail({ items: [goblin(), map()] }));
-    const publish = host.querySelector("#build-publish")!;
+    const publish = host.querySelector(".build-page-heading #build-publish")!;
     expect(publish.compareDocumentPosition(host.querySelector(".build-layout")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await click(button("Choose everything"));
-    const bar = host.querySelector(".build-publish-bar-top")!;
-    expect(bar.compareDocumentPosition(host.querySelector(".build-layout")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await click([...bar.querySelectorAll("button")].find((b) => b.textContent === "Cancel"));
-    expect(host.querySelector(".build-publish-bar-top")).toBeNull();
-    expect(host.querySelector("#build-publish .build-section-sum")?.textContent).toBe("0 of 2 chosen");
+    await reviewAllAndChoose();
+    expect(publishOptions().filter((box) => box.checked)).toHaveLength(2);
+    await click([...host.querySelectorAll("dialog[open] button")].find((b) => b.textContent === "Cancel"));
+    expect(host.querySelector("dialog[open]")).toBeNull();
     expect(builds.publish).not.toHaveBeenCalled();
     expect(builds.removeItem).not.toHaveBeenCalled();
   });
@@ -877,12 +955,14 @@ describe("a build page that reads in parts (FR-GM-27, build page layout 2026-11-
     expect(saved.tokens.map((t) => t.name ?? null)).toEqual(["White-coat 2", null, "White-coat 1"]);
   });
 
-  it("has no Remove on each item: choosing is one selection, and the bar acts on it", async () => {
+  it("keeps draft selection and removal in the publish picker", async () => {
     await open(detail({ items: [goblin({ key: "a" }, { name: "Rimehand" }), goblin({ key: "b" }, { name: "White-coat" })] }));
-    expect(host.querySelectorAll(".build-roster-row button")).toHaveLength(2);
-    expect([...host.querySelectorAll(".build-roster-row button")].every((b) => b.classList.contains("build-roster-pick"))).toBe(true);
-    expect([...host.querySelectorAll(".build-detail button")].map((b) => b.textContent)).toEqual(["Edit"]);
-    expect([...host.querySelectorAll(".build-roster-row .build-check input")].map((i) => i.getAttribute("aria-label"))).toEqual(["Choose Rimehand", "Choose White-coat"]);
+    expect(host.querySelector(".build-roster-row input[type=checkbox]")).toBeNull();
+    expect([...host.querySelectorAll(".build-detail button")].map((b) => b.textContent)).toContain("Edit");
+    await openPublish();
+    expect([...host.querySelectorAll(".build-publish-option strong")].map((node) => node.textContent)).toEqual(["Rimehand", "White-coat"]);
+    await click(publishOptions()[0]);
+    expect(button("Remove from draft")).toBeTruthy();
   });
 
   it("lights a token on the map while its name is pointed at, and lets the rest fall back", async () => {
@@ -899,12 +979,21 @@ describe("a build page that reads in parts (FR-GM-27, build page layout 2026-11-
     expect(host.querySelector(".build-plot .is-lit")).toBeNull();
   });
 
-  it("offers to choose only what's ready, and says how many are chosen", async () => {
+  it("opens publishing from the sidebar and Select all toggles every option", async () => {
     await open(detail({ items: [goblin(), map()] }));
-    expect(host.querySelector("#build-publish .build-section-sum")?.textContent).toBe("0 of 2 chosen");
-    await click(button("Choose what's ready (1)"));
-    expect(host.querySelector("#build-publish .build-section-sum")?.textContent).toBe("1 of 2 chosen");
-    expect(host.querySelector<HTMLInputElement>(".build-roster-row .build-check input")?.checked).toBe(true);
+    await click(host.querySelector(".build-rail-links a[href='#build-publish']") ?? undefined);
+    expect(host.querySelector("dialog[open] h2")?.textContent).toBe("Publish draft");
+    const all = host.querySelector<HTMLInputElement>("dialog[open] .build-publish-select-all input")!;
+    expect(publishOptions().map((box) => box.checked)).toEqual([false, false]);
+    await click(all);
+    expect(publishOptions().map((box) => box.checked)).toEqual([true, true]);
+    await click(publishOptions()[0]);
+    expect(all.indeterminate).toBe(true);
+    await click(all);
+    expect(publishOptions().every((box) => box.checked)).toBe(true);
+    await click(all);
+    expect(publishOptions().every((box) => !box.checked)).toBe(true);
+    expect(publishNow()?.disabled).toBe(true);
   });
 
   it("offers one Start a room after publishing, with the encounters as a choice", async () => {
@@ -912,7 +1001,7 @@ describe("a build page that reads in parts (FR-GM-27, build page layout 2026-11-
       { key: "s2", id: "t2", name: "Scene 2" }, { key: "s1", id: "t1", name: "Scene 1" }, { key: "s10", id: "t10", name: "Scene 10" },
     ] } });
     await open(detail({ items: [goblin()] }));
-    await click(button("Choose everything"));
+    await reviewAllAndChoose();
     await click(publishNow());
     const section = host.querySelector("#build-start")!.closest("section")!;
     expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Start a room"]);
@@ -1013,22 +1102,39 @@ describe("the AI's terrain in review (FR-GM-27, ADR 0071)", () => {
   it("draws each square as the map editor does, Difficult and Blocked apart, and counts them", async () => {
     await open(detail({ items: [cave()] }));
     expect(drawn(".build-map")).toEqual(["difficult", "difficult", "blocked"]);
-    expect(text()).toContain("Terrain: 2 Difficult squares and 1 Blocked square, proposed by your AI");
+    await click(button("Terrain"));
+    expect(text()).toContain("2 Difficult");
+    expect(text()).toContain("1 Blocked");
     // The picture stays the clean original under it.
     expect(host.querySelector(".build-map img")?.getAttribute("src")).toBe("/uploads/cave.webp");
   });
 
-  it("clears all terrain, sending the setup with no terrain and the version the page showed", async () => {
-    builds.saveMapSetup.mockResolvedValue({ item: cave({ setup: { openings: [], lines: [], marks: [] } }) });
+  it("offers terrain review with drawing tools instead of a dropdown", async () => {
     await open(detail({ items: [cave()] }));
-    expect(text()).toContain("Clearing it stops your AI changing this map.");
-    await click(button("Clear all terrain"));
-    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "cave", { ...setup, terrain: [] }, "2026-11-09T00:00:00Z");
+    await click(button("Terrain"));
+    expect(button("Difficult")).toBeTruthy();
+    expect(button("Blocked")).toBeTruthy();
+    expect(button("Normal")).toBeTruthy();
+    expect(button("Save")).toBeTruthy();
+  });
+
+  it("requires saving a stale-grid terrain reset before painting again", async () => {
+    const old = cave({ grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } });
+    await open(detail({ items: [old] }));
+    await click(button("Terrain"));
+    expect(button("Difficult")?.disabled).toBe(true);
+    await click(button("Clear terrain"));
+    expect(button("Difficult")?.disabled).toBe(true);
+    const reset = { ...old, updatedAt: "2026-11-09T00:01:00Z", data: { ...old.data, setup: { openings: [], lines: [], marks: [] } } };
+    builds.get.mockResolvedValue(detail({ items: [reset] }));
+    builds.saveMapSetup.mockResolvedValue({ item: reset });
+    await click([...host.querySelectorAll<HTMLButtonElement>("section[aria-label='Review terrain'] button")].find((b) => b.textContent === "Save"));
+    expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "cave", { ...setup, terrain: [] }, old.updatedAt);
+    expect(button("Difficult")?.disabled).toBe(false);
   });
 
   it("says when the terrain was proposed on another grid, and the check lists it to fix", async () => {
     await open(detail({ items: [cave({ grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } })] }));
-    expect(text()).toContain("Your AI proposed this terrain on 70-pixel squares at offset (0, 0), not on the grid this map has now. Clear it, or put the grid back.");
     // Not drawn on a grid it doesn't fit, where it would sit in the wrong squares.
     expect(drawn(".build-map")).toEqual([]);
     expect(text()).toMatch(/Your AI proposed its terrain on 70-pixel squares at offset \(0, 0\), and the grid is now 50-pixel squares/);
@@ -1082,7 +1188,7 @@ describe("fixing encounter positions on their map", () => {
   it("opens directly from To fix, uses portraits, and places unplaced tokens without coordinate inputs", async () => {
     const svg = await setup(null);
     expect(host.querySelector("input[aria-label$='column'], input[aria-label$='row']")).toBeNull();
-    await click(button("Place on map"));
+    await click(host.querySelector("dialog[open] button[aria-label='Place Guardian on map']") ?? undefined);
     // Display coordinates are half of native map pixels, with a shifted grid and a two-square token.
     await pointer(svg, "pointerdown", 214, 168);
     await pointer(svg, "pointerup", 214, 168);

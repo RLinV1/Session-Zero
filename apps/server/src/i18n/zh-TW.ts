@@ -134,6 +134,8 @@ export const serverZhTW = {
   "build.mapFileGone": "這張地圖的檔案已不在建置中。",
   "build.squareSizeMisfit": "這個方格大小不適用於這張地圖。",
   "build.proposedSquareMisfit": "proposedGrid：這個方格大小不適用於這張地圖。",
+  "build.choosePublishedMap": "請在開啟的建置中選擇一張已發布的地圖。",
+  "build.mapStillUsed": "房間或遭遇仍在使用這張地圖。請先移除這些參照，再取消發布。",
   "build.noFile": "這個建置中沒有這個 ID 的檔案。",
   "build.pictureUnavailable": "無法取得這個檔案的圖片。",
   "build.busyPictures": "正在產生其他圖片，請稍後再試。",

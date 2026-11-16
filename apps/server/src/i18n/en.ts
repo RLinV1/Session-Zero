@@ -144,6 +144,8 @@ export const serverEn = {
   "build.oneUvtt": "Use one UVTT file, at most 40 MiB.",
   "build.chooseTokenArt": "imageFileId: choose token art from this build.",
   "build.mapFileGone": "This map's file isn't in the build any more.",
+  "build.choosePublishedMap": "Choose one published map in an open build.",
+  "build.mapStillUsed": "This map is still used by a room or encounter. Remove those references before unpublishing it.",
   "build.squareSizeMisfit": "That square size doesn't fit this map.",
   "build.proposedSquareMisfit": "proposedGrid: that square size doesn't fit this map.",
   "build.noFile": "This build has no file with that id.",
