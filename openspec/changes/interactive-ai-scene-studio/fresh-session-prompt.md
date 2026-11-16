@@ -122,7 +122,7 @@ CHECKS AND HANDOFF
 
 # M1b
 
-Rewritten on 2026-11-16 at the user's request, after the M1a session: M1b is built on top of the unmerged M1a branch, and all of M1 merges to main together. Written for a ChatGPT agent, which first researches and discusses, then builds. The file itself authorizes nothing. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a, and the bullet marked for the user decides whether D8 and D9 storage choices are pre-approved.
+Rewritten on 2026-11-16 at the user's request, after the M1a session: M1b is built on top of the unmerged M1a branch, and all of M1 merges to main together. Written for a ChatGPT agent, which first researches and discusses, then builds. The file itself authorizes nothing. Session note (2026-11-16): the pasted M1b starter had truncated/corrupted lines; the intact saved text below was used to recover those passages. The user subsequently approved the Phase 1 design and autonomous M1b build, including the publication refusal, exact origins and pixel ceiling. Optional AWS test-bucket authorization was offered; isolated local services were selected and AWS access is unused. The real-host run/tunnel still requires a separate yes. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a, and the bullet marked for the user decides whether D8 and D9 storage choices are pre-approved.
 
 ```text
 You are joining Session Zero, a browser virtual tabletop (repository RLinV1/Session-Zero), to research, discuss and then build M1b ("protected storage and intake") of its interactive-ai-scene-studio change: tasks 2.3–2.8 in openspec/changes/interactive-ai-scene-studio/tasks.md. Do not start M2 (visible preparation) or later milestones.
