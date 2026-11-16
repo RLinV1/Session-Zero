@@ -76,11 +76,11 @@ describe("the library strip (gm-home: The library is presented honestly)", () =>
 });
 
 describe("the page's calls to action (gm-home: Each path names its reader)", () => {
-  it("words each intent one way: every way into running a game says Start a room, every way into joining says Join a game", () => {
+  it("makes the main guest actions explicit and keeps joining distinct", () => {
     render(<HomePage />);
     const main = document.querySelector("main")!;
     const run = [...main.querySelectorAll('a[href="/start"]')].map((a) => a.textContent!.trim());
-    expect(run).toEqual(["Start a room", "Start a room", "Start a room"]);
+    expect(run).toEqual(["Try without signing in", "Try without signing in", "Try without signing in"]);
     expect([...main.querySelectorAll("a.cta")].map((a) => a.getAttribute("href"))).toEqual(["/start", "/start"]);
     const join = within(main).getAllByRole("button", { name: /join/i }).map((b) => b.textContent!.trim());
     expect(join).toEqual(["Join a game", "Join a game"]);

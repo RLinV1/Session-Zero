@@ -22,7 +22,7 @@ import { ensureSeat } from "../net/seats";
 import { GuestRoomNotice, GuestRoomProvider, SAVE_ACCOUNT_HREF, useGuestRoom, useGuestStatus } from "../ui/GuestRoom";
 import { navigate } from "../router";
 import { GuestTutorial } from "../ui/GuestTutorial";
-import { EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
+import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
 import { createScenePreparation } from "../net/scenePreparation";
@@ -654,6 +654,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   };
   /** The guest demo's Show me: bring the step's control on screen, without doing the step. */
   const revealTutorialStep = (step: string) => {
+    // Share is a modal over everything else; a later lesson would be hidden behind it.
+    if (step !== "invite") setShareOpen(false);
     if (EDITOR_TUTORIAL_STEPS.has(step)) {
       const selectStep = () => {
         const tab = document.querySelector<HTMLButtonElement>(`dialog[open] [data-tutorial-editor-step="${step}"]`);
@@ -672,13 +674,31 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         requestAnimationFrame(selectStep);
       });
     }
-    if (step === "map") return chooseMap();
-    if (step === "token" || step === "roll") {
+    if (step === "invite") {
+      // Share is a modal: the card follows it, and the ring lands on the copy-link control.
+      document.querySelector<HTMLButtonElement>("dialog.map-editor[open] .modal-close")?.click();
+      return setShareOpen(true);
+    }
+    if (step === "map") {
+      const editor = document.querySelector("dialog.map-editor[open]");
+      if (editor) {
+        const tab = editor.querySelector<HTMLButtonElement>('[data-tutorial-editor-step="map"]');
+        // Edit map has no Map tab: close it through its draft prompt, then Show me again opens Change map.
+        if (tab) tab.click(); else editor.querySelector<HTMLButtonElement>(".modal-close")?.click();
+        return;
+      }
+      return chooseMap(false, () => document.querySelector<HTMLButtonElement>("[data-tutorial-change-open]")?.click());
+    }
+    if (step === "token" || step === "roll" || COMBAT_TUTORIAL_STEPS.has(step)) {
       const closeEditor = document.querySelector<HTMLButtonElement>("dialog.map-editor[open] .modal-close");
       // Let Save/Discard finish before switching tabs, which would unmount the private draft.
       if (closeEditor) { closeEditor.click(); return; }
-      setTab(step === "token" ? "tokens" : "dice");
-      return openSidebar(() => {});
+      setTab(step === "token" ? "tokens" : step === "roll" ? "dice" : "play");
+      const section = { encounter: "initiative", attack: "attack", ruling: "rulings", damage: "rulings" }[step];
+      return openSidebar(() => {
+        // A folded section keeps its controls out of sight (and out of the tab order) until opened.
+        if (section) document.querySelector<HTMLElement>(`[data-tour="${section}"] .section-toggle[aria-expanded="false"]`)?.click();
+      });
     }
     // A hidden tool rail leaves only its toggle.
     document.querySelector<HTMLButtonElement>('.rail-toggle[aria-expanded="false"]')?.click();

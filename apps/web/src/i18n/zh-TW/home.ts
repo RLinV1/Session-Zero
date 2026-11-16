@@ -14,7 +14,7 @@ export const homeZhTW = {
 
   "home.hero.title": "永久免費，今晚就能開玩。",
   "home.hero.body": "Session Zero 會建議網格與牆壁，還能讓你自己的 AI 應用程式坐上一個玩家座位。玩家依舊只要點開連結，不用註冊。",
-  "home.hero.start": "建立房間",
+  "home.hero.start": "免登入，立即試玩",
   "home.hero.join": "加入遊戲",
   "home.hero.joined.title": "你加入過的房間",
   "home.hero.joined.body": "隨時回來接著玩！房間紀錄只會儲存在這個瀏覽器。",
@@ -142,7 +142,7 @@ export const homeZhTW = {
   "home.players.alt": "玩家手機上的遊戲畫面：墓穴籠罩在黑暗中，只有棋子 Nalani 視野內的區域亮起，下方顯示 Nalani 的生命值。",
   "home.closing.title": "準備好主持遊戲了嗎？",
   "home.closing.body": "建立房間，把邀請連結傳給朋友，冒險就能開始！",
-  "home.closing.start": "建立房間",
+  "home.closing.start": "免登入，立即試玩",
   "home.session.title": "從地圖到第一步。",
   "home.session.body": "先開一桌試試看，準備好後，再帶上完整的冒險。",
   "home.session.steps": "準備、邀請與遊玩",

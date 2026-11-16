@@ -32,7 +32,7 @@ export function RulingButtons({
   if (item.kind === "damage") {
     return (
       <span className="ruling-buttons">
-        <button type="button" disabled={busy} onClick={onApply} aria-label={t("ruling.applyDamage", { n: item.amount, what: description })}>
+        <button type="button" data-tutorial="damage" disabled={busy} onClick={onApply} aria-label={t("ruling.applyDamage", { n: item.amount, what: description })}>
           {t("ruling.applyMinus", { n: item.amount })}
         </button>
         <button type="button" className="secondary" disabled={busy} onClick={onResolve} aria-label={t("ruling.resolveNamed", { what: description })}>
@@ -46,7 +46,7 @@ export function RulingButtons({
     suggested === null ? (verdict === "hit" ? undefined : "secondary") : suggested === verdict ? "primary ruling-suggested" : "secondary";
   return (
     <span className="ruling-buttons">
-      <button type="button" className={look("hit")} disabled={busy} onClick={() => onRule("hit")} aria-label={t("ruling.hitNamed", { what: description })}>
+      <button type="button" data-tutorial="ruling" className={look("hit")} disabled={busy} onClick={() => onRule("hit")} aria-label={t("ruling.hitNamed", { what: description })}>
         {t("ruling.hit")}
       </button>
       <button type="button" className={look("miss")} disabled={busy} onClick={() => onRule("miss")} aria-label={t("ruling.missNamed", { what: description })}>

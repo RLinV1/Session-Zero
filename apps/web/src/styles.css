@@ -1530,9 +1530,13 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .delete-account-warning p { color: inherit; }
 .delete-account-warning ul { margin: 0; padding-left: 1.1rem; color: var(--muted); }
 
-/* Continue as guest sits above the sign-in fields while accounts don't exist (gm-dashboard). */
+/* Offer a visible way to try the app before asking for account details. */
 .guest-option { display: flex; flex-direction: column; gap: var(--space-2); }
 .guest-option p { margin: 0; }
+.guest-option .cta { width: 100%; text-align: center; text-decoration: none; color: var(--on-accent); }
+.account-form > button.primary { background: transparent; border-color: var(--border-strong); color: var(--text); }
+.account-form > button.primary:hover:not(:disabled) { background: var(--hover); }
+.hero-guest-hint { margin: 0; }
 .guest-divider { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.85rem; }
 .guest-divider::before,
 .guest-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
@@ -2984,7 +2988,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
 /* In the map editor, keep the mobile HUD and the tab bar available around the lesson. */
-.map-editor .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
+.map-editor .guest-tutorial.sheet-top, .map-picker .guest-tutorial.sheet-top, .share-modal .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }

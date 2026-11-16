@@ -1,8 +1,10 @@
 /** The step logic of the guest room's interactive demo (guest-gm-hosting, D8a). Pure, no React. */
 
-export const TUTORIAL_STEPS = ["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "roll", "done"] as const;
+export const TUTORIAL_STEPS = ["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "roll", "encounter", "attack", "ruling", "damage", "done"] as const;
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number];
 export const EDITOR_TUTORIAL_STEPS: ReadonlySet<string> = new Set(["grid", "walls", "fog", "sight", "terrain"]);
+/** The combat walkthrough. The GM can move past one whose action cannot be repeated (a reload forgets earlier rolls). */
+export const COMBAT_TUTORIAL_STEPS: ReadonlySet<string> = new Set(["encounter", "attack", "ruling", "damage"]);
 
 /** A step index, "declined" or "done"; null means the question has not been asked yet. */
 export type Progress = number | "declined" | "done" | null;
@@ -21,7 +23,31 @@ export interface TutorialFacts {
   sightEdits: number;
   /** Changes to the terrain. */
   terrainEdits: number;
+  /** 1 while an encounter is running. */
+  encounters: number;
+  /** To-hit rolls, rulings on them and applied damage rolls made since the demo began (see `rollMarks`). */
+  attackRolls: number;
+  rulings: number;
+  damageApplied: number;
 }
+
+type MarkedRoll = { id: string; attack?: { kind: "toHit" | "damage" } | undefined; verdict?: string | undefined; damageApplied?: boolean | undefined };
+
+/** What the roll log shows of the combat lessons, as keys: `attack:id`, `ruling:id`, `damage:id`. */
+export function rollMarks(rolls: readonly MarkedRoll[]): Set<string> {
+  const marks = new Set<string>();
+  for (const roll of rolls) {
+    if (roll.attack?.kind === "toHit") {
+      marks.add(`attack:${roll.id}`);
+      if (roll.verdict) marks.add(`ruling:${roll.id}`);
+    } else if (roll.attack?.kind === "damage" && roll.damageApplied) marks.add(`damage:${roll.id}`);
+  }
+  return marks;
+}
+
+/** How many marks of one kind are not in the baseline taken when the demo began. */
+export const countMarks = (now: ReadonlySet<string>, base: ReadonlySet<string>, kind: "attack" | "ruling" | "damage"): number =>
+  [...now].filter((mark) => mark.startsWith(`${kind}:`) && !base.has(mark)).length;
 
 const isDone: Record<TutorialStep, (f: TutorialFacts) => boolean> = {
   table: () => false, // moves on with the Start button
@@ -34,6 +60,10 @@ const isDone: Record<TutorialStep, (f: TutorialFacts) => boolean> = {
   token: (f) => f.tokens > 0,
   move: (f) => f.moves > 0,
   fog: (f) => f.fog > 0,
+  encounter: (f) => f.encounters > 0,
+  attack: (f) => f.attackRolls > 0,
+  ruling: (f) => f.rulings > 0,
+  damage: (f) => f.damageApplied > 0,
   roll: (f) => f.gmRolls > 0,
   done: () => false, // ends with Finish
 };
