@@ -657,22 +657,30 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     // Share is a modal over everything else; a later lesson would be hidden behind it.
     if (step !== "invite") setShareOpen(false);
     if (EDITOR_TUTORIAL_STEPS.has(step)) {
-      const selectStep = () => {
+      // The editor mounts a moment after its opener is pressed, so look for the tab until it is there.
+      const selectStep = (tries = 0) => {
         const tab = document.querySelector<HTMLButtonElement>(`dialog[open] [data-tutorial-editor-step="${step}"]`);
-        tab?.click();
-        tab?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (!tab) return void (tries < 20 && window.setTimeout(() => selectStep(tries + 1), 100));
+        if (tab.getAttribute("aria-selected") !== "true") tab.click();
+        tab.scrollIntoView({ block: "nearest", inline: "nearest" });
       };
+      const openEditAt = () => chooseMap(false, () => {
+        document.querySelector<HTMLButtonElement>("[data-tutorial-editor-open]")?.click();
+        selectStep();
+      });
       const editor = document.querySelector("dialog.map-editor[open]");
       if (editor) {
         if (editor.querySelector(`[data-tutorial-editor-step="${step}"]`)) return selectStep();
-        // Change map has fewer tabs. Close it through its normal draft prompt before opening Edit map.
+        // Change map has fewer tabs: close it through its normal draft prompt, then open Edit map at this lesson.
+        // A draft prompt that stays up keeps the editor open; the GM answers it first.
         editor.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        return;
+        const reopen = (tries = 0) => {
+          if (!document.querySelector("dialog.map-editor[open]")) return openEditAt();
+          if (tries < 20) window.setTimeout(() => reopen(tries + 1), 100);
+        };
+        return void window.setTimeout(reopen, 100);
       }
-      return chooseMap(false, () => {
-        document.querySelector<HTMLButtonElement>("[data-tutorial-editor-open]")?.click();
-        requestAnimationFrame(selectStep);
-      });
+      return openEditAt();
     }
     if (step === "invite") {
       // Share is a modal: the card follows it, and the ring lands on the copy-link control.
@@ -683,9 +691,14 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
       const editor = document.querySelector("dialog.map-editor[open]");
       if (editor) {
         const tab = editor.querySelector<HTMLButtonElement>('[data-tutorial-editor-step="map"]');
-        // Edit map has no Map tab: close it through its draft prompt, then Show me again opens Change map.
-        if (tab) tab.click(); else editor.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        return;
+        // Edit map has no Map tab: close it through its draft prompt, then open Change map once it is gone.
+        if (tab) return tab.click();
+        editor.querySelector<HTMLButtonElement>(".modal-close")?.click();
+        const reopen = (tries = 0) => {
+          if (!document.querySelector("dialog.map-editor[open]")) return chooseMap(false, () => document.querySelector<HTMLButtonElement>("[data-tutorial-change-open]")?.click());
+          if (tries < 20) window.setTimeout(() => reopen(tries + 1), 100);
+        };
+        return void window.setTimeout(reopen, 100);
       }
       return chooseMap(false, () => document.querySelector<HTMLButtonElement>("[data-tutorial-change-open]")?.click());
     }
