@@ -3008,7 +3008,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial .tutorial-nav button { min-width: 5rem; }
 .guest-tutorial .tutorial-actions button { white-space: nowrap; }
 .guest-tutorial .guide-skip { margin-left: auto; }
-.guest-tutorial .tutorial-nav:has(> .guide-skip) { display: flex; }
+.guest-tutorial .tutorial-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
 /* Highlight the control without dimming the map or taking clicks. Under the card (40). */

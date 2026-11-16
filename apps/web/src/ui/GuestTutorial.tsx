@@ -362,7 +362,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) void start(stepName!);
   };
 
-  // Shown in the header, and in the button row while an example plays (the header's count is hidden then).
+  // Shown in the header, and beside the title while an example plays (the header is hidden then).
   const skipButton = stepName !== "done" && <button type="button" className="link guide-skip" onClick={() => (run.playing ? stop() : set("done"))}>{t("tutorial.skip")}</button>;
   const content = (
     <>
@@ -396,7 +396,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             <span className="guide-count">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</span>
             {!run.playing && skipButton}
           </div>
-          <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
+          <div className="tutorial-title">
+            <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
+            {run.playing && skipButton}
+          </div>
           <p className="tutorial-body">
             {stepName === "done"
               ? t("tutorial.done.body", { days: GUEST_ROOM_IDLE_DAYS })
@@ -440,7 +443,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             )}
           </div>
           <div className="tutorial-nav">
-            {run.playing && skipButton}
           {stepName !== "table" && stepName !== "done" && !run.playing && (
             <button type="button" className="small primary" onClick={() => {
               focusNext.current = true;
