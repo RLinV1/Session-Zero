@@ -150,6 +150,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
   // A step the guest went back to stays put, even when its work is already done.
+  // Any pointer or key press stops a running example first, so what Skip was pressed during is noted before that re-render.
+  const skipWhilePlaying = useRef(false);
   const [pinned, setPinned] = useState<number | null>(null);
   const settled = !run.playing && !demoBusy && step !== null && step > 0 && step !== pinned ? settle(step, facts) : step;
   useEffect(() => {
@@ -399,7 +401,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           {run.step === stepName && run.index === run.captions.length && run.captions.length > 0 && EXAMPLE_STEPS.has(stepName!) && stepName !== "grid" && <p className="muted small-print" role="status">{t("tutorial.note")}</p>}
           {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
-            {REVEALABLE.has(stepName!) && (
+            {REVEALABLE.has(stepName!) && !run.playing && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void showMe()}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
             )}
             {stepName === "encounter" && (
@@ -423,9 +425,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
                 <button type="button" className="secondary small" onClick={() => set("done")}>{t("tutorial.finish")}</button>
               </>
             ) : (
-              <button type="button" className="secondary small" onClick={() => set("done")}>{t("tutorial.skip")}</button>
+              <button type="button" className="secondary small tutorial-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>
             )}
-          {step! > 1 && (
+          {step! > 1 && !run.playing && (
             <button type="button" className="small secondary icon-only" aria-label={t("tutorial.back")} title={t("tutorial.back")} onClick={() => {
               focusNext.current = true;
               setPinned(step! - 1);
@@ -435,7 +437,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
               else openBack();
             }}><ArrowLeft aria-hidden="true" /></button>
           )}
-          {stepName !== "table" && stepName !== "done" && (
+          {stepName !== "table" && stepName !== "done" && !run.playing && (
             <button type="button" className="small secondary icon-only" aria-label={t("tutorial.next")} title={t("tutorial.next")} onClick={() => {
               focusNext.current = true;
               setPinned(null);
