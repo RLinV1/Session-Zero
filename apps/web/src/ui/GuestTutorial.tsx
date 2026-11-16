@@ -32,7 +32,7 @@ const GUTTER = 16;
 const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll", ...COMBAT_TUTORIAL_STEPS]);
 const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open]";
 /** Steps whose control lives in a dialog the lesson opens, so Show me is useful even with the opener in sight. */
-const OPENS_DIALOG: ReadonlySet<string> = new Set(["invite", "map"]);
+const OPENS_DIALOG: ReadonlySet<string> = new Set(["map"]);
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)

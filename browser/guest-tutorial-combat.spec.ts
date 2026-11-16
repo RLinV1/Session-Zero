@@ -65,8 +65,10 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
 
     // Show me opens Share and rings its copy-link control, with the card still on screen.
     await step(2, "Invite players");
-    await showMe(true);
+    await showMe();
     const share = page.locator("dialog.share-modal[open]");
+    // Share is in plain sight on desktop, so there is no Show me: the GM presses it.
+    if (!await share.count()) await page.locator('[data-tutorial="invite"]').first().click();
     await expect(share.locator(".guest-tutorial")).toBeVisible();
     await expect(share.locator('[data-tutorial="invite"]')).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
