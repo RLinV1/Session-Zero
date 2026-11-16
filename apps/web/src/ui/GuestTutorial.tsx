@@ -306,12 +306,13 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
             {stepName === "table" && (
               <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>
             )}
-            {(stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) && (
+            {stepName !== "table" && stepName !== "done" && (
               <button type="button" className="small secondary" onClick={() => {
                 focusNext.current = true;
                 const next = settle(step + 1, facts);
                 set(next);
-                reveal(TUTORIAL_STEPS[next]!);
+                // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
+                if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!);
               }}>{t("tutorial.next")}</button>
             )}
             {stepName === "done" ? (
