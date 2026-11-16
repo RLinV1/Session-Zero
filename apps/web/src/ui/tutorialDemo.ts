@@ -101,7 +101,8 @@ const send = async (connection: RoomConnection, command: Command): Promise<DemoR
  * Two neighbouring cells of open floor, chosen on the roomiest open floor: no wall within
  * about a cell of either centre, no blocked terrain or occupied footprints, and inside the map.
  */
-export function demoSpots(state: RoomState, sizeInCells = 1, exceptId?: string): [Point, Point] | null {
+/** `gap` is the distance in cells between the two (neighbours by default). */
+export function demoSpots(state: RoomState, sizeInCells = 1, exceptId?: string, gap = sizeInCells): [Point, Point] | null {
   const { grid, map } = state.scene;
   const size = grid.cellSize;
   const width = map?.width ?? size * 8, height = map?.height ?? size * 8;
@@ -129,20 +130,21 @@ export function demoSpots(state: RoomState, sizeInCells = 1, exceptId?: string):
   const mc = (cols - 1) / 2, mr = (rows - 1) / 2;
   let best: { score: number; away: number; at: [number, number] } | null = null;
   for (let row = 0; row < rows; row++) {
-    for (let col = 0; col + sizeInCells < cols; col++) {
-      if (!open(col, row) || !open(col + sizeInCells, row)) continue;
-      const score = Math.min(room(col, row), room(col + sizeInCells, row));
+    for (let col = 0; col + gap < cols; col++) {
+      if (!open(col, row) || !open(col + gap, row)) continue;
+      const score = Math.min(room(col, row), room(col + gap, row));
       const away = Math.hypot(col + 0.5 - mc, row - mr);
       if (!best || score > best.score + 1 || (Math.abs(score - best.score) <= 1 && away < best.away)) best = { score, away, at: [col, row] };
     }
   }
-  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + sizeInCells, best.at[1])];
+  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + gap, best.at[1])];
   return null;
 }
 
 /** The two demo tokens, side by side on open floor, with built-in token art; their events reach the snapshot before the acks do. */
 async function makeDemoTokens(connection: RoomConnection, state: RoomState): Promise<DemoResult> {
-  const spots = demoSpots(state);
+  // Two cells apart, so the names written under the tokens do not run into each other.
+  const spots = demoSpots(state, 1, undefined, 2);
   if (!spots) return { ok: false, message: t("tutorial.demo.noSpace") };
   const [heroAt, foeAt] = spots;
   const hero = await send(connection, {
