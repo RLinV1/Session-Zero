@@ -517,6 +517,7 @@ export const panelsZhTW = {
   "tutorial.sight.title": "測試玩家看得到的範圍",
   "tutorial.sight.body": "開啟「視線」，放測試棋子，按「儲存變更」。",
   "tutorial.next": "下一步",
+  "tutorial.back": "上一步",
   "tutorial.terrain.title": "繪製地形",
   "tutorial.terrain.body": "開啟「地形」，繪製，按「儲存變更」。",
   "tutorial.example.walls": "已畫出範例。自己畫，或按「捨棄」。",

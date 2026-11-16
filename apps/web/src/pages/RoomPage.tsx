@@ -278,6 +278,7 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
   /** The guest demo watches these: invite links copied, and the room menu's "start again" (guest-gm-hosting). */
   const [invitesCopied, setInvitesCopied] = useState(0);
   const [demoRestart, setDemoRestart] = useState(0);
+  const [demoOffer, setDemoOffer] = useState(0);
   const guestRoom = useGuestRoom();
   const focusToken = useCallback((tokenId: string) => boardRef.current?.focusToken(tokenId), []);
   // Who attacks whom (attack-targeting): chosen in the Play tab's Attack section or on the board.
@@ -881,7 +882,7 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
         }
       />
       {features.tableChrome && you.role === "gm" && !readOnly && (
-        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} connection={tutorialConnection} />
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} offer={demoOffer} reveal={revealTutorialStep} connection={tutorialConnection} />
       )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}

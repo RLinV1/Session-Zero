@@ -55,7 +55,13 @@ export const demoTokenIds = (state: RoomState): string[] => {
 /** Keep the original scene intact: all examples run on their own map. */
 export async function ensureTutorialScene(connection: RoomConnection): Promise<DemoResult> {
   let state = connection.snapshot?.state;
-  if (!state || state.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
+  if (!state) return { ok: true };
+  if (state.scene.map?.url === TUTORIAL_MAP.url) {
+    // A practice scene made before the grid was softened keeps its old lines until now.
+    const g = state.scene.grid;
+    return g.lineColor === TUTORIAL_GRID.lineColor && g.lineOpacity === TUTORIAL_GRID.lineOpacity && g.lineWidth === TUTORIAL_GRID.lineWidth
+      ? { ok: true } : send(connection, { type: "scene.setGrid", grid: { ...g, lineColor: TUTORIAL_GRID.lineColor, lineOpacity: TUTORIAL_GRID.lineOpacity, lineWidth: TUTORIAL_GRID.lineWidth } });
+  }
   const existing = Object.entries(state.savedScenes ?? {}).find(([, saved]) => saved.table.scene.map?.url === TUTORIAL_MAP.url);
   const names = new Set(Object.values(sceneNamesOf(state)));
   let name = TUTORIAL_SCENE_NAME;

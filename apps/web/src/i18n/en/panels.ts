@@ -518,6 +518,7 @@ export const panels = {
   "tutorial.sight.title": "Test what players can see",
   "tutorial.sight.body": "Open Sight, place a test token, press Save changes.",
   "tutorial.next": "Next step",
+  "tutorial.back": "Previous step",
   "tutorial.terrain.title": "Paint terrain",
   "tutorial.terrain.body": "Open Terrain, paint, press Save changes.",
   "tutorial.example.walls": "Example drawn. Draw your own, or press Discard.",

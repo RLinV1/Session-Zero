@@ -2997,6 +2997,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }
+.guest-tutorial .icon-only { display: inline-flex; align-items: center; justify-content: center; padding-inline: var(--space-2); font-size: 1.1em; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
 /* Highlight the control without dimming the map or taking clicks. Under the card (40). */
 .tutorial-spotlight {

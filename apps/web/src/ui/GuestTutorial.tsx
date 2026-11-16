@@ -1,3 +1,4 @@
+import { ArrowLeft, ArrowRight } from "@phosphor-icons/react";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
@@ -54,7 +55,7 @@ const positionsOf = (tokens: RoomState["tokens"]) =>
  * has, except the demo fight (tutorialDemo.ts), whose buttons send the panels' own commands. Each step points at a `data-tutorial` control, or sits at the
  * bottom of the screen when that control is not on screen.
  */
-export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal, connection }: {
+export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, reveal, connection }: {
   roomId: string;
   /** The GM seat's connection: the demo fight sends the same commands the Initiative and Attack panels do. */
   connection: RoomConnection;
@@ -65,6 +66,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   invites: number;
   /** Bumped by the room menu's "Interactive demo" to start again from the first step. */
   restart: number;
+  /** Bumped when a signed-in GM finishes the app guide: asks whether they also want the interactive demo. */
+  offer?: number;
   /** Opens the tab or section that holds a step's control (RoomPage owns the tabs). */
   reveal: (step: (typeof TUTORIAL_STEPS)[number], demo?: boolean) => void;
 }) {
@@ -146,10 +149,22 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
-  const settled = !run.playing && !demoBusy && step !== null && step > 0 ? settle(step, facts) : step;
+  // A step the guest went back to stays put, even when its work is already done.
+  const [pinned, setPinned] = useState<number | null>(null);
+  const settled = !run.playing && !demoBusy && step !== null && step > 0 && step !== pinned ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
+
+  const [offered, setOffered] = useState(false);
+  const seenOffer = useRef(offer);
+  useEffect(() => {
+    if (offer === seenOffer.current) return;
+    seenOffer.current = offer;
+    setOffered(true);
+    focusNext.current = true;
+    setProgress(null);
+  }, [offer]);
 
   const seenRestart = useRef(restart);
   useEffect(() => {
@@ -176,7 +191,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const pointerRoute = useRef<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
-  const shown = guest && (progress === null || typeof progress === "number");
+  const shown = (guest || offered) && (progress === null || typeof progress === "number");
   const stepName = step === null ? null : TUTORIAL_STEPS[step]!;
 
   // Next to the step's control; a bottom sheet when it is hidden, huge (the board) or the screen is narrow.
@@ -347,11 +362,11 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}${asking ? " is-intro" : ""}${following ? " is-following" : ""}`}
+      className={`guest-tutorial ${place && !docked && !asking ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}${asking ? " is-intro" : ""}${following ? " is-following" : ""}`}
       data-side={place?.side}
       data-step={stepName}
       data-playing={run.playing}
-      style={place && !docked ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
+      style={place && !docked && !asking ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
     >
       <span className="sr-only" role="status" aria-live="polite">{stepName ? t(TITLE[stepName]) : ""}</span>
@@ -402,27 +417,38 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
             {stepName === "table" && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>
             )}
-            {stepName !== "table" && stepName !== "done" && (
-              <button type="button" className="small secondary" onClick={() => {
-                focusNext.current = true;
-                const next = settle(step + 1, facts);
-                set(next);
-                // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
-                const openNext = () => { if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!); };
-                // The sample comes out first, so leaving its tab does not ask to save it.
-                if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) {
-                  void clear(stepName!).then(openNext);
-                } else openNext();
-              }}>{t("tutorial.next")}</button>
-            )}
             {stepName === "done" ? (
               <>
-                <button type="button" className="small primary" onClick={() => { set("done"); navigate(SAVE_ACCOUNT_HREF); }}>{t("guest.save")}</button>
+                {guest && <button type="button" className="small primary" onClick={() => { set("done"); navigate(SAVE_ACCOUNT_HREF); }}>{t("guest.save")}</button>}
                 <button type="button" className="secondary small" onClick={() => set("done")}>{t("tutorial.finish")}</button>
               </>
             ) : (
               <button type="button" className="secondary small" onClick={() => set("done")}>{t("tutorial.skip")}</button>
             )}
+          {step! > 1 && (
+            <button type="button" className="small secondary icon-only" aria-label={t("tutorial.back")} title={t("tutorial.back")} onClick={() => {
+              focusNext.current = true;
+              setPinned(step! - 1);
+              set(step! - 1);
+              const openBack = () => reveal(TUTORIAL_STEPS[step! - 1]!);
+              if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) void clear(stepName!).then(openBack);
+              else openBack();
+            }}><ArrowLeft aria-hidden="true" /></button>
+          )}
+          {stepName !== "table" && stepName !== "done" && (
+            <button type="button" className="small secondary icon-only" aria-label={t("tutorial.next")} title={t("tutorial.next")} onClick={() => {
+              focusNext.current = true;
+              setPinned(null);
+              const next = settle(step! + 1, facts);
+              set(next);
+              // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
+              const openNext = () => { if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!); };
+              // The sample comes out first, so leaving its tab does not ask to save it.
+              if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) {
+                void clear(stepName!).then(openNext);
+              } else openNext();
+            }}><ArrowRight aria-hidden="true" /></button>
+          )}
           </div>
         </>
       )}
