@@ -133,7 +133,7 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     const grid = { ...DEFAULT_GRID, cellSize: 50, offsetX: 0, offsetY: 0 };
     const base = { ...emptyRoomState("r"), scene: { map: { width: 800, height: 800 }, grid } } as unknown as RoomState;
     const spots = (state: RoomState) => demoSpots(state);
-    expect(spots(base)).toEqual([{ x: 425, y: 425 }, { x: 475, y: 425 }]);
+    expect(spots(base)).toEqual([{ x: 375, y: 375 }, { x: 425, y: 375 }]);
     const wall = { id: "w", a: { x: 400, y: 0 }, b: { x: 400, y: 800 } };
     const walled = { ...base, walls: { w: wall }, terrain: { base: [{ row: 8, start: 9, end: 12, kind: "blocked" }], effects: [] } } as unknown as RoomState;
     for (const p of spots(walled)) {

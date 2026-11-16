@@ -1,4 +1,4 @@
-import { distanceToSegment, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
+import { distanceToSegment, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
 import { attackExpression, pendingRulings, presetRollLabel } from "../panels/attackRoll";
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
@@ -44,7 +44,7 @@ const send = async (connection: RoomConnection, command: Command): Promise<DemoR
 };
 
 /**
- * Two neighbouring cells of open floor, searched outward from the middle of the map: no wall within
+ * Two neighbouring cells of open floor, chosen on the roomiest open floor: no wall within
  * about a cell of either centre, no blocked terrain, and inside the map. Falls back to the middle.
  */
 export function demoSpots(state: RoomState): [Point, Point] {
@@ -60,17 +60,26 @@ export function demoSpots(state: RoomState): [Point, Point] {
     return !Object.values(state.walls).some((w) => distanceToSegment(p, w) < size * 0.75)
       && !layers.some((runs) => terrainAt(runs, col, row) === "blocked");
   };
-  const mc = Math.floor(cols / 2), mr = Math.floor(rows / 2);
-  for (let r = 0; r <= Math.max(cols, rows); r++) {
-    for (let dr = -r; dr <= r; dr++) {
-      for (let dc = -r; dc <= r; dc++) {
-        if (Math.max(Math.abs(dr), Math.abs(dc)) !== r) continue;
-        const col = mc + dc, row = mr + dr;
-        if (open(col, row) && open(col + 1, row)) return [centre(col, row), centre(col + 1, row)];
-      }
+  // Prefer the roomiest floor: the pair whose nearer cell is farthest from any wall (a shipped map's stored walls count,
+  // even before the GM loads them), ties going to the one closest to the middle of the map.
+  const stored = map ? storedWallsFor(map) ?? [] : [];
+  const walls = [...Object.values(state.walls), ...stored];
+  const room = (col: number, row: number) => {
+    const p = centre(col, row);
+    return Math.min(size * 3, ...walls.map((w) => distanceToSegment(p, w)));
+  };
+  const mc = (cols - 1) / 2, mr = (rows - 1) / 2;
+  let best: { score: number; away: number; at: [number, number] } | null = null;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col + 1 < cols; col++) {
+      if (!open(col, row) || !open(col + 1, row)) continue;
+      const score = Math.min(room(col, row), room(col + 1, row));
+      const away = Math.hypot(col + 0.5 - mc, row - mr);
+      if (!best || score > best.score + 1 || (Math.abs(score - best.score) <= 1 && away < best.away)) best = { score, away, at: [col, row] };
     }
   }
-  const mid = centre(mc, mr);
+  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + 1, best.at[1])];
+  const mid = centre(Math.floor(mc), Math.floor(mr));
   return [mid, { x: mid.x + size, y: mid.y }];
 }
 
