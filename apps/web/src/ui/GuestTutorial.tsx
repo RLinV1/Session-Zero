@@ -312,6 +312,11 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     focusNext.current = false;
   }, [shown, step, restart]);
 
+  // Reaching the Move step without a token (the Token step was skipped) would leave nothing to move.
+  useEffect(() => {
+    if (shown && stepName === "move" && connection.snapshot?.state) void ensureDemoTokens(connection);
+  }, [shown, stepName]);
+
   if (!shown) return null;
 
   const runDemo = async (run: () => Promise<DemoResult>) => {
@@ -325,11 +330,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     if (result.ok && next) window.setTimeout(() => reveal(next as (typeof TUTORIAL_STEPS)[number]), 300);
   };
   const waitingDamage = damageWaiting(state);
-
-  // Reaching the Move step without a token (the Token step was skipped) would leave nothing to move.
-  useEffect(() => {
-    if (shown && stepName === "move" && connection.snapshot?.state) void ensureDemoTokens(connection);
-  }, [shown, stepName]);
 
   const asking = step === null;
   // While an editor lesson plays, the card steps out of the board's way: the bottom right on a wide screen, a slim sheet on a phone.
