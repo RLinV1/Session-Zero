@@ -130,7 +130,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
           if (!(await button.isVisible())) {
             await page.locator("button, [role=tab]").filter({ hasText: /^Manage$/ }).first().click();
             const folded = page.locator('[data-tour="gm-map"] .section-toggle[aria-expanded="false"]');
-            if (await folded.count()) await folded.click();
+            if (await folded.count()) await folded.evaluate((el) => (el as HTMLElement).click());
           }
           await button.click();
         };
