@@ -34,10 +34,12 @@ export class StudioAccess {
   }
 
   /**
-   * The token, when the room server says it is live for this resource; null otherwise. Anything the
-   * request carries besides its `Authorization` header, such as host metadata naming a user, plays no part.
+   * The token, when the room server says it is live for this resource; null when it says it isn't;
+   * "unavailable" when it couldn't say (busy, limited or down), which is no reason to drop a token.
+   * Anything the request carries besides its `Authorization` header, such as host metadata naming a
+   * user, plays no part.
    */
-  async verify(header: string | undefined, clientAddress: string): Promise<string | null> {
+  async verify(header: string | undefined, clientAddress: string): Promise<string | null | "unavailable"> {
     const token = header?.match(BEARER)?.[1];
     if (!token) return null;
     const response = await fetch(`${this.options.roomServerUrl}/api/oauth/introspect`, {
@@ -47,11 +49,18 @@ export class StudioAccess {
       // So the room server's limit on invalid tokens stays per client, as for passes (ADR 0052).
       headers: { authorization: `Bearer ${token}`, "x-forwarded-for": clientAddress },
     });
-    if (!response.ok) return null;
+    if (!response.ok) return "unavailable";
     const answer = Introspection.safeParse(await response.json().catch(() => null));
     if (!answer.success || !answer.data.active) return null;
     const { aud, scope } = answer.data;
     return aud === this.resource && scope.split(" ").includes(STUDIO_ACCESS_SCOPE) ? token : null;
+  }
+
+  /** The room server couldn't check the token: try again, keeping it. Not a 401, which tells the host to discard it. */
+  unavailable(res: Response) {
+    res.setHeader("Retry-After", "5");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(503).json({ jsonrpc: "2.0", error: { code: -32000, message: "Session Zero can't check this connection right now. Try again in a moment." }, id: null });
   }
 
   /** RFC 9728 §5.1: where to find how to get a token, which is how the host starts or restarts sign-in. */

@@ -21,7 +21,8 @@ export function StudioConnectPage() {
 
 type View =
   | { state: "loading" }
-  | { state: "invalid"; error: string }
+  /** `back`: where the AI app asked to hear about a problem. Only ever followed by the person's click. */
+  | { state: "invalid"; error: string; back: string | null }
   | { state: "ready"; request: StudioConsentRequest }
   | { state: "returning" };
 
@@ -40,13 +41,10 @@ function StudioConsent() {
     api.studio.checkRequest(search).then((checked) => {
       if (!live) return;
       if (checked.ok) return setView({ state: "ready", request: checked.request });
-      // A problem the AI app should hear about goes back to it; a bad app or address stays here.
-      if (checked.redirectTo) {
-        setView({ state: "returning" });
-        return location.assign(checked.redirectTo);
-      }
-      setView({ state: "invalid", error: checked.error });
-    }, () => live && setView({ state: "invalid", error: t("studio.connect.failed") }));
+      // Never sent on without a click: anyone can register an app, so its address isn't trusted
+      // enough to turn this site into a silent redirect (RFC 9700 §4.11.2).
+      setView({ state: "invalid", error: checked.error, back: checked.redirectTo });
+    }, () => live && setView({ state: "invalid", error: t("studio.connect.failed"), back: null }));
     return () => {
       live = false;
     };
@@ -79,6 +77,7 @@ function StudioConsent() {
         <div className="card">
           <h1>{t("studio.connect.invalidTitle")}</h1>
           <p role="alert" className="error">{view.error}</p>
+          {view.back && <a href={view.back} rel="noreferrer">{t("studio.connect.goBack", { host: new URL(view.back).host })}</a>}
         </div>
       </EntryPage>
     );
@@ -90,7 +89,7 @@ function StudioConsent() {
     <EntryPage>
       <form className="card studio-connect" onSubmit={submit} aria-labelledby="studio-connect-title">
         <h1 id="studio-connect-title">{t("studio.connect.title")}</h1>
-        <p>{t("studio.connect.claims", { name: client.name })}</p>
+        <p>{client.name ? t("studio.connect.claims", { name: client.name }) : t("studio.connect.claimsUnnamed")}</p>
         <p><strong>{t("studio.connect.returnsTo", { host: client.redirectHost })}</strong></p>
         {account.status === "signedIn" && <p className="muted">{t("studio.connect.signedInAs", { name: account.account.displayName })}</p>}
         {builds.length === 0 ? (

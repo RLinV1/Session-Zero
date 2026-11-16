@@ -828,10 +828,16 @@ export class PostgresRoomStore implements RoomStore {
 
   // ---------- Delegated Studio access (design D7) ----------
 
-  async registerStudioClient(client: StudioClientRecord, max: number) {
+  async registerStudioClient(client: StudioClientRecord, max: number, evictUnusedBefore: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('studio_oauth_clients'))`;
-      if (await tx.studioOAuthClient.count() >= max) throw new StudioClientLimitError();
+      if (await tx.studioOAuthClient.count() >= max) {
+        const stale = await tx.studioOAuthClient.findFirst({
+          where: { lastUsedAt: null, createdAt: { lt: new Date(evictUnusedBefore) }, grants: { none: {} } }, orderBy: { createdAt: "asc" }, select: { id: true },
+        });
+        if (!stale) throw new StudioClientLimitError();
+        await tx.studioOAuthClient.delete({ where: { id: stale.id } });
+      }
       await tx.studioOAuthClient.create({
         data: { id: client.id, name: client.name, redirectUris: client.redirectUris, createdAt: new Date(client.createdAt), lastUsedAt: client.lastUsedAt ? new Date(client.lastUsedAt) : null },
       });
@@ -846,6 +852,9 @@ export class PostgresRoomStore implements RoomStore {
   async createStudioGrant(grant: StudioGrantRecord, maxLive: number, now: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`studio_grants:${grant.ownerGmId}`}))`;
+      // Shared with other consents; registration and the sweep take it alone, so neither can drop
+      // this client while a grant for it is being added.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext('studio_oauth_clients'))`;
       const at = new Date(now);
       const held = await tx.studioGrant.count({
         where: { ownerGmId: grant.ownerGmId, revokedAt: null, expiresAt: { gt: at }, OR: [{ codeUsedAt: { not: null } }, { codeExpiresAt: { gt: at } }] },
@@ -930,11 +939,12 @@ export class PostgresRoomStore implements RoomStore {
   }
 
   async sweepStudio(times: StudioSweepTimes) {
-    const now = new Date(times.now);
+    const now = new Date(times.now), endedBefore = new Date(times.endedBefore);
     await this.prisma.$transaction(async (tx) => {
-      await tx.studioToken.deleteMany({ where: { expiresAt: { lte: now } } });
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('studio_oauth_clients'))`;
+      await tx.studioToken.deleteMany({ where: { expiresAt: { lte: endedBefore } } });
       const ended = await tx.studioGrant.findMany({
-        where: { OR: [{ revokedAt: { not: null } }, { expiresAt: { lte: now } }, { codeUsedAt: null, codeExpiresAt: { lte: now } }] }, select: { id: true },
+        where: { OR: [{ revokedAt: { lte: endedBefore } }, { expiresAt: { lte: endedBefore } }, { codeUsedAt: null, codeExpiresAt: { lte: now } }] }, select: { id: true },
       });
       const ids = ended.map((g) => g.id);
       await tx.studioToken.deleteMany({ where: { grantId: { in: ids } } });
@@ -1413,7 +1423,9 @@ export class PostgresRoomStore implements RoomStore {
       await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.buildFile.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.build.deleteMany({ where: { ownerGmId } });
-      // Delegated Studio access (design D7): tokens first, as their foreign key to grants is RESTRICT.
+      // Delegated Studio access (design D7): under the lock a consent takes, so none lands meanwhile;
+      // tokens first, as their foreign key to grants is RESTRICT.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`studio_grants:${ownerGmId}`}))`;
       await tx.studioToken.deleteMany({ where: { grant: { ownerGmId } } });
       await tx.studioGrant.deleteMany({ where: { ownerGmId } });
 

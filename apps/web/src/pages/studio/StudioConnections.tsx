@@ -42,6 +42,8 @@ export function StudioConnections({ buildId }: { buildId: string }) {
     }
   }
 
+  const nameOf = (grant: StudioGrantView) => grant.clientName || t("studio.connect.unnamedApp");
+
   if (loadFailed) return <p role="alert" className="error">{t("studio.grants.loadFailed")}</p>;
   if (!grants || grants.length === 0) return null;
   return (
@@ -51,7 +53,7 @@ export function StudioConnections({ buildId }: { buildId: string }) {
       <ul>
         {grants.map((grant) => (
           <li key={grant.id}>
-            <p><strong>{t("studio.grants.app", { name: grant.clientName, host: grant.redirectHost })}</strong></p>
+            <p><strong>{t("studio.grants.app", { name: nameOf(grant), host: grant.redirectHost })}</strong></p>
             <p className="muted">{t("studio.grants.covers", { names: grant.builds.map((b) => b.name).join(", ") })}</p>
             <p className="muted">
               {t("studio.grants.dates", { since: when(grant.createdAt), until: when(grant.expiresAt) })}
@@ -59,7 +61,7 @@ export function StudioConnections({ buildId }: { buildId: string }) {
               {grant.lastUsedAt ? t("studio.grants.lastUsed", { date: when(grant.lastUsedAt) }) : t("studio.grants.notUsed")}
             </p>
             {grant.builds.length > 1 && <p className="muted">{t("studio.grants.disconnectAll")}</p>}
-            <button type="button" disabled={ending !== null} aria-label={t("studio.grants.disconnectNamed", { name: grant.clientName })} onClick={() => void disconnect(grant)}>
+            <button type="button" disabled={ending !== null} aria-label={t("studio.grants.disconnectNamed", { name: nameOf(grant) })} onClick={() => void disconnect(grant)}>
               {ending === grant.id ? t("studio.grants.disconnecting") : t("studio.grants.disconnect")}
             </button>
           </li>

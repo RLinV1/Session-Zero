@@ -23,7 +23,7 @@ describe.each(storeCases)("delegated Studio store on %s (FR-GM-26, ADR 0073)", (
     const owner = await newOwner(store);
     const build = await store.createBuild({ id: randomUUID(), ownerGmId: owner.ownerGmId, name: "Hollow Coast" }, 3);
     const clientId = `szc_${randomUUID().replaceAll("-", "")}`;
-    await store.registerStudioClient({ id: clientId, name: "Test AI app", redirectUris: ["https://ai-app.test.invalid/cb"], createdAt: iso(now), lastUsedAt: null }, 1_000_000);
+    await store.registerStudioClient({ id: clientId, name: "Test AI app", redirectUris: ["https://ai-app.test.invalid/cb"], createdAt: iso(now), lastUsedAt: null }, 1_000_000, iso(now));
     const grant: StudioGrantRecord = {
       id: randomUUID(), ownerGmId: owner.ownerGmId, clientId, resource: "https://studio.test.invalid/mcp/studio", scope: "studio:build", buildIds: [build.id],
       codeHash: `code-${randomUUID()}`, codeChallenge: "c".repeat(43), redirectUri: "https://ai-app.test.invalid/cb", codeExpiresAt: iso(now + 5 * 60_000),
@@ -90,11 +90,11 @@ describe.each(storeCases)("delegated Studio store on %s (FR-GM-26, ADR 0073)", (
     const access = token("access");
     await store.redeemStudioCode(grant.id, iso(now), [access]);
     const item = { buildId: build.id, kind: "creature" as const, key: "goblin", data: { name: "Goblin" }, flags: [], notCarriedOver: "" };
-    const delegation = { tokenHash: access.tokenHash, now };
+    const delegation = { tokenHash: access.tokenHash, now: () => now };
     await store.saveBuildItem(item, 10, { delegation });
     await store.saveGameProfile(build.id, { name: "Game" } as never, { delegation });
 
-    await expect(store.saveBuildItem({ ...item, data: { name: "Late" } }, 10, { delegation: { ...delegation, now: now + 8 * HOUR } })).rejects.toBeInstanceOf(StudioAccessEndedError);
+    await expect(store.saveBuildItem({ ...item, data: { name: "Late" } }, 10, { delegation: { ...delegation, now: () => now + 8 * HOUR } })).rejects.toBeInstanceOf(StudioAccessEndedError);
     const other = await store.createBuild({ id: randomUUID(), ownerGmId: owner.ownerGmId, name: "Not granted" }, 3);
     await expect(store.saveBuildItem({ ...item, buildId: other.id }, 10, { delegation })).rejects.toBeInstanceOf(StudioAccessEndedError);
     await store.revokeStudioGrant(grant.id, iso(now));
@@ -114,10 +114,10 @@ describe.each(storeCases)("delegated Studio store on %s (FR-GM-26, ADR 0073)", (
     await store.redeemStudioCode(grant.id, iso(now), [access]);
     const item = { buildId: build.id, kind: "creature" as const, key: "goblin", data: { name: "Goblin" }, flags: [], notCarriedOver: "" };
     // Either order is allowed; what may not happen is a write that commits after it saw the grant revoked.
-    const [write] = await Promise.allSettled([store.saveBuildItem(item, 10, { delegation: { tokenHash: access.tokenHash, now } }), store.revokeStudioGrant(grant.id, iso(now))]);
+    const [write] = await Promise.allSettled([store.saveBuildItem(item, 10, { delegation: { tokenHash: access.tokenHash, now: () => now } }), store.revokeStudioGrant(grant.id, iso(now))]);
     const saved = await store.findBuildItem(build.id, "creature", "goblin");
     expect(write.status === "fulfilled").toBe(saved !== null);
-    await expect(store.saveBuildItem({ ...item, key: "after" }, 10, { delegation: { tokenHash: access.tokenHash, now } })).rejects.toBeInstanceOf(StudioAccessEndedError);
+    await expect(store.saveBuildItem({ ...item, key: "after" }, 10, { delegation: { tokenHash: access.tokenHash, now: () => now } })).rejects.toBeInstanceOf(StudioAccessEndedError);
   });
 
   it("bounds registered clients and live grants per owner", async () => {
@@ -125,12 +125,30 @@ describe.each(storeCases)("delegated Studio store on %s (FR-GM-26, ADR 0073)", (
     const { owner, grant, now } = await setup(store);
     const count = (await store.findStudioClient(grant.clientId)) ? 1 : 0;
     expect(count).toBe(1);
-    await expect(store.registerStudioClient({ id: `szc_${randomUUID()}`, name: "x", redirectUris: [], createdAt: iso(now), lastUsedAt: null }, 0)).rejects.toBeInstanceOf(StudioClientLimitError);
+    await expect(store.registerStudioClient({ id: `szc_${randomUUID()}`, name: "x", redirectUris: [], createdAt: iso(now), lastUsedAt: null }, 0, iso(now - HOUR))).rejects.toBeInstanceOf(StudioClientLimitError);
     const another = { ...grant, id: randomUUID(), codeHash: `code-${randomUUID()}` };
     await expect(store.createStudioGrant(another, 1, iso(now))).rejects.toBeInstanceOf(StudioGrantLimitError);
     // A pending grant whose code expired no longer counts.
     await store.createStudioGrant(another, 1, iso(now + 5 * 60_000 + 1));
     expect(await store.listStudioGrants(owner.ownerGmId, iso(now))).toEqual([]);
+  });
+
+  it("makes room by dropping only a never-used client older than the cutoff", async () => {
+    // Works on a shared table: the stale client is dated far in the past, so it is the oldest there.
+    const store = makeStore();
+    const { clientId, now } = await setup(store);
+    const ancient = { id: `szc_${randomUUID()}`, name: "x", redirectUris: [], createdAt: "2000-01-01T00:00:00.000Z", lastUsedAt: null };
+    await store.registerStudioClient(ancient, 1_000_000, iso(now));
+    const next = { ...ancient, id: `szc_${randomUUID()}`, createdAt: iso(now) };
+    // Full, and nothing older than the cutoff: refused, nothing dropped.
+    await expect(store.registerStudioClient(next, 1, "1999-01-01T00:00:00.000Z")).rejects.toBeInstanceOf(StudioClientLimitError);
+    expect(await store.findStudioClient(ancient.id)).not.toBeNull();
+    // Full, with a stale never-used client: it makes room.
+    await store.registerStudioClient(next, 1, "2001-01-01T00:00:00.000Z");
+    expect(await store.findStudioClient(ancient.id)).toBeNull();
+    expect(await store.findStudioClient(next.id)).not.toBeNull();
+    // A client with a grant is never the one dropped, however old the cutoff makes it.
+    expect(await store.findStudioClient(clientId)).not.toBeNull();
   });
 
   it("sweeps expired tokens, ended and abandoned grants, and unused clients", async () => {
@@ -144,13 +162,16 @@ describe.each(storeCases)("delegated Studio store on %s (FR-GM-26, ADR 0073)", (
     await store.revokeStudioGrant(revoked.grant.id, iso(revoked.now));
     const pending = await setup(store);
     const later = live.now + 2 * HOUR;
-    await store.sweepStudio({ now: iso(later), unusedClientsBefore: iso(later - HOUR), idleClientsBefore: iso(later - 90 * 24 * HOUR) });
+    // Ended records are kept a while, so a stale token still reads as ended rather than unknown.
+    await store.sweepStudio({ now: iso(later), unusedClientsBefore: iso(later - HOUR), idleClientsBefore: iso(later - 90 * 24 * HOUR), endedBefore: iso(later - 7 * 24 * HOUR) });
+    expect(await store.findStudioToken(revokedAccess.tokenHash)).not.toBeNull();
+    await store.sweepStudio({ now: iso(later), unusedClientsBefore: iso(later - HOUR), idleClientsBefore: iso(later - 90 * 24 * HOUR), endedBefore: iso(later) });
     expect(await store.findStudioToken(access.tokenHash)).not.toBeNull();
     expect(await store.findStudioToken(revokedAccess.tokenHash)).toBeNull();
     expect(await store.findStudioGrantByCode(pending.grant.codeHash)).toBeNull();
     expect(await store.findStudioClient(pending.clientId)).toBeNull();
     expect(await store.findStudioClient(live.clientId)).not.toBeNull();
-    await store.sweepStudio({ now: iso(live.now + 9 * HOUR), unusedClientsBefore: iso(live.now), idleClientsBefore: iso(live.now) });
+    await store.sweepStudio({ now: iso(live.now + 9 * HOUR), unusedClientsBefore: iso(live.now), idleClientsBefore: iso(live.now), endedBefore: iso(live.now + 9 * HOUR) });
     expect(await store.findStudioToken(access.tokenHash)).toBeNull();
   });
 

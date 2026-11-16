@@ -47,6 +47,12 @@ const click = async (el: Element | undefined) => {
 const request = { client: { name: "Test AI app", redirectHost: "ai-app.test.invalid" }, builds: [{ id: "b1", name: "Hollow Coast" }, { id: "b2", name: "Lanternfall" }] };
 
 describe("connecting an AI app to builds (FR-GM-26, ADR 0073)", () => {
+  it("says when the app gave no name", async () => {
+    studio.checkRequest.mockResolvedValue({ ok: true, request: { ...request, client: { ...request.client, name: "" } } });
+    await render(<StudioConnectPage />);
+    expect(text()).toContain("An app that gave no name is asking to work on your builds.");
+  });
+
   it("shows who asks, where the answer goes and what it can't do, with no build ticked", async () => {
     studio.checkRequest.mockResolvedValue({ ok: true, request });
     await render(<StudioConnectPage />);
@@ -81,7 +87,7 @@ describe("connecting an AI app to builds (FR-GM-26, ADR 0073)", () => {
     expect(assign).toHaveBeenCalledWith("https://ai-app.test.invalid/oauth/callback?error=access_denied");
   });
 
-  it("keeps a bad app or address on the page, and sends other problems back to the app", async () => {
+  it("keeps a bad app or address on the page, and offers other problems back to the app only by a click", async () => {
     studio.checkRequest.mockResolvedValue({ ok: false, status: 400, error: "This connection request isn't valid.", redirectTo: null });
     await render(<StudioConnectPage />);
     expect(text()).toContain("This connection request can't be used");
@@ -92,7 +98,10 @@ describe("connecting an AI app to builds (FR-GM-26, ADR 0073)", () => {
     root = createRoot(host);
     studio.checkRequest.mockResolvedValue({ ok: false, status: 400, error: "x", redirectTo: "https://ai-app.test.invalid/oauth/callback?error=invalid_scope" });
     await render(<StudioConnectPage />);
-    expect(assign).toHaveBeenCalledWith("https://ai-app.test.invalid/oauth/callback?error=invalid_scope");
+    // Anyone can register an app, so its address is never followed without the person's click.
+    expect(assign).not.toHaveBeenCalled();
+    const back = [...host.querySelectorAll("a")].find((a) => a.textContent === "Back to ai-app.test.invalid");
+    expect(back?.getAttribute("href")).toBe("https://ai-app.test.invalid/oauth/callback?error=invalid_scope");
   });
 
   it("says when there's no open build to connect", async () => {

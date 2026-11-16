@@ -10,6 +10,8 @@ export const studioZhTW = {
   "studio.connect.returnsTo": ({ host }) => cjk`你的回覆會傳回${host}。只有在那是你正在使用的 AI 應用程式時才繼續。`,
   "studio.connect.signedInAs": ({ name }) => `已登入為「${name}」。`,
   "studio.connect.chooseBuilds": "它可以處理的建置",
+  "studio.connect.unnamedApp": "未命名的應用程式",
+  "studio.connect.claimsUnnamed": "一個沒有提供名稱的應用程式要求處理你的建置。",
   "studio.connect.noBuilds": "你沒有開啟中的建置。請先在素材庫中新增一個，再從你的 AI 應用程式重新連線。",
   "studio.connect.can": "它可以讀取這些草稿與其圖片的縮小版本，並在你為每個建置設定的範圍內，儲存生物、地圖、牆、地形與遭遇。",
   "studio.connect.cannot": "它無法發布、變更你的設定、新增檔案、存取你的素材庫或房間，也看不到你的其他建置。檢視與發布都在這個網站上由你進行。",
@@ -20,6 +22,7 @@ export const studioZhTW = {
   "studio.connect.returning": "正在返回你的 AI 應用程式…",
   "studio.connect.invalidTitle": "無法使用這個連線要求",
   "studio.connect.failed": "無法傳送你的回覆，請再試一次。",
+  "studio.connect.goBack": ({ host }) => cjk`返回${host}`,
 
   "studio.grants.title": "AI 應用程式連線",
   "studio.grants.intro": "在你中斷連線或連線結束之前，這些 AI 應用程式可以處理這個建置。",

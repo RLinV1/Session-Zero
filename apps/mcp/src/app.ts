@@ -141,10 +141,11 @@ export function buildMcpApp(options: McpAppOptions) {
     app.post(STUDIO_ACCESS_PATH, (req, res, next) => {
       const header = req.headers.authorization;
       void delegated.verify(header, req.ip ?? "unknown").then((token) => {
+        if (token === "unavailable") return delegated.unavailable(res);
         if (!token) return delegated.challenge(res, Boolean(header?.startsWith("Bearer ")));
         tokens.set(req, token);
         next();
-      }).catch(next);
+      }, () => delegated.unavailable(res));
     }, jsonBody, serve((req) => createStudioBuildMcpServer({
       roomServerUrl: options.roomServerUrl,
       clientAddress: req.ip ?? "unknown",

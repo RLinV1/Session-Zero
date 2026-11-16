@@ -45,7 +45,7 @@ import {
   type GridSpec,
 } from "@vtt/shared";
 import { planPublish } from "../domain/buildPublish";
-import { STUDIO_LIMITS, STUDIO_TEXT, resolveStudioAccess, studioResource, type StudioAccessConfig } from "./studioOAuth";
+import { STUDIO_LIMITS, STUDIO_TEXT, refusedGuess, resolveStudioAccess, studioResource, type StudioAccessConfig } from "./studioOAuth";
 import { StudioAccessEndedError, type StudioDelegation, type StudioGrantRecord } from "../store/studioStore";
 import { mapOverlay, type OverlayRegion } from "../domain/mapOverlay";
 import { hashToken } from "../domain/credentials";
@@ -728,12 +728,12 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   const grantGuard: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       res.setHeader("Cache-Control", "no-store");
-      const address = `studio-token:${req.ip}`;
-      if (refused(res, limits.studioTokenFailuresPerIp.check(address), STUDIO_TEXT.tooManyInvalid)) return;
       const at = now();
-      const access = resource ? await resolveStudioAccess(store, resource, req.headers.authorization, at) : null;
-      if (!access) {
-        limits.studioTokenFailuresPerIp.hit(address);
+      const access = resource ? await resolveStudioAccess(store, resource, req.headers.authorization, at) : "unknown";
+      if (typeof access === "string") {
+        // Only a token that never existed counts, and only here: a live token is never refused for
+        // its address, and expired ones are routine from a shared AI host address.
+        if (access === "unknown" && refusedGuess(limits, req, res)) return;
         return studioRefusal(res);
       }
       const { grant, tokenHash } = access;
@@ -746,7 +746,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         const build = id.success && grant.buildIds.includes(id.data) ? await store.findBuild(id.data, grant.ownerGmId) : null;
         if (build?.status !== "open") return void res.status(404).json({ error: NOT_FOUND });
         res.locals.build = build;
-        res.locals.delegation = { tokenHash, now: at } satisfies StudioDelegation;
+        // The store reads the clock at the write itself, so a token that expires meanwhile writes nothing.
+        res.locals.delegation = { tokenHash, now } satisfies StudioDelegation;
       }
       next();
     })().catch(failed(res));
@@ -860,6 +861,12 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
           await store.saveBuildItem({ buildId: build.id, kind: "creature", key, data, flags, notCarriedOver }, BUILD_LIMITS.creaturesPerBuild, delegationOf(res));
           results.push({ key, saved: true, problems: creatureProblems(data, flags, features) });
         } catch (err) {
+          // A delegated connection that ended partway: say which were saved, and stop (design D7).
+          if (err instanceof StudioAccessEndedError) {
+            res.setHeader("WWW-Authenticate", 'Bearer error="invalid_token"');
+            res.status(401).json({ error: STUDIO_TEXT.accessEnded, results });
+            return;
+          }
           if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
           results.push({ key, saved: false, error: err.message });
         }

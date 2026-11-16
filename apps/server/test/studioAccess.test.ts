@@ -88,6 +88,9 @@ describe("delegated Studio discovery (FR-GM-26, ADR 0073)", () => {
 
 describe("delegated Studio registration (FR-GM-26, ADR 0073)", () => {
   it("registers a public client with exact redirect URIs", async () => {
+    // Control and format characters (a bell, a right-to-left override) are dropped, so a name can't pose as another.
+    expect((await (await registerClient(server.base, { client_name: "Chat\u202EGPT" })).json() as { client_name: string }).client_name).toBe("ChatGPT");
+    expect((await (await registerClient(server.base, { client_name: undefined })).json() as { client_name: string }).client_name).toBe("");
     const res = await registerClient(server.base, { client_name: "Some\u0007 AI" });
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({
@@ -105,14 +108,19 @@ describe("delegated Studio registration (FR-GM-26, ADR 0073)", () => {
     expect((await registerClient(server.base, { redirect_uris: ["http://127.0.0.1:4000/cb"] })).status).toBe(201);
   });
 
-  it("holds a bounded number of clients, refusing rather than evicting, and drops unused ones after an hour", async () => {
-    for (let i = 0; i < 200; i++) await store.registerStudioClient({ id: `szc_seed${i}`, name: "x", redirectUris: [TEST_REDIRECT], createdAt: new Date(clock).toISOString(), lastUsedAt: null }, 200);
+  it("holds a bounded number of clients, makes room only from stale never-used ones, and drops unused ones after an hour", async () => {
+    for (let i = 0; i < 200; i++) await store.registerStudioClient({ id: `szc_seed${i}`, name: "x", redirectUris: [TEST_REDIRECT], createdAt: new Date(clock).toISOString(), lastUsedAt: null }, 200, new Date(clock).toISOString());
     const full = await registerClient(server.base);
     expect(full.status).toBe(503);
     expect(await full.json()).toMatchObject({ error: "temporarily_unavailable" });
-    clock += HOUR + 1;
-    await server.app.sweepStudio();
+    // A flood can't hold registration shut: after ten minutes a never-used client makes room.
+    clock += 10 * 60_000 + 1;
     expect((await registerClient(server.base)).status).toBe(201);
+    expect(await store.findStudioClient("szc_seed0")).toBeNull();
+    // And the hourly sweep drops the rest.
+    clock += HOUR;
+    await server.app.sweepStudio();
+    expect(await store.findStudioClient("szc_seed1")).toBeNull();
   });
 
   it("limits registrations per address", async () => {
@@ -301,6 +309,24 @@ describe("delegated Studio access is refused or has no effect (FR-GM-26, FR-GM-2
     expect(await introspected.json()).toEqual({ active: false });
   });
 
+  it("limits guessing per address, but not real tokens that expired (one AI host serves many users)", async () => {
+    const { account, id } = await startBuild();
+    const stale = await connectStudio(server.base, account, [id]);
+    clock += 8 * HOUR + 1;
+    for (let i = 0; i < 70; i++) expect((await call(stale.tokens.access_token, "GET", `/api/studio/builds/${id}`)).status).toBe(401);
+    for (let i = 0; i < 70; i++) expect((await exchange(server.base, { grant_type: "authorization_code", code: stale.code, redirect_uri: "https://ai-app.test.invalid/oauth/callback", client_id: stale.clientId, code_verifier: stale.verifier })).status).toBe(400);
+    const live = await connectStudio(server.base, account, [id]);
+    expect((await call(live.tokens.access_token, "GET", `/api/studio/builds/${id}`)).status).toBe(200);
+    // Tokens that never existed do count, and the address is then refused for more of them...
+    const guess = () => call(`szs_at_${randomUUID().replaceAll("-", "").padEnd(43, "x")}`, "GET", `/api/studio/builds/${id}`);
+    for (let i = 0; i < 60; i++) expect((await guess()).status).toBe(401);
+    expect((await guess()).status).toBe(429);
+    expect((await fetch(`${server.base}/api/oauth/introspect`, { method: "POST", headers: bearer(`szs_at_${"B".repeat(43)}`) })).status).toBe(429);
+    // ...but a live token from the same address is never refused for it, nor its introspection.
+    expect((await call(live.tokens.access_token, "GET", `/api/studio/builds/${id}`)).status).toBe(200);
+    expect(await (await fetch(`${server.base}/api/oauth/introspect`, { method: "POST", headers: bearer(live.tokens.access_token) })).json()).toMatchObject({ active: true });
+  });
+
   it("revoked token: by the owner on the build page, and by the client (RFC 7009)", async () => {
     const { account, id } = await startBuild();
     const second = await startBuild(account, "Lanternfall");
@@ -341,7 +367,8 @@ describe("delegated Studio access is refused or has no effect (FR-GM-26, FR-GM-2
     };
     const res = await call(tokens.access_token, "POST", `/api/studio/builds/${id}/creatures`, { creatures: [creature({ name: "Hobgoblin" })] });
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "This connection to Session Zero has ended. Ask the user to reconnect it in their AI app." });
+    // Nothing in the batch was saved, and the answer says so item by item.
+    expect(await res.json()).toEqual({ error: "This connection to Session Zero has ended. Ask the user to reconnect it in their AI app.", results: [] });
     expect(await store.findBuildItem(id, "creature", "goblin")).toEqual(before);
 
     // The same for a game profile, which a pass saves without a lock.

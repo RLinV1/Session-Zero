@@ -137,7 +137,9 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
   it("refuses a token the room server says is for a different resource", async () => {
     // An introspection answer for another audience: only this check stands between it and the tools.
     let aud = "https://other.test.invalid/mcp/studio";
+    let failWith = 0;
     const fake = createServer((_req, res) => {
+      if (failWith) return void res.writeHead(failWith).end();
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ active: true, aud, scope: "studio:build", exp: 9_999_999_999, builds: [] }));
     });
@@ -152,6 +154,11 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
       // The control: the same answer naming this resource gets past the check.
       aud = TEST_RESOURCE;
       expect((await send()).status).not.toBe(401);
+      // A room server that can't answer (limited, busy, down) is no reason to discard a token: 503, not 401.
+      failWith = 429;
+      const busy = await send();
+      expect(busy.status).toBe(503);
+      expect(busy.headers.get("www-authenticate")).toBeNull();
     } finally {
       await other.close();
       await new Promise<void>((resolve) => fake.close(() => resolve()));

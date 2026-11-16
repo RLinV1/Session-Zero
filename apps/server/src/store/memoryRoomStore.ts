@@ -622,8 +622,15 @@ export class MemoryRoomStore implements RoomStore {
 
   // ---------- Delegated Studio access (design D7) ----------
 
-  async registerStudioClient(client: StudioClientRecord, max: number) {
-    if (this.studioClients.size >= max) throw new StudioClientLimitError();
+  async registerStudioClient(client: StudioClientRecord, max: number, evictUnusedBefore: string) {
+    if (this.studioClients.size >= max) {
+      const withGrants = new Set([...this.studioGrants.values()].map((g) => g.clientId));
+      const stale = [...this.studioClients.values()]
+        .filter((c) => c.lastUsedAt === null && c.createdAt < evictUnusedBefore && !withGrants.has(c.id))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      if (!stale) throw new StudioClientLimitError();
+      this.studioClients.delete(stale.id);
+    }
     this.studioClients.set(client.id, structuredClone(client));
   }
 
@@ -700,11 +707,11 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   async sweepStudio(times: StudioSweepTimes) {
-    const now = Date.parse(times.now);
-    for (const [hash, token] of this.studioTokens) if (Date.parse(token.expiresAt) <= now) this.studioTokens.delete(hash);
+    const now = Date.parse(times.now), ended = Date.parse(times.endedBefore);
+    for (const [hash, token] of this.studioTokens) if (Date.parse(token.expiresAt) <= ended) this.studioTokens.delete(hash);
     for (const [id, grant] of this.studioGrants) {
       const pendingExpired = grant.codeUsedAt === null && Date.parse(grant.codeExpiresAt) <= now;
-      if (pendingExpired || grant.revokedAt !== null || Date.parse(grant.expiresAt) <= now) {
+      if (pendingExpired || (grant.revokedAt !== null && Date.parse(grant.revokedAt) <= ended) || Date.parse(grant.expiresAt) <= ended) {
         for (const [hash, token] of this.studioTokens) if (token.grantId === id) this.studioTokens.delete(hash);
         this.studioGrants.delete(id);
       }

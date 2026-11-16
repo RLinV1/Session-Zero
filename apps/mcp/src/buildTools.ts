@@ -64,8 +64,11 @@ async function callRoomServer(deps: BuildToolDeps, credential: string, method: s
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.ok) return response;
-  const reply = await response.json().catch(() => null) as { error?: unknown } | null;
-  const message = typeof reply?.error === "string" ? reply.error : "The server refused that.";
+  const reply = await response.json().catch(() => null) as { error?: unknown; results?: unknown } | null;
+  const said = typeof reply?.error === "string" ? reply.error : "The server refused that.";
+  // A batch cut off partway (a delegated connection that ended) says which items were saved first.
+  const saved = Array.isArray(reply?.results) ? reply.results.filter((r): r is { key: string; saved: true } => typeof r === "object" && r !== null && (r as { saved?: unknown }).saved === true && typeof (r as { key?: unknown }).key === "string").map((r) => r.key) : [];
+  const message = saved.length > 0 ? `${said} Saved before it ended: ${saved.join(", ")}.` : said;
   if (response.status === 429) throw new ToolError(`${message} Wait ${response.headers.get("retry-after") ?? "a minute"} seconds, then continue.`);
   throw new ToolError(message);
 }

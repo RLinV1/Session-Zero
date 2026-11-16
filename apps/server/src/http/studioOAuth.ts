@@ -4,7 +4,7 @@ import { z } from "zod";
 import { BUILD_LIMITS } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
 import { requireAccount } from "../identity/middleware";
-import { refused, type AccountLimits } from "../identity/routes";
+import { addressKey, refused, type AccountLimits } from "../identity/routes";
 import type { RoomStore } from "../store/roomStore";
 import {
   StudioClientLimitError,
@@ -47,6 +47,13 @@ export const STUDIO_LIMITS = {
   codeTtlMs: 5 * MINUTE,
   maxClients: 200,
   unusedClientMs: HOUR,
+  /** A full table may drop a never-used client this old to make room, so a flood can't hold registration shut. */
+  evictUnusedClientMs: 10 * MINUTE,
+  /**
+   * Ended tokens and grants are kept this long before the sweep drops them, so a host still sending
+   * a stale token is told it ended rather than counted as guessing.
+   */
+  endedRetentionMs: 7 * DAY,
   idleClientMs: 90 * DAY,
   maxGrantsPerOwner: 20,
   maxRedirectUris: 5,
@@ -141,7 +148,8 @@ const Decision = z.strictObject({
   buildIds: z.array(z.uuid()).max(BUILD_LIMITS.openBuildsPerAccount).default([]),
 });
 
-const shownName = (name: string | undefined) => (name ?? "").replace(/\p{Cc}/gu, "").trim().slice(0, 100) || "Unnamed app";
+/** Plain text: control and format characters (bidi overrides, zero-width) removed, so a name can't pose as another. Empty when none. */
+const shownName = (name: string | undefined) => (name ?? "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 100);
 
 /** The S256 challenge of a verifier, compared without leaking where it differs. */
 function pkceMatches(verifier: string, challenge: string): boolean {
@@ -150,20 +158,34 @@ function pkceMatches(verifier: string, challenge: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-/** A token holder's live access, or why there is none. */
+/** A token holder's live access. */
 export type StudioAccess = { tokenHash: string; token: StudioTokenRecord; grant: StudioGrantRecord };
 
-/** The live delegated access an `Authorization` header carries for `resource`, or null. */
-export async function resolveStudioAccess(store: RoomStore, resource: string, header: string | undefined, now: number): Promise<StudioAccess | null> {
+/**
+ * The live delegated access an `Authorization` header carries for `resource`; otherwise why not.
+ * `unknown`: no such token, which is what guessing looks like. `ended`: a real token that expired,
+ * was revoked or is for something else. Only `unknown` should count against an address's failure
+ * limit: one AI host sends every user's requests from a few addresses, and expired tokens are routine.
+ */
+export async function resolveStudioAccess(store: RoomStore, resource: string, header: string | undefined, now: number): Promise<StudioAccess | "unknown" | "ended"> {
   const raw = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
-  if (!raw || !AccessToken.safeParse(raw).success) return null;
+  if (!raw || !AccessToken.safeParse(raw).success) return "unknown";
   const tokenHash = hashToken(raw);
   const found = await store.findStudioToken(tokenHash);
-  if (!found) return null;
+  if (!found) return "unknown";
   const { token, grant } = found;
-  if (token.kind !== "access" || Date.parse(token.expiresAt) <= now || !grantIsLive(grant, now)) return null;
-  if (grant.resource !== resource || grant.scope.split(" ").indexOf(STUDIO_SCOPE) < 0) return null;
+  if (token.kind !== "access" || Date.parse(token.expiresAt) <= now || !grantIsLive(grant, now)) return "ended";
+  if (grant.resource !== resource || grant.scope.split(" ").indexOf(STUDIO_SCOPE) < 0) return "ended";
   return { tokenHash, token, grant };
+}
+
+/**
+ * Counts a token that doesn't exist against its address and answers 429 once the address is over
+ * its limit; true when it answered. Only the failure path calls this, so a live token is never
+ * refused for its address: one AI host sends every user's requests from a few addresses.
+ */
+export function refusedGuess(limits: AccountLimits, req: Request, res: Response): boolean {
+  return refused(res, limits.studioTokenFailuresPerIp.hit(`studio-token:${addressKey(req.ip)}`), STUDIO_TEXT.tooManyInvalid);
 }
 
 interface Deps {
@@ -180,6 +202,7 @@ interface Deps {
 export function registerStudioOAuth(app: Express, deps: Deps) {
   const { store, limits, studio, now } = deps;
   const form = express.urlencoded({ extended: false, limit: "16kb" });
+  const refusedGuess_ = (req: Request, res: Response) => refusedGuess(limits, req, res);
 
   const oauthError = (res: Response, status: number, error: string, description: string) =>
     void res.status(status).json({ error, error_description: description });
@@ -235,7 +258,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
 
   app.post("/api/oauth/register", (req, res) => {
     void (async () => {
-      const address = `studio-register:${req.ip}`;
+      const address = `studio-register:${addressKey(req.ip)}`;
       if (refused(res, limits.studioRegistrationsPerIp.hit(address), "Too many attempts. Try again later.")) return;
       const body = Registration.safeParse(req.body);
       if (!body.success) return oauthError(res, 400, "invalid_client_metadata", "redirect_uris is required: 1 to 5 https URLs.");
@@ -247,10 +270,11 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const at = new Date(now()).toISOString();
       const client = { id: `szc_${randomBytes(16).toString("hex")}`, name: shownName(body.data.client_name), redirectUris: [...new Set(redirectUris)], createdAt: at, lastUsedAt: null };
       try {
-        await store.registerStudioClient(client, STUDIO_LIMITS.maxClients);
+        await store.registerStudioClient(client, STUDIO_LIMITS.maxClients, new Date(now() - STUDIO_LIMITS.evictUnusedClientMs).toISOString());
       } catch (err) {
         if (!(err instanceof StudioClientLimitError)) throw err;
-        // Refused rather than evicting, so a flood can't push out a host's stored client id.
+        // Only never-used clients older than ten minutes are ever dropped to make room, so a host's
+        // working client id is never pushed out; with none of those, refuse.
         res.setHeader("Retry-After", "3600");
         return oauthError(res, 503, "temporarily_unavailable", "This server holds as many registered clients as it can. Unused ones expire within an hour.");
       }
@@ -353,26 +377,31 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
     return { records, reply };
   };
 
-  const tokenFailure = (req: Request, res: Response, status: number, error: string, description: string) => {
-    limits.studioTokenFailuresPerIp.hit(`studio-token:${req.ip}`);
+  /**
+   * `guess`: the client, code or refresh token doesn't exist at all. Only those count against the
+   * address, because one AI host sends every user's token requests from a few addresses, and an
+   * expired code or a used refresh token is a real one gone stale, not a guess.
+   */
+  const tokenFailure = (req: Request, res: Response, status: number, error: string, description: string, guess = false) => {
+    if (guess && refusedGuess_(req, res)) return;
     oauthError(res, status, error, description);
   };
 
   app.post("/api/oauth/token", form, (req, res) => {
     void (async () => {
       res.setHeader("Pragma", "no-cache");
-      if (refused(res, limits.studioTokenFailuresPerIp.check(`studio-token:${req.ip}`), STUDIO_TEXT.tooManyInvalid)) return;
       const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>;
       const field = (name: string) => (typeof body[name] === "string" ? body[name] as string : undefined);
       const client = field("client_id") ? await store.findStudioClient(field("client_id")!) : null;
-      if (!client) return tokenFailure(req, res, 401, "invalid_client", "Unknown client_id.");
+      if (!client) return tokenFailure(req, res, 401, "invalid_client", "Unknown client_id.", true);
       if (field("resource") !== undefined && field("resource") !== resource) return tokenFailure(req, res, 400, "invalid_target", "This server only issues tokens for its Studio resource.");
       const at = now();
 
       if (field("grant_type") === "authorization_code") {
         const code = field("code"), verifier = field("code_verifier");
         const grant = code?.startsWith(CODE_PREFIX) && SECRET.test(code.slice(CODE_PREFIX.length)) ? await store.findStudioGrantByCode(hashToken(code)) : null;
-        if (!grant || grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The code isn't valid.");
+        if (!grant) return tokenFailure(req, res, 400, "invalid_grant", "The code isn't valid.", true);
+        if (grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The code isn't valid.");
         if (grant.codeUsedAt !== null) {
           // A replayed code: whoever holds it may have the tokens too, so end them all (RFC 6749 §4.1.2).
           await store.revokeStudioGrant(grant.id, new Date(at).toISOString());
@@ -382,14 +411,19 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         if (field("redirect_uri") !== grant.redirectUri) return tokenFailure(req, res, 400, "invalid_grant", "redirect_uri doesn't match the authorization request.");
         if (!verifier || !PkceValue.safeParse(verifier).success || !pkceMatches(verifier, grant.codeChallenge)) return tokenFailure(req, res, 400, "invalid_grant", "code_verifier doesn't match.");
         const issued = newTokens(grant, at);
-        if (!await store.redeemStudioCode(grant.id, new Date(at).toISOString(), issued.records)) return tokenFailure(req, res, 400, "invalid_grant", "The code isn't valid.");
+        if (!await store.redeemStudioCode(grant.id, new Date(at).toISOString(), issued.records)) {
+          // Another exchange of the same code won at the same moment: that is a replay too.
+          if ((await store.findStudioGrantByCode(grant.codeHash))?.codeUsedAt) await store.revokeStudioGrant(grant.id, new Date(at).toISOString());
+          return tokenFailure(req, res, 400, "invalid_grant", "The code isn't valid.");
+        }
         return void res.json(issued.reply);
       }
 
       if (field("grant_type") === "refresh_token") {
         const refresh = field("refresh_token");
         const found = refresh?.startsWith(REFRESH_PREFIX) && SECRET.test(refresh.slice(REFRESH_PREFIX.length)) ? await store.findStudioToken(hashToken(refresh)) : null;
-        if (!found || found.token.kind !== "refresh" || found.grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The refresh token isn't valid.");
+        if (!found) return tokenFailure(req, res, 400, "invalid_grant", "The refresh token isn't valid.", true);
+        if (found.token.kind !== "refresh" || found.grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The refresh token isn't valid.");
         const scope = field("scope");
         if (scope !== undefined && scope.split(" ").some((s) => s && s !== STUDIO_SCOPE)) return tokenFailure(req, res, 400, "invalid_scope", "Only studio:build is available.");
         if (found.token.usedAt !== null) {
@@ -399,6 +433,8 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         }
         const issued = newTokens(found.grant, at);
         if (!grantIsLive(found.grant, at) || !await store.rotateStudioRefresh(found.token.tokenHash, new Date(at).toISOString(), issued.records)) {
+          // Rotated by another request at the same moment: reuse, so the family ends as above.
+          if ((await store.findStudioToken(found.token.tokenHash))?.token.usedAt) await store.revokeStudioGrant(found.grant.id, new Date(at).toISOString());
           return tokenFailure(req, res, 400, "invalid_grant", "The refresh token has expired or was revoked.");
         }
         return void res.json(issued.reply);
@@ -429,11 +465,9 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
    */
   app.post("/api/oauth/introspect", (req, res) => {
     void (async () => {
-      const address = `studio-token:${req.ip}`;
-      if (refused(res, limits.studioTokenFailuresPerIp.check(address), STUDIO_TEXT.tooManyInvalid)) return;
       const access = await resolveStudioAccess(store, resource, req.headers.authorization, now());
-      if (!access) {
-        limits.studioTokenFailuresPerIp.hit(address);
+      if (typeof access === "string") {
+        if (access === "unknown" && refusedGuess_(req, res)) return;
         return void res.json({ active: false });
       }
       const { grant, token } = access;
@@ -497,6 +531,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       now: new Date(at).toISOString(),
       unusedClientsBefore: new Date(at - STUDIO_LIMITS.unusedClientMs).toISOString(),
       idleClientsBefore: new Date(at - STUDIO_LIMITS.idleClientMs).toISOString(),
+      endedBefore: new Date(at - STUDIO_LIMITS.endedRetentionMs).toISOString(),
     });
   };
   return { sweep };

@@ -88,8 +88,8 @@ export class StudioAccessEndedError extends Error {
  */
 export interface StudioDelegation {
   tokenHash: string;
-  /** The clock the request read, so a test's clock and the server's agree. */
-  now: number;
+  /** The server's clock, read inside the write, so a token that expires between check and write writes nothing. */
+  now: () => number;
 }
 
 /** Whether `delegation` still allows a write to `build`, from records already read under the write's lock. */
@@ -100,7 +100,7 @@ export function delegationAllows(
   build: { id: string; ownerGmId: string },
 ): boolean {
   return !!token && !!grant && token.kind === "access" && token.grantId === grant.id
-    && Date.parse(token.expiresAt) > delegation.now && grantIsLive(grant, delegation.now)
+    && Date.parse(token.expiresAt) > delegation.now() && grantIsLive(grant, delegation.now())
     && grant.ownerGmId === build.ownerGmId && grant.buildIds.includes(build.id);
 }
 
@@ -110,14 +110,17 @@ export interface StudioSweepTimes {
   unusedClientsBefore: string;
   /** Used clients with no live grant, last used before this, are dropped. */
   idleClientsBefore: string;
+  /** Expired tokens, and revoked or expired grants, ended before this are dropped; newer ones are kept to read as ended. */
+  endedBefore: string;
 }
 
 export interface StudioStore {
   /**
-   * Adds a client unless `max` are held. One step, so concurrent registrations can't pass `max`.
-   * Throws `StudioClientLimitError`.
+   * Adds a client. When `max` are held, first drops the oldest client that never got a token, has no
+   * grant and was registered before `evictUnusedBefore`; with none, throws `StudioClientLimitError`.
+   * One step, so concurrent registrations can't pass `max`.
    */
-  registerStudioClient(client: StudioClientRecord, max: number): Promise<void>;
+  registerStudioClient(client: StudioClientRecord, max: number, evictUnusedBefore: string): Promise<void>;
   findStudioClient(id: string): Promise<StudioClientRecord | null>;
 
   /** Adds a grant waiting for its code to be exchanged. Throws `StudioGrantLimitError` past `maxLive` live or pending grants. */

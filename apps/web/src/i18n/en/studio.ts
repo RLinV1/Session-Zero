@@ -12,6 +12,8 @@ export const studio = {
   "studio.connect.returnsTo": ({ host }: { host: string }) => `Your answer goes back to ${host}. Continue only if that is the AI app you are using.`,
   "studio.connect.signedInAs": ({ name }: { name: string }) => `Signed in as ${name}.`,
   "studio.connect.chooseBuilds": "Builds it may work on",
+  "studio.connect.unnamedApp": "Unnamed app",
+  "studio.connect.claimsUnnamed": "An app that gave no name is asking to work on your builds.",
   "studio.connect.noBuilds": "You have no open builds. Start one in the library, then connect again from your AI app.",
   "studio.connect.can": "It can read these drafts and small copies of their pictures, and save creatures, maps, walls, terrain and encounters in them, within the choices you set on each build.",
   "studio.connect.cannot": "It can't publish, change your choices, add files, reach your library or rooms, or see your other builds. You review and publish on this site.",
@@ -22,6 +24,7 @@ export const studio = {
   "studio.connect.returning": "Returning to your AI app…",
   "studio.connect.invalidTitle": "This connection request can't be used",
   "studio.connect.failed": "Couldn't send your answer. Try again.",
+  "studio.connect.goBack": ({ host }: { host: string }) => `Back to ${host}`,
 
   "studio.grants.title": "AI app connections",
   "studio.grants.intro": "These AI apps can work on this build until you disconnect them or the connection ends.",
