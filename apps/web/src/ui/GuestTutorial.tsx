@@ -301,7 +301,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
           {run.step === stepName && run.captions.length > 0 && (
             <ol className="tutorial-ex" aria-label={t("tutorial.showMe")}>
               {run.captions.map((caption, i) => (
-                <li key={i} data-state={i < run.index ? "done" : i === run.index ? "current" : "todo"} aria-current={i === run.index ? "step" : undefined}>{t(caption)}</li>
+                <li key={i} value={i + 1} data-state={i < run.index ? "done" : i === run.index ? "current" : "todo"} aria-current={i === run.index ? "step" : undefined}>{t(caption)}</li>
               ))}
             </ol>
           )}
