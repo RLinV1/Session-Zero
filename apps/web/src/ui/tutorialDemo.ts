@@ -1,4 +1,4 @@
-import type { AttackPreset, RoomState, Token } from "@vtt/shared";
+import { distanceToSegment, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
 import { attackExpression, pendingRulings, presetRollLabel } from "../panels/attackRoll";
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
@@ -43,25 +43,57 @@ const send = async (connection: RoomConnection, command: Command): Promise<DemoR
   return result.ok ? { ok: true } : { ok: false, message: result.message };
 };
 
-/** The two demo tokens, side by side in the middle of the map; their events reach the snapshot before the acks do. */
+/**
+ * Two neighbouring cells of open floor, searched outward from the middle of the map: no wall within
+ * about a cell of either centre, no blocked terrain, and inside the map. Falls back to the middle.
+ */
+export function demoSpots(state: RoomState): [Point, Point] {
+  const { grid, map } = state.scene;
+  const size = grid.cellSize;
+  const width = map?.width ?? size * 8, height = map?.height ?? size * 8;
+  const cols = Math.floor((width - grid.offsetX) / size), rows = Math.floor((height - grid.offsetY) / size);
+  const centre = (col: number, row: number): Point => ({ x: grid.offsetX + (col + 0.5) * size, y: grid.offsetY + (row + 0.5) * size });
+  const layers = [state.terrain?.base ?? [], ...(state.terrain?.effects.map((e) => e.runs) ?? [])];
+  const open = (col: number, row: number) => {
+    if (col < 0 || row < 0 || col >= cols || row >= rows) return false;
+    const p = centre(col, row);
+    return !Object.values(state.walls).some((w) => distanceToSegment(p, w) < size * 0.75)
+      && !layers.some((runs) => terrainAt(runs, col, row) === "blocked");
+  };
+  const mc = Math.floor(cols / 2), mr = Math.floor(rows / 2);
+  for (let r = 0; r <= Math.max(cols, rows); r++) {
+    for (let dr = -r; dr <= r; dr++) {
+      for (let dc = -r; dc <= r; dc++) {
+        if (Math.max(Math.abs(dr), Math.abs(dc)) !== r) continue;
+        const col = mc + dc, row = mr + dr;
+        if (open(col, row) && open(col + 1, row)) return [centre(col, row), centre(col + 1, row)];
+      }
+    }
+  }
+  const mid = centre(mc, mr);
+  return [mid, { x: mid.x + size, y: mid.y }];
+}
+
+/** The two demo tokens, side by side on open floor, with built-in token art; their events reach the snapshot before the acks do. */
 async function makeDemoTokens(connection: RoomConnection, state: RoomState): Promise<DemoResult> {
-  const grid = state.scene.grid;
-  const mid = { x: (state.scene.map?.width ?? grid.cellSize * 8) / 2, y: (state.scene.map?.height ?? grid.cellSize * 8) / 2 };
+  const [heroAt, foeAt] = demoSpots(state);
   const hero = await send(connection, {
     type: "token.create",
     name: t("tutorial.demo.hero"),
-    position: { x: mid.x - grid.cellSize, y: mid.y },
+    position: heroAt,
     stats: { hp: 12, maxHp: 12, ac: 14 },
     color: "#3b82f6",
+    imageUrl: "/img/tokens/enemies/human-swordsman.svg",
     attacks: [{ name: t("tutorial.demo.sword"), toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } }],
   } as Command);
   if (!hero.ok) return hero;
   return send(connection, {
     type: "token.create",
     name: t("tutorial.demo.goblin"),
-    position: { x: mid.x + grid.cellSize, y: mid.y },
+    position: foeAt,
     stats: { hp: 12, maxHp: 12, ac: 8 },
     color: "#16a34a",
+    imageUrl: "/img/tokens/enemies/goblin-guard.svg",
   } as Command);
 }
 

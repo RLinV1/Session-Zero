@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import type { RoomState } from "@vtt/shared";
-import { demoPair, demoTokenIds } from "../src/ui/tutorialDemo";
+import { DEFAULT_GRID, cellAt, distanceToSegment, emptyRoomState, type RoomState } from "@vtt/shared";
+import { demoPair, demoSpots, demoTokenIds } from "../src/ui/tutorialDemo";
 import { TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
 
 const none: TutorialFacts = { tokens: 0, fog: 0, gmRolls: 0, moves: 0, invites: 0, mapEdits: 0, gridEdits: 0, wallEdits: 0, sightEdits: 0, terrainEdits: 0, encounters: 0, attackRolls: 0, rulings: 0, damageApplied: 0 };
@@ -127,5 +127,22 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     const pair = demoPair(room([hero, token("g", "Goblin", { hp: 7, maxHp: 7, ac: 8 })]));
     expect([pair?.hero.id, pair?.foe.id, pair?.attack.name]).toEqual(["h", "g", "Sword"]);
     expect(demoTokenIds(room([plain, token("d", "Demo hero", { hp: 1, maxHp: 1, ac: 1 })]))).toEqual(["d"]);
+  });
+
+  it("puts the demo fight's tokens on open floor, off walls and blocked terrain, inside the map (guest-gm-hosting)", () => {
+    const grid = { ...DEFAULT_GRID, cellSize: 50, offsetX: 0, offsetY: 0 };
+    const base = { ...emptyRoomState("r"), scene: { map: { width: 800, height: 800 }, grid } } as unknown as RoomState;
+    const spots = (state: RoomState) => demoSpots(state);
+    expect(spots(base)).toEqual([{ x: 425, y: 425 }, { x: 475, y: 425 }]);
+    const wall = { id: "w", a: { x: 400, y: 0 }, b: { x: 400, y: 800 } };
+    const walled = { ...base, walls: { w: wall }, terrain: { base: [{ row: 8, start: 9, end: 12, kind: "blocked" }], effects: [] } } as unknown as RoomState;
+    for (const p of spots(walled)) {
+      expect(distanceToSegment(p, wall)).toBeGreaterThanOrEqual(37.5);
+      expect(p.x).toBeGreaterThan(0);
+      expect(p.x).toBeLessThan(800);
+      expect(cellAt(p, grid)).not.toEqual({ col: 9, row: 8 });
+    }
+    const [a, b] = spots(walled);
+    expect(b.x - a.x).toBe(50);
   });
 });
