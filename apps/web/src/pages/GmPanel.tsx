@@ -2,7 +2,7 @@ import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
-import { EXAMPLE_EVENT, exampleCommands } from "../ui/tutorialExample";
+import { EXAMPLE_CLEAR_EVENT, EXAMPLE_EVENT, exampleCommands } from "../ui/tutorialExample";
 import { libraryAssetId } from "../net/builtinAssets";
 import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { imageSize, nameFromFile } from "../net/imageFile";
@@ -325,15 +325,20 @@ function MapSection(props: {
   exampleNow.current = { draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } };
   useEffect(() => {
     if (!editorOpen) return;
-    const draw = (event: Event) => {
+    const draw = (clear: boolean) => (event: Event) => {
       const now = exampleNow.current;
       if (!now.draft) return;
       void (async () => {
-        for (const command of exampleCommands((event as CustomEvent<string>).detail, now.draft!, now.grid, now.map)) await now.draftEdits.command(command);
+        for (const command of exampleCommands((event as CustomEvent<string>).detail, now.draft!, now.grid, now.map, clear)) await now.draftEdits.command(command);
       })();
     };
-    window.addEventListener(EXAMPLE_EVENT, draw);
-    return () => window.removeEventListener(EXAMPLE_EVENT, draw);
+    const drawIt = draw(false), clearIt = draw(true);
+    window.addEventListener(EXAMPLE_EVENT, drawIt);
+    window.addEventListener(EXAMPLE_CLEAR_EVENT, clearIt);
+    return () => {
+      window.removeEventListener(EXAMPLE_EVENT, drawIt);
+      window.removeEventListener(EXAMPLE_CLEAR_EVENT, clearIt);
+    };
   }, [editorOpen]);
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);

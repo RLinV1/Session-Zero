@@ -5,7 +5,7 @@ import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
 import type { RoomConnection } from "../net/roomConnection";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
-import { EXAMPLE_STEPS } from "./tutorialExample";
+import { EXAMPLE_CLEAR_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { damageWaiting, demoTokenIds, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
@@ -321,7 +321,12 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
                 const next = settle(step + 1, facts);
                 set(next);
                 // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
-                if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!);
+                const openNext = () => { if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!); };
+                // The sample comes out first, so leaving its tab does not ask to save it.
+                if (example === stepName) {
+                  window.dispatchEvent(new CustomEvent(EXAMPLE_CLEAR_EVENT, { detail: stepName }));
+                  window.setTimeout(openNext, 150);
+                } else openNext();
               }}>{t("tutorial.next")}</button>
             )}
             {stepName === "done" ? (

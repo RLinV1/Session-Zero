@@ -12,7 +12,7 @@ const near = (a: number, b: number) => Math.abs(a - b) < 1;
  * and Blocked ground, or a fog rectangle. Drawn near the middle of the map, and the same place every time,
  * so asking again replaces the earlier sample (walls) or repeats it harmlessly (terrain, fog) rather than stacking.
  */
-export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, map: { width: number; height: number }): CommandInput[] {
+export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, map: { width: number; height: number }, clear = false): CommandInput[] {
   const size = grid.cellSize;
   const cols = Math.max(1, Math.floor((map.width - grid.offsetX) / size)), rows = Math.max(1, Math.floor((map.height - grid.offsetY) / size));
   const c0 = Math.max(0, Math.min(cellAt({ x: map.width / 2, y: map.height / 2 }, grid).col - 2, cols - 4));
@@ -23,18 +23,20 @@ export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, m
     const door = { a: at(c0 + 3, r0), b: at(c0 + 3, r0 + 2), portal: { kind: "door" as const, state: "closed" as const } };
     const keys = new Set([key(wall.a, wall.b), key(door.a, door.b)]);
     const old = Object.values(draft.walls).filter((w) => keys.has(key(w.a, w.b))).map((w) => w.id);
+    if (clear) return old.length ? [{ type: "wall.remove" as const, wallIds: old }] : [];
     return [...(old.length ? [{ type: "wall.remove" as const, wallIds: old }] : []), { type: "wall.add", walls: [wall, door] }];
   }
   if (step === "fog") {
     const from = at(c0, r0), to = at(c0 + 3, r0 + 3);
     const exists = Object.values(draft.fog).some((f) => f.points.length === 4 && f.points.some((p) => near(p.x, from.x) && near(p.y, from.y)) && f.points.some((p) => near(p.x, to.x) && near(p.y, to.y)));
+    if (clear) return Object.values(draft.fog).filter((f) => f.points.length === 4 && f.points.some((p) => near(p.x, from.x) && near(p.y, from.y)) && f.points.some((p) => near(p.x, to.x) && near(p.y, to.y))).map((f) => ({ type: "fog.remove" as const, regionId: f.id }));
     return exists ? [] : [{ type: "fog.add", region: { shape: "rect", from, to } }];
   }
   if (step === "terrain") {
     const context = draft.terrainContext ?? { boardEpoch: 0, revision: 0 };
     return [{ type: "terrain.paint", layerId: "base", context, paint: [
-      { row: r0 + 1, start: c0, end: c0 + 3, kind: "difficult" },
-      { row: r0 + 2, start: c0, end: c0 + 3, kind: "blocked" },
+      { row: r0 + 1, start: c0, end: c0 + 3, kind: clear ? null : "difficult" },
+      { row: r0 + 2, start: c0, end: c0 + 3, kind: clear ? null : "blocked" },
     ] }];
   }
   return [];
@@ -42,3 +44,5 @@ export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, m
 
 /** Sent on `window` by the demo's Show me; the open map editor draws the sample into its draft. */
 export const EXAMPLE_EVENT = "vtt:tutorial-example";
+/** Sent when the GM moves on: the sample is taken out again, so it never makes the editor ask to save. */
+export const EXAMPLE_CLEAR_EVENT = "vtt:tutorial-example-clear";
