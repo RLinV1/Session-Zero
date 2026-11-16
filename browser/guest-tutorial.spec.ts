@@ -18,16 +18,16 @@ test("the guest demo opens each map editing lesson inside the editor (guest-gm-h
   await page.goto(`/r/${seat.roomId}`);
   const tutorial = page.locator(".guest-tutorial");
   await expect(tutorial.getByRole("heading")).toHaveText("Line up the grid", { timeout: 30_000 });
-  await tutorial.getByRole("button", { name: "Show me" }).click();
+  await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
   const editor = page.locator("dialog.map-editor[open]");
   await expect(editor.locator('[role="tab"][aria-selected="true"]')).toContainText("Grid");
   await editor.locator(".modal-close").click();
   await page.getByRole("button", { name: "Change map", exact: true }).click();
-  await tutorial.getByRole("button", { name: "Show me" }).click();
+  await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
   await expect(editor.locator('[role="tab"][aria-selected="true"]')).toContainText("Grid");
   await tutorial.getByRole("button", { name: "Next step" }).click();
   await expect(editor).not.toBeVisible();
-  await tutorial.getByRole("button", { name: "Show me" }).click();
+  await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
   // Walls animates a sample into the draft; moving on stops it and takes it out again without asking to save it.
   await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible({ timeout: 20_000 });
   for (const label of ["Walls", "Fog", "Sight", "Terrain"]) {
@@ -47,7 +47,7 @@ test("the guest demo opens each map editing lesson inside the editor (guest-gm-h
   await expect(prompt).toBeVisible();
   await prompt.getByRole("button", { name: "Keep editing" }).click();
   await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
-  await tutorial.getByRole("button", { name: "Show me" }).click();
+  await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
   await prompt.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(editor).not.toBeVisible();
   await expect(tutorial.getByRole("heading")).toHaveText("Place a token");
@@ -70,8 +70,10 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
   const tutorial = page.locator(".guest-tutorial");
   const editor = page.locator("dialog.map-editor[open]");
   await expect(tutorial.getByRole("heading")).toHaveText("Prepare the map", { timeout: 30_000 });
-  await tutorial.getByRole("button", { name: "Show me" }).click();
-  await expect(editor).toBeVisible();
+  // The map lesson's Show me points at Edit map and Change map without opening either.
+  await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
+  await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).toHaveCount(2, { timeout: 15_000 });
+  await expect(editor).toHaveCount(0);
   const selected = editor.locator('[role="tab"][aria-selected="true"]');
   for (const [title, label] of [["Line up the grid", "Grid"], ["Draw walls, doors and windows", "Walls"], ["Hide part of the map", "Fog"], ["Test what players can see", "Sight"], ["Paint terrain", "Terrain"]] as const) {
     await tutorial.getByRole("button", { name: "Next step" }).click();
@@ -79,7 +81,7 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
     // Next step already opened the lesson's tab; Show me is offered where it draws an example.
     await expect(selected).toContainText(label, { timeout: 8000 });
     if (["Walls", "Fog", "Terrain"].includes(label)) {
-      await tutorial.getByRole("button", { name: "Show me" }).click();
+      await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
       await expect(page.locator("dialog.map-editor[open]").getByRole("button", { name: "Save changes", exact: true })).toBeVisible({ timeout: 20_000 });
     }
     await expect(selected).toContainText(label, { timeout: 8000 });
@@ -122,7 +124,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
         const tutorial = page.locator(".guest-tutorial");
         const editor = page.locator("dialog.map-editor[open]");
         const selected = editor.locator('[role="tab"][aria-selected="true"]');
-        const showMe = tutorial.getByRole("button", { name: "Show me" });
+        const showMe = tutorial.getByRole("button", { name: /^(Show me|Replay)$/ });
         const shot = (file: string) => page.screenshot({ path: `${SHOTS}/${name}-${file}.png` });
         /** The map section's buttons, opening the Manage tab the way a GM would. */
         const gmButton = async (text: string) => {
@@ -199,7 +201,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844
       const editor = page.locator("dialog.map-editor[open]");
       await page.goto(`/r/${seat.roomId}`, { timeout: 60_000 });
       await expect(tutorial.getByRole("heading")).toBeVisible({ timeout: 30_000 });
-      await tutorial.getByRole("button", { name: "Show me" }).click();
+      await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
       const items = tutorial.locator(".tutorial-ex li");
       await expect(items.first()).toBeVisible({ timeout: 15_000 });
       const total = await items.count();
