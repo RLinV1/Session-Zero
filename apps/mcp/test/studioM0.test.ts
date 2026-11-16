@@ -107,6 +107,9 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     expect(content.mimeType).toBe("text/html;profile=mcp-app");
     expect(content.text).toContain("globalThis.__extApps=");
     expect(content.text).not.toMatch(/s0m0_|Bearer /); // Credential-free template.
+    // Region drag must not start the browser's native image drag (host run, 2026-11-16).
+    expect(content.text).toContain('<img id="map" alt="Fixture map" draggable="false">');
+    expect(content.text).toContain('"pointercancel"');
     await client.close();
   });
 

@@ -43,7 +43,7 @@ h1{font-size:15px;margin:0}.pill{font-size:12px;padding:2px 8px;border:1px solid
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}button{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}
 button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #stage{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;touch-action:none;user-select:none;max-width:100%}
-#stage img{display:block;width:100%;height:auto}#sel{position:absolute;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);display:none;pointer-events:none}
+#stage img{display:block;width:100%;height:auto;-webkit-user-drag:none}#sel{position:absolute;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);display:none;pointer-events:none}
 label{font-size:12px;color:var(--muted)}input[type=number]{width:72px}input,textarea{font:inherit;background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:3px 5px}
 textarea{width:100%;min-height:52px}.value{font-size:18px;font-weight:600}.ok{color:var(--ok)}.bad{color:var(--bad)}
 details{border-top:1px solid var(--line);padding-top:6px}pre{font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;margin:4px 0}
@@ -51,7 +51,7 @@ details{border-top:1px solid var(--line);padding-top:6px}pre{font-size:11px;whit
 <body><main>
 <header><h1>Session Zero Studio — M0 proof (fixture only)</h1><span class="row"><span class="pill" id="conn">connecting…</span><button id="fullscreen" type="button">Fullscreen</button></span></header>
 <section class="row" aria-live="polite"><span>Saved value:</span><span class="value" id="value">—</span><span class="pill" id="version">v—</span><span class="pill" id="poll">refresh: idle</span></section>
-<div id="stage" aria-label="Fixture map. Drag to select a region, or use the number fields."><img id="map" alt="Fixture map"><div id="sel"></div></div>
+<div id="stage" aria-label="Fixture map. Drag to select a region, or use the number fields."><img id="map" alt="Fixture map" draggable="false"><div id="sel"></div></div>
 <section class="row" aria-label="Selection in map pixels">
 <label>x <input id="sx" type="number" min="0" step="1"></label><label>y <input id="sy" type="number" min="0" step="1"></label>
 <label>width <input id="sw" type="number" min="1" step="1"></label><label>height <input id="sh" type="number" min="1" step="1"></label></section>
@@ -156,16 +156,24 @@ $("probe").addEventListener("click", async () => {
 // Selection in canonical map pixels; pan and zoom never enter saved geometry.
 let drag = null;
 const stage = $("stage");
-function toMap(ev) { const img = $("map"); const box = img.getBoundingClientRect(); const s = img.naturalWidth / box.width || 1; return { x: Math.round((ev.clientX - box.left) * s), y: Math.round((ev.clientY - box.top) * s) }; }
+function toMap(ev) {
+  const img = $("map"); const box = img.getBoundingClientRect(); const s = img.naturalWidth / box.width || 1;
+  const clamp = (v, max) => Math.min(Math.max(Math.round(v), 0), max || 0);
+  return { x: clamp((ev.clientX - box.left) * s, img.naturalWidth), y: clamp((ev.clientY - box.top) * s, img.naturalHeight) };
+}
 function drawSel() {
   const img = $("map"); const s = img.getBoundingClientRect().width / (img.naturalWidth || 1); const el = $("sel");
   const [x, y, w, h] = ["sx", "sy", "sw", "sh"].map((id) => Number($(id).value));
   if (!w || !h) { el.style.display = "none"; return; }
   Object.assign(el.style, { display: "block", left: x * s + "px", top: y * s + "px", width: w * s + "px", height: h * s + "px" });
 }
-stage.addEventListener("pointerdown", (ev) => { drag = toMap(ev); stage.setPointerCapture(ev.pointerId); });
+// The browser's native image drag would otherwise take over the gesture and cancel these pointer events,
+// so the box only updated at the end (seen in ChatGPT web, 2026-11-16).
+$("map").draggable = false;
+stage.addEventListener("dragstart", (ev) => ev.preventDefault());
+stage.addEventListener("pointerdown", (ev) => { if (ev.button !== 0) return; ev.preventDefault(); drag = toMap(ev); stage.setPointerCapture(ev.pointerId); });
 stage.addEventListener("pointermove", (ev) => { if (!drag) return; const p = toMap(ev); $("sx").value = Math.min(drag.x, p.x); $("sy").value = Math.min(drag.y, p.y); $("sw").value = Math.abs(p.x - drag.x); $("sh").value = Math.abs(p.y - drag.y); drawSel(); });
-stage.addEventListener("pointerup", () => { drag = null; });
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) stage.addEventListener(type, () => { drag = null; });
 for (const id of ["sx", "sy", "sw", "sh"]) $(id).addEventListener("input", drawSel);
 addEventListener("resize", drawSel);
 
