@@ -151,7 +151,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
         await expect(editor.locator(".guest-tutorial")).toBeVisible();
         if (["walls", "fog", "terrain"].includes(step)) {
           await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
-          await expect(tutorial.getByRole("status").filter({ hasText: "Here is an example" })).toBeVisible();
+          await expect(tutorial.getByRole("status").filter({ hasText: "Example " })).toBeVisible();
           await showMe.click(); // asking again replaces the sample instead of stacking another
           await expect(selected).toContainText(label);
           await shot(`${step}-${start}-example`);
