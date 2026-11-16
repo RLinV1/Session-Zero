@@ -8,7 +8,7 @@
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
-- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, with a PR open and not merged; see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
+- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, in PR #212 (open, not merged); see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
