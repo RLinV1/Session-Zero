@@ -311,7 +311,7 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
               <rect
                 x={Math.min(anchor.x, draft.x)} y={Math.min(anchor.y, draft.y)}
                 width={Math.abs(draft.x - anchor.x)} height={Math.abs(draft.y - anchor.y)}
-                fill="#ffd166" fillOpacity={0.18} stroke="#ffd166" strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`}
+                fill="none" stroke="#ffd166" strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`}
               />
             )}
             {mode === "polygon" && corners.length > 0 && (
