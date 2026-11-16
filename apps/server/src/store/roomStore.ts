@@ -5,6 +5,7 @@ import type { EncounterRecord, LibraryStore, NewEncounterRecord, NewRoomOptions,
 import type { GridDetectionStore, UploadAnalysis } from "./gridDetectionStore";
 import type { RoomUploadPurpose } from "@vtt/shared";
 import type { MembershipStore } from "./membershipStore";
+import type { StudioStore } from "./studioStore";
 
 export interface NewEvent {
   actorId: string | null;
@@ -47,7 +48,7 @@ export class SeqConflictError extends Error {
  *  - events are never updated or deleted, except that `deleteRoom` erases a whole room's
  *    log together with the room (ADR 0009).
  */
-export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore {
+export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;

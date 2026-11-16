@@ -1,6 +1,7 @@
 import { MAX_ENCOUNTER_NAME, type BuildFlag, type GameProfile, type GridDetectionCandidate, type GridSpec, type LibraryMapBoard } from "@vtt/shared";
 import type { DetectionError, DetectionState } from "./gridDetectionStore";
 import type { LibraryAssetRecord, NewCreatureRecord, NewEncounterRecord, UploadAllowance } from "./libraryStore";
+import type { StudioDelegation } from "./studioStore";
 
 /**
  * The AI game builder's private drafts (FR-GM-26, FR-GM-27, ADR 0053). Nothing here is room state
@@ -124,11 +125,14 @@ export class BuildChoiceOffError extends Error {
  * `expectedUpdatedAt`: the item's version when it was read; null means it didn't exist yet.
  * `requireAiWalls`: the owner must still let the AI set walls, doors and windows.
  * `requireAiTerrain`: the owner must still let the AI propose terrain (ADR 0071).
+ * `delegation`: a delegated Studio token must still be live and cover this build (ADR 0073, design
+ * D7); otherwise `StudioAccessEndedError`, before anything else is checked.
  */
 export interface BuildWriteGuard {
   expectedUpdatedAt?: string | null;
   requireAiWalls?: boolean;
   requireAiTerrain?: boolean;
+  delegation?: StudioDelegation;
 }
 
 /**
@@ -202,8 +206,8 @@ export interface BuildStore {
   clearBuildPass(id: string, ownerGmId: string): Promise<boolean>;
   /** Ends every pass on the account, as a password change must. */
   endBuildPasses(ownerGmId: string): Promise<void>;
-  /** Throws `BuildClosedError` when the build isn't open. */
-  saveGameProfile(buildId: string, profile: GameProfile): Promise<void>;
+  /** Throws `BuildClosedError` when the build isn't open, and for a `delegation`, `StudioAccessEndedError`. */
+  saveGameProfile(buildId: string, profile: GameProfile, guard?: Pick<BuildWriteGuard, "delegation">): Promise<void>;
   /** The owner's choices; an absent `aiTerrain` is kept. Null when the owner has no such open build. Only the owner's routes call this. */
   setBuildChoices(id: string, ownerGmId: string, choices: BuildChoiceValues): Promise<BuildRecord | null>;
 

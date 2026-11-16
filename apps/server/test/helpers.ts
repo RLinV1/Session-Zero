@@ -15,6 +15,7 @@ import {
   type RoomState,
   type ServerMessage,
 } from "@vtt/shared";
+import type { StudioAccessConfig } from "../src/http/studioOAuth";
 import { buildApp, type App } from "../src/app";
 import type { Detector, GridDetectionDispatcher } from "../src/domain/gridDetection";
 import type { WallJobQueue } from "../src/domain/wallDetection";
@@ -48,12 +49,14 @@ export async function listenForFetch(app: App): Promise<string> {
  */
 export async function startServer(
   store: MemoryRoomStore = new MemoryRoomStore(),
-  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null } = {},
+  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null } = {},
 ) {
   const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
   const app = await buildApp({
     store, uploadDir, clientOrigin: "*", now: opts.now, detector: opts.detector, dispatcher: opts.dispatcher,
     wallQueue: opts.wallQueue ?? null,
+    // Off unless a test turns it on, so a STUDIO_PUBLIC_ORIGIN in the environment never reaches tests.
+    studio: opts.studio ?? null,
   });
   const base = await listenForFetch(app);
 

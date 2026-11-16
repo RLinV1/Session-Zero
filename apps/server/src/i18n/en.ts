@@ -153,6 +153,16 @@ export const serverEn = {
   "build.busyPictures": "Busy making other pictures. Try again in a moment.",
   "build.blockNeedsGrid": "Looking at a block of squares needs a grid. Propose one with save_map first.",
   "build.allOrNoBounds": "Give all of fromColumn, toColumn, fromRow and toRow, or none.",
+
+  // Delegated Studio access: the AI app connection an owner allows on the website (ADR 0073, design D7).
+  "studio.accessEnded": "This connection to Session Zero has ended. Ask the user to reconnect it in their AI app.",
+  "studio.notAvailable": "Connecting an AI app isn't available on this server.",
+  "studio.requestInvalid": "This connection request isn't valid. Start connecting again from your AI app.",
+  "studio.chooseBuild": "Choose at least one build.",
+  "studio.tooManyConnections": "You have as many AI connections as an account can. Disconnect one on a build page first.",
+  "studio.tooManyRequests": "Too many requests on this connection: at most 120 a minute. Wait a minute, then continue.",
+  "studio.tooManyInvalid": "Too many attempts with an invalid connection. Try again later.",
+  "studio.noSuchConnection": "No such connection.",
 } as const satisfies CatalogSource;
 
 export type ServerEn = typeof serverEn;

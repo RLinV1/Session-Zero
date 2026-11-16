@@ -150,9 +150,70 @@ model GmIdentity {
   animations LibraryAnimation[]
   encounters EncounterTemplate[]
   builds    Build[]
+  studioGrants StudioGrant[]
   user      User?
 
   @@map("gm_identities")
+}
+
+/// A public client registered through dynamic client registration (RFC 7591) for delegated
+/// Studio access (FR-GM-26, ADR 0073, design D7). Bounded in number; unused ones expire.
+model StudioOAuthClient {
+  id           String    @id
+  name         String
+  redirectUris String[]  @map("redirect_uris")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  grants StudioGrant[]
+
+  @@index([createdAt])
+  @@map("studio_oauth_clients")
+}
+
+/// One owner's consent to one client for chosen builds, and the token family it starts (design D7).
+/// Revoking it ends every token in it. Only the authorization code's SHA-256 is stored.
+model StudioGrant {
+  id            String    @id @db.Uuid
+  ownerGmId     String    @map("owner_gm_id") @db.Uuid
+  clientId      String    @map("client_id")
+  resource      String
+  scope         String
+  buildIds      String[]  @map("build_ids") @db.Uuid
+  codeHash      String    @unique @map("code_hash")
+  codeChallenge String    @map("code_challenge")
+  redirectUri   String    @map("redirect_uri")
+  codeExpiresAt DateTime  @map("code_expires_at") @db.Timestamptz(6)
+  codeUsedAt    DateTime? @map("code_used_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  owner  GmIdentity        @relation(fields: [ownerGmId], references: [id])
+  client StudioOAuthClient @relation(fields: [clientId], references: [id])
+  tokens StudioToken[]
+
+  @@index([ownerGmId])
+  @@index([clientId])
+  @@index([expiresAt])
+  @@map("studio_grants")
+}
+
+/// An access or refresh token of a grant, by SHA-256 only (design D7).
+model StudioToken {
+  tokenHash String    @id @map("token_hash")
+  grantId   String    @map("grant_id") @db.Uuid
+  kind      String
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+
+  grant StudioGrant @relation(fields: [grantId], references: [id])
+
+  @@index([grantId])
+  @@index([expiresAt])
+  @@map("studio_tokens")
 }
 
 /// A person's account (FR-GM-01, ADR 0017). Never part of room state.

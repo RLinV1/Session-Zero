@@ -45,6 +45,8 @@ import {
   type GridSpec,
 } from "@vtt/shared";
 import { planPublish } from "../domain/buildPublish";
+import { STUDIO_LIMITS, STUDIO_TEXT, resolveStudioAccess, studioResource, type StudioAccessConfig } from "./studioOAuth";
+import { StudioAccessEndedError, type StudioDelegation, type StudioGrantRecord } from "../store/studioStore";
 import { mapOverlay, type OverlayRegion } from "../domain/mapOverlay";
 import { hashToken } from "../domain/credentials";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
@@ -251,9 +253,23 @@ interface Deps {
   pool: UvttValidationPool;
   sessions: Sessions;
   now: () => number;
+  /** Delegated Studio access (design D7), or null when this server doesn't offer it. */
+  studio: StudioAccessConfig | null;
 }
 
 const passBuild = (res: Response) => res.locals.build as BuildRecord;
+
+/** A delegated request's write guard (design D7): its token, rechecked inside the write. Empty for a pass. */
+const delegationOf = (res: Response): Pick<BuildWriteGuard, "delegation"> => {
+  const delegation = res.locals.delegation as StudioDelegation | undefined;
+  return delegation ? { delegation } : {};
+};
+
+/** No live delegated access: the MCP server turns this into a request to reconnect. */
+function studioRefusal(res: Response) {
+  res.setHeader("WWW-Authenticate", 'Bearer error="invalid_token"');
+  res.status(401).json({ error: STUDIO_TEXT.accessEnded });
+}
 
 /**
  * The AI game builder (FR-GM-26, FR-GM-27, ADR 0053). Two route families that never overlap:
@@ -264,11 +280,13 @@ const passBuild = (res: Response) => res.locals.build as BuildRecord;
  * No other route knows a pass exists, so everywhere else a pass is no credential at all.
  */
 export function registerBuildRoutes(app: Express, deps: Deps) {
-  const { store, assets, uploadDir, limits, detection, pool, sessions, now } = deps;
+  const { store, assets, uploadDir, limits, detection, pool, sessions, now, studio } = deps;
   const receiveImage = imageUploader(uploadDir, MAX_IMAGE_BYTES, { anyDeclaredType: true });
   let previewsRunning = 0;
 
   const failed = (res: Response) => (err: unknown) => {
+    // A delegated write whose grant ended between its check and its write: nothing was saved (design D7).
+    if (err instanceof StudioAccessEndedError) return void (res.headersSent || studioRefusal(res));
     console.error("[vtt] build request failed", err instanceof Error ? err.name : "error");
     if (!res.headersSent) res.status(500).json({ error: "Something went wrong. Try again." });
   };
@@ -698,13 +716,69 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   const passHashOf = (req: Request) => hashToken(req.headers.authorization!.slice(7));
   const passStillLive = async (req: Request, build: BuildRecord) => (await store.findBuildByPassHash(passHashOf(req)))?.id === build.id;
 
-  app.get("/api/build/:buildId", passGuard, (_req, res) => {
+  // ---------- The delegated Studio routes (ADR 0073, design D7) ----------
+
+  const resource = studio ? studioResource(studio) : null;
+
+  /**
+   * Everything under /api/studio/builds. A delegated token and nothing else: the owner comes from
+   * the server's own grant record, never from a header, query or body, and a build outside the
+   * grant reads exactly as one that doesn't exist. The token is checked again in every write.
+   */
+  const grantGuard: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
+    void (async () => {
+      res.setHeader("Cache-Control", "no-store");
+      const address = `studio-token:${req.ip}`;
+      if (refused(res, limits.studioTokenFailuresPerIp.check(address), STUDIO_TEXT.tooManyInvalid)) return;
+      const at = now();
+      const access = resource ? await resolveStudioAccess(store, resource, req.headers.authorization, at) : null;
+      if (!access) {
+        limits.studioTokenFailuresPerIp.hit(address);
+        return studioRefusal(res);
+      }
+      const { grant, tokenHash } = access;
+      if (refused(res, limits.studioGrantRequests.hit(`grant:${grant.id}`), STUDIO_TEXT.tooManyRequests)) return;
+      if (grant.lastUsedAt === null || at - Date.parse(grant.lastUsedAt) >= STUDIO_LIMITS.touchEveryMs) await store.touchStudioGrant(grant.id, new Date(at).toISOString());
+      res.locals.studioGrant = grant;
+      const buildId = req.params.buildId;
+      if (buildId !== undefined) {
+        const id = FileId.safeParse(buildId);
+        const build = id.success && grant.buildIds.includes(id.data) ? await store.findBuild(id.data, grant.ownerGmId) : null;
+        if (build?.status !== "open") return void res.status(404).json({ error: NOT_FOUND });
+        res.locals.build = build;
+        res.locals.delegation = { tokenHash, now: at } satisfies StudioDelegation;
+      }
+      next();
+    })().catch(failed(res));
+  };
+
+  /** One handler on the pass family and, when the Studio is offered, the delegated family too. */
+  function aiRoute(method: "get" | "post" | "put", path: string, handler: RequestHandler) {
+    app[method](`/api/build/:buildId${path}`, passGuard, handler);
+    if (studio) app[method](`/api/studio/builds/:buildId${path}`, grantGuard, handler);
+  }
+
+  /** The open builds this grant covers, and nothing else of the account. */
+  if (studio) app.get("/api/studio/builds", grantGuard, (_req, res) => {
+    void (async () => {
+      const grant = res.locals.studioGrant as StudioGrantRecord;
+      const builds = [];
+      for (const id of grant.buildIds) {
+        const build = await store.findBuild(id, grant.ownerGmId);
+        if (build?.status === "open") builds.push({ id: build.id, name: build.name });
+      }
+      res.json({ ownerName: await store.findBuildOwnerName(grant.ownerGmId), builds });
+    })().catch(failed(res));
+  });
+
+  aiRoute("get", "", (_req, res) => {
     void (async () => {
       const build = passBuild(res);
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
       const read = { build, files: new Map(files.map((f) => [f.id, f])) };
       res.json({
-        build: { id: build.id, name: build.name, passExpiresAt: build.passExpiresAt },
+        // A delegated reader isn't told about passes.
+        build: { id: build.id, name: build.name, ...(delegationOf(res).delegation ? {} : { passExpiresAt: build.passExpiresAt }) },
         ownerName: await store.findBuildOwnerName(build.ownerGmId),
         /** What the owner lets the AI set up on maps (ADR 0053). Only the owner can change these. */
         allowed: allowedOf(build),
@@ -723,7 +797,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  app.get("/api/build/:buildId/files/:fileId/preview", passGuard, (req, res) => {
+  aiRoute("get", "/files/:fileId/preview", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const fileId = FileId.safeParse(req.params.fileId);
@@ -755,18 +829,18 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  app.put("/api/build/:buildId/profile", passGuard, (req, res) => {
+  aiRoute("put", "/profile", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const profile = GameProfile.safeParse(req.body);
       if (!profile.success) return void res.status(422).json({ error: issueText(profile.error) });
-      if (!await refuseClosed(res, () => store.saveGameProfile(build.id, profile.data))) return;
+      if (!await refuseClosed(res, () => store.saveGameProfile(build.id, profile.data, delegationOf(res)))) return;
       res.json({ profile: profile.data });
     })().catch(failed(res));
   });
 
   /** Each creature stands alone, so one bad sheet doesn't lose the others. */
-  app.post("/api/build/:buildId/creatures", passGuard, (req, res) => {
+  aiRoute("post", "/creatures", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const list = z.array(z.unknown()).min(1).max(BUILD_LIMITS.creaturesPerCall).safeParse((req.body as { creatures?: unknown } | undefined)?.creatures);
@@ -783,7 +857,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
           continue;
         }
         try {
-          await store.saveBuildItem({ buildId: build.id, kind: "creature", key, data, flags, notCarriedOver }, BUILD_LIMITS.creaturesPerBuild);
+          await store.saveBuildItem({ buildId: build.id, kind: "creature", key, data, flags, notCarriedOver }, BUILD_LIMITS.creaturesPerBuild, delegationOf(res));
           results.push({ key, saved: true, problems: creatureProblems(data, flags, features) });
         } catch (err) {
           if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
@@ -794,7 +868,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  app.post("/api/build/:buildId/maps", passGuard, (req, res) => {
+  aiRoute("post", "/maps", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const parsed = DraftMap.safeParse(req.body);
@@ -836,7 +910,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   };
 
   /** A map's numbered openings, the AI's lines and marks, and what the owner allows. Reading is always allowed. */
-  app.get("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
+  aiRoute("get", "/maps/:key/setup", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const found = await passMap(res, build, String(req.params.key));
@@ -854,7 +928,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
    * write, that the parts sent are still allowed and that the map is still the version read here, so
    * the owner turning a choice off, or another save at the same moment, wins.
    */
-  app.put("/api/build/:buildId/maps/:key/setup", passGuard, (req, res) => {
+  aiRoute("put", "/maps/:key/setup", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       // Judged on what was sent before it is checked, so a part not allowed is refused, not explained.
@@ -893,7 +967,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
       try {
         await store.saveBuildItem({ buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, BUILD_LIMITS.mapsPerBuild,
-          { requireAiWalls: wantsWalls, requireAiTerrain: wantsTerrain, expectedUpdatedAt: item.updatedAt });
+          { requireAiWalls: wantsWalls, requireAiTerrain: wantsTerrain, expectedUpdatedAt: item.updatedAt, ...delegationOf(res) });
       } catch (err) {
         if (err instanceof BuildChoiceOffError) {
           const now_ = await store.findBuild(build.id, build.ownerGmId);
@@ -907,7 +981,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  app.post("/api/build/:buildId/encounters", passGuard, (req, res) => {
+  aiRoute("post", "/encounters", (req, res) => {
     void (async () => {
       const build = passBuild(res);
       const parsed = DraftEncounter.safeParse(req.body);
@@ -936,7 +1010,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  app.get("/api/build/:buildId/check", passGuard, (_req, res) => {
+  aiRoute("get", "/check", (_req, res) => {
     void (async () => {
       const build = passBuild(res);
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
@@ -1013,7 +1087,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
 
   async function saveItem(res: Response, item: Parameters<RoomStore["saveBuildItem"]>[0], max: number, build?: BuildRecord, guard?: BuildWriteGuard) {
     try {
-      const saved = await store.saveBuildItem(item, max, guard);
+      const saved = await store.saveBuildItem(item, max, { ...guard, ...delegationOf(res) });
       const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
       res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {

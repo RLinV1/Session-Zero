@@ -59,6 +59,18 @@ import {
 } from "./libraryStore";
 import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
+import {
+  StudioAccessEndedError,
+  StudioClientLimitError,
+  StudioGrantLimitError,
+  delegationAllows,
+  grantIsLive,
+  type StudioClientRecord,
+  type StudioDelegation,
+  type StudioGrantRecord,
+  type StudioSweepTimes,
+  type StudioTokenRecord,
+} from "./studioStore";
 import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /** Dev/test store. Loses everything on restart. */
@@ -94,6 +106,9 @@ export class MemoryRoomStore implements RoomStore {
   private buildFiles = new Map<string, BuildFileRecord>();
   /** `${buildId}/${kind}/${key}`, so a key an AI chose can't collide with a property name. */
   private buildItems = new Map<string, BuildItemRecord>();
+  private studioClients = new Map<string, StudioClientRecord>();
+  private studioGrants = new Map<string, StudioGrantRecord>();
+  private studioTokens = new Map<string, StudioTokenRecord>();
 
   async createRoom(roomId: string, inviteCode: string, options: NewRoomOptions = {}) {
     if (this.events.has(roomId)) throw new Error(`Room ${roomId} already exists`);
@@ -598,8 +613,114 @@ export class MemoryRoomStore implements RoomStore {
     }
   }
 
-  async saveGameProfile(buildId: string, profile: GameProfile) {
+  /** Synchronous with the write it guards, so a revocation can't land between the check and the write. */
+  private assertDelegation(delegation: StudioDelegation | undefined, build: BuildRecord) {
+    if (!delegation) return;
+    const token = this.studioTokens.get(delegation.tokenHash);
+    if (!delegationAllows(delegation, token, token && this.studioGrants.get(token.grantId), build)) throw new StudioAccessEndedError();
+  }
+
+  // ---------- Delegated Studio access (design D7) ----------
+
+  async registerStudioClient(client: StudioClientRecord, max: number) {
+    if (this.studioClients.size >= max) throw new StudioClientLimitError();
+    this.studioClients.set(client.id, structuredClone(client));
+  }
+
+  async findStudioClient(id: string) {
+    const client = this.studioClients.get(id);
+    return client ? structuredClone(client) : null;
+  }
+
+  async createStudioGrant(grant: StudioGrantRecord, maxLive: number, now: string) {
+    const at = Date.parse(now);
+    const held = [...this.studioGrants.values()].filter((g) => g.ownerGmId === grant.ownerGmId && g.revokedAt === null && Date.parse(g.expiresAt) > at
+      && (g.codeUsedAt !== null || Date.parse(g.codeExpiresAt) > at)).length;
+    if (held >= maxLive) throw new StudioGrantLimitError();
+    this.studioGrants.set(grant.id, structuredClone(grant));
+  }
+
+  async findStudioGrantByCode(codeHash: string) {
+    for (const grant of this.studioGrants.values()) if (grant.codeHash === codeHash) return structuredClone(grant);
+    return null;
+  }
+
+  async redeemStudioCode(grantId: string, now: string, tokens: StudioTokenRecord[]) {
+    const grant = this.studioGrants.get(grantId);
+    if (!grant || grant.codeUsedAt !== null || grant.revokedAt !== null || Date.parse(grant.codeExpiresAt) <= Date.parse(now)) return false;
+    grant.codeUsedAt = now;
+    grant.lastUsedAt = now;
+    for (const token of tokens) this.studioTokens.set(token.tokenHash, structuredClone(token));
+    const client = this.studioClients.get(grant.clientId);
+    if (client) client.lastUsedAt = now;
+    return true;
+  }
+
+  async findStudioToken(tokenHash: string) {
+    const token = this.studioTokens.get(tokenHash);
+    const grant = token && this.studioGrants.get(token.grantId);
+    return token && grant ? { token: structuredClone(token), grant: structuredClone(grant) } : null;
+  }
+
+  async rotateStudioRefresh(tokenHash: string, now: string, tokens: StudioTokenRecord[]) {
+    const token = this.studioTokens.get(tokenHash);
+    const grant = token && this.studioGrants.get(token.grantId);
+    const at = Date.parse(now);
+    if (!token || !grant || token.kind !== "refresh" || token.usedAt !== null || Date.parse(token.expiresAt) <= at || !grantIsLive(grant, at)) return false;
+    token.usedAt = now;
+    grant.lastUsedAt = now;
+    for (const fresh of tokens) this.studioTokens.set(fresh.tokenHash, structuredClone(fresh));
+    const client = this.studioClients.get(grant.clientId);
+    if (client) client.lastUsedAt = now;
+    return true;
+  }
+
+  async revokeStudioGrant(grantId: string, now: string, ownerGmId?: string) {
+    const grant = this.studioGrants.get(grantId);
+    if (!grant || (ownerGmId !== undefined && grant.ownerGmId !== ownerGmId)) return false;
+    grant.revokedAt ??= now;
+    return true;
+  }
+
+  async endStudioGrants(ownerGmId: string, now: string) {
+    for (const grant of this.studioGrants.values()) if (grant.ownerGmId === ownerGmId) grant.revokedAt ??= now;
+  }
+
+  async listStudioGrants(ownerGmId: string, now: string) {
+    const at = Date.parse(now);
+    return [...this.studioGrants.values()]
+      .filter((g) => g.ownerGmId === ownerGmId && grantIsLive(g, at))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((g) => structuredClone(g));
+  }
+
+  async touchStudioGrant(grantId: string, at: string) {
+    const grant = this.studioGrants.get(grantId);
+    if (grant) grant.lastUsedAt = at;
+  }
+
+  async sweepStudio(times: StudioSweepTimes) {
+    const now = Date.parse(times.now);
+    for (const [hash, token] of this.studioTokens) if (Date.parse(token.expiresAt) <= now) this.studioTokens.delete(hash);
+    for (const [id, grant] of this.studioGrants) {
+      const pendingExpired = grant.codeUsedAt === null && Date.parse(grant.codeExpiresAt) <= now;
+      if (pendingExpired || grant.revokedAt !== null || Date.parse(grant.expiresAt) <= now) {
+        for (const [hash, token] of this.studioTokens) if (token.grantId === id) this.studioTokens.delete(hash);
+        this.studioGrants.delete(id);
+      }
+    }
+    const withGrants = new Set([...this.studioGrants.values()].map((g) => g.clientId));
+    for (const [id, client] of this.studioClients) {
+      if (withGrants.has(id)) continue;
+      const unused = client.lastUsedAt === null && client.createdAt < times.unusedClientsBefore;
+      const idle = client.lastUsedAt !== null && client.lastUsedAt < times.idleClientsBefore;
+      if (unused || idle) this.studioClients.delete(id);
+    }
+  }
+
+  async saveGameProfile(buildId: string, profile: GameProfile, guard: Pick<BuildWriteGuard, "delegation"> = {}) {
     const build = this.openBuild(buildId);
+    this.assertDelegation(guard.delegation, build);
     build.gameProfile = structuredClone(profile);
     this.touchBuild(build);
   }
@@ -647,6 +768,8 @@ export class MemoryRoomStore implements RoomStore {
 
   async saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard: BuildWriteGuard = {}) {
     const build = this.openBuild(item.buildId);
+    // First, so an ended grant learns nothing about the item (design D7).
+    this.assertDelegation(guard.delegation, build);
     const id = `${item.buildId}/${item.kind}/${item.key}`;
     const existing = this.buildItems.get(id);
     if (existing?.publishedId) throw new BuildItemLockedError("published");
@@ -995,6 +1118,11 @@ export class MemoryRoomStore implements RoomStore {
       }
       for (const [id, item] of this.buildItems) if (item.buildId === buildId) this.buildItems.delete(id);
       this.builds.delete(buildId);
+    }
+    // Before the builds' owner goes, as the foreign keys require in Postgres (design D7).
+    for (const [id] of owned(this.studioGrants)) {
+      for (const [hash, token] of this.studioTokens) if (token.grantId === id) this.studioTokens.delete(hash);
+      this.studioGrants.delete(id);
     }
     for (const [id] of owned(this.animations)) this.animations.delete(id);
     for (const [id] of owned(this.encounters)) this.encounters.delete(id);
