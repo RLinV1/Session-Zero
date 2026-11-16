@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { NodeStreamableHTTPServerTransport, toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, isLegacyRequest, type McpHttpHandler, type McpServer } from "@modelcontextprotocol/server";
-import { createBuildMcpServer } from "./buildTools";
+import { createBuildMcpServer, createStudioBuildMcpServer } from "./buildTools";
+import { STUDIO_ACCESS_PATH, StudioAccess, type StudioAccessOptions } from "./studioAccess";
 import type { Principal } from "./studioM0/auth";
 import { createStudioM0, STUDIO_PATH, type StudioM0, type StudioM0Options } from "./studioM0";
 import { scrubbed } from "./errors";
@@ -33,6 +34,11 @@ export interface McpAppOptions {
   studio?: StudioM0;
   /** M0 ONLY: serve the Studio proof endpoint alone, without the player and build tools. */
   studioOnly?: boolean;
+  /**
+   * Delegated Studio access at `/mcp/studio` (ADR 0073, design D7), checked with the room server.
+   * Off unless STUDIO_PUBLIC_ORIGIN names the website's origin, as it must on the room server too.
+   */
+  studioAccess?: StudioAccessOptions;
 }
 
 const rpcError = (res: Response, status: number, code: number, message: string) =>
@@ -126,6 +132,26 @@ export function buildMcpApp(options: McpAppOptions) {
     publicOrigin: options.publicOrigin ?? options.allowedOrigins[0] ?? options.roomServerUrl,
   })));
 
+  // Delegated Studio access (ADR 0073, design D7): the bearer is checked with the room server on every
+  // request, before any MCP message is read, and the build tools then reach only the grant's builds.
+  const delegated = options.studioAccess ? new StudioAccess({ ...options.studioAccess, roomServerUrl: options.roomServerUrl }) : null;
+  if (delegated && !options.studioOnly) {
+    const tokens = new WeakMap<Request, string>();
+    // Checked before the body is even parsed, so an unauthenticated caller costs one lookup at most.
+    app.post(STUDIO_ACCESS_PATH, (req, res, next) => {
+      const header = req.headers.authorization;
+      void delegated.verify(header, req.ip ?? "unknown").then((token) => {
+        if (!token) return delegated.challenge(res, Boolean(header?.startsWith("Bearer ")));
+        tokens.set(req, token);
+        next();
+      }).catch(next);
+    }, jsonBody, serve((req) => createStudioBuildMcpServer({
+      roomServerUrl: options.roomServerUrl,
+      clientAddress: req.ip ?? "unknown",
+      publicOrigin: options.studioAccess!.publicOrigin,
+    }, tokens.get(req)!)));
+  }
+
   const studio = options.studio;
   if (studio) {
     const principals = new WeakMap<Request, Principal>();
@@ -147,7 +173,7 @@ export function buildMcpApp(options: McpAppOptions) {
   }
 
   // Stateless: there is no session to stream from or delete.
-  app.all(["/mcp", "/mcp/build", STUDIO_PATH], (_req, res) => void rpcError(res, 405, -32000, "Method not allowed."));
+  app.all(["/mcp", "/mcp/build", STUDIO_PATH, ...(delegated ? [STUDIO_ACCESS_PATH] : [])], (_req, res) => void rpcError(res, 405, -32000, "Method not allowed."));
 
   // Express's default handler logs and echoes the error, and a JSON parse error quotes the body,
   // which could hold a seat.
