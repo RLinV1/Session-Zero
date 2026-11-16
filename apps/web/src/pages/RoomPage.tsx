@@ -214,13 +214,13 @@ function SceneRoom(props: { roomId: string; connection: RoomConnection; token: s
   const preparing = viewed.you?.role === "gm" && preparation.preparing;
   const features = preparing ? { ...props.features, tabs: ["tokens", "gm"] as const, notices: false } : props.features;
   return <ScenePreparationContext.Provider value={{ activeId, preparing, preview: preparation.preview, live: live.state }}>
-    <Room {...props} connection={preparation.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
+    <Room {...props} connection={preparation.connection} tutorialConnection={props.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
   </ScenePreparationContext.Provider>;
 }
 
 /** The room once a credential exists: board, side panel, and the connection's terminal screens. */
-function Room({ roomId, connection, token, features, setupSceneId, onSetupClose }: {
-  roomId: string; connection: RoomConnection; token: string; features: RoomFeatures; setupSceneId?: string | null; onSetupClose?: () => void;
+function Room({ roomId, connection, tutorialConnection, token, features, setupSceneId, onSetupClose }: {
+  roomId: string; connection: RoomConnection; tutorialConnection: RoomConnection; token: string; features: RoomFeatures; setupSceneId?: string | null; onSetupClose?: () => void;
 }) {
   const { status, state, you, seq, endReason, refusal } = useRoomSnapshot(connection);
   const editing = !features.tableChrome;
@@ -881,7 +881,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         }
       />
       {features.tableChrome && you.role === "gm" && !readOnly && (
-        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} connection={connection} />
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} connection={tutorialConnection} />
       )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}

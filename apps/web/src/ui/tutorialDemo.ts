@@ -1,7 +1,8 @@
-import { distanceToSegment, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
+import { INITIAL_SCENE_ID, distanceToSegment, overlapsToken, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
 import { attackExpression, pendingRulings, presetRollLabel } from "../panels/attackRoll";
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
+import { TUTORIAL_GRID, TUTORIAL_MAP, TUTORIAL_SCENE_NAME, TUTORIAL_WALLS } from "./tutorialMap";
 
 /**
  * The scripted demo fight of the guest demo (guest-gm-hosting). Every call sends the commands the
@@ -34,31 +35,82 @@ export function demoPair(state: RoomState): DemoPair | null {
 /** A damage roll of the hero on the foe that is waiting to be applied. */
 export const damageWaiting = (state: RoomState): boolean => pendingRulings(state).some((item) => item.kind === "damage");
 
-/** The tokens `makeDemoTokens` named, for the last step's clean-up. */
-export const demoTokenIds = (state: RoomState): string[] =>
-  Object.values(state.tokens).filter((x) => x.name === t("tutorial.demo.hero") || x.name === t("tutorial.demo.goblin")).map((x) => x.id);
+const trackedKey = (roomId: string) => `vtt.tutorial.tokens.${roomId}`;
+const tracked = (roomId: string): string[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(trackedKey(roomId)) ?? "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch { return []; }
+};
+export function rememberDemoTokens(roomId: string, ids: string[]) {
+  try { localStorage.setItem(trackedKey(roomId), JSON.stringify([...new Set([...tracked(roomId), ...ids])])); } catch { /* Storage can be disabled. */ }
+}
+
+/** Track ids so renamed sample tokens can still be removed without deleting the guest's own tokens. */
+export const demoTokenIds = (state: RoomState): string[] => {
+  const ids = new Set(tracked(state.roomId));
+  return Object.keys(state.tokens).filter((id) => ids.has(id));
+};
+
+/** Keep the original scene intact: all examples run on their own map. */
+export async function ensureTutorialScene(connection: RoomConnection): Promise<DemoResult> {
+  let state = connection.snapshot?.state;
+  if (!state || state.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
+  const existing = Object.entries(state.savedScenes ?? {}).find(([, saved]) => saved.table.scene.map?.url === TUTORIAL_MAP.url);
+  const names = new Set(Object.values(state.sceneNames ?? {}));
+  let name = TUTORIAL_SCENE_NAME;
+  for (let suffix = 2; names.has(name); suffix++) name = `${TUTORIAL_SCENE_NAME} ${suffix}`;
+  const origin = state.activeSceneId ?? INITIAL_SCENE_ID;
+  const opened = await send(connection, existing ? { type: "scene.switch", sceneId: existing[0] } : { type: "scene.create", name, activate: true });
+  if (!opened.ok) return opened;
+  try { localStorage.setItem(`vtt.tutorial.origin.${state.roomId}`, origin); } catch { /* The scene remains in the scene switcher. */ }
+  state = connection.snapshot.state;
+  if (state?.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
+  const mapped = await send(connection, { type: "scene.setMap", map: TUTORIAL_MAP, grid: TUTORIAL_GRID });
+  if (!mapped.ok) return mapped;
+  return send(connection, { type: "wall.add", walls: TUTORIAL_WALLS });
+}
+
+/** Leave the practice board without changing the original map, tokens or preparation. */
+export async function restoreTutorialScene(connection: RoomConnection): Promise<DemoResult> {
+  const state = connection.snapshot?.state;
+  if (!state || state.scene.map?.url !== TUTORIAL_MAP.url) return { ok: true };
+  let origin: string | null = null;
+  try { origin = localStorage.getItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* No stored origin. */ }
+  if (!origin || !Object.hasOwn(state.sceneNames ?? {}, origin)) return { ok: true };
+  const result = await send(connection, { type: "scene.switch", sceneId: origin });
+  if (result.ok) try { localStorage.removeItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* Storage can be disabled. */ }
+  return result;
+}
 
 const send = async (connection: RoomConnection, command: Command): Promise<DemoResult> => {
+  const before = new Set(Object.keys(connection.snapshot.state?.tokens ?? {}));
   const result = await connection.command(command);
+  const state = connection.snapshot.state;
+  if (result.ok && command.type === "token.create" && state) rememberDemoTokens(state.roomId, Object.keys(state.tokens).filter((id) => !before.has(id)));
   return result.ok ? { ok: true } : { ok: false, message: result.message };
 };
 
 /**
  * Two neighbouring cells of open floor, chosen on the roomiest open floor: no wall within
- * about a cell of either centre, no blocked terrain, and inside the map. Falls back to the middle.
+ * about a cell of either centre, no blocked terrain or occupied footprints, and inside the map.
  */
-export function demoSpots(state: RoomState): [Point, Point] {
+export function demoSpots(state: RoomState, sizeInCells = 1, exceptId?: string): [Point, Point] | null {
   const { grid, map } = state.scene;
   const size = grid.cellSize;
   const width = map?.width ?? size * 8, height = map?.height ?? size * 8;
   const cols = Math.floor((width - grid.offsetX) / size), rows = Math.floor((height - grid.offsetY) / size);
-  const centre = (col: number, row: number): Point => ({ x: grid.offsetX + (col + 0.5) * size, y: grid.offsetY + (row + 0.5) * size });
+  const centre = (col: number, row: number): Point => ({ x: grid.offsetX + (col + sizeInCells / 2) * size, y: grid.offsetY + (row + sizeInCells / 2) * size });
   const layers = [state.terrain?.base ?? [], ...(state.terrain?.effects.map((e) => e.runs) ?? [])];
   const open = (col: number, row: number) => {
-    if (col < 0 || row < 0 || col >= cols || row >= rows) return false;
+    if (col < 0 || row < 0 || col + sizeInCells > cols || row + sizeInCells > rows) return false;
     const p = centre(col, row);
-    return !Object.values(state.walls).some((w) => distanceToSegment(p, w) < size * 0.75)
-      && !layers.some((runs) => terrainAt(runs, col, row) === "blocked");
+    return !overlapsToken(state.tokens, p, sizeInCells, grid, exceptId)
+      && !Object.values(state.walls).some((w) => distanceToSegment(p, w) < size * (sizeInCells / 2 + 0.25))
+      && !layers.some((runs) => {
+        for (let r = row; r < row + sizeInCells; r++) for (let c = col; c < col + sizeInCells; c++) if (terrainAt(runs, c, r) === "blocked") return true;
+        return false;
+      });
   };
   // Prefer the roomiest floor: the pair whose nearer cell is farthest from any wall (a shipped map's stored walls count,
   // even before the GM loads them), ties going to the one closest to the middle of the map.
@@ -71,21 +123,22 @@ export function demoSpots(state: RoomState): [Point, Point] {
   const mc = (cols - 1) / 2, mr = (rows - 1) / 2;
   let best: { score: number; away: number; at: [number, number] } | null = null;
   for (let row = 0; row < rows; row++) {
-    for (let col = 0; col + 1 < cols; col++) {
-      if (!open(col, row) || !open(col + 1, row)) continue;
-      const score = Math.min(room(col, row), room(col + 1, row));
+    for (let col = 0; col + sizeInCells < cols; col++) {
+      if (!open(col, row) || !open(col + sizeInCells, row)) continue;
+      const score = Math.min(room(col, row), room(col + sizeInCells, row));
       const away = Math.hypot(col + 0.5 - mc, row - mr);
       if (!best || score > best.score + 1 || (Math.abs(score - best.score) <= 1 && away < best.away)) best = { score, away, at: [col, row] };
     }
   }
-  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + 1, best.at[1])];
-  const mid = centre(Math.floor(mc), Math.floor(mr));
-  return [mid, { x: mid.x + size, y: mid.y }];
+  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + sizeInCells, best.at[1])];
+  return null;
 }
 
 /** The two demo tokens, side by side on open floor, with built-in token art; their events reach the snapshot before the acks do. */
 async function makeDemoTokens(connection: RoomConnection, state: RoomState): Promise<DemoResult> {
-  const [heroAt, foeAt] = demoSpots(state);
+  const spots = demoSpots(state);
+  if (!spots) return { ok: false, message: t("tutorial.demo.noSpace") };
+  const [heroAt, foeAt] = spots;
   const hero = await send(connection, {
     type: "token.create",
     name: t("tutorial.demo.hero"),

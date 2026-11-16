@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
 import { t, type TextId } from "../i18n/locale";
@@ -8,7 +8,9 @@ import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
 import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { ExampleCursor } from "./ExampleCursor";
 import { useExampleRun } from "./useExampleRun";
-import { damageWaiting, demoTokenIds, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { TUTORIAL_MAP } from "./tutorialMap";
+import { damageWaiting, demoTokenIds, ensureTutorialScene, restoreTutorialScene, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
 const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
@@ -67,9 +69,11 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   reveal: (step: (typeof TUTORIAL_STEPS)[number], demo?: boolean) => void;
 }) {
   const guest = useGuestRoom();
+  const scenePreparation = useContext(ScenePreparationContext);
   const { run, start, stop, clear } = useExampleRun();
   const [progress, setProgress] = useState<Progress>(() => loadProgress(roomId));
   const [moves, setMoves] = useState(0);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [mapEdits, setMapEdits] = useState(0);
   const [gridEdits, setGridEdits] = useState(0);
   const [wallEdits, setWallEdits] = useState(0);
@@ -128,6 +132,13 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   const focusNext = useRef(progress === null);
   const set = (next: Exclude<Progress, null>) => {
+    if (next === "done" || next === "declined") {
+      stop();
+      void restoreTutorialScene(connection).then(() => {
+        const current = connection.snapshot?.state;
+        if (current) scenePreparation?.preview(current.activeSceneId ?? "initial");
+      });
+    }
     setProgress(next);
     saveProgress(roomId, next);
   };
@@ -135,7 +146,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
-  const settled = !run.playing && step !== null && step > 0 ? settle(step, facts) : step;
+  const settled = !run.playing && !demoBusy && step !== null && step > 0 ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
@@ -158,7 +169,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   const [place, setPlace] = useState<{ top: number; left: number; side: "above" | "below"; arrowX: number } | null>(null);
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
-  const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
@@ -174,14 +184,15 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     let anchor: HTMLElement | null = null;
     const measure = () => {
       const card = cardRef.current;
-      const found = stepName ? anchorFor(stepName) : null;
+      const editor = Array.from(document.querySelectorAll<HTMLDialogElement>(MODAL_HOSTS)).at(-1) ?? null;
+      const candidate = stepName ? anchorFor(stepName) : null;
+      const found = editor && candidate && !editor.contains(candidate) ? null : candidate;
       if (found !== anchor) {
         anchor?.removeAttribute("data-tutorial-active");
         anchor = found;
         anchor?.setAttribute("data-tutorial-active", "");
       }
       // Stay in the top layer of the dialog a lesson opens (map editor, map chooser, Share), or it would hide and disable the demo.
-      const editor = document.querySelector<HTMLDialogElement>(MODAL_HOSTS);
       setEditorHost(editor);
       const rect = found?.getBoundingClientRect();
       const vw = window.innerWidth;
@@ -212,6 +223,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       setPlace((old) => (old && old.top === top && old.left === left && old.side === side && old.arrowX === arrowX ? old : { top, left, side, arrowX }));
     };
     measure();
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (cardRef.current) resize?.observe(cardRef.current);
+    const mutations = new MutationObserver(measure);
+    mutations.observe(document.body, { childList: true, subtree: true });
     // Panels and menus open and close under the demo, so look again now and then.
     const timer = window.setInterval(measure, 400);
     window.addEventListener("resize", measure);
@@ -219,12 +234,14 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     window.addEventListener("scroll", measure, { capture: true, passive: true });
     return () => {
       window.clearInterval(timer);
+      resize?.disconnect();
+      mutations.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, { capture: true });
       setSpot(null);
       anchor?.removeAttribute("data-tutorial-active");
     };
-  }, [shown, stepName]);
+  }, [shown, stepName, editorHost, run.step, run.index]);
   // The editor tab opens, then asks for its lesson's animation.
   useEffect(() => {
     if (!shown) return;
@@ -247,6 +264,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   if (!shown) return null;
 
   const runDemo = async (run: () => Promise<DemoResult>) => {
+    if (stepName !== "done" && !await prepareExample()) return;
     setDemoBusy(true);
     const result = await run();
     setDemoBusy(false);
@@ -269,8 +287,26 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     }
   };
 
-  const showMe = () => {
+  const prepareExample = async () => {
+    const changed = connection.snapshot?.state?.scene.map?.url !== TUTORIAL_MAP.url;
+    setDemoBusy(true);
+    const result = await ensureTutorialScene(connection);
+    const current = connection.snapshot?.state;
+    if (result.ok && current) scenePreparation?.preview(current.activeSceneId ?? "initial");
+    if (result.ok && changed && current) {
+      // Setting up the practice scene is not the guest completing the editor lessons.
+      keys.current = { mapKey: JSON.stringify(current.scene.map), gridKey: JSON.stringify(current.scene.grid), wallKey: JSON.stringify(current.walls), sightKey: JSON.stringify([current.scene.lineOfSight, current.scene.sightRange]), terrainKey: JSON.stringify(current.terrain ?? null) };
+      positions.current = positionsOf(current.tokens);
+      baseMarks.current = rollMarks(current.rolls);
+      setMoves(0); setMapEdits(0); setGridEdits(0); setWallEdits(0); setSightEdits(0); setTerrainEdits(0);
+    }
+    setDemoBusy(false);
+    setDemoError(result.ok ? null : result.message);
+    return result.ok;
+  };
+  const showMe = async () => {
     focusNext.current = false;
+    if (stepName !== "invite" && connection.snapshot?.state && !await prepareExample()) return;
     reveal(stepName!, true);
     // An editor lesson is started by the editor tab opening (RoomPage); the others, once what they point at is on screen.
     if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) void start(stepName!);
@@ -278,15 +314,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   const content = (
     <>
-    {spot && !asking && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
+    {spot && !asking && !run.playing && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
     {run.cursor && <ExampleCursor cursor={run.cursor} />}
     <div
       ref={cardRef}
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}`}
+      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}${asking ? " is-intro" : ""}`}
       data-side={place?.side}
+      data-step={stepName}
+      data-playing={run.playing}
       style={place && !docked ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
     >
@@ -321,7 +359,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
           {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
             {REVEALABLE.has(stepName!) && (
-              <button type="button" className="small primary" onClick={showMe}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
+              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void showMe()}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
             )}
             {stepName === "encounter" && (
               <button type="button" className="small primary" data-demo="encounter" disabled={demoBusy} onClick={() => void runDemo(() => runDemoEncounter(connection))}>{t("tutorial.demo.run")}</button>
@@ -336,7 +374,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
               <button type="button" className="small secondary" disabled={demoBusy} onClick={() => void runDemo(() => removeDemoTokens(connection))}>{t("tutorial.demo.remove")}</button>
             )}
             {stepName === "table" && (
-              <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>
+              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>
             )}
             {stepName !== "table" && stepName !== "done" && (
               <button type="button" className="small secondary" onClick={() => {

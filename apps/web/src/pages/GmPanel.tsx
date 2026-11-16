@@ -321,8 +321,8 @@ function MapSection(props: {
   );
   const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, draft) } : props.room;
   // The guest demo's Show me animates the tools into this draft, through the commands they send; nothing is saved until the GM saves.
-  const exampleNow = useRef({ draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } });
-  exampleNow.current = { draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } };
+  const exampleNow = useRef({ draft, draftEdits, grid: props.room.scene.grid, map: { url: props.room.scene.map?.url, width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } });
+  exampleNow.current = { draft, draftEdits, grid: props.room.scene.grid, map: { url: props.room.scene.map?.url, width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } };
   useEffect(() => {
     if (!editorOpen) return;
     const lend = (event: Event) => {

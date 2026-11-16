@@ -2987,17 +2987,22 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
   width: auto; max-width: 28rem; margin-inline: auto;
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
+.guest-tutorial.is-intro {
+  inset: 0; margin: auto; height: fit-content;
+  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto;
+}
 /* In the map editor, keep the mobile HUD and the tab bar available around the lesson. */
 .map-editor .guest-tutorial.sheet-top, .map-picker .guest-tutorial.sheet-top, .share-modal .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
 .guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
-/* The dim is the ring's own shadow, so it needs no mask and never takes a click. Under the card (40). */
+/* Highlight the control without dimming the map or taking clicks. Under the card (40). */
 .tutorial-spotlight {
   position: fixed; z-index: 39; pointer-events: none;
   border: 2px solid var(--focus); border-radius: var(--radius-control);
-  box-shadow: 0 0 0 9999px var(--tutorial-dim);
+  box-shadow: none;
 }
 .guest-tutorial.beside::before {
   content: ""; position: absolute; left: var(--arrow-x, 1.5rem); width: 12px; height: 12px;
@@ -3007,9 +3012,11 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial.beside[data-side="above"]::before { bottom: -7px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 @media (prefers-reduced-motion: no-preference) {
   .guest-tutorial { animation: modal-in 0.16s ease-out; }
-  .tutorial-spotlight { animation: tutorial-ring 1.6s ease-in-out infinite; }
+  /* A transformed dialog makes its fixed tutorial card relative to the dialog and clips it. */
+  body:has(.guest-tutorial) dialog.modal[open] { animation: tutorial-dialog-in 0.3s ease-out; }
 }
-@keyframes tutorial-ring { 50% { border-color: color-mix(in srgb, var(--focus) 30%, transparent); } }
+@keyframes tutorial-dialog-in { from { opacity: 0; } to { opacity: 1; } }
+body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent; }
 
 /* The demo's animated Show me: ghost pointer, ringed tool, and the caption list (guest-gm-hosting). */
 .example-layer { position: fixed; inset: 0; z-index: 1002; pointer-events: none; }
