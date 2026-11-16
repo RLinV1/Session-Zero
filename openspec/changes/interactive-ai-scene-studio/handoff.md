@@ -2,7 +2,7 @@
 
 ## Current state
 
-- Date: 2026-11-14.
+- Date: 2026-11-16 (planning 2026-11-14).
 - Repository: `RLinV1/Session-Zero`, locally named `Virtual-Tabletop`. The existing Git remote still uses the older `Virtual-Tabletop` URL; it was not changed.
 - Baseline inspected and used: `origin/main` at `a86160f584c44c8e8998bc56966e214ff04b5a08`.
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
@@ -11,7 +11,7 @@
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
-- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. Review of the complete technical packet and ADR 0073 architecture review: **pending**. M0 research: **done**. M0 host experiments: **run in real ChatGPT web on 2026-11-14; tasks 1.1–1.6 and 1.8 pass, 1.7 and 1.9 have small pending items** (see below). M0 is therefore **not yet fully qualified**. Production: **unverified**.
+- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. ADR 0073 architecture review: **reported accepted by the user on 2026-11-16**; reviewer, reviewed revision and record not yet supplied, so ADR 0073's status line is unchanged. Product review of the complete packet: **not reported**. M0: **tasks 1.1–1.9 complete on 2026-11-16** (see "M0 close-out" below); one recommended real-host smoke check of the post-review request-serving change is open. Production: **unverified**.
 
 ## Read order
 
@@ -90,7 +90,40 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-## Latest implementation session — M0, 2026-11-14 (overnight, autonomous)
+## Latest implementation session — M0 close-out, 2026-11-16
+
+**Authorization:** the user was present. At their request the agent restarted the quick tunnel and test server, created and connected a new personal plugin "Session Zero Studio M0 (test 2)" in their Chrome, fixed the region drag, and recorded results. The user ran the chats and the device file picker, and ran an independent code review in a separate session. No M1, PR, merge, production change or provisioning.
+
+**Commits on `feat/interactive-ai-scene-studio-m0`:**
+
+| Commit | Content |
+| --- | --- |
+| `63b1e91a` | Region drag no longer starts the browser's native image drag; cancel handling and clamping. Confirmed live by the user. |
+| `f87ebac7` | Review fixes: thin-crop marker crash, evidence log can't reject, bounded `STUDIO_M0_ACCESS_TTL`, non-form OAuth bodies answer 400. |
+| `bc105bee` | Review fixes: queued atomic `clients.json`, DCR cap (100) with unused-client expiry, revocation limited to the caller's own token family. **Behavior change:** revoking an access token also revokes its refresh token. |
+| `fadf121d` | Review fixes: view URI hashed once; imports checked without a full raw decode and capped at 5 per workspace; **one `createMcpHandler` per route** with the Express request carried in `AsyncLocalStorage`, instead of one handler per request. This changes how every `/mcp`, `/mcp/build` and `/mcp/studio-m0` request is served. |
+| `3517078b` | Cleanup: dead code, unused `@modelcontextprotocol/express`, player tool schemas wrapped in `z.object`. |
+| later commit | These records. |
+
+**Results (real ChatGPT web, same surface; details in the evidence file's "Follow-up run"):**
+- Device upload (`uploadFile`) and `selectFiles`: byte-identical; both use `sediment://` ids and the Azure Blob origin, with 10-minute links (the composer link on 2026-11-14 lasted 5).
+- `ui/message` while the model was answering: the host **stopped the current answer** and posted the request; the model read it by id within ≈5 s (2/2). No refusal or timeout was ever returned. Task 1.7 is checked on this basis.
+- "Show the Studio again" did not make the model reopen it; the existing view stayed in place. A second open call was not tested.
+- Region drag fixed and confirmed.
+- New host facts 10–13 are in research.md.
+
+**Checks:** on `3517078b`, `npm run lint`, `npm run typecheck` and `npm test` exit 0; the MCP workspace has 18 files / 271 tests. The implementing agent read the review commits, including the request-serving change, and found no defect. Through the tunnel, the reviewed server answered health 200, an unauthenticated MCP request 401 and a JSON token request 400.
+
+**Qualification:** host evidence covers code up to `63b1e91a`. `fadf121d` changed request serving after the last host run and is verified locally only. Recommended before M1 host work: reconnect the test plugin, open the view, let one model call and one view call succeed, and check the evidence log.
+
+**State left behind:**
+- Tunnel `ripe-resort-donations-classified.trycloudflare.com` and the server on `3517078b` were left running for that smoke check; stop both afterwards. The address dies with the tunnel.
+- ChatGPT: plugin "Session Zero Studio M0 (test 2)" installed; the old "Session Zero Studio M0 (test)" still points at a dead address. New test chats and the `m0-device-upload` fixture are in the user's history and Library.
+- Fixture file outside the repo: `/Users/chrispsimadas/Projects/VirtualTableTop/m0-upload-fixture/m0-device-upload.png` (synthetic).
+
+**Next:** record the architecture reviewer and reviewed revision (then update ADR 0073's status), obtain or record product review, decide the design amendment candidates (research.md D2/D7/D8/D9 and the M4 notes), merge or otherwise publish the M0 branch, and write the M1a starter. M1 was not started.
+
+## M0 overnight session, 2026-11-14 (autonomous)
 
 **Authorization:** the user authorized autonomous overnight work to complete M0. That covered driving their logged-in Chrome to add a test connector and run ChatGPT test chats, installing `cloudflared` for a quick tunnel, and committing and pushing the branch with no PR. It did not authorize M1, a PR, a merge, production changes or cloud provisioning, and none were done.
 
@@ -125,7 +158,7 @@ The predecessor planning branch is unmerged; this branch carries it. Nothing out
 - `cloudflared` remains installed via Homebrew.
 - Private evidence, keys and the fixture registration are in Git-ignored `apps/mcp/.local/studio-m0/`.
 
-**Pending before M0 is fully qualified:**
+**Pending before M0 is fully qualified (all three resolved on 2026-11-16; see the close-out section):**
 1. **View device upload** (`uploadFile`): needs a person at the browser, since a native file picker opens inside the sandbox. Run the README steps; in the Studio view, use "Upload from this device" with a synthetic PNG; confirm the stored SHA-256 matches. The tunnel URL will be new, so recreate the connector or edit its URL, then **Refresh tools**.
 2. **`ui/message` refusal/timeout** (task 1.7): try "Send selection to chat" while the model is still answering, and record what the host does.
 3. **Independent diff review** (task 1.9) of `5f0d7919..HEAD` in `apps/mcp`, then rerun the repository checks.

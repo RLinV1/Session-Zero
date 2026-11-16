@@ -279,8 +279,8 @@ Two throwaway Node scripts constructed the SDK 1.32.2 transport exactly as `apps
 | 1 | Is ChatGPT dual-era? | Moot for the chosen stack: ChatGPT sent only `2026-07-28` (`server/discover`, `Mcp-Method`), 0 `initialize` calls in 267 requests. A v1-only server would have answered 400 (Q1 [L]); whether ChatGPT then falls back was not tested and is no longer needed. **SDK v2 is confirmed.** | [H] |
 | 2 | Do app-originated calls carry the bearer? | **Yes.** App-only tool calls arrived with the same bearer/subject; expired, revoked and foreign tokens were refused on app calls too. | [H] |
 | 3 | Reopen behavior | Reload remounts the view, re-reads the resource and **re-delivers the original tool result** (stale); backend refresh is what shows current state. Re-delivered results stay in the conversation after revocation. No teardown on page reload. | [H] |
-| 4 | `ui/message` behavior | Posted **immediately as a user turn**, `{}` after 192 ms, no consent, no draft. Refusal/timeout path not observed. | [H] |
-| 5 | File helpers | `selectFiles` opens the host Library picker; `getFileDownloadUrl` returns an **Azure Blob origin** different from the composer's `oaiusercontent.com` origin; both delivered byte-identical originals. Composer descriptors expire after **5 minutes** (SAS `se`); expired → HTTP 403. Composer attachments are saved to the user's ChatGPT Library. `uploadFile` not run. | [H] |
+| 4 | `ui/message` behavior | Posted **immediately as a user turn**, `{}` after 192 ms, no consent, no draft. **2026-11-16:** sent while the model was still answering, the host acknowledged it (`{}` in ≈650 ms), **stopped the in-progress answer** and the model read the request by id within ≈5 s (2/2). No refusal or timeout was ever returned. | [H] |
+| 5 | File helpers | `selectFiles` opens the host Library picker; `getFileDownloadUrl` returns an **Azure Blob origin** different from the composer's `oaiusercontent.com` origin; both delivered byte-identical originals. Composer descriptors expired after **5 minutes** (SAS `se`); expired → HTTP 403. Composer attachments are saved to the user's ChatGPT Library. **2026-11-16:** `uploadFile` (device picker, operated by the user) and a second `selectFiles` run were both byte-identical; both returned `sediment://` ids, the same Azure Blob origin and SAS lifetimes of **10 minutes**. | [H] |
 | 6 | Image scheme and size | **`data:` works, `blob:` is blocked** by host CSP `img-src`. App results carried up to **8.4 MB** in `_meta` (no ceiling found). | [H] |
 | 7 | Do image blocks reach the model? | **Yes** on GPT-6.1 Terra · Light: 2/2 correct shape and position, image-omitted control refused to guess. | [H] |
 | 8 | Surface naming | The tested surface is ChatGPT web **Work** mode, personal plugin in DEVELOPMENT status; "Allow low-risk" permission showed no per-tool confirmations. | [H] |
@@ -298,13 +298,18 @@ Two throwaway Node scripts constructed the SDK 1.32.2 transport exactly as `apps
 7. **OIDC is enabled by default if `/.well-known/openid-configuration` answers.** → The M1 authorization server must either support the OIDC scopes ChatGPT requests or not advertise OIDC.
 8. **Request `_meta` carries `openai/userLocation`, `openai/subject`, `openai/session`, `openai/organization`.** → M1 must not log or store these beyond what is needed; `openai/subject` is not an authorization input.
 9. **Fullscreen is a large side panel on web** with resize notifications. Adequate for the canvas; layouts must handle container-dimension changes.
+10. **(2026-11-16) A view message sent while the model is answering interrupts that answer** rather than queueing or being refused. → M4's send control must say that sending stops the AI's current reply; the request record (saved → handed off → observed) remains the source of truth, since the interrupted answer may have been mid-change.
+11. **(2026-11-16) Descriptor lifetime varies by route and run (5 and 10 minutes observed).** → Treat lifetime as unknown and short: download on receipt, never queue a descriptor for later, and keep the re-select message for expiry.
+12. **(2026-11-16) Asking to "show the Studio again" did not make the model call the open tool**; it answered with a crop, and the existing view stayed at its original place in the conversation. Whether a second open call renders a new view lower down was not tested. → Steer reopening through the open tool's description and offer fullscreen as the way back to the Studio; do not rely on the host moving an earlier view.
+13. **(2026-11-16, harness defect, not host behavior)** The browser's native image drag took over the region gesture and cancelled pointer events, so the selection box only appeared at the end. Fixed in `63b1e91a` (non-draggable image, `preventDefault`, cancel handling, clamping) and confirmed live by the user. → M4 selection (task 5.1) must carry the same handling.
 
 ### Design amendment candidates (for review; not applied to design.md)
 
 - **D2:** polling is required (confirmed); add content-versioned template URIs and the connector refresh step; the open tool result carries no gated data.
 - **D7:** record that ChatGPT used DCR with a public PKCE client, sends `resource`, does not refresh on 401, and needs OIDC either supported or not advertised. Proposed M1 shape stands: Session Zero authorization server, opaque hashed tokens, `apps/server` introspection.
 - **D8:** replace "object URLs" with `data:` rendering; app-only media calls are the only gated channel; tool results are not.
-- **D9:** two observed host origins with different provenance; 5-minute descriptor lifetime; Library side effect and provider-retention notice.
+- **D9:** two observed host origins with different provenance (the device-upload route uses the same Azure Blob origin as `selectFiles`); 5–10 minute descriptor lifetimes; Library side effect and provider-retention notice.
+- **M4 (tasks 5.1/5.3), not a design section:** sending from the view interrupts an in-progress answer; region drag must suppress native image drag.
 
 ## Recording a later finding
 
