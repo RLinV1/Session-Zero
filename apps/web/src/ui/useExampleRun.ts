@@ -112,7 +112,8 @@ export function useExampleRun() {
     const pace = (window as { __tutorialPace?: number }).__tutorialPace ?? 1;
     // Reduced motion hides the pointer, but captions still need time to be read.
     const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms * pace));
-    const stopOnUser = (e: Event) => { if (e.isTrusted) stop(); };
+    // A press inside the lesson card (Skip, Next) is the card's own business and must not cut the replay short.
+    const stopOnUser = (e: Event) => { if (e.isTrusted && !(e.target instanceof Element && e.target.closest(".guest-tutorial"))) stop(); };
     window.addEventListener("pointerdown", stopOnUser, true);
     window.addEventListener("keydown", stopOnUser, true);
     cancel.current = () => { window.removeEventListener("pointerdown", stopOnUser, true); window.removeEventListener("keydown", stopOnUser, true); };

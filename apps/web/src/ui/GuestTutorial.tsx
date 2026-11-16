@@ -148,8 +148,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
-  // Any pointer or key press stops a running example first, so what Skip was pressed during is noted before that re-render.
-  const skipWhilePlaying = useRef(false);
   const settled = !run.playing && !demoBusy && step !== null && step > 0 ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
@@ -365,7 +363,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   };
 
   // Shown in the header, and in the button row while an example plays (the header's count is hidden then).
-  const skipButton = stepName !== "done" && <button type="button" className="link guide-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>;
+  const skipButton = stepName !== "done" && <button type="button" className="link guide-skip" onClick={() => (run.playing ? stop() : set("done"))}>{t("tutorial.skip")}</button>;
   const content = (
     <>
     {spot && !asking && !run.playing && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
