@@ -231,7 +231,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     setDemoBusy(false);
     setDemoError(result.ok ? null : result.message);
     // The panels hold the lesson: bring the control the next step points at into view.
-    const next = { encounter: "attack", attack: "ruling", damage: "damage" }[stepName!];
+    const next = ({ encounter: "attack", attack: "ruling", damage: "damage" } as Partial<Record<string, string>>)[stepName!];
     if (result.ok && next) window.setTimeout(() => reveal(next as (typeof TUTORIAL_STEPS)[number]), 300);
   };
   const waitingDamage = damageWaiting(state);
