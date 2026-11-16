@@ -873,7 +873,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         }
       />
       {features.tableChrome && you.role === "gm" && !readOnly && (
-        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} />
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} connection={connection} />
       )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}

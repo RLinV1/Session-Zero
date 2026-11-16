@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+import type { RoomState } from "@vtt/shared";
+import { demoPair, demoTokenIds } from "../src/ui/tutorialDemo";
 import { TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
 
 const none: TutorialFacts = { tokens: 0, fog: 0, gmRolls: 0, moves: 0, invites: 0, mapEdits: 0, gridEdits: 0, wallEdits: 0, sightEdits: 0, terrainEdits: 0, encounters: 0, attackRolls: 0, rulings: 0, damageApplied: 0 };
@@ -110,5 +112,20 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
   it("works when storage fails", () => {
     expect(loadProgress("r1", broken)).toBeNull();
     expect(() => saveProgress("r1", 2, broken)).not.toThrow();
+  });
+
+  it("picks the demo fight's two tokens from the room, and only when both can fight", () => {
+    const sword = { name: "Sword", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } };
+    const token = (id: string, name: string, stats: { hp: number | null; maxHp: number | null; ac: number | null }, attacks: unknown[] = []) => ({ id, name, stats, attacks });
+    const room = (tokens: ReturnType<typeof token>[]) => ({ tokens: Object.fromEntries(tokens.map((x) => [x.id, x])) }) as unknown as RoomState;
+    const plain = token("a", "Aria", { hp: 9, maxHp: 9, ac: 12 });
+    expect(demoPair(room([]))).toBeNull();
+    expect(demoPair(room([plain]))).toBeNull(); // no attack to roll
+    expect(demoPair(room([plain, token("b", "Goblin", { hp: 7, maxHp: 7, ac: 8 })]))).toBeNull();
+    const hero = token("h", "Hero", { hp: 12, maxHp: 12, ac: 14 }, [sword]);
+    expect(demoPair(room([hero, token("g", "Orc", { hp: null, maxHp: null, ac: null })]))).toBeNull(); // nothing to hurt
+    const pair = demoPair(room([hero, token("g", "Goblin", { hp: 7, maxHp: 7, ac: 8 })]));
+    expect([pair?.hero.id, pair?.foe.id, pair?.attack.name]).toEqual(["h", "g", "Sword"]);
+    expect(demoTokenIds(room([plain, token("d", "Demo hero", { hp: 1, maxHp: 1, ac: 1 })]))).toEqual(["d"]);
   });
 });
