@@ -64,7 +64,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   /** Bumped by the room menu's "Interactive demo" to start again from the first step. */
   restart: number;
   /** Opens the tab or section that holds a step's control (RoomPage owns the tabs). */
-  reveal: (step: (typeof TUTORIAL_STEPS)[number]) => void;
+  reveal: (step: (typeof TUTORIAL_STEPS)[number], demo?: boolean) => void;
 }) {
   const guest = useGuestRoom();
   const [progress, setProgress] = useState<Progress>(() => loadProgress(roomId));
@@ -255,7 +255,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   const showMe = () => {
     focusNext.current = false;
-    reveal(stepName!);
+    reveal(stepName!, true);
     if (EXAMPLE_STEPS.has(stepName!)) setExample(stepName!);
     // Tabs and the sidebar open on their own timing; look for the control once they have.
     window.setTimeout(() => anchorFor(stepName!)?.scrollIntoView({ block: "center" }), 500);

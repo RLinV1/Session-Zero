@@ -28,6 +28,8 @@ test("the guest demo opens each map editing lesson inside the editor (guest-gm-h
   await tutorial.getByRole("button", { name: "Next step" }).click();
   await expect(editor).not.toBeVisible();
   await tutorial.getByRole("button", { name: "Show me" }).click();
+  // Walls draws a sample into the draft; moving on takes it out again without asking to save it.
+  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
   for (const label of ["Walls", "Fog", "Sight", "Terrain"]) {
     await expect(editor.locator('[role="tab"][aria-selected="true"]')).toContainText(label);
     await expect(editor.locator(".guest-tutorial")).toBeVisible();
@@ -75,7 +77,11 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
     await tutorial.getByRole("button", { name: "Next step" }).click();
     await expect(tutorial.getByRole("heading")).toHaveText(title);
     // Next step already opened the lesson's tab; Show me is offered where it draws an example.
-    if (["Walls", "Fog", "Terrain"].includes(label)) await tutorial.getByRole("button", { name: "Show me" }).click();
+    await expect(selected).toContainText(label, { timeout: 8000 });
+    if (["Walls", "Fog", "Terrain"].includes(label)) {
+      await tutorial.getByRole("button", { name: "Show me" }).click();
+      await expect(page.locator("dialog.map-editor[open]").getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+    }
     await expect(selected).toContainText(label, { timeout: 8000 });
     await expect(selected).toHaveAttribute("data-tutorial-active", "");
     await expect(page.locator("dialog.map-editor[open] .guest-tutorial")).toBeVisible();

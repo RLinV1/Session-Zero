@@ -654,7 +654,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     );
   };
   /** The guest demo's Show me: bring the step's control on screen, without doing the step. */
-  const revealTutorialStep = (step: string) => {
+  const revealTutorialStep = (step: string, demo = false) => {
     // Share is a modal over everything else; a later lesson would be hidden behind it.
     if (step !== "invite") setShareOpen(false);
     if (EDITOR_TUTORIAL_STEPS.has(step)) {
@@ -665,7 +665,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         if (tab.getAttribute("aria-selected") !== "true") tab.click();
         tab.scrollIntoView({ block: "nearest", inline: "nearest" });
         // A sample to learn from, drawn in the editor's draft (unless an unsaved-work prompt kept the old tab).
-        if (EXAMPLE_STEPS.has(step)) window.setTimeout(() => { if (tab.getAttribute("aria-selected") === "true") window.dispatchEvent(new CustomEvent(EXAMPLE_EVENT, { detail: step })); }, 150);
+        if (demo && EXAMPLE_STEPS.has(step)) window.setTimeout(() => { if (tab.getAttribute("aria-selected") === "true") window.dispatchEvent(new CustomEvent(EXAMPLE_EVENT, { detail: step })); }, 150);
       };
       const openEditAt = () => chooseMap(false, () => {
         document.querySelector<HTMLButtonElement>("[data-tutorial-editor-open]")?.click();
