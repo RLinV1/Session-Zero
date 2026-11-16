@@ -328,6 +328,18 @@ Decided by the user with the architecture reviewer (Raymond) present; applied to
 | 16 | "Send selection" warns that it stops the AI's answer (M4) | **Declined** as clutter; the interruption is recorded as host behavior only. |
 | 17 | Region selection suppresses native image drag (M4, task 5.1) | Approved |
 
+## M1a findings — 2026-11-16 (delegated access)
+
+Base `origin/main` `4033fd4c` (PR #209, M0). Branch `feat/interactive-ai-scene-studio-m1a`. Labels as above; [L] = local automated or local-browser evidence, no real host.
+
+| # | Question | Result | Label |
+| --- | --- | --- | --- |
+| 1 | M0 question 9: which authorization-server implementation? | None of the maintained Node libraries fits the approved shape. `oidc-provider` is an OpenID Connect framework (it advertises OIDC, against amendment 7) on Koa; `@node-oauth/oauth2-server` has no dynamic registration or resource indicators; the MCP SDK v2 packages have resource-server helpers (`requireBearerAuth`, `buildWwwAuthenticateHeader`) but no authorization-server router (v1's is gone). Selected: a narrow in-house implementation of the exact RFCs, recorded in design.md D7 before the dependent code. Reevaluate if Session Zero ever needs OIDC, confidential clients or CIMD. | [L] |
+| 2 | Where do discovery documents live behind the single-origin deploy? | `deploy/Caddyfile` sends only `/api`, `/socket.io`, `/uploads`, `/health` and `/mcp` to services; everything else, including any `/.well-known/` path, falls through to the SPA's `index.html` with status 200. So without a route, `/.well-known/openid-configuration` would have answered 200 with HTML. The Caddyfile and Vite proxy now send the three OAuth discovery paths to `apps/server`, which answers OIDC with 404. Checked with `caddy adapt` (stock `caddy:2`, the rate-limit plugin block removed); not deployed. | [L] |
+| 3 | Write-time recheck in Postgres | Holding the grant row `FOR SHARE` in the delegated write's transaction makes a concurrent revocation (an `UPDATE` of that row) wait for the write or be seen by it. The first version also used `FOR SHARE` in refresh rotation, which then updates the grant row: two concurrent rotations **deadlocked** (Postgres 40P01, found by the store contract test on Postgres 17). Rotation now takes `FOR UPDATE`. | [L] |
+| 4 | Token verification from `apps/mcp` without a shared secret | `apps/mcp` presents the token it received as the introspection request's own bearer; the answer describes only that token. No configuration secret is needed, and an invalid token learns `{active:false}` and counts against a per-address failure limit. The `aud` check is repeated in `apps/mcp` (tested against a fake introspection answer naming another resource, with a positive control). | [L] |
+| 5 | Real ChatGPT against M1a | Not run in this session (optional, needs the user's go-ahead). The shape matches what ChatGPT used in M0 (DCR public client, `token_endpoint_auth_method: none`, PKCE S256, `resource`, scope from `scopes_supported`). Unverified until run. | — |
+
 ## Recording a later finding
 
 Append the question, code commit, dated primary source, exact experiment, observed result, selected approach and reevaluation trigger. Identify stubs and unavailable prerequisites. Store redacted evidence in a durable repository artifact or an explicitly retained location; temporary paths alone are not continuity. Do not commit credentials, private user art or raw authenticated URLs.

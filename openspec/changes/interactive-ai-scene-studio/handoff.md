@@ -8,6 +8,7 @@
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
+- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, with a PR open and not merged; see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
@@ -90,7 +91,45 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-## Latest implementation session — M0 close-out, 2026-11-16
+## Latest implementation session — M1a, 2026-11-16
+
+**Authorization:** the user's M1a starter (saved in [fresh-session-prompt.md](fresh-session-prompt.md) "M1a"): tasks 2.1–2.2 only; commit, push and open a PR, no merge; no production, DNS, edge or cloud change; real ChatGPT check optional and only on the user's yes. Recorded approvals: ADR 0073 accepted by Raymond at `6f645f29` (reported by the user); M0 amendments approved by the user on 2026-11-16; implementation choices inside D7 pre-approved in the starter. Nothing on the starter's stop list (external IdP or OIDC, `packages/shared` schema change, owner-choice/publication/room/GM/library authority for a delegated credential, other authority or privacy change) was needed or done.
+
+**Base and branch:** `origin/main` `4033fd4cbfbf192e0006d2297be153832bad7947` (PR #209), unchanged when fetched. Worktree `/Users/chrispsimadas/Projects/VirtualTableTop/studio-m1a`, branch `feat/interactive-ai-scene-studio-m1a`. No other worktree or branch was touched; the user's running `cse416` dev stack and its database were not used.
+
+| Commit | Content |
+| --- | --- |
+| `67bae769` | Task 2.1: the implementation record in design.md D7 and ADR 0073, before dependent code. |
+| `faac0408` | Server: authorization server (`http/studioOAuth.ts`), records and both adapters, additive migration `20261116120000_studio_delegated_access`, `/api/studio/builds/*` with `grantGuard` and the write-time recheck, password change and account deletion, catalog text. |
+| `f668ceff` | MCP: `/mcp/studio` verified by introspection; pass and Studio tools share one definition; `/mcp/build` tools unchanged (names, schemas, order). |
+| `e954e50b` | Test typing fix. |
+| `079895cb` | Web: consent page `/studio/connect`, connections on the build page, en/zh-TW, Vite proxy and `deploy/Caddyfile` discovery routes (repository only), Playwright spec. |
+| `16ee1de5` | Independent review fixes (below). |
+| later commit | These records, glossary terms, starters. |
+
+**What now exists:** see design.md D7 "M1a implementation record". Everything is off unless `STUDIO_PUBLIC_ORIGIN` is set on both `apps/server` and `apps/mcp`; no deployment file sets it. The delegated tools are the pass tools' reads and draft writes (no upload, removal, choices, pass or publication). Build files are still the existing public `/uploads` files: M1a adds no private media, so the Studio must not be offered to users with private artwork before M1b.
+
+**Checks (all local; no real host):**
+- `npm run lint && npm run typecheck && npm test` on `16ee1de5`'s code: exit 0. Shared 1,885; MCP 279 (19 files); server 1,095 passed, 57 skipped (Postgres-only); web 1,937; scripts 2.
+- Server suite with `DATABASE_URL` on an isolated throwaway Postgres 17 container (`studio-m1a-test-pg`, port 55433, database `vtt_m1a_test`): 1,311 passed, 4 skipped. `prisma migrate deploy` applied cleanly, and `prisma migrate diff` against the schema reported no drift.
+- Postgres race test: a revocation waits for a delegated write that holds the grant; with the `FOR SHARE` line removed the test fails (mutation check run and reverted).
+- Playwright `browser/studio-connect.spec.ts` on chromium-desktop, chromium-touch, firefox-narrow and webkit-desktop: 20 passed (consent, refusal, unregistered redirect, zh-TW, sign-in return, disconnect, no sideways scroll). Screenshots stay in Git-ignored `test-results/`.
+- `deploy/Caddyfile`: `caddy adapt` with stock `caddy:2` (rate-limit plugin block removed) succeeds and includes the new paths.
+- Independent diff review: a separate agent reviewed `4033fd4c..079895cb`. It found no leak of data or authority across owners and reported 10 findings, all fixed in `16ee1de5`: a per-address lockout of shared AI host addresses; an open redirect via registered URIs on the consent page; a registration flood holding the client cap; a race test that proved nothing; the write-time clock; partial batch reporting; racing code or refresh reuse; foreign-key races in sweep and deletion; an untranslated "Unnamed app"; bidi characters in client names. The fixes were not re-reviewed by a second independent pass.
+
+**Evidence labels:** all of the above is [L] local. The real ChatGPT check (optional) was **not run**; M1a is unqualified in a real host. Production: unverified and untouched.
+
+**State left behind:** the throwaway Postgres container `studio-m1a-test-pg` is stopped and removed at the end of the session (see the final report). No tunnel, no ChatGPT connector change, no account data used.
+
+**Pending:**
+1. Merge decision on the PR (not merged by this session). Architecture owner review of the code is not recorded; ADR 0073 lists it as open for the PR.
+2. Real ChatGPT run against `/mcp/studio` with a synthetic dev account (DCR, consent, a granted build read, disconnect). Folded into M1b task 2.8 if not done separately.
+3. Glossary rows added for 建置, AI 應用程式, 連接／中斷連線 and 允許 are marked pending glossary owner review.
+4. Deployment prerequisites when it is time: `STUDIO_PUBLIC_ORIGIN` on both services and the Caddyfile routes; not before M1b's private storage.
+
+**Next:** M1b (tasks 2.3–2.8) from the M1a merge; starter in [fresh-session-prompt.md](fresh-session-prompt.md) "M1b".
+
+## M0 close-out, 2026-11-16
 
 **Authorization:** the user was present. At their request the agent restarted the quick tunnel and test server, created and connected a new personal plugin "Session Zero Studio M0 (test 2)" in their Chrome, fixed the region drag, and recorded results. The user ran the chats and the device file picker, and ran an independent code review in a separate session. No M1, PR, merge, production change or provisioning.
 

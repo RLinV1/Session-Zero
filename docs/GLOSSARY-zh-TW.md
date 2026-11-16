@@ -58,6 +58,10 @@ Every Traditional Chinese string in the app, the board, server messages and the 
 | Join / leave | 加入／離開 | |
 | Remove (a player) | 移除 | |
 | Lock joining | 鎖定加入 | |
+| AI build | AI 建置 | Already used by the build pages; a build is 建置. Recorded 2026-11-16 (interactive-ai-scene-studio M1a), pending glossary owner review. |
+| AI app | AI 應用程式 | As the build pages already write it. |
+| Connect / disconnect (an AI app) | 連接／中斷連線 | A connection is 連線. Added 2026-11-16 for delegated Studio access (ADR 0073), pending glossary owner review. |
+| Allow (a request) | 允許 | Added 2026-11-16 with the consent page, pending glossary owner review. |
 | Chat / mention | 聊天／提及 | |
 | Turn / round | 回合／輪 | "Round 3, Aria's turn" → 第 3 輪，輪到 Aria. |
 | Dice look | 骰子外觀 | |
