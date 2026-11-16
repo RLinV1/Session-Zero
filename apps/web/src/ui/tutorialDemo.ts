@@ -165,6 +165,13 @@ async function makeDemoTokens(connection: RoomConnection, state: RoomState): Pro
   } as Command);
 }
 
+/** The Move lesson needs a token to move: make the demo pair when the scene being shown has none (skipping the Token step leaves it empty). */
+export async function ensureDemoTokens(connection: RoomConnection): Promise<DemoResult> {
+  const state = connection.snapshot.state;
+  if (!state || Object.keys(state.tokens).length > 0) return { ok: true };
+  return makeDemoTokens(connection, state);
+}
+
 /** The pair to fight with, creating the demo tokens first if the GM has no two usable ones. */
 async function ensurePair(connection: RoomConnection): Promise<DemoPair | string> {
   const state = () => connection.snapshot.state;
@@ -198,16 +205,15 @@ export async function runDemoRoll(connection: RoomConnection, kind: "toHit" | "d
   });
 }
 
-/** The last step's offer: take the demo tokens (and their encounter) off the table again. */
-export async function removeDemoTokens(connection: RoomConnection): Promise<DemoResult> {
+/** Start the demo again on a fresh practice board: leave it, then delete the old one so the next lesson makes a new one. */
+export async function resetTutorialScene(connection: RoomConnection): Promise<DemoResult> {
+  const left = await restoreTutorialScene(connection);
+  if (!left.ok) return left;
   const state = connection.snapshot.state;
-  if (!state) return { ok: true };
-  if (state.initiative) {
-    const ended = await send(connection, { type: "initiative.end" });
-    if (!ended.ok) return ended;
-  }
-  for (const tokenId of demoTokenIds(state)) {
-    const deleted = await send(connection, { type: "token.delete", tokenId });
+  if (!state || state.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
+  const old = Object.entries(state.savedScenes ?? {}).filter(([id, saved]) => id !== state.activeSceneId && saved.table.scene.map?.url === TUTORIAL_MAP.url);
+  for (const [sceneId] of old) {
+    const deleted = await send(connection, { type: "scene.delete", sceneId });
     if (!deleted.ok) return deleted;
   }
   return { ok: true };

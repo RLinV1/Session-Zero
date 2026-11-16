@@ -2986,7 +2986,6 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial.sheet {
   left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
   width: auto; max-width: 28rem; margin-inline: auto;
-  max-height: min(55dvh, calc(100dvh - 2 * var(--space-4)));
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
 .guest-tutorial.is-intro {

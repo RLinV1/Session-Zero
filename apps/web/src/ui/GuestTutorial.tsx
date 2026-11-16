@@ -9,7 +9,7 @@ import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { ExampleCursor } from "./ExampleCursor";
 import { useExampleRun } from "./useExampleRun";
 import { TUTORIAL_MAP } from "./tutorialMap";
-import { damageWaiting, demoTokenIds, ensureTutorialScene, restoreTutorialScene, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { damageWaiting, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
@@ -176,6 +176,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     setSightEdits(0);
     setTerrainEdits(0);
     focusNext.current = true;
+    // Starting again means a fresh practice board, not the last run's tokens, fight and edits.
+    void resetTutorialScene(connection);
     set(0);
   }, [restart]);
 
@@ -324,6 +326,11 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   };
   const waitingDamage = damageWaiting(state);
 
+  // Reaching the Move step without a token (the Token step was skipped) would leave nothing to move.
+  useEffect(() => {
+    if (shown && stepName === "move" && connection.snapshot?.state) void ensureDemoTokens(connection);
+  }, [shown, stepName]);
+
   const asking = step === null;
   // While an editor lesson plays, the card steps out of the board's way: the bottom right on a wide screen, a slim sheet on a phone.
   const following = run.playing && place?.follow;
@@ -340,7 +347,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const prepareExample = async () => {
     const changed = connection.snapshot?.state?.scene.map?.url !== TUTORIAL_MAP.url;
     setDemoBusy(true);
-    const result = await ensureTutorialScene(connection);
+    let result = await ensureTutorialScene(connection);
+    // The practice scene has no tokens of its own, so the Move lesson brings its own.
+    if (result.ok && stepName === "move") result = await ensureDemoTokens(connection);
     const current = connection.snapshot?.state;
     if (result.ok && current) scenePreparation?.preview(current.activeSceneId ?? "initial");
     if (result.ok && changed && current) {
@@ -428,9 +437,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             )}
             {stepName === "damage" && !waitingDamage && (
               <button type="button" className="small primary" data-demo="damage" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "damage"))}>{t("tutorial.demo.damage")}</button>
-            )}
-            {stepName === "done" && demoTokenIds(state).length > 0 && (
-              <button type="button" className="small secondary" disabled={demoBusy} onClick={() => void runDemo(() => removeDemoTokens(connection))}>{t("tutorial.demo.remove")}</button>
             )}
             {stepName === "table" && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>

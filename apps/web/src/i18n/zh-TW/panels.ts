@@ -589,7 +589,6 @@ export const panelsZhTW = {
   "tutorial.demo.run": "執行示範戰鬥",
   "tutorial.demo.roll": "擲英雄的攻擊",
   "tutorial.demo.damage": "擲傷害",
-  "tutorial.demo.remove": "移除示範棋子",
   "tutorial.demo.hero": "示範英雄",
   "tutorial.demo.goblin": "示範哥布林",
   "tutorial.demo.sword": "劍",

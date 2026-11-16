@@ -590,7 +590,6 @@ export const panels = {
   "tutorial.demo.run": "Run demo fight",
   "tutorial.demo.roll": "Roll the hero's attack",
   "tutorial.demo.damage": "Roll damage",
-  "tutorial.demo.remove": "Remove demo tokens",
   "tutorial.demo.hero": "Demo hero",
   "tutorial.demo.goblin": "Demo goblin",
   "tutorial.demo.sword": "Sword",
