@@ -688,7 +688,12 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
     if (step === "invite") {
       // Share is a modal: the card follows it, and the ring lands on the copy-link control.
       document.querySelector<HTMLButtonElement>("dialog.map-editor[open] .modal-close")?.click();
-      return setShareOpen(true);
+      // Show me clicks Share itself, with the pointer.
+      return setShareOpen(!demo);
+    }
+    if (step === "map" && demo) {
+      document.querySelector<HTMLButtonElement>("dialog.map-editor[open] .modal-close")?.click();
+      return chooseMap(false, () => document.querySelector('[data-tour="gm-map"]')?.scrollIntoView({ block: "start" }));
     }
     if (step === "map") {
       const editor = document.querySelector("dialog.map-editor[open]");

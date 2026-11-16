@@ -7,6 +7,7 @@ import { rangeFill } from "../../ui/rangeFill";
 import { MapCanvas } from "./MapCanvas";
 import { HudLayout } from "./HudLayout";
 import { t } from "../../i18n/locale";
+import { EXAMPLE_SIGHT_EVENT, type SightExample } from "../../ui/tutorialExample";
 
 const MAX_SQUARES = 60;
 /** The editor-only viewer that owns the test tokens: never a room participant, never sent anywhere. */
@@ -102,6 +103,14 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     return makeSightMaskCanvas(polygons, map.width, map.height, grid.cellSize, sightColor(null)).canvas.toDataURL();
   }, [polygons, map, grid.cellSize]);
 
+  // The guest demo's Show me puts a test token on the map, moves it and takes it off again; test tokens are never saved.
+  const example = useRef<((op: SightExample) => void) | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => example.current?.((e as CustomEvent<SightExample>).detail);
+    window.addEventListener(EXAMPLE_SIGHT_EVENT, on);
+    return () => window.removeEventListener(EXAMPLE_SIGHT_EVENT, on);
+  }, []);
+
   if (!map) return <p className="map-editor-empty">{t("sight.needsMap")}</p>;
 
   const send = async (command: { type: "scene.setLineOfSight"; enabled: boolean } | { type: "scene.setSightRange"; range: number | null }) => {
@@ -123,6 +132,14 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
     if (tokens.every((token) => shown.has(token.id))) setShown(new Set([...shown, id]));
     setTokens((now) => [...now, { id, name: t("sight.token", { n }), position: at ? place(at) : centre(now.length) }]);
     setPlacing(false);
+  };
+  example.current = (op) => {
+    if (op.op === "place") {
+      const id = `test-${nextNumber.current}`;
+      add(op.at);
+      setShown(new Set([id]));
+    } else if (op.op === "move") setTokens((now) => now.map((token, i) => (i === 0 ? { ...token, position: place({ x: token.position.x + op.dx * grid.cellSize, y: token.position.y + op.dy * grid.cellSize }) } : token)));
+    else { setTokens([]); setShown(new Set()); setPlacing(true); }
   };
   const remove = (id: string) => {
     setTokens((now) => now.filter((token) => token.id !== id));
@@ -181,7 +198,7 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         <div className="sight-panel-head">
           <h3 className="map-editor-heading">{t("sight.testTokens")}</h3>
           <button
-            type="button" data-guide="sight-add" className="icon-button sight-add" aria-pressed={placing}
+            type="button" data-guide="sight-add" data-tutorial-tool="sight-add" className="icon-button sight-add" aria-pressed={placing}
             aria-label={t("common.addToken")} title={placing ? t("sight.addTokenHint") : t("common.addToken")}
             onClick={() => setPlacing(!placing)}
           >
@@ -288,12 +305,12 @@ export function SightSetup({ connection, state }: { connection: EditorConnection
         <section className="sight-setting">
           <h3 className="map-editor-heading">{t("sight.lineOfSight")}</h3>
           <div className="map-editor-modes" role="radiogroup" aria-label={t("sight.lineOfSight")} data-guide="sight-toggle">
-            <button type="button" role="radio" aria-checked={!enabled} className="tool-button map-editor-mode"
+            <button type="button" role="radio" aria-checked={!enabled} data-tutorial-tool="sight-off" className="tool-button map-editor-mode"
               onClick={() => { if (enabled) void send({ type: "scene.setLineOfSight", enabled: false }); }}>
               <EyeSlash size={18} aria-hidden="true" />
               <span>{t("common.off")}</span>
             </button>
-            <button type="button" role="radio" aria-checked={enabled} className="tool-button map-editor-mode"
+            <button type="button" role="radio" aria-checked={enabled} data-tutorial-tool="sight-on" className="tool-button map-editor-mode"
               onClick={() => { if (!enabled) void send({ type: "scene.setLineOfSight", enabled: true }); }}>
               <Eye size={18} aria-hidden="true" />
               <span>{t("common.on")}</span>

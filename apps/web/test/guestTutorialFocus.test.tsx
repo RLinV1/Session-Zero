@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomState } from "@vtt/shared";
@@ -7,6 +7,7 @@ import type { RoomConnection } from "../src/net/roomConnection";
 import { t } from "../src/i18n/locale";
 import { GuestRoomProvider } from "../src/ui/GuestRoom";
 import { GuestTutorial } from "../src/ui/GuestTutorial";
+import { EXAMPLE_EVENT } from "../src/ui/tutorialExample";
 
 const connection = {} as RoomConnection;
 const room = (tokens: Record<string, unknown> = {}) => ({ tokens, fog: {}, rolls: [], scene: { grid: {}, map: null }, walls: {} }) as unknown as RoomState;
@@ -20,6 +21,21 @@ const demo = (state: RoomState): ReactElement => (
 describe("the demo's focus (guest-gm-hosting: A guest room offers an interactive demo)", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
+
+  it("ignores a delayed Show me request from a lesson the guest has left", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    try {
+      localStorage.setItem("vtt.tutorial.r1", "step:grid");
+      render(demo(room()));
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent(EXAMPLE_EVENT, { detail: "invite" }));
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(document.querySelector(".example-cursor")).toBeNull();
+      expect(screen.getByRole("heading").textContent).toBe(t("tutorial.grid.title"));
+    } finally { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); }
+  });
 
   it("leaves focus alone when a step is reached by acting elsewhere, and announces it", () => {
     localStorage.setItem("vtt.tutorial.r1", "4"); // Place a token

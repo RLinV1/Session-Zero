@@ -5,7 +5,9 @@ import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
 import type { RoomConnection } from "../net/roomConnection";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
-import { EXAMPLE_CLEAR_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
+import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
+import { ExampleCursor } from "./ExampleCursor";
+import { useExampleRun } from "./useExampleRun";
 import { damageWaiting, demoTokenIds, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
@@ -32,10 +34,8 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
 const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
-const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll", ...COMBAT_TUTORIAL_STEPS]);
-const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open]";
-/** Steps whose control lives in a dialog the lesson opens, so Show me is useful even with the opener in sight. */
-const OPENS_DIALOG: ReadonlySet<string> = new Set(["map"]);
+const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", ...COMBAT_TUTORIAL_STEPS]);
+const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open], dialog.tutorial-token-dialog[open]";
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
@@ -67,6 +67,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   reveal: (step: (typeof TUTORIAL_STEPS)[number], demo?: boolean) => void;
 }) {
   const guest = useGuestRoom();
+  const { run, start, stop, clear } = useExampleRun();
   const [progress, setProgress] = useState<Progress>(() => loadProgress(roomId));
   const [moves, setMoves] = useState(0);
   const [mapEdits, setMapEdits] = useState(0);
@@ -133,7 +134,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
-  const settled = step !== null && step > 0 ? settle(step, facts) : step;
+  // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
+  const settled = !run.playing && step !== null && step > 0 ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
@@ -158,10 +160,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
-  const [hidden, setHidden] = useState(false);
-  /** The lesson's editor tab is the open one, so Show me has nothing to open. */
-  const [tabSelected, setTabSelected] = useState(false);
-  const [example, setExample] = useState<string | null>(null);
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -189,16 +187,22 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const onScreen = !!rect && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
-      // Show me is for a control the GM cannot fully see: hidden, off screen or cut off by the viewport edge.
-      setHidden(!(onScreen && rect.top >= 0 && rect.left >= 0 && rect.bottom <= vh && rect.right <= vw));
-      setTabSelected(!!stepName && !!document.querySelector(`dialog.map-editor[open] [data-tutorial-editor-step="${stepName}"][aria-selected="true"]`));
       // Not the board, nor anything over half the screen: dimming around those would dim the room.
       // A phone's control is often full width (Start encounter, Roll to hit), so width only rules out the board there if it is huge too.
       const small = onScreen && rect.height < vh / 2 && (rect.width < vw / 2 || (vw < BESIDE_MIN_WIDTH && !found!.classList.contains("board")));
       const ring = small ? { top: rect.top - RING_PAD, left: rect.left - RING_PAD, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * RING_PAD } : null;
       setSpot((old) => (old && ring && old.top === ring.top && old.left === ring.left && old.width === ring.width && old.height === ring.height ? old : ring));
-      // A bottom sheet that would cover the spotlit control moves to the top instead.
-      setDockTop(vw < BESIDE_MIN_WIDTH && (!!editor || !!card && !!rect && small && rect.bottom > vh - GUTTER - card.offsetHeight));
+      // Keep the phone card clear of both the current tool and the moving pointer, including Sight's top HUD.
+      if (vw < BESIDE_MIN_WIDTH && card) {
+        const ownControl = card.contains(document.querySelector("[data-tutorial-ring]"));
+        const targets = [small ? rect : null, ...Array.from(document.querySelectorAll("[data-tutorial-ring], .example-cursor"))
+          .filter((el) => !card.contains(el) && !(ownControl && el.classList.contains("example-cursor"))).map((el) => el.getBoundingClientRect())]
+          .filter((target): target is DOMRect => !!target && target.height > 0 && target.height < vh / 2 && target.bottom > 0 && target.top < vh);
+        const top = editor && !editor.classList.contains("tutorial-token-dialog") ? 80 : GUTTER;
+        const bottom = vh - GUTTER - card.offsetHeight;
+        const overlaps = (y: number) => targets.some((target) => y < target.bottom + 8 && y + card.offsetHeight > target.top - 8);
+        setDockTop(editor ? !overlaps(top) || overlaps(bottom) : overlaps(bottom) && !overlaps(top));
+      } else setDockTop(false);
       if (!card || !small || vw < BESIDE_MIN_WIDTH) return setPlace(null);
       const below = rect.bottom + 8 + card.offsetHeight <= vh - GUTTER;
       const top = below ? rect.bottom + 8 : Math.max(GUTTER, rect.top - 8 - card.offsetHeight);
@@ -221,7 +225,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       anchor?.removeAttribute("data-tutorial-active");
     };
   }, [shown, stepName]);
-  useEffect(() => setExample(null), [stepName]);
+  // The editor tab opens, then asks for its lesson's animation.
+  useEffect(() => {
+    if (!shown) return;
+    const on = (e: Event) => {
+      const requested = (e as CustomEvent<string>).detail;
+      if (requested === stepName) void start(requested);
+    };
+    window.addEventListener(EXAMPLE_EVENT, on);
+    return () => window.removeEventListener(EXAMPLE_EVENT, on);
+  }, [start, shown, stepName]);
+  useEffect(() => stop, [stepName, stop]);
 
   // Focus follows the GM's own move through the card (question, Yes, Start, restart); a step reached by acting
   // elsewhere is only announced, so the board keeps focus and its Escape.
@@ -244,6 +258,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const waitingDamage = damageWaiting(state);
 
   const asking = step === null;
+  // While an editor lesson plays, the card steps out of the board's way: the bottom right on a wide screen, a slim sheet on a phone.
+  const docked = run.step === stepName && EDITOR_TUTORIAL_STEPS.has(stepName!);
   // Escape is No on the question and Skip on a step; only while focus is in the card, so a dialog's own Escape is left alone.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -256,22 +272,22 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const showMe = () => {
     focusNext.current = false;
     reveal(stepName!, true);
-    if (EXAMPLE_STEPS.has(stepName!)) setExample(stepName!);
-    // Tabs and the sidebar open on their own timing; look for the control once they have.
-    window.setTimeout(() => anchorFor(stepName!)?.scrollIntoView({ block: "center" }), 500);
+    // An editor lesson is started by the editor tab opening (RoomPage); the others, once what they point at is on screen.
+    if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) void start(stepName!);
   };
 
   const content = (
     <>
     {spot && !asking && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
+    {run.cursor && <ExampleCursor cursor={run.cursor} />}
     <div
       ref={cardRef}
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place ? "beside" : "sheet"}${!place && dockTop ? " sheet-top" : ""}`}
+      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}`}
       data-side={place?.side}
-      style={place ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
+      style={place && !docked ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
     >
       <span className="sr-only" role="status" aria-live="polite">{stepName ? t(TITLE[stepName]) : ""}</span>
@@ -286,28 +302,35 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
         </>
       ) : (
         <>
-          <p className="muted small-print">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</p>
+          <p className="muted small-print tutorial-progress">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</p>
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
-          <p>
+          <p className="tutorial-body">
             {stepName === "done"
               ? t("tutorial.done.body", { days: GUEST_ROOM_IDLE_DAYS })
               : stepName === "damage" && waitingDamage ? t("tutorial.damage.bodyRolled")
               : t(`tutorial.${stepName!}.body` as TextId)}
           </p>
-          {example === stepName && EXAMPLE_STEPS.has(stepName!) && <p className="muted" role="status">{t(`tutorial.example.${stepName}` as TextId)}</p>}
+          {run.step === stepName && run.captions.length > 0 && (
+            <ol className="tutorial-ex" aria-label={t("tutorial.showMe")}>
+              {run.captions.map((caption, i) => (
+                <li key={i} value={i + 1} data-state={i < run.index ? "done" : i === run.index ? "current" : "todo"} aria-current={i === run.index ? "step" : undefined}>{t(caption)}</li>
+              ))}
+            </ol>
+          )}
+          {run.step === stepName && run.index === run.captions.length && run.captions.length > 0 && EXAMPLE_STEPS.has(stepName!) && stepName !== "grid" && <p className="muted small-print" role="status">{t("tutorial.note")}</p>}
           {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
-            {REVEALABLE.has(stepName!) && (EXAMPLE_STEPS.has(stepName!) || (EDITOR_TUTORIAL_STEPS.has(stepName!) || OPENS_DIALOG.has(stepName!) ? !tabSelected : hidden)) && (
-              <button type="button" className="small primary" onClick={showMe}>{t("tutorial.showMe")}</button>
+            {REVEALABLE.has(stepName!) && (
+              <button type="button" className="small primary" onClick={showMe}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
             )}
             {stepName === "encounter" && (
-              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoEncounter(connection))}>{t("tutorial.demo.run")}</button>
+              <button type="button" className="small primary" data-demo="encounter" disabled={demoBusy} onClick={() => void runDemo(() => runDemoEncounter(connection))}>{t("tutorial.demo.run")}</button>
             )}
             {stepName === "attack" && (
-              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
+              <button type="button" className="small primary" data-demo="attack" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
             )}
             {stepName === "damage" && !waitingDamage && (
-              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "damage"))}>{t("tutorial.demo.damage")}</button>
+              <button type="button" className="small primary" data-demo="damage" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "damage"))}>{t("tutorial.demo.damage")}</button>
             )}
             {stepName === "done" && demoTokenIds(state).length > 0 && (
               <button type="button" className="small secondary" disabled={demoBusy} onClick={() => void runDemo(() => removeDemoTokens(connection))}>{t("tutorial.demo.remove")}</button>
@@ -323,9 +346,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
                 // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.
                 const openNext = () => { if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!); };
                 // The sample comes out first, so leaving its tab does not ask to save it.
-                if (example === stepName) {
-                  window.dispatchEvent(new CustomEvent(EXAMPLE_CLEAR_EVENT, { detail: stepName }));
-                  window.setTimeout(openNext, 150);
+                if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) {
+                  void clear(stepName!).then(openNext);
                 } else openNext();
               }}>{t("tutorial.next")}</button>
             )}

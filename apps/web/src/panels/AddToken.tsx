@@ -74,6 +74,7 @@ export function AddTokenButton({
       </div>
       <Modal
         open={open}
+        className="tutorial-token-dialog"
         title={t("add.newToken")}
         onClose={() => setOpen(false)}
         onAfterClose={() => {
@@ -206,6 +207,7 @@ function AddToken(props: {
         <label>
           {t("common.name")}
           <input
+            data-tutorial-tool="token-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -300,7 +302,7 @@ function AddToken(props: {
           </div>
         </details>
         {error && <p role="alert" className="error">{error}</p>}
-        <button className="primary" type="submit" disabled={uploading}>{t("add.chooseSquare")}</button>
+        <button className="primary" type="submit" data-tutorial-tool="token-place" disabled={uploading}>{t("add.chooseSquare")}</button>
         <p className="muted">{t("add.clickSquare")}</p>
       </form>
       {/* The attack editor is a form of its own, so it can't be nested in this one. */}

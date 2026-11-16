@@ -113,7 +113,7 @@ export function GridForm({
   };
 
   const field = (key: "cellSize" | "offsetX" | "offsetY", label: string) => (
-    <div className="grid-field" key={key}>
+    <div className="grid-field" key={key} data-tutorial-tool={`grid-${key}`}>
       <label>
         {label}
         <input
