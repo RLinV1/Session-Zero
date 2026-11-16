@@ -66,7 +66,9 @@ describe("the build tools (FR-GM-26)", () => {
     const player = stack.ai;
     const result = await player.call("get_view", { seat: pass });
     expect(result.isError).toBe(true);
-    expect(await player.call("get_build", { pass })).toMatchObject({ isError: true, text: expect.stringMatching(/not found/i) });
+    // MCP SDK 2.x answers an unknown tool with a protocol error rather than a tool result; either way the player address has no build tools.
+    await expect(player.call("get_build", { pass })).rejects.toThrow(/not found/i);
+    expect((await player.listTools()).tools.map((t) => t.name)).not.toContain("get_build");
   });
 
   it("names the build and whose it is, with the field guide", async () => {

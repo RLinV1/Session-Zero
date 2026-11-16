@@ -1,5 +1,4 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { startServer } from "../../server/test/helpers";
 import { startMcpServer, type McpAppOptions } from "../src/app";
 
@@ -38,7 +37,7 @@ export class AiClient {
   }
 
   async call(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal } = {}): Promise<ToolResult> {
-    const result = (await this.client.callTool({ name, arguments: args }, undefined, { timeout: 60_000, ...options })) as {
+    const result = (await this.client.callTool({ name, arguments: args }, { timeout: 60_000, ...options })) as {
       isError?: boolean;
       content: { type: string; text?: string; data?: string; mimeType?: string }[];
     };

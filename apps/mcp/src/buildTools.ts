@@ -1,5 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { BUILD_LIMITS, BuildPass, DraftEncounter, DraftMap, GameProfile, MAX_TERRAIN_CELLS } from "@vtt/shared";
 import { z } from "zod";
 import { BUILD_SERVER_INSTRUCTIONS, FIELD_GUIDE } from "./buildGuide";
@@ -95,7 +94,7 @@ const mapKeyArg = z.string().min(1).max(64).describe("The draft map's key, from 
 export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
   const server = new McpServer({ name: "session-zero-build", version: "1.0.0" }, { instructions: BUILD_SERVER_INSTRUCTIONS });
   const tool = <Shape extends z.ZodRawShape>(name: string, title: string, description: string, inputSchema: Shape, run: (args: z.infer<z.ZodObject<Shape>>) => Promise<CallToolResult>) => {
-    server.registerTool(name, { title, description, inputSchema }, ((args: z.infer<z.ZodObject<Shape>>) => guarded(name, () => run(args))) as never);
+    server.registerTool(name, { title, description, inputSchema: z.object(inputSchema) }, ((args: z.infer<z.ZodObject<Shape>>) => guarded(name, () => run(args))) as never);
   };
 
   tool("get_build", "Read a build",
