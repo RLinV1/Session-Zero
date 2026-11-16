@@ -17,7 +17,7 @@ import { AccountLinks } from "./home/AccountLinks";
  * In another language the page is translated, says the English version governs, and links to it:
  * `?lang=en` shows the English text in the same page (localization).
  */
-export const POLICIES_UPDATED = { iso: "2026-11-10", label: "10 November 2026" };
+export const POLICIES_UPDATED = { iso: "2026-11-16", label: "16 November 2026" };
 
 /** Where a person reaches the project: the repository's issue tracker. */
 const CONTACT_URL = "https://github.com/RLinV1/Session-Zero/issues";
@@ -81,6 +81,8 @@ export function PrivacyPage() {
               <dd>{tr("privacy.keep.room.body")}</dd>
               <dt>{tr("privacy.keep.guest.term")}</dt>
               <dd>{tr("privacy.keep.guest.body")}</dd>
+              <dt>{tr("privacy.keep.build.term")}</dt>
+              <dd>{tr("privacy.keep.build.body")}</dd>
             </dl>
           </Part>
 
@@ -88,6 +90,7 @@ export function PrivacyPage() {
             <ul>
               <li>{tr("privacy.dont.tracking")}</li>
               <li>{tr("privacy.dont.sell")}</li>
+              <li>{tr("privacy.dont.ai")}</li>
               <li>{tr("privacy.dont.ip")}</li>
             </ul>
           </Part>
@@ -97,6 +100,8 @@ export function PrivacyPage() {
               <li>{tr("privacy.long.account")}</li>
               <li>{tr("privacy.long.room")}</li>
               <li>{tr("privacy.long.session")}</li>
+              <li>{tr("privacy.long.pass")}</li>
+              <li>{tr("privacy.long.build")}</li>
             </ul>
           </Part>
 
@@ -111,6 +116,18 @@ export function PrivacyPage() {
 
           <Part title={tr("privacy.who.title")}>
             <p>{tr("privacy.who.body")}</p>
+            <p>{tr("privacy.who.ai")}</p>
+          </Part>
+
+          <Part title={tr("privacy.ai.title")}>
+            <p>{tr("privacy.ai.lead")}</p>
+            <ul>
+              <li>{tr("privacy.ai.vendor")}</li>
+              <li>{tr("privacy.ai.seat")}</li>
+              <li>{tr("privacy.ai.build")}</li>
+              <li>{tr("privacy.ai.server")}</li>
+              <li>{tr("privacy.ai.ip")}</li>
+            </ul>
           </Part>
 
           <Part title={tr("privacy.delete.title")}>
@@ -123,6 +140,8 @@ export function PrivacyPage() {
               <li>{tr("privacy.delete.joined")}</li>
               <li>{tr("privacy.delete.room")}</li>
               <li>{tr("privacy.delete.library")}</li>
+              <li>{tr("privacy.delete.build")}</li>
+              <li>{tr("privacy.delete.ai")}</li>
             </ul>
           </Part>
 
@@ -173,6 +192,17 @@ export function TermsPage() {
               <li>{tr("terms.use.break")}</li>
               <li>{tr("terms.use.gm")}</li>
               <li>{tr("terms.use.password")}</li>
+            </ul>
+          </Part>
+
+          <Part title={tr("terms.ai.title")}>
+            <ul>
+              <li>{tr("terms.ai.yours")}</li>
+              <li>{tr("terms.ai.vendor")}</li>
+              <li>{tr("terms.ai.secret")}</li>
+              <li>{tr("terms.ai.table")}</li>
+              <li>{tr("terms.ai.review")}</li>
+              <li>{tr("terms.ai.limits")}</li>
             </ul>
           </Part>
 

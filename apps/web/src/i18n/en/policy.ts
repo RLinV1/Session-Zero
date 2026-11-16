@@ -25,15 +25,24 @@ export const policy = {
   "privacy.keep.guest.term": "Joining as a guest",
   "privacy.keep.guest.body":
     "You have no account. Your browser keeps a random key that puts you back in your seat; the server keeps only a hash of it.",
+  "privacy.keep.build.term": "An AI build",
+  "privacy.keep.build.body":
+    "The files your AI app adds to a build, and the creatures, maps and encounters it drafts, are kept in a private draft that only you can see until you publish it. The pass that lets the AI in is shown once; the server keeps only a hash of it.",
   "privacy.dont.title": "What we don't do",
   "privacy.dont.tracking": "No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.",
   "privacy.dont.sell": "We don't sell or share what you put in the app with anyone.",
+  "privacy.dont.ai":
+    "We don't send what you put in the app to any AI company. An AI app gets room or build data only when a person connects it, as described under AI apps below.",
   "privacy.dont.ip":
     "Your IP address is used to slow down repeated requests, including sign-in, sign-up and join attempts. It is held in memory for an hour at most and never saved.",
   "privacy.long.title": "How long we keep it",
   "privacy.long.account": "Account data (name, email, password hash, library) is kept until you delete your account.",
   "privacy.long.room": "A room and its history are kept until its GM deletes the room, or the GM's account is deleted.",
   "privacy.long.session": "A sign-in session ends after 30 days without use, or 90 days at most.",
+  "privacy.long.pass":
+    "A build pass stops working after 24 hours, or sooner when you make a new one, cancel it, discard the build, change your password or delete your account.",
+  "privacy.long.build":
+    "A build nobody has changed for 14 days is closed, as if discarded: its unpublished files and drafts are deleted. What you published stays in your library.",
   "privacy.where.title": "Where it is stored",
   "privacy.where.body":
     "Our hosting provider stores the database and uploaded files on our behalf. It processes them only to run the service for us.",
@@ -45,6 +54,20 @@ export const policy = {
   "privacy.who.title": "Who sees what",
   "privacy.who.body":
     "People in a room see what the GM shows them: the board, chat and public rolls. Hidden tokens, fog, walls and GM rolls are removed on the server before anything reaches a player. The GM of a room sees everything in it.",
+  "privacy.who.ai":
+    "A player may seat their own AI app at the table. That seat sees what any player sees, including the chat you write, and passes it to that person's AI app. Its name ends in (AI), and the GM can remove it like any player.",
+  "privacy.ai.title": "AI apps",
+  "privacy.ai.lead":
+    "You can connect your own AI app, such as a chat app, to our MCP server: to hold a player seat in a room, or to fill a build with the AI game builder.",
+  "privacy.ai.vendor":
+    "Whatever the AI reads, such as the board, the map with fog painted on, names, chat and rolls, or the build's files, goes to the company that runs your AI app. That company handles it under its own terms and privacy policy, not ours.",
+  "privacy.ai.seat":
+    "An AI seat is a player seat. It never gets what players can't see, and the MCP server refuses a GM's seat.",
+  "privacy.ai.build":
+    "A build pass reaches only that one draft. It can't publish, or read your library, rooms or account.",
+  "privacy.ai.server":
+    "The MCP server runs on our host and stores nothing. It holds a seat's key in memory only while the seat is connected, and the latest ping from each person for 60 seconds. It never writes seat keys or passes to disk or to its logs.",
+  "privacy.ai.ip": "It passes your IP address on to the room server, so the limits on repeated requests apply to you, not to everyone using AI.",
   "privacy.delete.title": "Deleting your data",
   "privacy.delete.account.before": "Choose ",
   "privacy.delete.account.strong": "Delete account",
@@ -54,6 +77,10 @@ export const policy = {
     "Rooms you only joined, run by someone else, keep running. What you did there, such as your name, moves and chat messages, stays in that room's history until its GM deletes the room.",
   "privacy.delete.room": "A GM can also delete a single room, which removes its whole history, chat and uploaded images.",
   "privacy.delete.library": "You can delete anything in your library yourself.",
+  "privacy.delete.build":
+    "Choose Discard this build on a build's page to delete its unpublished files and drafts at once. Deleting your account removes your builds too.",
+  "privacy.delete.ai":
+    "To remove an AI seat, its user can tell it to leave, or the GM can remove it. What the AI app already received stays with that app; ask its company to delete it.",
   "privacy.contact.title": "Contact",
   "privacy.contact.before": "Questions or requests: open an issue on the project's ",
   "privacy.contact.link": "GitHub issue tracker",
@@ -77,6 +104,17 @@ export const policy = {
   "terms.use.break": "Don't try to break the app, get into other people's rooms or accounts, or flood it with requests.",
   "terms.use.gm": "A GM runs their own room and can remove anyone from it.",
   "terms.use.password": "Keep your password to yourself.",
+  "terms.ai.title": "AI apps",
+  "terms.ai.yours":
+    "You can connect your own AI app to hold a player seat or to fill a build. What it does through your seat or pass counts as what you do, and these terms apply to it.",
+  "terms.ai.vendor":
+    "Your AI app is a separate service with its own terms and costs. We don't provide it, and we aren't responsible for what it writes or does, or for what it does with what it reads.",
+  "terms.ai.secret":
+    "Treat a seat and a build pass like a password: anyone holding one can act through it. If one leaks, cancel the pass on the build page or ask the GM to remove the seat.",
+  "terms.ai.table":
+    "Seat an AI only at a table where it is welcome. Don't present an AI as a person, or use one to flood a room or get around a GM.",
+  "terms.ai.review": "AI output can be wrong. Check a build before you publish it; publishing is always your decision.",
+  "terms.ai.limits": "The AI tools have their own request limits, and we may change or turn them off at any time.",
   "terms.remove.title": "Removing content and accounts",
   "terms.remove.body": "We may remove content and close accounts that break these terms. You can delete your own account at any time.",
   "terms.software.title": "The software, art and sound",
