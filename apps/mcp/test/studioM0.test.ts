@@ -64,8 +64,14 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     const approved = await fetch(`${base}/oauth/authorize`, { method: "POST", body: form, redirect: "manual" });
     const location = new URL(approved.headers.get("location") ?? "about:blank");
     const tokenRes = await fetch(`${base}/oauth/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", code: location.searchParams.get("code") ?? "", redirect_uri: REDIRECT, client_id: reg.client_id, code_verifier: verifier, resource }) });
-    return { location, tokenRes, token: tokenRes.ok ? ((await tokenRes.json()) as { access_token: string }).access_token : "" };
+    const tokens = tokenRes.ok ? ((await tokenRes.json()) as { access_token: string; refresh_token: string }) : { access_token: "", refresh_token: "" };
+    return { location, tokenRes, clientId: reg.client_id, token: tokens.access_token, refreshToken: tokens.refresh_token };
   }
+
+  const revoke = (clientId: string, token: string) =>
+    fetch(`${base}/oauth/revoke`, { method: "POST", body: new URLSearchParams({ client_id: clientId, token }) });
+  const toolsList = (token: string) =>
+    fetch(`${base}/mcp/studio-m0`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
 
   async function connect(token: string) {
     const client = new Client({ name: "test-host", version: "0" });
@@ -203,6 +209,20 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     const consent = await fetch(`${base}/oauth/authorize`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(consent.status).toBe(400);
     expect(consent.headers.get("content-type")).toMatch(/text\/plain/);
+  });
+
+  it("revokes only the caller's own tokens, and a refresh token takes its access token with it (RFC 7009)", async () => {
+    const a = await signIn("m0-tester-a");
+    const b = await signIn("m0-tester-b");
+    expect((await revoke("dcr_unknown", a.refreshToken)).status).toBe(401);
+    // Another client's token: the same 200 as an unknown token, and nothing changes.
+    expect((await revoke(b.clientId, a.refreshToken)).status).toBe(200);
+    expect((await revoke(b.clientId, a.token)).status).toBe(200);
+    expect((await toolsList(a.token)).status).toBe(200);
+    // The owner revoking its refresh token disconnects it: the paired access token stops too.
+    expect((await revoke(a.clientId, a.refreshToken)).status).toBe(200);
+    expect((await toolsList(a.token)).status).toBe(401);
+    expect((await toolsList(b.token)).status).toBe(200);
   });
 
   it("refuses operator controls without the private key or through the tunnel", async () => {

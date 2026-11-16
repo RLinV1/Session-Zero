@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import express, { type Request, type Response, type Router } from "express";
 import { z } from "zod";
@@ -19,6 +19,9 @@ export const TESTERS = ["m0-tester-a", "m0-tester-b"] as const;
 const CODE_TTL_MS = 5 * 60_000;
 const REFRESH_TTL_MS = 24 * 60 * 60_000;
 const FORM_TTL_MS = 10 * 60_000;
+/** Registration is open to anyone (RFC 7591), so the number held is bounded. */
+export const MAX_DCR_CLIENTS = 100;
+export const UNUSED_CLIENT_TTL_MS = 60 * 60_000;
 
 export interface Principal {
   subject: string;
@@ -34,6 +37,10 @@ interface Client {
   authMethod: "none" | "client_secret_post" | "client_secret_basic";
   registration: "dcr" | "static";
   name?: string;
+  /** DCR only. Clients saved before these existed have neither and are never dropped. */
+  registeredAt?: number;
+  /** DCR only: when it first got a token. One that never does is dropped after UNUSED_CLIENT_TTL_MS. */
+  usedAt?: number;
 }
 
 interface Grant {
@@ -43,9 +50,11 @@ interface Grant {
   resource: string;
   expiresAt: number;
   kind: "access" | "refresh";
+  /** Every token descended from one authorization code, across refresh rotations (RFC 7009 §2.1). */
+  family: string;
 }
 
-interface PendingCode extends Omit<Grant, "kind" | "expiresAt"> {
+interface PendingCode extends Omit<Grant, "kind" | "expiresAt" | "family"> {
   redirectUri: string;
   challenge: string;
   expiresAt: number;
@@ -117,7 +126,12 @@ export class StudioAuth {
     try {
       const saved = JSON.parse(await readFile(this.clientsFile(), "utf8")) as Client[];
       for (const client of saved) if (client.registration === "dcr") this.clients.set(client.clientId, client);
-    } catch { /* first start */ }
+    } catch (err) {
+      // A missing file is a first start. Anything else loses every saved client_id, so say so.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        await this.options.log.write("clients_unreadable", { message: err instanceof Error ? err.message.slice(0, 200) : "unknown" });
+      }
+    }
     const fallback: Client = {
       clientId: `static_${randomBytes(8).toString("hex")}`, secret: token("cs_"), redirectUris: [],
       authMethod: "client_secret_post", registration: "static", name: "static fallback",
@@ -201,8 +215,14 @@ export class StudioAuth {
       const requested = typeof body.token_endpoint_auth_method === "string" ? body.token_endpoint_auth_method : "client_secret_basic";
       const authMethod = (["none", "client_secret_post", "client_secret_basic"] as const).find((m) => m === requested);
       if (!authMethod) return void res.status(400).json({ error: "invalid_client_metadata", error_description: `token_endpoint_auth_method ${requested} isn't supported.` });
+      this.prune();
+      if (this.dcrClients().length >= MAX_DCR_CLIENTS) {
+        // Refuse rather than evict, so a flood can't push out a host's stored client_id.
+        void this.options.log.write("oauth_register", { outcome: "full", held: MAX_DCR_CLIENTS });
+        return void res.status(503).json({ error: "temporarily_unavailable", error_description: "This test server holds as many registered clients as it can. Unused ones expire within an hour." });
+      }
       const client: Client = {
-        clientId: `dcr_${randomBytes(12).toString("hex")}`, redirectUris, authMethod, registration: "dcr",
+        clientId: `dcr_${randomBytes(12).toString("hex")}`, redirectUris, authMethod, registration: "dcr", registeredAt: this.now(),
         name: typeof body.client_name === "string" ? body.client_name.slice(0, 100) : undefined,
         ...(authMethod !== "none" && { secret: token("cs_") }),
       };
@@ -287,6 +307,7 @@ export class StudioAuth {
       }
       let subject: string;
       let scopes: string[];
+      let family: string;
       if (body.grant_type === "authorization_code") {
         const pending = this.codes.get(hash(body.code ?? ""));
         this.codes.delete(hash(body.code ?? ""));
@@ -298,6 +319,7 @@ export class StudioAuth {
         }
         subject = pending.subject;
         scopes = pending.scopes;
+        family = randomBytes(12).toString("hex");
       } else if (body.grant_type === "refresh_token") {
         const key = hash(body.refresh_token ?? "");
         const refresh = this.grants.get(key);
@@ -308,14 +330,19 @@ export class StudioAuth {
         this.grants.delete(key); // Rotation: a refresh token works once.
         subject = refresh.subject;
         scopes = refresh.scopes;
+        family = refresh.family;
       } else {
         return void res.status(400).json({ error: "unsupported_grant_type" });
       }
       const access = token("s0m0_");
       const refresh = token("s0r_");
       const accessExpires = this.now() + this.accessTtlMs;
-      this.grants.set(hash(access), { subject, clientId: client.clientId, scopes, resource: this.resourceUrl, expiresAt: accessExpires, kind: "access" });
-      this.grants.set(hash(refresh), { subject, clientId: client.clientId, scopes, resource: this.resourceUrl, expiresAt: this.now() + REFRESH_TTL_MS, kind: "refresh" });
+      this.grants.set(hash(access), { subject, clientId: client.clientId, scopes, resource: this.resourceUrl, expiresAt: accessExpires, kind: "access", family });
+      this.grants.set(hash(refresh), { subject, clientId: client.clientId, scopes, resource: this.resourceUrl, expiresAt: this.now() + REFRESH_TTL_MS, kind: "refresh", family });
+      if (client.registration === "dcr" && client.usedAt === undefined) {
+        client.usedAt = this.now(); // Saved, so this client survives the unused-client cleanup across restarts.
+        void this.saveClients();
+      }
       void this.options.log.write("oauth_token", { grantType: body.grant_type, clientId: client.clientId, subject, outcome: "issued", resourceParam: body.resource ?? null, expiresInSeconds: this.accessTtlMs / 1000 });
       res.json({ access_token: access, token_type: "Bearer", expires_in: Math.floor(this.accessTtlMs / 1000), refresh_token: refresh, scope: scopes.join(" ") });
     });
@@ -323,7 +350,17 @@ export class StudioAuth {
     router.post("/oauth/revoke", form, (req, res) => {
       const body: Record<string, string | undefined> | null = formBody(req);
       if (!body) return notAForm(res);
-      if (this.authenticateClient(req, body)) this.grants.delete(hash(body.token ?? ""));
+      const client = this.authenticateClient(req, body);
+      if (!client) return void res.status(401).json({ error: "invalid_client" });
+      const grant = this.grants.get(hash(body.token ?? ""));
+      // RFC 7009 §2.2: an unknown token, or one issued to another client, gets the same 200 and
+      // changes nothing, so revocation can't be used to probe or cancel someone else's tokens.
+      // A token we own takes its whole family with it: revoking either half disconnects the host.
+      let revoked = 0;
+      if (grant && grant.clientId === client.clientId) {
+        for (const [key, g] of this.grants) if (g.family === grant.family) { this.grants.delete(key); revoked++; }
+      }
+      void this.options.log.write("oauth_revoke", { clientId: client.clientId, kind: revoked ? grant?.kind : null, revoked });
       res.status(200).end();
     });
 
@@ -387,15 +424,43 @@ export class StudioAuth {
     for (const [key, expires] of this.forms) if (expires <= now) this.forms.delete(key);
     for (const [key, code] of this.codes) if (code.expiresAt <= now) this.codes.delete(key);
     for (const [key, grant] of this.grants) if (grant.expiresAt <= now) this.grants.delete(key);
+    let dropped = 0;
+    for (const client of this.dcrClients()) {
+      if (client.usedAt === undefined && client.registeredAt !== undefined && client.registeredAt + UNUSED_CLIENT_TTL_MS <= now) {
+        this.clients.delete(client.clientId);
+        dropped++;
+      }
+    }
+    if (dropped) void this.saveClients();
+  }
+
+  private dcrClients() {
+    return [...this.clients.values()].filter((c) => c.registration === "dcr");
   }
 
   private clientsFile() {
     return path.join(this.options.dataDir, "clients.json");
   }
 
-  private async saveClients() {
-    const dcr = [...this.clients.values()].filter((c) => c.registration === "dcr");
-    await writeFile(this.clientsFile(), JSON.stringify(dcr), { mode: 0o600 });
+  private saving: Promise<void> = Promise.resolve();
+
+  /**
+   * Saves are queued so they never overlap, and each writes a temp file then renames it over the
+   * old one, so a reader or a crash sees the whole previous list or the whole new one, never a
+   * torn file. Each save writes the list as it is when its turn comes. Never rejects.
+   */
+  saveClients(): Promise<void> {
+    this.saving = this.saving.then(async () => {
+      const tmp = `${this.clientsFile()}.${randomBytes(4).toString("hex")}.tmp`;
+      try {
+        await writeFile(tmp, JSON.stringify(this.dcrClients()), { mode: 0o600 });
+        await rename(tmp, this.clientsFile());
+      } catch (err) {
+        await rm(tmp, { force: true }).catch(() => {});
+        await this.options.log.write("clients_save_failed", { message: err instanceof Error ? err.message.slice(0, 200) : "unknown" });
+      }
+    });
+    return this.saving;
   }
 
   private checkAuthorize(params: Record<string, string>): string | null {

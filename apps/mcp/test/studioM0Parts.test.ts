@@ -1,9 +1,12 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import express from "express";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { StudioAuth } from "../src/studioM0/auth";
+import { MAX_DCR_CLIENTS, StudioAuth, UNUSED_CLIENT_TTL_MS } from "../src/studioM0/auth";
 import { renderMarkedCrop } from "../src/studioM0/crop";
 import { EvidenceLog, StudioError, type StudioFile } from "../src/studioM0/store";
 
@@ -43,6 +46,53 @@ describe("Studio M0 harness parts (FR-GM-26, interactive-ai-scene-studio M0)", (
     await expect(new EvidenceLog(path.join(blocker, "evidence.jsonl")).write("x")).resolves.toBeUndefined();
     expect(errors).toHaveBeenCalled();
     vi.restoreAllMocks();
+  });
+
+  describe("dynamic client registration", () => {
+    let clock = 0;
+    let authDir: string;
+    let server: Server;
+    let base: string;
+    let auth: StudioAuth;
+    const log = () => new EvidenceLog(path.join(authDir, "evidence.jsonl"));
+    const makeAuth = () => new StudioAuth({ publicOrigin: "https://s.test", resourcePath: "/mcp/studio-m0", dataDir: authDir, log: log(), now: () => clock });
+    const register = () => fetch(`${base}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ redirect_uris: ["https://host.test/cb"], token_endpoint_auth_method: "none" }) });
+    const savedIds = async () => (JSON.parse(await readFile(path.join(authDir, "clients.json"), "utf8")) as { clientId: string }[]).map((c) => c.clientId);
+
+    beforeAll(async () => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      authDir = await mkdtemp(path.join(dir, "auth-"));
+      auth = makeAuth();
+      await auth.init();
+      const app = express().use(auth.router());
+      server = await new Promise<Server>((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+      base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+    afterAll(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      vi.restoreAllMocks();
+    });
+
+    it("keeps every client from simultaneous registrations, and a restart reloads them", async () => {
+      const ids = await Promise.all(Array.from({ length: 30 }, async () => ((await (await register()).json()) as { client_id: string }).client_id));
+      await auth.saveClients(); // Queued after every registration's save.
+      expect(new Set(await savedIds())).toEqual(new Set(ids));
+      // A restarted server saves exactly what it loaded: every one is still there.
+      const restarted = makeAuth();
+      await restarted.init();
+      await restarted.saveClients();
+      expect(new Set(await savedIds())).toEqual(new Set(ids));
+    });
+
+    it("holds a bounded number of clients, and unused ones expire to make room", async () => {
+      let status = 0;
+      for (let i = 0; i < MAX_DCR_CLIENTS + 5 && status !== 503; i++) status = (await register()).status;
+      expect(status).toBe(503);
+      clock += UNUSED_CLIENT_TTL_MS;
+      expect((await register()).status).toBe(201);
+      await auth.saveClients(); // Drain the saves the cleanup queued.
+      expect(await savedIds()).toHaveLength(1);
+    });
   });
 
   it("refuses an access-token lifetime that isn't a whole number of seconds in range", () => {
