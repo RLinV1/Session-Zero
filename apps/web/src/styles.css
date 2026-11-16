@@ -2974,7 +2974,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 
 /* The guest room's interactive demo (guest-gm-hosting): beside its control, or a bottom sheet. */
 .guest-tutorial {
-  position: fixed; z-index: 40;
+  position: fixed; z-index: 1000;
   display: flex; flex-direction: column; gap: var(--space-2);
   width: min(22rem, calc(100vw - 2 * var(--space-4)));
   padding: var(--space-3);
@@ -4628,3 +4628,8 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .build-publish-options .build-publish-option > input,
 .build-publish-select-all > input { width: 1rem; height: 1rem; margin: 0; }
 .build-publish-confirm { gap: var(--space-3); }
+
+/* The guest demo's Show me outlines the sample it just drew in the map editor (guest-gm-hosting). */
+.tutorial-pulse { fill: rgb(255 196 0 / 0.14); stroke: #ffc400; stroke-width: 4px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 6px #ffc400); animation: tutorial-pulse 0.9s ease-in-out 4 alternate; }
+@keyframes tutorial-pulse { from { stroke-opacity: 1; fill-opacity: 0.2; } to { stroke-opacity: 0.35; fill-opacity: 0.04; } }
+@media (prefers-reduced-motion: reduce) { .tutorial-pulse { animation: none; } }

@@ -1,4 +1,4 @@
-import type { AttackPreset, RoomState, Token } from "@vtt/shared";
+import { distanceToSegment, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
 import { attackExpression, pendingRulings, presetRollLabel } from "../panels/attackRoll";
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
@@ -43,25 +43,66 @@ const send = async (connection: RoomConnection, command: Command): Promise<DemoR
   return result.ok ? { ok: true } : { ok: false, message: result.message };
 };
 
-/** The two demo tokens, side by side in the middle of the map; their events reach the snapshot before the acks do. */
+/**
+ * Two neighbouring cells of open floor, chosen on the roomiest open floor: no wall within
+ * about a cell of either centre, no blocked terrain, and inside the map. Falls back to the middle.
+ */
+export function demoSpots(state: RoomState): [Point, Point] {
+  const { grid, map } = state.scene;
+  const size = grid.cellSize;
+  const width = map?.width ?? size * 8, height = map?.height ?? size * 8;
+  const cols = Math.floor((width - grid.offsetX) / size), rows = Math.floor((height - grid.offsetY) / size);
+  const centre = (col: number, row: number): Point => ({ x: grid.offsetX + (col + 0.5) * size, y: grid.offsetY + (row + 0.5) * size });
+  const layers = [state.terrain?.base ?? [], ...(state.terrain?.effects.map((e) => e.runs) ?? [])];
+  const open = (col: number, row: number) => {
+    if (col < 0 || row < 0 || col >= cols || row >= rows) return false;
+    const p = centre(col, row);
+    return !Object.values(state.walls).some((w) => distanceToSegment(p, w) < size * 0.75)
+      && !layers.some((runs) => terrainAt(runs, col, row) === "blocked");
+  };
+  // Prefer the roomiest floor: the pair whose nearer cell is farthest from any wall (a shipped map's stored walls count,
+  // even before the GM loads them), ties going to the one closest to the middle of the map.
+  const stored = map ? storedWallsFor(map) ?? [] : [];
+  const walls = [...Object.values(state.walls), ...stored];
+  const room = (col: number, row: number) => {
+    const p = centre(col, row);
+    return Math.min(size * 3, ...walls.map((w) => distanceToSegment(p, w)));
+  };
+  const mc = (cols - 1) / 2, mr = (rows - 1) / 2;
+  let best: { score: number; away: number; at: [number, number] } | null = null;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col + 1 < cols; col++) {
+      if (!open(col, row) || !open(col + 1, row)) continue;
+      const score = Math.min(room(col, row), room(col + 1, row));
+      const away = Math.hypot(col + 0.5 - mc, row - mr);
+      if (!best || score > best.score + 1 || (Math.abs(score - best.score) <= 1 && away < best.away)) best = { score, away, at: [col, row] };
+    }
+  }
+  if (best) return [centre(best.at[0], best.at[1]), centre(best.at[0] + 1, best.at[1])];
+  const mid = centre(Math.floor(mc), Math.floor(mr));
+  return [mid, { x: mid.x + size, y: mid.y }];
+}
+
+/** The two demo tokens, side by side on open floor, with built-in token art; their events reach the snapshot before the acks do. */
 async function makeDemoTokens(connection: RoomConnection, state: RoomState): Promise<DemoResult> {
-  const grid = state.scene.grid;
-  const mid = { x: (state.scene.map?.width ?? grid.cellSize * 8) / 2, y: (state.scene.map?.height ?? grid.cellSize * 8) / 2 };
+  const [heroAt, foeAt] = demoSpots(state);
   const hero = await send(connection, {
     type: "token.create",
     name: t("tutorial.demo.hero"),
-    position: { x: mid.x - grid.cellSize, y: mid.y },
+    position: heroAt,
     stats: { hp: 12, maxHp: 12, ac: 14 },
     color: "#3b82f6",
+    imageUrl: "/img/tokens/enemies/human-swordsman.svg",
     attacks: [{ name: t("tutorial.demo.sword"), toHit: { terms: [{ count: 1, sides: 20 }], modifier: 5 }, damage: { terms: [{ count: 1, sides: 8 }], modifier: 3 } }],
   } as Command);
   if (!hero.ok) return hero;
   return send(connection, {
     type: "token.create",
     name: t("tutorial.demo.goblin"),
-    position: { x: mid.x + grid.cellSize, y: mid.y },
+    position: foeAt,
     stats: { hp: 12, maxHp: 12, ac: 8 },
     color: "#16a34a",
+    imageUrl: "/img/tokens/enemies/goblin-guard.svg",
   } as Command);
 }
 

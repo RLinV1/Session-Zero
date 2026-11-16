@@ -50,7 +50,7 @@ describe("the demo's focus (guest-gm-hosting: A guest room offers an interactive
     const heading = screen.getByRole("heading", { name: t("tutorial.grid.title") });
     await waitFor(() => expect(heading.closest("dialog.map-editor")).not.toBeNull());
     fireEvent.click(screen.getByRole("button", { name: t("tutorial.showMe") }));
-    expect(reveal).toHaveBeenLastCalledWith("grid");
+    expect(reveal).toHaveBeenLastCalledWith("grid", true);
     fireEvent.click(screen.getByRole("button", { name: t("tutorial.next") }));
     expect(reveal).toHaveBeenLastCalledWith("walls");
     expect(screen.getByRole("heading").textContent).toBe(t("tutorial.walls.title"));
