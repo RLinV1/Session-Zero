@@ -1,4 +1,5 @@
 import { gridGeometryChanged, hasTerrain } from "@vtt/shared";
+import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "../ui/tutorialExample";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { GearSix, House } from "@phosphor-icons/react";
 import { areaEffectStage, can, diceRollsOf, type AttackRange, filterStateForViewer, findDiceRoll, isActive, type ReplayFrame, type DiceVisibility, type GridSpec, type Participant, type Point, type RoomState } from "@vtt/shared";
@@ -663,6 +664,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         if (!tab) return void (tries < 20 && window.setTimeout(() => selectStep(tries + 1), 100));
         if (tab.getAttribute("aria-selected") !== "true") tab.click();
         tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+        // A sample to learn from, drawn in the editor's draft (unless an unsaved-work prompt kept the old tab).
+        if (EXAMPLE_STEPS.has(step)) window.setTimeout(() => { if (tab.getAttribute("aria-selected") === "true") window.dispatchEvent(new CustomEvent(EXAMPLE_EVENT, { detail: step })); }, 150);
       };
       const openEditAt = () => chooseMap(false, () => {
         document.querySelector<HTMLButtonElement>("[data-tutorial-editor-open]")?.click();

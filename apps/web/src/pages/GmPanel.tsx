@@ -2,6 +2,7 @@ import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
+import { EXAMPLE_EVENT, exampleCommands } from "../ui/tutorialExample";
 import { libraryAssetId } from "../net/builtinAssets";
 import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { imageSize, nameFromFile } from "../net/imageFile";
@@ -319,6 +320,21 @@ function MapSection(props: {
     [props.connection, props.roomId, props.token, editorSession],
   );
   const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, draft) } : props.room;
+  // The guest demo's Show me draws a sample wall, terrain or fog into this draft; nothing is saved until the GM saves.
+  const exampleNow = useRef({ draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } });
+  exampleNow.current = { draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } };
+  useEffect(() => {
+    if (!editorOpen) return;
+    const draw = (event: Event) => {
+      const now = exampleNow.current;
+      if (!now.draft) return;
+      void (async () => {
+        for (const command of exampleCommands((event as CustomEvent<string>).detail, now.draft!, now.grid, now.map)) await now.draftEdits.command(command);
+      })();
+    };
+    window.addEventListener(EXAMPLE_EVENT, draw);
+    return () => window.removeEventListener(EXAMPLE_EVENT, draw);
+  }, [editorOpen]);
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
     if (geometryChanged && draft && !sameValue(draft.terrain ?? emptyTerrain(), props.room.terrain ?? emptyTerrain())) {

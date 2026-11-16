@@ -5,6 +5,7 @@ import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
 import type { RoomConnection } from "../net/roomConnection";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
+import { EXAMPLE_STEPS } from "./tutorialExample";
 import { damageWaiting, demoTokenIds, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
@@ -158,6 +159,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
+  /** The lesson's editor tab is the open one, so Show me has nothing to open. */
+  const [tabSelected, setTabSelected] = useState(false);
+  const [example, setExample] = useState<string | null>(null);
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -185,7 +189,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const onScreen = !!rect && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
-      setHidden(!onScreen);
+      // Show me is for a control the GM cannot fully see: hidden, off screen or cut off by the viewport edge.
+      setHidden(!(onScreen && rect.top >= 0 && rect.left >= 0 && rect.bottom <= vh && rect.right <= vw));
+      setTabSelected(!!stepName && !!document.querySelector(`dialog.map-editor[open] [data-tutorial-editor-step="${stepName}"][aria-selected="true"]`));
       // Not the board, nor anything over half the screen: dimming around those would dim the room.
       // A phone's control is often full width (Start encounter, Roll to hit), so width only rules out the board there if it is huge too.
       const small = onScreen && rect.height < vh / 2 && (rect.width < vw / 2 || (vw < BESIDE_MIN_WIDTH && !found!.classList.contains("board")));
@@ -215,6 +221,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       anchor?.removeAttribute("data-tutorial-active");
     };
   }, [shown, stepName]);
+  useEffect(() => setExample(null), [stepName]);
 
   // Focus follows the GM's own move through the card (question, Yes, Start, restart); a step reached by acting
   // elsewhere is only announced, so the board keeps focus and its Escape.
@@ -249,6 +256,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const showMe = () => {
     focusNext.current = false;
     reveal(stepName!);
+    if (EXAMPLE_STEPS.has(stepName!)) setExample(stepName!);
     // Tabs and the sidebar open on their own timing; look for the control once they have.
     window.setTimeout(() => anchorFor(stepName!)?.scrollIntoView({ block: "center" }), 500);
   };
@@ -286,9 +294,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
               : stepName === "damage" && waitingDamage ? t("tutorial.damage.bodyRolled")
               : t(`tutorial.${stepName!}.body` as TextId)}
           </p>
+          {example === stepName && EXAMPLE_STEPS.has(stepName!) && <p className="muted" role="status">{t(`tutorial.example.${stepName}` as TextId)}</p>}
           {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
-            {(hidden || EDITOR_TUTORIAL_STEPS.has(stepName!) || OPENS_DIALOG.has(stepName!)) && REVEALABLE.has(stepName!) && (
+            {REVEALABLE.has(stepName!) && (EXAMPLE_STEPS.has(stepName!) || (EDITOR_TUTORIAL_STEPS.has(stepName!) || OPENS_DIALOG.has(stepName!) ? !tabSelected : hidden)) && (
               <button type="button" className="small primary" onClick={showMe}>{t("tutorial.showMe")}</button>
             )}
             {stepName === "encounter" && (
