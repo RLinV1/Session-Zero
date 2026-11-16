@@ -2981,10 +2981,12 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
   background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
   border-radius: var(--radius-surface); box-shadow: 0 10px 28px var(--shadow);
   font-size: var(--fs-sm);
+  max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; overscroll-behavior: contain;
 }
 .guest-tutorial.sheet {
   left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
   width: auto; max-width: 28rem; margin-inline: auto;
+  max-height: min(55dvh, calc(100dvh - 2 * var(--space-4)));
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
 .guest-tutorial.is-intro {
@@ -2994,14 +2996,20 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 }
 /* In the map editor, keep the mobile HUD and the tab bar available around the lesson. */
 .map-editor .guest-tutorial.sheet-top, .map-picker .guest-tutorial.sheet-top, .share-modal .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
-.guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
+.guest-tutorial h2 { margin: 0; font-size: var(--fs-md); text-wrap: balance; }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.guest-tutorial p { margin: 0; }
+.guest-tutorial p { margin: 0; text-wrap: pretty; }
+.guest-tutorial .guide-card-head { min-height: 1.25rem; }
+.guest-tutorial .tutorial-actions > .row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.guest-tutorial .tutorial-actions > .row:empty { display: none; }
 .guest-tutorial .tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .guest-tutorial .tutorial-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
 .guest-tutorial .tutorial-nav:empty { display: none; }
 .guest-tutorial .tutorial-nav button { min-width: 5rem; }
+.guest-tutorial .tutorial-actions button { white-space: nowrap; }
 .guest-tutorial .guide-skip { margin-left: auto; }
+.guest-tutorial .tutorial-nav:has(> .guide-skip) { display: flex; }
+.guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
 /* Highlight the control without dimming the map or taking clicks. Under the card (40). */
 .tutorial-spotlight {
@@ -3044,7 +3052,7 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:not(:last-child) { display: none; }
 .guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:last-child { display: list-item; list-style: none; }
 .guest-tutorial.has-example[data-playing="true"] .tutorial-body,
-.guest-tutorial.has-example[data-playing="true"] .tutorial-progress .guide-count { display: none; }
+
 .guest-tutorial.is-following::before { display: none; }
 .guest-tutorial.is-following { max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; }
 @media (min-width: 640px) {

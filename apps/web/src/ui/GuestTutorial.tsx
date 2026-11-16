@@ -364,6 +364,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) void start(stepName!);
   };
 
+  // Shown in the header, and in the button row while an example plays (the header's count is hidden then).
+  const skipButton = stepName !== "done" && <button type="button" className="link guide-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>;
   const content = (
     <>
     {spot && !asking && !run.playing && <div className="tutorial-spotlight" aria-hidden="true" style={spot} />}
@@ -394,7 +396,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
         <>
           <div className="guide-card-head tutorial-progress">
             <span className="guide-count">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</span>
-            {stepName !== "done" && <button type="button" className="link guide-skip" onPointerDown={() => { skipWhilePlaying.current = run.playing; }} onKeyDown={() => { skipWhilePlaying.current = run.playing; }} onClick={() => { const playing = skipWhilePlaying.current || run.playing; skipWhilePlaying.current = false; if (playing) stop(); else set("done"); }}>{t("tutorial.skip")}</button>}
+            {!run.playing && skipButton}
           </div>
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
           <p className="tutorial-body">
@@ -440,6 +442,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             )}
           </div>
           <div className="tutorial-nav">
+            {run.playing && skipButton}
           {stepName !== "table" && stepName !== "done" && !run.playing && (
             <button type="button" className="small primary" onClick={() => {
               focusNext.current = true;
