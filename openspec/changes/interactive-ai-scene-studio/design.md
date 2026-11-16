@@ -1,6 +1,6 @@
 # Design
 
-**Status:** Proposed design for review. This file selects an approach for planning; it is not an implementation or architecture sign-off. See [proposal.md](proposal.md) for motivation and scope, [research.md](research.md) for evidence, and [tasks.md](tasks.md) for delivery gates.
+**Status:** Architecture review accepted by Raymond on 2026-11-16 at `6f645f29`; M0 amendments to D2, D7, D8 and D9 approved by the user the same day. Implementation proceeds milestone by milestone. See [proposal.md](proposal.md) for motivation and scope, [research.md](research.md) for evidence, and [tasks.md](tasks.md) for delivery gates.
 
 ## Context
 
@@ -55,6 +55,13 @@ Extract the canvas and useful layers from existing web components. A website she
 Use a bundled `ui://` resource served by `apps/mcp`. Keep HTML templates static and credential-free. One open/render tool establishes the workspace; data and mutation tools do not create another iframe for every operation. Do not depend on unrelated tool results automatically reaching an already-open view: refresh the backend's versioned workspace explicitly through the bridge.
 
 A mounted view refreshes immediately after its own operations and on focus, and polls while visible for other tool writes. Start with a five-second fallback interval, within current rate limits; shorten only after measuring aggregate tool traffic. Pause when hidden, stop on teardown, and show stale/offline status. The acceptance target is a saved batch visible within one active refresh interval, without manual site navigation. Shared state never depends on an iframe remaining mounted.
+
+**M0 amendments (approved 2026-11-16; evidence in research.md "M0 host results"):**
+
+- `apps/mcp` uses MCP SDK 2.x (`@modelcontextprotocol/server`/`node`/`client`, exact pins) with `@modelcontextprotocol/ext-apps`. ChatGPT speaks only protocol `2026-07-28`; 2025-era clients remain supported on the same routes.
+- The host snapshots a connector's tool list and `ui://` templates. Every release that changes the view or tools uses a new content-versioned `ui://` URI and a user-visible **Refresh tools** step, and the server keeps working with the previously refreshed tool list until then.
+- The open tool's result carries identifiers and non-sensitive status only. The host re-delivers stored tool results when a view remounts, so they can be stale; the view always loads current state through its own calls, and polling remains required.
+- Reopening: the open tool's description tells the model to call it whenever the user asks to see the Studio, and fullscreen (a side panel on web) is the primary way back. Do not rely on the host moving an earlier view in the conversation.
 
 Use inline layout and request fullscreen when available. Panels, sidebar launchers and file-library helpers are optional enhancements. Preserve useful text/image outputs and a website link for hosts without Apps. The website supplies a saved correction and a copyable prompt when no chat bridge is present; it cannot start a separate AI conversation by itself.
 
@@ -134,6 +141,13 @@ The build API independently resolves a server-verified delegated grant. A caller
 
 Passes can support a controlled M0 proof using non-sensitive fixtures. They are not the hosted release's default login experience. A template, build ID, selection ID or view ID is never a credential. Keep OAuth tokens, passes and website sessions out of launch URLs, model-readable status and committed evidence. Do not assume tool-result `structuredContent` is hidden from the model. App-only visibility and tool annotations are host controls, not server authorization.
 
+**M0 amendments (approved 2026-11-16):**
+
+- **Authorization server:** Session Zero runs its own OAuth authorization server linked to existing accounts. ChatGPT registers as a public client through dynamic client registration and uses authorization code + PKCE (S256) with the `resource` parameter; tokens are opaque, stored hashed, bound to the Studio resource and build grants, and verified by `apps/server` (introspection over HTTP). No external identity provider.
+- **Token lifetime:** about 8 hours, one working session. ChatGPT did not use refresh tokens on 401; it asks the user to reconnect. The view keeps its last state during reconnection and tells the user to resend if the AI did not continue.
+- **OIDC:** not advertised (no `/.well-known/openid-configuration`) unless Session Zero later supports the OIDC scopes the host requests; when advertised, ChatGPT enables it by default.
+- **Host request metadata** (`openai/userLocation`, `openai/subject`, `openai/session`, `openai/organization` and similar) is never an authorization input and is not logged or stored beyond operational need.
+
 No AI-facing credential acquires publication authority. In-chat owner publication/acceptance is deferred; host prompts or a model saying the owner agreed are insufficient proof for the website-only publication boundary.
 
 ### D8. Protected draft media
@@ -142,11 +156,17 @@ No AI-facing credential acquires publication authority. In-chat owner publicatio
 
 Introduce a private storage namespace that cannot be read through `/uploads`, local public static fallback, a public object-store policy or a direct storage URL. A different application route in front of the same public object is insufficient. Keep existing published/legacy asset delivery working; isolate the new private plane from the public store rather than changing all existing assets in place.
 
-Website media reads use owner authorization. Embedded media reads use a build-scoped authenticated API/bridge path, with explicitly allowed origins and CSP. Prefer authenticated response bytes rendered as view-local object URLs; a transport capability, if needed, must be short-lived, scoped to the required files and rechecked against the active grant. It must not be an unrevocable public image URL. M0 proves the display mechanism before M1 finalizes it.
+Website media reads use owner authorization. Embedded media reads use a build-scoped authenticated API/bridge path, with explicitly allowed origins and CSP. Render authenticated response bytes as `data:` URLs (or canvas drawing from decoded bytes); the host's CSP blocks `blob:` images, and `data:` was proven up to 8.4 MB in an app-only result's `_meta`. A transport capability, if needed, must be short-lived, scoped to the required files and rechecked against the active grant. It must not be an unrevocable public image URL. M0 proves the display mechanism before M1 finalizes it.
 
 Private responses and errors are not shared-cacheable. Crops and thumbnails inherit the parent's access policy and cleanup. Expired or cancelled grants cannot obtain further media bytes; recovering authentication reopens the same saved draft. UI-only payload metadata can reduce model context, but is not an access control boundary.
 
 For existing public assets, keep their provenance explicit: a new private copy cannot revoke an old URL or a recipient's cached copy. The initial guarantee covers new Studio uploads. Do not silently label previously public artwork as never disclosed; offer a clear notice and a fresh upload when the user needs a new private source.
+
+**M0 amendments (approved 2026-11-16):**
+
+- **Only app-initiated calls are a protected channel.** Private artwork, thumbnails and crops reach the view only through app-only calls that recheck the grant on every request. Tool results are not protected: the host retains them and re-delivers them after revocation.
+- **Images shown to the AI** (model-visible crops) stay in the conversation permanently. This is accepted as part of sharing with the user's AI provider and is stated in the privacy notice.
+- **Privacy notice:** artwork shared through the chat is also saved in the user's ChatGPT Library and may be used for training if the user has opted in. Session Zero's protection covers only its own storage and delivery.
 
 **Alternative considered:** using the existing unguessable URLs for the first release. Rejected by the user's explicit privacy choice.
 
@@ -155,6 +175,12 @@ For existing public assets, keep their provenance explicit: a new private copy c
 Provide an embedded Add files path for map and token uploads. When available, add explicit import of authorized chat attachments using host file metadata. The UI reports queued/uploaded/failed per file, binds the result to the correct build and permits retry without duplicated files. Reuse build quotas, byte/type/dimension validation and decoding limits; do not send bulk file bytes through ordinary JSON tool arguments.
 
 Remote download descriptors are untrusted. Bound download size, redirects and time; reject private-network targets and unsupported origins; do not attach build/OAuth credentials to the source download. Determine host URL rules from the actual M0 exchange and primary documentation, not a guessed fixed list of vendor storage domains.
+
+**M0 amendments (approved 2026-11-16):**
+
+- **Chat attachments are a primary intake route**, alongside the Studio's own Add files buttons (host file picker and device upload), because users already know the chat's attach button. The open/set-up tool accepts attached files directly (`openai/fileParams`), so attaching a map and asking for the Studio imports it without depending on the model choosing a separate import tool. All three routes delivered byte-identical originals in M0.
+- **Allowed download origins** are an exact list of the two observed hosts, `*.oaiusercontent.com` (chat attachments) and the Azure Blob host used by the host file picker and device upload, each with its provenance recorded. Any new origin is refused until reviewed.
+- **Download on receipt.** Observed descriptor lifetimes were 5 and 10 minutes. Never hold a descriptor for later.
 
 Receiving an expired link leaves the existing draft intact and asks for another file selection. Do not substitute a low-resolution chat preview for the original silently. An independent original-file hash check proves M0's transfer; image normalization and working coordinates are recorded separately as D3 describes.
 

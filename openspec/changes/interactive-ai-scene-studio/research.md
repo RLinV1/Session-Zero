@@ -298,18 +298,35 @@ Two throwaway Node scripts constructed the SDK 1.32.2 transport exactly as `apps
 7. **OIDC is enabled by default if `/.well-known/openid-configuration` answers.** → The M1 authorization server must either support the OIDC scopes ChatGPT requests or not advertise OIDC.
 8. **Request `_meta` carries `openai/userLocation`, `openai/subject`, `openai/session`, `openai/organization`.** → M1 must not log or store these beyond what is needed; `openai/subject` is not an authorization input.
 9. **Fullscreen is a large side panel on web** with resize notifications. Adequate for the canvas; layouts must handle container-dimension changes.
-10. **(2026-11-16) A view message sent while the model is answering interrupts that answer** rather than queueing or being refused. → M4's send control must say that sending stops the AI's current reply; the request record (saved → handed off → observed) remains the source of truth, since the interrupted answer may have been mid-change.
+10. **(2026-11-16) A view message sent while the model is answering interrupts that answer** rather than queueing or being refused. → The request record (saved → handed off → observed) remains the source of truth, since the interrupted answer may have been mid-change. (A UI warning was proposed and declined.)
 11. **(2026-11-16) Descriptor lifetime varies by route and run (5 and 10 minutes observed).** → Treat lifetime as unknown and short: download on receipt, never queue a descriptor for later, and keep the re-select message for expiry.
-12. **(2026-11-16) Asking to "show the Studio again" did not make the model call the open tool**; it answered with a crop, and the existing view stayed at its original place in the conversation. Whether a second open call renders a new view lower down was not tested. → Steer reopening through the open tool's description and offer fullscreen as the way back to the Studio; do not rely on the host moving an earlier view.
-13. **(2026-11-16, harness defect, not host behavior)** The browser's native image drag took over the region gesture and cancelled pointer events, so the selection box only appeared at the end. Fixed in `63b1e91a` (non-draggable image, `preventDefault`, cancel handling, clamping) and confirmed live by the user. → M4 selection (task 5.1) must carry the same handling.
+12. **(2026-11-16) Chat-attachment import depends on the request.** Attaching a file and asking only to open the Studio did not import it (the model opened the fixture view); attaching a map and asking the AI to set up the Studio with it did: the model called the import tool (`openai/fileParams`, `*.oaiusercontent.com`) and then opened the view, which displayed the 1.3 MB image via `data:`. This ran on the post-review server (`3517078b`) and doubles as its real-host smoke check. → Amendment 15: the open tool takes the attachment directly.
+13. **(2026-11-16) Asking to "show the Studio again" did not make the model call the open tool**; it answered with a crop, and the existing view stayed at its original place in the conversation. Whether a second open call renders a new view lower down was not tested. → Steer reopening through the open tool's description and offer fullscreen as the way back to the Studio; do not rely on the host moving an earlier view.
+14. **(2026-11-16, harness defect, not host behavior)** The browser's native image drag took over the region gesture and cancelled pointer events, so the selection box only appeared at the end. Fixed in `63b1e91a` (non-draggable image, `preventDefault`, cancel handling, clamping) and confirmed live by the user. → M4 selection (task 5.1) must carry the same handling.
 
-### Design amendment candidates (for review; not applied to design.md)
+### Design amendment decisions — 2026-11-16
 
-- **D2:** polling is required (confirmed); add content-versioned template URIs and the connector refresh step; the open tool result carries no gated data.
-- **D7:** record that ChatGPT used DCR with a public PKCE client, sends `resource`, does not refresh on 401, and needs OIDC either supported or not advertised. Proposed M1 shape stands: Session Zero authorization server, opaque hashed tokens, `apps/server` introspection.
-- **D8:** replace "object URLs" with `data:` rendering; app-only media calls are the only gated channel; tool results are not.
-- **D9:** two observed host origins with different provenance (the device-upload route uses the same Azure Blob origin as `selectFiles`); 5–10 minute descriptor lifetimes; Library side effect and provider-retention notice.
-- **M4 (tasks 5.1/5.3), not a design section:** sending from the view interrupts an in-progress answer; region drag must suppress native image drag.
+Decided by the user with the architecture reviewer (Raymond) present; applied to design.md and ADR 0073.
+
+| # | Amendment | Decision |
+| --- | --- | --- |
+| 1 | MCP SDK 2.x for `apps/mcp` | Approved |
+| 2 | Content-versioned `ui://` URIs and a **Refresh tools** step per release; server stays compatible with the last refreshed tool list (D2) | Approved |
+| 3 | Open tool returns ids/status only; view loads current state itself; polling required (D2) | Approved |
+| 4 | Reopen through the open tool's description and fullscreen; don't rely on the host moving a view (D2) | Approved |
+| 5 | Session Zero's own OAuth server: DCR public client, PKCE, `resource`, opaque hashed tokens verified by `apps/server` (D7) | Approved (5a; external IdP declined) |
+| 6 | Access tokens last about 8 hours (D7) | Approved (6a) |
+| 7 | Don't advertise OIDC (D7) | Approved |
+| 8 | Host request metadata is never an authorization input and isn't logged or stored (D7) | Approved |
+| 9 | Render view images as `data:` URLs (D8) | Approved |
+| 10 | Only app-initiated calls carry private bytes; tool results are not protected (D8) | Approved |
+| 11 | Model-visible crops stay in the chat; stated in the privacy notice (D8) | Approved (11a) |
+| 12 | Privacy notice covers ChatGPT Library retention and opt-in training (D8) | Approved |
+| 13 | Exact allowlist of both observed download hosts with provenance; new hosts reviewed (D9) | Approved (13a) |
+| 14 | Download descriptors on receipt (D9) | Approved |
+| 15 | Intake route priority (D9) | **Revised:** chat attachments are a primary route alongside the Studio's buttons, because users know the attach button; the open/set-up tool accepts attachments directly via `openai/fileParams` so import does not depend on the model choosing a separate tool. |
+| 16 | "Send selection" warns that it stops the AI's answer (M4) | **Declined** as clutter; the interruption is recorded as host behavior only. |
+| 17 | Region selection suppresses native image drag (M4, task 5.1) | Approved |
 
 ## Recording a later finding
 

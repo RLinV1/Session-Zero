@@ -11,7 +11,7 @@
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
-- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. ADR 0073 architecture review: **reported accepted by the user on 2026-11-16**; reviewer, reviewed revision and record not yet supplied, so ADR 0073's status line is unchanged. Product review of the complete packet: **not reported**. M0: **tasks 1.1–1.9 complete on 2026-11-16** (see "M0 close-out" below); one recommended real-host smoke check of the post-review request-serving change is open. Production: **unverified**.
+- First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. ADR 0073 architecture review: **accepted by Raymond on 2026-11-16 at `6f645f29`** (reported by the user, with Raymond present); ADR 0073 is now Accepted. M0 design amendments: **decided by the user on 2026-11-16** and applied to design.md (research.md "Design amendment decisions"). M0: **complete on 2026-11-16**, including a real-host run of the post-review server (see "M0 close-out" below). Production: **unverified**.
 
 ## Read order
 
@@ -114,14 +114,16 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 
 **Checks:** on `3517078b`, `npm run lint`, `npm run typecheck` and `npm test` exit 0; the MCP workspace has 18 files / 271 tests. The implementing agent read the review commits, including the request-serving change, and found no defect. Through the tunnel, the reviewed server answered health 200, an unauthenticated MCP request 401 and a JSON token request 400.
 
-**Qualification:** host evidence covers code up to `63b1e91a`. `fadf121d` changed request serving after the last host run and is verified locally only. Recommended before M1 host work: reconnect the test plugin, open the view, let one model call and one view call succeed, and check the evidence log.
+**Qualification:** M0 is qualified. The post-review server (`3517078b`) passed a real-host run after the review: reconnect, a model import of a chat attachment, open, and app-only media calls (evidence file, "Follow-up run"). That run also showed chat-attachment import works when the user asks the AI to set up the Studio with the attached map, which led to the revised intake decision (research.md amendment 15).
 
 **State left behind:**
-- Tunnel `ripe-resort-donations-classified.trycloudflare.com` and the server on `3517078b` were left running for that smoke check; stop both afterwards. The address dies with the tunnel.
+- Tunnel and test server stopped at the end of the session; the `ripe-resort-…` address is dead, so both ChatGPT test plugins now point at nothing.
 - ChatGPT: plugin "Session Zero Studio M0 (test 2)" installed; the old "Session Zero Studio M0 (test)" still points at a dead address. New test chats and the `m0-device-upload` fixture are in the user's history and Library.
 - Fixture file outside the repo: `/Users/chrispsimadas/Projects/VirtualTableTop/m0-upload-fixture/m0-device-upload.png` (synthetic).
 
-**Next:** record the architecture reviewer and reviewed revision (then update ADR 0073's status), obtain or record product review, decide the design amendment candidates (research.md D2/D7/D8/D9 and the M4 notes), merge or otherwise publish the M0 branch, and write the M1a starter. M1 was not started.
+**Design decisions (2026-11-16):** all proposed amendments approved, with 5a (own OAuth server) and 6a (≈8-hour tokens); intake revised so chat attachments are a primary route; the "Send selection" interruption warning declined. Applied to design.md D2/D7/D8/D9 and ADR 0073.
+
+**Next:** merge or otherwise publish the M0 branch (it also carries the unmerged planning commit), then start M1a from a starter prompt naming the merged base. M1 was not started.
 
 ## M0 overnight session, 2026-11-14 (autonomous)
 
