@@ -117,7 +117,7 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await showMe(true);
 
     await step(16, "You are all set");
-    await expect(card.getByRole("button", { name: "Remove demo tokens" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Finish" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("done.png") });
   } finally { socket.disconnect(); }
 });

@@ -450,7 +450,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           </div>
           <div className="tutorial-nav">
           {stepName !== "table" && stepName !== "done" && !run.playing && (
-            <button type="button" className="small primary" onClick={() => {
+            <button type="button" className="small primary" aria-label={t("tutorial.next")} onClick={() => {
               focusNext.current = true;
               const next = settle(step! + 1, facts);
               set(next);
