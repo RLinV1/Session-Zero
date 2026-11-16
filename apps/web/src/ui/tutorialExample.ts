@@ -1,9 +1,39 @@
 import type { TextId } from "../i18n/locale";
-import { cellAt, type CommandInput, type GridSpec, type Point } from "@vtt/shared";
+import { cellAt, distanceToSegment, sameValue, terrainCells, type CommandInput, type GridSpec, type PaintRun, type Point, type Token } from "@vtt/shared";
 import type { MapDraft } from "../pages/mapEditor/mapDraft";
 
 /** Editor lessons whose Show me animates the real tools; all but grid leave a sample in the editor's unsaved draft (guest-gm-hosting). */
 export const EXAMPLE_STEPS: ReadonlySet<string> = new Set(["grid", "walls", "fog", "sight", "terrain"]);
+
+/** Remove only this run's sample; preserve existing work and any sample the guest subsequently edited. */
+export function sampleCleanup(before: MapDraft, after: MapDraft, current: MapDraft): CommandInput[] {
+  const commands: CommandInput[] = [];
+  const retained = new Set<string>();
+  const restore: Omit<MapDraft["walls"][string], "id">[] = [];
+  // Adding a portal can split an existing solid wall into new ids. Those pieces belong to the guest too.
+  for (const wall of Object.values(before.walls)) {
+    if (after.walls[wall.id] || current.walls[wall.id]) continue;
+    const pieces = Object.values(after.walls).filter((part) => !before.walls[part.id] && distanceToSegment(part.a, wall) < 0.01 && distanceToSegment(part.b, wall) < 0.01);
+    if (pieces.every((part) => sameValue(current.walls[part.id], part))) {
+      const { id: _id, ...original } = wall;
+      restore.push(original);
+    } else for (const part of pieces) retained.add(part.id);
+  }
+  const wallIds = Object.keys(after.walls).filter((id) => !before.walls[id] && !retained.has(id) && sameValue(current.walls[id], after.walls[id]));
+  if (wallIds.length) commands.push({ type: "wall.remove", wallIds });
+  if (restore.length) commands.push({ type: "wall.add", walls: restore });
+  for (const id of Object.keys(after.fog)) if (!before.fog[id] && sameValue(current.fog[id], after.fog[id])) commands.push({ type: "fog.remove", regionId: id });
+  const old = terrainCells(before.terrain?.base ?? []), sample = terrainCells(after.terrain?.base ?? []), now = terrainCells(current.terrain?.base ?? []);
+  const paint: PaintRun[] = [];
+  for (const key of new Set([...old.keys(), ...sample.keys()])) {
+    if (old.get(key) === sample.get(key) || now.get(key) !== sample.get(key)) continue;
+    const [row, col] = key.split(":").map(Number);
+    paint.push({ row: row!, start: col!, end: col!, kind: old.get(key) ?? null });
+  }
+  if (paint.length) commands.push({ type: "terrain.paint", layerId: "base", context: current.terrainContext ?? { boardEpoch: 0, revision: 0 }, paint });
+  if (before.lineOfSight !== after.lineOfSight && current.lineOfSight === after.lineOfSight) commands.push({ type: "scene.setLineOfSight", enabled: before.lineOfSight });
+  return commands;
+}
 
 export const key = (a: Point, b: Point) => [a, b].map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).sort().join("|");
 const near = (a: number, b: number) => Math.abs(a - b) < 1;
@@ -64,10 +94,26 @@ export const EXAMPLE_API_EVENT = "vtt:tutorial-api";
 export const EXAMPLE_EVENT = "vtt:tutorial-example";
 /** The Sight step's test token, driven by the demo (it is local to the step, so never saved). */
 export const EXAMPLE_SIGHT_EVENT = "vtt:tutorial-sight";
+/** The board lends screen coordinates to the tutorial; actions still use its real pointer handlers. */
+export const EXAMPLE_BOARD_EVENT = "vtt:tutorial-board";
+export interface ExampleBoardApi {
+  screen: (point: Point) => Point;
+  place: Point;
+  token: Token | null;
+  destination: Point;
+  focus: () => void;
+  cancel: () => void;
+}
+export function exampleBoard(): ExampleBoardApi | null {
+  const holder: { api: ExampleBoardApi | null } = { api: null };
+  window.dispatchEvent(new CustomEvent(EXAMPLE_BOARD_EVENT, { detail: holder }));
+  return holder.api;
+}
 export type SightExample = { op: "place"; at: Point } | { op: "move"; dx: number; dy: number } | { op: "clear" };
 
 /** What the editor lends the demo: the same draft commands its tools send. */
 export interface ExampleApi {
+  session: object;
   draft: () => MapDraft | null;
   command: (command: CommandInput) => Promise<unknown>;
   grid: GridSpec;
@@ -84,8 +130,12 @@ export interface ExampleSub {
   /** Left out when this returns true. */
   skip?: () => boolean;
   /** Board point to move the pointer to; with `from`, the pointer drags from there. */
-  at?: Point;
-  from?: Point;
+  at?: Point | (() => Point | null);
+  from?: Point | (() => Point | null);
+  /** Coordinates belong to the room board; dispatch the same pointer events as a real placement or drag. */
+  board?: boolean;
+  /** Type through the input's native change event, so the real form and preview update. */
+  input?: string | (() => string);
   /** A click pulse at the pointer once it arrives. */
   click?: boolean;
   /** The draft or editor change the real tool would make, applied when the pointer arrives. */

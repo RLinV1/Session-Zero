@@ -70,10 +70,10 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
   const tutorial = page.locator(".guest-tutorial");
   const editor = page.locator("dialog.map-editor[open]");
   await expect(tutorial.getByRole("heading")).toHaveText("Prepare the map", { timeout: 30_000 });
-  // The map lesson's Show me points at Edit map and Change map without opening either.
+  // The pointer opens Edit map, shows its tools, then opens Change map and its map chooser control.
   await tutorial.getByRole("button", { name: /^(Show me|Replay)$/ }).click();
-  await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).toHaveCount(2, { timeout: 15_000 });
-  await expect(editor).toHaveCount(0);
+  await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).toHaveCount(5, { timeout: 15_000 });
+  await expect(editor).toBeVisible();
   const selected = editor.locator('[role="tab"][aria-selected="true"]');
   for (const [title, label] of [["Line up the grid", "Grid"], ["Draw walls, doors and windows", "Walls"], ["Hide part of the map", "Fog"], ["Test what players can see", "Sight"], ["Paint terrain", "Terrain"]] as const) {
     await tutorial.getByRole("button", { name: "Next step" }).click();
@@ -90,7 +90,6 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
   }
 });
 
-const SHOTS = "C:/Users/rlin7/AppData/Local/Temp/claude/4b1c7420942e1b01/a0839159-3e14-45d4-af01-900ab9d0c624/scratchpad/shots2";
 const EDITOR_LESSONS = [
   ["grid", "Grid", "Line up the grid"],
   ["walls", "Walls", "Draw walls, doors and windows"],
@@ -125,7 +124,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
         const editor = page.locator("dialog.map-editor[open]");
         const selected = editor.locator('[role="tab"][aria-selected="true"]');
         const showMe = tutorial.getByRole("button", { name: /^(Show me|Replay)$/ });
-        const shot = (file: string) => page.screenshot({ path: `${SHOTS}/${name}-${file}.png` });
+        const shot = (file: string) => page.screenshot({ path: info.outputPath(`${name}-${file}.png`) });
         /** The map section's buttons, opening the Manage tab the way a GM would. */
         const gmButton = async (text: string) => {
           const button = page.getByRole("button", { name: text, exact: true });
@@ -175,7 +174,6 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
   }
 }
 
-const ANIM = "C:/Users/rlin7/AppData/Local/Temp/claude/4b1c7420942e1b01/a0839159-3e14-45d4-af01-900ab9d0c624/scratchpad/anim";
 /** Which sub-step (0-based) each process frame waits for; the pointer needs a moment after the caption moves on. */
 const FRAMES = { walls: [1, 2, 3, 5], terrain: [1, 4, 7], fog: [1, 2], sight: [1, 2, 3] } as const;
 for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844]] as const) {
@@ -210,7 +208,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844
         await expect(items.nth(index)).toHaveAttribute("data-state", "current", { timeout: 30_000 });
         // The pace is 3x here: the pointer lands after about 1.4 s and the click pulse and change follow.
         await page.waitForTimeout(step === "fog" && index === 1 ? 1900 : 1600);
-        await page.screenshot({ path: `${ANIM}/${name}-${step}-process-${++frame}.png` });
+        await page.screenshot({ path: info.outputPath(`${name}-${step}-process-${++frame}.png`) });
         // The animated area and the card never overlap.
         const card = await tutorial.boundingBox();
         expect(card).toBeTruthy();
@@ -227,7 +225,7 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844
       // A real click stops a run in the middle and leaves a draft that is still valid and unsaved.
       await tutorial.getByRole("button", { name: "Replay" }).click();
       await expect(items.nth(1)).toHaveAttribute("data-state", "current", { timeout: 20_000 });
-      await editor.getByRole("heading").first().click();
+      await page.keyboard.press("a");
       await page.waitForTimeout(1500);
       await expect(tutorial.locator('.tutorial-ex li[data-state="current"]')).toHaveCount(1);
       await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).not.toHaveCount(total);

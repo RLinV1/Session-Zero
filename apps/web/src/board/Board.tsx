@@ -23,6 +23,8 @@ import type { DiceSkin } from "../ui/diceSkin";
 // Lets Pixi run under a CSP without 'unsafe-eval'.
 import "pixi.js/unsafe-eval";
 import { BoardView, type GmFogView } from "./boardView";
+import { EXAMPLE_BOARD_EVENT, type ExampleBoardApi } from "../ui/tutorialExample";
+import { demoSpots } from "../ui/tutorialDemo";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
 import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
@@ -417,6 +419,30 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   };
   const placeRef = useRef(place);
   placeRef.current = place;
+
+  useEffect(() => {
+    const lend = (event: Event) => {
+      const view = viewRef.current;
+      const canvas = hostRef.current?.querySelector("canvas");
+      if (!view || !canvas || latest.current.you.role !== "gm" || latest.current.readOnly) return;
+      const state = latest.current.state;
+      const tokens = Object.values(state.tokens);
+      const token = tokens.find((token) => token.name.startsWith(t("tutorial.demo.hero"))) ?? tokens[0] ?? null;
+      const [place, destination] = demoSpots(state);
+      (event as CustomEvent<{ api: ExampleBoardApi | null }>).detail.api = {
+        screen: (point) => {
+          const rect = canvas.getBoundingClientRect(), transform = view.transform;
+          return { x: rect.left + transform.x + point.x * transform.scale, y: rect.top + transform.y + point.y * transform.scale };
+        },
+        place, token,
+        destination: token && Math.hypot(token.position.x - destination.x, token.position.y - destination.y) < state.scene.grid.cellSize / 2 ? place : destination,
+        focus: () => { if (token) view.focusToken(token.id); },
+        cancel: () => { view.cancelMovement(); },
+      };
+    };
+    window.addEventListener(EXAMPLE_BOARD_EVENT, lend);
+    return () => window.removeEventListener(EXAMPLE_BOARD_EVENT, lend);
+  }, []);
 
   useEffect(() => {
     const view = new BoardView(hostRef.current!, {

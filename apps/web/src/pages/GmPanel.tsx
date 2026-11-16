@@ -327,7 +327,7 @@ function MapSection(props: {
     if (!editorOpen) return;
     const lend = (event: Event) => {
       const now = exampleNow.current;
-      (event as CustomEvent<{ api: ExampleApi | null }>).detail.api = { draft: () => exampleNow.current.draft, command: (command) => exampleNow.current.draftEdits.command(command), grid: now.grid, map: now.map };
+      (event as CustomEvent<{ api: ExampleApi | null }>).detail.api = { session: editorSession, draft: () => exampleNow.current.draft, command: (command) => exampleNow.current.draftEdits.command(command), grid: now.grid, map: now.map };
     };
     window.addEventListener(EXAMPLE_API_EVENT, lend);
     return () => window.removeEventListener(EXAMPLE_API_EVENT, lend);

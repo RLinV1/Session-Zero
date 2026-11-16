@@ -35,7 +35,7 @@ const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
 const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", ...COMBAT_TUTORIAL_STEPS]);
-const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open]";
+const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open], dialog.tutorial-token-dialog[open]";
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
@@ -67,6 +67,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   reveal: (step: (typeof TUTORIAL_STEPS)[number], demo?: boolean) => void;
 }) {
   const guest = useGuestRoom();
+  const { run, start, stop, clear } = useExampleRun();
   const [progress, setProgress] = useState<Progress>(() => loadProgress(roomId));
   const [moves, setMoves] = useState(0);
   const [mapEdits, setMapEdits] = useState(0);
@@ -133,7 +134,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
-  const settled = step !== null && step > 0 ? settle(step, facts) : step;
+  // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
+  const settled = !run.playing && step !== null && step > 0 ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
@@ -158,7 +160,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
-  const { run, start, stop, clear } = useExampleRun();
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -191,8 +192,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       const small = onScreen && rect.height < vh / 2 && (rect.width < vw / 2 || (vw < BESIDE_MIN_WIDTH && !found!.classList.contains("board")));
       const ring = small ? { top: rect.top - RING_PAD, left: rect.left - RING_PAD, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * RING_PAD } : null;
       setSpot((old) => (old && ring && old.top === ring.top && old.left === ring.left && old.width === ring.width && old.height === ring.height ? old : ring));
-      // A bottom sheet that would cover the spotlit control moves to the top instead.
-      setDockTop(vw < BESIDE_MIN_WIDTH && (!!editor || !!card && !!rect && small && rect.bottom > vh - GUTTER - card.offsetHeight));
+      // Keep the phone card clear of both the current tool and the moving pointer, including Sight's top HUD.
+      if (vw < BESIDE_MIN_WIDTH && card) {
+        const ownControl = card.contains(document.querySelector("[data-tutorial-ring]"));
+        const targets = [small ? rect : null, ...Array.from(document.querySelectorAll("[data-tutorial-ring], .example-cursor"))
+          .filter((el) => !card.contains(el) && !(ownControl && el.classList.contains("example-cursor"))).map((el) => el.getBoundingClientRect())]
+          .filter((target): target is DOMRect => !!target && target.height > 0 && target.height < vh / 2 && target.bottom > 0 && target.top < vh);
+        const top = editor && !editor.classList.contains("tutorial-token-dialog") ? 80 : GUTTER;
+        const bottom = vh - GUTTER - card.offsetHeight;
+        const overlaps = (y: number) => targets.some((target) => y < target.bottom + 8 && y + card.offsetHeight > target.top - 8);
+        setDockTop(editor ? !overlaps(top) || overlaps(bottom) : overlaps(bottom) && !overlaps(top));
+      } else setDockTop(false);
       if (!card || !small || vw < BESIDE_MIN_WIDTH) return setPlace(null);
       const below = rect.bottom + 8 + card.offsetHeight <= vh - GUTTER;
       const top = below ? rect.bottom + 8 : Math.max(GUTTER, rect.top - 8 - card.offsetHeight);
@@ -217,10 +227,14 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   }, [shown, stepName]);
   // The editor tab opens, then asks for its lesson's animation.
   useEffect(() => {
-    const on = (e: Event) => void start((e as CustomEvent<string>).detail);
+    if (!shown) return;
+    const on = (e: Event) => {
+      const requested = (e as CustomEvent<string>).detail;
+      if (requested === stepName) void start(requested);
+    };
     window.addEventListener(EXAMPLE_EVENT, on);
     return () => window.removeEventListener(EXAMPLE_EVENT, on);
-  }, [start]);
+  }, [start, shown, stepName]);
   useEffect(() => stop, [stepName, stop]);
 
   // Focus follows the GM's own move through the card (question, Yes, Start, restart); a step reached by acting
@@ -259,9 +273,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     focusNext.current = false;
     reveal(stepName!, true);
     // An editor lesson is started by the editor tab opening (RoomPage); the others, once what they point at is on screen.
-    if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) window.setTimeout(() => void start(stepName!), 400);
-    // Tabs and the sidebar open on their own timing; look for the control once they have.
-    window.setTimeout(() => anchorFor(stepName!)?.scrollIntoView({ block: "center" }), 500);
+    if (!EDITOR_TUTORIAL_STEPS.has(stepName!)) void start(stepName!);
   };
 
   const content = (
@@ -273,7 +285,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${docked ? " has-example" : ""}`}
+      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}`}
       data-side={place?.side}
       style={place && !docked ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
@@ -305,7 +317,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
               ))}
             </ol>
           )}
-          {run.step === stepName && !run.playing && run.captions.length > 0 && EXAMPLE_STEPS.has(stepName!) && stepName !== "grid" && <p className="muted small-print" role="status">{t("tutorial.note")}</p>}
+          {run.step === stepName && run.index === run.captions.length && run.captions.length > 0 && EXAMPLE_STEPS.has(stepName!) && stepName !== "grid" && <p className="muted small-print" role="status">{t("tutorial.note")}</p>}
           {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
             {REVEALABLE.has(stepName!) && (
@@ -335,8 +347,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
                 const openNext = () => { if (stepName === "map" || EDITOR_TUTORIAL_STEPS.has(stepName!) || COMBAT_TUTORIAL_STEPS.has(stepName!)) reveal(TUTORIAL_STEPS[next]!); };
                 // The sample comes out first, so leaving its tab does not ask to save it.
                 if (run.step === stepName && EXAMPLE_STEPS.has(stepName!)) {
-                  void clear(stepName!);
-                  window.setTimeout(openNext, 150);
+                  void clear(stepName!).then(openNext);
                 } else openNext();
               }}>{t("tutorial.next")}</button>
             )}

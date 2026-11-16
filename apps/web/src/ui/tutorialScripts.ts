@@ -1,5 +1,6 @@
 import type { GridSpec, Point } from "@vtt/shared";
-import { EXAMPLE_SIGHT_EVENT, exampleCommands, exampleCorner, key, type ExampleApi, type ExampleSub, type SightExample } from "./tutorialExample";
+import { t } from "../i18n/locale";
+import { EXAMPLE_SIGHT_EVENT, exampleBoard, exampleCommands, exampleCorner, key, type ExampleApi, type ExampleSub, type SightExample } from "./tutorialExample";
 
 const tool = (name: string) => `[data-tutorial-tool="${name}"]`;
 const demoButton = (name: string) => `.guest-tutorial [data-demo="${name}"]`;
@@ -26,14 +27,14 @@ export function exampleScript(step: string, grid: GridSpec, map: { width: number
       { caption: "tutorial.ex.clickCorner", at: C, click: true, run: (api) => void api.command({ type: "wall.add", walls: [{ a: B, b: C }] }) },
       { caption: "tutorial.ex.pickDoor", control: tool("portal"), press: true },
       { caption: "tutorial.ex.clickWall", at: { x: B.x, y: (B.y + C.y) / 2 }, click: true, run: async (api) => {
-        const wall = Object.values(api.draft()?.walls ?? {}).find((w) => key(w.a, w.b) === key(B, C));
+        const wall = Object.values(api.draft()?.walls ?? {}).reverse().find((w) => key(w.a, w.b) === key(B, C));
         if (wall) await api.command({ type: "portal.set", wallId: wall.id, portal: { kind: "door", state: "closed" } });
       } },
     ];
     case "fog": return [
       { caption: "tutorial.ex.pickRect", control: tool("rect"), press: true },
       { caption: "tutorial.ex.dragArea", from: at(c0, r0), at: at(c0 + 5, r0 + 4), run: (api) => void api.command({ type: "fog.add", region: { shape: "rect", from: at(c0, r0), to: at(c0 + 5, r0 + 4) } }) },
-      { caption: "tutorial.ex.playerView", control: tool("playerview") },
+      { caption: "tutorial.ex.playerView", control: tool("playerview"), press: true, skip: () => attr(tool("playerview"), "aria-pressed", "true") },
     ];
     case "terrain": return [
       { caption: "tutorial.ex.pickDifficult", control: tool("difficult"), press: true },
@@ -47,25 +48,43 @@ export function exampleScript(step: string, grid: GridSpec, map: { width: number
     ];
     case "sight": return [
       // A wall and a door first, so the view has something to stop at.
-      { caption: "tutorial.ex.wallsBlock", at: A, run: async (api) => { for (const command of exampleCommands("walls", api.draft()!, grid, map)) await api.command(command); } },
+      { caption: "tutorial.ex.wallsBlock", at: A, run: async (api) => { for (const command of exampleCommands("walls", api.draft()!, grid, map).filter((command) => command.type === "wall.add")) await api.command(command); } },
       { caption: "tutorial.ex.addTest", control: tool("sight-add"), at: centre(c0 + 2, r0 + 1), click: true, run: sight({ op: "place", at: centre(c0 + 2, r0 + 1) }) },
       { caption: "tutorial.ex.losOn", control: tool("sight-on"), press: true, skip: () => attr(tool("sight-on"), "aria-checked", "true") },
-      { caption: "tutorial.ex.moveTest", at: centre(c0 + 3, r0 + 2), click: true, run: sight({ op: "move", dx: 1, dy: 1 }) },
+      { caption: "tutorial.ex.moveTest", from: centre(c0 + 2, r0 + 1), at: centre(c0 + 3, r0 + 2), click: true, run: sight({ op: "move", dx: 1, dy: 1 }) },
     ];
-    case "grid": return [
-      { caption: "tutorial.ex.gridSize", control: tool("grid-cellSize") },
-      { caption: "tutorial.ex.gridOffset", control: tool("grid-offsetX") },
-    ];
+    case "grid": {
+      const size = document.querySelector<HTMLInputElement>(`${tool("grid-cellSize")} input`)?.value ?? String(grid.cellSize);
+      const offset = document.querySelector<HTMLInputElement>(`${tool("grid-offsetX")} input`)?.value ?? String(grid.offsetX);
+      return [
+        { caption: "tutorial.ex.gridSize", control: `${tool("grid-cellSize")} input`, input: String(Math.min(2000, Number(size) * 1.2)) },
+        { caption: "tutorial.ex.gridSize", control: `${tool("grid-cellSize")} input`, input: size },
+        { caption: "tutorial.ex.gridOffset", control: `${tool("grid-offsetX")} input`, input: String(Number(offset) + grid.cellSize / 4) },
+        { caption: "tutorial.ex.gridOffset", control: `${tool("grid-offsetX")} input`, input: offset },
+      ];
+    }
     case "invite": return [
+      { caption: "tutorial.ex.openMore", control: '[data-tour="guide"] > button', press: true, skip: () => !!document.querySelector('.share-button, dialog.share-modal[open]') },
       { caption: "tutorial.ex.clickShare", control: ".share-button", press: true, skip: () => !!document.querySelector("dialog.share-modal[open]") },
-      { caption: "tutorial.ex.copyLink", control: 'dialog.share-modal[open] [data-tutorial="invite"]' },
+      { caption: "tutorial.ex.copyLink", control: 'dialog.share-modal[open] [data-tutorial="invite"]', click: true },
     ];
     case "map": return [
-      { caption: "tutorial.ex.editMap", control: "[data-tutorial-editor-open]" },
-      { caption: "tutorial.ex.changeMap", control: "[data-tutorial-change-open]" },
+      { caption: "tutorial.ex.editMap", control: "[data-tutorial-editor-open]", press: true },
+      { caption: "tutorial.ex.editTools", control: 'dialog.map-editor[open] [role="tablist"]' },
+      { caption: "tutorial.ex.closeMap", control: "dialog.map-editor[open] .modal-close", press: true },
+      { caption: "tutorial.ex.changeMap", control: "[data-tutorial-change-open]", press: true },
+      { caption: "tutorial.ex.pickMap", control: 'dialog.map-editor[open] [data-guide="map-library"]', click: true },
     ];
-    case "token": return [{ caption: "tutorial.ex.addToken", control: '[data-tutorial="token"] button' }];
-    case "move": return [{ caption: "tutorial.ex.dragToken", control: '[data-tutorial="move"]' }];
+    case "token": return [
+      { caption: "tutorial.ex.addToken", control: '[data-tutorial="token"] button', press: true },
+      { caption: "tutorial.ex.nameToken", control: tool("token-name"), input: t("tutorial.demo.token") },
+      { caption: "tutorial.ex.chooseSquare", control: tool("token-place"), press: true },
+      { caption: "tutorial.ex.placeToken", control: ".board canvas", board: true, at: () => exampleBoard()?.place ?? null, click: true },
+      { caption: "tutorial.ex.stopPlacing", control: ".placement-bar button", press: true },
+    ];
+    case "move":
+      exampleBoard()?.focus();
+      return [{ caption: "tutorial.ex.dragToken", control: ".board canvas", board: true, from: () => exampleBoard()?.token?.position ?? null, at: () => exampleBoard()?.destination ?? null }];
     case "roll": return [{ caption: "tutorial.ex.clickRoll", control: '[data-tutorial="roll"]', press: true }];
     case "encounter": return [{ caption: "tutorial.ex.runFight", control: demoButton("encounter"), press: true }];
     case "attack": return [{ caption: "tutorial.ex.rollAttack", control: demoButton("attack"), press: true }];
