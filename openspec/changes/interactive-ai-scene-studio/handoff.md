@@ -8,7 +8,7 @@
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
-- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, in PR #212 (open, not merged); see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
+- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, in PR #212 (open, not merged; by the user's choice M1b stacks on it and M1 merges whole); see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
 - OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
@@ -122,12 +122,12 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 **State left behind:** the throwaway Postgres container `studio-m1a-test-pg` is stopped and removed at the end of the session (see the final report). No tunnel, no ChatGPT connector change, no account data used.
 
 **Pending:**
-1. Merge decision on the PR (not merged by this session). Architecture owner review of the code is not recorded; ADR 0073 lists it as open for the PR.
-2. Real ChatGPT run against `/mcp/studio` with a synthetic dev account (DCR, consent, a granted build read, disconnect). Folded into M1b task 2.8 if not done separately.
+1. Merge plan (user decision, 2026-11-16, after this session): PR #212 stays open and unmerged; M1b is built on this branch and all of M1 merges to main together. Architecture owner review of the code is not recorded; ADR 0073 lists it as open for the PR.
+2. Real ChatGPT run against `/mcp/studio` with a synthetic dev account (DCR, consent, a granted build read, disconnect). The user chose to do it once, at the end of M1b (task 2.8). A local smoke launch of this branch with Studio on (isolated Postgres, uploads on local disk) served the discovery documents and an OIDC 404; nobody clicked through the consent page before it was shut down.
 3. Glossary rows added for 建置, AI 應用程式, 連接／中斷連線 and 允許 are marked pending glossary owner review.
 4. Deployment prerequisites when it is time: `STUDIO_PUBLIC_ORIGIN` on both services and the Caddyfile routes; not before M1b's private storage.
 
-**Next:** M1b (tasks 2.3–2.8) from the M1a merge; starter in [fresh-session-prompt.md](fresh-session-prompt.md) "M1b".
+**Next:** M1b (tasks 2.3–2.8) on a branch from this branch's head, as a stacked PR onto it; starter in [fresh-session-prompt.md](fresh-session-prompt.md) "M1b". Note for local runs: outside production apps/server uses any object storage it finds at 127.0.0.1:8333, which can be the user's dev SeaweedFS; set `S3_ENDPOINT` or `S3_AUTODETECT=0`.
 
 ## M0 close-out, 2026-11-16
 

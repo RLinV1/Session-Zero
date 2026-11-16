@@ -122,46 +122,57 @@ CHECKS AND HANDOFF
 
 # M1b
 
-Written at the end of the M1a session (2026-11-16). Use it only after the M1a PR has merged; the file itself authorizes nothing. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a and leaves D8 storage choices for the user to confirm or strike.
+Rewritten on 2026-11-16 at the user's request, after the M1a session: M1b is built on top of the unmerged M1a branch, and all of M1 merges to main together. Written for a ChatGPT agent, which first researches and discusses, then builds. The file itself authorizes nothing. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a, and the bullet marked for the user decides whether D8 and D9 storage choices are pre-approved.
 
 ```text
-Implement only M1b ("protected storage and intake") of Session Zero's interactive-ai-scene-studio change: tasks 2.3–2.8 in tasks.md. Do not start M2 (visible preparation) or later milestones.
+You are joining Session Zero, a browser virtual tabletop (repository RLinV1/Session-Zero), to research, discuss and then build M1b ("protected storage and intake") of its interactive-ai-scene-studio change: tasks 2.3–2.8 in openspec/changes/interactive-ai-scene-studio/tasks.md. Do not start M2 (visible preparation) or later milestones.
+
+HOW TO WORK
+- Phase 1, research and discuss (no product code yet). Read the material below and inspect the code it names. Then reply to me with: (a) your understanding of what M1b must deliver and what already exists; (b) a proposed design for each open choice: the private storage layout on both storage modes, how /uploads and the local express.static fallback are excluded, the intake and download path, the UI resource and open tool, recovery, and cleanup; (c) risks and anything that conflicts with the design or needs my decision; (d) the order you'll build in and how you'll test each part. Wait for my go-ahead before writing product code. Doc-only edits that record the agreed design are fine once I agree.
+- Phase 2, build. Record the agreed design in design.md D8 and D9 and in ADR 0073 before any code that depends on it. Then implement, test and hand off as described below.
+- CLAUDE.md is this repository's agent instruction file. Its invariants, conventions and commands apply to you exactly as written.
+- If your environment can't run something this prompt requires (Docker, Postgres, an S3-compatible store, Playwright browsers), say exactly which, don't substitute a weaker check silently, and don't tick a task whose proof needs it.
 
 STARTING POINT
-- Repository RLinV1/Session-Zero (local folder Virtual-Tabletop). Base: the merge of the M1a PR (branch feat/interactive-ai-scene-studio-m1a) into main. Fetch main, find that merge commit with git and record it; if M1a has not merged, stop and tell me rather than building on the unmerged branch.
-- Create a new worktree and branch feat/interactive-ai-scene-studio-m1b from that base. Do not touch other worktrees or branches, including feat/ai-build-terrain, feat/mcp-scene-preparation and any uncommitted files in them.
-- Read CLAUDE.md, every file in openspec/changes/interactive-ai-scene-studio/ (start with handoff.md "M1a", then design.md D7 "M1a implementation record", D8 and D9, and research.md "M0 host results", "Design amendment decisions" and "M1a findings"), docs/adr/0073-interactive-scene-studio.md, docs/adr/0053-build-pass-and-approved-templates.md and docs/adr/0002-transport-and-identity.md (its public-bucket decision is what D8 isolates from).
+- Base: branch feat/interactive-ai-scene-studio-m1a at its current head (944ed2cb or later; record the exact commit). It is open as PR #212 and is deliberately NOT merged: M1b stacks on it and all of M1 merges to main together. Do not merge, rebase or force-push the M1a branch.
+- Create a new worktree and branch feat/interactive-ai-scene-studio-m1b from that head. If main has moved, tell me what changed and whether it touches M1; don't merge main in without asking. Do not touch other worktrees or branches, including feat/ai-build-terrain, feat/mcp-scene-preparation and any uncommitted files in them.
+- If M1a code needs a fix, make it on the M1b branch with its own commit and say so in the handoff; don't push to the M1a branch.
+- Read CLAUDE.md; every file in openspec/changes/interactive-ai-scene-studio/ (start with handoff.md "Latest implementation session — M1a", then design.md D7 "M1a implementation record", D8 and D9, and research.md "M0 host results", "Design amendment decisions" and "M1a findings"); docs/adr/0073-interactive-scene-studio.md; docs/adr/0053-build-pass-and-approved-templates.md; docs/adr/0002-transport-and-identity.md (its public-bucket decision is what D8 isolates from); docs/adr/0054-localized-messages.md (server text catalog); and docs/GLOSSARY-zh-TW.md.
 - Use Node 22 and the existing npm workspaces and lockfile.
 
-WHAT ALREADY EXISTS (M1a)
-- Session Zero's own OAuth server in apps/server (/api/oauth/*, consent page /studio/connect, discovery documents), grants bound to chosen builds, /api/studio/builds/* with a write-time recheck, and /mcp/studio in apps/mcp verified by introspection. All off unless STUDIO_PUBLIC_ORIGIN is set on both services.
-- /mcp/studio offers only reads and draft writes. It has no upload and no UI resource yet; build files are still the existing public /uploads files.
+WHAT ALREADY EXISTS (M1a, unmerged)
+- Session Zero's own OAuth server in apps/server: /api/oauth/*, the consent page /studio/connect and the discovery documents, with no OIDC and no external identity provider. Grants are bound to chosen builds. /api/studio/builds/* rechecks the grant at write time. /mcp/studio in apps/mcp verifies every request through apps/server introspection. All of it is off unless STUDIO_PUBLIC_ORIGIN is set on both services.
+- /mcp/studio offers only reads and draft writes. It has no upload and no UI resource yet. Build files are still the existing public /uploads files, which is why Studio must not reach real users before M1b.
 - The M0 fixture endpoint /mcp/studio-m0 stays as it is (reference for host behavior only).
+- M1a has local evidence only. No person has clicked through the consent flow against a real host yet; the one real ChatGPT run is planned for the end of M1b (task 2.8) and covers M1a's sign-in too.
 
 APPROVALS
-- ADR 0073 accepted by Raymond on 2026-11-16 at 6f645f29; the user approved the M0 amendments to D2, D7, D8 and D9 the same day (research.md "Design amendment decisions").
-- [User: keep or delete this bullet] Implementation choices inside design D8 and D9 as amended are pre-approved: record them in ADR 0073 / design.md before dependent code and continue.
+- ADR 0073 accepted by Raymond on 2026-11-16 at 6f645f29. The user approved the M0 amendments to D2, D7, D8 and D9 the same day (research.md "Design amendment decisions"), and the M1a implementation choices inside D7.
+- [User: keep or delete this bullet before pasting] Implementation choices inside design D8 and D9 as amended are pre-approved once I've agreed to your Phase 1 design: record them in ADR 0073 / design.md before dependent code and continue.
 - Stop and ask before: changing schemas in packages/shared; making any new Studio upload or derivative publicly readable, even temporarily or by an unguessable URL; adding a download origin beyond the two in D9 (*.oaiusercontent.com and the observed Azure Blob host); any cloud provisioning, bucket-policy or production change; giving a delegated credential owner-choice, publication, room, GM or library-enumeration authority; any other change to authority or privacy beyond D7–D9.
 
 WHAT M1b DELIVERS
 1. Task 2.3. A private storage plane for new Studio originals and derivatives, separate from /uploads, the local express.static fallback and the public-read bucket policy, on both supported storage modes (local disk and S3-compatible). Existing public assets keep working unchanged. Record the exact design (object naming, bucket or prefix, how the local fallback is excluded, cache headers) in D8 before coding. Tests must show originals and derivatives can't be read through an unauthorized API call, /uploads, encoded or traversal paths, the local fallback or direct object-store access, on both modes, and that private responses and errors are not shared-cacheable.
-2. Task 2.4. Intake into a granted build: the open/set-up tool accepts chat attachments directly (openai/fileParams), plus the view's Add files (host file picker and device upload), reusing build quotas and byte/type/dimension validation. Download descriptors on receipt with exact-origin allowlist, size, redirect and time bounds, no credentials on the download, no private-network targets. Verify original identity (hash), canonical dimensions and orientation, partial multi-file outcomes, expiry with re-select guidance and idempotent retry.
-3. Task 2.5. Register the credential-free Studio UI resource (content-versioned ui:// URI) and the open/build-binding tool on /mcp/studio. The open tool returns ids and non-sensitive status only; private images reach the view only through app-only calls that recheck the grant, rendered as data: URLs (blob: is blocked by the host). Identifiers alone confer no authority.
+2. Task 2.4. Intake into a granted build: the open/set-up tool accepts chat attachments directly (openai/fileParams), plus the view's Add files (host file picker and device upload), reusing build quotas and byte/type/dimension validation. Download descriptors on receipt, with an exact-origin allowlist, size, redirect and time bounds, no credentials on the download, and no private-network targets. Verify original identity (hash), canonical dimensions and orientation, partial multi-file outcomes, expiry with re-select guidance, and idempotent retry.
+3. Task 2.5. Register the credential-free Studio UI resource (a content-versioned ui:// URI) and the open/build-binding tool on /mcp/studio. The open tool returns ids and non-sensitive status only. Private images reach the view only through app-only calls that recheck the grant, rendered as data: URLs (the host blocks blob:). Identifiers alone confer no authority.
 4. Task 2.6. Reopen and reauthorization recovery from the backend, with another owner's view refused and no private content in cached responses.
-5. Task 2.7. Grants and private media covered by discard, account deletion and the 14-day abandoned-build sweep; legacy and published media stay valid. Exercise both stores and an isolated persistence restart.
-6. Task 2.8. Focused security, upload and browser checks, the repository checks and an independent diff review. Then a real ChatGPT web (Work mode) intake of a synthetic map and token art, which also counts as the first real-host run of M1a's sign-in. That run needs my yes first, because it means driving my Chrome and opening a Cloudflare quick tunnel; prepare the exact steps and ask.
+5. Task 2.7. Grants and private media covered by discard, account deletion and the 14-day abandoned-build sweep. Legacy and published media stay valid. Exercise both stores and an isolated persistence restart.
+6. Task 2.8. Focused security, upload and browser checks, the repository checks and an independent diff review. Then prepare a real ChatGPT web (Work mode) test: a synthetic map and token art taken in through chat, which also counts as the first real-host run of M1a's sign-in (discovery, registration, consent, granted reads, disconnect). It needs a public tunnel to a local dev stack and my ChatGPT account. Write the exact steps and ask me; don't run it or open a tunnel without my yes.
 
 PRIVACY AND DATA
 - Synthetic accounts and fixtures only (for example m0-upload-fixture). Never my real account data or private art.
-- Persistence and storage checks on isolated services (a separate docker compose project or database, a separate SeaweedFS/S3 bucket). Never touch my development database or its buckets.
+- Persistence and storage checks on isolated services: a separate docker compose project or database, and a separate SeaweedFS/S3 bucket and endpoint. Never touch my development database or its buckets.
+- Watch out: outside production, apps/server probes for object storage at 127.0.0.1:8333 and uses whatever it finds there, which on my machine can be my dev stack's SeaweedFS. For every local server you start, set S3_ENDPOINT to your isolated store or S3_AUTODETECT=0. Likewise give DATABASE_URL explicitly, and don't use ports 3001, 5173 or 5432 if my stack is running.
 - Never commit credentials, tokens, signed URLs, descriptor URLs or raw authenticated request logs.
 - Never log or store host request metadata (openai/subject, openai/userLocation and similar).
+- UI text goes through t() in English and zh-TW, and server text people read is a catalog id (ADR 0054). New zh-TW terms go in the glossary marked pending review.
 
 CHECKS AND HANDOFF
-- Before reporting done: npm run lint && npm run typecheck && npm test, the server suite again with DATABASE_URL on the isolated Postgres, and the relevant Playwright checks. Then an independent diff review in a separate session or agent, and fix what it finds.
-- Commit and push the branch, then open a PR to main when checks pass. Do not merge.
+- Before reporting done: npm run lint && npm run typecheck && npm test, the server suite again with DATABASE_URL on the isolated Postgres, storage tests on both modes against the isolated S3 store, and the relevant Playwright checks. Reference FR IDs in test names. Then get an independent diff review of the M1b commits (a separate session or agent that didn't write the code), fix what it finds, and say whether the fixes were re-reviewed.
+- Commit and push feat/interactive-ai-scene-studio-m1b, then open a PR whose base is feat/interactive-ai-scene-studio-m1a (a stacked PR, so its diff shows only M1b). Do not merge either PR. In the PR description, say that M1 is meant to merge to main as a whole and list what remains before that (the real ChatGPT run, architecture-owner review).
 - No production deployment, DNS, edge or cloud changes.
-- Update tasks.md (tick only what is verified, keeping local and real-host evidence apart), handoff.md (base, commits, checks, evidence, pending items) and research.md for new findings.
-- Save this starter in fresh-session-prompt.md under an "M1b" heading (it is already there; note any edits you were given).
-- Finish by writing the M2 starter, naming the M1b merge as its base.
+- Update tasks.md (tick only what is verified, keeping local and real-host evidence apart), handoff.md (base, commits, checks, evidence, pending items, merge plan) and research.md for new findings.
+- Save this starter in fresh-session-prompt.md under the "M1b" heading (it is already there; note any edits I made before pasting).
+- Finish by writing the M2 starter, naming the merge of all of M1 into main as its base.
+- End with a short plain report: what was built, what was checked and how, what wasn't, and the decisions waiting on me.
 ```
