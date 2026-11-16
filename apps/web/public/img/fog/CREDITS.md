@@ -38,3 +38,10 @@ frame, grid lines or watermark; square image."
 - Fog bank (`fog-bank`): a seamless tileable texture of a thick fog bank filling the entire
   square edge to edge, no black border and no single central shape, mostly mid to light grey mist
   with brighter dense swirls and a few darker thin patches, evenly spread so no area stands out.
+
+## Alpha masks
+
+`mask/fog-wisp-1` to `mask/fog-wisp-4` are the four wisps with their brightness moved into the
+alpha channel of a plain white image, written by `apps/web/scripts/fog-masks.mjs`
+(`npm run images:fog -w @vtt/web`). The home page's fog dividers mask with them; the board keeps
+the originals above.
