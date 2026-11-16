@@ -160,11 +160,6 @@ export class StudioAuth {
     res.status(401).json({ error: "invalid_token", error_description: description });
   }
 
-  /** For a tool result: asks the host to (re)link without leaking why a token failed. */
-  wwwAuthenticate() {
-    return `Bearer resource_metadata="${this.metadataUrl}", scope="${STUDIO_SCOPE}", error="invalid_token", error_description="Reconnect the Session Zero M0 test identity."`;
-  }
-
   // ---------- Authorization server ----------
 
   router(): Router {
