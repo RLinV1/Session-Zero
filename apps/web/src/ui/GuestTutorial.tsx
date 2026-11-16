@@ -412,6 +412,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           )}
           {run.step === stepName && run.index === run.captions.length && run.captions.length > 0 && EXAMPLE_STEPS.has(stepName!) && stepName !== "grid" && <p className="muted small-print" role="status">{t("tutorial.note")}</p>}
           {demoError && <p role="alert" className="error">{demoError}</p>}
+          <div className="tutorial-actions">
           <div className="row">
             {REVEALABLE.has(stepName!) && !run.playing && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void showMe()}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
@@ -452,6 +453,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
               } else openNext();
             }}>{t("tour.next")}</button>
           )}
+          </div>
           </div>
         </>
       )}
