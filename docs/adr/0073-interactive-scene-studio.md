@@ -23,6 +23,8 @@ Draft metadata is private, but source artwork currently uses publicly readable r
 7. Private bytes must not become publicly readable on a failed publication. Prefer a library delivery alias whose access depends on committed publication/library state, while underlying bytes remain private. No pre-transaction public copy is permitted.
 8. Keep room commands, events, reduction, viewer filters and GM credentials outside Studio authoring. Native room creation and application handle published results as usual.
 
+**M1a implementation (recorded 2026-11-16, before dependent code; inside decision 4).** The authorization server lives in `apps/server` on the website origin, with the consent page at `/studio/connect` using the owner's signed-in session. It is a narrow in-house implementation (no OAuth library: the maintained candidates either advertise OIDC or lack registration and resource indicators). Records: `studio_oauth_clients`, `studio_grants` (one consent = one token family, bound to the selected builds and the `/mcp/studio` resource) and `studio_tokens` (hashes only). Access tokens last 8 hours, refresh tokens 14 days with rotation, families at most 30 days; code replay or refresh reuse revokes the family. Registration is capped at 200 clients with expiry of unused ones. `apps/mcp` verifies each request by HTTP introspection against `apps/server`; the build API accepts grants only on its own `/api/studio/builds/*` family with a write-time recheck under the build lock. Details: design.md D7, "M1a implementation record".
+
 The detailed proposal and alternatives are in [design.md](../../openspec/changes/interactive-ai-scene-studio/design.md). This ADR records architectural boundaries, not a final wire schema or storage vendor choice.
 
 ## Consequences
@@ -40,5 +42,6 @@ The detailed proposal and alternatives are in [design.md](../../openspec/changes
 | Product owner | Journey, scope, final publication behavior and milestone sequence | M0 design amendments approved by the user on 2026-11-16 (one revised, one declined; see research.md) |
 | User privacy choice | Protect new unpublished Studio originals and derivatives | Selected by the user on 2026-11-14 |
 | Real-Time Architecture owner | Delegated credentials, private asset access, authoring contracts, enrollment and guarded publication | Accepted by Raymond on 2026-11-16, reviewed revision `6f645f29` (reported by the user, with Raymond present) |
+| M1a implementation choices | The "M1a implementation" paragraph above and design.md D7's record | Pre-approved by the user on 2026-11-16 for choices inside D7 as amended (M1a starter); recorded before dependent code. Not a separate review by Raymond of this code; the PR is open for that |
 
 Plan the architecture review before M1 credential/private-media integration and M3 contract implementation. A successful prototype or local agent review is not this external sign-off. Do not copy the prior terrain branch's implementation-before-review authorization into this change.
