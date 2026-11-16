@@ -112,11 +112,16 @@ export function useExampleRun() {
     const pace = (window as { __tutorialPace?: number }).__tutorialPace ?? 1;
     // Reduced motion hides the pointer, but captions still need time to be read.
     const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms * pace));
-    // A press inside the lesson card (Skip, Next) is the card's own business and must not cut the replay short.
-    const stopOnUser = (e: Event) => { if (e.isTrusted && !(e.target instanceof Element && e.target.closest(".guest-tutorial"))) stop(); };
-    window.addEventListener("pointerdown", stopOnUser, true);
-    window.addEventListener("keydown", stopOnUser, true);
-    cancel.current = () => { window.removeEventListener("pointerdown", stopOnUser, true); window.removeEventListener("keydown", stopOnUser, true); };
+    // While the replay runs, the guest's own presses and keys do nothing, so they cannot disturb it. Only the lesson card (Skip) stays live;
+    // the replay's own pointer events are synthetic (not trusted), so they pass.
+    const BLOCKED = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "touchstart", "keydown", "keyup"];
+    const blockUser = (e: Event) => {
+      if (!e.isTrusted || (e.target instanceof Element && e.target.closest(".guest-tutorial"))) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    for (const type of BLOCKED) window.addEventListener(type, blockUser, true);
+    cancel.current = () => { for (const type of BLOCKED) window.removeEventListener(type, blockUser, true); };
     const show = (patch: Partial<ExampleRun>) => { if (alive()) setRun((r) => ({ ...r, ...patch })); };
     const point = (at: { x: number; y: number } | null, dragFrom: ExampleCursor["dragFrom"] = null) => {
       if (reduced || !at || !alive()) return;
