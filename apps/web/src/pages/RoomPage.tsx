@@ -421,10 +421,13 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
   useEffect(() => {
     if (editingGone) setEditingTokenId(null);
   }, [editingGone]);
+  // A signed-in GM is asked, once the guide closes, whether they also want the interactive demo.
+  const offerDemo = !guestRoom && you?.role === "gm";
   const closeGuide = useCallback(() => {
     setGuideOpen(false);
-    guideButtonRef.current?.focus();
-  }, []);
+    if (offerDemo) setDemoOffer((n) => n + 1);
+    else guideButtonRef.current?.focus();
+  }, [offerDemo]);
 
   // The attacker follows the turn onto a token the viewer controls, even after they picked
   // another; a pick made after that sticks until the next turn change (attack-ux-polish). Kept
