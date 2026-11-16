@@ -1122,15 +1122,15 @@ describe("the AI's terrain in review (FR-GM-27, ADR 0071)", () => {
     const old = cave({ grid: { cellSize: 50, offsetX: 0, offsetY: 0, unitsPerCell: 5, unitLabel: "ft" } });
     await open(detail({ items: [old] }));
     await click(button("Terrain"));
-    expect(button("Difficult")?.disabled).toBe(true);
+    expect(button("Difficult")?.matches(":disabled")).toBe(true);
     await click(button("Clear terrain"));
-    expect(button("Difficult")?.disabled).toBe(true);
+    expect(button("Difficult")?.matches(":disabled")).toBe(true);
     const reset = { ...old, updatedAt: "2026-11-09T00:01:00Z", data: { ...old.data, setup: { openings: [], lines: [], marks: [] } } };
     builds.get.mockResolvedValue(detail({ items: [reset] }));
     builds.saveMapSetup.mockResolvedValue({ item: reset });
     await click([...host.querySelectorAll<HTMLButtonElement>("section[aria-label='Review terrain'] button")].find((b) => b.textContent === "Save"));
     expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "cave", { ...setup, terrain: [] }, old.updatedAt);
-    expect(button("Difficult")?.disabled).toBe(false);
+    expect(button("Difficult")?.matches(":disabled")).toBe(false);
   });
 
   it("says when the terrain was proposed on another grid, and the check lists it to fix", async () => {
