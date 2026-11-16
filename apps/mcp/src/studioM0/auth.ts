@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import express, { type Request, type Response, type Router } from "express";
+import { z } from "zod";
 import type { EvidenceLog } from "./store";
 
 /**
@@ -59,6 +60,24 @@ export interface StudioAuthOptions {
   log: EvidenceLog;
 }
 
+const TTL_RANGE = "an access-token lifetime must be a whole number of seconds from 10 to 86400";
+/** Same bounds as the operator's access-ttl control. NaN would never expire; 0 would expire on issue. */
+const accessTtlSeconds = z.number({ error: TTL_RANGE }).int({ error: TTL_RANGE }).min(10, { error: TTL_RANGE }).max(86_400, { error: TTL_RANGE });
+
+/**
+ * An OAuth form body (RFC 6749 §3.2: application/x-www-form-urlencoded). In Express 5, req.body is
+ * undefined when the form parser didn't match the Content-Type, so this is null for anything else.
+ * Repeated parameters arrive as arrays; OAuth forbids them, so only single string values are kept.
+ */
+const oauthForm = z.record(z.string(), z.unknown())
+  .transform((body) => Object.fromEntries(Object.entries(body).filter((e): e is [string, string] => typeof e[1] === "string")));
+const formBody = (req: Request): Record<string, string> | null => {
+  const parsed = oauthForm.safeParse(req.body);
+  return parsed.success ? parsed.data : null;
+};
+const notAForm = (res: Response) =>
+  void res.status(400).json({ error: "invalid_request", error_description: "Send the parameters as application/x-www-form-urlencoded." });
+
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const token = (prefix: string) => `${prefix}${randomBytes(32).toString("base64url")}`;
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -87,7 +106,7 @@ export class StudioAuth {
     this.resourceUrl = `${options.publicOrigin}${options.resourcePath}`;
     this.metadataUrl = `${options.publicOrigin}/.well-known/oauth-protected-resource${options.resourcePath}`;
     this.now = options.now ?? Date.now;
-    this.accessTtlMs = (options.accessTtlSeconds ?? 3600) * 1000;
+    this.accessTtlMs = accessTtlSeconds.parse(options.accessTtlSeconds ?? 3600) * 1000;
   }
 
   /** Writes the operator key and a static fallback client to a private file (mode 0600), never to logs. */
@@ -227,7 +246,8 @@ export class StudioAuth {
     });
 
     router.post("/oauth/authorize", form, (req, res) => {
-      const params = Object.fromEntries(Object.entries(req.body as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
+      const params = formBody(req);
+      if (!params) return void res.status(400).type("text/plain").send("This sign-in form wasn't sent as a form. Start connecting again from the AI app.");
       const nonceExpiry = this.forms.get(params.form_nonce ?? "");
       this.forms.delete(params.form_nonce ?? "");
       if (!nonceExpiry || nonceExpiry <= this.now()) return void res.status(400).type("text/plain").send("This sign-in form expired. Start connecting again from the AI app.");
@@ -255,7 +275,8 @@ export class StudioAuth {
     });
 
     router.post("/oauth/token", form, (req, res) => {
-      const body = req.body as Record<string, string | undefined>;
+      const body: Record<string, string | undefined> | null = formBody(req);
+      if (!body) return notAForm(res);
       const client = this.authenticateClient(req, body);
       if (!client) {
         void this.options.log.write("oauth_token", { grantType: body.grant_type ?? null, outcome: "invalid_client" });
@@ -300,7 +321,8 @@ export class StudioAuth {
     });
 
     router.post("/oauth/revoke", form, (req, res) => {
-      const body = req.body as Record<string, string | undefined>;
+      const body: Record<string, string | undefined> | null = formBody(req);
+      if (!body) return notAForm(res);
       if (this.authenticateClient(req, body)) this.grants.delete(hash(body.token ?? ""));
       res.status(200).end();
     });

@@ -68,14 +68,22 @@ export async function renderFixtureMap(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-/** Appends one JSON line of M0 evidence. Never write tokens, signed URLs or answer keys here. */
+/**
+ * Appends one JSON line of M0 evidence. Never write tokens, signed URLs or answer keys here.
+ * Best effort: it never rejects, because many callers fire it with `void`, and an unhandled
+ * rejection from a full or vanished data folder would stop the whole MCP server.
+ */
 export class EvidenceLog {
   constructor(private file: string) {}
-  async write(event: string, data: Record<string, unknown> = {}) {
+  async write(event: string, data: Record<string, unknown> = {}): Promise<void> {
     const line = JSON.stringify({ at: new Date().toISOString(), event, ...data });
     console.log(`[studio-m0] ${line}`);
-    await mkdir(path.dirname(this.file), { recursive: true });
-    await appendFile(this.file, `${line}\n`, { mode: 0o600 });
+    try {
+      await mkdir(path.dirname(this.file), { recursive: true });
+      await appendFile(this.file, `${line}\n`, { mode: 0o600 });
+    } catch (err) {
+      console.error(`[studio-m0] evidence log write failed (${event}): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }
 

@@ -184,6 +184,27 @@ describe("Studio M0 fixture endpoint (FR-GM-26, interactive-ai-scene-studio M0)"
     await b.close().catch(() => {});
   });
 
+  it("shows a crop as small as the 32-pixel minimum", async () => {
+    const client = await connect((await signIn()).token);
+    const small = await client.callTool({ name: "studio_m0_view_crop", arguments: { x: 0, y: 0, width: 40, height: 40 } });
+    expect(small.isError).toBeFalsy();
+    expect((small.content as { type: string }[]).map((p) => p.type)).toEqual(["text", "image"]);
+    await client.close();
+  });
+
+  it("answers OAuth form endpoints with an OAuth error when the body isn't a form", async () => {
+    for (const route of ["/oauth/token", "/oauth/revoke"]) {
+      const asJson = await fetch(`${base}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ grant_type: "authorization_code" }) });
+      expect(asJson.status).toBe(400);
+      expect(await asJson.json()).toMatchObject({ error: "invalid_request" });
+      const empty = await fetch(`${base}${route}`, { method: "POST" });
+      expect(empty.status).toBe(400);
+    }
+    const consent = await fetch(`${base}/oauth/authorize`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    expect(consent.status).toBe(400);
+    expect(consent.headers.get("content-type")).toMatch(/text\/plain/);
+  });
+
   it("refuses operator controls without the private key or through the tunnel", async () => {
     expect((await fetch(`${base}/studio-m0-operator/revoke-all`, { method: "POST" })).status).toBe(404);
     const { operatorKey } = JSON.parse(await readFile(path.join(dataDir, "operator.json"), "utf8")) as { operatorKey: string };

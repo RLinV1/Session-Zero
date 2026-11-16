@@ -14,6 +14,8 @@ import { StudioError, type StudioFile } from "./store";
 const SHAPES = ["circle", "square", "triangle"] as const;
 const COLORS = { red: "#e0201b", green: "#16a34a", blue: "#1d4ed8", magenta: "#c026d3" } as const;
 const MAX_EDGE = 1024;
+/** Smallest crop side, in source and in output pixels. A 24px marker with its margin still fits. */
+const MIN_EDGE = 32;
 
 export interface CropRequest {
   x?: number;
@@ -34,16 +36,20 @@ export async function renderMarkedCrop(file: StudioFile, request: CropRequest, a
   const y = Math.max(0, Math.floor(request.y ?? 0));
   const width = Math.min(Math.floor(request.width ?? file.width - x), file.width - x);
   const height = Math.min(Math.floor(request.height ?? file.height - y), file.height - y);
-  if (width < 32 || height < 32) throw new StudioError("The crop must be at least 32 pixels on each side and inside the map.");
+  if (width < MIN_EDGE || height < MIN_EDGE) throw new StudioError(`The crop must be at least ${MIN_EDGE} pixels on each side and inside the map.`);
 
   const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
   const out = { width: Math.round(width * scale), height: Math.round(height * scale) };
+  // Scaling a long thin region to MAX_EDGE can shrink its short side below anything a marker fits in.
+  if (Math.min(out.width, out.height) < MIN_EDGE) throw new StudioError(`That region is too long and thin to show: at ${out.width}×${out.height} its short side is under ${MIN_EDGE} pixels. Ask for a squarer region.`);
   const shape = SHAPES[randomInt(SHAPES.length)] ?? "circle";
   const colorNames = Object.keys(COLORS) as (keyof typeof COLORS)[];
   const colorName = colorNames[randomInt(colorNames.length)] ?? "red";
   const size = Math.max(24, Math.round(Math.min(out.width, out.height) * 0.12));
-  const cx = randomInt(size, out.width - size);
-  const cy = randomInt(size, out.height - size);
+  // The marker spans size/2 around its center, plus its stroke. randomInt's max is exclusive.
+  const margin = Math.ceil(size / 2) + 2;
+  const cx = randomInt(margin, out.width - margin + 1);
+  const cy = randomInt(margin, out.height - margin + 1);
   const fill = COLORS[colorName];
   const mark = shape === "circle"
     ? `<circle cx="${cx}" cy="${cy}" r="${size / 2}" fill="${fill}" stroke="#000" stroke-width="2"/>`
