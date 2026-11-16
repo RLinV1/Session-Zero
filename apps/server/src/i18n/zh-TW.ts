@@ -3,6 +3,7 @@ import type { ServerEn } from "./en";
 
 /** Traditional Chinese for `en.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const serverZhTW = {
+  "studio.invalidJson": "無效的 JSON 要求。",
   "api.signInRequired": "請先登入",
   "api.notFromApp": "這項請求不是由 Session Zero 發出。",
   "api.currentPasswordWrong": "目前的密碼不正確",

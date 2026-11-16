@@ -7,6 +7,7 @@ import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
  * error that is not in this catalog.
  */
 export const serverEn = {
+  "studio.invalidJson": "Invalid JSON request.",
   // Accounts and sign-in.
   "api.signInRequired": "Sign in to do that",
   "api.notFromApp": "This request didn't come from the app",
