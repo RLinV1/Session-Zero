@@ -31,6 +31,8 @@ const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
 const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "roll", ...COMBAT_TUTORIAL_STEPS]);
 const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open]";
+/** Steps whose control lives in a dialog the lesson opens, so Show me is useful even with the opener in sight. */
+const OPENS_DIALOG: ReadonlySet<string> = new Set(["invite", "map"]);
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
@@ -110,7 +112,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
     sightEdits,
     terrainEdits,
     invites: invites - baseInvites.current,
-    encounters: state.initiative !== null ? 1 : 0,
+    encounters: state.initiative ? 1 : 0,
     attackRolls: countMarks(marks, baseMarks.current, "attack"),
     rulings: countMarks(marks, baseMarks.current, "ruling"),
     damageApplied: countMarks(marks, baseMarks.current, "damage"),
@@ -264,7 +266,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
               : t(`tutorial.${stepName!}.body` as TextId)}
           </p>
           <div className="row">
-            {(hidden || EDITOR_TUTORIAL_STEPS.has(stepName!)) && REVEALABLE.has(stepName!) && (
+            {(hidden || EDITOR_TUTORIAL_STEPS.has(stepName!) || OPENS_DIALOG.has(stepName!)) && REVEALABLE.has(stepName!) && (
               <button type="button" className="small primary" onClick={showMe}>{t("tutorial.showMe")}</button>
             )}
             {stepName === "table" && (

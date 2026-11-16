@@ -654,6 +654,8 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   };
   /** The guest demo's Show me: bring the step's control on screen, without doing the step. */
   const revealTutorialStep = (step: string) => {
+    // Share is a modal over everything else; a later lesson would be hidden behind it.
+    if (step !== "invite") setShareOpen(false);
     if (EDITOR_TUTORIAL_STEPS.has(step)) {
       const selectStep = () => {
         const tab = document.querySelector<HTMLButtonElement>(`dialog[open] [data-tutorial-editor-step="${step}"]`);
