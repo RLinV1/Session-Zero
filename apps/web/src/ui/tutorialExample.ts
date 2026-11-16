@@ -1,10 +1,11 @@
+import type { TextId } from "../i18n/locale";
 import { cellAt, type CommandInput, type GridSpec, type Point } from "@vtt/shared";
 import type { MapDraft } from "../pages/mapEditor/mapDraft";
 
-/** Editor lessons whose Show me also draws a sample into the editor's unsaved draft (guest-gm-hosting). */
-export const EXAMPLE_STEPS: ReadonlySet<string> = new Set(["walls", "fog", "terrain"]);
+/** Editor lessons whose Show me animates the real tools; all but grid leave a sample in the editor's unsaved draft (guest-gm-hosting). */
+export const EXAMPLE_STEPS: ReadonlySet<string> = new Set(["grid", "walls", "fog", "sight", "terrain"]);
 
-const key = (a: Point, b: Point) => [a, b].map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).sort().join("|");
+export const key = (a: Point, b: Point) => [a, b].map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).sort().join("|");
 const near = (a: number, b: number) => Math.abs(a - b) < 1;
 
 /**
@@ -42,13 +43,8 @@ export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, m
   return [];
 }
 
-/** Sent on `window` by the demo's Show me; the open map editor draws the sample into its draft. */
-export const EXAMPLE_EVENT = "vtt:tutorial-example";
-/** Sent when the GM moves on: the sample is taken out again, so it never makes the editor ask to save. */
-export const EXAMPLE_CLEAR_EVENT = "vtt:tutorial-example-clear";
-
 /** The top-left cell of the sample, near the middle of the map and clear of its edges (a 6 by 5 cell patch). */
-function exampleCorner(grid: GridSpec, map: { width: number; height: number }): { c0: number; r0: number } {
+export function exampleCorner(grid: GridSpec, map: { width: number; height: number }): { c0: number; r0: number } {
   const cols = Math.max(1, Math.floor((map.width - grid.offsetX) / grid.cellSize)), rows = Math.max(1, Math.floor((map.height - grid.offsetY) / grid.cellSize));
   const mid = cellAt({ x: map.width / 2, y: map.height / 2 }, grid);
   return { c0: Math.max(0, Math.min(mid.col - 3, cols - 6)), r0: Math.max(0, Math.min(mid.row - 2, rows - 5)) };
@@ -62,3 +58,36 @@ export function exampleBox(grid: GridSpec, map: { width: number; height: number 
 
 /** Sent on `window` with a map-area box; the editor canvas outlines it for a few seconds. */
 export const EXAMPLE_HIGHLIGHT_EVENT = "vtt:tutorial-highlight";
+/** Sent on `window` with `{ api: null }`; the open map editor fills in `api`, so the demo can reach its draft. */
+export const EXAMPLE_API_EVENT = "vtt:tutorial-api";
+/** Sent on `window` by the demo's Show me, once the lesson's editor tab is open. */
+export const EXAMPLE_EVENT = "vtt:tutorial-example";
+/** The Sight step's test token, driven by the demo (it is local to the step, so never saved). */
+export const EXAMPLE_SIGHT_EVENT = "vtt:tutorial-sight";
+export type SightExample = { op: "place"; at: Point } | { op: "move"; dx: number; dy: number } | { op: "clear" };
+
+/** What the editor lends the demo: the same draft commands its tools send. */
+export interface ExampleApi {
+  draft: () => MapDraft | null;
+  command: (command: CommandInput) => Promise<unknown>;
+  grid: GridSpec;
+  map: { width: number; height: number };
+}
+
+/** One sub-step of Show me: a short caption, and what the pointer does for it. */
+export interface ExampleSub {
+  caption: TextId;
+  /** A control to ring and point at (`data-tutorial-tool` or another selector). */
+  control?: string;
+  /** Click `control` for the GM, through its own handler. */
+  press?: boolean;
+  /** Left out when this returns true. */
+  skip?: () => boolean;
+  /** Board point to move the pointer to; with `from`, the pointer drags from there. */
+  at?: Point;
+  from?: Point;
+  /** A click pulse at the pointer once it arrives. */
+  click?: boolean;
+  /** The draft or editor change the real tool would make, applied when the pointer arrives. */
+  run?: (api: ExampleApi) => Promise<void> | void;
+}

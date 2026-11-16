@@ -68,6 +68,7 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
                 role="radio"
                 aria-checked={mode === key}
                 className="tool-button map-editor-mode"
+                data-tutorial-tool={key}
                 onClick={() => { setMode(key); setMessage(null); }}
               >
                 <Icon size={18} aria-hidden="true" />
@@ -80,6 +81,7 @@ export function FogSetup({ connection, state }: { connection: EditorConnection; 
             type="button"
             className="tool-button map-editor-mode"
             aria-pressed={playerView}
+            data-tutorial-tool="playerview"
             onClick={() => setPlayerView((on) => !on)}
           >
             <UserFocus size={18} aria-hidden="true" />

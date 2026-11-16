@@ -28,8 +28,8 @@ test("the guest demo opens each map editing lesson inside the editor (guest-gm-h
   await tutorial.getByRole("button", { name: "Next step" }).click();
   await expect(editor).not.toBeVisible();
   await tutorial.getByRole("button", { name: "Show me" }).click();
-  // Walls draws a sample into the draft; moving on takes it out again without asking to save it.
-  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+  // Walls animates a sample into the draft; moving on stops it and takes it out again without asking to save it.
+  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible({ timeout: 20_000 });
   for (const label of ["Walls", "Fog", "Sight", "Terrain"]) {
     await expect(editor.locator('[role="tab"][aria-selected="true"]')).toContainText(label);
     await expect(editor.locator(".guest-tutorial")).toBeVisible();
@@ -80,7 +80,7 @@ test("Show me selects the grid, walls, fog, sight and terrain tab and rings it, 
     await expect(selected).toContainText(label, { timeout: 8000 });
     if (["Walls", "Fog", "Terrain"].includes(label)) {
       await tutorial.getByRole("button", { name: "Show me" }).click();
-      await expect(page.locator("dialog.map-editor[open]").getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+      await expect(page.locator("dialog.map-editor[open]").getByRole("button", { name: "Save changes", exact: true })).toBeVisible({ timeout: 20_000 });
     }
     await expect(selected).toContainText(label, { timeout: 8000 });
     await expect(selected).toHaveAttribute("data-tutorial-active", "");
@@ -149,19 +149,80 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["laptop", 1024, 7
         await expect(selected).toContainText(label, { timeout: 8000 });
         await expect(selected).toHaveAttribute("data-tutorial-active", "");
         await expect(editor.locator(".guest-tutorial")).toBeVisible();
-        if (["walls", "fog", "terrain"].includes(step)) {
-          await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
-          await expect(tutorial.getByRole("status").filter({ hasText: "Example " })).toBeVisible();
-          await showMe.click(); // asking again replaces the sample instead of stacking another
+        // The captions advance one sub-step at a time and all end up done; the final sample is in the draft.
+        const items = tutorial.locator(".tutorial-ex li");
+        const done = tutorial.locator('.tutorial-ex li[data-state="done"]');
+        await expect(items.first()).toBeVisible();
+        const total = await items.count();
+        expect(total).toBeGreaterThan(1);
+        await expect(items.nth(1)).toHaveAttribute("data-state", /current|done/, { timeout: 10_000 });
+        await expect(done).toHaveCount(total, { timeout: 40_000 });
+        if (["walls", "fog", "terrain", "sight"].includes(step)) await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+        await shot(`${step}-${start}-example`);
+        if (start === "other") {
+          // Replay clears the earlier sample first and runs again, never stacking a second one.
+          await tutorial.getByRole("button", { name: "Replay" }).click();
           await expect(selected).toContainText(label);
-          await shot(`${step}-${start}-example`);
-          if (start === "other") await shot(`${step}-example`);
-        } else {
-          // Nothing to demonstrate: once the lesson's tab is open, Show me is gone.
-          await expect(showMe).toHaveCount(0);
+          await expect(done).not.toHaveCount(total, { timeout: 10_000 });
+          await expect(done).toHaveCount(total, { timeout: 40_000 });
+          await shot(`${step}-example`);
         }
         await shot(`${step}-${start}-after`);
       });
     }
+  }
+}
+
+const ANIM = "C:/Users/rlin7/AppData/Local/Temp/claude/4b1c7420942e1b01/a0839159-3e14-45d4-af01-900ab9d0c624/scratchpad/anim";
+/** Which sub-step (0-based) each process frame waits for; the pointer needs a moment after the caption moves on. */
+const FRAMES = { walls: [1, 2, 3, 5], terrain: [1, 4, 7], fog: [1, 2], sight: [1, 2, 3] } as const;
+for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844]] as const) {
+  for (const step of ["walls", "terrain", "fog", "sight"] as const) {
+    test(`Show me animates ${step} step by step on ${name} (guest-gm-hosting)`, async ({ page, request }, info) => {
+      test.skip((info.project.name === "chromium-touch") !== (name === "phone"), "each size runs on its own project");
+      test.setTimeout(90_000);
+      await page.setViewportSize({ width, height });
+      page.setDefaultTimeout(15_000);
+      const gmToken = randomUUID(), guestToken = randomUUID();
+      const response = await request.post("/api/rooms", {
+        headers: { [GM_TOKEN_HEADER]: gmToken },
+        data: { roomName: "Guest tutorial", displayName: "Guide GM", guestToken, shippedMap: "broken-span" },
+      });
+      const seat = await response.json() as CreateRoomResponse;
+      await page.addInitScript(({ seat, gmToken, guestToken, step }) => {
+        localStorage.setItem("vtt.gm", gmToken);
+        localStorage.setItem(`vtt.credentials.${seat.roomId}`, JSON.stringify({ ...seat, guestToken }));
+        localStorage.setItem(`vtt.tutorial.${seat.roomId}`, step);
+      }, { seat, gmToken, guestToken, step });
+      const tutorial = page.locator(".guest-tutorial");
+      const editor = page.locator("dialog.map-editor[open]");
+      await page.goto(`/r/${seat.roomId}`);
+      await expect(tutorial.getByRole("heading")).toBeVisible({ timeout: 30_000 });
+      await tutorial.getByRole("button", { name: "Show me" }).click();
+      const items = tutorial.locator(".tutorial-ex li");
+      await expect(items.first()).toBeVisible({ timeout: 15_000 });
+      const total = await items.count();
+      let frame = 0;
+      for (const index of FRAMES[step]) {
+        await expect(items.nth(index)).toHaveAttribute("data-state", "current", { timeout: 30_000 });
+        await page.waitForTimeout(step === "fog" && index === 1 ? 250 : 750);
+        await page.screenshot({ path: `${ANIM}/${name}-${step}-process-${++frame}.png` });
+        // The animated area and the card never overlap.
+        const card = await tutorial.boundingBox();
+        const canvas = await editor.locator("svg.wall-canvas-svg").first().boundingBox();
+        expect(card && canvas).toBeTruthy();
+        const overlap = !(card!.x + card!.width <= canvas!.x || canvas!.x + canvas!.width <= card!.x || card!.y + card!.height <= canvas!.y || canvas!.y + canvas!.height <= card!.y);
+        expect(overlap, `card overlaps the canvas at sub-step ${index}`).toBe(false);
+      }
+      await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).toHaveCount(total, { timeout: 40_000 });
+      await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+      // A real click stops a run in the middle and leaves a draft that is still valid and unsaved.
+      await tutorial.getByRole("button", { name: "Replay" }).click();
+      await expect(items.nth(1)).toHaveAttribute("data-state", "current", { timeout: 20_000 });
+      await editor.getByRole("heading").first().click();
+      await page.waitForTimeout(1500);
+      await expect(tutorial.locator('.tutorial-ex li[data-state="current"]')).toHaveCount(1);
+      await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).not.toHaveCount(total);
+    });
   }
 }

@@ -2,7 +2,7 @@ import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
-import { EXAMPLE_CLEAR_EVENT, EXAMPLE_EVENT, EXAMPLE_HIGHLIGHT_EVENT, exampleBox, exampleCommands } from "../ui/tutorialExample";
+import { EXAMPLE_API_EVENT, type ExampleApi } from "../ui/tutorialExample";
 import { libraryAssetId } from "../net/builtinAssets";
 import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoom";
 import { imageSize, nameFromFile } from "../net/imageFile";
@@ -320,54 +320,17 @@ function MapSection(props: {
     [props.connection, props.roomId, props.token, editorSession],
   );
   const draftState: RoomState = draft ? { ...props.room, walls: draft.walls, fog: draft.fog, terrain: draft.terrain ?? props.room.terrain, scene: draftScene(props.room.scene, draft) } : props.room;
-  // The guest demo's Show me draws a sample wall, terrain or fog into this draft; nothing is saved until the GM saves.
+  // The guest demo's Show me animates the tools into this draft, through the commands they send; nothing is saved until the GM saves.
   const exampleNow = useRef({ draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } });
   exampleNow.current = { draft, draftEdits, grid: props.room.scene.grid, map: { width: props.room.scene.map?.width ?? 0, height: props.room.scene.map?.height ?? 0 } };
-  const exampleWalls = useRef<string[]>([]);
   useEffect(() => {
     if (!editorOpen) return;
-    const draw = (clear: boolean) => (event: Event) => {
+    const lend = (event: Event) => {
       const now = exampleNow.current;
-      const step = (event as CustomEvent<string>).detail;
-      const first = now.draft;
-      if (!first) return;
-      void (async () => {
-        const remove = async () => {
-          const ids = exampleWalls.current.filter((id) => exampleNow.current.draft && Object.hasOwn(exampleNow.current.draft.walls, id));
-          exampleWalls.current = [];
-          if (ids.length) await now.draftEdits.command({ type: "wall.remove", wallIds: ids });
-        };
-        if (step === "walls") await remove();
-        if (clear) {
-          if (step !== "walls") for (const command of exampleCommands(step, first, now.grid, now.map, true)) await now.draftEdits.command(command);
-          return;
-        }
-        let box = exampleBox(now.grid, now.map);
-        if (step === "walls") {
-          // A shipped map's stored walls are what a prepared map looks like; the sample is only for a map without any.
-          const before = new Set(Object.keys(first.walls));
-          // Not the stored shipped-map walls: starting their detection opens the Walls step's own "Detected walls" preview over the card.
-          const stored = false;
-          if (!stored) for (const command of exampleCommands(step, first, now.grid, now.map)) await now.draftEdits.command(command);
-          await new Promise((resolve) => window.setTimeout(resolve, 80));
-          const added = Object.values(exampleNow.current.draft?.walls ?? {}).filter((w) => !before.has(w.id));
-          exampleWalls.current = added.map((w) => w.id);
-          if (stored && added.length) {
-            const xs = added.flatMap((w) => [w.a.x, w.b.x]), ys = added.flatMap((w) => [w.a.y, w.b.y]);
-            const pad = now.grid.cellSize / 2;
-            box = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + 2 * pad, h: Math.max(...ys) - Math.min(...ys) + 2 * pad };
-          }
-        } else for (const command of exampleCommands(step, first, now.grid, now.map)) await now.draftEdits.command(command);
-        window.dispatchEvent(new CustomEvent(EXAMPLE_HIGHLIGHT_EVENT, { detail: box }));
-      })();
+      (event as CustomEvent<{ api: ExampleApi | null }>).detail.api = { draft: () => exampleNow.current.draft, command: (command) => exampleNow.current.draftEdits.command(command), grid: now.grid, map: now.map };
     };
-    const drawIt = draw(false), clearIt = draw(true);
-    window.addEventListener(EXAMPLE_EVENT, drawIt);
-    window.addEventListener(EXAMPLE_CLEAR_EVENT, clearIt);
-    return () => {
-      window.removeEventListener(EXAMPLE_EVENT, drawIt);
-      window.removeEventListener(EXAMPLE_CLEAR_EVENT, clearIt);
-    };
+    window.addEventListener(EXAMPLE_API_EVENT, lend);
+    return () => window.removeEventListener(EXAMPLE_API_EVENT, lend);
   }, [editorOpen]);
   const applyGrid = async (grid: GridSpec): Promise<boolean> => {
     const geometryChanged = gridGeometryChanged(props.currentGrid, grid);
