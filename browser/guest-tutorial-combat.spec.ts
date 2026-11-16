@@ -46,7 +46,14 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     const [a, b] = await Promise.all([ring.boundingBox(), card.boundingBox()]);
     if (a && b && (page.viewportSize()?.width ?? 1000) < 640) expect(a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
   };
-  const showMe = async () => { await card.getByRole("button", { name: "Show me" }).click(); };
+  /** Show me is offered when the control is out of sight (a folded section or another tab), and always for a dialog lesson. */
+  const showMe = async (required = false) => {
+    const button = card.getByRole("button", { name: "Show me" });
+    await page.waitForTimeout(600);
+    if (required) await button.click();
+    else if (await button.count()) await button.click({ timeout: 3000 }).catch(() => undefined); // the control may have come into sight meanwhile
+    await page.waitForTimeout(900);
+  };
 
   try {
     await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("connect_error", reject); });
@@ -58,16 +65,16 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
 
     // Show me opens Share and rings its copy-link control, with the card still on screen.
     await step(2, "Invite players");
-    await showMe();
+    await showMe(true);
     const share = page.locator("dialog.share-modal[open]");
     await expect(share.locator(".guest-tutorial")).toBeVisible();
     await expect(share.locator('[data-tutorial="invite"]')).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
-    await share.getByRole("button", { name: "Copy invite link" }).click();
+    await share.getByRole("button", { name: "Copy link" }).click();
 
     // Show me opens the map chooser/editor, and the card stays inside it.
     await step(3, "Prepare the map");
-    await showMe();
+    await showMe(true);
     const editor = page.locator("dialog.map-editor[open]");
     await expect(editor).toBeVisible();
     await expect(share).toHaveCount(0);
@@ -89,7 +96,10 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await command({ type: "token.create", name: "Goblin", position: { x: 210, y: 140 }, stats: { hp: 7, maxHp: 7, ac: 2 } } as CommandInput);
     await step(10, "Move it");
     await command({ type: "token.move", tokenId: created[0]!, to: { x: 140, y: 210 } });
-    await step(11, "Start an encounter");
+    await step(11, "Roll dice");
+    await showMe();
+    await page.locator('button[data-tutorial="roll"]').click();
+    await step(12, "Start an encounter");
     await showMe();
     const start = page.getByRole("button", { name: "Start encounter", exact: true }).first();
     await expect(start).toBeVisible();
@@ -97,17 +107,22 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await clearOfRing();
     await start.click();
     const setup = page.getByRole("dialog", { name: "Start encounter" });
+    await setup.getByPlaceholder("Init").nth(0).fill("15");
+    await setup.getByPlaceholder("Init").nth(1).fill("10");
     await setup.getByRole("button", { name: "Start encounter", exact: true }).last().click();
     await expect(setup).toHaveCount(0);
 
-    await step(12, "Make an attack");
+    await step(13, "Make an attack");
     await showMe();
+    // The attack needs a target first; until one is chosen the ringed button asks for it.
+    await page.getByRole("combobox", { name: /target/i }).first().click();
+    await page.getByRole("option", { name: /Goblin/ }).click();
     const roll = page.getByRole("button", { name: /^Roll to hit/ });
     await expect(roll).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
     await roll.click();
 
-    await step(13, "Rule on the hit");
+    await step(14, "Rule on the hit");
     await showMe();
     const hit = page.getByRole("button", { name: /^Hit\b/ }).first();
     await expect(hit).toBeVisible();
@@ -115,18 +130,15 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await clearOfRing();
     await hit.click();
 
-    await step(14, "Apply damage");
+    await step(15, "Apply damage");
     await showMe();
     await page.getByRole("button", { name: /^Roll damage/ }).click();
     await showMe();
-    const apply = page.getByRole("button", { name: /^Apply −\d+/ }).first();
+    const apply = page.getByRole("button", { name: /^Apply \d+ damage/ }).first();
     await expect(apply).toBeVisible();
     await clearOfRing();
     await apply.click();
 
-    await step(15, "Roll dice");
-    await showMe();
-    await page.getByRole("button", { name: /^Roll\b/ }).first().click();
     await step(16, "You are all set");
     await page.screenshot({ path: info.outputPath("done.png") });
   } finally { socket.disconnect(); }

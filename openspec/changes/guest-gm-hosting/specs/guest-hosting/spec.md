@@ -72,14 +72,14 @@ The first time a guest GM opens a guest room in this browser, the room SHALL ask
 4. **Line up the grid**, 5. **Draw walls**, 6. **Hide part of the map** (fog), 7. **Test what players can see** (sight), 8. **Paint terrain**: each an Edit map tab, finished by saving a change to that section or by Next step.
 9. **Place a token**: add a built-in token or creature to the board.
 10. **Move it**: move a token on the board.
-11. **Start an encounter**: press Start encounter in the initiative tracker.
-12. **Make an attack**: roll to hit with a token against another.
-13. **Rule on the hit**: mark that to-hit roll Hit or Miss.
-14. **Apply damage**: roll damage, then apply it to the target.
-15. **Roll dice**: make any roll.
+11. **Roll dice**: make any roll.
+12. **Start an encounter**: press Start encounter in the initiative tracker.
+13. **Make an attack**: roll to hit with a token against another.
+14. **Rule on the hit**: mark that to-hit roll Hit or Miss.
+15. **Apply damage**: roll damage, then apply it to the target.
 16. **Done**: the room is kept in this browser for 30 days without play, and "Save to a free account" keeps it and allows uploads.
 
-The combat steps (11 to 14) SHALL count only what happened since the demo began or restarted, except that a running encounter counts as started. Each SHALL offer Next step for when its action cannot be repeated. Show me on any step whose control is out of sight, including inside a folded section, another tab or a collapsed phone panel, SHALL open it, and on a 390px screen the card SHALL be a bottom sheet that does not cover the ringed control. Progress stored by an older version SHALL resume at the same lesson.
+The combat steps (12 to 15) SHALL count only what happened since the demo began or restarted, except that a running encounter counts as started. Each SHALL offer Next step for when its action cannot be repeated. Show me on any step whose control is out of sight, including inside a folded section, another tab or a collapsed phone panel, SHALL open it, and on a 390px screen the card SHALL be a bottom sheet that does not cover the ringed control. Progress stored by an older version SHALL resume at the same lesson.
 
 A step whose action is already done when it would start SHALL be skipped. Every step SHALL offer Skip demo, which ends it. The GM SHALL be able to start the demo again from the room's menu. The answer and the progress SHALL be kept in this browser per room, so a reload resumes at the same step, and a declined, finished or skipped demo does not start again. Players SHALL never see the question or the demo, and it SHALL send nothing to the server beyond the GM's own ordinary commands. It SHALL work by keyboard and SHALL fit a 390px-wide screen. It SHALL move focus to the question, and to a step's text when the GM moved on from the demo itself (Yes, Start, starting again). A step reached because the GM did something elsewhere SHALL be announced to screen readers without taking focus, so a key the GM presses for that control (such as Escape to end placing tokens) never skips the demo. Account-owned rooms SHALL NOT ask.
 

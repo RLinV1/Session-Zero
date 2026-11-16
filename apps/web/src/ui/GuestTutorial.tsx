@@ -179,7 +179,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
       const onScreen = !!rect && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
       setHidden(!onScreen);
       // Not the board, nor anything over half the screen: dimming around those would dim the room.
-      const small = onScreen && rect.height < vh / 2 && rect.width < vw / 2;
+      // A phone's control is often full width (Start encounter, Roll to hit), so width only rules out the board there if it is huge too.
+      const small = onScreen && rect.height < vh / 2 && (rect.width < vw / 2 || (vw < BESIDE_MIN_WIDTH && !found!.classList.contains("board")));
       const ring = small ? { top: rect.top - RING_PAD, left: rect.left - RING_PAD, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * RING_PAD } : null;
       setSpot((old) => (old && ring && old.top === ring.top && old.left === ring.left && old.width === ring.width && old.height === ring.height ? old : ring));
       // A bottom sheet that would cover the spotlit control moves to the top instead.

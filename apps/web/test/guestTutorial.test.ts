@@ -12,7 +12,7 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
   beforeEach(() => localStorage.clear());
 
   it("walks through each map editor section independently", () => {
-    expect(TUTORIAL_STEPS).toEqual(["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "encounter", "attack", "ruling", "damage", "roll", "done"]);
+    expect(TUTORIAL_STEPS).toEqual(["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "roll", "encounter", "attack", "ruling", "damage", "done"]);
   });
 
   it("stays on a step until its action happens, then moves on", () => {
@@ -28,14 +28,15 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     expect(settle(step("walls"), { ...none, gridEdits: 1 })).toBe(step("walls"));
     expect(settle(step("sight"), { ...none, wallEdits: 1 })).toBe(step("sight"));
     const all = { ...none, invites: 1, mapEdits: 1, gridEdits: 1, wallEdits: 1, sightEdits: 1, terrainEdits: 1, tokens: 1, moves: 1, fog: 1 };
-    expect(settle(1, all)).toBe(step("encounter"));
-    expect(settle(1, { ...all, encounters: 1 })).toBe(step("attack"));
-    expect(settle(1, { ...all, encounters: 1, attackRolls: 1 })).toBe(step("ruling"));
-    expect(settle(1, { ...all, encounters: 1, attackRolls: 1, rulings: 1 })).toBe(step("damage"));
-    expect(settle(1, { ...all, encounters: 1, attackRolls: 1, rulings: 1, damageApplied: 1 })).toBe(step("roll"));
-    expect(settle(step("attack"), { ...all, attackRolls: 0, rulings: 1 })).toBe(step("attack"));
-    const combat = { ...all, encounters: 1, attackRolls: 1, rulings: 1, damageApplied: 1 };
-    expect(settle(1, { ...combat, gmRolls: 1 })).toBe(step("done"));
+    expect(settle(1, all)).toBe(step("roll"));
+    const rolled = { ...all, gmRolls: 1 };
+    expect(settle(1, rolled)).toBe(step("encounter"));
+    expect(settle(1, { ...rolled, encounters: 1 })).toBe(step("attack"));
+    expect(settle(1, { ...rolled, encounters: 1, attackRolls: 1 })).toBe(step("ruling"));
+    expect(settle(1, { ...rolled, encounters: 1, attackRolls: 1, rulings: 1 })).toBe(step("damage"));
+    expect(settle(step("attack"), { ...rolled, attackRolls: 0, rulings: 1 })).toBe(step("attack"));
+    const combat = { ...rolled, encounters: 1, attackRolls: 1, rulings: 1, damageApplied: 1 };
+    expect(settle(1, combat)).toBe(step("done"));
   });
 
   it("counts only attacks, rulings and applied damage made after the baseline (the demo's start or restart)", () => {

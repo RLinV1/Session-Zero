@@ -1,6 +1,6 @@
 /** The step logic of the guest room's interactive demo (guest-gm-hosting, D8a). Pure, no React. */
 
-export const TUTORIAL_STEPS = ["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "encounter", "attack", "ruling", "damage", "roll", "done"] as const;
+export const TUTORIAL_STEPS = ["table", "invite", "map", "grid", "walls", "fog", "sight", "terrain", "token", "move", "roll", "encounter", "attack", "ruling", "damage", "done"] as const;
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number];
 export const EDITOR_TUTORIAL_STEPS: ReadonlySet<string> = new Set(["grid", "walls", "fog", "sight", "terrain"]);
 /** The combat walkthrough. The GM can move past one whose action cannot be repeated (a reload forgets earlier rolls). */
