@@ -244,6 +244,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   const waitingDamage = damageWaiting(state);
 
   const asking = step === null;
+  // While an editor lesson plays, the card steps out of the board's way: the bottom right on a wide screen, a slim sheet on a phone.
+  const docked = run.step === stepName && EDITOR_TUTORIAL_STEPS.has(stepName!);
   // Escape is No on the question and Skip on a step; only while focus is in the card, so a dialog's own Escape is left alone.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -271,9 +273,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place ? "beside" : "sheet"}${!place && dockTop ? " sheet-top" : ""}`}
+      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${docked ? " has-example" : ""}`}
       data-side={place?.side}
-      style={place ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
+      style={place && !docked ? ({ top: place.top, left: place.left, "--arrow-x": `${place.arrowX}px` } as CSSProperties) : undefined}
       onKeyDown={onKeyDown}
     >
       <span className="sr-only" role="status" aria-live="polite">{stepName ? t(TITLE[stepName]) : ""}</span>
@@ -288,9 +290,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
         </>
       ) : (
         <>
-          <p className="muted small-print">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</p>
+          <p className="muted small-print tutorial-progress">{t("tutorial.progress", { n: step + 1, total: TUTORIAL_STEPS.length })}</p>
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>{t(TITLE[stepName!])}</h2>
-          <p>
+          <p className="tutorial-body">
             {stepName === "done"
               ? t("tutorial.done.body", { days: GUEST_ROOM_IDLE_DAYS })
               : stepName === "damage" && waitingDamage ? t("tutorial.damage.bodyRolled")

@@ -3026,6 +3026,13 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .tutorial-ex { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
 .tutorial-ex li[data-state="todo"], .tutorial-ex li[data-state="done"] { opacity: 0.6; }
 .tutorial-ex li[data-state="current"] { font-weight: 600; }
+@media (min-width: 640px) {
+  .guest-tutorial.has-example.sheet { left: auto; right: var(--space-4); margin-inline: 0; width: min(22rem, calc(100vw - 2 * var(--space-4))); top: auto; bottom: var(--space-4); }
+}
+@media (max-width: 639px) {
+  .guest-tutorial.has-example .tutorial-body, .guest-tutorial.has-example .tutorial-progress { display: none; }
+  .guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
+}
 
 /* What was just rolled (board-dice-rolls, throw-dice-on-board); never takes pointer input. */
 .board-roll-popup {

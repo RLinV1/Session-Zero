@@ -90,7 +90,9 @@ export function useExampleRun() {
     const script = exampleScript(step, api?.grid ?? FALLBACK.grid, api?.map ?? FALLBACK.map);
     if (script.length === 0) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, reduced ? 60 : ms));
+    // Browser tests slow the pace to catch each frame (`window.__tutorialPace`); it is 1 for everyone else.
+    const pace = (window as { __tutorialPace?: number }).__tutorialPace ?? 1;
+    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, reduced ? 60 : ms * pace));
     const stopOnUser = (e: Event) => { if (e.isTrusted) stop(); };
     window.addEventListener("pointerdown", stopOnUser, true);
     window.addEventListener("keydown", stopOnUser, true);

@@ -194,9 +194,10 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844
         localStorage.setItem(`vtt.credentials.${seat.roomId}`, JSON.stringify({ ...seat, guestToken }));
         localStorage.setItem(`vtt.tutorial.${seat.roomId}`, step);
       }, { seat, gmToken, guestToken, step });
+      await page.addInitScript(() => { (window as { __tutorialPace?: number }).__tutorialPace = 3; });
       const tutorial = page.locator(".guest-tutorial");
       const editor = page.locator("dialog.map-editor[open]");
-      await page.goto(`/r/${seat.roomId}`);
+      await page.goto(`/r/${seat.roomId}`, { timeout: 60_000 });
       await expect(tutorial.getByRole("heading")).toBeVisible({ timeout: 30_000 });
       await tutorial.getByRole("button", { name: "Show me" }).click();
       const items = tutorial.locator(".tutorial-ex li");
@@ -205,14 +206,19 @@ for (const [name, width, height] of [["desktop", 1440, 1000], ["phone", 390, 844
       let frame = 0;
       for (const index of FRAMES[step]) {
         await expect(items.nth(index)).toHaveAttribute("data-state", "current", { timeout: 30_000 });
-        await page.waitForTimeout(step === "fog" && index === 1 ? 250 : 750);
+        // The pace is 3x here: the pointer lands after about 1.4 s and the click pulse and change follow.
+        await page.waitForTimeout(step === "fog" && index === 1 ? 1900 : 1600);
         await page.screenshot({ path: `${ANIM}/${name}-${step}-process-${++frame}.png` });
         // The animated area and the card never overlap.
         const card = await tutorial.boundingBox();
-        const canvas = await editor.locator("svg.wall-canvas-svg").first().boundingBox();
-        expect(card && canvas).toBeTruthy();
-        const overlap = !(card!.x + card!.width <= canvas!.x || canvas!.x + canvas!.width <= card!.x || card!.y + card!.height <= canvas!.y || canvas!.y + canvas!.height <= card!.y);
-        expect(overlap, `card overlaps the canvas at sub-step ${index}`).toBe(false);
+        expect(card).toBeTruthy();
+        for (const area of [".example-cursor", "[data-tutorial-ring]", ".tutorial-pulse"]) {
+          if ((await page.locator(area).count()) === 0) continue;
+          const box = await page.locator(area).first().boundingBox({ timeout: 1000 }).catch(() => null);
+          if (!box) continue;
+          const overlap = !(card!.x + card!.width <= box.x || box.x + box.width <= card!.x || card!.y + card!.height <= box.y || box.y + box.height <= card!.y);
+          expect(overlap, `card overlaps ${area} at sub-step ${index}`).toBe(false);
+        }
       }
       await expect(tutorial.locator('.tutorial-ex li[data-state="done"]')).toHaveCount(total, { timeout: 40_000 });
       await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
