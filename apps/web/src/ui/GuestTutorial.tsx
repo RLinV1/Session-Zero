@@ -9,7 +9,7 @@ import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { ExampleCursor } from "./ExampleCursor";
 import { useExampleRun } from "./useExampleRun";
 import { TUTORIAL_MAP } from "./tutorialMap";
-import { damageWaiting, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { damageWaiting, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, restoreTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
