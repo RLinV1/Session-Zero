@@ -3,15 +3,17 @@ import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testi
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomState } from "@vtt/shared";
+import type { RoomConnection } from "../src/net/roomConnection";
 import { t } from "../src/i18n/locale";
 import { GuestRoomProvider } from "../src/ui/GuestRoom";
 import { GuestTutorial } from "../src/ui/GuestTutorial";
 
+const connection = {} as RoomConnection;
 const room = (tokens: Record<string, unknown> = {}) => ({ tokens, fog: {}, rolls: [], scene: { grid: {}, map: null }, walls: {} }) as unknown as RoomState;
 const demo = (state: RoomState): ReactElement => (
   <GuestRoomProvider value={{ guest: true, idleDays: 30 }}>
     <button type="button">board</button>
-    <GuestTutorial roomId="r1" state={state} selfId="gm" invites={0} restart={0} reveal={() => {}} />
+    <GuestTutorial roomId="r1" connection={connection} state={state} selfId="gm" invites={0} restart={0} reveal={() => {}} />
   </GuestRoomProvider>
 );
 
@@ -43,7 +45,7 @@ describe("the demo's focus (guest-gm-hosting: A guest room offers an interactive
     const reveal = vi.fn();
     render(<GuestRoomProvider value={{ guest: true, idleDays: 30 }}>
       <dialog open className="map-editor" aria-label="Edit map"><button type="button" data-tutorial="grid">Grid</button></dialog>
-      <GuestTutorial roomId="r1" state={room()} selfId="gm" invites={0} restart={0} reveal={reveal} />
+      <GuestTutorial roomId="r1" connection={connection} state={room()} selfId="gm" invites={0} restart={0} reveal={reveal} />
     </GuestRoomProvider>);
     const heading = screen.getByRole("heading", { name: t("tutorial.grid.title") });
     await waitFor(() => expect(heading.closest("dialog.map-editor")).not.toBeNull());

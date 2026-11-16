@@ -73,15 +73,15 @@ The first time a guest GM opens a guest room in this browser, the room SHALL ask
 9. **Place a token**: add a built-in token or creature to the board.
 10. **Move it**: move a token on the board.
 11. **Roll dice**: make any roll.
-12. **Start an encounter**: press Start encounter in the initiative tracker.
-13. **Make an attack**: roll to hit with a token against another.
-14. **Rule on the hit**: mark that to-hit roll Hit or Miss.
-15. **Apply damage**: roll damage, then apply it to the target.
+12. **Start an encounter**: a Run demo fight button adds a hero with a sword and a goblin with AC and HP (labelled Demo hero and Demo goblin) to the map, unless the GM already has two tokens that can fight, and starts an encounter with the hero first. Pressing Start encounter in Initiative still works.
+13. **Make an attack**: a Roll the hero's attack button rolls the hero's to-hit against the goblin, as the Attack section does. The roll shows to everyone.
+14. **Rule on the hit**: the roll waits in Rulings, and the GM presses Hit or Miss there. Show me opens Rulings.
+15. **Apply damage**: a Roll damage button rolls the sword's damage, then the GM presses Apply in Rulings and the goblin's HP drops.
 16. **Done**: the room is kept in this browser for 30 days without play, and "Save to a free account" keeps it and allows uploads.
 
-The combat steps (12 to 15) SHALL count only what happened since the demo began or restarted, except that a running encounter counts as started. Each SHALL offer Next step for when its action cannot be repeated. Show me on any step whose control is out of sight, including inside a folded section, another tab or a collapsed phone panel, SHALL open it, and on a 390px screen the card SHALL be a bottom sheet that does not cover the ringed control. Progress stored by an older version SHALL resume at the same lesson.
+The demo fight buttons SHALL send the same commands the Initiative and Attack sections send (token.create, initiative.start, dice.roll with attack context), as the GM, and nothing else; the rulings stay the GM's own presses. The Done step SHALL offer to remove the demo tokens (and end their encounter), and SHALL otherwise leave them. The combat steps (12 to 15) SHALL count only what happened since the demo began or restarted, except that a running encounter counts as started. Each SHALL offer Next step for when its action cannot be repeated. Show me on any step whose control is out of sight, including inside a folded section, another tab or a collapsed phone panel, SHALL open it, and on a 390px screen the card SHALL be a bottom sheet that does not cover the ringed control. Progress stored by an older version SHALL resume at the same lesson.
 
-A step whose action is already done when it would start SHALL be skipped. Every step SHALL offer Skip demo, which ends it. The GM SHALL be able to start the demo again from the room's menu. The answer and the progress SHALL be kept in this browser per room, so a reload resumes at the same step, and a declined, finished or skipped demo does not start again. Players SHALL never see the question or the demo, and it SHALL send nothing to the server beyond the GM's own ordinary commands. It SHALL work by keyboard and SHALL fit a 390px-wide screen. It SHALL move focus to the question, and to a step's text when the GM moved on from the demo itself (Yes, Start, starting again). A step reached because the GM did something elsewhere SHALL be announced to screen readers without taking focus, so a key the GM presses for that control (such as Escape to end placing tokens) never skips the demo. Account-owned rooms SHALL NOT ask.
+A step whose action is already done when it would start SHALL be skipped. Every step SHALL offer Skip demo, which ends it. The GM SHALL be able to start the demo again from the room's menu. The answer and the progress SHALL be kept in this browser per room, so a reload resumes at the same step, and a declined, finished or skipped demo does not start again. Players SHALL never see the question or the demo, and it SHALL send nothing to the server beyond the GM's own ordinary commands and the demo fight's. It SHALL work by keyboard and SHALL fit a 390px-wide screen. It SHALL move focus to the question, and to a step's text when the GM moved on from the demo itself (Yes, Start, starting again). A step reached because the GM did something elsewhere SHALL be announced to screen readers without taking focus, so a key the GM presses for that control (such as Escape to end placing tokens) never skips the demo. Account-owned rooms SHALL NOT ask.
 
 #### Scenario: Guest GM is asked first
 - **WHEN** guest GM Sam opens a new guest room for the first time
@@ -90,6 +90,14 @@ A step whose action is already done when it would start SHALL be skipped. Every 
 #### Scenario: Guest GM is guided through the table
 - **WHEN** Sam answers Yes
 - **THEN** the "Your table" step appears, and after Start the "Invite players" step points at the invite control
+
+#### Scenario: The demo fight shows a ruling
+- **WHEN** Sam is on "Start an encounter" and presses Run demo fight, then Roll the hero's attack
+- **THEN** a Demo hero and a Demo goblin are on the map, the encounter is running, and the roll waits in Rulings with Hit and Miss for Sam to press
+
+#### Scenario: Show me opens the lesson's tab from another editor mode
+- **WHEN** Sam is in Change map on the walls, fog, sight or terrain lesson and presses Show me
+- **THEN** the editor reopens as Edit map with that tab selected and its control ringed
 
 #### Scenario: Declining is remembered
 - **WHEN** Sam answers No and later reloads the room
