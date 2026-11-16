@@ -4573,3 +4573,48 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .start-fields { display: flex; flex-direction: column; gap: var(--space-4); max-width: 27rem; }
 .guest-note { max-width: 40ch; }
 @media (max-width: 760px) { .start-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* AI build map review: separate navigation, drawing, and review controls. */
+.build-map-inspector { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.build-setup-tabs { display: flex; gap: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.build-setup-tabs button { flex: 1; min-height: 2.25rem; padding: 0.45rem 0.7rem; font-size: var(--fs-sm); border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }
+.build-setup-tabs button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.build-map-inspector .build-walls { display: flex; flex-direction: column; gap: var(--space-2); }
+.build-map-inspector .build-walls > p, .build-map-inspector .build-walls h4 { margin: 0; }
+.build-draw-tools { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.build-draw-tools h4, .build-draw-tools p { margin: 0; }
+.build-tool-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.build-tool-buttons button { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.4rem 0.35rem; font-size: var(--fs-sm); white-space: nowrap; }
+.build-tool-buttons button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.build-map-inspector .build-line-editor { padding: var(--space-3); gap: var(--space-2); }
+.build-map-inspector .build-line-groups { gap: var(--space-2); }
+.build-reset-setup { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+.build-reset-setup button { color: var(--muted); }
+.build-reset-setup button:hover { color: var(--danger); }
+@container (min-width: 52rem) { .build-map-review { gap: var(--space-5); } }
+
+.build-map-grid-controls { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
+.build-map-grid-controls .build-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.build-map-grid-controls > .row { margin-top: var(--space-1); gap: var(--space-2); }
+.build-map-inspector h4 { font-size: var(--fs-sm); }
+.build-map-inspector .build-line-card { padding: var(--space-2); min-height: 3rem; }
+.build-map-inspector .build-walls-key { margin-block: var(--space-1); gap: 0.25rem 0.65rem; }
+.build-map-inspector .build-walls-sum { font-size: var(--fs-xs); }
+
+.build-page-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.build-page-heading h1 { margin: 0; min-width: 0; }
+.build-page-heading > button { flex-shrink: 0; }
+.build-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.build-publish-options { display: grid; gap: var(--space-2); max-height: 45vh; overflow-y: auto; }
+.build-publish-options label { display: flex; gap: var(--space-2); align-items: center; }
+
+.build-publish-list-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-inline: calc(var(--space-3) + 1px); }
+.build-publish-select-all { display: inline-grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: center; gap: var(--space-3); font-size: var(--fs-sm); color: var(--text); }
+.build-publish-options .build-publish-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer; }
+.build-publish-option-name { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; overflow-wrap: anywhere; }
+.build-publish-option-name strong { color: var(--text); font-size: var(--fs-sm); font-weight: 600; }
+.build-publish-option > .chip { font-size: var(--fs-xs); white-space: nowrap; }
+
+.build-publish-options .build-publish-option > input,
+.build-publish-select-all > input { width: 1rem; height: 1rem; margin: 0; }
+.build-publish-confirm { gap: var(--space-3); }

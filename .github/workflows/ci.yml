@@ -9,6 +9,19 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vtt
+          POSTGRES_PASSWORD: vtt
+          POSTGRES_DB: vtt_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vtt -d vtt_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +49,13 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Test AI build storage on PostgreSQL
+        env:
+          DATABASE_URL: postgres://vtt:vtt@localhost:5432/vtt_test
+        run: |
+          npm run prisma:migrate --workspace=@vtt/server
+          npm run test --workspace=@vtt/server -- test/buildStore.test.ts test/buildPublish.test.ts test/buildTerrain.test.ts
 
       - name: Test vision service (grid and wall detection)
         run: |

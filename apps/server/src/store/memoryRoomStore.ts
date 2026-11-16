@@ -781,9 +781,13 @@ export class MemoryRoomStore implements RoomStore {
     return [...this.builds.values()].filter((b) => b.status === "open" && b.updatedAt < before).map((b) => ({ id: b.id, ownerGmId: b.ownerGmId }));
   }
 
-  async forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
+  async forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
     for (const fileId of removed.fileIds) {
-      if (this.buildFiles.get(fileId)?.buildId === buildId) this.buildFiles.delete(fileId);
+      const file = this.buildFiles.get(fileId);
+      if (file?.buildId === buildId) {
+        if (removed.keepFiles) this.buildFiles.set(fileId, { ...file, publishedAssetId: null });
+        else this.buildFiles.delete(fileId);
+      }
     }
     const open = this.builds.get(buildId)?.status === "open";
     for (const { kind, key } of removed.items) {

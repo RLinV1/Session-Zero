@@ -111,10 +111,9 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     const form = await newBuildDialog();
     expect((within(form).getByRole("radio", { name: /^You set up maps/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls, doors and windows/ }));
-    const boxes = within(form).getAllByRole("checkbox") as HTMLInputElement[];
-    expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
+    expect(within(form).queryAllByRole("checkbox")).toHaveLength(0);
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids Your/ }));
-    expect(boxes.map((b) => b.checked)).toEqual([true, false, false]);
+    expect((within(form).getByRole("radio", { name: /^Your AI sets grids Your/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Lanternfall" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
     expect(start).toHaveBeenCalledWith("Lanternfall", { aiGrid: true, aiWalls: false, aiTerrain: false });
@@ -124,23 +123,24 @@ describe("starting an AI build (FR-GM-26, AI builds redesign 2026-11-10)", () =>
     const start = vi.spyOn(api.builds, "start").mockResolvedValue({ build: build(), pass: "szb_new", expiresAt: at(DAY) });
     await openTab([]);
     const form = await newBuildDialog();
-    expect((within(form).getByRole("checkbox", { name: /^Let my AI propose terrain/ }) as HTMLInputElement).checked).toBe(false);
+    expect(within(form).queryAllByRole("checkbox")).toHaveLength(0);
     fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls and terrain/ }));
-    expect((within(form).getAllByRole("checkbox") as HTMLInputElement[]).map((b) => b.checked)).toEqual([true, true, true]);
+    expect((within(form).getByRole("radio", { name: /^Your AI sets grids, walls and terrain/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Everything" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
     expect(start).toHaveBeenCalledWith("Everything", { aiGrid: true, aiWalls: true, aiTerrain: true });
   });
 
-  it("still takes each choice on its own, which no preset matches", async () => {
+  it("offers only the four presets without duplicate customization controls", async () => {
     const start = vi.spyOn(api.builds, "start").mockResolvedValue({ build: build(), pass: "szb_new", expiresAt: at(DAY) });
     await openTab([]);
     const form = await newBuildDialog();
-    fireEvent.click(within(form).getByRole("checkbox", { name: /^Let my AI set walls, doors and windows/ }));
-    expect((within(form).getAllByRole("radio") as HTMLInputElement[]).some((r) => r.checked)).toBe(false);
+    expect(within(form).getAllByRole("radio")).toHaveLength(4);
+    expect(within(form).queryAllByRole("checkbox")).toHaveLength(0);
+    fireEvent.click(within(form).getByRole("radio", { name: /^Your AI sets grids, walls, doors and windows/ }));
     fireEvent.change(within(form).getByLabelText("Name of this build"), { target: { value: "Walls only" } });
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Start build" })); });
-    expect(start).toHaveBeenCalledWith("Walls only", { aiGrid: false, aiWalls: true, aiTerrain: false });
+    expect(start).toHaveBeenCalledWith("Walls only", { aiGrid: true, aiWalls: true, aiTerrain: false });
   });
 
   it("then shows the pass with what happens next, and lists the new build with its working pass", async () => {

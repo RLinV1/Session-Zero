@@ -475,6 +475,19 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
   });
 
   describe("discarding and removing (FR-GM-27)", () => {
+    it("unpublishes a map while preserving its draft image for editing and republishing", async () => {
+      const { id, account } = await readyBuild();
+      const response = await publish(account, id, { maps: ["cave"] });
+      expect(response.status).toBe(200);
+      const detail = await account.json<{ items: { kind: string; publishedId: string | null }[] }>("GET", `/api/builds/${id}`);
+      const mapId = detail.items.find((item) => item.kind === "map")!.publishedId;
+      const before = await storedFiles();
+      expect((await account.request("POST", `/api/builds/${id}/remove-published`, { ids: [mapId], unpublishMap: true })).status).toBe(200);
+      expect(await storedFiles()).toBe(before);
+      const after = await account.json<{ files: { url: string }[]; items: { kind: string; published: boolean }[] }>("GET", `/api/builds/${id}`);
+      expect(after.items.find((item) => item.kind === "map")!.published).toBe(false);
+      expect((await publish(account, id, { maps: ["cave"] })).status).toBe(200);
+    });
     const published = (account: HttpAccount, id: string) => account.json<{ published: { type: string; id: string; name: string; rooms: { id: string }[] }[] }>("GET", `/api/builds/${id}/published`);
     const remove = (account: HttpAccount, id: string, body: unknown = {}) => account.request("POST", `/api/builds/${id}/remove-published`, body);
 

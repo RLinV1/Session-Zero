@@ -926,10 +926,11 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.build.findMany({ where: { status: "open", updatedAt: { lt: new Date(before) } }, select: { id: true, ownerGmId: true } });
   }
 
-  async forgetPublished(buildId: string, removed: { fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
+  async forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
-      await tx.buildFile.deleteMany({ where: { buildId, id: { in: removed.fileIds } } });
+      if (removed.keepFiles) await tx.buildFile.updateMany({ where: { buildId, id: { in: removed.fileIds } }, data: { publishedAssetId: null } });
+      else await tx.buildFile.deleteMany({ where: { buildId, id: { in: removed.fileIds } } });
       const open = (await tx.build.findUnique({ where: { id: buildId }, select: { status: true } }))?.status === "open";
       for (const { kind, key } of removed.items) {
         if (open) await tx.buildItem.updateMany({ where: { buildId, kind, key }, data: { publishedId: null } });

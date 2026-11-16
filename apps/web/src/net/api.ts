@@ -491,8 +491,8 @@ export const api = {
     publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[]; reviewed: Record<string, string> }) =>
       accountRequest<{ published: BuildPublished }>(`${buildUrl(id)}/publish`, { method: "POST", ...jsonBody(selection) }),
     published: (id: string) => accountRequest<{ published: PublishedBuildItem[] }>(`${buildUrl(id)}/published`),
-    removePublished: (id: string, ids?: string[]) =>
-      accountRequest<{ removed: number }>(`${buildUrl(id)}/remove-published`, { method: "POST", ...jsonBody(ids ? { ids } : {}) }),
+    removePublished: (id: string, ids?: string[], unpublishMap?: boolean) =>
+      accountRequest<{ removed: number }>(`${buildUrl(id)}/remove-published`, { method: "POST", ...jsonBody({ ...(ids ? { ids } : {}), ...(unpublishMap ? { unpublishMap } : {}) }) }),
     discard: (id: string) => accountRequest<void>(buildUrl(id), { method: "DELETE" }),
   },
 

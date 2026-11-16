@@ -51,6 +51,7 @@ export interface RailLink {
   count?: number;
   /** Marks a count that asks for the person's attention. */
   urgent?: boolean;
+  onClick?: () => void;
 }
 
 /** The page's parts, each a link, with the part in view marked as the person scrolls. */
@@ -63,7 +64,8 @@ export function ContentsRail({ links, children }: { links: readonly RailLink[]; 
         <ol className="plain build-rail-links">
           {links.map((link) => (
             <li key={link.id}>
-              <a href={`#${link.id}`} aria-current={current === link.id ? "location" : undefined}>
+              <a href={`#${link.id}`} aria-current={current === link.id ? "location" : undefined}
+                onClick={link.onClick ? (event) => { event.preventDefault(); link.onClick!(); } : undefined}>
                 <span>{link.label}</span>
                 {link.count !== undefined && <span className={link.urgent ? "build-rail-count build-rail-urgent" : "build-rail-count"}>{link.count}</span>}
               </a>

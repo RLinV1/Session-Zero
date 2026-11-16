@@ -315,6 +315,7 @@ export interface BuildFileView {
 }
 
 export interface BuildItemView {
+  publishedId?: string | null;
   kind: "creature" | "map" | "encounter";
   key: string;
   data: Record<string, unknown>;

@@ -77,10 +77,6 @@ function MapSetupFields({ choices, onChange }: { choices: BuildChoices; onChange
           <span><strong>{setup.label}</strong> <span className="muted small-print">{setup.detail}</span></span>
         </label>
       ))}
-      <details className="build-disclosure">
-        <summary>Customize what your AI can set up</summary>
-        <ChoiceBoxes choices={choices} onChange={onChange} />
-      </details>
     </fieldset>
   );
 }

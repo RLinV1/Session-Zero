@@ -86,7 +86,6 @@ const WALLS_NOT_ALLOWED = 'The owner hasn\'t let the AI set walls, doors and win
 const TERRAIN_NOT_ALLOWED = 'The owner hasn\'t let the AI propose terrain on this build. They can tick "Let my AI propose terrain" on the build page.';
 /** Said after a refusal of a save that had a part the owner allows, so the AI knows that part wasn't saved either. */
 const NOTHING_SAVED = " Nothing was saved. Send only what's allowed.";
-const OWNER_TERRAIN_CLEAR_ONLY = "Here you can only clear the terrain your AI proposed. Paint terrain in the map editor after publishing.";
 const AI_READ_OLD_VERSION = "This map changed while you were saving, perhaps by another save at the same moment. Read it again with get_map_setup, then save once more.";
 const OWNER_SAW_OLD_VERSION = "Your AI changed this map since you looked. Check it again, then make your change.";
 
@@ -105,10 +104,10 @@ const PublishRequest = z.strictObject({
   /** The version of each draft item the person was looking at, as `kind/key`. Required: a person always looks first. */
   reviewed: z.record(z.string().max(80), z.string().max(40)),
 }).refine((r) => r.creatures.length + r.maps.length + r.encounters.length > 0, { message: "Choose something to publish." });
-const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional() });
+const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).optional(), unpublishMap: z.boolean().optional() });
 /**
  * The owner's whole setup for a map, and the version of the map the page showed. Terrain left out
- * stays as it was, and `terrain: []` clears it (ADR 0071); the page can't paint terrain.
+ * stays as it was, and `terrain: []` clears it. Owner corrections are validated on the current grid.
  */
 const OwnerSetupSave = z.strictObject({ setup: DraftMapSetup, updatedAt: z.string().max(40) });
 const WALL_PARTS = ["openings", "lines", "marks"] as const;
@@ -173,7 +172,7 @@ function itemView(item: BuildItemRecord, read?: { build: BuildRecord; files: Rea
     : item.data;
   return {
     kind: item.kind, key: item.key, data, flags: item.flags, notCarriedOver: item.notCarriedOver,
-    editedByUser: item.editedByUser, published: item.publishedId !== null, updatedAt: item.updatedAt,
+    editedByUser: item.editedByUser, published: item.publishedId !== null, publishedId: item.publishedId, updatedAt: item.updatedAt,
   };
 }
 
@@ -330,6 +329,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (!found) return;
       const { build } = found;
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+
       const read = { build, files: new Map(files.map((f) => [f.id, f])) };
       res.json({
         build: buildSummary(build),
@@ -465,13 +465,16 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       // The server keeps the grid terrain was proposed on; the page's copy is never taken.
       const { terrain, terrainGrid: _shown, ...walls } = body.data.setup;
       const kept = before.terrain?.length ? { terrain: before.terrain, ...(before.terrainGrid ? { terrainGrid: before.terrainGrid } : {}) } : {};
-      if (terrain?.length && !sameJson(normalizeTerrain(terrain), normalizeTerrain(before.terrain ?? []))) {
-        return void res.status(422).json({ error: OWNER_TERRAIN_CLEAR_ONLY });
+      const read = readMap(build, map, file);
+      const grid = read.grid ?? read.proposedGrid;
+      const terrainChanged = terrain !== undefined && !sameJson(normalizeTerrain(terrain), normalizeTerrain(before.terrain ?? []));
+      if (terrainChanged && terrain.length > 0) {
+        const problems = draftTerrainProblems(terrain, grid, file);
+        if (problems.length) return void res.status(422).json({ error: problems.join("\n") });
       }
-      const setup: DraftMapSetup = { ...walls, ...(terrain?.length === 0 ? {} : kept) };
+      const setup: DraftMapSetup = { ...walls, ...(terrain?.length === 0 ? {} : terrainChanged && grid ? { terrain: normalizeTerrain(terrain!), terrainGrid: terrainGridOf(grid) } : kept) };
       // Clearing terrain alone isn't held back by walls a grid correction has since put off the map.
       const wallsChanged = WALL_PARTS.some((part) => !sameJson(walls[part], before[part]));
-      const read = readMap(build, map, file);
       const problems = wallsChanged ? mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file) : [];
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
       await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
@@ -626,6 +629,14 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const wanted = body.data.ids ? new Set(body.data.ids) : null;
       const owner = build.ownerGmId;
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
+      if (body.data.unpublishMap) {
+        const ids = body.data.ids ?? [];
+        if (build.status !== "open" || ids.length !== 1 || !items.some((item) => item.kind === "map" && item.publishedId === ids[0])) {
+          return void res.status(400).json({ error: "Choose one published map in an open build." });
+        }
+        const [rooms, encounters] = await Promise.all([store.assetUsage(ids[0]!, owner), store.encountersUsingMap(ids[0]!, owner)]);
+        if (rooms.length || encounters.length) return void res.status(409).json({ error: "This map is still used by a room or encounter. Remove those references before unpublishing it." });
+      }
       const chosen = (id: string | null): id is string => id !== null && (!wanted || wanted.has(id));
       const forgetItems: { kind: BuildItemKind; key: string }[] = [];
       let removed = 0;
@@ -642,12 +653,12 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         if (deleted) {
           removed++;
           // As a library delete does: rooms still naming this address draw the usual stand-in.
-          await assets.delete(deleted.objectKey).catch(() => console.error("[vtt] could not delete a published build file"));
+          if (!body.data.unpublishMap) await assets.delete(deleted.objectKey).catch(() => console.error("[vtt] could not delete a published build file"));
         }
         forgetFiles.push(file.id);
         for (const item of items) if (item.kind === "map" && item.publishedId === file.publishedAssetId) forgetItems.push({ kind: "map", key: item.key });
       }
-      await store.forgetPublished(build.id, { fileIds: forgetFiles, items: forgetItems });
+      await store.forgetPublished(build.id, { fileIds: forgetFiles, items: forgetItems, keepFiles: body.data.unpublishMap });
       res.json({ removed });
     })().catch(failed(res));
   });

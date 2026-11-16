@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { CaretLeft, CaretRight, Flag, Trash, X } from "@phosphor-icons/react";
+import { Modal } from "../../ui/Modal";
 import {
   EMPTY_MAP_SETUP,
   type DraftCorner,
@@ -210,7 +211,7 @@ function Chosen({ lines, chosen, flags }: { lines: readonly DraftLine[]; chosen:
 
 /**
  * A map's walls, doors and windows, as the AI and the file left them (ADR 0053). The owner can change
- * any opening and change or remove anything the AI drew. Drawing and moving walls stays in the map editor.
+ * any opening and change or remove anything the AI drew. The map card also offers drawing tools.
  */
 export function MapWalls({ setup, openings, blocked, editable, editedByUser, busy, picker, onSave }: {
   setup: DraftMapSetup;
@@ -224,6 +225,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   onSave: (setup: DraftMapSetup) => Promise<void>;
 }) {
   const headId = useId();
+  const [resetting, setResetting] = useState(false);
   const lines = setup.lines;
   const flags = useMemo(() => lineFlags(setup, blocked), [setup, blocked]);
   const chosen = [...picker.chosen].sort((a, b) => a - b);
@@ -231,6 +233,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   // The field shows the choice, however it was made; what is typed chooses as it is typed.
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [kindUnselectedFor, setKindUnselectedFor] = useState<string | null>(null);
   const typed = useRef(false);
   useEffect(() => {
     if (typed.current) { typed.current = false; return; }
@@ -280,7 +283,14 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   };
   const changeChosen = (change: (line: DraftLine) => DraftLine) =>
     void onSave({ ...setup, lines: lines.map((l, i) => (picker.chosen.has(i) ? change(l) : l)) });
-  const makeKind = (kind: LineKind) => { if (chosenKinds.size !== 1 || !chosenKinds.has(kind)) changeChosen((l) => withKind(l, kind)); };
+  const makeKind = (kind: LineKind) => {
+    if (kindUnselectedFor !== chosenKey && chosenKinds.size === 1 && chosenKinds.has(kind)) {
+      setKindUnselectedFor(chosenKey);
+      return;
+    }
+    setKindUnselectedFor(null);
+    if (chosenKinds.size !== 1 || !chosenKinds.has(kind)) changeChosen((l) => withKind(l, kind));
+  };
   const makeState = (state: PortalState) => { if (chosenStates.size !== 1 || !chosenStates.has(state)) changeChosen((l) => withKind(l, l.kind, state)); };
   const removeChosen = () => void onSave({ ...setup, lines: lines.filter((_, i) => !picker.chosen.has(i)) });
   const removeMark = (index: number) => void onSave({ ...setup, marks: setup.marks.filter((_, i) => i !== index) });
@@ -297,7 +307,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   return (
     <section className="build-walls" aria-labelledby={headId}>
       <div className="build-walls-head">
-        <h4 id={headId}>Walls, doors and windows</h4>
+        <h4 id={headId}>Review existing lines</h4>
         <p className="build-walls-sum">{summary}</p>
       </div>
       <ul className="plain build-walls-key" aria-label="Key to the map">
@@ -327,7 +337,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
           <div className="build-line-groups" role="group" aria-label="Choose every">
             {(["wall", "door", "window", "flagged"] as const).map((g) => (
               <button key={g} type="button" className="small" disabled={groups[g].length === 0}
-                aria-pressed={groups[g].length > 0 && groups[g].join(",") === chosenKey} onClick={() => picker.choose(groups[g])}>
+                aria-pressed={groups[g].length > 0 && groups[g].join(",") === chosenKey} onClick={() => groups[g].join(",") === chosenKey ? picker.clear() : picker.choose(groups[g])}>
                 {g === "flagged" && <Flag size={12} weight="fill" aria-hidden="true" />}{GROUP_TITLE[g]}<span className="build-seg-count">{groups[g].length}</span>
               </button>
             ))}
@@ -343,7 +353,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
                   <span className="build-lines-set-label" id={`${headId}-make`}>Make</span>
                   <div className="seg seg-small" role="group" aria-labelledby={`${headId}-make`}>
                     {KINDS.map((k) => (
-                      <button key={k} type="button" aria-pressed={chosenKinds.size === 1 && chosenKinds.has(k)} disabled={busy} onClick={() => makeKind(k)}>
+                      <button key={k} type="button" aria-pressed={kindUnselectedFor !== chosenKey && chosenKinds.size === 1 && chosenKinds.has(k)} disabled={busy} onClick={() => makeKind(k)}>
                         <span className="build-line-swatch" data-kind={k} aria-hidden="true" />{KIND_TITLE[k]}
                       </button>
                     ))}
@@ -359,7 +369,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
                     </div>
                   </div>
                 )}
-                <div className="build-line-end">
+                <div className="build-line-end build-editor-actions">
                   <button type="button" className="small danger build-text-action" disabled={busy} onClick={removeChosen}>
                     <Trash size={15} aria-hidden="true" />{chosen.length === 1 ? "Remove line" : `Remove ${chosen.length} lines`}
                   </button>
@@ -426,7 +436,11 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
           </ul>
         </>
       )}
-      {editable && aiSetSomething && <button type="button" className="link danger build-text-action" disabled={busy} onClick={() => void onSave({ ...EMPTY_MAP_SETUP, terrain: [] })}>Remove everything your AI set on this map</button>}
+      {editable && aiSetSomething && <div className="build-reset-setup build-editor-actions"><button type="button" className="small build-text-action" disabled={busy} onClick={() => setResetting(true)}><Trash size={15} aria-hidden="true" />Reset map setup</button></div>}
+      <Modal open={resetting} title="Reset map setup?" onClose={() => setResetting(false)}>
+        <p>This removes the draft's added walls, doors, windows, terrain and review marks. The map image and grid stay.</p>
+        <div className="row"><button type="button" onClick={() => setResetting(false)}>Cancel</button><button type="button" className="danger" disabled={busy} onClick={() => { setResetting(false); void onSave({ ...EMPTY_MAP_SETUP, terrain: [] }); }}>Reset setup</button></div>
+      </Modal>
     </section>
   );
 }
