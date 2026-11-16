@@ -55,7 +55,7 @@ export function exampleScript(step: string, grid: GridSpec, map: { url?: string;
       { caption: "tutorial.ex.wallsBlock", at: A, run: async (api) => { for (const command of exampleCommands("walls", api.draft()!, lessonGrid, map).filter((command) => command.type === "wall.add")) await api.command(command); } },
       { caption: "tutorial.ex.addTest", control: tool("sight-add"), at: centre(c0 + 2, r0 + 1), click: true, run: sight({ op: "place", at: centre(c0 + 2, r0 + 1) }) },
       { caption: "tutorial.ex.losOn", control: tool("sight-on"), press: true, skip: () => attr(tool("sight-on"), "aria-checked", "true") },
-      { caption: "tutorial.ex.moveTest", from: centre(c0 + 2, r0 + 1), at: centre(c0 + 3, r0 + 1), click: true, run: sight({ op: "move", dx: 1, dy: 0 }) },
+      { caption: "tutorial.ex.moveTest", from: centre(c0 + 2, r0 + 1), at: centre(c0 + 7, r0 + 1), click: true, run: sight({ op: "move", dx: 5, dy: 0 }) },
     ];
     case "grid": return [
       { caption: "tutorial.ex.gridStart", control: tool("grid-restart"), press: true },

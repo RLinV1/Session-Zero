@@ -541,7 +541,7 @@ export const panels = {
   "tutorial.ex.wallsBlock": "Walls block sight",
   "tutorial.ex.addTest": "Add a test token",
   "tutorial.ex.losOn": "Turn line of sight on",
-  "tutorial.ex.moveTest": "Move the token",
+  "tutorial.ex.moveTest": "Move outside the room to see visibility change",
   "tutorial.ex.gridSize": "Match the square size",
   "tutorial.ex.gridOffset": "Match the offsets",
   "tutorial.ex.gridStart": "Start with the map, not the advanced fields",

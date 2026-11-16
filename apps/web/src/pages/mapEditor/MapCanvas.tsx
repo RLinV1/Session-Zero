@@ -180,20 +180,15 @@ export function MapCanvas({
   };
 
   const px = 1 / scale;
-  // The demo's Show me outlines what it just drew for a few seconds (guest-gm-hosting).
-  const [pulse, setPulse] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Frame the demonstration without drawing a second outline over the map's walls.
   useEffect(() => {
-    let timer = 0;
     const show = (e: Event) => {
       const box = (e as CustomEvent<{ x: number; y: number; w: number; h: number }>).detail;
-      setPulse(box);
       // Bring the new geometry to the middle of the view, zoomed so it fills about half of it.
       setCamera((c) => ({ cx: box.x + box.w / 2, cy: box.y + box.h / 2, zoom: Math.min(MAX_ZOOM, Math.max(1, Math.min(map.width / (box.w * 2), map.height / (box.h * 2)), c.zoom)) }));
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setPulse(null), 3500);
     };
     window.addEventListener(EXAMPLE_HIGHLIGHT_EVENT, show);
-    return () => { window.removeEventListener(EXAMPLE_HIGHLIGHT_EVENT, show); window.clearTimeout(timer); };
+    return () => window.removeEventListener(EXAMPLE_HIGHLIGHT_EVENT, show);
   }, [map.width, map.height]);
   return (
     <div className="wall-canvas">
@@ -221,7 +216,6 @@ export function MapCanvas({
         <image href={map.url} x={0} y={0} width={map.width} height={map.height} preserveAspectRatio="none" />
         <GridLines grid={grid} map={map} scale={scale} />
         {children({ scale, px })}
-        {pulse && <rect className="tutorial-pulse" data-tutorial-pulse x={pulse.x} y={pulse.y} width={pulse.w} height={pulse.h} rx={6 * px} pointerEvents="none" />}
       </svg>
       <MapGuide />
       <MapFilter />

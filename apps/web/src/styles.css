@@ -3034,8 +3034,15 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .tutorial-ex { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
 .tutorial-ex li[data-state="todo"], .tutorial-ex li[data-state="done"] { opacity: 0.6; }
 .tutorial-ex li[data-state="current"] { font-weight: 600; }
+.guest-tutorial.has-example { width: min(20rem, calc(100vw - 2 * var(--space-4))); }
+.guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
+.guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:last-child { display: list-item; }
+.guest-tutorial.has-example[data-playing="true"] .tutorial-body,
+.guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
+.guest-tutorial.is-following::before { display: none; }
+.guest-tutorial.is-following { max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; }
 @media (min-width: 640px) {
-  .guest-tutorial.has-example.sheet { left: auto; right: var(--space-4); margin-inline: 0; width: min(22rem, calc(100vw - 2 * var(--space-4))); top: auto; bottom: var(--space-4); }
+  .guest-tutorial.has-example.sheet { left: auto; right: var(--space-4); margin-inline: 0; width: min(20rem, calc(100vw - 2 * var(--space-4))); top: auto; bottom: var(--space-4); }
 }
 @media (max-width: 639px) {
   .guest-tutorial.has-example .tutorial-body, .guest-tutorial.has-example .tutorial-progress { display: none; }
@@ -4661,6 +4668,3 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .build-publish-confirm { gap: var(--space-3); }
 
 /* The guest demo's Show me outlines the sample it just drew in the map editor (guest-gm-hosting). */
-.tutorial-pulse { fill: rgb(255 196 0 / 0.14); stroke: #ffc400; stroke-width: 4px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 6px #ffc400); animation: tutorial-pulse 0.9s ease-in-out 4 alternate; }
-@keyframes tutorial-pulse { from { stroke-opacity: 1; fill-opacity: 0.2; } to { stroke-opacity: 0.35; fill-opacity: 0.04; } }
-@media (prefers-reduced-motion: reduce) { .tutorial-pulse { animation: none; } }

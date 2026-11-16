@@ -540,7 +540,7 @@ export const panelsZhTW = {
   "tutorial.ex.wallsBlock": "牆會擋住視線",
   "tutorial.ex.addTest": "加入測試棋子",
   "tutorial.ex.losOn": "開啟視線",
-  "tutorial.ex.moveTest": "移動棋子",
+  "tutorial.ex.moveTest": "移到房間外，觀察視野變化",
   "tutorial.ex.gridSize": "對齊格子大小",
   "tutorial.ex.gridOffset": "對齊位移",
   "tutorial.ex.gridStart": "從地圖開始，不必調整進階欄位",

@@ -1,4 +1,4 @@
-import { INITIAL_SCENE_ID, distanceToSegment, overlapsToken, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
+import { INITIAL_SCENE_ID, sceneNameOf, sceneNamesOf, distanceToSegment, overlapsToken, storedWallsFor, terrainAt, type AttackPreset, type Point, type RoomState, type Token } from "@vtt/shared";
 import { attackExpression, pendingRulings, presetRollLabel } from "../panels/attackRoll";
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
@@ -57,7 +57,7 @@ export async function ensureTutorialScene(connection: RoomConnection): Promise<D
   let state = connection.snapshot?.state;
   if (!state || state.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
   const existing = Object.entries(state.savedScenes ?? {}).find(([, saved]) => saved.table.scene.map?.url === TUTORIAL_MAP.url);
-  const names = new Set(Object.values(state.sceneNames ?? {}));
+  const names = new Set(Object.values(sceneNamesOf(state)));
   let name = TUTORIAL_SCENE_NAME;
   for (let suffix = 2; names.has(name); suffix++) name = `${TUTORIAL_SCENE_NAME} ${suffix}`;
   const origin = state.activeSceneId ?? INITIAL_SCENE_ID;
@@ -77,7 +77,7 @@ export async function restoreTutorialScene(connection: RoomConnection): Promise<
   if (!state || state.scene.map?.url !== TUTORIAL_MAP.url) return { ok: true };
   let origin: string | null = null;
   try { origin = localStorage.getItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* No stored origin. */ }
-  if (!origin || !Object.hasOwn(state.sceneNames ?? {}, origin)) return { ok: true };
+  if (!origin || sceneNameOf(state, origin) === undefined) return { ok: true };
   const result = await send(connection, { type: "scene.switch", sceneId: origin });
   if (result.ok) try { localStorage.removeItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* Storage can be disabled. */ }
   return result;

@@ -76,6 +76,10 @@ test("grid demo calibrates the visible practice tiles without dimming or clippin
       const dialog = card.closest("dialog");
       if (dialog && getComputedStyle(dialog).transform !== "none") failures.push("transformed dialog");
       if (document.querySelector(".tutorial-spotlight") && getComputedStyle(document.querySelector(".tutorial-spotlight")!).boxShadow !== "none") failures.push("dimmed map");
+      const cursor = document.querySelector(".example-cursor")?.getBoundingClientRect();
+      if (cursor && rect.left < cursor.right && rect.right > cursor.left && rect.top < cursor.bottom && rect.bottom > cursor.top) failures.push("covered pointer");
+      const actions = Array.from(card.querySelectorAll(".tutorial-ex li")).filter((item) => getComputedStyle(item).display !== "none");
+      if (actions.length > 1) failures.push("multiple actions visible");
       for (const modal of document.querySelectorAll("dialog[open]")) if (getComputedStyle(modal, "::backdrop").backgroundColor !== "rgba(0, 0, 0, 0)") failures.push("dimmed backdrop");
     }
     return failures;

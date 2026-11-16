@@ -167,12 +167,13 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
     set(0);
   }, [restart]);
 
-  const [place, setPlace] = useState<{ top: number; left: number; side: "above" | "below"; arrowX: number } | null>(null);
+  const [place, setPlace] = useState<{ top: number; left: number; side: "above" | "below"; arrowX: number; follow?: boolean } | null>(null);
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [demoError, setDemoError] = useState<string | null>(null);
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const pointerRoute = useRef<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
   const shown = guest && (progress === null || typeof progress === "number");
@@ -181,6 +182,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
   // Next to the step's control; a bottom sheet when it is hidden, huge (the board) or the screen is narrow.
   useLayoutEffect(() => {
     if (!shown) return;
+    if (!run.cursor) pointerRoute.current = null;
+    else if (!pointerRoute.current || pointerRoute.current.to.x !== run.cursor.x || pointerRoute.current.to.y !== run.cursor.y) {
+      pointerRoute.current = { from: pointerRoute.current?.to ?? run.cursor, to: run.cursor };
+    }
     let anchor: HTMLElement | null = null;
     const measure = () => {
       const card = cardRef.current;
@@ -197,6 +202,26 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       const rect = found?.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      if (card && run.playing && run.cursor) {
+        const control = document.querySelector("[data-tutorial-ring]");
+        if (!control || !card.contains(control)) {
+          const { x, y } = run.cursor;
+          const from = run.cursor.dragFrom ?? pointerRoute.current?.from ?? run.cursor;
+          const w = card.offsetWidth, h = card.offsetHeight, gap = 32;
+          const target = control?.getBoundingClientRect();
+          const obstacles = [{ left: Math.min(x, from.x) - gap, right: Math.max(x, from.x) + gap, top: Math.min(y, from.y) - gap, bottom: Math.max(y, from.y) + gap }];
+          if (target && target.width < vw / 2 && target.height < vh / 2) obstacles.push(target);
+          const candidates = [
+            { left: x + gap, top: y - h / 2 }, { left: x - w - gap, top: y - h / 2 },
+            { left: x - w / 2, top: y + gap }, { left: x - w / 2, top: y - h - gap },
+          ].map((p) => ({ left: Math.max(GUTTER, Math.min(p.left, vw - w - GUTTER)), top: Math.max(GUTTER, Math.min(p.top, vh - h - GUTTER)) }));
+          const next = candidates.find((p) => obstacles.every((r) => p.left + w <= r.left || p.left >= r.right || p.top + h <= r.top || p.top >= r.bottom));
+          if (next) {
+            setPlace((old) => old?.follow && old.left === next.left && old.top === next.top ? old : { ...next, follow: true, side: "below", arrowX: 0 });
+            return;
+          }
+        }
+      }
       const onScreen = !!rect && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
       // Not the board, nor anything over half the screen: dimming around those would dim the room.
       // A phone's control is often full width (Start encounter, Roll to hit), so width only rules out the board there if it is huge too.
@@ -220,7 +245,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       const left = Math.min(Math.max(GUTTER, rect.left), vw - card.offsetWidth - GUTTER);
       const side = below ? "below" : "above";
       const arrowX = Math.min(Math.max(GUTTER, rect.left + rect.width / 2 - left), card.offsetWidth - GUTTER);
-      setPlace((old) => (old && old.top === top && old.left === left && old.side === side && old.arrowX === arrowX ? old : { top, left, side, arrowX }));
+      setPlace((old) => (old && !old.follow && old.top === top && old.left === left && old.side === side && old.arrowX === arrowX ? old : { top, left, side, arrowX }));
     };
     measure();
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -241,7 +266,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       setSpot(null);
       anchor?.removeAttribute("data-tutorial-active");
     };
-  }, [shown, stepName, editorHost, run.step, run.index]);
+  }, [shown, stepName, editorHost, run.step, run.index, run.playing, run.cursor?.x, run.cursor?.y, run.cursor?.dragFrom]);
   // The editor tab opens, then asks for its lesson's animation.
   useEffect(() => {
     if (!shown) return;
@@ -277,7 +302,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
 
   const asking = step === null;
   // While an editor lesson plays, the card steps out of the board's way: the bottom right on a wide screen, a slim sheet on a phone.
-  const docked = run.step === stepName && EDITOR_TUTORIAL_STEPS.has(stepName!);
+  const following = run.playing && place?.follow;
+  const docked = run.step === stepName && EDITOR_TUTORIAL_STEPS.has(stepName!) && !following;
   // Escape is No on the question and Skip on a step; only while focus is in the card, so a dialog's own Escape is left alone.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -321,7 +347,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal,
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
-      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}${asking ? " is-intro" : ""}`}
+      className={`guest-tutorial ${place && !docked ? "beside" : "sheet"}${(!place || docked) && dockTop ? " sheet-top" : ""}${run.step === stepName ? " has-example" : ""}${asking ? " is-intro" : ""}${following ? " is-following" : ""}`}
       data-side={place?.side}
       data-step={stepName}
       data-playing={run.playing}

@@ -127,7 +127,8 @@ export function useExampleRun() {
     setRun({ step, captions: script.map((s) => s.caption), index: 0, playing: true, cursor: reduced ? null : { x: window.innerWidth / 2, y: window.innerHeight - 40, pulse: 0, dragFrom: null } });
     // Mount at the starting point before setting the first destination, so CSS can interpolate it.
     await wait(80);
-    const box = api ? exampleBox(api.grid, api.map) : null;
+    const sampleBox = api ? exampleBox(api.grid, api.map) : null;
+    const box = sampleBox && step === "sight" ? { ...sampleBox, w: 9 * api!.grid.cellSize } : sampleBox;
     // Frame the sample area first, so every board point the pointer visits stays where it is.
     if (box) { window.dispatchEvent(new CustomEvent(EXAMPLE_HIGHLIGHT_EVENT, { detail: box })); await wait(500); }
     for (let i = 0; i < script.length && alive(); i++) {
