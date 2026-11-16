@@ -3037,7 +3037,8 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .tutorial-ex li[data-state="current"] { font-weight: 600; }
 .guest-tutorial.has-example { width: min(20rem, calc(100vw - 2 * var(--space-4))); }
 .guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
-.guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:last-child { display: list-item; }
+.guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:not(:last-child) { display: none; }
+.guest-tutorial.has-example[data-playing="false"] .tutorial-ex li:last-child { display: list-item; list-style: none; }
 .guest-tutorial.has-example[data-playing="true"] .tutorial-body,
 .guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
 .guest-tutorial.is-following::before { display: none; }
