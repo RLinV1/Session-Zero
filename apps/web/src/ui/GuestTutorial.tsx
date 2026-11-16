@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { GUEST_ROOM_IDLE_DAYS, type RoomState } from "@vtt/shared";
 import { t, type TextId } from "../i18n/locale";
 import { navigate } from "../router";
+import type { RoomConnection } from "../net/roomConnection";
 import { SAVE_ACCOUNT_HREF, useGuestRoom } from "./GuestRoom";
+import { damageWaiting, demoTokenIds, removeDemoTokens, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
 
 const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
@@ -36,6 +38,8 @@ const OPENS_DIALOG: ReadonlySet<string> = new Set(["map"]);
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
 const anchorFor = (step: string) => document.querySelector<HTMLElement>(`dialog[open] [data-tutorial="${step}"]`)
+  // Apply, not the Attack panel's Roll damage, once there is a damage roll to apply.
+  ?? (step === "damage" ? document.querySelector<HTMLElement>('.ruling-buttons [data-tutorial="damage"]') : null)
   ?? (EDITOR_TUTORIAL_STEPS.has(step) ? document.querySelector<HTMLElement>("[data-tutorial-editor-open]") : null)
   ?? document.querySelector<HTMLElement>(`[data-tutorial="${step}"]`);
 
@@ -44,11 +48,13 @@ const positionsOf = (tokens: RoomState["tokens"]) =>
 
 /**
  * The guest GM's interactive demo (guest-gm-hosting, D8a). It only watches the room the GM already
- * has: no command, no server call. Each step points at a `data-tutorial` control, or sits at the
+ * has, except the demo fight (tutorialDemo.ts), whose buttons send the panels' own commands. Each step points at a `data-tutorial` control, or sits at the
  * bottom of the screen when that control is not on screen.
  */
-export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal }: {
+export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal, connection }: {
   roomId: string;
+  /** The GM seat's connection: the demo fight sends the same commands the Initiative and Attack panels do. */
+  connection: RoomConnection;
   state: RoomState;
   /** The GM's own participant id, whose rolls count. */
   selfId: string;
@@ -149,6 +155,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
 
   const [place, setPlace] = useState<{ top: number; left: number; side: "above" | "below"; arrowX: number } | null>(null);
   const [spot, setSpot] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [dockTop, setDockTop] = useState(false);
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
@@ -217,6 +225,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
 
   if (!shown) return null;
 
+  const runDemo = async (run: () => Promise<DemoResult>) => {
+    setDemoBusy(true);
+    const result = await run();
+    setDemoBusy(false);
+    setDemoError(result.ok ? null : result.message);
+    // The panels hold the lesson: bring the control the next step points at into view.
+    const next = { encounter: "attack", attack: "ruling", damage: "damage" }[stepName!];
+    if (result.ok && next) window.setTimeout(() => reveal(next as (typeof TUTORIAL_STEPS)[number]), 300);
+  };
+  const waitingDamage = damageWaiting(state);
+
   const asking = step === null;
   // Escape is No on the question and Skip on a step; only while focus is in the card, so a dialog's own Escape is left alone.
   const onKeyDown = (event: KeyboardEvent) => {
@@ -264,11 +283,25 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, reveal 
           <p>
             {stepName === "done"
               ? t("tutorial.done.body", { days: GUEST_ROOM_IDLE_DAYS })
+              : stepName === "damage" && waitingDamage ? t("tutorial.damage.bodyRolled")
               : t(`tutorial.${stepName!}.body` as TextId)}
           </p>
+          {demoError && <p role="alert" className="error">{demoError}</p>}
           <div className="row">
             {(hidden || EDITOR_TUTORIAL_STEPS.has(stepName!) || OPENS_DIALOG.has(stepName!)) && REVEALABLE.has(stepName!) && (
               <button type="button" className="small primary" onClick={showMe}>{t("tutorial.showMe")}</button>
+            )}
+            {stepName === "encounter" && (
+              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoEncounter(connection))}>{t("tutorial.demo.run")}</button>
+            )}
+            {stepName === "attack" && (
+              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
+            )}
+            {stepName === "damage" && !waitingDamage && (
+              <button type="button" className="small primary" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "damage"))}>{t("tutorial.demo.damage")}</button>
+            )}
+            {stepName === "done" && demoTokenIds(state).length > 0 && (
+              <button type="button" className="small secondary" disabled={demoBusy} onClick={() => void runDemo(() => removeDemoTokens(connection))}>{t("tutorial.demo.remove")}</button>
             )}
             {stepName === "table" && (
               <button type="button" className="small primary" onClick={() => { focusNext.current = true; set(settle(1, facts)); }}>{t("tutorial.start")}</button>

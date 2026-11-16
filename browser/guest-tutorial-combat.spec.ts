@@ -93,55 +93,46 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await expect(editor).toHaveCount(0);
     await step(9, "Place a token");
 
-    // Two tokens, one move, and the combat lessons run on what the room really shows.
-    await command({ type: "token.create", name: "Aria", position: { x: 140, y: 140 }, stats: { hp: 12, maxHp: 12, ac: 14 }, attacks: [{ name: "Sword", toHit: { count: 1, sides: 20, modifier: 5 }, damage: { count: 1, sides: 8, modifier: 3 } }] } as CommandInput);
-    await command({ type: "token.create", name: "Goblin", position: { x: 210, y: 140 }, stats: { hp: 7, maxHp: 7, ac: 2 } } as CommandInput);
+    // One plain token and one move (socket); the fight itself is the demo's own buttons.
+    await command({ type: "token.create", name: "Aria", position: { x: 140, y: 140 } } as CommandInput);
     await step(10, "Move it");
     await command({ type: "token.move", tokenId: created[0]!, to: { x: 140, y: 210 } });
     await step(11, "Roll dice");
     await showMe();
     await page.locator('button[data-tutorial="roll"]').click();
+
+    // Run demo fight adds the hero and goblin and starts the encounter, with Initiative on screen.
     await step(12, "Start an encounter");
     await showMe();
-    const start = page.getByRole("button", { name: "Start encounter", exact: true }).first();
-    await expect(start).toBeVisible();
-    await expect(start).toHaveAttribute("data-tutorial-active", "");
+    await expect(page.getByRole("button", { name: "Start encounter", exact: true }).first()).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
-    await start.click();
-    const setup = page.getByRole("dialog", { name: "Start encounter" });
-    await setup.getByPlaceholder("Init").nth(0).fill("15");
-    await setup.getByPlaceholder("Init").nth(1).fill("10");
-    await setup.getByRole("button", { name: "Start encounter", exact: true }).last().click();
-    await expect(setup).toHaveCount(0);
+    await card.getByRole("button", { name: "Run demo fight" }).click();
 
     await step(13, "Make an attack");
+    await expect(page.getByText("Demo hero").first()).toBeVisible();
+    await expect(page.getByText("Demo goblin").first()).toBeVisible();
     await showMe();
-    // The attack needs a target first; until one is chosen the ringed button asks for it.
-    await page.getByRole("combobox", { name: /target/i }).first().click();
-    await page.getByRole("option", { name: /Goblin/ }).click();
-    const roll = page.getByRole("button", { name: /^Roll to hit/ });
-    await expect(roll).toHaveAttribute("data-tutorial-active", "");
-    await clearOfRing();
-    await roll.click();
+    await card.getByRole("button", { name: "Roll the hero's attack" }).click();
 
+    // The roll waits in Rulings, and the GM presses Hit.
     await step(14, "Rule on the hit");
     await showMe();
-    const hit = page.getByRole("button", { name: /^Hit\b/ }).first();
+    const hit = page.getByRole("button", { name: /^Hit: / }).first();
     await expect(hit).toBeVisible();
     await expect(hit).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
     await hit.click();
 
     await step(15, "Apply damage");
-    await showMe();
-    await page.getByRole("button", { name: /^Roll damage/ }).click();
-    await showMe();
-    const apply = page.getByRole("button", { name: /^Apply \d+ damage/ }).first();
+    await card.getByRole("button", { name: "Roll damage" }).click();
+    const apply = page.getByRole("button", { name: /^Apply [0-9]+ damage/ }).first();
     await expect(apply).toBeVisible();
+    await expect(apply).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
     await apply.click();
 
     await step(16, "You are all set");
+    await expect(card.getByRole("button", { name: "Remove demo tokens" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("done.png") });
   } finally { socket.disconnect(); }
 });
