@@ -1,6 +1,6 @@
 import { GridActionsContext } from "./GridActionsContext";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { emptyTerrain, type WallDetectionStatus, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
+import { emptyTerrain, gridGeometryChanged, sameValue, pendingDepartures, undoableAction, type Command, type MapTokenPolicy, type GridSpec, type LibraryAsset, type MapImage, type RoomState } from "@vtt/shared";
 import { api } from "../net/api";
 import { EXAMPLE_CLEAR_EVENT, EXAMPLE_EVENT, EXAMPLE_HIGHLIGHT_EVENT, exampleBox, exampleCommands } from "../ui/tutorialExample";
 import { libraryAssetId } from "../net/builtinAssets";
@@ -346,15 +346,8 @@ function MapSection(props: {
         if (step === "walls") {
           // A shipped map's stored walls are what a prepared map looks like; the sample is only for a map without any.
           const before = new Set(Object.keys(first.walls));
-          let stored = false;
-          try {
-            let status: WallDetectionStatus = await api.walls.detect(props.roomId, props.token, {});
-            for (let i = 0; i < 25 && status.status !== "done" && status.status !== "failed"; i++) {
-              await new Promise((resolve) => window.setTimeout(resolve, 400));
-              status = (await api.walls.status(props.roomId, props.token, first.mapUrl)) ?? status;
-            }
-            stored = status.status === "done" && status.wallCount > 0 && (await now.draftEdits.command({ type: "wall.applyDetected", mapUrl: first.mapUrl })).ok;
-          } catch { /* no stored walls and no detection here: draw the sample */ }
+          // Not the stored shipped-map walls: starting their detection opens the Walls step's own "Detected walls" preview over the card.
+          const stored = false;
           if (!stored) for (const command of exampleCommands(step, first, now.grid, now.map)) await now.draftEdits.command(command);
           await new Promise((resolve) => window.setTimeout(resolve, 80));
           const added = Object.values(exampleNow.current.draft?.walls ?? {}).filter((w) => !before.has(w.id));

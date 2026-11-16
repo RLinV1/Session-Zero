@@ -144,5 +144,6 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     }
     const [a, b] = spots(walled);
     expect(b.x - a.x).toBe(50);
+    for (const p of [a, b]) expect([(p.x - grid.offsetX) % 50, (p.y - grid.offsetY) % 50]).toEqual([25, 25]); // a cell centre
   });
 });
