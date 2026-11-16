@@ -3865,26 +3865,32 @@ button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"]
    Home page: fog between sections, the grid behind the hero (design-language)
    ========================================================================== */
 
-/* The board's own fog wisps between sections. The art is grey on black with no alpha, so each
-   wisp is a box of fog colour masked by the picture's brightness: black is clear, grey is mist.
-   (Blending would not reach the lit ground, which sits behind the page's own stacking context.)
+/* The board's own fog wisps between sections. Each wisp is a box of fog colour masked by the
+   wisp's alpha (public/img/fog/mask, the art's brightness baked into alpha by
+   scripts/fog-masks.mjs): clear where the art is black, mist where it is grey. Not a luminance
+   mask: WebKit on iOS ignores those and drew every wisp as a solid grey box. (Blending would not
+   reach the lit ground, which sits behind the page's own stacking context.)
    Inert to the pointer, so a link it overlaps still takes its click. */
 .fog-divider {
   position: relative; height: clamp(7rem, 18vw, 15rem); overflow: hidden; pointer-events: none;
   /* Full bleed and faded on every side, so the weather never shows the page's column. */
   margin-block: calc(-1 * clamp(2.5rem, 6vw, 5rem)); margin-inline: calc(50% - 50vw);
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent),
+    linear-gradient(180deg, transparent, #000 32%, #000 68%, transparent);
+  -webkit-mask-composite: source-in;
   mask-image:
     linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent),
     linear-gradient(180deg, transparent, #000 32%, #000 68%, transparent);
   mask-composite: intersect;
-  -webkit-mask-composite: source-in;
   --fog: rgba(206, 211, 220, 0.55);
 }
 :root[data-theme="light"] .fog-divider { --fog: rgba(96, 106, 124, 0.22); }
 .fog-wisp {
   position: absolute; top: 50%; left: -8%; width: min(64rem, 120%); aspect-ratio: 768 / 280; translate: 0 -50%;
   background: var(--fog);
-  mask: var(--wisp) center / 100% 100% no-repeat luminance;
+  -webkit-mask: var(--wisp) center / 100% 100% no-repeat;
+  mask: var(--wisp) center / 100% 100% no-repeat;
 }
 .fog-wisp + .fog-wisp { left: 38%; scale: -1 1; opacity: 0.7; }
 /* It drifts, slowly, only where there is room for it to read as weather and motion is welcome. */
