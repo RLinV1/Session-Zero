@@ -151,7 +151,7 @@ describe("delegated Studio consent and tokens (FR-GM-26, ADR 0073)", () => {
     const { challenge } = pkcePair();
     expect((await server.anonymous().request("GET", `/api/oauth/authorize?${new URLSearchParams(authorizeParams(client.client_id, challenge))}`)).status).toBe(401);
     const owner = await server.signUp();
-    for (const over of [{ client_id: "szc_unknown" }, { redirect_uri: "https://evil.test.invalid/cb" }]) {
+    for (const over of [{ client_id: "szc_unknown" }, { redirect_uri: "https://evil.test.invalid/cb" }] as Record<string, string>[]) {
       const res = await owner.request("GET", `/api/oauth/authorize?${new URLSearchParams(authorizeParams(client.client_id, challenge, over))}`);
       expect(res.status).toBe(400);
       expect(await res.json()).not.toHaveProperty("redirectTo");
