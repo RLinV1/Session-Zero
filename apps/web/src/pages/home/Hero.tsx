@@ -93,6 +93,7 @@ function HeroActions() {
           {t("home.hero.join")}
         </button>
       </div>
+      <p className="hero-guest-hint muted small-print">{t("account.guestHint")}</p>
       {open && (
         <div id="join-panel" ref={panel} className="join-panel">
           {rooms.length > 0 && <JoinedRooms rooms={rooms} />}

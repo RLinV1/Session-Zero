@@ -31,7 +31,7 @@ describe("the hero leads with what sets the product apart (gm-home: The hero lea
 describe("the hero's two ways in (gm-home: Both paths in the first screen)", () => {
   it("makes running a game the primary action, into the GM flow", () => {
     render(<Hero />);
-    const start = screen.getByRole("link", { name: "Start a room" });
+    const start = screen.getByRole("link", { name: "Try without signing in" });
     expect(start.getAttribute("href")).toBe("/start");
     expect(start.className).toContain("cta");
   });

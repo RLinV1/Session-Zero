@@ -13,7 +13,7 @@ export const home = {
 
   "home.hero.title": "Free forever, and ready to play tonight.",
   "home.hero.body": "Session Zero suggests your grid and walls, and lets your own AI app take a player seat. Players still join from a link, with no account.",
-  "home.hero.start": "Start a room",
+  "home.hero.start": "Try without signing in",
   "home.hero.join": "Join a game",
   "home.hero.joined.title": "Rooms you've joined",
   "home.hero.joined.body": "Pick up where you left off. Saved in this browser only.",
@@ -154,7 +154,7 @@ export const home = {
   "home.players.alt": "A player's phone at the table: the tomb is dark except what their token Nalani can see, with Nalani's hit points below.",
   "home.closing.title": "Ready to run a game?",
   "home.closing.body": "Start a room and send your players the link.",
-  "home.closing.start": "Start a room",
+  "home.closing.start": "Try without signing in",
   "home.session.title": "From map to first move.",
   "home.session.body": "Start with a table. Bring the rest of your adventure when you are ready.",
   "home.session.steps": "Set up, invite and play",

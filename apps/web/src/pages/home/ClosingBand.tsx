@@ -18,6 +18,7 @@ export function ClosingBand() {
           {t("home.closing.start")}
           <ArrowRight aria-hidden="true" />
         </Link>
+        <p className="small-print muted">{t("account.guestHint")}</p>
       </div>
     </section>
   );
