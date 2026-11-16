@@ -4633,3 +4633,15 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .tutorial-pulse { fill: rgb(255 196 0 / 0.14); stroke: #ffc400; stroke-width: 4px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 6px #ffc400); animation: tutorial-pulse 0.9s ease-in-out 4 alternate; }
 @keyframes tutorial-pulse { from { stroke-opacity: 1; fill-opacity: 0.2; } to { stroke-opacity: 0.35; fill-opacity: 0.04; } }
 @media (prefers-reduced-motion: reduce) { .tutorial-pulse { animation: none; } }
+
+/* Connecting an AI app to builds (ADR 0073): the consent page and a build's list of connections. */
+.studio-connect { display: flex; flex-direction: column; gap: var(--space-2); max-width: 36rem; }
+.studio-connect > p { margin: 0; }
+.studio-connect fieldset { display: flex; flex-direction: column; gap: var(--space-1); border: 1px solid var(--border, currentColor); border-radius: 0.5rem; padding: var(--space-2) var(--space-3); margin: 0; min-width: 0; }
+.studio-connect label.checkbox { overflow-wrap: anywhere; }
+.studio-connect .row { flex-wrap: wrap; gap: var(--space-2); }
+.studio-connections { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.studio-connections h2 { font-size: var(--fs-md, 1.1rem); margin: 0; }
+.studio-connections > p, .studio-connections li > p { margin: 0; overflow-wrap: anywhere; }
+.studio-connections ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.studio-connections li { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; }

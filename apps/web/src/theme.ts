@@ -42,6 +42,7 @@ export function layerFor(route: Route): Layer {
     case "signup":
     case "join":
     case "notFound":
+    case "studioConnect":
       return "entry";
     // The policy pages are long reading, so they take the hub's calm glow, not the entry photograph.
     case "start":

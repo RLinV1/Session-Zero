@@ -201,6 +201,7 @@ const TITLE_KEYS = {
   room: "title.room",
   encounterEdit: "title.encounterEdit",
   build: "title.build",
+  studioConnect: "title.studioConnect",
 } as const satisfies Record<Exclude<Route["page"], "home">, keyof WebEn>;
 
 /** The browser tab's title: "Library · Session Zero", or the product name alone at home. */

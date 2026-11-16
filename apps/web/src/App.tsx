@@ -13,6 +13,7 @@ import { EntryPage } from "./ui/SiteHeader";
 const GmDashboardPage = lazy(() => import("./pages/GmDashboardPage").then((m) => ({ default: m.GmDashboardPage })));
 const StartPage = lazy(() => import("./pages/StartPage").then((m) => ({ default: m.StartPage })));
 const LibraryPage = lazy(() => import("./pages/LibraryPage").then((m) => ({ default: m.LibraryPage })));
+const StudioConnectPage = lazy(() => import("./pages/studio/StudioConnectPage").then((m) => ({ default: m.StudioConnectPage })));
 const BuildPage = lazy(() => import("./pages/build/BuildPage").then((m) => ({ default: m.BuildPage })));
 const IsometricLightingPage = lazy(() => import("./pages/IsometricLightingPage").then((m) => ({ default: m.IsometricLightingPage })));
 const RoomPage = lazy(() => import("./pages/RoomPage").then((m) => ({ default: m.RoomPage })));
@@ -46,6 +47,8 @@ function RoutePage({ route }: { route: Route }) {
       return <LibraryPage />;
     case "build":
       return <BuildPage key={route.buildId} buildId={route.buildId} />;
+    case "studioConnect":
+      return <StudioConnectPage />;
     case "signin":
       return <SignInPage />;
     case "signup":

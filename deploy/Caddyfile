@@ -91,7 +91,9 @@
 	}
 
 	# One origin for the browser: API, sockets (WebSocket upgrades pass through) and uploads go to the app server.
-	@backend path /api/* /socket.io/* /uploads/* /health
+	# The OAuth discovery documents for delegated Studio access (ADR 0073) are the app server's too, and it
+	# answers OpenID Connect discovery with 404, so the SPA fallback below never answers these with a page.
+	@backend path /api/* /socket.io/* /uploads/* /health /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/openid-configuration /.well-known/openid-configuration/*
 	handle @backend {
 		reverse_proxy server:3001 {
 			# Exactly one entry, the address decided above, so TRUST_PROXY=1 stays right whatever is in front of Caddy.

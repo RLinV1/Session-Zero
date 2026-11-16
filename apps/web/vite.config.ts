@@ -45,6 +45,11 @@ export default defineConfig({
       "/api": { target: server, changeOrigin: false },
       "/uploads": { target: server, changeOrigin: false },
       "/socket.io": { target: server, ws: true },
+      // Delegated Studio access (ADR 0073, design D7): the room server answers OAuth discovery, and
+      // a 404 for OpenID Connect, so the SPA fallback never answers these with index.html.
+      "/.well-known/oauth-authorization-server": { target: server, changeOrigin: false },
+      "/.well-known/oauth-protected-resource": { target: server, changeOrigin: false },
+      "/.well-known/openid-configuration": { target: server, changeOrigin: false },
       // `npm run dev:mcp`, so the address the Share dialog shows also works in dev.
       "/mcp": { target: process.env.VTT_MCP ?? "http://127.0.0.1:3002" },
     },
