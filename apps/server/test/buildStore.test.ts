@@ -39,6 +39,16 @@ describe.each(storeCases)("build store on %s (FR-GM-26)", (_name, makeStore) => 
     return store.createBuild({ id: randomUUID(), ownerGmId, name: "Hollow Coast" }, 3);
   }
 
+  it("reads a draft creature's attacks stored before mixed dice in today's shape (FR-TAC-09, legacy attack dice)", async () => {
+    const store = await makeStore();
+    const build = await newBuild(store);
+    const old = { name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } };
+    await store.saveBuildItem(item(build.id, { data: { name: "Wolf", attacks: [old] } }), 20);
+    const today = [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }];
+    expect((await store.findBuildItem(build.id, "creature", "goblin"))!.data).toEqual({ name: "Wolf", attacks: today });
+    expect((await store.listBuildItems(build.id))[0]!.data).toEqual({ name: "Wolf", attacks: today });
+  });
+
   it("creates an open build with no pass", async () => {
     const store = makeStore();
     const build = await newBuild(store);

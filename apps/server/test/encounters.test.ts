@@ -321,6 +321,20 @@ describe("encounter templates over the wire (FR-GM-13)", () => {
     expect(tableOf(gm.state)).toEqual(before);
   });
 
+  it("applies a template saved before mixed dice with its attacks in today's shape, and reads it that way (FR-TAC-09, legacy attack dice)", async () => {
+    const { cookie, saved, gm } = await twoRooms();
+    const owner = await ownerOf(cookie);
+    const record = (await server.store.findEncounter(saved.id, owner))!;
+    const oldDamage = { name: "Scimitar", toHit: null, damage: { count: 1, sides: 6, modifier: 2 } };
+    // The template's goblin as an older server saved it: one-die `{ count, sides, modifier }`.
+    const data = { ...record.data, tokens: record.data.tokens.map((t) => (t.name === "Goblin" ? { ...t, attacks: [oldDamage] } : t)) } as unknown as typeof record.data;
+    const old = await server.store.createEncounter({ ...record, id: crypto.randomUUID(), name: "Old ambush", data }, 50);
+    const today = { name: "Scimitar", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } };
+    expect((await server.store.findEncounter(old.id, owner))!.data.tokens.find((t) => t.name === "Goblin")!.attacks).toEqual([today]);
+    await ok(gm.command({ type: "encounter.apply", templateId: old.id }));
+    expect(named(gm, "Goblin")!.attacks).toEqual([today]);
+  });
+
   it("rejects an apply that names something that is not a template id, as a rejection and not a server error", async () => {
     const { gm } = await twoRooms();
     const before = tableOf(gm.state);

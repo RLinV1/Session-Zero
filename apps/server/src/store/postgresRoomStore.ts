@@ -18,7 +18,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, RoomDefaults, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   assertChoicesAllow,
@@ -149,7 +149,8 @@ function toBuildFileRecord(row: BuildFile): BuildFileRecord {
 function toBuildItemRecord(row: BuildItem): BuildItemRecord {
   return {
     buildId: row.buildId, kind: row.kind as BuildItemKind, key: row.key,
-    data: row.data as Record<string, unknown>, flags: row.flags as BuildFlag[], notCarriedOver: row.notCarriedOver,
+    // A draft creature's attacks may still hold dice stored before mixed dice (legacy-attack-dice-crash).
+    data: upgradeStoredAttacks(row.data as Record<string, unknown>), flags: row.flags as BuildFlag[], notCarriedOver: row.notCarriedOver,
     editedByUser: row.editedByUser, publishedId: row.publishedId, updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -318,7 +319,9 @@ export class PostgresRoomStore implements RoomStore {
       actorId: r.actorId,
       // Null on events from before undo existed; `eventMeta` then groups them by seq (ADR 0013).
       ...(r.commandId ? { commandId: r.commandId } : {}),
-      event: r.payload as unknown as DomainEvent,
+      // Stored payloads aren't parsed: named attacks saved before mixed dice are upgraded here
+      // (legacy-attack-dice-crash, ADR 0061). The row itself is never rewritten.
+      event: upgradeStoredAttacks(r.payload as unknown as DomainEvent),
     }));
 
     // Keep Redis at or ahead of the log, so a Redis reset cannot reissue a used seq.
@@ -499,7 +502,7 @@ export class PostgresRoomStore implements RoomStore {
     const first = rooms.length
       ? await this.prisma.event.findMany({ where: { roomId: { in: rooms.map((r) => r.id) }, seq: 1 }, select: { roomId: true, payload: true } })
       : [];
-    const firstById = new Map(first.map((e) => [e.roomId, e.payload as unknown as DomainEvent]));
+    const firstById = new Map(first.map((e) => [e.roomId, upgradeStoredAttacks(e.payload as unknown as DomainEvent)]));
     return rooms
       .map((r) => ({
         id: r.id,
@@ -1576,7 +1579,8 @@ function toEncounterRecord(row: EncounterTemplate & { map: { name: string; url: 
     name: row.name,
     version: row.version,
     // Validated again where it is applied (ADR 0024), so a row from an older format is not trusted here.
-    data: row.data as unknown as EncounterRecord["data"],
+    // Old named-attack dice read in today's shape for every reader, not only `resolveEncounter`.
+    data: upgradeStoredAttacks(row.data as unknown as EncounterRecord["data"]),
     mapAssetId: row.mapAssetId,
     mapName: row.map?.name ?? null,
     mapUrl: row.map?.url ?? null,

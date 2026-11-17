@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { emptyRoomState, type DiceRoll, type RoomState, type Token } from "@vtt/shared";
+import { DEFAULT_GRID, emptyRoomState, type AttackPreset, type DiceRoll, type RoomState, type Token } from "@vtt/shared";
 import {
   attackExpression,
   attackHeadline,
+  attackStats,
+  isRollable,
   rollHeadline,
   attackSectionChange,
   damageAmount,
@@ -134,6 +136,20 @@ describe("named attacks (attack-ux-polish, FR-TAC-09)", () => {
   it("are the token's own, shared attacks, or none (shared-token-attacks, ADR 0034)", () => {
     expect(presetsForToken({ attacks: [longsword] })).toEqual([longsword]);
     expect(presetsForToken({})).toEqual([]);
+  });
+
+  it("reads attacks stored before mixed dice, and empties one whose dice can't be read (legacy attack dice)", () => {
+    const old = { name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } } as unknown as AttackPreset;
+    const broken = { name: "Claw", toHit: null, damage: { sides: "x" } } as unknown as AttackPreset;
+    const [bite, claw, sword] = presetsForToken({ attacks: [old, broken, longsword] });
+    expect(bite).toEqual({ name: "Bite", toHit: d(1, 20, 4), damage: d(1, 6, 2) });
+    expect(presetSummary(bite!)).toBe("+4 · 1d6+2");
+    expect(attackStats(bite!, DEFAULT_GRID)).toMatchObject({ toHit: "1d20+4", damage: "1d6+2" });
+    expect(claw).toEqual({ name: "Claw", toHit: null, damage: null });
+    expect(isRollable(claw!)).toBe(false);
+    expect(() => presetSummary(claw!)).not.toThrow();
+    expect(attackStats(claw!, DEFAULT_GRID)).toMatchObject({ toHit: null, damage: null });
+    expect(sword).toBe(longsword);
   });
 
   it("finds the named attack a to-hit roll was made with, by label and attacker", () => {

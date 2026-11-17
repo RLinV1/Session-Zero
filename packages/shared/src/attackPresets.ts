@@ -23,6 +23,54 @@ export function upgradeAttackDice(value: unknown): unknown {
   return value;
 }
 
+/** Whether a value has the shape of a named attack: a name and a to-hit or damage roll. */
+function looksLikePreset(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value) && "name" in value && ("toHit" in value || "damage" in value);
+}
+
+/** One named attack with both rolls in today's shape; the same object when nothing changed. */
+function upgradePreset(preset: Record<string, unknown>): Record<string, unknown> {
+  const toHit = upgradeAttackDice(preset.toHit);
+  const damage = upgradeAttackDice(preset.damage);
+  return toHit === preset.toHit && damage === preset.damage ? preset : { ...preset, toHit, damage };
+}
+
+/**
+ * Stored JSON with every named attack's dice in today's shape (legacy-attack-dice-crash, ADR 0061).
+ * Room events and encounter templates are read from storage without parsing, so a token's
+ * `attacks` (and `TokenAttacksSet`'s `previous`) saved before mixed dice still hold the old
+ * `{ count, sides, modifier }`. Walks the whole value, since tokens sit inside many events,
+ * staged tokens and saved scenes. Pure; returns the same reference when nothing needed upgrading,
+ * and never mutates its input.
+ */
+export function upgradeStoredAttacks<T>(value: T): T {
+  return walk(value) as T;
+}
+
+function walk(value: unknown, key?: string): unknown {
+  if (Array.isArray(value)) {
+    const presets = key === "attacks" || key === "previous";
+    let changed = false;
+    const next = value.map((item) => {
+      const upgraded = presets && looksLikePreset(item) ? upgradePreset(walkObject(item)) : walk(item);
+      if (upgraded !== item) changed = true;
+      return upgraded;
+    });
+    return changed ? next : value;
+  }
+  if (value && typeof value === "object") return walkObject(value as Record<string, unknown>);
+  return value;
+}
+
+function walkObject(value: Record<string, unknown>): Record<string, unknown> {
+  let next: Record<string, unknown> | null = null;
+  for (const [k, v] of Object.entries(value)) {
+    const upgraded = walk(v, k);
+    if (upgraded !== v) (next ??= { ...value })[k] = upgraded;
+  }
+  return next ?? value;
+}
+
 const AttackDiceTerm = z.object({
   count: z.number().int().min(1).max(MAX_DICE),
   sides: z.number().int().refine((s) => (STANDARD_DIE_SIDES as readonly number[]).includes(s), { message: validationMessage(sharedMsg("valid.supportedDie")) }),

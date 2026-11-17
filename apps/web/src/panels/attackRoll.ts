@@ -137,10 +137,30 @@ export const MAX_PRESETS = 8;
  */
 export type { AttackPreset } from "@vtt/shared";
 
-/** A token's named attacks: the room's copy, shared by the GM and its owners (ADR 0034). */
+/**
+ * A token's named attacks: the room's copy, shared by the GM and its owners (ADR 0034). Each
+ * roll is read as stored before mixed dice too (legacy-attack-dice-crash). An attack with a roll
+ * that can't be read at all keeps its name but has no rolls, so it shows no formula and offers
+ * nothing to roll, and the token's other attacks stay usable.
+ */
 export function presetsForToken(token: Pick<Token, "attacks">): AttackPreset[] {
-  return token.attacks ?? [];
+  // The stored roll itself when it already reads as today's shape, so unchanged attacks keep their identity.
+  const read = (dice: DicePool | null) => {
+    if (dice === null) return null;
+    const pool = readPool(dice);
+    return pool && JSON.stringify(pool) === JSON.stringify(dice) ? dice : pool;
+  };
+  return (token.attacks ?? []).map((preset) => {
+    const toHit = read(preset.toHit);
+    const damage = read(preset.damage);
+    const unreadable = (preset.toHit !== null && !toHit) || (preset.damage !== null && !damage);
+    if (unreadable) return { ...preset, toHit: null, damage: null };
+    return toHit === preset.toHit && damage === preset.damage ? preset : { ...preset, toHit, damage };
+  });
 }
+
+/** Whether a named attack has a roll to make; one whose dice couldn't be read has none. */
+export const isRollable = (preset: AttackPreset): boolean => preset.toHit !== null || preset.damage !== null;
 
 /**
  * The named attack a to-hit roll was made with, so Roll damage can use its damage dice: the

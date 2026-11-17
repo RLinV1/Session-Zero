@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { AttackPreset as AttackPresetSchema, Command, GAME_PRESETS, decide, filterEventForViewer, type AttackPreset, type CommandInput, type DomainEvent, type Token } from "../src";
+import { AttackPreset as AttackPresetSchema, Command, GAME_PRESETS, decide, filterEventForViewer, formatExpression, reduce, upgradeStoredAttacks, type AttackPreset, type CommandInput, type DomainEvent, type Token } from "../src";
 import { committedRoom } from "./committedRoom";
-import { alice, bob, gm } from "./fixtures";
+import { alice, baseRoom, bob, gm } from "./fixtures";
 
 const scimitar: AttackPreset = { name: "Scimitar", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } };
 const bite: AttackPreset = { name: "Bite", toHit: null, damage: { terms: [{ count: 1, sides: 6 }], modifier: 1 } };
@@ -117,5 +117,56 @@ describe("multi-target attacks (FR-TAC-09)", () => {
     expect(AttackPresetSchema.parse(scimitar)).not.toHaveProperty("maxTargets");
     for (const maxTargets of [2, 5, 10]) expect(AttackPresetSchema.parse({ ...scimitar, maxTargets }).maxTargets).toBe(maxTargets);
     for (const maxTargets of [0, 1, 11, 2.5, -3]) expect(AttackPresetSchema.safeParse({ ...scimitar, maxTargets }).success).toBe(false);
+  });
+});
+
+describe("Stored attacks from before mixed dice load in today's shape (FR-TAC-09, ADR 0061)", () => {
+  const oldScimitar = { name: "Scimitar", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } };
+  const oldToken = { id: "t-gob", name: "Goblin", position: { x: 105, y: 105 }, ownerIds: [], hidden: false, attacks: [oldScimitar] };
+
+  it("upgrades a token's attacks in an old TokenCreated", () => {
+    const event = { type: "TokenCreated", token: oldToken };
+    const upgraded = upgradeStoredAttacks(event);
+    expect(upgraded.token.attacks).toEqual([scimitar]);
+  });
+
+  it("upgrades both lists of an old TokenAttacksSet", () => {
+    const event = { type: "TokenAttacksSet", tokenId: "t-gob", attacks: [oldScimitar], previous: [{ name: "Bite", toHit: null, damage: { count: 1, sides: 6, modifier: 1 } }] };
+    const upgraded = upgradeStoredAttacks(event);
+    expect(upgraded.attacks).toEqual([scimitar]);
+    expect(upgraded.previous).toEqual([bite]);
+  });
+
+  it("upgrades tokens nested deep inside a saved scene's table", () => {
+    const event = { type: "SceneSaved", scene: { table: { tokens: { "t-gob": oldToken }, staged: { "t-gob": oldToken } } } };
+    const upgraded = upgradeStoredAttacks(event);
+    expect(upgraded.scene.table.tokens["t-gob"].attacks).toEqual([scimitar]);
+    expect(upgraded.scene.table.staged["t-gob"].attacks).toEqual([scimitar]);
+  });
+
+  it("returns a modern event as the same object", () => {
+    const event = { type: "TokenAttacksSet", tokenId: "t-gob", attacks: [scimitar, bite], previous: [scimitar] };
+    expect(upgradeStoredAttacks(event)).toBe(event);
+    const created = { type: "TokenCreated", token: { ...oldToken, attacks: [scimitar] } };
+    expect(upgradeStoredAttacks(created)).toBe(created);
+  });
+
+  it("does not mutate what it was given", () => {
+    const event = { type: "TokenCreated", token: oldToken };
+    const before = structuredClone(event);
+    upgradeStoredAttacks(event);
+    expect(event).toEqual(before);
+  });
+
+  it("leaves unrelated fields named previous alone", () => {
+    const event = { type: "TokenMoved", tokenId: "t-gob", previous: { x: 1, y: 2 }, to: { x: 3, y: 4 } };
+    expect(upgradeStoredAttacks(event)).toBe(event);
+  });
+
+  it("gives reduce a token whose attacks format as formulas", () => {
+    const event = upgradeStoredAttacks({ type: "TokenCreated", token: { ...withGoblin().goblin, attacks: [oldScimitar] } } as unknown as DomainEvent);
+    const state = reduce(baseRoom(), event);
+    const token = Object.values(state.tokens)[0]!;
+    expect(token.attacks!.map((a) => [formatExpression(a.toHit!), formatExpression(a.damage!)])).toEqual([["1d20+4", "1d6+2"]]);
   });
 });
