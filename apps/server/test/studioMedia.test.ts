@@ -116,6 +116,15 @@ describe("protected Studio intake and delivery (FR-GM-26, FR-GM-27)", () => {
     const response=await fetch(`${s.server.base}/api/build/current/files/${row.id}/preview`,{headers:bearer(s.pass)});expect(response.status).toBe(401);expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
+  it("rechecks a website session ended while original or preview storage reads are in flight",async()=>{
+    const s=await setup();await s.upload();const row=(await s.store.listBuildFiles(s.build.id))[0]!;
+    for(const variant of ["","?variant=preview"]) {
+      const owner=await s.server.signIn(s.owner.email,s.owner.password);
+      const read=s.media.read.bind(s.media);const pending=vi.spyOn(s.media,"read").mockImplementationOnce(async(key,max)=>{const bytes=await read(key,max);expect((await owner.request("POST","/api/auth/signout")).status).toBe(204);return bytes;});
+      const response=await owner.request("GET",`/api/builds/${s.build.id}/files/${row.id}/media${variant}`);expect(response.status).toBe(401);expect(response.headers.get("cache-control")).toBe("no-store");expect((await response.text()).includes(s.bytes.toString("base64"))).toBe(false);pending.mockRestore();
+    }
+  });
+
   it("binding and ordinary reads recover saved files without extending retention; private dependencies cannot publish", async () => {
     const s = await setup(); const {file} = await (await s.upload("token")).json() as {file:{id:string}};
     const mapResponse = await s.upload("map", "binding-map"); const map = (await mapResponse.json() as {file:{id:string}}).file;

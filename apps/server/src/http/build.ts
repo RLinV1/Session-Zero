@@ -757,7 +757,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   };
 
-  registerStudioMediaRoutes(app, { store, media: deps.media, studio, grantGuard, limits, now });
+  registerStudioMediaRoutes(app, { store, media: deps.media, studio, grantGuard, limits, sessions, now });
 
   /** One handler on the pass family and, when the Studio is offered, the delegated family too. */
   function aiRoute(method: "get" | "post" | "put", path: string, handler: RequestHandler) {

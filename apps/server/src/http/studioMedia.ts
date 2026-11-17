@@ -2,6 +2,7 @@ import type { Express, Request, RequestHandler, Response } from "express";
 import { BUILD_LIMITS } from "@vtt/shared";
 import { z } from "zod";
 import { requireAccount } from "../identity/middleware";
+import type { Sessions } from "../identity/sessions";
 import { BuildClosedError, BuildLimitError, type BuildFileRecord, type BuildRecord } from "../store/buildStore";
 import { StudioAccessEndedError, type StudioDelegation } from "../store/studioStore";
 import type { RoomStore } from "../store/roomStore";
@@ -30,7 +31,7 @@ export function studioFileView(file: BuildFileRecord) {
     privacy: file.studio ? "private" : "legacy-public", originalSha256: file.studio?.originalSha256 ?? null, canonicalId: file.studio?.canonicalId ?? null,
     orientation: file.studio?.orientation ?? null, previewHash: file.studio?.previewSha256 ?? null };
 }
-export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore; media: StudioMedia; studio: StudioAccessConfig | null; grantGuard: RequestHandler; limits: AccountLimits; now: () => number }) {
+export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore; media: StudioMedia; studio: StudioAccessConfig | null; grantGuard: RequestHandler; limits: AccountLimits; sessions: Sessions; now: () => number }) {
   const { store, media, studio, grantGuard, limits, now } = deps;
   const failed = (res: Response) => (e: unknown) => {
     if (res.headersSent) return;
@@ -64,7 +65,9 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     if (!build || build.status !== "open" || !file) return studioMediaError(res, 404, "missing");
     if (req.query.variant !== undefined && req.query.variant !== "preview") return studioMediaError(res, 400, "invalid");
     await sendMedia(file, req.query.variant === "preview" ? "preview" : "original", res, async () => {
-      if ((await store.findBuild(build.id, account.user.ownerId))?.status !== "open") { studioMediaError(res, 404, "missing"); return false; } return true;
+      if ((await store.findBuild(build.id, account.user.ownerId))?.status !== "open") { studioMediaError(res, 404, "missing"); return false; }
+      if (!await deps.sessions.isLive(account.session.tokenHash)) { studioMediaError(res, 401, "access"); return false; }
+      return true;
     });
   })().catch(failed(res)); });
   if (!studio) return;

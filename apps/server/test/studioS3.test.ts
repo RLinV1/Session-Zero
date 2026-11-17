@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { CreateBucketCommand, S3Client, DeleteBucketCommand, DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, S3Client, DeleteBucketCommand, DeleteObjectsCommand, ListObjectsV2Command, PutBucketPolicyCommand } from "@aws-sdk/client-s3";
 import { afterAll, describe, expect, it } from "vitest";
 import { S3StudioMediaStore } from "../src/store/studioMediaStore";
 import { S3AssetStore } from "../src/store/assetStore";
@@ -65,5 +65,12 @@ describe.runIf(enabled)("real isolated S3 private media (FR-GM-26, FR-GM-27)",()
   it("retains private bytes across a new authenticated adapter instance",async()=>{
     const {media,options}=await stores();const key=`studio-private/v1/${randomUUID()}/original.png`;await media.put(key,Buffer.from("synthetic restart bytes"),"image/png");
     const reopened=await S3StudioMediaStore.connect(options);clients.push(reopened);expect((await reopened.read(key,1000))!.toString()).toBe("synthetic restart bytes");await reopened.delete(key);expect(await media.read(key,1000)).toBeNull();
+  });
+  it.each(["original.jpg","original.webp","preview-v1.webp"])("refuses a bucket that selectively exposes %s",async(name)=>{
+    const {options}=await stores();
+    // An unsafe policy on this newly created throwaway bucket only; never an existing store.
+    await s3!.send(new PutBucketPolicyCommand({Bucket:options.bucket,Policy:JSON.stringify({Version:"2012-10-17",Statement:[{Effect:"Allow",Principal:"*",Action:"s3:GetObject",Resource:`arn:aws:s3:::${options.bucket}/studio-private/v1/*/${name}`}]})}));
+    await expect(S3StudioMediaStore.connect(options)).rejects.toThrow(/anonymous/);
+    const objects=await s3!.send(new ListObjectsV2Command({Bucket:options.bucket}));expect(objects.Contents??[]).toHaveLength(0);
   });
 });

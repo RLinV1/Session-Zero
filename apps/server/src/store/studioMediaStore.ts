@@ -92,17 +92,26 @@ export class S3StudioMediaStore implements StudioMediaStore {
   }
   /** A synthetic probe, never user bytes. Do not change bucket policy to make this pass. */
   private async provePrivate() {
-    const key = `studio-private/v1/${randomUUID()}/original.png`;
+    const prefix = `studio-private/v1/${randomUUID()}/`;
+    // Bucket rules can differ by suffix; qualify every original and derivative shape.
+    const keys = ["original.png", "original.jpg", "original.webp", "preview-v1.webp"].map((name) => prefix + name);
+    const root = this.options.endpoint.replace(/\/$/, "");
+    const denied = async (url: string, method: string) => {
+      const response = await fetch(url, { method, redirect: "error", credentials: "omit", signal: AbortSignal.timeout(5_000) });
+      await response.body?.cancel();
+      if (response.status !== 403 && response.status !== 401) throw new Error("Private storage permits anonymous access or could not prove denial");
+    };
     try {
-      await this.put(key, Buffer.from("Session Zero private storage probe"), "application/octet-stream");
-      const root = this.options.endpoint.replace(/\/$/, "");
-      const object = `${root}/${encodeURIComponent(this.options.bucket)}/${key}`;
-      for (const [url, method] of [[object, "GET"], [object, "HEAD"], [`${root}/${encodeURIComponent(this.options.bucket)}?list-type=2&prefix=studio-private%2F`, "GET"]]) {
-        const response = await fetch(url!, { method, redirect: "error", credentials: "omit", signal: AbortSignal.timeout(5_000) });
-        await response.body?.cancel();
-        if (response.status !== 403 && response.status !== 401) throw new Error("Private storage permits anonymous access or could not prove denial");
+      for (const key of keys) {
+        await this.put(key, Buffer.from("Session Zero private storage probe"), "application/octet-stream");
+        const object = `${root}/${encodeURIComponent(this.options.bucket)}/${key}`;
+        await denied(object, "GET"); await denied(object, "HEAD");
       }
-    } finally { await this.delete(key); }
+      await denied(`${root}/${encodeURIComponent(this.options.bucket)}?list-type=2&prefix=studio-private%2F`, "GET");
+    } finally {
+      const removed = await Promise.allSettled(keys.map((key) => this.delete(key)));
+      if (removed.some((item) => item.status === "rejected")) throw new Error("Private storage probe cleanup failed");
+    }
   }
   async put(key: string, bytes: Uint8Array, contentType: string) {
     assertPrivateMediaKey(key);
