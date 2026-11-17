@@ -101,6 +101,7 @@ export class S3StudioMediaStore implements StudioMediaStore {
       await response.body?.cancel();
       if (response.status !== 403 && response.status !== 401) throw new Error("Private storage permits anonymous access or could not prove denial");
     };
+    let qualified = false; let qualificationError: unknown;
     try {
       for (const key of keys) {
         await this.put(key, Buffer.from("Session Zero private storage probe"), "application/octet-stream");
@@ -108,10 +109,11 @@ export class S3StudioMediaStore implements StudioMediaStore {
         await denied(object, "GET"); await denied(object, "HEAD");
       }
       await denied(`${root}/${encodeURIComponent(this.options.bucket)}?list-type=2&prefix=studio-private%2F`, "GET");
-    } finally {
-      const removed = await Promise.allSettled(keys.map((key) => this.delete(key)));
-      if (removed.some((item) => item.status === "rejected")) throw new Error("Private storage probe cleanup failed");
-    }
+      qualified = true;
+    } catch (error) { qualificationError = error; }
+    const removed = await Promise.allSettled(keys.map((key) => this.delete(key)));
+    if (removed.some((item) => item.status === "rejected")) throw new Error("Private storage probe cleanup failed");
+    if (!qualified) throw qualificationError ?? new Error("Private storage qualification failed");
   }
   async put(key: string, bytes: Uint8Array, contentType: string) {
     assertPrivateMediaKey(key);
