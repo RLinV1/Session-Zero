@@ -169,7 +169,7 @@ async function makeDemoTokens(connection: RoomConnection, state: RoomState): Pro
 
 /** The Move lesson needs a token to move: make the demo pair when the scene being shown has none (skipping the Token step leaves it empty). */
 export async function ensureDemoTokens(connection: RoomConnection): Promise<DemoResult> {
-  const state = connection.snapshot.state;
+  const state = connection.snapshot?.state;
   if (!state || Object.keys(state.tokens).length > 0) return { ok: true };
   return makeDemoTokens(connection, state);
 }
@@ -250,10 +250,10 @@ export async function completeDemoStep(connection: RoomConnection, step: string)
 
 /** Leaving the demo: dismiss the rulings its own rolls left waiting, so they do not sit in the GM's real Rulings. */
 export async function dismissDemoRulings(connection: RoomConnection): Promise<DemoResult> {
-  const state = connection.snapshot.state;
+  const state = connection.snapshot?.state;
   if (!state) return { ok: true };
   const mine = new Set(demoTokenIds(state));
-  const rollIds = pendingRulings(state).filter((x) => x.roll.attack && mine.has(x.roll.attack.actorTokenId)).map((x) => x.roll.id);
+  const rollIds = pendingRulings(state).filter((x) => x.roll.attack?.actor && mine.has(x.roll.attack.actor.tokenId)).map((x) => x.roll.id);
   return rollIds.length > 0 ? send(connection, { type: "roll.dismiss", rollIds } as Command) : { ok: true };
 }
 
