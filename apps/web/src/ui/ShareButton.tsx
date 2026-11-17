@@ -223,7 +223,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                     data-tutorial="invite"
                     aria-label={t("share.copyLink")}
                     title={t("share.copyLink")}
-                    onClick={(e) => void copy(e.currentTarget, link, "link", !e.isTrusted)}
+                    onClick={(e) => void copy(e.currentTarget, link, "link", !e.isTrusted && e.currentTarget.hasAttribute("data-tutorial-ring"))}
                     disabled={busy}
                   >
                     {result === "copied" && copiedWhat === "link" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}

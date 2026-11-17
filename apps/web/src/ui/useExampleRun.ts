@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GridSpec, Point } from "@vtt/shared";
 import type { TextId } from "../i18n/locale";
-import { EXAMPLE_API_EVENT, EXAMPLE_HIGHLIGHT_EVENT, EXAMPLE_SIGHT_EVENT, EXAMPLE_STEPS, exampleBoard, exampleBox, sampleCleanup, type ExampleApi, type SightExample } from "./tutorialExample";
+import { EXAMPLE_API_EVENT, EXAMPLE_DRAG_EVENT, EXAMPLE_HIGHLIGHT_EVENT, EXAMPLE_SIGHT_EVENT, EXAMPLE_STEPS, exampleBoard, exampleBox, sampleCleanup, type ExampleApi, type SightExample } from "./tutorialExample";
 import type { MapDraft } from "../pages/mapEditor/mapDraft";
 import { exampleScript } from "./tutorialScripts";
 
@@ -170,6 +170,7 @@ export function useExampleRun() {
       }
       if (!alive()) return;
       point(target, from);
+      if (from && target && !sub.board) window.dispatchEvent(new CustomEvent(EXAMPLE_DRAG_EVENT, { detail: { from, to: target, ms: moveMs * pace } }));
       // Feed the real canvas a continuous drag while CSS moves the decorative pointer on the compositor.
       let dragTimer = 0;
       if (sub.board && from && target) {
@@ -183,6 +184,7 @@ export function useExampleRun() {
       }
       await wait(moveMs);
       window.clearInterval(dragTimer);
+      if (from && !sub.board) window.dispatchEvent(new CustomEvent(EXAMPLE_DRAG_EVENT, { detail: null }));
       if (!alive()) return;
       if (sub.click || sub.press) pulse();
       if (sub.board && target) {

@@ -89,6 +89,8 @@ export function exampleBox(grid: GridSpec, map: { width: number; height: number 
 
 /** Sent on `window` with a map-area box; the editor canvas outlines it for a few seconds. */
 export const EXAMPLE_HIGHLIGHT_EVENT = "vtt:tutorial-highlight";
+/** A replayed drag in an editor: detail is { from, to, ms } in screen pixels, or null when it ends. The editor draws its own rubber band. */
+export const EXAMPLE_DRAG_EVENT = "vtt:tutorial-drag";
 /** Sent on `window` with `{ api: null }`; the open map editor fills in `api`, so the demo can reach its draft. */
 export const EXAMPLE_API_EVENT = "vtt:tutorial-api";
 /** Sent on `window` by the demo's Show me, once the lesson's editor tab is open. */
