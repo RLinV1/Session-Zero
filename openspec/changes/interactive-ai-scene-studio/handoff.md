@@ -1,17 +1,18 @@
-# Planning handoff
+# Implementation handoff
 
 ## Current state
 
 - Date: 2026-11-16 (planning 2026-11-14).
 - Repository: `RLinV1/Session-Zero`, locally named `Virtual-Tabletop`. The existing Git remote still uses the older `Virtual-Tabletop` URL; it was not changed.
-- Baseline inspected and used: `origin/main` at `a86160f584c44c8e8998bc56966e214ff04b5a08`.
+- Original planning baseline: `origin/main` at `a86160f584c44c8e8998bc56966e214ff04b5a08`. Current implementation bases are recorded per session below.
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
-- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, in PR #212 (open, not merged; by the user's choice M1b stacks on it and M1 merges whole); see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
+- **M1b (2026-11-16):** protected storage/intake implemented and locally verified on `feat/interactive-ai-scene-studio-m1b` from exact M1a `a422cc78`; see latest session below. Tasks 2.3/2.4/2.6/2.7 verified; real-host gates 2.5/2.8 pending. No M2 started.
+- **M1a (2026-11-16):** delegated access on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, unmerged PR #212. M1b stacks on it and all of M1 merges whole. First real-host qualification remains pending.
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
-- OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
+- OpenSpec progress is in tasks.md; local, real-host and production proof remain distinct. CLI artifact `done` / `isComplete` means planning files exist, not that runtime tasks or external reviews passed.
 - First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. ADR 0073 architecture review: **accepted by Raymond on 2026-11-16 at `6f645f29`** (reported by the user, with Raymond present); ADR 0073 is now Accepted. M0 design amendments: **decided by the user on 2026-11-16** and applied to design.md (research.md "Design amendment decisions"). M0: **complete on 2026-11-16**, including a real-host run of the post-review server (see "M0 close-out" below). Production: **unverified**.
 
 ## Read order
@@ -91,7 +92,86 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-## Latest implementation session — M1a, 2026-11-16
+## Latest implementation session — M1b, 2026-11-16
+
+**Authorization and scope:** the saved M1b starter required research/discussion before code.
+The user approved the researched D8/D9 design and autonomous implementation, including the
+exact two download origins, 40-million-pixel bound and private-file publication refusal.
+Design/ADR were recorded in `1a2f7639` before dependent code. Optional permission to initialize
+an AWS test bucket was unused: no AWS CLI/MCP/access was needed. Only tasks 2.3–2.8 were
+implemented; no M2 overlays, authoring context, revisions or publication aliases.
+
+**Base:** `a422cc78e1c8b3cf1533e152e6ac74681411e421`, the current unmerged M1a head in
+PR #212. New worktree `/private/tmp/session-zero-studio-m1b`, branch
+`feat/interactive-ai-scene-studio-m1b`. Main had advanced from `4033fd4c` to
+`c007fba33235db37c486907a6918b863d0965b68` (privacy/terms text and guest tutorial animation,
+no M1 overlap); no main merge/rebase. Remote main/M1a heads rechecked unchanged before
+publication. M1a and all other worktrees/branches/uncommitted files were untouched.
+
+| Commit | Content |
+| --- | --- |
+| `1a2f7639` | Approved exact private layout/intake/recovery/cleanup design in D8/D9 and ADR 0073; saved prompt approval/corruption note. |
+| `6dc65192` | Separate M1a correction: prevent malformed OAuth/Studio JSON from exposing credential-bearing body text. On M1b only. |
+| `a0f8e014` | Private disk/S3 adapters, guarded intake/delivery, persistence/migrations/jobs, attachment/open/app-only tools, static view/en/zh-TW, tests and real-host runbook. |
+| `21bf18b9` | Real 14-day sweep in both stores; true mobile viewport in synthetic host fixture. |
+| `6128a46a` | M1a parser correction follow-up: match Express's case-insensitive OAuth/Studio routes. |
+| `334faed8` | Review fixes: qualify every S3 filename; recheck owner session after private storage reads. |
+| `cce83927` | Stronger parser regression and probe cleanup preserving failures; final independently reviewed product head. |
+| `d6182741` | Test-only correction: a completed grant sweep may remove the revoked record; require live-before and revoked-or-removed-after. Independently re-reviewed. |
+| documentation commit(s) | This handoff, evidence/screenshots, research, task status, ADR review record and M2 starter. |
+
+**Delivered:** new private originals and WebP previews use a separate disk directory or
+explicitly configured private S3 bucket, never public uploads/mirror/fallback. Atomic guarded
+intake preserves original hash, raw/oriented dimensions and canonical identity, counts preview
+bytes, deduplicates receipts/content and retains per-file outcomes. Downloads validate exact
+origins and public pinned DNS, with size/time/redirect limits and no forwarded credentials.
+The credential-free content-hashed UI receives images only through authorized app-only calls
+and `data:` URLs; open results contain identifiers/status. Reopen/reauthorization recovers
+saved state; foreign bindings clear it. Durable intents/deletions cover late puts, discard,
+account removal and abandonment. Private dependencies cannot publish before M5; ordinary
+public/published behavior stays valid. No shared room schema or delegated authority change.
+
+**Checks:** Node 22.23.2, unchanged lockfile, fresh `npm ci`. Full
+`npm run lint && npm run typecheck && npm test && npm run build` passes on `cce83927`:
+shared 1,885; MCP 283; server 1,151 / 64 optional skips; web 1,937; benchmark 2.
+Full isolated Postgres/S3 server suite: 1,381 passed / five unrelated optional skips.
+Actual private S3 selective-policy regressions and both-store contracts pass. Actual Docker
+Postgres/S3 restart passes with recovered grant/source and retried deletion. Additive
+migrations applied; schema diff clean. All 48 relevant Playwright checks pass on six browser
+projects after fixes, with fresh servers and true mobile viewports. MCP container builds and
+health200 locally; no registry push/deploy. OpenSpec strict validation passes. Details and
+retained redacted synthetic screenshots: [local evidence](evidence/m1b-2026-11-16.md).
+
+**Independent review:** separate read-only agent reviewed `a422cc78..21bf18b9` and established
+three defects: selectively public S3 suffixes evaded the original one-shape probe; owner media
+could finish after sign-out during storage I/O; mixed-case parser routes evaded redaction.
+All fixed, tested and independently re-reviewed through `cce83927`. The reviewer also caught
+a weak long-secret assertion; the final proof asserts catalog identity and short-secret
+absence, and was re-reviewed. The final test-isolation correction `d6182741` was also
+re-reviewed. Final review: no remaining findings. This does not replace
+architecture-owner review.
+
+**Environment:** only Compose project `sz-studio-m1b-20261116`, Postgres17 on55434 and
+authenticated SeaweedFS on18334, separate throwaway buckets/config. Credentials remained
+outside Git. No user's development service/database/bucket was used. Owned services/volumes
+are removed after final verification (see the final cleanup record below). No tunnel,
+ChatGPT app/account operation, AWS resource, production, DNS or edge change.
+
+**Final cleanup:** Compose `down -v` completed for `sz-studio-m1b-20261116`: both containers,
+both throwaway data volumes and its network removed. Owned MCP smoke container/image tag
+removed. The temporary S3 config and credential environment file were deleted. Synthetic
+screenshots/evidence are retained in the repository; no authenticated traffic logs are committed.
+
+**Remaining gates and merge plan:** tasks 2.5 and 2.8 remain unchecked for actual ChatGPT
+map+token-art original intake, protected view/reopen and M1a discovery/registration/consent/
+granted-read/disconnect. [Exact runbook](../../../apps/mcp/README.studio-m1.md) is ready;
+the starter requires a separate yes before the tunnel or user's ChatGPT account. Architecture
+owner code review and glossary-owner review remain pending. Keep PR #212 and the stacked
+M1b PR unmerged until all of M1 is ready to merge to main as a whole. Never infer hosted or
+production qualification from local checks. M2's prepared starter names **that whole-M1
+merge into main** as its base; do not use the unmerged M1b head or start M2 now.
+
+## Previous implementation session — M1a, 2026-11-16
 
 **Authorization:** the user's M1a starter (saved in [fresh-session-prompt.md](fresh-session-prompt.md) "M1a"): tasks 2.1–2.2 only; commit, push and open a PR, no merge; no production, DNS, edge or cloud change; real ChatGPT check optional and only on the user's yes. Recorded approvals: ADR 0073 accepted by Raymond at `6f645f29` (reported by the user); M0 amendments approved by the user on 2026-11-16; implementation choices inside D7 pre-approved in the starter. Nothing on the starter's stop list (external IdP or OIDC, `packages/shared` schema change, owner-choice/publication/room/GM/library authority for a delegated credential, other authority or privacy change) was needed or done.
 
