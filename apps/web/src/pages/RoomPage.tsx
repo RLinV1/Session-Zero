@@ -23,7 +23,7 @@ import { ensureSeat } from "../net/seats";
 import { GuestRoomNotice, GuestRoomProvider, SAVE_ACCOUNT_HREF, useGuestRoom, useGuestStatus } from "../ui/GuestRoom";
 import { navigate } from "../router";
 import { GuestTutorial } from "../ui/GuestTutorial";
-import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
+import { COMBAT_TUTORIAL_STEPS, demoEventCount, EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
 import { createScenePreparation } from "../net/scenePreparation";
@@ -214,13 +214,13 @@ function SceneRoom(props: { roomId: string; connection: RoomConnection; token: s
   const preparing = viewed.you?.role === "gm" && preparation.preparing;
   const features = preparing ? { ...props.features, tabs: ["tokens", "gm"] as const, notices: false } : props.features;
   return <ScenePreparationContext.Provider value={{ activeId, preparing, preview: preparation.preview, live: live.state }}>
-    <Room {...props} connection={preparation.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
+    <Room {...props} connection={preparation.connection} tutorialConnection={props.connection} features={features} setupSceneId={setupSceneId} onSetupClose={() => setSetupSceneId(null)} />
   </ScenePreparationContext.Provider>;
 }
 
 /** The room once a credential exists: board, side panel, and the connection's terminal screens. */
-function Room({ roomId, connection, token, features, setupSceneId, onSetupClose }: {
-  roomId: string; connection: RoomConnection; token: string; features: RoomFeatures; setupSceneId?: string | null; onSetupClose?: () => void;
+function Room({ roomId, connection, tutorialConnection, token, features, setupSceneId, onSetupClose }: {
+  roomId: string; connection: RoomConnection; tutorialConnection: RoomConnection; token: string; features: RoomFeatures; setupSceneId?: string | null; onSetupClose?: () => void;
 }) {
   const { status, state, you, seq, endReason, refusal } = useRoomSnapshot(connection);
   const editing = !features.tableChrome;
@@ -278,6 +278,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   /** The guest demo watches these: invite links copied, and the room menu's "start again" (guest-gm-hosting). */
   const [invitesCopied, setInvitesCopied] = useState(0);
   const [demoRestart, setDemoRestart] = useState(0);
+  const [demoOffer, setDemoOffer] = useState(0);
   const guestRoom = useGuestRoom();
   const focusToken = useCallback((tokenId: string) => boardRef.current?.focusToken(tokenId), []);
   // Who attacks whom (attack-targeting): chosen in the Play tab's Attack section or on the board.
@@ -420,10 +421,13 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
   useEffect(() => {
     if (editingGone) setEditingTokenId(null);
   }, [editingGone]);
+  // A signed-in GM is asked, once the guide closes, whether they also want the interactive demo.
+  const offerDemo = !guestRoom && you?.role === "gm";
   const closeGuide = useCallback(() => {
     setGuideOpen(false);
-    guideButtonRef.current?.focus();
-  }, []);
+    if (offerDemo) setDemoOffer((n) => n + 1);
+    else guideButtonRef.current?.focus();
+  }, [offerDemo]);
 
   // The attacker follows the turn onto a token the viewer controls, even after they picked
   // another; a pick made after that sticks until the next turn change (attack-ux-polish). Kept
@@ -715,10 +719,11 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
       // Let Save/Discard finish before switching tabs, which would unmount the private draft.
       if (closeEditor) { closeEditor.click(); return; }
       setTab(step === "token" ? "tokens" : step === "roll" ? "dice" : "play");
-      const section = { encounter: "initiative", attack: "attack", ruling: "rulings", damage: "rulings" }[step];
+      // A combat lesson's Show me visits Initiative, Attack and Rulings in turn, so all three are open.
+      const sections = COMBAT_TUTORIAL_STEPS.has(step) ? ["initiative", "attack", "rulings"] : [];
       return openSidebar(() => {
         // A folded section keeps its controls out of sight (and out of the tab order) until opened.
-        if (section) document.querySelector<HTMLElement>(`[data-tour="${section}"] .section-toggle[aria-expanded="false"]`)?.click();
+        for (const section of sections) document.querySelector<HTMLElement>(`[data-tour="${section}"] .section-toggle[aria-expanded="false"]`)?.click();
       });
     }
     // A hidden tool rail leaves only its toggle.
@@ -881,7 +886,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
         }
       />
       {features.tableChrome && you.role === "gm" && !readOnly && (
-        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} reveal={revealTutorialStep} connection={connection} />
+        <GuestTutorial roomId={roomId} state={state} selfId={you.id} invites={invitesCopied} restart={demoRestart} offer={demoOffer} reveal={revealTutorialStep} connection={tutorialConnection} />
       )}
       <aside className="panel" id="room-panel" tabIndex={-1} aria-label={t("room.controls")}>
         {!compact && !collapsed && <PanelResizeHandle width={panelWidth} onWidth={setPanelWidth} />}
@@ -909,7 +914,7 @@ function Room({ roomId, connection, token, features, setupSceneId, onSetupClose 
           */}
           <header className="panel-header">
             <span className={`status status-${status}`} role="status">
-              {t(STATUS_LABEL[status])} · {t("room.seq", { n: seq })}
+              {t(STATUS_LABEL[status])} · {t("room.seq", { n: seq - demoEventCount(roomId, seq) })}
             </span>
             <div className="whoami-row">
               <div className="whoami">

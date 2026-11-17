@@ -24,7 +24,7 @@ import type { DiceSkin } from "../ui/diceSkin";
 import "pixi.js/unsafe-eval";
 import { BoardView, type GmFogView } from "./boardView";
 import { EXAMPLE_BOARD_EVENT, type ExampleBoardApi } from "../ui/tutorialExample";
-import { demoSpots } from "../ui/tutorialDemo";
+import { demoSpots, demoTokenIds, rememberDemoTokens } from "../ui/tutorialDemo";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
 import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
@@ -406,7 +406,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     if (!current || current.busy) return;
     placingRef.current = { ...current, busy: true };
     setPlacing(placingRef.current);
+    const demo = !!document.querySelector('.guest-tutorial[data-step="token"][data-playing="true"]');
+    const before = new Set(Object.keys(latest.current.state.tokens));
     const result = await guarded.command(placementCommand(current.source, at));
+    if (demo && result.ok) rememberDemoTokens(latest.current.state.roomId, Object.keys(latest.current.state.tokens).filter((id) => !before.has(id)));
     // Keep placing either way: on a rejection the GM can read why and try another square.
     setPlacing((now) => {
       if (now?.source !== current.source) return now;
@@ -427,15 +430,21 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       if (!view || !canvas || latest.current.you.role !== "gm" || latest.current.readOnly) return;
       const state = latest.current.state;
       const tokens = Object.values(state.tokens);
-      const token = tokens.find((token) => token.name.startsWith(t("tutorial.demo.hero"))) ?? tokens[0] ?? null;
-      const [place, destination] = demoSpots(state);
+      const samples = new Set(demoTokenIds(state));
+      const token = tokens.find((token) => samples.has(token.id)) ?? tokens[0] ?? null;
+      const source = placingRef.current?.source;
+      const placement = demoSpots(state, source?.kind === "create" ? source.draft.size ?? 1 : source?.ghost.size ?? 1);
+      const movement = token ? demoSpots(state, token.size, token.id) : placement;
+      if (!placement || !movement) return;
+      const [place] = placement;
+      const [from, destination] = movement;
       (event as CustomEvent<{ api: ExampleBoardApi | null }>).detail.api = {
         screen: (point) => {
           const rect = canvas.getBoundingClientRect(), transform = view.transform;
           return { x: rect.left + transform.x + point.x * transform.scale, y: rect.top + transform.y + point.y * transform.scale };
         },
         place, token,
-        destination: token && Math.hypot(token.position.x - destination.x, token.position.y - destination.y) < state.scene.grid.cellSize / 2 ? place : destination,
+        destination: token && Math.hypot(token.position.x - destination.x, token.position.y - destination.y) < state.scene.grid.cellSize / 2 ? from : destination,
         focus: () => { if (token) view.focusToken(token.id); },
         cancel: () => { view.cancelMovement(); },
       };

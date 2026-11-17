@@ -92,7 +92,7 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await expect(editor).toHaveCount(0);
     await step(9, "Place a token");
 
-    // One plain token and one move (socket); the fight itself is the demo's own buttons.
+    // One plain token and one move (socket); the fight itself is the real Initiative, Attack and Rulings controls.
     await command({ type: "token.create", name: "Aria", position: { x: 140, y: 140 } } as CommandInput);
     await step(10, "Move it");
     await command({ type: "token.move", tokenId: created[0]!, to: { x: 140, y: 210 } });
@@ -100,7 +100,7 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await showMe();
     await page.locator('button[data-tutorial="roll"]').click();
 
-    // Run demo fight adds the hero and goblin and starts the encounter, with Initiative on screen.
+    // The card sets up the hero, the goblin and the encounter; Show me points at the real turn order.
     await step(12, "Start an encounter");
     await showMe(true);
 
@@ -117,7 +117,7 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await showMe(true);
 
     await step(16, "You are all set");
-    await expect(card.getByRole("button", { name: "Remove demo tokens" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Finish" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("done.png") });
   } finally { socket.disconnect(); }
 });

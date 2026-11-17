@@ -68,6 +68,12 @@ const isDone: Record<TutorialStep, (f: TutorialFacts) => boolean> = {
   done: () => false, // ends with Finish
 };
 
+/** Whether a step's action has been done (by the guest, or by Next doing it for them). */
+export const stepDone = (step: TutorialStep, facts: TutorialFacts): boolean => isDone[step](facts);
+
+/** Steps whose action Next performs when it has not been done yet, so a step is never skipped half-done. */
+export const AUTO_TUTORIAL_STEPS: ReadonlySet<string> = new Set(["token", "move", "roll", "encounter", "attack", "ruling", "damage"]);
+
 /** The first step at or after `index` whose action is not yet done. */
 export function settle(index: number, facts: TutorialFacts): number {
   let i = index;
@@ -84,6 +90,41 @@ export function countMoves(prev: Record<string, string>, next: Record<string, st
 export const countKeyChange = (prev: string, next: string): number => (prev === next ? 0 : 1);
 
 const storageKey = (roomId: string) => `vtt.tutorial.${roomId}`;
+
+/**
+ * Event numbers (seq) the demo made, kept out of the GM's Activity Log: from the practice board opening to the
+ * original one coming back. Events are never rewritten; the log only skips these (to is null while the demo runs).
+ */
+type DemoWindow = [from: number, to: number | null];
+const windowsKey = (roomId: string) => `vtt.tutorial.hidden.${roomId}`;
+const demoWindows = (roomId: string): DemoWindow[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(windowsKey(roomId)) ?? "[]");
+    return Array.isArray(value) ? value.filter((w): w is DemoWindow => Array.isArray(w) && typeof w[0] === "number" && (w[1] === null || typeof w[1] === "number")) : [];
+  } catch { return []; }
+};
+const saveWindows = (roomId: string, windows: DemoWindow[]) => {
+  try { localStorage.setItem(windowsKey(roomId), JSON.stringify(windows)); } catch { /* Storage can be disabled; the demo shows in the log then. */ }
+};
+/** The practice board is about to open: events from `from` on belong to the demo. */
+export function openDemoWindow(roomId: string, from: number): void {
+  const windows = demoWindows(roomId);
+  if (windows.at(-1)?.[1] === null) return;
+  saveWindows(roomId, [...windows, [from, null]]);
+}
+/** The demo is over: events up to `to` were the demo's. */
+export function closeDemoWindow(roomId: string, to: number): void {
+  const windows = demoWindows(roomId);
+  const last = windows.at(-1);
+  if (last) saveWindows(roomId, [...windows.slice(0, -1), [last[0], Math.max(to, last[0])]]);
+}
+/** Whether the Activity Log should skip this event. */
+export const isDemoEvent = (roomId: string, seq: number): boolean => demoWindows(roomId).some(([from, to]) => seq >= from && (to === null || seq <= to));
+
+/** How many of events 1..seq the demo made, so the room's event count can show only the real game. */
+export const demoEventCount = (roomId: string, seq: number): number =>
+  demoWindows(roomId).reduce((n, [from, to]) => n + Math.max(0, Math.min(to ?? seq, seq) - from + 1), 0);
+
 const LEGACY_STEPS = ["table", "invite", "map", "terrain", "token", "move", "fog", "roll", "done"] as const;
 
 /** Storage can be missing or throw (private windows, blocked data); then the demo still runs for this page load. */

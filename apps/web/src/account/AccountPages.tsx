@@ -5,7 +5,6 @@ import { PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
 import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
-import { loadGmToken } from "../net/identity";
 import { navigate } from "../router";
 import { Modal } from "../ui/Modal";
 import { PopoverButton } from "../ui/Popover";
@@ -88,13 +87,6 @@ function AccountForm(props: {
   );
 }
 
-/** Rooms made on this browser before accounts can come along once the GM signs in (gm-dashboard). */
-function LegacyNote() {
-  if (!loadGmToken()) return null;
-  return (
-    <p className="notice">{t("account.legacyNote")}</p>
-  );
-}
 
 function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn: () => void }) {
   const [email, setEmail] = useState("");
@@ -128,9 +120,7 @@ function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn
           {t("account.newHere")} <Link href={createHref}>{t("account.createAnAccount")}</Link>
         </>
       }
-    >
-      <LegacyNote />
-      <label>
+    >      <label>
         {t("account.email")}
         <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
@@ -189,9 +179,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           <Link href={signInHref}>{t("account.signIn")}</Link>
         </>
       }
-    >
-      <LegacyNote />
-      <label>
+    >      <label>
         {t("account.displayName")}
         <input autoComplete="nickname" required maxLength={40} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         {fieldError("displayName")}

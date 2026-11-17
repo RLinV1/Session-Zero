@@ -49,11 +49,12 @@ export function exampleCommands(step: string, draft: MapDraft, grid: GridSpec, m
   const at = (col: number, row: number): Point => ({ x: grid.offsetX + col * size, y: grid.offsetY + row * size });
   if (step === "walls") {
     const wall = { a: at(c0, r0), b: at(c0 + 5, r0) };
-    const door = { a: at(c0 + 5, r0), b: at(c0 + 5, r0 + 3), portal: { kind: "door" as const, state: "closed" as const } };
-    const keys = new Set([key(wall.a, wall.b), key(door.a, door.b)]);
+    const side = { a: at(c0 + 5, r0), b: at(c0 + 5, r0 + 4) };
+    const door = { a: at(c0 + 5, r0 + 1), b: at(c0 + 5, r0 + 2), portal: { kind: "door" as const, state: "closed" as const } };
+    const keys = new Set([key(wall.a, wall.b), key(side.a, side.b), key(door.a, door.b)]);
     const old = Object.values(draft.walls).filter((w) => keys.has(key(w.a, w.b))).map((w) => w.id);
     if (clear) return old.length ? [{ type: "wall.remove" as const, wallIds: old }] : [];
-    return [...(old.length ? [{ type: "wall.remove" as const, wallIds: old }] : []), { type: "wall.add", walls: [wall, door] }];
+    return [...(old.length ? [{ type: "wall.remove" as const, wallIds: old }] : []), { type: "wall.add", walls: [wall, side] }, { type: "wall.add", walls: [door] }];
   }
   if (step === "fog") {
     const from = at(c0, r0), to = at(c0 + 5, r0 + 4);
@@ -88,10 +89,14 @@ export function exampleBox(grid: GridSpec, map: { width: number; height: number 
 
 /** Sent on `window` with a map-area box; the editor canvas outlines it for a few seconds. */
 export const EXAMPLE_HIGHLIGHT_EVENT = "vtt:tutorial-highlight";
+/** A replayed drag in an editor: detail is { from, to, ms } in screen pixels, or null when it ends. The editor draws its own rubber band. */
+export const EXAMPLE_DRAG_EVENT = "vtt:tutorial-drag";
 /** Sent on `window` with `{ api: null }`; the open map editor fills in `api`, so the demo can reach its draft. */
 export const EXAMPLE_API_EVENT = "vtt:tutorial-api";
 /** Sent on `window` by the demo's Show me, once the lesson's editor tab is open. */
 export const EXAMPLE_EVENT = "vtt:tutorial-example";
+/** A calibration point, committed through the grid editor's normal placement logic. */
+export const EXAMPLE_GRID_EVENT = "vtt:tutorial-grid-point";
 /** The Sight step's test token, driven by the demo (it is local to the step, so never saved). */
 export const EXAMPLE_SIGHT_EVENT = "vtt:tutorial-sight";
 /** The board lends screen coordinates to the tutorial; actions still use its real pointer handlers. */
@@ -117,14 +122,14 @@ export interface ExampleApi {
   draft: () => MapDraft | null;
   command: (command: CommandInput) => Promise<unknown>;
   grid: GridSpec;
-  map: { width: number; height: number };
+  map: { url?: string; width: number; height: number };
 }
 
 /** One sub-step of Show me: a short caption, and what the pointer does for it. */
 export interface ExampleSub {
   caption: TextId;
   /** A control to ring and point at (`data-tutorial-tool` or another selector). */
-  control?: string;
+  control?: string | (() => HTMLElement | null);
   /** Click `control` for the GM, through its own handler. */
   press?: boolean;
   /** Left out when this returns true. */

@@ -10,6 +10,7 @@ import { ColorWheel } from "../ui/ColorWheel";
 import { MapGridPreview } from "./MapGridPreview";
 import { gridsEqual, newGridSuggestionSession, parseGridDraft, withGridSuggestion, type GridDraft, type GridSuggestionSession } from "./gridDraft";
 import { t } from "../i18n/locale";
+import { TUTORIAL_MAP } from "../ui/tutorialMap";
 
 const DEFAULT_PREVIEW_MAP = { ...DEFAULT_BOARD_SIZE, url: null };
 
@@ -74,6 +75,7 @@ export function GridForm({
   hideActions?: boolean;
 }) {
   const actionSlot = useContext(GridActionsContext);
+  const practice = map?.url === TUTORIAL_MAP.url;
   const formId = useId();
   const validDraft = useMemo(() => parseGridDraft(draft, map), [draft, map]);
   const [lastValid, setLastValid] = useState(grid);
@@ -100,7 +102,7 @@ export function GridForm({
   useEffect(() => { if (validDraft) setLastValid(validDraft); }, [validDraft]);
   const shown = validDraft ?? lastValid;
   const dirty = allowUnchanged || hasDraft && (!validDraft || !gridsEqual(validDraft, grid));
-  const canSave = !!validDraft && (allowUnchanged || !gridsEqual(validDraft, grid));
+  const canSave = !!validDraft && (allowUnchanged || practice || !gridsEqual(validDraft, grid));
   const cellSize = Number(draft.cellSize);
   const tooManyLines = draft.cellSize.trim() !== "" && Number.isFinite(cellSize)
     && cellSize > 0 && cellSize < minimumGridCellSize(map);
@@ -224,14 +226,14 @@ export function GridForm({
           </p>
         )}
         {error && <p className="error grid-message" role="alert">{error}</p>}
-        {!hideActions && (actionSlot ? (dirty ? createPortal(<span className="map-editor-unsaved">
+        {!hideActions && (actionSlot ? (dirty || practice ? createPortal(<span className="map-editor-unsaved">
           {dirty && <span className="map-editor-draft">{t("grid.unsaved")}</span>}
           <button type="button" className="secondary small" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel ?? t("common.discard")}</button>
-          <button type="submit" form={formId} className="small primary" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : submitLabel ?? t("common.saveChanges")}</button>
+          <button type="submit" form={formId} className="small primary" data-tutorial-tool="grid-apply" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : practice ? t("grid.apply") : submitLabel ?? t("common.saveChanges")}</button>
         </span>, actionSlot) : null) : (
           <div className="grid-actions">
             <button type="button" className="secondary" disabled={applying} onClick={() => { interact(); onCancel(); }}>{cancelLabel ?? t("common.cancel")}</button>
-            <button className="primary" type="submit" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : submitLabel ?? t("grid.apply")}</button>
+            <button className="primary" type="submit" data-tutorial-tool="grid-apply" disabled={!canSave || applying}>{applying ? busyLabel ?? t("grid.applying") : submitLabel ?? t("grid.apply")}</button>
           </div>
         ))}
         {children}
