@@ -36,7 +36,7 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
 const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
-const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", ...COMBAT_TUTORIAL_STEPS]);
+const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", "attack", "ruling", "damage"]);
 const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open], dialog.tutorial-token-dialog[open]";
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
@@ -151,7 +151,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   // Advance on what the GM does, skipping steps already done.
   const step = typeof progress === "number" ? progress : null;
   // Let the pointer finish its gesture and explanation before an automatic action advances the lesson.
-  const settled = !run.playing && !demoBusy && step !== null && step > 0 ? settle(step, facts) : step;
+  const settled = !run.playing && !demoBusy && step !== null && step > 0 && TUTORIAL_STEPS[step] !== "encounter" ? settle(step, facts) : step;
   useEffect(() => {
     if (step !== null && settled !== null && settled !== step) set(settled);
   }, [step, settled]);
@@ -446,9 +446,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             )}
             {stepName === "attack" && (
               <button type="button" className="small primary" data-demo="attack" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
-            )}
-            {stepName === "damage" && !waitingDamage && (
-              <button type="button" className="small primary" data-demo="damage" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "damage"))}>{t("tutorial.demo.damage")}</button>
             )}
             {stepName === "table" && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>
