@@ -3002,6 +3002,8 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial .guide-card-head { min-height: 1.25rem; }
 .guest-tutorial .tutorial-actions > .row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .guest-tutorial .tutorial-actions > .row:empty { display: none; }
+/* While an example plays only the step's own action is left; it sits on the right, where Next is. */
+.guest-tutorial[data-playing="true"] .tutorial-actions { justify-content: flex-end; }
 .guest-tutorial .tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .guest-tutorial .tutorial-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
 .guest-tutorial .tutorial-nav:empty { display: none; }
