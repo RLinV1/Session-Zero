@@ -33,6 +33,63 @@ The original `game-build-*` specs remain in active changes, not the durable capa
 
 ## Decisions
 
+### D13. M2 visible preparation implementation — agreed 2026-11-17, before dependent code
+
+The user approved the researched M2 design and implementation in this session. Exact base:
+`2bcfa0a1f772a94a907f2c6597aed41d0cef0234` (all M1 merged). Branch/worktree:
+`feat/interactive-ai-scene-studio-m2`, `/private/tmp/session-zero-studio-m2`.
+Raymond's approval of all M1 work is user-reported; the user waives remaining external review
+gates and authorizes the temporary tunnel and real ChatGPT synthetic-account test autonomously.
+Only tasks 3.1–3.7 are authorized; no merge/deployment or M3–M5 implementation.
+
+- **Projection and renderer:** add a validated saved Studio snapshot using native grid,
+  effective portal-cut geometry, terrain-grid binding and token-footprint helpers. Extract a
+  provider-free SVG viewport/layers, shared by an owner website adapter and the embedded
+  bridge adapter. Bundle the embedded React entry/styles inline with existing workspace
+  tooling; the static content-hashed resource contains no credentials/private data and loads
+  no CDN code. Retain editor-specific behavior in its wrapper. Do not change room contracts.
+- **Display context:** persist nullable `{sourceFileId, mapKey, encounterKey}` in the existing
+  build lifecycle. Validate the tuple atomically under the build lock in both stores: map
+  source matches, encounter map matches, all items belong to this build. Raw source-only
+  context is valid; ambiguous maps/encounters require explicit selection. Context does not
+  redirect existing explicitly keyed tool writes or alter any build item. Display changes
+  and reads do not refresh retention. This is not M3 enrollment/revision authority.
+- **Saved status:** snapshot includes available contexts, permitted choices, actual detection
+  and validation results, and the latest 20 sanitized real preparation outcomes. Record
+  target, operation and saved/refused result only; no rejected payloads, URLs, credentials
+  or model reasoning. Status recording requires current authority and rejected attempts do
+  not extend retention. Refused saves retain saved overlays. Transport ambiguity remains
+  unknown/stale until resolved by saved state. Snapshot reads must not mix contexts/data.
+  A display fingerprint never serves as an inspected authoring revision token.
+- **Refresh/recovery:** keep the five-second visible-only, single-flight fallback and coalesce
+  focus/local-operation reads. Bind async results to build/context/generation. Stop timers,
+  listeners and media work on hidden/teardown. Cache only in-memory active source/token art
+  by immutable identity/hash, deduplicate reused art and bound bursts within the existing
+  120-request/minute shared grant limit. Measure latency and aggregate traffic. After a
+  failed bridge refresh pause until explicit Retry/open; preserve stale authorized content,
+  but clear it on definitive foreign/unknown refusal. Authoring-choice refusal is distinct
+  from access loss and never clears an otherwise authorized scene.
+- **Presentation:** retain drawable unconfirmed grids, effective walls/openings, Difficult
+  single hatching, Blocked crosshatching, implicit Normal, clipped edge cells and native
+  hidden/large/small token footprints. Do not paint stale terrain onto another grid. Separate
+  unfinished, actual detector activity, saved, awaiting-input, invalid and uncertain states;
+  no invented percentages or reasoning. Missing grant, disabled choices, no grid, invalid
+  image and unavailable detector each explain their own recovery. Snapshot Retry is not a
+  detector retry. Studio OAuth instructions are separate from the legacy 24-hour pass prompt.
+- **Access/layout:** new controls/status use en/zh-TW catalogs/glossary. Keyboard pan/zoom/Fit,
+  context/layer review and textual issue/hidden-token cues remain available in narrow layouts;
+  fullscreen is feature-detected. Saved batches do not steal focus or reset the camera.
+  Deliberate source/context changes may fit/restore per-context cameras. Text/image tools
+  and the website remain useful without Apps. Protected media, server authority, owner
+  choices/locks and private-publication refusal until M5 remain authoritative.
+- **Verification:** synthetic users/art only; fresh isolated Postgres/S3 and real vision
+  service with explicit DATABASE_URL/storage/VISION_URL, pinned Node 22 and no default-service
+  discovery. Preserve cse416 and manual sz-studio-m1b-cce5e8a7. Verify context isolation,
+  native layer parity, actual saved/refused tool writes, cleanup/retention, private delivery,
+  restart, latency/traffic, focus/camera and localized keyboard/narrow/fullscreen workflows.
+  Run required checks/build, independent diff review and re-review, then actual ChatGPT
+  preparation before marking host proof complete. Missing evidence remains pending.
+
 ### D1. User journey and interaction contract
 
 1. A signed-in owner starts an AI build on the website and chooses permitted AI work using the existing choices.

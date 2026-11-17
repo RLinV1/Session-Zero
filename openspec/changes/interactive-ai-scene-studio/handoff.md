@@ -1,5 +1,18 @@
 # Implementation handoff
 
+## Current session — M2 research, 2026-11-17
+
+**Phase 2 authorized:** the user approved recording the Phase 1 design and beginning
+implementation. D13 and ADR 0073 record that design before dependent product code.
+
+- **Base verified:** remote main `2bcfa0a1f772a94a907f2c6597aed41d0cef0234`, checked against GitHub and `git ls-remote`. PR #212 merged as `d23a0b65001ef1d544a314c1779ea711f68b3a72`; PR #216 merged as `cd31b0552154e899d4daf06e6d2ad9968ac43fbc`. Both complete PR heads are ancestors of this base, including M1b fixes through `7eadf503` and its final handoff. Main also contains #219's legacy attack-dice test typecheck fix.
+- **Approval update from the user:** after the initial prerequisite audit found the historical owner-review rows still pending, the user reported that Raymond approved everything and explicitly waived other approval gates. This satisfies the M1 prerequisite for this session. It is user-reported approval, not a newly discovered GitHub review or a claim that the glossary owner separately reviewed the terms. The older records below retain their historical scope.
+- **Existing host evidence:** [M1 qualification](evidence/m1-host-2026-11-16.md) records actual ChatGPT discovery/DCR/consent/read/disconnect and map/token original intake, source view and reopen/recovery. Independent fixes were re-reviewed through `7eadf503`. M1 did not prepare map items or use a real detector; it does not qualify M2.
+- **Isolation:** created branch `feat/interactive-ai-scene-studio-m2` and worktree `/private/tmp/session-zero-studio-m2` from that exact main. Other worktrees and uncommitted files are preserved. Use explicit `fnm exec --using=22.23.2` for Node commands: shells do not all resolve the same Node version.
+- **Authorization:** tasks 3.1–3.7 only; research/discuss before product code. The user subsequently authorized the real ChatGPT test, temporary tunnel and synthetic-account steps autonomously, superseding the original request for a separate host-run approval. The Phase 1 design still awaits the user's go-ahead before product code. Commit/push and PR to main are authorized after implementation; no merge or deployment.
+- **Research:** see research.md's M2 section for existing layers/tools, context and status gaps, traffic budget, proposed design and verification order. These are proposals, not an agreed implementation design. No M2 task is complete; no product code, dependency install or test service has been started.
+- **Preserve active stacks:** read-only inspection found `cse416` development services and manual project `sz-studio-m1b-cce5e8a7` (Postgres 55434, S3 18334, vision 18889). Do not reuse these or their databases/buckets. Existing Playwright configuration forces memory persistence and vision 18889; it cannot be used unchanged for M2 proof.
+
 ## Current state
 
 - Date: 2026-11-16 (planning 2026-11-14).

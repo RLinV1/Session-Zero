@@ -51,6 +51,8 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 ## 3. M2 — Watch preparation from a raw map
 
+**Session status, 2026-11-17:** Phase 1 research only on verified merged main `2bcfa0a1f772a94a907f2c6597aed41d0cef0234`. The user reports Raymond's approval of all M1 work and waives remaining external approval gates. The user also authorizes the eventual temporary tunnel/real ChatGPT synthetic-account test autonomously. Design go-ahead before product code remains pending. No task below is completed by research; see research.md and the latest handoff entry.
+
 **Purpose:** Deliver the first useful visual milestone with the existing builder's authoring tools. **Dependency:** M1. **Scope:** Unified display and actual saved progress; revisioned corrections follow in M3/M4.
 
 **Investigate:** Reusable map/grid/terrain/geometry/token layers, view refresh cost, existing tool outputs and unfinished-grid/error semantics.

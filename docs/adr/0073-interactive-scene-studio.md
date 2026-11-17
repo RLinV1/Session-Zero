@@ -33,6 +33,16 @@ The detailed proposal and alternatives are in [design.md](../../openspec/changes
 
 ## Consequences
 
+**M2 implementation decision (user agreed 2026-11-17, before dependent code):** design.md D13
+records the exact bounded visible-preparation design on merged main `2bcfa0a1`. Add a shared
+native saved-scene projection/renderer, atomically validated persisted display context and
+20 bounded sanitized preparation outcomes, separate from future authoring revisions. Website
+owner and embedded delegated adapters retain existing authority/media boundaries. Reads,
+display context and refused attempts do not extend retention. M1 implementation approval is
+reported by the user as Raymond's approval of everything; remaining external approval gates
+are waived by the user. The user also authorizes autonomous isolated real ChatGPT testing.
+This does not authorize publication, deployment, merging or later-milestone contracts.
+
 - Extends builder contracts and persistence; requires additive migrations and both store adapters.
 - Replaces the coarse lock's collaborative role only for enrolled targets while preserving its protection on ordinary materialized drafts.
 - Requires new OAuth, private-media and deletion/retention tests. Publication storage routing must respect database rollback.
