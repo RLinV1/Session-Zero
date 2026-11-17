@@ -27,7 +27,7 @@ const values = {
   DATABASE_URL: `postgres://studio:${password}@127.0.0.1:${ports.pg}/studio_m2`, REDIS_URL: "", S3_AUTODETECT: "0",
   S3_ENDPOINT: endpoint, S3_ACCESS_KEY: access, S3_SECRET_KEY: secret, S3_BUCKET: "studio-m2-public",
   STUDIO_MEDIA_MODE: "s3", STUDIO_S3_ENDPOINT: endpoint, STUDIO_S3_ACCESS_KEY: access, STUDIO_S3_SECRET_KEY: secret, STUDIO_S3_BUCKET: "studio-m2-private", STUDIO_S3_REGION: "us-east-1",
-  VISION_URL: `http://127.0.0.1:${ports.vision}`, GRID_MAX_PIXELS: "16000000", COOKIE_SECURE: "0",
+  VISION_URL: `http://127.0.0.1:${ports.vision}`, GRID_MAX_PIXELS: "16000000", COOKIE_SECURE: "0", HTTP_LOG: "0",
   UPLOAD_DIR: path.join(directory, "public"), STUDIO_PRIVATE_DIR: path.join(directory, "private"),
   STUDIO_PUBLIC_ORIGIN: origin, CLIENT_ORIGIN: origin, VTT_SERVER: `http://127.0.0.1:${ports.server}`, VTT_MCP: `http://127.0.0.1:${ports.mcp}`, ROOM_SERVER_URL: `http://127.0.0.1:${ports.server}`,
   STUDIO_TEST_SERVER_PORT: ports.server, STUDIO_TEST_MCP_PORT: ports.mcp, STUDIO_TEST_WEB_PORT: ports.web,
