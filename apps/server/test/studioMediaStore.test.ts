@@ -10,6 +10,7 @@ import { BuildLimitError, BuildPublishConflictError } from "../src/store/buildSt
 import { StudioAccessEndedError } from "../src/store/studioStore";
 import { storeCases } from "./storeHarness";
 import type { RoomStore } from "../src/store/roomStore";
+import { startServer } from "./helpers";
 
 export async function studioMediaStoreFixture(store:RoomStore) {
   const at=new Date().toISOString();
@@ -69,6 +70,18 @@ describe.each(storeCases)("private-media persistence on %s (FR-GM-26, FR-GM-27)"
     const store=makeStore();const s=await studioMediaStoreFixture(store);await s.service.intake(s.build.id,"map",s.file,s.delegation);
     expect(await store.closeBuild(s.build.id,s.user.ownerId,new Date(0).toISOString())).toBeNull();expect(await store.listBuildFiles(s.build.id)).toHaveLength(1);
     const closed=await store.closeBuild(s.build.id,s.user.ownerId,new Date(Date.now()+1000).toISOString());expect(closed).not.toBeNull();await s.service.sweep();expect(await store.listBuildFiles(s.build.id)).toHaveLength(0);
+  });
+
+  it("the actual 14-day sweep closes access and deletes private originals and derivatives",async()=>{
+    const store=makeStore();const s=await studioMediaStoreFixture(store);const saved=await s.service.intake(s.build.id,"map",s.file,s.delegation);
+    let clock=Date.now();const server=await startServer(store,{studioMedia:s.media,now:()=>clock,dispatcher:{enqueue:async()=>{},close:async()=>{}}});
+    try {
+      await server.app.sweepAbandonedBuilds();expect((await store.findBuild(s.build.id,s.user.ownerId))!.status).toBe("open");
+      clock+=15*24*60*60_000;await server.app.sweepAbandonedBuilds();
+      expect((await store.findBuild(s.build.id,s.user.ownerId))!.status).toBe("closed");expect(await store.listBuildFiles(s.build.id)).toHaveLength(0);
+      expect((await store.findStudioGrantByCode(s.grant.codeHash))!.revokedAt).not.toBeNull();
+      expect(await s.media.read(saved.file.objectKey,10000)).toBeNull();expect(await s.media.read(saved.file.studio!.previewKey,10000)).toBeNull();
+    } finally {await server.close();}
   });
 
   it("aborts expired write intents atomically so a late commit cannot resurrect deleted media",async()=>{
