@@ -1,4 +1,5 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { TUTORIAL_MAP } from "../../ui/tutorialMap";
 import { MAX_FOG_POINTS, type Command, type FogRegion, type GridSpec, type MapImage, type Point } from "@vtt/shared";
 import { FOG_TEXTURE_SIZE, averageColor, fogPalette, makeFogCanvas, type Rgb } from "../../board/fogTexture";
 import { fogRegionAt } from "../../board/tools";
@@ -144,7 +145,8 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
 }) {
   const fogId = useId().replace(/:/g, "");
   const base = useMapColor(map.url);
-  const tint = rgbCss(fogPalette(base).dark);
+  // The practice map's warm art would tint the demo's fog olive-yellow; keep it a neutral slate.
+  const tint = map.url === TUTORIAL_MAP.url ? "rgb(34, 42, 54)" : rgbCss(fogPalette(base).dark);
   // Make the Player view texture while the GM is still drawing, once the map's colour is known.
   useEffect(() => {
     const warm = () => { fogTextureUrl(base); };

@@ -2981,8 +2981,9 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
   background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
   border-radius: var(--radius-surface); box-shadow: 0 10px 28px var(--shadow);
   font-size: var(--fs-sm);
-  max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; overscroll-behavior: contain;
+  max-height: calc(100dvh - 2 * var(--space-4));
 }
+.guest-tutorial.sheet, .guest-tutorial.is-intro { overflow-y: auto; overscroll-behavior: contain; }
 .guest-tutorial.sheet {
   left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
   width: auto; max-width: 28rem; margin-inline: auto;
