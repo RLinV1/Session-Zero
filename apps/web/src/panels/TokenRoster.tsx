@@ -20,6 +20,7 @@ import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoo
 import { libraryAssetId } from "../net/builtinAssets";
 import { LibraryPicker } from "../pages/LibraryPicker";
 import { useAttackListEditor } from "./AttackListEditor";
+import { presetsForToken } from "./attackRoll";
 import { creatureFromToken } from "../pages/creatureDraft";
 import { TokenPreview } from "../ui/TokenPreview";
 import { useDisplayedStats } from "../board/nukeHealth";
@@ -403,7 +404,8 @@ export function TokenEditor({
   const [ac, setAc] = useState(token.stats.ac?.toString() ?? "");
   const [conditions, setConditions] = useState<ConditionId[]>(token.conditions);
   // Shared with everyone who may see them, saved with the rest of the form (ADR 0034).
-  const [attacks, setAttacks] = useState<AttackPreset[]>(token.attacks ?? []);
+  // Read as the Attack section reads them, so dice stored before mixed dice show their formula (legacy-attack-dice-crash).
+  const [attacks, setAttacks] = useState<AttackPreset[]>(() => presetsForToken(token));
   const attackList = useAttackListEditor({ attacks, onChange: setAttacks });
   const [ownerId, setOwnerId] = useState(token.ownerIds[0] ?? "");
   const [hidden, setHidden] = useState(token.hidden);
@@ -446,7 +448,7 @@ export function TokenEditor({
     changes.stats = stats;
   if (!sameConditions) changes.conditions = conditions;
   // Only when changed here, so an unrelated Save never overwrites an owner's edit made meanwhile.
-  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(token.attacks ?? [])) changes.attacks = attacks;
+  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(presetsForToken(token))) changes.attacks = attacks;
   if (isGm && ownerId !== (token.ownerIds[0] ?? ""))
     changes.ownerIds = ownerId ? [ownerId] : [];
   if (isGm && hidden !== token.hidden) changes.hidden = hidden;

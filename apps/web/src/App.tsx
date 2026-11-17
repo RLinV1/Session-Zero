@@ -8,6 +8,7 @@ import { useRoute, type Route } from "./router";
 import { layerFor, useRouteLayer } from "./theme";
 import { Ambient } from "./ui/Ambient";
 import { EntryPage } from "./ui/SiteHeader";
+import { RouteErrorBoundary } from "./ui/RouteErrorBoundary";
 
 // The landing and account pages do not need Pixi, map editors or the animation library.
 const GmDashboardPage = lazy(() => import("./pages/GmDashboardPage").then((m) => ({ default: m.GmDashboardPage })));
@@ -26,7 +27,10 @@ export function App() {
   return (
     <>
       <Ambient layer={layerFor(route)} />
-      <Suspense fallback={<main className="centered"><p role="status">{t("common.loading")}</p></main>}><RoutePage route={route} /></Suspense>
+      {/* Keyed by the address: leaving a page that failed, Back included, starts the next one fresh (room-error-recovery). */}
+      <RouteErrorBoundary key={location.pathname} room={route.page === "room" || route.page === "encounterEdit"}>
+        <Suspense fallback={<main className="centered"><p role="status">{t("common.loading")}</p></main>}><RoutePage route={route} /></Suspense>
+      </RouteErrorBoundary>
     </>
   );
 }

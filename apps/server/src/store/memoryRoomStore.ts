@@ -3,7 +3,7 @@ import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget } from "./gridDetectionStore";
-import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, type RoomDefaults, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, type RoomDefaults, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   assertChoicesAllow,
@@ -183,7 +183,12 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   async loadEvents(roomId: string) {
-    return [...(this.events.get(roomId) ?? [])];
+    // The same read as the Postgres store, so a test can seed events in an older stored shape
+    // (legacy-attack-dice-crash, ADR 0061). The kept log is never rewritten.
+    return (this.events.get(roomId) ?? []).map((e) => {
+      const event = upgradeStoredAttacks(e.event);
+      return event === e.event ? e : { ...e, event };
+    });
   }
 
   async findRoomOwner(roomId: string) {
@@ -1271,7 +1276,9 @@ export class MemoryRoomStore implements RoomStore {
 
   private withMap(encounter: NewEncounterRecord): EncounterRecord {
     const map = encounter.mapAssetId ? this.assets.get(encounter.mapAssetId) : undefined;
-    return { ...structuredClone(encounter), mapName: map?.name ?? null, mapUrl: map?.url ?? null };
+    // As the Postgres store reads it: old named-attack dice in today's shape (legacy-attack-dice-crash).
+    const copy = structuredClone(encounter);
+    return { ...copy, data: upgradeStoredAttacks(copy.data), mapName: map?.name ?? null, mapUrl: map?.url ?? null };
   }
 
   /** The foreign key Postgres enforces on `image_asset_id`. */
