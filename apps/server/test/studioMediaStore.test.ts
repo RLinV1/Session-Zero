@@ -77,9 +77,11 @@ describe.each(storeCases)("private-media persistence on %s (FR-GM-26, FR-GM-27)"
     let clock=Date.now();const server=await startServer(store,{studioMedia:s.media,now:()=>clock,dispatcher:{enqueue:async()=>{},close:async()=>{}}});
     try {
       await server.app.sweepAbandonedBuilds();expect((await store.findBuild(s.build.id,s.user.ownerId))!.status).toBe("open");
+      expect((await store.findStudioGrantByCode(s.grant.codeHash))!.revokedAt).toBeNull();
       clock+=15*24*60*60_000;await server.app.sweepAbandonedBuilds();
       expect((await store.findBuild(s.build.id,s.user.ownerId))!.status).toBe("closed");expect(await store.listBuildFiles(s.build.id)).toHaveLength(0);
-      expect((await store.findStudioGrantByCode(s.grant.codeHash))!.revokedAt).not.toBeNull();
+      // Another store contract's future-time OAuth sweep may already remove the revoked row.
+      const ended=await store.findStudioGrantByCode(s.grant.codeHash);expect(ended===null||ended.revokedAt!==null).toBe(true);
       expect(await s.media.read(saved.file.objectKey,10000)).toBeNull();expect(await s.media.read(saved.file.studio!.previewKey,10000)).toBeNull();
     } finally {await server.close();}
   });
