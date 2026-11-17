@@ -4,9 +4,9 @@ import type { ServerEn } from "./en";
 /** Traditional Chinese for `en.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const serverZhTW = {
   "studio.invalidJson": "無效的 JSON 要求。",
-  "studio.media.origin": "尚未核准這個檔案下載來源。請重新選取或附加檔案；新的來源需要管理員檢視。",
-  "studio.media.expired": "這個檔案連結已過期或無法使用。請重新選取或附加原始檔案。",
-  "studio.media.download": "無法安全下載原始檔案。請重新選取或附加檔案。",
+  "studio.media.origin": "無法匯入這張圖片。請在 ChatGPT 聊天中重新附加原始檔，或在 Session Zero 網站上傳。",
+  "studio.media.expired": "這個檔案連結已過期或無法使用。請在 ChatGPT 聊天中重新附加原始檔。",
+  "studio.media.download": "無法安全下載原始檔。請在 ChatGPT 聊天中重新附加。",
   "studio.media.size": "工作室圖片上限為 25 MiB；預覽也必須符合受保護的傳輸大小限制。",
   "studio.media.image": "請使用可讀取的單張 PNG、JPEG 或 WebP 圖片：每邊最多 16384 像素，解碼後最多 4000 萬像素。",
   "studio.media.busy": "工作室正在處理其他上傳。請稍候再試。",

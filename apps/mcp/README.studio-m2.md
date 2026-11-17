@@ -41,14 +41,20 @@ regressions use `playwright.studio-m2-legacy.config.ts` one browser project per 
    to 3130. Use the appropriate secure-cookie setting for HTTPS. Do not change DNS/production.
 4. Create a new synthetic Session Zero owner/build and enable grid/walls/terrain choices
    through that owner's website/API. Keep real user accounts and the manual stack untouched.
-5. In a dedicated ChatGPT tab, add a temporary personal test connection to the tunnel's
-   `/mcp/studio`. Complete Session Zero discovery/DCR/sign-in and consent to only the
-   synthetic build. Inspect owner/build identity. Refresh tools and use a new open call if
-   the host retains an earlier resource version. No legacy build pass goes in this prompt.
+5. In a dedicated ChatGPT tab, set the temporary personal plugin URL to the current isolated
+   stack's tunnel origin plus `/mcp/studio`. Update `Session Zero Studio M2 Manual` or
+   recreate the temporary connection if it still points at the previous tunnel. Refresh
+   tools and use a new `studio_open` call to load the current tool list and resource.
+   Complete Session Zero discovery/DCR/sign-in and consent to only the synthetic build.
+   Inspect owner/build identity. Keep legacy passes out of the prompt.
 6. Attach both original fixtures through ChatGPT's composer. Ask: "Open Session Zero Studio
    for this build with these originals before preparing anything. Keep the view open."
-   Confirm the protected source and original file outcomes. Independently compare stored
-   hashes/dimensions with the committed originals; attachment presence alone is not proof.
+   Confirm the protected source and each file's saved outcome. Independently compare stored
+   hashes/dimensions with the committed originals. Confirm the Studio offers chat attachment
+   guidance and opens the signed-in owner's existing `/builds/:buildId` upload page as the
+   fallback. Verify the file-link visibility notice beside the website option using only
+   synthetic art. A refused attachment offers both paths in the current language. An
+   expired link asks the user to attach the original again in chat.
 7. Ask the model to inspect the original and grid overlay, check the real detector suggestion,
    save a map and explicitly select it. Save walls, a door/window, permanent Difficult and
    Blocked terrain, synthetic creatures using the supplied art, and visible/hidden placements.
@@ -75,5 +81,6 @@ tunnel/server/MCP/Vite and smoke container, then the wrapper's `compose down -v`
 project. Remove only its generated private configuration directory after evidence is redacted.
 The active manual/development stacks and existing ChatGPT connections remain unchanged.
 
-For a later user test, check out the M2 PR in a separate worktree and repeat this setup with
-fresh disposable services and synthetic files. This does not require merging or deploying.
+For the next user test, use the M2 branch in its isolated worktree. Repeat this setup with
+fresh disposable Postgres/S3, the real detector, synthetic files and a fresh tunnel.
+Update the ChatGPT plugin URL to that tunnel before refreshing tools.

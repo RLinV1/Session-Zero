@@ -10,8 +10,14 @@ const File = z.strictObject({ download_url: z.string().min(1).max(8192), file_id
 const Locale = z.enum(["en", "zh-TW"]).optional();
 const securitySchemes = [{ type: "oauth2", scopes: ["studio:build"] }];
 const appOnly = { ui: { visibility: ["app"] }, "openai/visibility": "private", "openai/widgetAccessible": true, securitySchemes };
-const text = (value: unknown): CallToolResult => ({ content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
+const text = (value: Record<string, unknown>, display = value): CallToolResult => ({
+  content: [{ type: "text", text: JSON.stringify(display) }], structuredContent: value,
+});
 const result = (value: unknown) => z.record(z.string(), z.unknown()).parse(value);
+function intakeErrorText(code: string, locale?: string) {
+  const catalog = locale === "zh-TW" ? studioIntakeZhTW : studioIntake;
+  return catalog[`error.${code}` as keyof typeof studioIntake] ?? catalog["error.unknown"];
+}
 
 class StudioHttpError extends Error {
   partial?: Record<string, unknown>;
@@ -40,9 +46,7 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     try { return await run(); }
     catch (error) {
       const status = error instanceof StudioHttpError ? error.status : 503, code = error instanceof StudioHttpError ? error.code : "storage";
-      const catalog = locale === "zh-TW" ? studioIntakeZhTW : studioIntake;
-      const key = `error.${code}` as keyof typeof studioIntake;
-      return { isError: true, ...(error instanceof StudioHttpError && error.partial && { structuredContent: error.partial }), content: [{ type: "text", text: catalog[key] ?? catalog["error.unknown"] }],
+      return { isError: true, ...(error instanceof StudioHttpError && error.partial && { structuredContent: error.partial }), content: [{ type: "text", text: intakeErrorText(code, locale) }],
         _meta: { "sessionzero/error": { status, code }, ...(status === 401 && { "mcp/www_authenticate": [`Bearer resource_metadata="${deps.publicOrigin}/.well-known/oauth-protected-resource/mcp/studio", error="invalid_token"`] }) } };
     }
   };
@@ -54,7 +58,8 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     } catch (e) {
       if (e instanceof StudioHttpError && e.savedFileId) return { index, kind, status: "saved" as const, fileId: e.savedFileId };
       const uncertain = !(e instanceof StudioHttpError) || e.status === 401 || e.status >= 500;
-      return { index, kind, status: uncertain ? "unknown" as const : "failed" as const, code: e instanceof StudioHttpError ? e.code : "storage" };
+      const code = e instanceof StudioHttpError ? e.code : "storage";
+      return { index, kind, status: uncertain ? "unknown" as const : "failed" as const, code, message: intakeErrorText(code, locale) };
     }
   };
   const snapshot = async (buildId: string, locale?: string) => {
@@ -68,10 +73,10 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } } }] }));
   registerAppTool(server, "studio_open", {
     title: "Open Scene Studio",
-    description: "Open this connected build's Studio whenever the user asks to see or reopen it, including before preparation. Pass attached originals in mapFiles/tokenFiles to import them. The already-open view loads saved grid, geometry, terrain and placements as tool writes arrive. Use context or studio_set_context to explicitly select an existing map and its encounter; selection never redirects writes. Report failed files and request re-selection. Rules and sheets stay in chat. Reopening does not create a build. Use fullscreen to return to the view. Hosts without Apps can use the website at /builds/{buildId} after owner sign-in.",
+    description: "Open this connected build's Studio whenever the user asks to see or reopen it, including before preparation. Pass originals attached in the ChatGPT chat in mapFiles/tokenFiles to import them. Report each failed file using its message. The owner can also upload originals on the Session Zero website at /builds/{buildId} after sign-in. The already-open view loads saved grid, geometry, terrain and placements as tool writes arrive. Use context or studio_set_context to explicitly select an existing map and its encounter; selection never redirects writes. Rules and sheets stay in chat. Reopening does not create a build. Use fullscreen to return to the view.",
     inputSchema: z.object({ buildId: z.uuid(), mapFiles: z.array(File).max(5).optional(), tokenFiles: z.array(File).max(5).optional(), context: StudioContext.optional(), locale: Locale }).refine((args) => (args.mapFiles?.length ?? 0) + (args.tokenFiles?.length ?? 0) <= 5),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    _meta: { ui: { resourceUri: studioView.uri }, "openai/outputTemplate": studioView.uri, "openai/fileParams": ["mapFiles", "tokenFiles"], securitySchemes },
+    _meta: { ui: { resourceUri: studioView.uri, visibility: ["model"] }, "openai/outputTemplate": studioView.uri, "openai/fileParams": ["mapFiles", "tokenFiles"], securitySchemes },
   }, async ({ buildId, mapFiles, tokenFiles, context, locale }) => guarded(locale, async () => {
     await snapshot(buildId, locale);
     const files = [...(mapFiles ?? []).map((file) => ({ kind: "map" as const, file })), ...(tokenFiles ?? []).map((file) => ({ kind: "token" as const, file }))];
@@ -82,22 +87,13 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
       if (context) await send(buildId, "POST", "/studio/context", context, locale);
       await snapshot(buildId, locale);
     } catch (e) { if (e instanceof StudioHttpError) e.partial = { buildId, bindingVersion: 1, outcomes }; throw e; }
-    return text({ buildId, bindingVersion: 1, outcomes });
+    const payload = { buildId, bindingVersion: 1, outcomes };
+    return text(payload, { ...payload, outcomes: outcomes.map(({ code: _code, ...outcome }) => outcome) });
   }));
   registerAppTool(server, "studio_snapshot", {
     title: "Read saved Studio preparation", description: "Load saved identity, explicit map/encounter context, prepared layers, detector state and actual preparation outcomes for this view. Identifiers are not credentials.",
     inputSchema: z.object({ buildId: z.uuid(), locale: Locale }), annotations: { readOnlyHint: true, openWorldHint: false }, _meta: appOnly,
   }, async ({ buildId, locale }) => guarded(locale, async () => text(await snapshot(buildId, locale))));
-  registerAppTool(server, "studio_import_files", {
-    title: "Add selected files", description: "Import originals selected in this view; every file has its own saved or failed outcome.",
-    inputSchema: z.object({ buildId: z.uuid(), kind: z.enum(["map", "token"]), files: z.array(File).min(1).max(5), locale: Locale }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }, _meta: { ...appOnly, "openai/fileParams": ["files"] },
-  }, async ({ buildId, kind, files, locale }) => guarded(locale, async () => {
-    await snapshot(buildId, locale);
-    const outcomes = await Promise.all(files.map((file, index) => importOne(buildId, kind, file, index, locale)));
-    try { await snapshot(buildId, locale); } catch (e) { if (e instanceof StudioHttpError) e.partial = { buildId, outcomes }; throw e; }
-    return text({ buildId, outcomes });
-  }));
   registerAppTool(server, "studio_bind_file", {
     title: "Show a saved source map", description: "Choose a map file for display in this build; it does not edit a draft map or an encounter.",
     inputSchema: z.object({ buildId: z.uuid(), fileId: z.uuid(), locale: Locale }), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: appOnly,

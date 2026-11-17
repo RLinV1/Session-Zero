@@ -109,7 +109,10 @@ test("refused save keeps saved overlays, camera and focus with an actionable per
 });
 test("explicit context switching refuses a mismatched encounter and preserves all other drafts (FR-GM-27)", async ({ page, request }) => {
   const session = await mount(page, request), { file, grid } = await prepare(session);
-  await session.tool("studio_import_files", { kind: "map", files: [descriptor("token")] });
+  const context = (await session.snapshot()).context;
+  const attached = await session.tool("studio_open", { mapFiles: [descriptor("token")], context });
+  expect(attached.isError).not.toBe(true);
+  expect(attached.structuredContent?.outcomes).toMatchObject([{ kind: "map", status: "saved" }]);
   const otherSource = (await session.snapshot()).files.find((candidate) => candidate.kind === "map" && candidate.id !== file.id)!;
   expect(otherSource).toBeTruthy();
   expect((await session.tool("save_map", { key: "courtyard", name: "Courtyard", fileId: otherSource.id, proposedGrid: grid })).isError).not.toBe(true);
@@ -128,8 +131,11 @@ test("localized keyboard review fits narrow/fullscreen layouts without moving th
   const canvas = session.frame.locator('[data-testid="studio-map"]'); await canvas.focus();
   const first = await canvas.getAttribute("viewBox"); await page.keyboard.press("ArrowRight"); expect(await canvas.getAttribute("viewBox")).not.toBe(first);
   await page.keyboard.press("Home"); expect(await canvas.getAttribute("viewBox")).toBe(first);
+  const website = `${ORIGIN}/builds/${session.build.id}`;
+  await expect(session.frame.getByRole("link", { name: "Or upload on the Session Zero website." })).toHaveAttribute("href", website);
   await session.frame.locator("#language").selectOption("zh-TW");
   await expect(session.frame.getByLabel("目前地圖", { exact: true })).toBeVisible();
+  await expect(session.frame.getByRole("link", { name: "也可以在 Session Zero 網站上傳。" })).toHaveAttribute("href", website);
   await expect.poll(() => session.frame.locator("body").evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await session.frame.locator("#fullscreen").click();
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { m2Expanded?: boolean }).m2Expanded))).toBe(true);

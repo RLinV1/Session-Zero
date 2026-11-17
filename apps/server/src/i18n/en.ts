@@ -8,9 +8,9 @@ import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
  */
 export const serverEn = {
   "studio.invalidJson": "Invalid JSON request.",
-  "studio.media.origin": "This file download origin is not approved. Select or attach the file again; a new origin needs operator review.",
-  "studio.media.expired": "This file link has expired or is unavailable. Select or attach the original file again.",
-  "studio.media.download": "The original file could not be downloaded safely. Select or attach it again.",
+  "studio.media.origin": "The image could not be imported. Attach the original again in the ChatGPT chat or upload it on the Session Zero website.",
+  "studio.media.expired": "This file link has expired or is unavailable. Attach the original file again in the ChatGPT chat.",
+  "studio.media.download": "The original file could not be downloaded safely. Attach it again in the ChatGPT chat.",
   "studio.media.size": "Studio images must be at most 25 MiB; their previews must fit the protected delivery limit.",
   "studio.media.image": "Use a readable, single-frame PNG, JPEG or WebP image: at most 16384 pixels per side and 40 million decoded pixels.",
   "studio.media.busy": "Studio is handling other uploads. Wait a moment, then try again.",

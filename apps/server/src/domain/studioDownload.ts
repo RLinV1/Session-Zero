@@ -2,17 +2,8 @@ import https from "node:https";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP, BlockList } from "node:net";
 
-/**
- * Exact host origins only (design D9 / M1b record); a new origin needs its own provenance review.
- * northeu and nznorth: ChatGPT composer attachments via `openai/fileParams` on 2026-11-17, same
- * `*.oaiusercontent.com` certificate and edge as the M0-observed eastus3 host.
- */
-export const STUDIO_DOWNLOAD_ORIGINS = new Set([
-  "https://sdmntpreastus3.oaiusercontent.com",
-  "https://sdmntprnortheu.oaiusercontent.com",
-  "https://sdmntprnznorth.oaiusercontent.com",
-  "https://oaisdmntpreastus3.blob.core.windows.net",
-]);
+// ChatGPT composer download hosts only. See the regional-host amendment in design D9.
+const COMPOSER_DOWNLOAD_HOST = /^sdmntpr[a-z0-9]{2,32}\.oaiusercontent\.com$/;
 export const STUDIO_FILE_BYTES = 25 * 1024 ** 2;
 export const STUDIO_DOWNLOAD_MS = 20_000;
 export class StudioIntakeError extends Error {
@@ -28,9 +19,21 @@ export const publicDownloadAddress = (address: string) => {
   const family = isIP(address);
   return family === 4 ? !nonPublic4.check(address, "ipv4") : family === 6 && global6.check(address, "ipv6") && !nonPublic6.check(address, "ipv6");
 };
+function refuseOrigin(origin: string | null): never {
+  console.warn(JSON.stringify({ event: "studio_attachment_origin_refused", origin }));
+  throw new StudioIntakeError("origin");
+}
 export function studioDownloadUrl(raw: string): URL {
-  let url: URL; try { url = new URL(raw); } catch { throw new StudioIntakeError("origin"); }
-  if (url.username || url.password || url.hash || !STUDIO_DOWNLOAD_ORIGINS.has(url.origin) || (raw.includes("\\") || [...raw].some((ch) => ch.codePointAt(0)! <= 32))) throw new StudioIntakeError("origin");
+  let url: URL;
+  try { url = new URL(raw); } catch { return refuseOrigin(null); }
+  // Check the raw authority as well, folding only ASCII case. URL normalizes empty
+  // userinfo and escaped or IDNA-mapped hostnames.
+  const authority = /^https:\/\/([^/?#]+)/i.exec(raw)?.[1]?.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  const defaultAuthority = authority === url.hostname || authority === `${url.hostname}:443`;
+  if (url.protocol !== "https:" || url.port || !defaultAuthority ||
+      !COMPOSER_DOWNLOAD_HOST.test(url.hostname) || /[\\# \p{Cc}]/u.test(raw)) {
+    refuseOrigin(url.origin);
+  }
   return url;
 }
 export type OriginalDownloader = (url: string) => Promise<Buffer>;
@@ -40,7 +43,7 @@ export async function downloadStudioOriginal(raw: string): Promise<Buffer> {
   const url = studioDownloadUrl(raw);
   const signal = AbortSignal.timeout(STUDIO_DOWNLOAD_MS);
   const answers = await Promise.race([dnsLookup(url.hostname, { all: true }), new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new StudioIntakeError("download")), { once: true }))]).catch(() => { throw new StudioIntakeError("download"); });
-  if (!answers.length || answers.some((a) => !publicDownloadAddress(a.address))) throw new StudioIntakeError("origin");
+  if (!answers.length || answers.some((a) => !publicDownloadAddress(a.address))) refuseOrigin(url.origin);
   const selected = answers[0]!;
   return new Promise<Buffer>((resolve, reject) => {
     const fail = (code: StudioIntakeError["code"]) => reject(new StudioIntakeError(code));

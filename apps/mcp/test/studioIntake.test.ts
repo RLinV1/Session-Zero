@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { startServer } from "../../server/test/helpers";
 import { connectStudio, TEST_ORIGIN, bearer } from "../../server/test/studioFlow";
 import { LocalStudioMediaStore } from "../../server/src/store/studioMediaStore";
+import { StudioIntakeError, studioDownloadUrl } from "../../server/src/domain/studioDownload";
+import { studioIntake } from "../../web/src/i18n/en/studioIntake";
+import { studioIntakeZhTW } from "../../web/src/i18n/zh-TW/studioIntake";
 import { startMcpServer } from "../src/app";
 import { VIEW_SCRIPT } from "../src/studio/viewScript";
 import { studioView } from "../src/studio/view";
@@ -15,7 +18,11 @@ afterEach(async()=>{for(const stop of stops.splice(0).reverse()) await stop();})
 async function fixture() {
   const root=await mkdtemp(path.join(tmpdir(),"studio-mcp-"));const media=await LocalStudioMediaStore.connect(path.join(root,"private"),path.join(root,"public"));
   const bytes=await sharp({create:{width:90,height:60,channels:3,background:"#59705f"}}).png().toBuffer();
-  const room=await startServer(undefined,{studio:{publicOrigin:TEST_ORIGIN},studioMedia:media,studioDownloader:async(url)=>url.endsWith("bad")?Buffer.from("bad file"):bytes});stops.push(()=>room.close());
+  const room=await startServer(undefined,{studio:{publicOrigin:TEST_ORIGIN},studioMedia:media,studioDownloader:async(raw)=>{
+    const url = studioDownloadUrl(raw);
+    if (url.pathname === "/expired") throw new StudioIntakeError("expired");
+    return url.pathname === "/bad" ? Buffer.from("bad file") : bytes;
+  }});stops.push(()=>room.close());
   const owner=await room.signUp({displayName:"Private owner name"});const {build}=await owner.json<{build:{id:string}}>("POST","/api/builds",{name:"Private build title"});const {tokens}=await connectStudio(room.base,owner,[build.id]);
   const mcp=await startMcpServer({roomServerUrl:room.base,allowedOrigins:[],studioAccess:{publicOrigin:TEST_ORIGIN}});stops.push(()=>mcp.close());
   const rpc=async(method:string,params:unknown,token=tokens.access_token)=>{
@@ -47,14 +54,51 @@ describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
     expect(response.body.result!.isError).toBe(true);expect(response.body.result!.structuredContent).toHaveProperty("outcomes");expect((response.body.result!.structuredContent!.outcomes as {status:string}[]).some((o)=>o.status==="saved")).toBe(true);expect(response.body.result!._meta).toHaveProperty("mcp/www_authenticate");expect(JSON.stringify(response.body).includes(s.bytes.toString("base64"))).toBe(false);
     expect((await s.room.store.listBuildFiles(s.build.id)).length).toBeGreaterThan(0);
   });
+  it.each([["en", studioIntake], ["zh-TW", studioIntakeZhTW]] as const)("uses %s catalog guidance for rejected and expired attachments", async (locale, catalog) => {
+    const s = await fixture();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const refused = {
+      ...s.descriptor("private-host-file-id"),
+      download_url: "https://web-sandbox.oaiusercontent.com/private-attachment.png?sig=synthetic-signature",
+    };
+    try {
+      const { body } = await s.call("studio_open", {
+        buildId: s.build.id, mapFiles: [refused], tokenFiles: [s.descriptor("expired-token", "expired")], locale,
+      });
+      const originMessage = catalog["error.origin"];
+      const expiryMessage = catalog["error.expired"];
+      expect(body.result!.isError).not.toBe(true);
+      expect(JSON.parse(body.result!.content![0]!.text!)).toEqual({
+        buildId: s.build.id, bindingVersion: 1, outcomes: [
+          { index: 0, kind: "map", status: "failed", message: originMessage },
+          { index: 1, kind: "token", status: "failed", message: expiryMessage },
+        ],
+      });
+      expect(body.result!.structuredContent).toMatchObject({
+        outcomes: [{ code: "origin", message: originMessage }, { code: "expired", message: expiryMessage }],
+      });
+      for (const secret of [refused.file_id, refused.file_name, refused.download_url, "synthetic-signature"]) {
+        expect(JSON.stringify(body)).not.toContain(secret);
+        expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
+      }
+      expect(warn.mock.calls).toEqual([[JSON.stringify({ event: "studio_attachment_origin_refused", origin: "https://web-sandbox.oaiusercontent.com" })]]);
+      expect(await s.room.store.listBuildFiles(s.build.id)).toHaveLength(0);
+    } finally { warn.mockRestore(); }
+  });
   it("registers complete file schemas and app-only media tools, with a credential-free content-versioned resource",async()=>{
     const s=await fixture();const listed=await s.rpc("tools/list",{});const tools=(listed.body.result as unknown as {tools:{name:string;_meta:Record<string,unknown>;inputSchema:Record<string,unknown>}[]}).tools;
     const open=tools.find((t)=>t.name==="studio_open")!;expect(open._meta["openai/fileParams"]).toEqual(["mapFiles","tokenFiles"]);
+    expect(open._meta.ui).toMatchObject({resourceUri:studioView.uri,visibility:["model"]});
+    expect(tools.filter((tool) => tool._meta?.["openai/fileParams"]).map((tool) => tool.name)).toEqual(["studio_open"]);
     expect(studioView.uri).toMatch(/^ui:\/\/session-zero\/studio\.[a-f0-9]{16}\.html$/);
     const schema=JSON.stringify(open.inputSchema);for(const property of ["download_url","file_id","mime_type","file_name"])expect(schema).toContain(property);
-    for(const name of ["studio_snapshot","studio_import_files","studio_bind_file","studio_get_media"])expect(tools.find((t)=>t.name===name)!._meta.ui).toMatchObject({visibility:["app"]});
+    for(const name of ["studio_snapshot","studio_bind_file","studio_get_media"])expect(tools.find((t)=>t.name===name)!._meta.ui).toMatchObject({visibility:["app"]});
+    expect(tools.some((tool) => tool.name === "studio_import_files")).toBe(false);
+    const removed = await s.call("studio_import_files", { buildId: s.build.id, kind: "map", files: [s.descriptor("former-view-import")] });
+    expect(removed.body).toMatchObject({ error: { code: -32602, message: expect.stringContaining("not found") } });
+    expect(await s.room.store.listBuildFiles(s.build.id)).toHaveLength(0);
     const resource=await s.rpc("resources/read",{uri:studioView.uri});const html=JSON.stringify(resource.body);expect(html).not.toContain(s.tokens.access_token);expect(html).not.toContain(s.build.id);expect(html).not.toContain("Private owner name");expect(html).not.toContain(s.bytes.toString("base64"));
-    for (const forbidden of ["blob:","localStorage","setWidgetState"]) expect(VIEW_SCRIPT.includes(forbidden)).toBe(false);
+    for (const forbidden of ["blob:","localStorage","setWidgetState","selectFiles","uploadFile","getFileDownloadUrl","studio_import_files"]) expect(VIEW_SCRIPT).not.toContain(forbidden);
     expect(html).toContain("preparation");expect(html).toContain("__sceneStudio");
     const context=tools.find((tool)=>tool.name==="studio_set_context")!;
     expect(context._meta.ui).toMatchObject({visibility:["model","app"]});

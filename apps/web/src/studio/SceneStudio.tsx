@@ -41,6 +41,10 @@ export function SceneStudio({ snapshot, media, locale, onContext, disabled = fal
   const countTerrain = scene.terrain.reduce((count, run) => count + run.end - run.start + 1, 0);
   const labelFor = (token: StudioSnapshot["scene"]["tokens"][number]) => t("placementLabel", { name: token.name, visibility: t(token.hidden ? "hidden" : "visible") });
   return <section className="scene-studio" data-testid="studio-scene" aria-label={t("title")} aria-busy={changing}>
+    {onWebsiteOpen && <p className="studio-note">
+      {t("attachInChat")}{" "}<a href={snapshot.websitePath} onClick={(event) => { event.preventDefault(); onWebsiteOpen(); }}>{t("uploadOnWebsite")}</a>{" "}
+      {t("websiteUploadVisibility")}
+    </p>}
     <div className="studio-contexts">
       <label><span>{t("activeMap")}</span><select aria-label={t("activeMap")} value={contextValue} disabled={disabled || changing} onChange={(event) => {
         const value = event.currentTarget.value;
@@ -127,6 +131,6 @@ export function SceneStudio({ snapshot, media, locale, onContext, disabled = fal
     {snapshot.outcomes.length > 0 && <details className="studio-outcomes"><summary>{t("outcomes")}</summary><ul>{[...snapshot.outcomes].reverse().map((outcome) => <li key={outcome.id} data-outcome={outcome.status}>
       {t("outcome", { operation: t(`operation.${outcome.operation}`), target: outcome.targetKey ?? "", status: t(`outcome.${outcome.code}`) })}
     </li>)}</ul></details>}
-    <a href={snapshot.websitePath} onClick={onWebsiteOpen ? (event) => { event.preventDefault(); onWebsiteOpen(); } : undefined}>{t("website")}</a>
+    {!onWebsiteOpen && <a href={snapshot.websitePath}>{t("website")}</a>}
   </section>;
 }

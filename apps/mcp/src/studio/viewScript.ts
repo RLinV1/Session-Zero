@@ -5,38 +5,29 @@ const surface = globalThis.__sceneStudio;
 const $ = (id) => document.getElementById(id);
 const app = new App({name:'Session Zero Studio',version:'2.0.0'}, {});
 let locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
-let buildId = null, snapshot = null, timer = null, stopped = false, refreshing = false, refreshAgain = false, uploading = false, connected = false, generation = 0;
-let statusKey = 'loading', uploadStatusKey = null, needsRetry = false, contextSignature = null, lastStarted = 0, rendered = '', refreshAbort = null;
+let buildId = null, snapshot = null, timer = null, stopped = false, refreshing = false, refreshAgain = false, connected = false, generation = 0;
+let statusKey = 'loading', needsRetry = false, contextSignature = null, lastStarted = 0, rendered = '', refreshAbort = null;
 const mediaCache = new Map();
 const t = (key) => catalogs[locale][key] || catalogs.en[key] || catalogs.en['error.unknown'];
 function translate() {
   document.documentElement.lang = locale; document.title = t('title');
   document.querySelectorAll('[data-t]').forEach((node) => node.textContent = t(node.dataset.t));
   $('language').value = locale; status(statusKey);
-  if (uploadStatusKey !== null) uploadStatus(uploadStatusKey);
   renderSaved();
 }
 function status(key) { statusKey=key; const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
-function uploadStatus(key) { uploadStatusKey=key; const value=t(key); if ($('upload-status').textContent !== value) $('upload-status').textContent=value; }
-function uploadControls() {
-  const disabled = stopped || uploading || needsRetry || !connected || !buildId;
-  $('pick').disabled = disabled || !window.openai?.selectFiles;
-  $('device').disabled = disabled || !window.openai?.uploadFile;
-}
 function viewContext() { return {buildId,generation}; }
 function isCurrent(context) { return !stopped && context.buildId === buildId && context.generation === generation; }
-function intakeContext() { return {...viewContext(),kind:$('kind').value}; }
-function clearIntake() { uploading=false; uploadStatusKey=null; $('upload-status').textContent=''; $('device').value=''; }
 function clearPrivate() {
   generation++; snapshot=null; contextSignature=null; mediaCache.clear(); rendered=''; surface.clear();
   $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature='';
-  $('build').textContent=''; $('owner').textContent=''; $('legacy').hidden=true; clearIntake(); uploadControls();
+  $('build').textContent=''; $('owner').textContent=''; $('legacy').hidden=true;
 }
 function pauseForRetry(error) {
   needsRetry=true;
   if (error.status === 404 || (error.status === 403 && error.code !== 'permission')) { clearPrivate(); status('denied'); }
   else status('stale');
-  uploadControls(); renderSaved();
+  renderSaved();
 }
 function resultData(result) {
   if (result.structuredContent) return result.structuredContent;
@@ -56,12 +47,16 @@ function activeFiles(data) {
 function renderSaved() {
   if (!snapshot || stopped) return;
   const media={}; for (const file of activeFiles(snapshot)) { const image=mediaCache.get(cacheKey(file)); if (image) media[file.id]=image; }
-  const signature=JSON.stringify([snapshot.fingerprint,locale,needsRetry,uploading,Object.keys(media)]);
+  const signature=JSON.stringify([snapshot.fingerprint,locale,needsRetry,Object.keys(media)]);
   if (signature === rendered) return;
   rendered=signature;
   const website=snapshot.websitePath;
-  surface.render({snapshot,media,locale,disabled:needsRetry || uploading,stale:needsRetry,onContext:setContext,
-    onWebsiteOpen:()=>{void app.openLink({url:website}).catch(()=>status('websiteUnavailable'));}});
+  surface.render({snapshot,media,locale,disabled:needsRetry,stale:needsRetry,onContext:setContext,
+    onWebsiteOpen:async()=>{
+      const context=viewContext();
+      try { if (!(await app.openLink({url:website})).isError) return; } catch { /* The host may block external links. */ }
+      if (isCurrent(context)) status('websiteUnavailable');
+    }});
 }
 function renderLists() {
   if (!snapshot) return;
@@ -78,7 +73,7 @@ function renderLists() {
     name.className='filename'; name.textContent=file.name; details.textContent=t(file.kind)+' · '+file.width+' × '+file.height; li.append(name,details);
     if (file.kind === 'map') {
       const button=document.createElement('button'); button.type='button'; button.textContent=t('show'); button.disabled=file.id === snapshot.sourceFileId || needsRetry;
-      button.onclick=async()=>{ const context=viewContext(); if (!isCurrent(context)) return; try { await call('studio_bind_file',{buildId:context.buildId,fileId:file.id}); if (!isCurrent(context)) return; generation++; clearIntake(); contextSignature=null; await refresh(true); } catch(error) { if (isCurrent(context)) pauseForRetry(error); } };
+      button.onclick=async()=>{ const context=viewContext(); if (!isCurrent(context)) return; try { await call('studio_bind_file',{buildId:context.buildId,fileId:file.id}); if (!isCurrent(context)) return; generation++; contextSignature=null; await refresh(true); } catch(error) { if (isCurrent(context)) pauseForRetry(error); } };
       li.append(button);
     }
     fragment.append(li);
@@ -91,12 +86,11 @@ function schedule() {
   clearTimeout(timer);
   if (!stopped && !needsRetry && !document.hidden) {
     const interval=snapshot?.refreshIntervalMs || 5000;
-    timer=setTimeout(()=>void refresh(),uploading ? interval : Math.max(100,interval-(Date.now()-lastStarted)));
+    timer=setTimeout(()=>void refresh(),Math.max(100,interval-(Date.now()-lastStarted)));
   }
 }
 async function refresh(force=false) {
   if (!connected || !buildId || stopped || needsRetry || document.hidden) return;
-  if (uploading) { schedule(); return; }
   if (refreshing) { if (force) refreshAgain=true; return; }
   if (!force && Date.now()-lastStarted < 1000) { schedule(); return; }
   refreshing=true; lastStarted=Date.now(); const context=viewContext(); let activeContext=context;
@@ -105,7 +99,7 @@ async function refresh(force=false) {
     const data=surface.validate(resultData(await call('studio_snapshot',{buildId:context.buildId},controller.signal)));
     if (!isCurrent(context)) return;
     const nextSignature=JSON.stringify(data.context);
-    if (contextSignature !== null && contextSignature !== nextSignature) { generation++; clearIntake(); }
+    if (contextSignature !== null && contextSignature !== nextSignature) generation++;
     activeContext=viewContext();
     contextSignature=nextSignature; snapshot=data;
     $('build').textContent=data.buildName; $('owner').textContent=data.ownerName || '';
@@ -124,7 +118,7 @@ async function refresh(force=false) {
       if (!media || media.fileId !== file.id || media.mimeType !== 'image/webp' || !/^[A-Za-z0-9+/]+={0,2}$/.test(media.data)) throw new Error('Invalid protected preview');
       mediaCache.set(key,'data:image/webp;base64,'+media.data); renderSaved();
     }
-    status('ready'); uploadControls(); renderSaved();
+    status('ready'); renderSaved();
   } catch(error) { if (!controller.signal.aborted && isCurrent(activeContext)) pauseForRetry(error); }
   finally { if (refreshAbort === controller) refreshAbort=null; refreshing=false; if (refreshAgain) { refreshAgain=false; void refresh(true); } else schedule(); }
 }
@@ -133,44 +127,9 @@ async function setContext(value) {
   try {
     await call('studio_set_context',{buildId:context.buildId,context:value});
     if (!isCurrent(context)) return;
-    generation++; clearIntake(); contextSignature=null; await refresh(true);
+    generation++; contextSignature=null; await refresh(true);
   } catch(error) { if (isCurrent(context)) pauseForRetry(error); }
 }
-async function importSelected(selected,context=intakeContext()) {
-  if (!context.buildId || !isCurrent(context) || uploading || needsRetry) return;
-  if (selected.length > 5) { uploadStatus('limitFiles'); return; }
-  uploading=true; uploadControls(); renderSaved(); uploadStatus('queued');
-  const {kind}=context;
-  try {
-    for (const selectedFile of selected) {
-      if (!isCurrent(context)) return;
-      const descriptor=await window.openai.getFileDownloadUrl({fileId:selectedFile.fileId});
-      if (!isCurrent(context)) return;
-      const file={download_url:descriptor.downloadUrl,file_id:selectedFile.fileId,file_name:selectedFile.fileName,mime_type:selectedFile.mimeType};
-      const data=resultData(await call('studio_import_files',{buildId:context.buildId,kind,files:[file]}));
-      if (!isCurrent(context)) return;
-      const outcome=data.outcomes[0]; uploadStatus(outcome.status === 'saved' ? 'saved' : 'error.'+outcome.code);
-      if (outcome.status === 'saved' && kind === 'map') {
-        await call('studio_bind_file',{buildId:context.buildId,fileId:outcome.fileId});
-        // This operation deliberately changed the source. Its next snapshot must preserve
-        // its Saved outcome instead of treating that known change as an external switch.
-        if (isCurrent(context)) contextSignature=null;
-      }
-      if (!isCurrent(context)) return;
-    }
-  } catch(error) { if (isCurrent(context)) { if (!error.status || [401,403,404].includes(error.status)) pauseForRetry(error); uploadStatus('error.'+(error.code || 'unknown')); } }
-  finally { if (isCurrent(context)) { uploading=false; uploadControls(); $('device').value=''; void refresh(true); renderSaved(); } }
-}
-$('pick').onclick=async()=>{const context=intakeContext();try {await importSelected(await window.openai.selectFiles(),context);}catch {if(isCurrent(context))uploadStatus('error.unknown');}};
-$('device').onchange=async(event)=>{
-  const context=intakeContext(), files=Array.from(event.target.files || []);
-  if (files.length > 5) { uploadStatus('limitFiles'); return; }
-  for (const file of files) {
-    if (!isCurrent(context)) return;
-    try { const uploaded=await window.openai.uploadFile(file); if (!isCurrent(context)) return; await importSelected([{fileId:uploaded.fileId,fileName:file.name,mimeType:file.type}],context); }
-    catch { if(isCurrent(context))uploadStatus('error.unknown'); }
-  }
-};
 $('refresh').onclick=()=>{needsRetry=false;rendered='';void refresh(true);};
 $('fullscreen').onclick=async()=>{try {const modes=app.getHostContext()?.availableDisplayModes;if(modes && !modes.includes('fullscreen'))return;await app.requestDisplayMode({mode:'fullscreen'});}catch{/* Inline remains usable. */}};
 $('language').onchange=()=>{locale=$('language').value;translate();renderLists();};
@@ -182,5 +141,5 @@ function onVisibility(){clearTimeout(timer);if(document.hidden)refreshAbort?.abo
 app.onteardown=async()=>{stop();return {};};
 addEventListener('pagehide',stop,{once:true});addEventListener('focus',onFocus);document.addEventListener('visibilitychange',onVisibility);
 translate();status('loading');
-try {await app.connect(new PostMessageTransport(window.parent,window.parent));connected=true;uploadControls();if(!window.openai?.selectFiles && !window.openai?.uploadFile)uploadStatus('unsupported');void refresh(true);}catch{status('stale');}
+try {await app.connect(new PostMessageTransport(window.parent,window.parent));connected=true;void refresh(true);}catch{status('stale');}
 `;

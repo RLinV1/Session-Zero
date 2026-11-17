@@ -1,5 +1,4 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import path from "node:path";
 import { expect, test, type Page, type APIRequestContext, type FrameLocator } from "@playwright/test";
 
 test.use({trace:"off"});
@@ -16,7 +15,7 @@ async function connected(request:APIRequestContext,name="Browser GM",secondBuild
   const tokens=await (await request.post(`${ORIGIN}/api/oauth/token`,{form:{grant_type:"authorization_code",client_id:client.client_id,redirect_uri:redirect,resource:`${ORIGIN}/mcp/studio`,code_verifier:verifier,code:new URL(back).searchParams.get("code")!}})).json() as {access_token:string};
   return {build,otherBuild,token:tokens.access_token};
 }
-async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean;locale?:string;secondBuild?:boolean}={}) {
+async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean;secondBuild?:boolean}={}) {
   const session=await connected(request,"Browser GM",options.secondBuild);let token=session.token;let polls=0;let bridgeFailure=false;
   const rpc=async(method:string,params:unknown)=>{
     const response=await request.post(MCP,{headers:{authorization:`Bearer ${token}`,accept:"application/json, text/event-stream","mcp-protocol-version":"2025-06-18"},data:{jsonrpc:"2.0",id:1,method,params}});
@@ -35,36 +34,74 @@ if(message.method==='ui/initialize'){respond({protocolVersion:'2026-01-26',hostI
 else if(message.method==='ui/notifications/initialized'){event.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:opened},'*');}
 else if(message.method==='tools/call'){const answer=await (await fetch('/_studio_bridge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(message)})).json();event.source.postMessage({...answer,jsonrpc:'2.0',id:message.id},'*');}
 else if(message.method==='ui/request-display-mode'){window.studioExpanded=true;respond({mode:'fullscreen'});}
+else if(message.method==='ui/open-link'){window.studioOpenedUrl=message.params.url;respond({});}
 else if(message.id!==undefined)respond({});});
 </script></body></html>`}));
   await page.goto(`${ORIGIN}/studio-test-host`);
-  const helper=`<script>window.openai={selectFiles:async()=>[{fileId:'picker-map',fileName:'picked-map.png',mimeType:'image/png'}],uploadFile:async(file)=>({fileId:'device-'+file.name}),getFileDownloadUrl:async({fileId})=>({downloadUrl:'https://sdmntpreastus3.oaiusercontent.com/studio-browser-'+(fileId.includes('token')?'token':'map')})};</script>`;
-  await page.locator("iframe").evaluate((element,{html,helper})=>{(element as HTMLIFrameElement).srcdoc=html.replace("<script type=\"module\">",helper+"<script type=\"module\">");},{html,helper});
+  await page.locator("iframe").evaluate((element,html)=>{(element as HTMLIFrameElement).srcdoc=html;},html);
   const frame=page.frameLocator("iframe");await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
-  if(options.locale)await frame.locator("#language").selectOption(options.locale);
   const notify=async(result:Record<string,unknown>)=>page.locator("iframe").evaluate((element,result)=>{(element as HTMLIFrameElement).contentWindow!.postMessage({jsonrpc:"2.0",method:"ui/notifications/tool-result",params:result},"*");},result);
   const openOther=async()=>{if(!session.otherBuild)throw new Error("Missing second build fixture");const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.otherBuild.id,mapFiles:[descriptor()]}});await notify(opened.result);await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");};
   return {frame,session,rpc,notify,openOther,polls:()=>polls,setToken:(next:string)=>{token=next;},setBridgeFailure:(failed:boolean)=>{bridgeFailure=failed;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveText("Saved files are up to date");}};
 }
 const noOverflow=(frame:FrameLocator)=>frame.locator("body").evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
-test("protected chat intake, picker/device controls, canonical hashes and reopened source (FR-GM-26)",async({page,request},info)=>{
+test("protected chat intake preserves original hashes, localized outcomes and the reopened source (FR-GM-26)",async({page,request},info)=>{
   const {frame,session,rpc,reopen}=await mount(page,request);
   await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator('[data-testid="studio-source-image"]')).toHaveAttribute("href",/^data:image\/webp;base64,/);expect(await noOverflow(frame)).toBe(true);
   await expect(frame.locator("#owner")).toHaveText("Browser GM");await expect(frame.locator("#files li")).toHaveCount(2);
   const snapshot=await rpc("tools/call",{name:"studio_snapshot",arguments:{buildId:session.build.id}});const data=snapshot.result.structuredContent as {files:{kind:string;originalSha256:string}[]};
   const expected=await (await request.get(`${ORIGIN.replace(":5189",":3109")}/_test/studio-fixtures`)).json() as {map:{sha256:string};token:{sha256:string}};
   expect(data.files.find((f)=>f.kind==="map")!.originalSha256).toBe(expected.map.sha256);expect(data.files.find((f)=>f.kind==="token")!.originalSha256).toBe(expected.token.sha256);
-  await frame.getByRole("button",{name:"Choose from ChatGPT"}).click();await expect(frame.locator("#upload-status")).toHaveText("Saved");await expect(frame.locator("#files li")).toHaveCount(2);
-  await frame.locator("#kind").selectOption("token");await frame.locator("#device").setInputFiles(path.resolve("browser/fixtures/studio-token.png"));await expect(frame.locator("#upload-status")).toHaveText("Saved");
-  await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#upload-status")).toHaveText("已儲存");await expect(frame.locator("#status")).toHaveText("已顯示最新儲存的檔案");
-  await frame.locator("#language").selectOption("en");await expect(frame.locator("#upload-status")).toHaveText("Saved");
+  await expect(frame.locator("#outcomes small")).toHaveText(["Saved","Saved"]);
+  await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#outcomes small")).toHaveText(["已儲存","已儲存"]);await expect(frame.locator("#status")).toHaveText("已顯示最新儲存的檔案");
+  await frame.locator("#language").selectOption("en");await expect(frame.locator("#outcomes small")).toHaveText(["Saved","Saved"]);
   await reopen();await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await frame.getByRole("button",{name:"Expand Studio"}).click();await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {studioExpanded:boolean}).studioExpanded))).toBe(true);
   await page.screenshot({path:info.outputPath("studio-intake.png"),fullPage:true});
 });
-test("empty and zh-TW intake states fit narrow layouts and keyboard controls (FR-GM-26, localization)",async({page,request},info)=>{
-  const {frame}=await mount(page,request,{empty:true,locale:"zh-TW"});await expect(frame.getByText("選擇來源地圖以檢視已儲存的準備。",{exact:true})).toBeVisible();expect(await noOverflow(frame)).toBe(true);
-  await frame.getByRole("button",{name:"從 ChatGPT 選取"}).focus();await page.keyboard.press("Enter");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#upload-status")).toHaveText("已儲存");
+test("chat intake and website fallback are available in English and zh-TW (FR-GM-26)",async({page,request},info)=>{
+  const {frame,session,rpc,notify}=await mount(page,request,{empty:true});
+  const buildUrl = `${ORIGIN}/builds/${session.build.id}`;
+  await expect(frame.getByText("Attach the original image in the ChatGPT chat and ask to add it to this build.")).toBeVisible();
+  await expect(frame.getByText("Anyone with a website upload’s file link can open it.")).toBeVisible();
+  const englishLink = frame.getByRole("link", { name: "Or upload on the Session Zero website.", exact: true });
+  await expect(englishLink).toHaveAttribute("href", buildUrl);
+  await expect(frame.locator("input[type=file], #pick, #kind")).toHaveCount(0);
+  await englishLink.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { studioOpenedUrl?: string }).studioOpenedUrl)).toBe(buildUrl);
+
+  const refused = { ...descriptor(), download_url: "https://web-sandbox.oaiusercontent.com/studio-browser-map?sig=fixture" };
+  const expired = descriptor("expired");
+  const opened = await rpc("tools/call", { name: "studio_open", arguments: { buildId: session.build.id, mapFiles: [refused], tokenFiles: [expired] } });
+  await notify(opened.result);
+  await expect(frame.locator("#outcomes")).toContainText("The image could not be imported. Attach the original again in the ChatGPT chat or upload it on the Session Zero website.");
+  await expect(frame.locator("#outcomes")).toContainText("This file link expired. Attach the original again in the ChatGPT chat.");
+  await expect(frame.locator("#files")).toHaveText("No files saved yet.");
+  expect(await noOverflow(frame)).toBe(true);
+
+  await frame.locator("#language").selectOption("zh-TW");
+  await expect(frame.getByText("請在 ChatGPT 聊天中附加原始圖片，並要求將它加入此建置。")).toBeVisible();
+  await expect(frame.getByText("透過網站上傳的檔案，任何持有連結的人都能存取。")).toBeVisible();
+  await expect(frame.getByRole("link", { name: "也可以在 Session Zero 網站上傳。", exact: true })).toHaveAttribute("href", buildUrl);
+  await expect(frame.locator("#outcomes")).toContainText("無法匯入這張圖片。請在 ChatGPT 聊天中重新附加原始檔，或在 Session Zero 網站上傳。");
+  await expect(frame.locator("#outcomes")).toContainText("檔案連結已過期。請在 ChatGPT 聊天中重新附加原始檔。");
+  expect(await noOverflow(frame)).toBe(true);
   await page.screenshot({path:info.outputPath("studio-intake-zh.png"),fullPage:true});
+
+  await page.context().addCookies((await request.storageState()).cookies);
+  const website = await page.context().newPage();
+  try {
+    await website.goto(buildUrl);
+    await expect(website.getByRole("heading", { name: "Synthetic chapel" })).toBeVisible();
+    await website.getByLabel(/^Maps/).setInputFiles("browser/fixtures/studio-map.png");
+    await expect(website.getByText("studio-map.png", { exact: true })).toBeVisible();
+  } finally {
+    await website.close();
+  }
+  await expect(frame.locator("#files")).toContainText("studio-map.png");
+  // Stop polling and drain bridge requests before Playwright disposes the API fixture.
+  await frame.locator("body").evaluate(() => dispatchEvent(new Event("pagehide")));
+  await page.unrouteAll({ behavior: "wait" });
 });
 test("cached binding refuses another owner, clears images and stops polling while hidden/teardown (FR-GM-26)",async({page,request,browser})=>{
   const {frame,polls,setToken}=await mount(page,request);await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
@@ -88,22 +125,4 @@ test("a late binding refusal cannot clear a newer build view (FR-GM-26)",async({
   await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {params:{name:string;arguments:{buildId:string}}};if(message.params.name!=="studio_bind_file")return route.fallback();expect(message.params.arguments.buildId).toBe(session.build.id);entered();await resume;await route.fulfill({json:{result:{isError:true,content:[],_meta:{"sessionzero/error":{status:404,code:"missing"}}}}});delivered();});
   await frame.getByRole("button",{name:"Show this map",disabled:false}).click();await pending;await openOther();release();await responseSent;await page.waitForTimeout(100);
   await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
-});
-for(const phase of ["picker","descriptor","device"] as const)test(`pending ${phase} selection cannot be retargeted to another build (FR-GM-26)`,async({page,request})=>{
-  const {frame,session,rpc,openOther}=await mount(page,request,{secondBuild:true});
-  let imports=0;await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {params:{name:string}};if(message.params.name==="studio_import_files")imports++;await route.fallback();});
-  await frame.locator("body").evaluate((_,phase)=>{
-    const testWindow=window as unknown as {openai:{selectFiles:()=>Promise<unknown>;uploadFile:()=>Promise<unknown>;getFileDownloadUrl:()=>Promise<unknown>};releaseSelection?:()=>void};
-    const result=phase==="picker"?[{fileId:"delayed-file",fileName:"delayed.png",mimeType:"image/png"}]:phase==="device"?{fileId:"delayed-file"}:{downloadUrl:"https://sdmntpreastus3.oaiusercontent.com/studio-browser-token"};
-    testWindow.openai.getFileDownloadUrl=async()=>({downloadUrl:"https://sdmntpreastus3.oaiusercontent.com/studio-browser-token"});
-    const method=phase==="picker"?"selectFiles":phase==="device"?"uploadFile":"getFileDownloadUrl";
-    testWindow.openai[method]=()=>new Promise((resolve)=>{testWindow.releaseSelection=()=>resolve(result);});
-  },phase);
-  if(phase==="device")await frame.locator("#device").setInputFiles(path.resolve("browser/fixtures/studio-token.png"));else await frame.getByRole("button",{name:"Choose from ChatGPT"}).click();
-  await expect.poll(()=>frame.locator("body").evaluate(()=>typeof (window as unknown as {releaseSelection?:()=>void}).releaseSelection)).toBe("function");
-  await openOther();await frame.locator("body").evaluate(()=>(window as unknown as {releaseSelection:()=>void}).releaseSelection());await page.waitForTimeout(100);
-  expect(imports).toBe(0);
-  const before=await rpc("tools/call",{name:"studio_snapshot",arguments:{buildId:session.build.id}});const after=await rpc("tools/call",{name:"studio_snapshot",arguments:{buildId:session.otherBuild!.id}});
-  expect((before.result.structuredContent as {files:unknown[]}).files).toHaveLength(2);expect((after.result.structuredContent as {files:unknown[]}).files).toHaveLength(1);
-  await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator("#upload-status")).toBeEmpty();
 });

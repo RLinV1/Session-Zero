@@ -10,6 +10,7 @@ const origin = "https://sdmntpreastus3.oaiusercontent.com/file?signed=fixture";
 let status = 200, headers: Record<string,string> = {}, chunks: Buffer[] = [], neverRespond = false;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   status=200;headers={};chunks=[Buffer.from("synthetic-original")];neverRespond=false;
   vi.mocked(lookup).mockResolvedValue([{address:"8.8.8.8",family:4}] as never);
   vi.mocked(https.get).mockImplementation(((url: URL, options: https.RequestOptions, callback: (response: Readable) => void) => {
@@ -21,14 +22,58 @@ beforeEach(() => {
 });
 afterEach(()=>vi.restoreAllMocks());
 describe("bounded host original download (FR-GM-26)",()=>{
-  it("allows only the two observed exact HTTPS origins and rejects parser and credential tricks",()=>{
-    expect(studioDownloadUrl(origin).hostname).toBe("sdmntpreastus3.oaiusercontent.com");
-    expect(studioDownloadUrl("https://oaisdmntpreastus3.blob.core.windows.net/a").protocol).toBe("https:");
-    for(const value of ["http://sdmntpreastus3.oaiusercontent.com/a","https://other.oaiusercontent.com/a","https://sdmntpreastus3.oaiusercontent.com.evil.test/a","https://user:pass@sdmntpreastus3.oaiusercontent.com/a","https://sdmntpreastus3.oaiusercontent.com:444/a","https://127.0.0.1/a","https://[::1]/a","https://sdmntpreastus3.oaiusercontent.com/a#x","https://sdmntpreastus3.oaiusercontent.com\\@evil.test/a","https://sdmntpreastus3.oaiusercontent.com./a","file:///etc/passwd"]) expect(()=>studioDownloadUrl(value),value).toThrow();
+  it.each(["eastus3", "northeu", "nznorth", "westus2", "a1", "a".repeat(32)])("accepts composer region %s on HTTPS port 443", (region) => {
+    const host = `sdmntpr${region}.oaiusercontent.com`;
+    expect(studioDownloadUrl(`https://${host}/file?signed=fixture`).hostname).toBe(host);
+    expect(studioDownloadUrl(`https://${host}:443/a`).origin).toBe(`https://${host}`);
+    expect(studioDownloadUrl(`HTTPS://${host.toUpperCase()}:443/a`).hostname).toBe(host);
+    expect(console.warn).not.toHaveBeenCalled();
   });
-  it("accepts the reviewed regional composer origins exactly, never their region family",()=>{
-    for(const host of ["sdmntprnortheu.oaiusercontent.com","sdmntprnznorth.oaiusercontent.com"]) expect(studioDownloadUrl(`https://${host}/file?signed=fixture`).hostname).toBe(host);
-    for(const value of ["https://sdmntprwestus.oaiusercontent.com/a","https://sdmntprnortheu2.oaiusercontent.com/a","https://xsdmntprnortheu.oaiusercontent.com/a","https://sdmntprnortheu.oaiusercontent.com.evil.test/a","http://sdmntprnznorth.oaiusercontent.com/a","https://sdmntprnznorth.oaiusercontent.com:8443/a","https://oaisdmntprnortheu.blob.core.windows.net/a"]) expect(()=>studioDownloadUrl(value),value).toThrow();
+  it.each([
+    "https://oaiusercontent.com/a",
+    "https://web-sandbox.oaiusercontent.com/a",
+    "https://widget.web-sandbox.oaiusercontent.com/a",
+    "https://files.oaiusercontent.com/a",
+    "https://xsdmntprnortheu.oaiusercontent.com/a",
+    "https://sdmntpr.oaiusercontent.com/a",
+    "https://sdmntpra.oaiusercontent.com/a",
+    "https://sdmntprnorth-eu.oaiusercontent.com/a",
+    `https://sdmntpr${"a".repeat(33)}.oaiusercontent.com/a`,
+    "https://sdmntprnortheu.oaiusercontent.com.evil.test/a",
+    "https://sdmntprnortheu.oaiusercontent.com./a",
+    "http://sdmntprnortheu.oaiusercontent.com/a",
+    "https://sdmntprnortheu.oaiusercontent.com:8443/a",
+    "https://user:pass@sdmntprnortheu.oaiusercontent.com/a",
+    "https://@sdmntprnortheu.oaiusercontent.com/a",
+    "https://sdmntprnortheu.oaiusercontent.com/a#fragment",
+    "https://sdmntprnortheu.oaiusercontent.com/a#",
+    "https://sdmntprnortheu.oaiusercontent.com\\@evil.test/a",
+    "https://sdmntprnorth\teu.oaiusercontent.com/a",
+    "https://sdmntprnortheu.oaiusercontent.com/a?sig=\u007f",
+    "https://%73dmntprnortheu.oaiusercontent.com/a",
+    "https://sdmntpr\u212a1.oaiusercontent.com/a",
+    "https:sdmntprnortheu.oaiusercontent.com/a",
+    "https://oaisdmntpreastus3.blob.core.windows.net/a",
+    "https://sdmntprnortheu.blob.core.windows.net/a",
+    "https://account.blob.core.windows.net/a",
+    "https://127.0.0.1/a",
+    "https://[::1]/a",
+    "file:///etc/passwd",
+  ])("refuses %s before DNS", async (url) => {
+    await expect(downloadStudioOriginal(url)).rejects.toMatchObject({ code: "origin" });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(https.get).not.toHaveBeenCalled();
+  });
+  it("logs one structured line with only the normalized origin of a refused URL", async () => {
+    await expect(downloadStudioOriginal("https://user:secret@web-sandbox.oaiusercontent.com/private-art.png?sig=synthetic-signature#fragment"))
+      .rejects.toMatchObject({ code: "origin" });
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(JSON.stringify({ event: "studio_attachment_origin_refused", origin: "https://web-sandbox.oaiusercontent.com" }));
+  });
+  it("logs no raw descriptor if the refused URL cannot be parsed", async () => {
+    await expect(downloadStudioOriginal("private-art.png?sig=synthetic-signature")).rejects.toMatchObject({ code: "origin" });
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(JSON.stringify({ event: "studio_attachment_origin_refused", origin: null }));
   });
   it.each(["0.0.0.0","127.0.0.1","10.1.1.1","172.16.0.1","192.168.1.1","169.254.169.254","100.64.0.1","224.0.0.1","::1","::","::ffff:127.0.0.1","::ffff:169.254.169.254","fc00::1","fe80::1","64:ff9b::a9fe:a9fe","2001:db8::1"])("refuses non-public destination %s",async(address)=>{
     expect(publicDownloadAddress(address)).toBe(false);vi.mocked(lookup).mockResolvedValue([{address,family:address.includes(":")?6:4}] as never);

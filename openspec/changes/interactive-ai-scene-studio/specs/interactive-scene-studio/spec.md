@@ -46,17 +46,23 @@ New unpublished Studio originals, working images, thumbnails and crops SHALL req
 - **WHEN** an owner selects artwork that already had a public URL
 - **THEN** the Studio explains that prior disclosure persists and does not label the artwork as newly private without that qualification
 
-### Requirement: Artwork can enter a build from the embedded Studio
+### Requirement: Artwork can enter a build from chat attachments
 
-The user SHALL be able to supply original map images and token art through the embedded Studio without visiting the website for each file. Supported chat-attachment import SHALL be explicit. The Studio SHALL report each file's outcome and retain earlier successful files after a later failure. Intake SHALL enforce existing type, decoded-image and build quotas, and SHALL identify the original and canonical working image used for coordinates. Chat attachment presence alone MUST NOT imply successful Session Zero intake.
+The Studio SHALL import original map and token art explicitly attached in ChatGPT, enforce the composer-host policy and existing image and build limits, and identify the original and canonical working image. It SHALL report each file's outcome and offer chat attachment guidance and a link to the existing owner build upload page.
 
 #### Scenario: Add map and token art
-- **WHEN** a user supplies a map and two pieces of token art in the embedded Studio
+- **WHEN** a user attaches a map and two pieces of token art in ChatGPT and asks to add them to the build
 - **THEN** validated originals are stored in the authorized build, the map is displayed, and each item reports a saved outcome
+- **AND** an attachment is reported as saved only after successful Session Zero intake
 
 #### Scenario: Expired attachment descriptor
 - **WHEN** an imported attachment can no longer be retrieved
-- **THEN** the Studio asks for another selection, keeps the existing draft, and does not silently substitute a thumbnail
+- **THEN** the Studio asks the user to attach the original again in chat, keeps the existing draft, and does not silently substitute a thumbnail
+
+#### Scenario: Refused attachment origin
+- **WHEN** an attachment descriptor fails the composer origin policy
+- **THEN** Studio refuses intake and gives localized reattachment and website upload guidance
+- **AND** the server emits a structured refusal event containing only the origin from a parseable URL
 
 #### Scenario: Invalid file among valid files
 - **WHEN** one supplied file fails validation after another has been saved

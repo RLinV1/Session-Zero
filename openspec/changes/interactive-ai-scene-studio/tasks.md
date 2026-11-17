@@ -51,7 +51,7 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 ## 3. M2 — Watch preparation from a raw map
 
-**Session status, 2026-11-17:** Phase 1 research only on verified merged main `2bcfa0a1f772a94a907f2c6597aed41d0cef0234`. The user reports Raymond's approval of all M1 work and waives remaining external approval gates. The user also authorizes the eventual temporary tunnel/real ChatGPT synthetic-account test autonomously. Design go-ahead before product code remains pending. No task below is completed by research; see research.md and the latest handoff entry.
+**Session status, 2026-11-17:** M2 implementation is on `feat/interactive-ai-scene-studio-m2`. D9 records the approved FR-GM-26 attachment policy amendment and the [handoff](handoff.md) records the user-reported manual observations and pending qualification. Task 3.7 remains open.
 
 **Purpose:** Deliver the first useful visual milestone with the existing builder's authoring tools. **Dependency:** M1. **Scope:** Unified display and actual saved progress; revisioned corrections follow in M3/M4.
 
