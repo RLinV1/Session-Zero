@@ -36,6 +36,9 @@ Every Traditional Chinese string in the app, the board, server messages and the 
 | Scene | 場景 | |
 | Encounter | 遭遇 | Encounter template → 遭遇範本. |
 | Library | 素材庫 | Maps, creatures, encounters, animations. |
+| Folder (library) | 資料夾 | "No folder" → 未分類; "New folder" → 新增資料夾. |
+| Select (several items) | 選取 | "3 selected" → 已選取 3 項; "Select all" → 全選. |
+| Sort | 排序 | "Newest first" → 由新到舊; "Name A–Z" → 名稱 A–Z. |
 | Creature | 生物 | Built-in creatures → 內建生物. |
 | Map preparation | 地圖準備 | |
 | Wall / door / window | 牆／門／窗 | |

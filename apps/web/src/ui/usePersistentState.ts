@@ -33,7 +33,7 @@ export function writeStored(storage: KeyValueStorage | null, key: string, value:
   }
 }
 
-function browserStorage(): KeyValueStorage | null {
+export function browserStorage(): KeyValueStorage | null {
   try {
     return window.localStorage;
   } catch {
@@ -59,3 +59,8 @@ export const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
 export const isBooleanRecord = (v: unknown): v is Record<string, boolean> =>
   typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every(isBoolean);
+
+/** A validator for a string-keyed record whose every value passes `isValue`. */
+export const isRecordOf = <T>(isValue: Validate<T>): Validate<Record<string, T>> =>
+  (v: unknown): v is Record<string, T> =>
+    typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every(isValue);

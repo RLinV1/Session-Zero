@@ -85,9 +85,10 @@ describe.each(storeCases)("publishing a build on %s (FR-GM-27)", (_name, makeSto
     const res = await publish(account, id, { encounters: ["ambush"] });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ published: { assets: 2, creatures: [{ key: "goblin" }], maps: [{ key: "cave" }], encounters: [{ key: "ambush", name: "Bridge ambush" }] } });
-    expect((await uploaded(account)).map((a) => [a.kind, a.name]).sort()).toEqual([["map", "Cave"], ["token", "Goblin"]]);
-    expect(await creatures(account)).toMatchObject([{ name: "Goblin", hp: 7, maxHp: 7, ac: 13, imageUrl: expect.stringMatching(/^\/uploads\//) }]);
-    expect(await encounters(account)).toMatchObject([{ name: "Bridge ambush" }]);
+    expect((await uploaded(account)).map((a) => [a.kind, a.name, a.folder]).sort()).toEqual([["map", "Cave", "Hollow Coast"], ["token", "Goblin", "Hollow Coast"]]);
+    // Filed under the build's name, so a game's creatures arrive together (library-organize, ADR 0075).
+    expect(await creatures(account)).toMatchObject([{ name: "Goblin", hp: 7, maxHp: 7, ac: 13, imageUrl: expect.stringMatching(/^\/uploads\//), folder: "Hollow Coast" }]);
+    expect(await encounters(account)).toMatchObject([{ name: "Bridge ambush", folder: "Hollow Coast" }]);
   });
 
   it("points at the stored file rather than copying it", async () => {

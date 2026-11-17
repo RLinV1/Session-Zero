@@ -50,6 +50,7 @@ export const serverEn = {
 
   // Library, creatures, animations, dice looks and uploads.
   "api.assetNotFound": "Asset not found",
+  "api.itemsNotFound": "Not everything chosen is in your library",
   "api.onlyMapsHaveGrid": "Only maps have a grid",
   "api.gridTooSmall": "Grid cell size is too small for this map",
   "api.invalidMapPreparation": "Invalid map preparation",

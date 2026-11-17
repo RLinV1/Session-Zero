@@ -197,7 +197,7 @@ for (const [label, store] of stores) {
       const gmB = await s().registerGm(randomUUID());
       const c = creature(gmA);
       // Colour and conditions left out read back as the defaults (KAN-70).
-      expect(await s().createCreature(c)).toEqual({ ...c, hp: null, attacks: [], color: "#c0392b", conditions: [], imageUrl: null });
+      expect(await s().createCreature(c)).toEqual({ ...c, hp: null, attacks: [], color: "#c0392b", conditions: [], folder: null, imageUrl: null });
 
       expect((await s().listCreatures(gmA)).map((x) => x.id)).toEqual([c.id]);
       expect(await s().listCreatures(gmB)).toEqual([]);
@@ -205,6 +205,56 @@ for (const [label, store] of stores) {
       expect(await s().updateCreature(c.id, gmB, { name: "Stolen" })).toBeNull();
       expect(await s().deleteCreature(c.id, gmB)).toBe(false);
       expect((await s().findCreature(c.id, gmA))?.name).toBe("Goblin");
+    });
+
+    it("edits several creatures together, all or none (library-organize, ADR 0075)", async () => {
+      const gmA = await s().registerGm(randomUUID());
+      const gmB = await s().registerGm(randomUUID());
+      const a = creature(gmA, { name: "Mira Hale" });
+      const b = creature(gmA, { name: "Tor Breck", folder: "Cairnkeepers" });
+      const theirs = creature(gmB, { name: "Orc" });
+      for (const c of [a, b, theirs]) await s().createCreature(c);
+
+      const moved = await s().updateCreatures([b.id, a.id], gmA, { folder: "Frost Peaks", ac: 12 });
+      expect(moved?.map((c) => [c.name, c.folder, c.ac, c.maxHp])).toEqual([["Tor Breck", "Frost Peaks", 12, 7], ["Mira Hale", "Frost Peaks", 12, 7]]);
+      // One that isn't theirs leaves every one unchanged.
+      expect(await s().updateCreatures([a.id, theirs.id], gmA, { folder: null })).toBeNull();
+      expect(await s().updateCreatures([a.id, randomUUID()], gmA, { folder: null })).toBeNull();
+      expect((await s().findCreature(a.id, gmA))?.folder).toBe("Frost Peaks");
+      expect((await s().findCreature(theirs.id, gmB))?.folder).toBeNull();
+    });
+
+    it("files items of any kind in a folder, all or none (library-organize, ADR 0075)", async () => {
+      const gmA = await s().registerGm(randomUUID());
+      const gmB = await s().registerGm(randomUUID());
+      const a = creature(gmA);
+      const b = creature(gmA, { name: "Orc" });
+      const theirs = creature(gmB);
+      for (const c of [a, b, theirs]) await s().createCreature(c);
+      expect(await s().moveToFolder("creature", [a.id, b.id], gmA, "Bosses")).toBe(true);
+      expect((await s().listCreatures(gmA)).map((c) => c.folder)).toEqual(["Bosses", "Bosses"]);
+      expect(await s().moveToFolder("creature", [a.id, theirs.id], gmA, null)).toBe(false);
+      expect(await s().moveToFolder("asset", [a.id], gmA, null)).toBe(false);
+      expect((await s().findCreature(a.id, gmA))?.folder).toBe("Bosses");
+
+      const map = asset(gmA, { kind: "map" });
+      await s().createAsset(map, UPLOAD_ALLOWANCE);
+      expect(await s().moveToFolder("asset", [map.id], gmA, "Crypts")).toBe(true);
+      expect((await s().findAsset(map.id, gmA))?.folder).toBe("Crypts");
+      expect(await s().moveToFolder("asset", [map.id], gmB, null)).toBe(false);
+      expect((await s().findAsset(map.id, gmA))?.folder).toBe("Crypts");
+    });
+
+    it("deletes several creatures and counts only the owner's (library-organize, ADR 0075)", async () => {
+      const gmA = await s().registerGm(randomUUID());
+      const gmB = await s().registerGm(randomUUID());
+      const a = creature(gmA);
+      const b = creature(gmA, { name: "Orc" });
+      const theirs = creature(gmB);
+      for (const c of [a, b, theirs]) await s().createCreature(c);
+      expect(await s().deleteCreatures([a.id, b.id, theirs.id, randomUUID()], gmA)).toBe(2);
+      expect(await s().listCreatures(gmA)).toEqual([]);
+      expect((await s().listCreatures(gmB)).map((c) => c.id)).toEqual([theirs.id]);
     });
 
     it("edits and deletes a creature, newest listed first", async () => {

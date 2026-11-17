@@ -156,5 +156,6 @@ export function toSummary(record: EncounterRecord): EncounterSummary {
     fogCount: record.data.fog.length,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    folder: record.folder ?? null,
   };
 }

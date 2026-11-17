@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { CreateCreatureRequest, UpdateCreatureRequest, creatureHpValid, type LibraryCreature } from "@vtt/shared";
+import { BulkDeleteCreaturesRequest, BulkUpdateCreaturesRequest, CreateCreatureRequest, UpdateCreatureRequest, creatureHpValid, type BulkDeleteCreaturesResponse, type LibraryCreature } from "@vtt/shared";
 import { CreatureImageMissingError, type LibraryCreatureRecord } from "../store/libraryStore";
 import { requireAccountOwner, type Owner } from "../ownership/resolveOwner";
 import type { RoomStore } from "../store/roomStore";
@@ -49,6 +49,37 @@ export function registerCreatureRoutes(app: Express, deps: { store: RoomStore; w
         if (err instanceof CreatureImageMissingError) return void imageRejected(res);
         throw err;
       }
+    });
+  });
+
+  /**
+   * One edit to several creatures (library-organize, ADR 0075): their folder, size, Max HP or AC.
+   * All or nothing: an id that isn't the GM's answers 404, the same as for one creature, and a
+   * Max HP below any one's starting HP answers 400, with nothing changed either way. Registered
+   * before `/:id` so "bulk" is never read as a creature id (`PATCH /api/library/:id` already
+   * answers for `/api/library/creatures` itself).
+   */
+  app.patch("/api/library/creatures/bulk", (req, res) => {
+    void withGm(req, res, async (gmId) => {
+      const body = BulkUpdateCreaturesRequest.safeParse(req.body);
+      if (!body.success) return void res.status(400).json({ error: body.error.issues });
+      const { ids, patch } = body.data;
+      const own = new Map((await store.listCreatures(gmId)).map((c) => [c.id, c]));
+      if (ids.some((id) => !own.has(id))) return void notFound(res);
+      if (ids.some((id) => !creatureHpValid({ ...own.get(id)!, ...patch }))) return void res.status(400).json({ error: "Starting HP cannot exceed Max HP" });
+      const updated = await store.updateCreatures(ids, gmId, patch);
+      if (!updated) return void notFound(res);
+      res.json(updated.map(toWire));
+    });
+  });
+
+  /** Deletes several creatures (ADR 0075). Ones already gone, or another GM's, are skipped and not counted. */
+  app.post("/api/library/creatures/bulk-delete", (req, res) => {
+    void withGm(req, res, async (gmId) => {
+      const body = BulkDeleteCreaturesRequest.safeParse(req.body);
+      if (!body.success) return void res.status(400).json({ error: body.error.issues });
+      const response: BulkDeleteCreaturesResponse = { deleted: await store.deleteCreatures(body.data.ids, gmId) };
+      res.json(response);
     });
   });
 
@@ -104,6 +135,7 @@ function toWire(record: LibraryCreatureRecord): LibraryCreature {
     conditions: record.conditions,
     imageAssetId: record.imageAssetId,
     imageUrl: record.imageUrl,
+    folder: record.folder,
     createdAt: record.createdAt,
   };
 }
