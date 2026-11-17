@@ -141,13 +141,16 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
     if (!result.ok) setLockError(result.message);
   }
 
-  async function copy(button: HTMLButtonElement, text: string | null, what: NonNullable<typeof copiedWhat>) {
+  async function copy(button: HTMLButtonElement, text: string | null, what: NonNullable<typeof copiedWhat>, demo = false) {
     if (!text || busy) return;
     let ok = true;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      ok = legacyCopy(text, button.closest("dialog") ?? document.body);
+    // The demo's replayed press has no user gesture, so the browser would refuse the copy; show it as done and leave the clipboard alone.
+    if (!demo) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        ok = legacyCopy(text, button.closest("dialog") ?? document.body);
+      }
     }
     setCopiedWhat(what);
     if (ok && what === "link") onCopied?.();
@@ -220,7 +223,7 @@ export function ShareButton({ roomId, token, yourName = "the GM", connection, jo
                     data-tutorial="invite"
                     aria-label={t("share.copyLink")}
                     title={t("share.copyLink")}
-                    onClick={(e) => void copy(e.currentTarget, link, "link")}
+                    onClick={(e) => void copy(e.currentTarget, link, "link", !e.isTrusted)}
                     disabled={busy}
                   >
                     {result === "copied" && copiedWhat === "link" ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
