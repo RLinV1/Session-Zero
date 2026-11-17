@@ -4,6 +4,7 @@ import { replayStates, type ReplayFrame, type ReplayPoint, type ReplayResponse, 
 import { api } from "../net/api";
 import { playFrom, playTick, REPLAY_STEP_MS, stepLabel, stepTo } from "./replaySteps";
 import { formatClock } from "./formatRelative";
+import { isDemoEvent } from "./tutorialSteps";
 import { t, useLocale } from "../i18n/locale";
 
 /** Keys typed into a field belong to that field, not to the replay. */
@@ -72,15 +73,22 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
 
   // Folded once per replay, so stepping back is a lookup rather than a refold.
   const states = useMemo(() => (replay ? replayStates(replay) : null), [replay]);
-  const count = replay?.frames.length ?? 0;
-  const shown = states?.[index] ?? null;
+  // The guest demo's own steps are skipped when stepping; they are still folded, so later steps stay right.
+  const visible = useMemo(() => {
+    const steps = [0];
+    replay?.frames.forEach((f, i) => { if (!isDemoEvent(roomId, f.kind === "event" ? f.committed.seq : f.seq)) steps.push(i + 1); });
+    return steps;
+  }, [replay, roomId]);
+  const count = visible.length - 1;
+  const frameAt = visible[index] ?? 0;
+  const shown = states?.[frameAt] ?? null;
   const previousStep = useRef({ replay, index });
   useEffect(() => {
     const previous = previousStep.current;
-    const frame = previous.replay === replay && index === previous.index + 1 ? replay?.frames[index - 1] : null;
+    const frame = previous.replay === replay && index === previous.index + 1 ? replay?.frames[frameAt - 1] : null;
     previousStep.current = { replay, index };
     onShow(shown, frame);
-  }, [shown, onShow, replay, index]);
+  }, [shown, onShow, replay, index, frameAt]);
 
   useEffect(() => {
     if (!playing) return;
@@ -120,7 +128,7 @@ export function ReplayBar({ roomId, token, onShow, onExit }: {
   }, []);
 
   const point = replay?.point ?? points?.find((p) => p.id === pointId);
-  const sentence = index === 0 ? (point ? `${point.label} (${formatTime(point.at)})` : "") : replay?.frames[index - 1]?.sentence ?? "";
+  const sentence = index === 0 ? (point ? `${point.label} (${formatTime(point.at)})` : "") : replay?.frames[frameAt - 1]?.sentence ?? "";
 
   return (
     <section className="replay-bar" aria-label={t("menu.replay")}>
