@@ -80,6 +80,7 @@ import { makeVisibleRegionCanvas } from "./areaMask";
 /** How long the old line-of-sight mask takes to fade out over the new one. */
 const SIGHT_FADE_MS = 160;
 import { simplifyStroke } from "./simplifyStroke";
+import { boxBetween, tokensInBox } from "./marquee";
 import { areaColorValue, areaOrigin, areaShape, areaSizeFromDrag, defaultAreaSize, drawColorId, drawingMark, drawnShape, editedGeometry, fogDraftPoints, fogRegionAt, formatDistance, hitMark, insideArea, portalAt, snapToCellCenter, sweepPoints, templateArea, templateHandles, templateMark, type BoardTool, type FogDraft, type Mark, type TemplateEdit, type TemplateHandle } from "./tools";
 import { aimExpiry, expiredAims } from "./aims";
 import { PING_MS, pingPulse } from "./ping";
@@ -146,6 +147,8 @@ export interface BoardCallbacks {
   cancelAttack(): void;
   /** GM: Shift-click on a token adds it to the group selection, or takes it out (ADR 0046). */
   toggleGroupToken(tokenId: string): void;
+  /** GM: Shift-drag on empty board boxed these tokens; they join the selection (ADR 0074). */
+  selectTokens?(tokenIds: string[]): void;
   /** GM: clicked a placed template in From template; its tokens become the selection (ADR 0046). */
   pickTemplate(templateId: string): void;
   /** GM: right-clicked while picking a template: stop without picking. */
@@ -490,6 +493,9 @@ export class BoardView {
   /** Screen position where the token press began, to tell a click from a drag. */
   private dragDownAt: Point | null = null;
   private pan: { start: Point; origin: Point; button?: number } | null = null;
+  /** The GM's Shift-drag selection box, in board coordinates (ADR 0074). */
+  private marquee: { from: Point; to: Point; screenFrom: Point; dragged: boolean } | null = null;
+  private marqueeGraphics = new Graphics();
   private tool: BoardTool = { kind: "select" };
   private marks: Mark[] = [];
   /** Templates sent to the server but not yet back in state, so a release doesn't blink. */
@@ -643,7 +649,7 @@ export class BoardView {
     this.measureLabel.anchor.set(0.5, 1.2);
     this.measureLabel.visible = false;
     this.clippedAreas.addChild(this.clippedGraphics);
-    this.markLayer.addChild(this.clippedAreas, this.marksGraphics, this.overlayGraphics, this.measureLabel);
+    this.markLayer.addChild(this.clippedAreas, this.marksGraphics, this.overlayGraphics, this.marqueeGraphics, this.measureLabel);
     this.fxLayer.addChild(this.clippedAims);
     // Marks and areas are drawn over the tokens but take no input (the eraser and From template
     // test their geometry), so a token under an area can still be clicked (ADR 0046).
@@ -1002,6 +1008,7 @@ export class BoardView {
   }
 
   cancelMovement() {
+    if (this.marquee) return this.cancelMarquee();
     if (!this.drag) return false;
     this.clearDragGhost();
     const token = this.state?.tokens[this.drag.tokenId];
@@ -1540,6 +1547,7 @@ export class BoardView {
     if (tool.kind !== this.tool.kind && this.drag) this.cancelMovement();
     // An edit in progress ends with the tool; the selection stays only between Select and Area (ADR 0058).
     if (tool.kind !== this.tool.kind) {
+      this.cancelMarquee();
       this.cancelTemplateEdit(false);
       if (tool.kind !== "select" && tool.kind !== "area") this.selectedTemplate = null;
     }
@@ -3500,6 +3508,12 @@ export class BoardView {
     if (this.tool.kind === "measure" && this.tool.mode === "movement" && !e.altKey && e.button === 0) {
       return this.routeClick(this.toBoard(e.global));
     }
+    // The GM's Shift-drag boxes tokens to select; a plain drag still pans (ADR 0074).
+    if (this.tool.kind === "select" && e.button === 0 && e.shiftKey && this.canBoxSelect()) {
+      const at = this.toBoard(e.global);
+      this.marquee = { from: at, to: at, screenFrom: { x: e.global.x, y: e.global.y }, dragged: false };
+      return;
+    }
     // A placed area the viewer may edit takes the press before placing or panning does (ADR 0058).
     if ((this.tool.kind === "select" || this.tool.kind === "area") && e.button === 0 && this.startTemplateEdit(e.global, this.toBoard(e.global))) return;
     if (this.tool.kind !== "select" && e.button === 0) {
@@ -3568,6 +3582,11 @@ export class BoardView {
         }
       }
       this.redrawOverlay();
+    } else if (this.marquee) {
+      const marquee = this.marquee;
+      marquee.to = this.toBoard(e.global);
+      marquee.dragged ||= Math.hypot(e.global.x - marquee.screenFrom.x, e.global.y - marquee.screenFrom.y) >= MIN_MARK_DRAG_PX;
+      this.redrawMarquee();
     } else if (this.drag) {
       if (!this.drag.movable) return;
       const view = this.tokens.get(this.drag.tokenId);
@@ -3624,6 +3643,48 @@ export class BoardView {
     g.stroke({ color: obstruction === "blocked" ? 0xf08b8b : 0xffffff, alpha: obstruction === "unknown" ? .35 : obstruction === "blocked" ? .75 : .8, width: (obstruction === "blocked" ? 2.5 : 2) * px, cap: "round" });
   }
 
+  /** Whether a Shift-drag selects: the GM's, with somewhere for the selection to go (ADR 0074). */
+  private canBoxSelect() {
+    return this.you?.role === "gm" && !this.readOnly && !this.placement && this.callbacks.selectTokens !== undefined;
+  }
+
+  private redrawMarquee() {
+    const g = this.marqueeGraphics.clear();
+    const marquee = this.marquee;
+    if (marquee?.dragged) {
+      const box = boxBetween(marquee.from, marquee.to), px = 1 / this.world.scale.x;
+      // The selection's own blue, so the box reads as "these join the selection".
+      g.rect(box.x, box.y, box.width, box.height).fill({ color: 0x5dade2, alpha: 0.12 }).stroke({ width: 1.5 * px, color: 0x5dade2, alpha: 0.9 });
+    }
+    this.invalidate();
+  }
+
+  /** Drops a box in progress; true when there was one. */
+  private cancelMarquee() {
+    if (!this.marquee) return false;
+    this.marquee = null;
+    this.redrawMarquee();
+    return true;
+  }
+
+  private finishMarquee(e: FederatedPointerEvent) {
+    const marquee = this.marquee!;
+    this.cancelMarquee();
+    if (!marquee.dragged) {
+      // A Shift press that stays put is a click: it locks or unlocks a door, or clears as any click does.
+      const portal = this.portalUnder(e.global);
+      if (portal) this.callbacks.togglePortal(portal.id, true);
+      else {
+        this.callbacks.selectToken(null);
+        this.selectTemplate(null);
+      }
+      return;
+    }
+    if (!this.state || !this.you) return;
+    const tokenIds = tokensInBox(Object.values(this.state.tokens), marquee.from, this.toBoard(e.global), this.you);
+    if (tokenIds.length > 0) this.callbacks.selectTokens?.(tokenIds);
+  }
+
   private onPointerUp = (e: FederatedPointerEvent) => {
     const pan = this.pan;
     this.pan = null;
@@ -3632,6 +3693,7 @@ export class BoardView {
     if (pan && emptyPress && this.tool.kind === "attack" && !exceedsPanThreshold(pan.start, e.global)) return this.callbacks.cancelAttack();
     if (this.templateEdit) return this.finishTemplateEdit();
     if (this.terrainStroke) return this.finishTerrainStroke();
+    if (this.marquee) return this.finishMarquee(e);
     if (pan && pan.button === 0 && this.tool.kind === "doors" && !exceedsPanThreshold(pan.start, e.global)) {
       const portal = this.portalUnder(e.global);
       if (portal) this.callbacks.setPortal?.(portal.id, this.tool.mode);
@@ -3745,6 +3807,7 @@ export class BoardView {
     // leaves half a drawing behind, or drops the token being placed.
     this.pan = null;
     this.placeDown = null;
+    this.cancelMarquee();
     this.cancelTemplateEdit(false);
     if (this.gesture) {
       this.gesture = null;

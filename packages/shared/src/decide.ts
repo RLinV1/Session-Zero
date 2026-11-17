@@ -658,7 +658,17 @@ function decideCommand(
       if (!can.administer(actor)) return forbidden();
       const token = state.tokens[command.tokenId];
       if (!token) return notFound("token");
-      return accept({ type: "TokenDeleted", token });
+      // "manual" makes the deletion undoable (ADR 0074).
+      return accept({ type: "TokenDeleted", token, reason: "manual" });
+    }
+
+    case "token.deleteSeveral": {
+      if (!can.administer(actor)) return forbidden();
+      // All or none: one missing token refuses the whole command, so nothing is half-deleted.
+      const tokenIds = [...new Set(command.tokenIds)];
+      if (tokenIds.some((id) => !state.tokens[id])) return notFound("token");
+      // One action, so one undo puts them all back; `decide` adds each one's exit from the turn order.
+      return accept(...tokenIds.map((id): DomainEvent => ({ type: "TokenDeleted", token: state.tokens[id]!, reason: "manual" })));
     }
 
     case "token.setOwners": {
@@ -827,6 +837,26 @@ function decideCommand(
       // Checks the order, not the board, so a legacy "(removed)" row can be taken out too.
       if (!current.order.includes(command.tokenId)) return reject("invalid", sharedMsg("reject.notInOrder"));
       return accept(initiativeExit(current, command.tokenId));
+    }
+
+    case "initiative.removeSeveral": {
+      if (!can.administer(actor)) return forbidden();
+      const current = state.initiative;
+      if (!current) return reject("invalid", sharedMsg("reject.noEncounter"));
+      const tokenIds = new Set(command.tokenIds);
+      // All or none, checked against the order like `initiative.remove`.
+      if ([...tokenIds].some((id) => !current.order.includes(id))) return reject("invalid", sharedMsg("reject.notInOrder"));
+      // In turn order, each exit from the order the one before left, so the result doesn't depend
+      // on the order the ids were sent in. The last one out ends the encounter.
+      const events: DomainEvent[] = [];
+      let order: Initiative = current;
+      for (const tokenId of current.order.filter((id) => tokenIds.has(id))) {
+        const exit = initiativeExit(order, tokenId);
+        events.push(exit);
+        if (exit.type !== "InitiativeLeft") break;
+        order = exit.initiative;
+      }
+      return { ok: true, events };
     }
 
     case "initiative.end": {

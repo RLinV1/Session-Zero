@@ -4,6 +4,7 @@ import type { CatalogSource } from "@vtt/shared";
 export const board = {
   "board.placingHint": "Click squares to place · or arrow keys, then Enter · drag to pan · hold Alt to place freely · Esc when done",
   "board.hint.select": "Drag tokens you control to move · drag empty space to pan · scroll or pinch to zoom · double-click to ping · Alt: place freely",
+  "board.hint.selectGm": "Drag tokens to move · drag empty space to pan · Shift-drag to select several · scroll or pinch to zoom · double-click to ping · Alt: place freely",
   "board.hint.measure": "Drag to measure · Alt: straight line · Esc: stop",
   "board.hint.measureRoute": "Click to add points · Enter to finish · Backspace removes a point · Esc cancels · Alt: straight line",
   "board.hint.draw": "Drag to draw · everyone sees your drawings · Esc to stop",

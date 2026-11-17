@@ -110,6 +110,14 @@ export function describeUndoZhTW(entry: UndoEntry, tokens: RoomState["tokens"]):
   }
   const first = entry.events[0];
   if (!first) return { verb: "上一個動作", noun: "一個動作" };
+  // The GM's own deletion of one token or several (ADR 0074).
+  if (first.type === "TokenDeleted" && first.reason === "manual") {
+    const deleted = entry.events.filter((e): e is Extract<typeof e, { type: "TokenDeleted" }> => e.type === "TokenDeleted");
+    const name = deleted[0]!.token.name;
+    return deleted.length > 1
+      ? { verb: cjk`刪除${deleted.length}枚棋子`, noun: cjk`刪除${name}和其他${deleted.length - 1}枚棋子` }
+      : { verb: cjk`刪除${name}`, noun: cjk`刪除${name}` };
+  }
   // Tokens removed by Select and place follow their map change, which names itself below (ADR 0068).
   const defeats = entry.events.filter((e): e is Extract<typeof e, { type: "TokenDeleted" }> => e.type === "TokenDeleted" && e.reason === "defeated");
   if (first.type === "TokenDeleted" || defeats.length > 0) {

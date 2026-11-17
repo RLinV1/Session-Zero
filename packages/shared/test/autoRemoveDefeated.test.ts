@@ -213,10 +213,13 @@ describe("auto-remove defeated: undo (FR-REC-02, FR-REC-03)", () => {
     expect(undone.state.tokens[aria.id]!.stats.hp).toBe(20);
   });
 
-  it("keeps a manual token.delete non-undoable", () => {
+  it("makes a manual token.delete undoable as a deletion, not a defeat (FR-REC-02, ADR 0074)", () => {
     const { state, goblin } = table();
     const del = act(state, gm, { type: "token.delete", tokenId: goblin.id });
-    expect(undoableAction(del.state.undo, del.commandId)).toBeUndefined();
+    expect(del.events[0]).toMatchObject({ type: "TokenDeleted", reason: "manual" });
+    const entry = undoableAction(del.state.undo, del.commandId);
+    expect(entry).toBeDefined();
+    expect(describeUndo(entry!, del.state.tokens).verb).toBe("delete Goblin");
   });
 
   it("refuses when another token has taken the name, or the token is already back", () => {

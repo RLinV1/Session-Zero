@@ -987,6 +987,22 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .init-entry { display: flex; align-items: center; gap: var(--space-1); }
 .init-focus { flex: 1; min-width: 0; width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 0.3rem 0.4rem; }
 .init-remove { flex: none; }
+/* The row's checkbox selects it for Remove from encounter, in place of a Remove per row (ADR 0074). */
+.init-select { flex: none; margin: 0 0 0 0.2rem; }
+/* Three rows from the active turn, then the rest folded into one quiet row (gm-bulk-select). */
+.init-more-toggle {
+  width: 100%; display: flex; align-items: center; gap: var(--space-2); min-height: 0;
+  padding: 0.3rem 0.4rem; background: none; border: none; border-radius: 0;
+  color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; text-align: left;
+}
+.init-more-toggle:hover:not(:disabled) { filter: none; color: var(--text); }
+.init-more-selected { margin-left: auto; font-size: var(--fs-sm); }
+/* Where the list wraps into the next round. */
+.init-round-break {
+  margin: var(--space-1) 0 0; padding: var(--space-1) 0.4rem 0; border-top: 1px solid var(--rule);
+  color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.init-selection { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 /* The active turn: marker glyph, weight and a rust rule on the left, not colour alone. */
 .init-entry.active .init-focus { font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
 .init-turn { width: 1.2rem; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -1006,6 +1022,19 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .roster-row + .roster-row { border-top: 1px solid var(--border); }
 .roster-row.active { box-shadow: inset 2px 0 0 var(--accent); padding-left: 0.5rem; }
 .roster-main { display: flex; align-items: center; gap: var(--space-2); }
+/* The GM's selection (ADR 0074): a checkbox per row, a raised row while ticked, one bar of actions. */
+.roster-select { flex: none; margin: 0; }
+.roster-row.selected { background: var(--raised); }
+.roster-selection {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--raised);
+}
+.roster-selection-label { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.roster-selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.roster-selection-actions button { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* `secondary` would otherwise win over `danger`, as on the turn order's End encounter. */
+.roster-selection-actions button.danger { color: var(--danger); }
+.roster-selection-actions button.link { margin-left: auto; }
 .roster-focus { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.45rem; }
 .hp { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--muted); }
 

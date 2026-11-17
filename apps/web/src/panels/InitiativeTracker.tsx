@@ -1,6 +1,9 @@
 import { useRef, useState, type ReactNode } from "react";
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import type { Participant, RoomState, Token } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
+import type { GroupSelection } from "./GroupSelection";
+import { compactTurnOrder, type TurnOrderRow } from "./turnOrderView";
 import { Modal } from "../ui/Modal";
 import { PanelSection } from "../ui/PanelSection";
 import { DicePoolInput } from "../ui/DicePoolInput";
@@ -17,17 +20,24 @@ import { t } from "../i18n/locale";
  * same order and the same active turn. Ordering is decided on the server — two clients
  * sorting a tie differently would diverge — so this only ever submits scores. While the
  * encounter runs, the GM can add and remove tokens; the server places them (ADR 0065).
+ *
+ * The order shows from the active turn on: three rows, then the rest folded into "+N more"
+ * (gm-bulk-select). The GM ticks rows, or selects tokens on the board, and removes them all with
+ * one button (ADR 0074).
  */
 export function InitiativeTracker({
   connection,
   state,
   you,
   onFocusToken,
+  selection,
 }: {
   connection: RoomConnection;
   state: RoomState;
   you: Participant;
   onFocusToken: (tokenId: string) => void;
+  /** GM: the selection the turn order's checkboxes edit and its bulk remove acts on (ADR 0074). */
+  selection?: GroupSelection;
 }) {
   const isGm = you.role === "gm";
   const init = state.initiative;
@@ -37,10 +47,12 @@ export function InitiativeTracker({
   // End encounter can't be undone, so it asks first (ADR 0060).
   const [confirmEnd, setConfirmEnd] = useState(false);
   const cancelEndRef = useRef<HTMLButtonElement>(null);
-  /** The last token in the order, while the GM confirms that removing it ends the encounter (ADR 0065). */
-  const [confirmRemoveLast, setConfirmRemoveLast] = useState<string | null>(null);
+  /** The tokens being removed while the GM confirms that removing them ends the encounter (ADR 0065). */
+  const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
   const cancelRemoveRef = useRef<HTMLButtonElement>(null);
   const [addOpen, setAddOpen] = useState(false);
+  /** The rows past the first three are folded until the viewer opens them. */
+  const [expanded, setExpanded] = useState(false);
 
   // Start encounter lists every token, all included until a filter is ticked; Add to encounter
   // lists the tokens outside the order, none checked at first (ADR 0065).
@@ -143,11 +155,69 @@ export function InitiativeTracker({
   const activeId = init.order[init.activeIndex];
   const pending = isGm ? pendingRulingCount(state) : 0;
   const nameOf = (tokenId: string) => state.tokens[tokenId]?.name ?? t("init.removed");
+  const rows = compactTurnOrder(init.order, init.activeIndex);
+  const picking = isGm && selection ? selection : null;
+  const selected = new Set(picking?.tokenIds ?? []);
+  // Selected tokens that are in the order, in turn order: what Remove from encounter takes out.
+  const selectedInOrder = init.order.filter((id) => selected.has(id));
+  const foldedSelected = rows.rest.filter((row) => selected.has(row.tokenId)).length;
 
-  const remove = (tokenId: string) => {
-    // The last one out ends the encounter, so that asks first, like End encounter (ADR 0065).
-    if (init.order.length === 1) return setConfirmRemoveLast(tokenId);
-    void send({ type: "initiative.remove", tokenId });
+  /** The tokens leave in one command; taking out the whole order ends it, so that asks first (ADR 0065). */
+  const remove = (tokenIds: string[]) => {
+    if (tokenIds.length === init.order.length) return setConfirmRemove(tokenIds);
+    void sendRemove(tokenIds);
+  };
+  const sendRemove = (tokenIds: string[]) =>
+    send(tokenIds.length === 1 ? { type: "initiative.remove", tokenId: tokenIds[0]! } : { type: "initiative.removeSeveral", tokenIds });
+
+  const row = ({ tokenId, index, startsNextRound }: TurnOrderRow) => {
+    const token = state.tokens[tokenId];
+    const isActive = index === init.activeIndex;
+    return [
+      // Where the list wraps into the next round; the row's own label says so to screen readers.
+      startsNextRound && (
+        <li key={`round-${tokenId}`} className="init-round-break" aria-hidden="true">
+          {t("init.nextRound", { n: init.round + 1 })}
+        </li>
+      ),
+      <li key={tokenId} className={isActive ? "init-entry active" : "init-entry"}>
+        {/* A row is selected for the bulk remove; one whose token is gone keeps its own Remove (ADR 0065). */}
+        {picking && token && (
+          <input
+            type="checkbox"
+            className="init-select"
+            checked={selected.has(tokenId)}
+            onChange={() => picking.toggle(tokenId)}
+            aria-label={t("init.selectNamed", { name: token.name })}
+          />
+        )}
+        <button
+          type="button"
+          className="init-focus"
+          onClick={() => onFocusToken(tokenId)}
+          aria-current={isActive ? "true" : undefined}
+        >
+          {/* Marked by text and position, not colour alone. */}
+          <span className="init-turn" aria-hidden>
+            {isActive ? "▶" : index + 1}
+          </span>
+          <span className="swatch" style={{ background: token?.color ?? "#555" }} aria-hidden />
+          <span className="init-name">{token?.name ?? t("init.removed")}</span>
+          {isActive && <span className="sr-only">{t("init.activeTurn")}</span>}
+          {startsNextRound && <span className="sr-only">, {t("init.nextRound", { n: init.round + 1 })}</span>}
+        </button>
+        {isGm && !token && (
+          <button
+            type="button"
+            className="secondary small init-remove"
+            aria-label={t("init.removeNamed", { name: nameOf(tokenId) })}
+            onClick={() => remove([tokenId])}
+          >
+            {t("init.remove")}
+          </button>
+        )}
+      </li>,
+    ];
   };
 
   return (
@@ -159,40 +229,32 @@ export function InitiativeTracker({
         </>
       }
     >
-      <ol className="plain init-order">
-        {init.order.map((tokenId, i) => {
-          const token = state.tokens[tokenId];
-          const isActive = i === init.activeIndex;
-          return (
-            <li key={tokenId} className={isActive ? "init-entry active" : "init-entry"}>
-              <button
-                type="button"
-                className="init-focus"
-                onClick={() => onFocusToken(tokenId)}
-                aria-current={isActive ? "true" : undefined}
-              >
-                {/* Marked by text and position, not colour alone. */}
-                <span className="init-turn" aria-hidden>
-                  {isActive ? "▶" : i + 1}
-                </span>
-                <span className="swatch" style={{ background: token?.color ?? "#555" }} aria-hidden />
-                <span className="init-name">{token?.name ?? t("init.removed")}</span>
-                {isActive && <span className="sr-only">{t("init.activeTurn")}</span>}
-              </button>
-              {isGm && (
-                <button
-                  type="button"
-                  className="secondary small init-remove"
-                  aria-label={t("init.removeNamed", { name: nameOf(tokenId) })}
-                  onClick={() => remove(tokenId)}
-                >
-                  {t("init.remove")}
-                </button>
-              )}
-            </li>
-          );
-        })}
+      {/* From the active turn on, so the turn is always the first row and never folded away. */}
+      <ol id="init-order" className="plain init-order">
+        {rows.shown.flatMap(row)}
+        {rows.rest.length > 0 && (
+          <li className="init-more">
+            <button type="button" className="init-more-toggle" aria-expanded={expanded} aria-controls="init-order" onClick={() => setExpanded((open) => !open)}>
+              {expanded ? <CaretUp size={14} aria-hidden /> : <CaretDown size={14} aria-hidden />}
+              <span>{expanded ? t("init.showFewer") : t("init.moreN", { n: rows.rest.length })}</span>
+              {!expanded && foldedSelected > 0 && <span className="muted init-more-selected">{t("init.moreSelected", { n: foldedSelected })}</span>}
+            </button>
+          </li>
+        )}
+        {expanded && rows.rest.flatMap(row)}
       </ol>
+
+      {picking && selectedInOrder.length > 0 && (
+        <div className="init-selection" role="group" aria-label={t("init.selectedInOrder", { n: selectedInOrder.length })}>
+          <button type="button" className="secondary" onClick={() => remove(selectedInOrder)}>
+            {t("init.removeSelected", { n: selectedInOrder.length })}
+          </button>
+          {/* "Clear" fits beside the button in a narrow panel; the name says what it clears. */}
+          <button type="button" className="link" aria-label={t("init.clearSelection")} onClick={picking.clear}>
+            {t("rail.clear")}
+          </button>
+        </div>
+      )}
 
       <p aria-live="polite" className="sr-only">
         {/* No active token means a hidden one has the turn; say nothing about it (FR-GM-23). */}
@@ -246,23 +308,27 @@ export function InitiativeTracker({
             </div>
           </Modal>
           <Modal
-            open={confirmRemoveLast !== null}
-            title={t("init.removeLastTitle")}
-            onClose={() => setConfirmRemoveLast(null)}
+            open={confirmRemove !== null}
+            title={(confirmRemove?.length ?? 0) > 1 ? t("init.removeAllTitle") : t("init.removeLastTitle")}
+            onClose={() => setConfirmRemove(null)}
             initialFocus={cancelRemoveRef}
           >
-            <p>{t("init.removeLastBody", { name: confirmRemoveLast ? nameOf(confirmRemoveLast) : "" })}</p>
+            <p>
+              {confirmRemove && confirmRemove.length > 1
+                ? t("init.removeAllBody", { n: confirmRemove.length })
+                : t("init.removeLastBody", { name: confirmRemove?.[0] ? nameOf(confirmRemove[0]) : "" })}
+            </p>
             <div className="row modal-actions">
-              <button ref={cancelRemoveRef} type="button" className="secondary" onClick={() => setConfirmRemoveLast(null)}>
+              <button ref={cancelRemoveRef} type="button" className="secondary" onClick={() => setConfirmRemove(null)}>
                 {t("common.cancel")}
               </button>
               <button
                 type="button"
                 className="danger-fill"
                 onClick={() => {
-                  const tokenId = confirmRemoveLast;
-                  setConfirmRemoveLast(null);
-                  if (tokenId) void send({ type: "initiative.remove", tokenId });
+                  const tokenIds = confirmRemove;
+                  setConfirmRemove(null);
+                  if (tokenIds) void sendRemove(tokenIds);
                 }}
               >
                 {t("init.remove")}
