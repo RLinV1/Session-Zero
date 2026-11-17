@@ -24,6 +24,8 @@ export const MAX_WALLS_PER_ADD = 50;
 export const DEFAULT_TOKEN_COLOR = "#c0392b";
 /** Most copies one `token.create` may place (KAN-70). */
 export const MAX_TOKENS_PER_CREATE = 20;
+/** Most tokens one bulk command names: `token.deleteSeveral`, `initiative.removeSeveral` (ADR 0074). */
+export const MAX_TOKENS_PER_BULK = 100;
 
 /** Upper bound on tokens resolved in one `participant.resolveDeparture`. */
 export const MAX_DEPARTURE_ACTIONS = 200;
@@ -274,6 +276,11 @@ const BoardCommand = z.discriminatedUnion("type", [
     type: z.literal("token.delete"),
     tokenId: Id,
   }),
+  /** GM only: delete the selected tokens in one undoable action, all or none (ADR 0074). */
+  z.object({
+    type: z.literal("token.deleteSeveral"),
+    tokenIds: z.array(Id).min(1).max(MAX_TOKENS_PER_BULK),
+  }),
   z.object({
     type: z.literal("token.setOwners"),
     tokenId: Id,
@@ -340,6 +347,14 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("initiative.remove"),
     tokenId: Id,
+  }),
+  /**
+   * GM only: take the selected tokens out of the running encounter in one step, all or none
+   * (ADR 0074). Taking every token out ends the encounter, as `initiative.remove` does for the last.
+   */
+  z.object({
+    type: z.literal("initiative.removeSeveral"),
+    tokenIds: z.array(Id).min(1).max(MAX_TOKENS_PER_BULK),
   }),
   /** Roll dice (FR-TAC-09). `gm` visibility is GM-only and never reaches players (FR-GM-22). */
   z.object({

@@ -293,6 +293,8 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
   // The GM's group selection for a group roll or an area effect (ADR 0046). Local to this screen.
   const [groupTokenIds, setGroupTokenIds] = useState<string[]>([]);
   const toggleGroupToken = useCallback((tokenId: string) => setGroupTokenIds((ids) => (ids.includes(tokenId) ? ids.filter((id) => id !== tokenId) : [...ids, tokenId])), []);
+  // A Shift-drag box adds what it holds; a token already selected stays selected (ADR 0074).
+  const selectGroupTokens = useCallback((tokenIds: string[]) => setGroupTokenIds((ids) => [...ids, ...tokenIds.filter((id) => !ids.includes(id))]), []);
   const latestState = useRef(state);
   latestState.current = state;
   // Carried tokens (ADR 0068): only this client's own apply or Activate starts placing them, once,
@@ -317,10 +319,11 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
   const groupSelection = useMemo<GroupSelection>(() => ({
     // Tokens deleted since they were chosen drop out.
     tokenIds: groupTokenIds.filter((id) => state?.tokens[id]),
+    toggle: toggleGroupToken,
     remove: (tokenId) => setGroupTokenIds((ids) => ids.filter((id) => id !== tokenId)),
     clear: () => setGroupTokenIds([]),
     fromTemplate: () => boardRef.current?.startTemplatePick(),
-  }), [groupTokenIds, state?.tokens]);
+  }), [groupTokenIds, state?.tokens, toggleGroupToken]);
   const diceBoard = useMemo<DiceBoard>(
     () => ({
       aimThrow: (client, velocity) => boardRef.current?.aimThrow(client, velocity) ?? null,
@@ -858,6 +861,7 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
         onEditToken={editToken}
         groupSelection={you.role === "gm" && !readOnly ? groupSelection.tokenIds : undefined}
         onToggleGroupToken={you.role === "gm" && !readOnly ? toggleGroupToken : undefined}
+        onSelectTokens={you.role === "gm" && !readOnly ? selectGroupTokens : undefined}
         onPickTemplate={pickTemplate}
         landedRollId={landedId}
         selectOnly={features.selectOnly}

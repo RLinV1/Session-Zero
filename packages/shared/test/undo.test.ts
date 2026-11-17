@@ -236,9 +236,10 @@ describe("undo in decide (FR-REC-02, FR-REC-03)", () => {
   it("refuses when the token no longer exists, naming it", () => {
     const { state: start, id } = setup();
     let state = start;
-    state = act(state, gm, { type: "token.setHidden", tokenId: id, hidden: true }).state;
-    state = act(state, gm, { type: "token.delete", tokenId: id }).state;
-    expect(attemptUndo(state)).toMatchObject({ ok: false, message: "Can't undo: Goblin no longer exists." });
+    const hide = act(state, gm, { type: "token.setHidden", tokenId: id, hidden: true });
+    // The delete is undoable too now (ADR 0074), so undo the hide by its own id.
+    state = act(hide.state, gm, { type: "token.delete", tokenId: id }).state;
+    expect(attemptUndo(state, gm, hide.commandId)).toMatchObject({ ok: false, message: "Can't undo: Goblin no longer exists." });
   });
 
   it("compares conditions as a set", () => {

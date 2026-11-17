@@ -68,8 +68,11 @@ type CompleteMapSet = MapSetEvent & {
   gridChange: NonNullable<MapSetEvent["gridChange"]>;
   tokenChanges: NonNullable<MapSetEvent["tokenChanges"]>;
 };
-/** A deletion by the auto-remove option; the only `TokenDeleted` undo can reverse (ADR 0049). */
-type DefeatDeleted = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" | "mapReplaced" };
+/**
+ * A deletion undo can reverse: by the auto-remove option (ADR 0049), by Select and place (ADR 0068),
+ * or by the GM (ADR 0074). One with no reason was committed before that and stays irreversible.
+ */
+type ReversibleDeletion = Extract<DomainEvent, { type: "TokenDeleted" }> & { reason: "defeated" | "mapReplaced" | "manual" };
 /**
  * A token leaving the turn order because it was deleted (ADR 0065). Part of a defeat's action so
  * that action stays undoable, but it has no inverse: undo never touches the turn order.
@@ -78,7 +81,7 @@ type DeletionExit = Extract<DomainEvent, { type: "InitiativeLeft" | "InitiativeE
 export type ReversibleEvent =
   | Exclude<Extract<DomainEvent, { type: (typeof REVERSIBLE_EVENT_TYPES)[number] }>, MapSetEvent>
   | CompleteMapSet
-  | DefeatDeleted
+  | ReversibleDeletion
   | DeletionExit;
 
 
@@ -118,7 +121,7 @@ export interface EventMeta {
 /** Whether an event type can take part in an undoable action. */
 export function isReversible(event: DomainEvent): event is ReversibleEvent {
   if (event.type === "MapSet") return event.gridChange !== undefined && event.tokenChanges !== undefined;
-  if (event.type === "TokenDeleted") return event.reason === "defeated" || event.reason === "mapReplaced";
+  if (event.type === "TokenDeleted") return event.reason !== undefined;
   if (event.type === "InitiativeLeft" || event.type === "InitiativeEnded") return event.reason === "deleted";
   return (REVERSIBLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
@@ -680,8 +683,16 @@ export function describeUndo(entry: UndoEntry, tokens: RoomState["tokens"], loca
   }
   const first = entry.events[0];
   if (!first) return { verb: "last action", noun: "an action" };
+  // The GM's own deletion of one token or several (ADR 0074).
+  if (first.type === "TokenDeleted" && first.reason === "manual") {
+    const deleted = entry.events.filter((e): e is ReversibleDeletion => e.type === "TokenDeleted");
+    const name = deleted[0]!.token.name;
+    return deleted.length > 1
+      ? { verb: `delete of ${deleted.length} tokens`, noun: `deleting ${name} and ${deleted.length - 1} more` }
+      : { verb: `delete ${name}`, noun: `deleting ${name}` };
+  }
   // Tokens removed by Select and place follow their map change, which names itself below (ADR 0068).
-  const defeats = entry.events.filter((e): e is DefeatDeleted => e.type === "TokenDeleted" && e.reason === "defeated");
+  const defeats = entry.events.filter((e): e is ReversibleDeletion => e.type === "TokenDeleted" && e.reason === "defeated");
   if (first.type === "TokenDeleted" || defeats.length > 0) {
     const names = defeats.map((e) => e.token.name);
     const who = names.length === 1 ? names[0]! : `${names.length} tokens`;

@@ -238,7 +238,7 @@ export function RoomPanel({
         {isGm && features.attacks && <RulingsPanel connection={connection} state={state} you={you} airborne={rollThrow.airborne} onResolve={openResolve} />}
         <MyTokens connection={connection} state={state} you={you} onFocusToken={onFocusToken} />
         {/* The encounter first: whose turn it is decides who attacks. */}
-        <InitiativeTracker connection={connection} state={state} you={you} onFocusToken={onFocusToken} />
+        <InitiativeTracker connection={connection} state={state} you={you} onFocusToken={onFocusToken} selection={isGm ? groupSelection : undefined} />
         {features.attacks && <AttackPanel
           connection={connection}
           state={state}
@@ -257,7 +257,7 @@ export function RoomPanel({
       </>
     ),
     tokens: (
-      <TokenRoster connection={connection} state={state} you={you} token={token} onFocusToken={onFocusToken} onPlaceToken={onPlaceToken} onDuplicateToken={onDuplicateToken} editingTokenId={editingTokenId} onEditToken={onEditToken} />
+      <TokenRoster connection={connection} state={state} you={you} token={token} onFocusToken={onFocusToken} onPlaceToken={onPlaceToken} onDuplicateToken={onDuplicateToken} editingTokenId={editingTokenId} onEditToken={onEditToken} selection={isGm ? groupSelection : undefined} />
     ),
     dice: <DicePanel connection={connection} state={state} isGm={isGm} rollThrow={rollThrow} board={diceBoard} selection={isGm ? groupSelection : undefined} />,
     gm: isGm ? (
