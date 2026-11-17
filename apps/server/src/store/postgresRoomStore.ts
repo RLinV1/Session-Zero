@@ -149,7 +149,8 @@ function toBuildFileRecord(row: BuildFile): BuildFileRecord {
 function toBuildItemRecord(row: BuildItem): BuildItemRecord {
   return {
     buildId: row.buildId, kind: row.kind as BuildItemKind, key: row.key,
-    data: row.data as Record<string, unknown>, flags: row.flags as BuildFlag[], notCarriedOver: row.notCarriedOver,
+    // A draft creature's attacks may still hold dice stored before mixed dice (legacy-attack-dice-crash).
+    data: upgradeStoredAttacks(row.data as Record<string, unknown>), flags: row.flags as BuildFlag[], notCarriedOver: row.notCarriedOver,
     editedByUser: row.editedByUser, publishedId: row.publishedId, updatedAt: row.updatedAt.toISOString(),
   };
 }

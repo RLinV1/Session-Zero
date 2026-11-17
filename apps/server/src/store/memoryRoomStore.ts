@@ -672,12 +672,18 @@ export class MemoryRoomStore implements RoomStore {
     return [...this.buildItems.values()]
       .filter((i) => i.buildId === buildId)
       .sort((a, b) => a.key.localeCompare(b.key))
-      .map((i) => structuredClone(i));
+      .map((i) => this.readBuildItem(i));
   }
 
   async findBuildItem(buildId: string, kind: BuildItemKind, key: string) {
     const item = this.buildItems.get(`${buildId}/${kind}/${key}`);
-    return item ? structuredClone(item) : null;
+    return item ? this.readBuildItem(item) : null;
+  }
+
+  /** As the Postgres store reads it: draft attacks' old dice in today's shape (legacy-attack-dice-crash). */
+  private readBuildItem(item: BuildItemRecord): BuildItemRecord {
+    const copy = structuredClone(item);
+    return { ...copy, data: upgradeStoredAttacks(copy.data) };
   }
 
   async removeBuildItem(buildId: string, kind: BuildItemKind, key: string, byOwner = false) {

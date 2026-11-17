@@ -405,7 +405,10 @@ export function TokenEditor({
   const [conditions, setConditions] = useState<ConditionId[]>(token.conditions);
   // Shared with everyone who may see them, saved with the rest of the form (ADR 0034).
   // Read as the Attack section reads them, so dice stored before mixed dice show their formula (legacy-attack-dice-crash).
-  const [attacks, setAttacks] = useState<AttackPreset[]>(() => presetsForToken(token));
+  // Compared with the list as the editor opened, not the live token: someone else's edit meanwhile
+  // must not make an untouched draft look changed and get sent over theirs.
+  const [openedAttacks] = useState<AttackPreset[]>(() => presetsForToken(token));
+  const [attacks, setAttacks] = useState<AttackPreset[]>(openedAttacks);
   const attackList = useAttackListEditor({ attacks, onChange: setAttacks });
   const [ownerId, setOwnerId] = useState(token.ownerIds[0] ?? "");
   const [hidden, setHidden] = useState(token.hidden);
@@ -448,7 +451,7 @@ export function TokenEditor({
     changes.stats = stats;
   if (!sameConditions) changes.conditions = conditions;
   // Only when changed here, so an unrelated Save never overwrites an owner's edit made meanwhile.
-  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(presetsForToken(token))) changes.attacks = attacks;
+  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(openedAttacks)) changes.attacks = attacks;
   if (isGm && ownerId !== (token.ownerIds[0] ?? ""))
     changes.ownerIds = ownerId ? [ownerId] : [];
   if (isGm && hidden !== token.hidden) changes.hidden = hidden;
