@@ -9,7 +9,7 @@ import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { ExampleCursor } from "./ExampleCursor";
 import { useExampleRun } from "./useExampleRun";
 import { TUTORIAL_MAP } from "./tutorialMap";
-import { completeDemoStep, damageWaiting, dismissDemoRulings, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, restoreTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { completeDemoStep, damageWaiting, dismissDemoRulings, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, restoreTutorialScene, runDemoEncounter, type DemoResult } from "./tutorialDemo";
 import { ScenePreparationContext } from "../panels/ScenePreparationContext";
 import { AUTO_TUTORIAL_STEPS, COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, stepDone, type Progress, type TutorialFacts } from "./tutorialSteps";
 
@@ -36,7 +36,7 @@ const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
 const BESIDE_MIN_WIDTH = 640;
 const GUTTER = 16;
 /** Steps whose control can be out of sight (another tab, a folded section) and so offer Show me. */
-const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", "attack", "ruling", "damage"]);
+const REVEALABLE: ReadonlySet<string> = new Set(["invite", "map", ...EDITOR_TUTORIAL_STEPS, "token", "move", "roll", "encounter", "attack", "ruling", "damage"]);
 const MODAL_HOSTS = "dialog.map-editor[open], dialog.map-picker[open], dialog.share-modal[open], dialog.tutorial-token-dialog[open]";
 /** The ring sits this far outside the control. */
 const RING_PAD = 6;
@@ -51,7 +51,7 @@ const positionsOf = (tokens: RoomState["tokens"]) =>
 
 /**
  * The guest GM's interactive demo (guest-gm-hosting, D8a). It only watches the room the GM already
- * has, except the demo fight (tutorialDemo.ts), whose buttons send the panels' own commands. Each step points at a `data-tutorial` control, or sits at the
+ * has, except the demo fight (tutorialDemo.ts), which Next sends as the panels' own commands. Each step points at a `data-tutorial` control, or sits at the
  * bottom of the screen when that control is not on screen.
  */
 export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, reveal, connection }: {
@@ -338,9 +338,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     const result = await run();
     setDemoBusy(false);
     setDemoError(result.ok ? null : result.message);
-    // The panels hold the lesson: bring the control the next step points at into view.
-    const next = ({ encounter: "attack", attack: "ruling", damage: "damage" } as Partial<Record<string, string>>)[stepName!];
-    if (result.ok && next) window.setTimeout(() => reveal(next as (typeof TUTORIAL_STEPS)[number]), 300);
+    // The panels hold the lesson: bring the Attack panel into view once the fight is set up.
+    if (result.ok && stepName === "encounter") window.setTimeout(() => reveal("attack"), 300);
   };
   autoFight.current = () => { if (!state.initiative && !demoBusy) void runDemo(() => runDemoEncounter(connection)); };
   const waitingDamage = damageWaiting(state);
@@ -443,9 +442,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           <div className="row">
             {REVEALABLE.has(stepName!) && !run.playing && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void showMe()}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
-            )}
-            {stepName === "attack" && (
-              <button type="button" className="small primary" data-demo="attack" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
             )}
             {stepName === "table" && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void prepareExample().then((ok) => { if (ok) { focusNext.current = true; set(1); } })}>{t("tutorial.start")}</button>

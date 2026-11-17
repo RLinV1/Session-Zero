@@ -37,9 +37,9 @@ const onScreen = (p: Point) => {
   const q = new DOMPoint(p.x, p.y).matrixTransform(matrix);
   return { x: q.x, y: q.y };
 };
-const waitFor = async (selector: string, ms: number): Promise<HTMLElement | null> => {
+const waitFor = async (selector: string | (() => HTMLElement | null), ms: number): Promise<HTMLElement | null> => {
   for (let waited = 0; waited <= ms; waited += 100) {
-    const el = document.querySelector<HTMLElement>(selector);
+    const el = typeof selector === "function" ? selector() : document.querySelector<HTMLElement>(selector);
     if (el && el.getBoundingClientRect().width > 0) return el;
     await new Promise((resolve) => window.setTimeout(resolve, 100));
   }
@@ -142,7 +142,7 @@ export function useExampleRun() {
       if (sub.skip?.()) continue;
       show({ index: i });
       unring();
-      const el = sub.control ? await waitFor(sub.control, 3000) : null;
+      const el = sub.control ? await waitFor(sub.control, 6000) : null;
       if (!alive()) return;
       if (sub.control && !el) { stop(); return; }
       if (el) { el.scrollIntoView({ block: "nearest", inline: "nearest" }); el.setAttribute(RING, ""); ringed.current = el; }

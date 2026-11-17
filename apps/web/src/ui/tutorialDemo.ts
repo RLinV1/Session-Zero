@@ -3,6 +3,7 @@ import { attackExpression, pendingRulings, presetRollLabel } from "../panels/att
 import type { RoomConnection } from "../net/roomConnection";
 import { t } from "../i18n/locale";
 import { TUTORIAL_GRID, TUTORIAL_MAP, TUTORIAL_SCENE_NAME, TUTORIAL_WALLS } from "./tutorialMap";
+import { closeDemoWindow, openDemoWindow } from "./tutorialSteps";
 
 /**
  * The scripted demo fight of the guest demo (guest-gm-hosting). Every call sends the commands the
@@ -67,6 +68,8 @@ export async function ensureTutorialScene(connection: RoomConnection): Promise<D
   let name = TUTORIAL_SCENE_NAME;
   for (let suffix = 2; names.has(name); suffix++) name = `${TUTORIAL_SCENE_NAME} ${suffix}`;
   const origin = state.activeSceneId ?? INITIAL_SCENE_ID;
+  // Everything from here to the original board coming back is practice: the Activity Log skips it.
+  openDemoWindow(state.roomId, connection.snapshot.seq + 1);
   const opened = await send(connection, existing ? { type: "scene.switch", sceneId: existing[0] } : { type: "scene.create", name, activate: true });
   if (!opened.ok) return opened;
   try { localStorage.setItem(`vtt.tutorial.origin.${state.roomId}`, origin); } catch { /* The scene remains in the scene switcher. */ }
@@ -80,12 +83,20 @@ export async function ensureTutorialScene(connection: RoomConnection): Promise<D
 /** Leave the practice board without changing the original map, tokens or preparation. */
 export async function restoreTutorialScene(connection: RoomConnection): Promise<DemoResult> {
   const state = connection.snapshot?.state;
-  if (!state || state.scene.map?.url !== TUTORIAL_MAP.url) return { ok: true };
+  if (!state) return { ok: true };
+  if (state.scene.map?.url !== TUTORIAL_MAP.url) {
+    closeDemoWindow(state.roomId, connection.snapshot.seq);
+    return { ok: true };
+  }
   let origin: string | null = null;
   try { origin = localStorage.getItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* No stored origin. */ }
-  if (!origin || sceneNameOf(state, origin) === undefined) return { ok: true };
+  if (!origin || sceneNameOf(state, origin) === undefined) {
+    closeDemoWindow(state.roomId, connection.snapshot.seq);
+    return { ok: true };
+  }
   const result = await send(connection, { type: "scene.switch", sceneId: origin });
   if (result.ok) try { localStorage.removeItem(`vtt.tutorial.origin.${state.roomId}`); } catch { /* Storage can be disabled. */ }
+  closeDemoWindow(state.roomId, connection.snapshot.seq);
   return result;
 }
 
@@ -263,10 +274,12 @@ export async function resetTutorialScene(connection: RoomConnection): Promise<De
   if (!left.ok) return left;
   const state = connection.snapshot.state;
   if (!state || state.scene.map?.url === TUTORIAL_MAP.url) return { ok: true };
+  const roomId = state.roomId;
   const old = Object.entries(state.savedScenes ?? {}).filter(([id, saved]) => id !== state.activeSceneId && saved.table.scene.map?.url === TUTORIAL_MAP.url);
   for (const [sceneId] of old) {
     const deleted = await send(connection, { type: "scene.delete", sceneId });
     if (!deleted.ok) return deleted;
   }
+  closeDemoWindow(roomId, connection.snapshot.seq);
   return { ok: true };
 }

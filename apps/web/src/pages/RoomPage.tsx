@@ -719,10 +719,11 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
       // Let Save/Discard finish before switching tabs, which would unmount the private draft.
       if (closeEditor) { closeEditor.click(); return; }
       setTab(step === "token" ? "tokens" : step === "roll" ? "dice" : "play");
-      const section = { encounter: "initiative", attack: "attack", ruling: "rulings", damage: "rulings" }[step];
+      // A combat lesson's Show me visits Initiative, Attack and Rulings in turn, so all three are open.
+      const sections = COMBAT_TUTORIAL_STEPS.has(step) ? ["initiative", "attack", "rulings"] : [];
       return openSidebar(() => {
         // A folded section keeps its controls out of sight (and out of the tab order) until opened.
-        if (section) document.querySelector<HTMLElement>(`[data-tour="${section}"] .section-toggle[aria-expanded="false"]`)?.click();
+        for (const section of sections) document.querySelector<HTMLElement>(`[data-tour="${section}"] .section-toggle[aria-expanded="false"]`)?.click();
       });
     }
     // A hidden tool rail leaves only its toggle.

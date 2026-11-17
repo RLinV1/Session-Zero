@@ -129,7 +129,7 @@ export interface ExampleApi {
 export interface ExampleSub {
   caption: TextId;
   /** A control to ring and point at (`data-tutorial-tool` or another selector). */
-  control?: string;
+  control?: string | (() => HTMLElement | null);
   /** Click `control` for the GM, through its own handler. */
   press?: boolean;
   /** Left out when this returns true. */

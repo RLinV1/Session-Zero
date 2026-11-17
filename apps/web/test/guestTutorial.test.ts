@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_GRID, cellAt, distanceToSegment, emptyRoomState, type RoomState } from "@vtt/shared";
 import { demoPair, demoSpots, demoTokenIds, rememberDemoTokens } from "../src/ui/tutorialDemo";
-import { TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
+import { TUTORIAL_STEPS, closeDemoWindow, countKeyChange, isDemoEvent, openDemoWindow, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
 
 const none: TutorialFacts = { tokens: 0, fog: 0, gmRolls: 0, moves: 0, invites: 0, mapEdits: 0, gridEdits: 0, wallEdits: 0, sightEdits: 0, terrainEdits: 0, encounters: 0, attackRolls: 0, rulings: 0, damageApplied: 0 };
 const step = (name: string) => TUTORIAL_STEPS.findIndex((s) => s === name);
@@ -69,6 +69,18 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     saveProgress("r1", 3);
     expect(loadProgress("r1")).toBe(3);
     expect(loadProgress("r2")).toBeNull();
+  });
+
+  it("keeps the demo's own events out of the Activity Log, and only those", () => {
+    expect(isDemoEvent("r1", 5)).toBe(false);
+    openDemoWindow("r1", 10);
+    expect(isDemoEvent("r1", 9)).toBe(false);
+    expect(isDemoEvent("r1", 500)).toBe(true); // still running
+    closeDemoWindow("r1", 40);
+    expect([isDemoEvent("r1", 10), isDemoEvent("r1", 40), isDemoEvent("r1", 41)]).toEqual([true, true, false]);
+    openDemoWindow("r1", 60);
+    closeDemoWindow("r1", 70);
+    expect([isDemoEvent("r1", 55), isDemoEvent("r1", 65), isDemoEvent("r2", 65)]).toEqual([false, true, false]);
   });
 
   it("remembers a declined and a finished demo", () => {

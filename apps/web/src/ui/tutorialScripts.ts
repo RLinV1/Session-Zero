@@ -4,7 +4,13 @@ import { EXAMPLE_GRID_EVENT, EXAMPLE_SIGHT_EVENT, exampleBoard, exampleCommands,
 import { TUTORIAL_GRID, TUTORIAL_MAP } from "./tutorialMap";
 
 const tool = (name: string) => `[data-tutorial-tool="${name}"]`;
-const demoButton = (name: string) => `.guest-tutorial [data-demo="${name}"]`;
+/** The real Attack panel's target list: the demo goblin when it is listed, else the nearest. */
+const targetOption = () => {
+  const options = [...document.querySelectorAll<HTMLElement>(".attack-target-row .picker-option")];
+  return options.find((li) => li.textContent?.includes(t("tutorial.demo.goblin"))) ?? options[0] ?? null;
+};
+const targetChosen = () => !!document.querySelector(".attack-target-row") && !document.querySelector(".attack-target-row .picker-placeholder");
+const damageRolled = () => !!document.querySelector('.ruling-buttons [data-tutorial="damage"]');
 const sight = (detail: SightExample) => () => void window.dispatchEvent(new CustomEvent<SightExample>(EXAMPLE_SIGHT_EVENT, { detail }));
 const attr = (selector: string, name: string, value: string) => document.querySelector(selector)?.getAttribute(name) === value;
 
@@ -89,11 +95,16 @@ export function exampleScript(step: string, grid: GridSpec, map: { url?: string;
       exampleBoard()?.focus();
       return [{ caption: "tutorial.ex.dragToken", control: ".board canvas", board: true, from: () => exampleBoard()?.token?.position ?? null, at: () => exampleBoard()?.destination ?? null }];
     case "roll": return [{ caption: "tutorial.ex.clickRoll", control: '[data-tutorial="roll"]', press: true }];
-    case "encounter": return [{ caption: "tutorial.ex.runFight", control: demoButton("encounter"), press: true }];
-    case "attack": return [{ caption: "tutorial.ex.rollAttack", control: demoButton("attack"), press: true }];
+    // The fight itself is set up by the card (Start encounter needs a score for each token); the real turn order is what to look at.
+    case "encounter": return [{ caption: "tutorial.ex.turnOrder", control: '[data-tour="initiative"] .init-order' }];
+    case "attack": return [
+      { caption: "tutorial.ex.pickTarget", control: ".attack-target-row .picker-button", press: true, skip: targetChosen },
+      { caption: "tutorial.ex.chooseGoblin", control: targetOption, press: true, skip: targetChosen },
+      { caption: "tutorial.ex.rollToHit", control: '.attack-roll[data-tutorial="attack"]', press: true },
+    ];
     case "ruling": return [{ caption: "tutorial.ex.clickHit", control: '[data-tutorial="ruling"]', press: true }];
     case "damage": return [
-      { caption: "tutorial.ex.rollDamage", control: demoButton("damage"), press: true, skip: () => !document.querySelector(demoButton("damage")) },
+      { caption: "tutorial.ex.rollDamage", control: '.attack-roll[data-tutorial="damage"]', press: true, skip: damageRolled },
       { caption: "tutorial.ex.clickApply", control: '.ruling-buttons [data-tutorial="damage"]', press: true },
     ];
     default: return [];
