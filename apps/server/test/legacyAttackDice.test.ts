@@ -43,12 +43,14 @@ const storedLog = (store: MemoryRoomStore, roomId: string) =>
  * fresh server over the same store, so the room is loaded from that history.
  */
 async function roomWithHistory(seed: (wolf: Token) => { commandId?: string; event: DomainEvent }[]) {
-  const first = await start();
+  // Held here, not read back as `first.store`: the server only exposes it as a RoomStore, and the
+  // check that nothing was rewritten reads the memory store's own log.
+  const store = new MemoryRoomStore();
+  const first = await start(store);
   const creds = await first.createRoom("GM");
   const gm = await connect(first, creds);
   expect(await gm.command({ type: "token.create", name: "Template wolf", position: { x: 35, y: 35 } })).toMatchObject({ type: "ack" });
   const wolf = Object.values(gm.state.tokens).find((t) => t.name === "Template wolf")!;
-  const store = first.store;
   const lastSeq = (await store.loadEvents(creds.roomId)).length;
   await store.append(creds.roomId, lastSeq, seed(wolf).map((e) => ({ actorId: gm.participantId, ...e })));
   const before = storedLog(store, creds.roomId);
