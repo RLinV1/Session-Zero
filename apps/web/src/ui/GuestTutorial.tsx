@@ -236,10 +236,13 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           const w = card.offsetWidth, h = card.offsetHeight, gap = 32;
           const target = control?.getBoundingClientRect();
           const obstacles = [{ left: Math.min(x, from.x) - gap, right: Math.max(x, from.x) + gap, top: Math.min(y, from.y) - gap, bottom: Math.max(y, from.y) + gap }];
-          if (target && target.width < vw / 2 && target.height < vh / 2) obstacles.push(target);
+          // A wide but short bar (the editor's tabs) still counts: the card must not sit on top of what it points at.
+          if (target && target.height < vh / 2 && target.width * target.height < (vw * vh) / 2) obstacles.push(target);
           const candidates = [
             { left: x + gap, top: y - h / 2 }, { left: x - w - gap, top: y - h / 2 },
             { left: x - w / 2, top: y + gap }, { left: x - w / 2, top: y - h - gap },
+            // Clear of the control itself: below it, to the right of the pointer first.
+            ...(target ? [{ left: x + gap, top: target.bottom + gap }, { left: x - w - gap, top: target.bottom + gap }] : []),
           ].map((p) => ({ left: Math.max(GUTTER, Math.min(p.left, vw - w - GUTTER)), top: Math.max(GUTTER, Math.min(p.top, vh - h - GUTTER)) }));
           const next = candidates.find((p) => obstacles.every((r) => p.left + w <= r.left || p.left >= r.right || p.top + h <= r.top || p.top >= r.bottom));
           if (next) {
