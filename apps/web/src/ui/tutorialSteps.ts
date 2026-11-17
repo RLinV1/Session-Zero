@@ -121,6 +121,10 @@ export function closeDemoWindow(roomId: string, to: number): void {
 /** Whether the Activity Log should skip this event. */
 export const isDemoEvent = (roomId: string, seq: number): boolean => demoWindows(roomId).some(([from, to]) => seq >= from && (to === null || seq <= to));
 
+/** How many of events 1..seq the demo made, so the room's event count can show only the real game. */
+export const demoEventCount = (roomId: string, seq: number): number =>
+  demoWindows(roomId).reduce((n, [from, to]) => n + Math.max(0, Math.min(to ?? seq, seq) - from + 1), 0);
+
 const LEGACY_STEPS = ["table", "invite", "map", "terrain", "token", "move", "fog", "roll", "done"] as const;
 
 /** Storage can be missing or throw (private windows, blocked data); then the demo still runs for this page load. */

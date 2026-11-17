@@ -23,7 +23,7 @@ import { ensureSeat } from "../net/seats";
 import { GuestRoomNotice, GuestRoomProvider, SAVE_ACCOUNT_HREF, useGuestRoom, useGuestStatus } from "../ui/GuestRoom";
 import { navigate } from "../router";
 import { GuestTutorial } from "../ui/GuestTutorial";
-import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
+import { COMBAT_TUTORIAL_STEPS, demoEventCount, EDITOR_TUTORIAL_STEPS } from "../ui/tutorialSteps";
 import { KeepSeatNotice } from "../ui/KeepSeatNotice";
 import { RoomConnection, useRoomSnapshot, type ConnectionStatus } from "../net/roomConnection";
 import { createScenePreparation } from "../net/scenePreparation";
@@ -914,7 +914,7 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
           */}
           <header className="panel-header">
             <span className={`status status-${status}`} role="status">
-              {t(STATUS_LABEL[status])} · {t("room.seq", { n: seq })}
+              {t(STATUS_LABEL[status])} · {t("room.seq", { n: seq - demoEventCount(roomId, seq) })}
             </span>
             <div className="whoami-row">
               <div className="whoami">
