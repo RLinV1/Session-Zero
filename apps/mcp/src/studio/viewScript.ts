@@ -6,6 +6,7 @@ const app = new App({name:'Session Zero Studio',version:'1.0.0'}, {});
 let locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
 let buildId = null, sourceId = null, shown = null, timer = null, stopped = false, refreshing = false, uploading = false, connected = false, generation = 0;
 let statusKey = 'loading', uploadStatusKey = null;
+let needsRetry = false;
 const t = (key) => catalogs[locale][key] || catalogs.en[key] || catalogs.en['error.unknown'];
 function translate() {
   document.documentElement.lang = locale;
@@ -16,6 +17,7 @@ function translate() {
 }
 function status(key) { statusKey=key; const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
 function uploadStatus(key) { uploadStatusKey=key; const value=t(key); if ($('upload-status').textContent !== value) $('upload-status').textContent=value; }
+function pauseForRetry(error) { needsRetry=true; if (error.status === 404 || error.status === 403) { clearPrivate(); status('denied'); } else status('stale'); }
 function clearPrivate() { generation++; $('source').removeAttribute('src'); $('source').hidden = true; $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature=''; $('build').textContent = ''; $('owner').textContent = ''; shown = null; sourceId = null; }
 function resultData(result) { if (result.structuredContent) return result.structuredContent; const text = result.content?.find((c) => c.type === 'text')?.text; return text ? JSON.parse(text) : {}; }
 async function call(name, args) {
@@ -23,9 +25,9 @@ async function call(name, args) {
   if (result.isError) { const problem = result._meta?.['sessionzero/error'] || {}; const e = new Error(problem.code || 'unknown'); e.status = problem.status; e.code = problem.code; throw e; }
   return result;
 }
-function schedule() { clearTimeout(timer); if (!stopped && !document.hidden) timer = setTimeout(() => void refresh(), 5000); }
+function schedule() { clearTimeout(timer); if (!stopped && !needsRetry && !document.hidden) timer = setTimeout(() => void refresh(), 5000); }
 async function refresh() {
-  if (!connected || !buildId || stopped || document.hidden || refreshing) return;
+  if (!connected || !buildId || stopped || needsRetry || document.hidden || refreshing) return;
   refreshing = true;
   const currentGeneration = generation;
   try {
@@ -47,7 +49,7 @@ async function refresh() {
       const li = document.createElement('li'); const name = document.createElement('span'); name.className = 'filename'; name.textContent = file.name; li.append(name);
       const details = document.createElement('small'); details.textContent = t(file.kind) + ' · ' + file.width + ' × ' + file.height; li.append(details);
       if (file.kind === 'map') { const button = document.createElement('button'); button.type = 'button'; button.textContent = t('show'); button.disabled = file.id === sourceId;
-        button.onclick = async () => { try { await call('studio_bind_file',{buildId,fileId:file.id}); shown=null; void refresh(); } catch { status('stale'); } }; li.append(button); }
+        button.onclick = async () => { try { await call('studio_bind_file',{buildId,fileId:file.id}); needsRetry=false; shown=null; void refresh(); } catch (error) { pauseForRetry(error); } }; li.append(button); }
       fragment.append(li);
     }
     if (!data.files.length) { const li = document.createElement('li'); li.textContent = t('noFiles'); fragment.append(li); }
@@ -63,8 +65,7 @@ async function refresh() {
     }
     status('ready');
   } catch (e) {
-    if (e.status === 404 || e.status === 403) { clearPrivate(); status('denied'); }
-    else status('stale');
+    if (currentGeneration === generation && !stopped) pauseForRetry(e);
   } finally { refreshing = false; schedule(); }
 }
 async function importSelected(selected) {
@@ -82,8 +83,8 @@ async function importSelected(selected) {
       uploadStatus(outcome.status === 'saved' ? 'saved' : 'error.' + outcome.code);
       if (outcome.status === 'saved' && kind === 'map') await call('studio_bind_file',{buildId,fileId:outcome.fileId});
     }
-    shown = null;
-  } catch (e) { uploadStatus('error.' + (e.code || 'unknown')); }
+    needsRetry=false; shown = null;
+  } catch (e) { if (!e.status || [401,403,404].includes(e.status)) pauseForRetry(e); uploadStatus('error.' + (e.code || 'unknown')); }
   finally { uploading = false; $('pick').disabled = !window.openai?.selectFiles; $('device').disabled = !window.openai?.uploadFile; $('device').value = ''; void refresh(); }
 }
 $('pick').onclick = async () => { try { await importSelected(await window.openai.selectFiles()); } catch { uploadStatus('error.unknown'); } };
@@ -96,10 +97,10 @@ $('device').onchange = async (event) => {
     catch { uploadStatus('error.unknown'); }
   }
 };
-$('refresh').onclick = () => { shown=null; void refresh(); };
+$('refresh').onclick = () => { needsRetry=false; shown=null; void refresh(); };
 $('fullscreen').onclick = async () => { try { await app.requestDisplayMode({mode:'fullscreen'}); } catch { /* Inline remains usable. */ } };
 $('language').onchange = () => { locale=$('language').value; translate(); $('files').dataset.signature=''; void refresh(); };
-app.ontoolresult = (result) => { try { const data=resultData(result); if (data.buildId && data.buildId !== buildId) { clearPrivate(); buildId=data.buildId; } void refresh(); } catch { status('stale'); } };
+app.ontoolresult = (result) => { try { const data=resultData(result); if (data.buildId) { if (data.buildId !== buildId) { clearPrivate(); buildId=data.buildId; } needsRetry=false; } void refresh(); } catch { status('stale'); } };
 app.onhostcontextchanged = () => { void refresh(); };
 app.onteardown = async () => { stopped=true; clearTimeout(timer); clearPrivate(); return {}; };
 addEventListener('pagehide', () => { stopped=true; clearTimeout(timer); clearPrivate(); });

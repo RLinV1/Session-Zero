@@ -16,7 +16,7 @@ async function connected(request:APIRequestContext,name="Browser GM") {
   return {build,token:tokens.access_token};
 }
 async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean;locale?:string}={}) {
-  const session=await connected(request);let token=session.token;let polls=0;
+  const session=await connected(request);let token=session.token;let polls=0;let bridgeFailure=false;
   const rpc=async(method:string,params:unknown)=>{
     const response=await request.post(MCP,{headers:{authorization:`Bearer ${token}`,accept:"application/json, text/event-stream","mcp-protocol-version":"2025-06-18"},data:{jsonrpc:"2.0",id:1,method,params}});
     if(response.status()===401)return {result:{isError:true,content:[],_meta:{"sessionzero/error":{status:401,code:"access"}}}};
@@ -25,7 +25,7 @@ async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean
   const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.build.id,...(options.empty?{}:{mapFiles:[descriptor()],tokenFiles:[descriptor("token")]})}});
   const listed=await rpc("tools/list",{});const open=(listed.result.tools as {name:string;_meta:{ui:{resourceUri:string}}}[]).find((tool)=>tool.name==="studio_open")!;
   const resource=await rpc("resources/read",{uri:open._meta.ui.resourceUri});const html=(resource.result.contents as {text:string}[])[0]!.text;
-  await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {method:string;params:unknown};if(message.method==="tools/call"&&(message.params as {name:string}).name==="studio_snapshot")polls++;const answer=await rpc(message.method,message.params);await route.fulfill({json:answer});});
+  await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {method:string;params:unknown};if(message.method==="tools/call"&&(message.params as {name:string}).name==="studio_snapshot")polls++;const answer=bridgeFailure?{error:{code:-32000,message:"Synthetic authorization cancellation"}}:await rpc(message.method,message.params);await route.fulfill({json:answer});});
   await page.route("**/studio-test-host",(route)=>route.fulfill({contentType:"text/html",body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#121417"><iframe title="Studio" sandbox="allow-scripts" style="border:0;width:100%;height:1350px"></iframe><script>
 const opened=${JSON.stringify(opened.result)};
 window.addEventListener('message',async(event)=>{const message=event.data;if(!message||message.jsonrpc!=='2.0')return;
@@ -41,7 +41,7 @@ else if(message.id!==undefined)respond({});});
   await page.locator("iframe").evaluate((element,{html,helper})=>{(element as HTMLIFrameElement).srcdoc=html.replace("<script type=\"module\">",helper+"<script type=\"module\">");},{html,helper});
   const frame=page.frameLocator("iframe");await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
   if(options.locale)await frame.locator("#language").selectOption(options.locale);
-  return {frame,session,rpc,polls:()=>polls,setToken:(next:string)=>{token=next;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveText("Saved files are up to date");}};
+  return {frame,session,rpc,polls:()=>polls,setToken:(next:string)=>{token=next;},setBridgeFailure:(failed:boolean)=>{bridgeFailure=failed;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveText("Saved files are up to date");}};
 }
 const noOverflow=(frame:FrameLocator)=>frame.locator("body").evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
 test("protected chat intake, picker/device controls, canonical hashes and reopened source (FR-GM-26)",async({page,request},info)=>{
@@ -70,4 +70,11 @@ test("cached binding refuses another owner, clears images and stops polling whil
   await frame.locator("body").evaluate(()=>{Object.defineProperty(document,"hidden",{value:false,configurable:true});document.dispatchEvent(new Event("visibilitychange"));});
   await expect(frame.locator("#status")).toHaveText("This build is unavailable to this connection. Reconnect with its owner.");await expect(frame.locator("#source")).not.toHaveAttribute("src",/data:/);await expect(frame.locator("#files li")).toHaveCount(0);
   await frame.locator("body").evaluate(()=>dispatchEvent(new Event("pagehide")));const ended=polls();await page.waitForTimeout(5500);expect(polls()).toBe(ended);await foreign.close();
+});
+test("a declined bridge refresh pauses automatic requests until explicit retry (FR-GM-26)",async({page,request})=>{
+  const {frame,polls,setBridgeFailure}=await mount(page,request);await expect(frame.locator("#source")).toBeVisible();
+  setBridgeFailure(true);await frame.getByRole("button",{name:"Retry connection"}).click();
+  await expect(frame.locator("#status")).toHaveText("Connection interrupted. Showing the last saved view. Reconnect in your AI app, then retry.");
+  const failed=polls();await page.waitForTimeout(5500);expect(polls()).toBe(failed);await expect(frame.locator("#source")).toBeVisible();
+  setBridgeFailure(false);await frame.getByRole("button",{name:"Retry connection"}).click();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
 });
