@@ -1,3 +1,5 @@
+import { registerStudioMediaRoutes } from "./studioMedia";
+import type { StudioMedia } from "../domain/studioMedia";
 import { randomBytes, randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import type { Express, NextFunction, Request, RequestHandler, Response } from "express";
@@ -245,6 +247,7 @@ function setupView(build: BuildRecord, key: string, data: DraftMapState, file: B
 }
 
 interface Deps {
+  media: StudioMedia;
   store: RoomStore;
   assets: AssetStore;
   uploadDir: string;
@@ -586,8 +589,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   });
 
-  async function discard(id: string, ownerGmId: string) {
-    const closed = await store.closeBuild(id, ownerGmId);
+  async function discard(id: string, ownerGmId: string, unchangedBefore?: string) {
+    const closed = await store.closeBuild(id, ownerGmId, unchangedBefore);
+    await deps.media.sweep();
     for (const key of closed?.objectKeys ?? []) {
       await assets.delete(key).catch(() => console.error("[vtt] could not delete a file of a closed build"));
     }
@@ -685,7 +689,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   const sweepAbandoned = async () => {
     const before = new Date(now() - BUILD_LIMITS.abandonedAfterDays * 24 * 60 * 60_000).toISOString();
     for (const { id, ownerGmId } of await store.listAbandonedBuilds(before)) {
-      await discard(id, ownerGmId).catch(() => console.error("[vtt] could not close an abandoned build"));
+      await discard(id, ownerGmId, before).catch(() => console.error("[vtt] could not close an abandoned build"));
     }
   };
 
@@ -752,6 +756,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       next();
     })().catch(failed(res));
   };
+
+  registerStudioMediaRoutes(app, { store, media: deps.media, studio, grantGuard, limits, sessions, now });
 
   /** One handler on the pass family and, when the Studio is offered, the delegated family too. */
   function aiRoute(method: "get" | "post" | "put", path: string, handler: RequestHandler) {
@@ -823,6 +829,14 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
           ? await image.extract(layout.layout.crop).resize(layout.layout.out.width, layout.layout.out.height, { fit: "fill" })
             .composite([{ input: Buffer.from(layout.layout.svg), top: 0, left: 0 }]).webp({ quality: 80 }).toBuffer()
           : await image.resize(PREVIEW_EDGE, PREVIEW_EDGE, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+        if (res.locals.delegation) {
+          const current = resource && await resolveStudioAccess(store, resource, req.headers.authorization, now());
+          if (!current || typeof current === "string") return studioRefusal(res);
+          if (!current.grant.buildIds.includes(build.id) || (await store.findBuild(build.id, current.grant.ownerGmId))?.status !== "open") return void res.status(404).json({ error: NOT_FOUND });
+        } else if (file.studio) {
+          const current = await store.findBuildByPassHash(passHashOf(req));
+          if (current?.id !== build.id || current.status !== "open" || !current.passExpiresAt || Date.parse(current.passExpiresAt) <= now()) return void res.status(401).json({ error: NOT_A_PASS });
+        }
         res.type("image/webp").send(small);
       } finally {
         previewsRunning--;

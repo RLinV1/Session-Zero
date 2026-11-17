@@ -71,6 +71,8 @@ export function buildMcpApp(options: McpAppOptions) {
   // OAuth metadata and the stub authorization server for the M0 fixture Studio; none of it is under /mcp.
   if (options.studio) app.use(options.studio.auth.router());
 
+  app.use(STUDIO_ACCESS_PATH, (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+
   app.use("/mcp", (req, res, next) => {
     const origin = req.headers.origin;
     if (origin && !allowedOrigins.has(origin)) return void rpcError(res, 403, -32000, "This origin isn't allowed.");

@@ -122,7 +122,7 @@ CHECKS AND HANDOFF
 
 # M1b
 
-Rewritten on 2026-11-16 at the user's request, after the M1a session: M1b is built on top of the unmerged M1a branch, and all of M1 merges to main together. Written for a ChatGPT agent, which first researches and discusses, then builds. The file itself authorizes nothing. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a, and the bullet marked for the user decides whether D8 and D9 storage choices are pre-approved.
+Rewritten on 2026-11-16 at the user's request, after the M1a session: M1b is built on top of the unmerged M1a branch, and all of M1 merges to main together. Written for a ChatGPT agent, which first researches and discusses, then builds. The file itself authorizes nothing. Session note (2026-11-16): the pasted M1b starter had truncated/corrupted lines; the intact saved text below was used to recover those passages. The user subsequently approved the Phase 1 design and autonomous M1b build, including the publication refusal, exact origins and pixel ceiling. Optional AWS test-bucket authorization was offered; isolated local services were selected and AWS access is unused. The real-host run/tunnel still requires a separate yes. Before pasting, check the "APPROVALS" block: it repeats only approvals the user gave for M1a, and the bullet marked for the user decides whether D8 and D9 storage choices are pre-approved.
 
 ```text
 You are joining Session Zero, a browser virtual tabletop (repository RLinV1/Session-Zero), to research, discuss and then build M1b ("protected storage and intake") of its interactive-ai-scene-studio change: tasks 2.3–2.8 in openspec/changes/interactive-ai-scene-studio/tasks.md. Do not start M2 (visible preparation) or later milestones.
@@ -175,4 +175,65 @@ CHECKS AND HANDOFF
 - Save this starter in fresh-session-prompt.md under the "M1b" heading (it is already there; note any edits I made before pasting).
 - Finish by writing the M2 starter, naming the merge of all of M1 into main as its base.
 - End with a short plain report: what was built, what was checked and how, what wasn't, and the decisions waiting on me.
+```
+
+# M2
+
+Prepared by the M1b session on 2026-11-16. This starter authorizes nothing by itself. Its base
+is **the merge of all of M1 into main**, not either unmerged M1 branch. M1b does not start M2.
+
+```text
+Implement only M2 ("visible preparation"), tasks 3.1–3.7 in
+openspec/changes/interactive-ai-scene-studio/tasks.md, for RLinV1/Session-Zero.
+Do not start M3 revision/correction contracts, M4 interaction or M5 publication.
+
+First verify that ALL of M1 has merged into main together: M1a PR #212 plus the stacked
+M1b PR #216 identified in handoff.md. Record the exact main merge commit, and verify it contains
+the M1b implementation/review fixes through `7eadf503` and the final handoff. Require the recorded real ChatGPT map+token-art intake,
+M1a discovery/registration/consent/read/disconnect evidence, and architecture-owner code
+review. If any prerequisite is missing, report it and stop M2; do not merge the PRs yourself
+or substitute an unmerged M1b head as the base.
+
+The required M1 host run is recorded in evidence/m1-host-2026-11-16.md; its scope and
+unrun adversarial host exercises are explicit. At the M1b handoff, architecture-owner and
+glossary-owner reviews and the whole-M1 merge remain pending. This starter does not authorize
+M2 before those gates or turn its existing local/M0 evidence into a new host result.
+
+Read CLAUDE.md, every file in openspec/changes/interactive-ai-scene-studio/ (latest handoff
+first), ADR0073, ADR0053, ADR0002, ADR0054, docs/GLOSSARY-zh-TW.md and the current native
+builder/terrain contracts before editing. Node22, existing npm workspaces and lockfile.
+Create an isolated feat/interactive-ai-scene-studio-m2 worktree from the verified main head.
+Preserve all other branches/worktrees/uncommitted files and the user's development stack.
+
+Investigate the actual map/grid/effective-wall/opening/terrain/placement renderers and current
+tool outcomes. Record the bounded M2 implementation design before dependent code. Reuse
+the private-media plane and server-authorized app calls; M1b's studioFileId is only a source
+display binding, not the active authoring context that M2 must define explicitly.
+
+Deliver shared map rendering with website/embedded adapters; explicit active map/encounter
+context; visible-only current-state updates and teardown cleanup; actual awaiting-input,
+saved/invalid/uncertain states; initial preparation guidance preserving native grid/geometry/
+terrain/token rules; English/zh-TW, keyboard and narrow/fullscreen support. No simulated
+reasoning/progress, no revision promises and no weakening the private-file publication gate.
+
+Preserve server authority, owner choices, grant checks, build quotas/retention, metadata
+privacy, public/private storage separation and all RoomState invariants. Stop and ask before
+shared-schema/authority/privacy changes, a new download origin, making any private bytes
+public, provisioning/policy/production changes or any unapproved real-account action.
+
+Use synthetic accounts/art only. Persistence/storage checks use an isolated Postgres and
+authenticated SeaweedFS/S3 endpoint/bucket. Every started server explicitly sets DATABASE_URL
+and S3_ENDPOINT or S3_AUTODETECT=0. Never use the dev services on3001/5173/5432/8333 or their
+buckets. Missing Docker/Postgres/S3/browser/host proof stays pending, never ticked.
+
+Run npm run lint && npm run typecheck && npm test, the isolated PostgreSQL server suite,
+applicable real-storage and Playwright checks, and an independent diff review with re-review
+of fixes. Prepare the task3.7 real ChatGPT workflow before asking for the separate tunnel/
+account approval. Record actual timings/tool traffic, saved overlays, source/grid/context
+switches and native website agreement; do not call local bridge tests host qualification.
+
+Keep tasks.md/handoff.md/research.md current with exact base, commits, check results and
+remaining gates. Commit/push the M2 branch and open its PR only when that work is authorized;
+never merge/deploy without the user's instruction. Finish with a bounded M3 starter and a
+short report that distinguishes implemented/local/real-host/production evidence.
 ```

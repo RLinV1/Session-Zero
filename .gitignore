@@ -24,3 +24,6 @@ openspec/changes/archive/.openspec-archive.lock
 # Python bytecode from the vision service and its tests.
 __pycache__/
 *.pyc
+
+# Private Studio artwork is never a repository artifact.
+apps/server/studio-private/

@@ -62,6 +62,9 @@ Every Traditional Chinese string in the app, the board, server messages and the 
 | AI app | AI 應用程式 | As the build pages already write it. |
 | Connect / disconnect (an AI app) | 連接／中斷連線 | A connection is 連線. Added 2026-11-16 for delegated Studio access (ADR 0073), pending glossary owner review. |
 | Allow (a request) | 允許 | Added 2026-11-16 with the consent page, pending glossary owner review. |
+| Studio | 工作室 | Session Zero Studio → Session Zero 工作室. Added for M1b on 2026-11-16, pending glossary owner review. |
+| Original file / preview | 原始檔／預覽 | Distinguish byte-identical originals from display derivatives. Added for M1b on 2026-11-16, pending glossary owner review. |
+| ChatGPT Library | ChatGPT 檔案庫 | Provider file retention; distinguish Session Zero's 素材庫. Added for M1b on 2026-11-16, pending glossary owner review. |
 | Chat / mention | 聊天／提及 | |
 | Turn / round | 回合／輪 | "Round 3, Aria's turn" → 第 3 輪，輪到 Aria. |
 | Dice look | 骰子外觀 | |

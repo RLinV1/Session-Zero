@@ -16,10 +16,11 @@ import {
   type ServerMessage,
 } from "@vtt/shared";
 import type { StudioAccessConfig } from "../src/http/studioOAuth";
-import { buildApp, type App } from "../src/app";
+import { buildApp, type App, type AppOptions } from "../src/app";
 import type { Detector, GridDetectionDispatcher } from "../src/domain/gridDetection";
 import type { WallJobQueue } from "../src/domain/wallDetection";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
+import type { RoomStore } from "../src/store/roomStore";
 
 /**
  * Ports `fetch` refuses to connect to (the Fetch standard's "bad ports"), at or above 1024, the
@@ -48,8 +49,8 @@ export async function listenForFetch(app: App): Promise<string> {
  * a REDIS_URL in the environment never reaches tests).
  */
 export async function startServer(
-  store: MemoryRoomStore = new MemoryRoomStore(),
-  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null } = {},
+  store: RoomStore = new MemoryRoomStore(),
+  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null; assets?: AppOptions["assets"]; studioMedia?: AppOptions["studioMedia"]; studioDownloader?: AppOptions["studioDownloader"] } = {},
 ) {
   const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
   const app = await buildApp({
@@ -57,6 +58,7 @@ export async function startServer(
     wallQueue: opts.wallQueue ?? null,
     // Off unless a test turns it on, so a STUDIO_PUBLIC_ORIGIN in the environment never reaches tests.
     studio: opts.studio ?? null,
+    assets: opts.assets, studioMedia: opts.studioMedia, studioDownloader: opts.studioDownloader,
   });
   const base = await listenForFetch(app);
 

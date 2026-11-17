@@ -27,6 +27,8 @@ model Build {
   status        String    @default("open")
   gameProfile   Json?     @map("game_profile")
   /// SHA-256 of the build pass. Null when there is no live pass; the pass itself is never stored.
+  studioIntake  Json?     @map("studio_intake")
+  studioFileId  String?   @map("studio_file_id") @db.Uuid
   passHash      String?   @unique @map("pass_hash")
   passExpiresAt DateTime? @map("pass_expires_at") @db.Timestamptz(6)
   /// The owner's choices (ADR 0053): let the AI's grid count when detection agrees, and let it set walls, doors and windows.
@@ -53,6 +55,7 @@ model BuildFile {
   kind                String
   objectKey           String    @map("object_key")
   url                 String
+  studio              Json?
   originalName        String    @map("original_name")
   width               Int
   height              Int
@@ -489,4 +492,17 @@ model Checkpoint {
   room Room @relation(fields: [roomId], references: [id])
 
   @@map("checkpoints")
+}
+
+/// Durable private-media write intents and deletion retries. No FK: jobs survive deletion of their build/account.
+model StudioMediaJob {
+  id        String   @id @db.Uuid
+  buildId   String   @map("build_id") @db.Uuid
+  state     String
+  keys      String[]
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([state, expiresAt])
+  @@index([buildId])
+  @@map("studio_media_jobs")
 }

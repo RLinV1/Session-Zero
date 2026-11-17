@@ -1,0 +1,69 @@
+import { mkdtemp } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import sharp from "sharp";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { startServer } from "../../server/test/helpers";
+import { connectStudio, TEST_ORIGIN, bearer } from "../../server/test/studioFlow";
+import { LocalStudioMediaStore } from "../../server/src/store/studioMediaStore";
+import { startMcpServer } from "../src/app";
+import { VIEW_SCRIPT } from "../src/studio/viewScript";
+import { studioView } from "../src/studio/view";
+
+const stops:(()=>Promise<void>)[]=[];
+afterEach(async()=>{for(const stop of stops.splice(0).reverse()) await stop();});
+async function fixture() {
+  const root=await mkdtemp(path.join(tmpdir(),"studio-mcp-"));const media=await LocalStudioMediaStore.connect(path.join(root,"private"),path.join(root,"public"));
+  const bytes=await sharp({create:{width:90,height:60,channels:3,background:"#59705f"}}).png().toBuffer();
+  const room=await startServer(undefined,{studio:{publicOrigin:TEST_ORIGIN},studioMedia:media,studioDownloader:async(url)=>url.endsWith("bad")?Buffer.from("bad file"):bytes});stops.push(()=>room.close());
+  const owner=await room.signUp({displayName:"Private owner name"});const {build}=await owner.json<{build:{id:string}}>("POST","/api/builds",{name:"Private build title"});const {tokens}=await connectStudio(room.base,owner,[build.id]);
+  const mcp=await startMcpServer({roomServerUrl:room.base,allowedOrigins:[],studioAccess:{publicOrigin:TEST_ORIGIN}});stops.push(()=>mcp.close());
+  const rpc=async(method:string,params:unknown,token=tokens.access_token)=>{
+    const response=await fetch(`${mcp.url}/studio`,{method:"POST",headers:bearer(token,{"content-type":"application/json",accept:"application/json, text/event-stream","mcp-protocol-version":"2025-06-18"}),body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
+    return {response,body:await response.json() as {result?:{isError?:boolean;content?:{type:string;text?:string}[];structuredContent?:Record<string,unknown>;_meta?:Record<string,unknown>}}};
+  };
+  const call=(name:string,args:Record<string,unknown>,token?:string)=>rpc("tools/call",{name,arguments:args},token);
+  const descriptor=(id:string,suffix="good")=>({file_id:id,download_url:`https://sdmntpreastus3.oaiusercontent.com/${suffix}`,file_name:"Private art filename.png",mime_type:"image/png"});
+  return {room,mcp,owner,build,tokens,rpc,call,descriptor,bytes};
+}
+describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
+  it("opens attached originals with partial outcomes, exposes only ids/status, then recovers through app calls",async()=>{
+    const s=await fixture();const opened=await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")],tokenFiles:[s.descriptor("bad-token","bad"),s.descriptor("token")]});
+    expect(opened.response.status).toBe(200);expect(opened.response.headers.get("cache-control")).toBe("no-store");expect(opened.body.result!.isError).not.toBe(true);
+    const data=opened.body.result!.structuredContent!;expect(data).toMatchObject({buildId:s.build.id,bindingVersion:1,outcomes:[{status:"saved",kind:"map"},{status:"failed",code:"image"},{status:"saved",kind:"token"}]});
+    const cached=JSON.stringify(opened.body);expect(cached).not.toContain("Private owner");expect(cached).not.toContain("Private build");expect(cached).not.toContain("Private art filename");expect(cached).not.toContain(s.tokens.access_token);expect(cached).not.toContain(s.bytes.toString("base64"));expect(cached).not.toContain("download_url");
+    const snapshot=(await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!;
+    expect(snapshot).toMatchObject({ownerName:"Private owner name",buildName:"Private build title"});expect(snapshot.files).toHaveLength(2);
+    const fileId=snapshot.sourceFileId as string;
+    const image=await s.call("studio_get_media",{buildId:s.build.id,fileId});expect(image.body.result!.content).toEqual([]);expect(image.body.result!._meta).toHaveProperty("sessionzero/media");
+    const reopened=await s.call("studio_open",{buildId:s.build.id});expect(reopened.body.result!.structuredContent).toMatchObject({buildId:s.build.id,outcomes:[]});
+    expect(((await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!).sourceFileId).toBe(fileId);
+    const retry=await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("changed-map-id")]});expect(retry.body.result!.isError).not.toBe(true);expect(await s.room.store.listBuildFiles(s.build.id)).toHaveLength(2);
+  });
+  it("retains non-sensitive per-file outcomes when a connection ends after one commit",async()=>{
+    const s=await fixture();const commit=s.room.store.commitStudioFile.bind(s.room.store);let ended=false;
+    vi.spyOn(s.room.store,"commitStudioFile").mockImplementation(async(...args)=>{const saved=await commit(...args);if(!ended){ended=true;await s.room.store.endStudioGrants((await s.room.store.findUserById(s.owner.view!.id))!.ownerId,new Date().toISOString());}return saved;});
+    const response=await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")],tokenFiles:[s.descriptor("token")]});
+    expect(response.body.result!.isError).toBe(true);expect(response.body.result!.structuredContent).toHaveProperty("outcomes");expect((response.body.result!.structuredContent!.outcomes as {status:string}[]).some((o)=>o.status==="saved")).toBe(true);expect(response.body.result!._meta).toHaveProperty("mcp/www_authenticate");expect(JSON.stringify(response.body).includes(s.bytes.toString("base64"))).toBe(false);
+    expect((await s.room.store.listBuildFiles(s.build.id)).length).toBeGreaterThan(0);
+  });
+  it("registers complete file schemas and app-only media tools, with a credential-free content-versioned resource",async()=>{
+    const s=await fixture();const listed=await s.rpc("tools/list",{});const tools=(listed.body.result as unknown as {tools:{name:string;_meta:Record<string,unknown>;inputSchema:Record<string,unknown>}[]}).tools;
+    const open=tools.find((t)=>t.name==="studio_open")!;expect(open._meta["openai/fileParams"]).toEqual(["mapFiles","tokenFiles"]);
+    expect(studioView.uri).toMatch(/^ui:\/\/session-zero\/studio\.[a-f0-9]{16}\.html$/);
+    const schema=JSON.stringify(open.inputSchema);for(const property of ["download_url","file_id","mime_type","file_name"])expect(schema).toContain(property);
+    for(const name of ["studio_snapshot","studio_import_files","studio_bind_file","studio_get_media"])expect(tools.find((t)=>t.name===name)!._meta.ui).toMatchObject({visibility:["app"]});
+    const resource=await s.rpc("resources/read",{uri:studioView.uri});const html=JSON.stringify(resource.body);expect(html).not.toContain(s.tokens.access_token);expect(html).not.toContain(s.build.id);expect(html).not.toContain("Private owner name");expect(html).not.toContain(s.bytes.toString("base64"));
+    for (const forbidden of ["blob:","localStorage","setWidgetState"]) expect(VIEW_SCRIPT.includes(forbidden)).toBe(false);
+  });
+  it("refuses foreign bindings and stale cached ids after reconnecting as another owner; revoked media returns no bytes",async()=>{
+    const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")]});const row=(await s.room.store.listBuildFiles(s.build.id))[0]!;
+    const stranger=await s.room.signUp({displayName:"Other owner"});const {build}=await stranger.json<{build:{id:string}}>("POST","/api/builds",{name:"Other build"});const foreign=await connectStudio(s.room.base,stranger,[build.id]);
+    for(const name of ["studio_open","studio_snapshot","studio_get_media","studio_bind_file"]) {
+      const refused=await s.call(name,{buildId:s.build.id,fileId:row.id},foreign.tokens.access_token);expect(refused.body.result!.isError).toBe(true);expect(JSON.stringify(refused.body)).not.toContain(row.studio!.originalSha256);expect(refused.body.result!._meta).not.toHaveProperty("sessionzero/media");
+    }
+    const grant=(await s.owner.json<{grants:{id:string}[]}>("GET",`/api/builds/${s.build.id}/grants`)).grants[0]!;await s.owner.request("DELETE",`/api/builds/${s.build.id}/grants/${grant.id}`);
+    const revoked=await s.call("studio_get_media",{buildId:s.build.id,fileId:row.id});expect(revoked.response.status).toBe(401);expect(revoked.response.headers.get("cache-control")).toBe("no-store");expect(revoked.body.result).toBeUndefined();
+    const reauthorized=await connectStudio(s.room.base,s.owner,[s.build.id]);expect((await s.call("studio_open",{buildId:s.build.id},reauthorized.tokens.access_token)).body.result!.isError).not.toBe(true);
+  });
+});

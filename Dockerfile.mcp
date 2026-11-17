@@ -16,6 +16,9 @@ FROM deps AS runtime
 ENV NODE_ENV=production
 COPY packages/shared packages/shared
 COPY apps/mcp apps/mcp
+# Static Studio catalogs are shared with the web UI; no web runtime is imported.
+COPY apps/web/src/i18n/en/studioIntake.ts apps/web/src/i18n/en/studioIntake.ts
+COPY apps/web/src/i18n/zh-TW/studioIntake.ts apps/web/src/i18n/zh-TW/studioIntake.ts
 # The built-in maps, which get_map_image reads from disk (design D7).
 COPY apps/web/public/img/hero-map.webp apps/web/public/img/map-*.webp apps/web/public/img/
 USER node

@@ -10,7 +10,11 @@ import type { StudioDelegation } from "./studioStore";
 
 export type BuildStatus = "open" | "closed";
 
+import type { StudioIntakeOutcome, StudioMediaMetadata } from "./studioMedia";
+
 export interface BuildRecord {
+  studioFileId?: string | null;
+  studioIntake?: StudioIntakeOutcome[];
   id: string;
   ownerGmId: string;
   name: string;
@@ -34,6 +38,7 @@ export type NewBuildRecord = Pick<BuildRecord, "id" | "ownerGmId" | "name"> & Pa
 export type BuildFileKind = "map" | "token";
 
 export interface BuildFileRecord {
+  studio?: StudioMediaMetadata | null;
   id: string;
   buildId: string;
   kind: BuildFileKind;
@@ -246,7 +251,7 @@ export interface BuildStore {
    * Closes a build: ends its pass, deletes its unpublished items and files, and keeps the record of
    * what it published. Returns the object keys to delete, or null when the owner has no such build.
    */
-  closeBuild(id: string, ownerGmId: string): Promise<{ objectKeys: string[] } | null>;
+  closeBuild(id: string, ownerGmId: string, unchangedBefore?: string): Promise<{ objectKeys: string[] } | null>;
   /** Open builds not changed since `before`, for the 14-day sweep. */
   listAbandonedBuilds(before: string): Promise<{ id: string; ownerGmId: string }[]>;
   /** After published items were removed: drops those files, and returns those items to draft (or drops them from a closed build). */

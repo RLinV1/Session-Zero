@@ -1,3 +1,4 @@
+import { PRIVATE_PUBLISH_MESSAGE } from "./studioMedia";
 import { randomUUID } from "node:crypto";
 import {
   DEFAULT_GRID,
@@ -92,6 +93,7 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     if (planned) return planned;
     const file = fileById.get(fileId);
     if (!file) { problem(item, "Its file isn't in this build any more."); return null; }
+    if (file.studio) { problem(item, PRIVATE_PUBLISH_MESSAGE); return null; }
     if (file.publishedAssetId) {
       const existing = await store.findAsset(file.publishedAssetId, build.ownerGmId);
       if (!existing) { problem(item, "Its file was published and then deleted from the library."); return null; }

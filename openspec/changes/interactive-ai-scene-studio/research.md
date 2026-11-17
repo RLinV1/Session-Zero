@@ -340,6 +340,56 @@ Base `origin/main` `4033fd4c` (PR #209, M0). Branch `feat/interactive-ai-scene-s
 | 4 | Token verification from `apps/mcp` without a shared secret | `apps/mcp` presents the token it received as the introspection request's own bearer; the answer describes only that token. No configuration secret is needed, and an invalid token learns `{active:false}` and counts against a per-address failure limit. The `aud` check is repeated in `apps/mcp` (tested against a fake introspection answer naming another resource, with a positive control). | [L] |
 | 5 | Real ChatGPT against M1a | Not run in this session (optional, needs the user's go-ahead). The shape matches what ChatGPT used in M0 (DCR public client, `token_endpoint_auth_method: none`, PKCE S256, `resource`, scope from `scopes_supported`). Unverified until run. | — |
 
+## M1b findings — 2026-11-16 (protected storage and intake)
+
+Base M1a `a422cc78e1c8b3cf1533e152e6ac74681411e421`, deliberately unmerged PR #212.
+Design recorded before code in `1a2f7639`; implementation `a0f8e014`, additional proof
+`21bf18b9`. All results here are **[L] local**, including actual Docker services and browser
+engines. None is a real ChatGPT exchange or production qualification.
+
+| Question / experiment | Finding and selected behavior | Reevaluate when |
+| --- | --- | --- |
+| Does an extra SeaweedFS bucket alone make files private? | No. An unconfigured development gateway can allow anonymous operations. The isolated test store has explicit identities; startup creates a synthetic probe and requires anonymous GET, HEAD and listing denial. Tests also keep an ordinary public bucket readable as a control. Runtime private storage never creates a bucket or changes policy. | Any storage/provider/proxy or access-policy change. |
+| Can the old public adapter serve private files safely? | It mirrors files into the public upload directory and serves a local static fallback. A separate adapter is required. Reserved keys never reach the public reader, and encoded paths plus symlink fallback are refused. Legacy public assets remain readable. | Any new media route or fallback. |
+| What if discard races a storage write or S3 finishes after a timeout? | Deleting a job immediately can leave late bytes orphaned. Keep cancelled intents through the one-hour write lease; failed/deduplicated puts get immediate deletion and delayed verification. Both store contracts race a delayed put against discard and prevent expired intents from committing. | Multipart uploads or longer storage operations. |
+| Are Node's address deny lists interchangeable between families? | A mixed BlockList containing IPv4-mapped IPv6 exclusions unexpectedly denied ordinary public IPv4 too. Separate IPv4/IPv6 lists, positive controls, public IPv6 bounds and pinned DNS are covered by downloader tests. No network request can switch from the validated address. | Address-classification or HTTP-client changes. |
+| Does setting the SDK request timeout abort the call? | The installed handler warns unless `throwOnRequestTimeout` is enabled. Private S3 now sets it explicitly; bounded intent cleanup still handles uncertain/late completion. | AWS SDK/handler upgrades. |
+| Can generic JSON parsing expose credentials? | Express can echo malformed JSON in its default error. M1a correction `6dc65192` intercepts OAuth/Studio parser errors, returns catalog-backed no-store errors and does not log the body. It is on M1b only. | Parser/error middleware changes. |
+| How are originals and canonical coordinates proved? | Preserve original bytes/hash; raw dimensions/EXIF orientation are distinct from canonical dimensions and a versioned coordinate identity. All eight EXIF transforms are tested with four colored quadrants, including reflections; the private WebP preview strips orientation metadata. | Any transform/version change. |
+| What does an interrupted batch claim? | Saved identifiers survive later-file errors and post-commit revocation. Definite validation failures differ from unknown transport outcomes. Reconnect and backend receipts resolve uncertain saves without duplicating originals. | New batch/parallel transport. |
+| Did the broader browser failure reveal a product regression? | The combined run exhausted the per-IP OAuth registration fixture budget; fresh server per browser passed all 48 checks. Screenshot inspection also found the synthetic host lacked its mobile viewport declaration; after fixing it, all nine intake checks passed at true 390px. No production rate limit was weakened. | Browser harness or OAuth test isolation changes. |
+| Is real-host behavior now proved? | No. The credential-free resource, attachment metadata, app-only media and reopening pass local bridge/browser tests. The exact pending run is [README.studio-m1.md](../../../apps/mcp/README.studio-m1.md), covering M1a's first real consent too. | Separate user approval for a temporary tunnel and their ChatGPT account. |
+| Can a selectively public S3 rule evade a single probe? | Yes: anonymous reads may be allowed only for a suffix ([AWS examples](https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html), checked 2026-11-16). Independent review found the single-PNG probe insufficient. Qualification now tests all four generated filenames and GET/HEAD/list denial; actual isolated S3 selective-JPEG/WebP/preview policies are refused and probes cleaned. Fixes `334faed8`/`cce83927`, independently re-reviewed. | New object naming shapes. |
+| Can a credential end during an owner media read? | Independent review reproduced sign-out during storage I/O. Owner delivery now rechecks the live website session after reading, alongside build access. Mixed-case OAuth/Studio parser paths also receive the same redaction as Express's case-insensitive routes (`6128a46a`). All three findings and stronger short-secret regression proofs were independently re-reviewed through `cce83927`. | New media/auth middleware paths. |
+
+## M1 real-host findings — 2026-11-16
+
+**[H]** Actual ChatGPT web Work / Plus / GPT-6.1 Terra · Light in Chrome, authorized by the
+user, using only a synthetic Session Zero owner/builds and committed map/token PNGs.
+Initial revision `2729d389`; final product `7eadf503`. **[L]** independent database/storage/
+HTTP checks are distinguished in the [durable redacted record](evidence/m1-host-2026-11-16.md).
+The earlier M1a/M1b tables above retain their original session's evidence scope.
+
+| Question / experiment | Observed result and selected behavior | Reevaluate when |
+| --- | --- | --- |
+| Does the own-server OAuth path work in ChatGPT? | [H] Discovery, DCR, refusal, synthetic sign-in, selected-build consent, granted reads/unselected-build refusal, website disconnect and same-owner reauthorization passed. No OIDC/external IdP/manual client secret. Refused consent created no grant/token. | Host OAuth or authorization-server changes. |
+| Does direct composer intake preserve originals? | [H] The open call took both chat attachments and displayed the saved source/identity/files. [L] Exact disk/recorded/owner-download hashes and canonical dimensions match both committed PNGs. No prepared items. | Host attachment metadata or download origin changes; new origins still require review. |
+| Do host picker/device routes work and deduplicate? | [H] Choose from ChatGPT imported the synthetic map; the device input imported the synthetic token. [L] Exactly two stored files remained, with distinct host receipts resolving to the same originals. | Host file helper changes. |
+| Does language switching update retained outcomes? | [H] It originally left an already displayed Saved status in English. `1a8fbdce` stores catalog keys and retranslates retained status, adds en→zh-TW→en regression. Refreshed resource and repeat actual upload showed `已儲存`. | New asynchronous status surfaces. |
+| Can a cancelled reconnect stay dismissed? | [H] Website revocation initially made each automatic refresh reopen the host connection dialog. `9eb51538` records a D8/ADR refinement before `28b09e99`: pause failed bridge refreshes until explicit Retry/open; keep authorized last view stale and upload controls disabled. Final `7eadf503` stayed dismissed beyond the refresh interval, then explicit Retry/consent recovered the saved view. | Host refresh/reconnect UI or polling changes. |
+| Can pending view operations drift across contexts? | [L] Independent review reproduced delayed picker/device/binding effects on a newer build. `7eadf503` captures initiating build/generation/kind before awaits and rejects stale completions. Re-review found no remaining issues; 78 browser checks pass, including delayed binding and picker/descriptor/device context changes. | New asynchronous UI operations or context-switch behavior. |
+| Does reopen survive backend/page recovery and resource upgrades? | [H] New open without files and full page reload recovered the same owner/build/source/files. An old cached card could stay Opening when its prior content-versioned resource was no longer served; Refresh tools and a new open loaded the current resource. Permanent historical-template replay is not established. | Resource retention/release compatibility changes. |
+| What remains after real cleanup? | [H] Website discard/account deletion and temporary M1 app uninstall completed. [L] Zero users/builds/files/grants/tokens and zero private files; three generated-key-only delayed verification jobs remained until isolated-volume teardown. Synthetic host chats/Library uploads remain under provider retention; earlier M0 apps are untouched. | Cleanup/retention policy changes. |
+| Is every expanded host runbook exercise proved? | No. Deliberate expired descriptor/corrupt mixed batch, second-owner host reauthorization and narrow/keyboard host acceptance were not repeated. Existing automated/M0 coverage remains separate. Required M1 map+token/identity/source/reopen/connection workflow is proved. | A later release's host acceptance scope. |
+| Did main advance while the host run was active? | Yes, to `8c4f82a1`: legacy attack-dice read upgrades/route recovery (#215) and tutorial pacing/practice-map changes (#214). Legacy conversions overlap the store files, outside Studio auth/media/jobs. No main merge/rebase was performed. | Whole-M1 integration into main; retain both store changes. |
+
+Final `7eadf503` repository lint/typecheck/tests/build passed, full isolated Postgres/actual-S3
+suite passed 1,381 tests with five optional skips, and six browser projects passed 78 checks.
+The first database rerun inherited HTTPS cookies and failed two existing HTTP-cookie assertions;
+the full rerun with `COOKIE_SECURE=0` passed without a code change. Owned tunnel/services/
+containers/volumes/credential directory were removed. Architecture-owner code review and
+glossary-owner review remain pending; no M2, AWS or production change.
+
 ## Recording a later finding
 
 Append the question, code commit, dated primary source, exact experiment, observed result, selected approach and reevaluation trigger. Identify stubs and unavailable prerequisites. Store redacted evidence in a durable repository artifact or an explicitly retained location; temporary paths alone are not continuity. Do not commit credentials, private user art or raw authenticated URLs.

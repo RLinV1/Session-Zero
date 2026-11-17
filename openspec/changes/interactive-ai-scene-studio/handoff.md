@@ -1,17 +1,18 @@
-# Planning handoff
+# Implementation handoff
 
 ## Current state
 
 - Date: 2026-11-16 (planning 2026-11-14).
 - Repository: `RLinV1/Session-Zero`, locally named `Virtual-Tabletop`. The existing Git remote still uses the older `Virtual-Tabletop` URL; it was not changed.
-- Baseline inspected and used: `origin/main` at `a86160f584c44c8e8998bc56966e214ff04b5a08`.
+- Original planning baseline: `origin/main` at `a86160f584c44c8e8998bc56966e214ff04b5a08`. Current implementation bases are recorded per session below.
 - Planning branch: `docs/interactive-ai-scene-studio-plan`.
 - Planning worktree: `/private/tmp/session-zero-studio-planning`. Artifacts are repo-relative; a later worktree need not use this temporary path.
 - Original worktree: `/Users/chrispsimadas/.codex/worktrees/ef7e/Virtual-Tabletop`, on `feat/mcp-scene-preparation`. Its pre-existing edits and untracked files are outside this change and must remain untouched.
-- **M1a (2026-11-16):** delegated access implemented on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, in PR #212 (open, not merged; by the user's choice M1b stacks on it and M1 merges whole); see "Latest implementation session — M1a" below. Real-host qualification of M1a is pending.
+- **M1b (2026-11-16):** tasks 2.3–2.8 implemented and verified on `feat/interactive-ai-scene-studio-m1b` from exact M1a `a422cc78`, draft PR #216. Required real ChatGPT intake/identity/recovery passed; independent fixes re-reviewed through `7eadf503`. Architecture-owner code and glossary-owner reviews remain pending. No M2 started.
+- **M1a (2026-11-16):** delegated access on `feat/interactive-ai-scene-studio-m1a` from `origin/main` `4033fd4c`, unmerged PR #212. M1b stacks on it and all of M1 merges whole. First real-host discovery/DCR/consent/read/disconnect qualification passed in the M1b session.
 - Feature implementation: the planning session changed none. The **M0 session (2026-11-14)** migrated `apps/mcp` to MCP SDK 2.x and added the flag-gated, fixture-only `/mcp/studio-m0` proof endpoint; see "Latest implementation session" below. No migration, deployment or production runtime configuration was changed.
 - Planning-context maintenance: `openspec/config.yaml` was corrected to acknowledge implemented accounts, guest rooms, grid detection and build/terrain support; it does not claim the Studio exists.
-- OpenSpec artifacts: drafted for review. All implementation tasks are unchecked. The CLI's artifact `done` / `isComplete` fields indicate that planning files exist, not that runtime tasks or external reviews passed.
+- OpenSpec progress is in tasks.md; local, real-host and production proof remain distinct. CLI artifact `done` / `isComplete` means planning files exist, not that runtime tasks or external reviews passed.
 - First-release image/UVTT boundary: **confirmed by the user on 2026-11-14**. ADR 0073 architecture review: **accepted by Raymond on 2026-11-16 at `6f645f29`** (reported by the user, with Raymond present); ADR 0073 is now Accepted. M0 design amendments: **decided by the user on 2026-11-16** and applied to design.md (research.md "Design amendment decisions"). M0: **complete on 2026-11-16**, including a real-host run of the post-review server (see "M0 close-out" below). Production: **unverified**.
 
 ## Read order
@@ -34,7 +35,7 @@ The user explicitly selected **protected unpublished images**, including new Stu
 
 The user confirmed that image maps and AI-traced geometry fit the first release, with arbitrary editing of imported UVTT walls deferred and existing UVTT workflows preserved. They then asked about starting milestone research. Research can inspect code and primary documentation and update planning evidence; it does not itself authorize a runtime prototype or establish real-host qualification. The first milestone in the packet is M0; M1's auth/private-file implementation depends on the M0 findings.
 
-The user wants autonomous implementation in fresh bounded sessions after the design is agreed. They have authorized planning now. No fresh implementation session has been selected or authorized in this handoff. Do not interpret task files, this handoff or the presence of an M0 prompt as that authorization.
+The user wants autonomous implementation in fresh bounded sessions after the design is agreed. The latest session below records authorization for M1b and its real ChatGPT test. That authorization does not start M2 or permit merging/deployment; later milestones require their own instruction.
 
 ## Review points
 
@@ -91,7 +92,118 @@ Replace this section's latest-session entry with concrete facts and retain usefu
 - Product/architecture review status with the actual reviewer and reviewed revision when supplied.
 - The next permitted milestone and a self-contained starter naming its base and remaining decisions.
 
-## Latest implementation session — M1a, 2026-11-16
+## Latest implementation session — M1b, 2026-11-16
+
+**Authorization and scope:** the saved M1b starter required research/discussion before code.
+The user approved the researched D8/D9 design and autonomous implementation, including the
+exact two download origins, 40-million-pixel bound and private-file publication refusal.
+Design/ADR were recorded in `1a2f7639` before dependent code. The user then authorized the
+real ChatGPT test and its registration, connection, selected-build consent and testing clicks.
+Optional AWS test-bucket authorization was unused: no AWS CLI/MCP/account operation was needed.
+Only tasks 2.3–2.8 were implemented; no M2 overlays, authoring context, revisions or publication aliases.
+
+**Base:** `a422cc78e1c8b3cf1533e152e6ac74681411e421`, the unchanged unmerged M1a head in
+PR #212. New worktree `/private/tmp/session-zero-studio-m1b`, branch
+`feat/interactive-ai-scene-studio-m1b`. Main initially advanced from `4033fd4c` to
+`c007fba33235db37c486907a6918b863d0965b68` (privacy/terms and guest tutorial animation).
+During qualification it advanced another five commits to
+`8c4f82a1d58fb224067fdc76a6fe274c6286c18d`: legacy attack-dice read upgrades/room render
+recovery (#215) and tutorial pacing/practice-map changes (#214). The legacy upgrade touches
+the same store files in imports/build-item/encounter conversion, outside Studio auth/media/jobs;
+future main integration must retain both. No main merge/rebase. M1a and other branches/worktrees
+were untouched; the original M1a worktree remains clean.
+
+**Delivery:** [draft PR #216](https://github.com/RLinV1/Session-Zero/pull/216), base
+`feat/interactive-ai-scene-studio-m1a`, head `feat/interactive-ai-scene-studio-m1b`.
+Final product revision `7eadf5039f2689bf51f697e0ee044f43595688c5`; the final documentation
+commit records host evidence and these check results. Exact pushed head is reported in the
+session's final response/PR. Neither PR is merged. GitHub has no status checks attached to
+this stacked base (the repository's PR workflow targets main); local results below do not
+imply green hosted CI. The connector lacked create-PR permission, so the authenticated local
+GitHub CLI created/updates the authorized PR.
+
+| Commit | Content |
+| --- | --- |
+| `1a2f7639` | Approved exact D8/D9/ADR private layout, intake, recovery and cleanup before code; saved starter approval/corruption note. |
+| `6dc65192` | Separate M1a correction: redact malformed credential JSON bodies. M1b only. |
+| `a0f8e014` | Private disk/S3 adapters, intake/delivery, persistence/migrations/jobs, attachment/open/app-only tools, static en/zh-TW view, tests and host runbook. |
+| `21bf18b9` | Actual 14-day sweep in both stores; true mobile viewport in synthetic host fixture. |
+| `6128a46a` | M1a parser follow-up: case-insensitive OAuth/Studio routes. M1b only. |
+| `334faed8` / `cce83927` | Review fixes: all S3 filenames qualified; owner session rechecked after private reads; stronger parser proof and safe probe cleanup. |
+| `d6182741` | Test-only fix accepts revoked-or-swept grant after proving initially live. Independently re-reviewed. |
+| `1e3b5b07` / `2729d389` | Earlier local evidence, handoff, M2 starter and initial PR receipt. |
+| `1a8fbdce` | Host-found retained-status localization fix, regression and correct isolated Vite launch command. Independently reviewed and rechecked in ChatGPT. |
+| `9eb51538` | Recovery refinement recorded in D8/ADR before dependent fix: pause failed refreshes until explicit Retry/open. |
+| `28b09e99` | Prevent repeated dismissed host reconnect prompts; cancellation regression. |
+| `7eadf503` | Review fixes: capture operation build/generation/kind before awaits; stale picker/device/import/binding results cannot affect another build; regression tests. Independently re-reviewed. |
+| final documentation commit | Actual-host evidence, final checks/cleanup, tasks, research, review disposition and refreshed M2 starter. |
+
+**Delivered:** new private originals/WebP previews use a separate disk directory or explicit
+private S3 bucket, never public uploads/mirror/fallback. Guarded intake preserves exact original
+hash, raw/oriented dimensions and canonical identity, counts preview quota bytes, deduplicates
+receipts/content and retains per-file outcomes. Downloads enforce the approved exact origins,
+public pinned DNS, size/time/redirect bounds and no forwarded credentials. The credential-free
+content-hashed view obtains images only through authorized app-only calls and `data:` URLs;
+open results contain identifiers/status. Reopen/reauthorization recovers saved state; foreign
+bindings clear it. Failed refreshes pause until explicit recovery; pending UI operations remain
+bound to their initiating context. Durable cleanup covers late writes, discard, account removal,
+14-day abandonment and restart. Private dependencies cannot publish before M5; legacy/public
+behavior remains valid. No shared room schema or delegated authority change.
+
+**Checks:** Node 22.23.2, existing lockfile, fresh `npm ci`. On final product `7eadf503`,
+`npm run lint && npm run typecheck && npm test && npm run build` passes: shared 1,885;
+MCP 283; server 1,151 / 64 optional skips; web 1,937; benchmark 2. Full isolated Postgres/S3
+server suite: 1,381 passed / five optional skips, including all six real private-S3 cases.
+The first final database run inherited HTTPS `COOKIE_SECURE=1`, failing two existing HTTP-cookie
+assertions; the entire suite passed after explicitly restoring `COOKIE_SECURE=0`, with no code
+change. All 78 relevant Playwright checks pass across six fresh-server browser projects,
+including true narrow layouts, cancellation pause/Retry and delayed operation context races.
+Earlier unchanged-backend proofs include actual Docker Postgres/S3 restart with recovered
+grant/source/retried deletion, additive migrations/schema diff, local MCP container build/health,
+and actual selective-public S3 controls. OpenSpec strict validation and local links pass.
+[Earlier local evidence](evidence/m1b-2026-11-16.md) preserves revision-specific counts.
+
+**Actual host:** [durable redacted qualification](evidence/m1-host-2026-11-16.md), ChatGPT web
+Work / Plus / GPT-6.1 Terra · Light in native Chrome. Actual discovery/DCR, cancelled consent,
+selected-build consent, granted reads/unselected refusal, composer map+token originals,
+inline/expanded source/identity, host picker and device intake/deduplication, en/zh-TW,
+reopen/reload, website disconnect and explicit Retry/same-owner reauthorization passed.
+Independent recorded/disk/owner-download hashes match both committed fixtures; two files
+remain after repeat selections, with zero prepared items. The final `7eadf503` resource passed
+disconnect dismissal and explicit Retry in a fresh conversation. Deliberate host expiry/corrupt
+batch, second-owner reauthorization and narrow/keyboard host exercises were not repeated;
+automated/M0 evidence remains separately labelled. Old cached template cards may need Refresh
+tools plus a new open call after a resource-version change; permanent old-template replay is
+not claimed.
+
+**Independent review:** the separate read-only reviewer established and re-reviewed the core
+S3 suffix, owner-session race and mixed-case redaction defects, including the stronger parser
+assertion and test-isolation fix. It reviewed the host localization change, then reproduced
+two context races in the recovery fix. `7eadf503` resolves stale binding and pending picker/
+descriptor/device/import effects. Final independent re-review through `7eadf503`: no remaining
+findings. The subsequent 78 browser checks pass. This is not architecture-owner review.
+
+**Isolation and cleanup:** earlier local project `sz-studio-m1b-20261116` was removed before
+the host run. Host/final-check project `sz-studio-m1b-0fcf88a7` used Postgres17 on55434,
+authenticated SeaweedFS on18334 and separate throwaway buckets/config. The host used private
+local disk. One root Vite command briefly launched the owned process on default5173; it was
+stopped immediately without test requests and the runbook now uses the workspace command
+with `--strictPort` on5189. No existing development service/database/bucket was used or changed.
+Website discard/account deletion left zero synthetic users/builds/files/grants/tokens and zero
+private files; three generated-key-only delayed verification jobs remained under their safety
+lease. The temporary M1 ChatGPT app was uninstalled; earlier M0 apps were untouched. Synthetic
+test chats/artwork remain in ChatGPT history/Library. Tunnel stopped, then server/MCP/Vite;
+no listeners on3109/3119/5189. Compose `down -v` removed both containers, volumes and network;
+the owned credential/config/media directory was deleted. No raw authenticated logs or account
+profile screenshots were committed. No AWS, production, DNS or edge changes.
+
+**Remaining gates and merge plan:** tasks 2.3–2.8 are verified; architecture-owner code review
+and glossary-owner review remain pending. Keep PR #212 and #216 unmerged until the user directs
+the whole-M1 merge to main. Production is unverified. The [M2 starter](fresh-session-prompt.md)
+names **that whole-M1 merge into main** as its base and requires the actual host/review records;
+do not use an unmerged M1b head or start M2 now.
+
+## Previous implementation session — M1a, 2026-11-16
 
 **Authorization:** the user's M1a starter (saved in [fresh-session-prompt.md](fresh-session-prompt.md) "M1a"): tasks 2.1–2.2 only; commit, push and open a PR, no merge; no production, DNS, edge or cloud change; real ChatGPT check optional and only on the user's yes. Recorded approvals: ADR 0073 accepted by Raymond at `6f645f29` (reported by the user); M0 amendments approved by the user on 2026-11-16; implementation choices inside D7 pre-approved in the starter. Nothing on the starter's stop list (external IdP or OIDC, `packages/shared` schema change, owner-choice/publication/room/GM/library authority for a delegated credential, other authority or privacy change) was needed or done.
 
