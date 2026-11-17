@@ -3036,12 +3036,10 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .example-cursor { position: absolute; left: 0; top: 0; }
 .example-cursor svg { display: block; fill: #fff; stroke: #111; stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5)); }
 .example-click { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 3px solid #ffc400; background: rgb(255 196 0 / 0.3); animation: example-click 0.55s ease-out forwards; }
-.example-drag { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: top left; background: rgb(255 196 0 / 0.18); }
 .example-cursor.is-pressed::before { content: ""; position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border: 2px solid #ffc400; border-radius: 50%; background: rgb(255 196 0 / 0.25); }
 @keyframes example-click { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
 @media (prefers-reduced-motion: no-preference) {
   .example-cursor { transition: transform 0.45s cubic-bezier(0.77, 0, 0.175, 1); }
-  .example-drag { transition: transform 0.45s cubic-bezier(0.77, 0, 0.175, 1); }
 }
 [data-tutorial-ring] { outline: 3px solid #ffc400; outline-offset: 3px; border-radius: var(--radius-control); box-shadow: 0 0 0 6px rgb(255 196 0 / 0.25); }
 .tutorial-ex { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
