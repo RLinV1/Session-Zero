@@ -9,10 +9,12 @@ describe("Studio and OAuth malformed-body privacy (FR-GM-26)", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const marker = "synthetic-secret-marker-not-a-real-token";
     try {
-      for (const route of ["/api/oauth/token", "/api/studio/builds/example/intake"]) {
+      for (const route of ["/api/oauth/token", "/api/OAUTH/token", "/API/Studio/builds/example/intake", "/api/studio/builds/example/intake", "/api/STUDIO"]) {
         const response = await fetch(server.base + route, { method: "POST", headers: { "content-type": "application/json" }, body: `{"download_url":"${marker}",` });
         expect(response.status).toBe(400); expect(response.headers.get("cache-control")).toBe("no-store");
         expect((await response.text()).includes(marker)).toBe(false);
+        const scalar = await fetch(server.base + route, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(marker) });
+        expect(scalar.status).toBe(400); expect((await scalar.text()).includes(marker)).toBe(false);
       }
       expect(JSON.stringify(log.mock.calls).includes(marker)).toBe(false);
     } finally { await server.close(); }
