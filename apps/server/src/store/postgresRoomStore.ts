@@ -1,3 +1,4 @@
+import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
 import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
@@ -135,6 +136,21 @@ async function assertDelegation(tx: Prisma.TransactionClient, delegation: Studio
   if (!delegationAllows(delegation, token && toStudioTokenRecord(token), grant && toStudioGrantRecord(grant), build)) throw new StudioAccessEndedError();
 }
 
+async function queueStudioDeletion(tx: Prisma.TransactionClient, file: BuildFileRecord) {
+  if (file.studio) await tx.studioMediaJob.create({ data: { id: randomUUID(), buildId: file.buildId, keys: mediaKeys(file), state: "delete", expiresAt: new Date() } });
+}
+async function closeStudioBuild(tx: Prisma.TransactionClient, buildId: string) {
+  await tx.studioMediaJob.updateMany({ where: { buildId, state: "write" }, data: { state: "cancelled" } });
+  const grants = await tx.studioGrant.findMany({ where: { buildIds: { has: buildId } }, orderBy: { id: "asc" }, select: { id: true } });
+  for (const { id } of grants) {
+    await tx.$executeRaw`SELECT 1 FROM studio_grants WHERE id = ${id}::uuid FOR UPDATE`;
+    const grant = await tx.studioGrant.findUnique({ where: { id } });
+    if (!grant) continue;
+    const buildIds = grant.buildIds.filter((id) => id !== buildId);
+    await tx.studioGrant.update({ where: { id }, data: { buildIds, ...(!buildIds.length && { revokedAt: grant.revokedAt ?? new Date() }) } });
+  }
+}
+
 const isoOrNull = (date: Date | null) => date?.toISOString() ?? null;
 
 function toStudioClientRecord(row: StudioOAuthClient): StudioClientRecord {
@@ -169,17 +185,14 @@ function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean; aiTerrain
 }
 
 async function readBuildFileUsage(client: Pick<Prisma.TransactionClient, "buildFile">, buildId: string): Promise<BuildFileUsage> {
-  const [all, maps] = await Promise.all([
-    client.buildFile.aggregate({ where: { buildId }, _count: true, _sum: { sizeBytes: true } }),
-    client.buildFile.count({ where: { buildId, kind: "map" } }),
-  ]);
-  return { files: all._count, maps, bytes: all._sum.sizeBytes ?? 0 };
+  const files = (await client.buildFile.findMany({ where: { buildId } })).map(toBuildFileRecord);
+  return { files: files.length, maps: files.filter((f) => f.kind === "map").length, bytes: files.reduce((sum, f) => sum + (f.studio?.totalBytes ?? f.sizeBytes), 0) };
 }
 
 function toBuildRecord(row: Build): BuildRecord {
   return {
     id: row.id, ownerGmId: row.ownerGmId, name: row.name, status: row.status as BuildStatus,
-    gameProfile: row.gameProfile as GameProfile | null,
+    gameProfile: row.gameProfile as GameProfile | null, studioFileId: row.studioFileId, studioIntake: row.studioIntake === null ? [] : StudioIntakeOutcome.array().parse(row.studioIntake),
     passHash: row.passHash, passExpiresAt: row.passExpiresAt?.toISOString() ?? null,
     aiGrid: row.aiGrid, aiWalls: row.aiWalls, aiTerrain: row.aiTerrain,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
@@ -189,7 +202,7 @@ function toBuildRecord(row: Build): BuildRecord {
 function toBuildFileRecord(row: BuildFile): BuildFileRecord {
   return {
     ...row,
-    kind: row.kind as BuildFileKind,
+    kind: row.kind as BuildFileKind, studio: row.studio === null ? null : StudioMediaMetadata.parse(row.studio),
     grid: row.grid as GridSpec | null,
     board: row.board as LibraryMapBoard | null,
     detectionError: row.detectionError as DetectionError | null,
@@ -984,6 +997,7 @@ export class PostgresRoomStore implements RoomStore {
       await tx.buildFile.create({
         data: {
           ...file,
+          studio: file.studio ? file.studio as Prisma.InputJsonValue : Prisma.DbNull,
           grid: file.grid === null ? Prisma.DbNull : (file.grid as Prisma.InputJsonValue),
           board: file.board === null ? Prisma.DbNull : (file.board as Prisma.InputJsonValue),
           detectionResult: file.detectionResult === null ? Prisma.DbNull : (file.detectionResult as Prisma.InputJsonValue),
@@ -993,6 +1007,69 @@ export class PostgresRoomStore implements RoomStore {
       });
       await tx.build.update({ where: { id: file.buildId }, data: { updatedAt: new Date() } });
     });
+  }
+
+  async recordStudioIntake(buildId: string, outcome: StudioIntakeOutcome, delegation: StudioDelegation) {
+    await this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, buildId);
+      await assertDelegation(tx, delegation, build);
+      const row = await tx.build.findUniqueOrThrow({ where: { id: buildId }, select: { studioIntake: true } });
+      const previous = row.studioIntake === null ? [] : StudioIntakeOutcome.array().parse(row.studioIntake);
+      await tx.build.update({ where: { id: buildId }, data: { studioIntake: [...previous.filter((o) => o.id !== outcome.id), outcome].slice(-20) as Prisma.InputJsonValue } });
+    });
+  }
+
+  async startStudioMedia(job: StudioMediaJob, delegation: StudioDelegation) {
+    await this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, job.buildId);
+      await assertDelegation(tx, delegation, build);
+      await tx.studioMediaJob.create({ data: { ...job, expiresAt: new Date(job.expiresAt) } });
+    });
+  }
+  async commitStudioFile(file: BuildFileRecord, limits: BuildFileLimits, delegation: StudioDelegation) {
+    return this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, file.buildId);
+      await assertDelegation(tx, delegation, build);
+      await tx.$executeRaw`SELECT 1 FROM studio_media_jobs WHERE id = ${file.id}::uuid FOR UPDATE`;
+      const intent = await tx.studioMediaJob.findUnique({ where: { id: file.id } });
+      if (intent?.state !== "write") throw new StudioMediaConflictError();
+      const existing = duplicateStudioFile((await tx.buildFile.findMany({ where: { buildId: file.buildId } })).map(toBuildFileRecord), file);
+      if (existing) {
+        await tx.studioMediaJob.update({ where: { id: file.id }, data: { state: "delete" } });
+        existing.studio!.receiptKeys = [...new Set([...existing.studio!.receiptKeys, ...file.studio!.receiptKeys])].slice(-20);
+        await tx.buildFile.update({ where: { id: existing.id }, data: { studio: existing.studio as Prisma.InputJsonValue } });
+        return { file: existing, created: false };
+      }
+      assertBuildFileFits(await readBuildFileUsage(tx, file.buildId), { ...file, sizeBytes: file.studio?.totalBytes ?? file.sizeBytes }, limits);
+      const row = await tx.buildFile.create({ data: { ...file, studio: file.studio as Prisma.InputJsonValue,
+        grid: Prisma.DbNull, board: Prisma.DbNull, detectionResult: Prisma.DbNull,
+        detectionUpdatedAt: file.detectionUpdatedAt ? new Date(file.detectionUpdatedAt) : null, createdAt: new Date(file.createdAt) } });
+      await tx.studioMediaJob.delete({ where: { id: file.id } });
+      await tx.build.update({ where: { id: file.buildId }, data: { updatedAt: new Date() } });
+      return { file: toBuildFileRecord(row), created: true };
+    });
+  }
+  async bindStudioFile(buildId: string, fileId: string | null, delegation: StudioDelegation) {
+    await this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, buildId);
+      await assertDelegation(tx, delegation, build);
+      if (fileId && !await tx.buildFile.findFirst({ where: { id: fileId, buildId } })) throw new StudioMediaConflictError();
+      await tx.build.update({ where: { id: buildId }, data: { studioFileId: fileId } });
+    });
+  }
+  async failStudioMedia(id: string) { await this.prisma.studioMediaJob.updateMany({ where: { id }, data: { state: "delete" } }); }
+  async listStudioMediaJobs(now: string) { return (await this.prisma.studioMediaJob.findMany({ where: { OR: [{ state: "delete" }, { expiresAt: { lte: new Date(now) } }] }, take: 100, select: { id: true } })).map((j) => j.id); }
+  async claimStudioMediaDeletion(id: string, now: string): Promise<StudioMediaJob | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const claim = await tx.studioMediaJob.updateMany({ where: { id, OR: [{ state: "delete" }, { expiresAt: { lte: new Date(now) } }] }, data: { state: "delete" } });
+      if (!claim.count) return null;
+      const job = await tx.studioMediaJob.findUniqueOrThrow({ where: { id } });
+      return { ...job, state: "delete", expiresAt: job.expiresAt.toISOString() };
+    });
+  }
+  async finishStudioMediaDeletion(id: string, now: string) {
+    await this.prisma.studioMediaJob.updateMany({ where: { id, state: "delete", expiresAt: { gt: new Date(now) } }, data: { state: "cancelled" } });
+    await this.prisma.studioMediaJob.deleteMany({ where: { id, state: "delete", expiresAt: { lte: new Date(now) } } });
   }
 
   async listBuildFiles(buildId: string) {
@@ -1068,6 +1145,7 @@ export class PostgresRoomStore implements RoomStore {
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
     return missingImageAsError(() => this.prisma.$transaction(async (tx) => {
       await lockOpenBuild(tx, plan.buildId);
+      if (await tx.buildFile.count({ where: { id: { in: plan.assets.map((a) => a.fileId) }, studio: { not: Prisma.DbNull } } })) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
       const scope = { ownerGmId: plan.ownerGmId };
       await lockUploadAllowance(tx, scope);
       assertFitsAllowance(await readUploadUsage(tx, scope), { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) }, allowance);
@@ -1109,16 +1187,18 @@ export class PostgresRoomStore implements RoomStore {
     }, { timeout: 30_000, maxWait: 10_000 }));
   }
 
-  async closeBuild(id: string, ownerGmId: string) {
+  async closeBuild(id: string, ownerGmId: string, unchangedBefore?: string) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
-      const build = await tx.build.findFirst({ where: { id, ownerGmId }, select: { id: true } });
+      const build = await tx.build.findFirst({ where: { id, ownerGmId, ...(unchangedBefore && { updatedAt: { lt: new Date(unchangedBefore) } }) }, select: { id: true } });
       if (!build) return null;
-      const files = await tx.buildFile.findMany({ where: { buildId: id, publishedAssetId: null }, select: { id: true, objectKey: true } });
+      const files = (await tx.buildFile.findMany({ where: { buildId: id, publishedAssetId: null } })).map(toBuildFileRecord);
+      await closeStudioBuild(tx, id);
+      for (const file of files) await queueStudioDeletion(tx, file);
       await tx.buildFile.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
       await tx.buildItem.deleteMany({ where: { buildId: id, publishedId: null } });
-      await tx.build.update({ where: { id }, data: { status: "closed", passHash: null, passExpiresAt: null, updatedAt: new Date() } });
-      return { objectKeys: files.map((f) => f.objectKey) };
+      await tx.build.update({ where: { id }, data: { status: "closed", studioFileId: null, studioIntake: Prisma.DbNull, passHash: null, passExpiresAt: null, updatedAt: new Date() } });
+      return { objectKeys: files.filter((f) => !f.studio).map((f) => f.objectKey) };
     });
   }
 
@@ -1419,7 +1499,9 @@ export class PostgresRoomStore implements RoomStore {
       // So an AI saving at this moment waits, rather than making the foreign keys refuse the delete.
       for (const id of [...buildIds].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       // A published file's object belongs to its library row, which is collected below.
-      const buildFiles = await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, publishedAssetId: null }, select: { objectKey: true } });
+      const buildFiles = (await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, publishedAssetId: null } })).map(toBuildFileRecord);
+      for (const id of buildIds) await closeStudioBuild(tx, id);
+      for (const file of buildFiles) await queueStudioDeletion(tx, file);
       await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.buildFile.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.build.deleteMany({ where: { ownerGmId } });
@@ -1444,7 +1526,7 @@ export class PostgresRoomStore implements RoomStore {
         objectKeys: [
           ...looks.flatMap((l) => Object.values(toDiceLookRecord(l).faces).map((f) => f.objectKey)),
           ...assets.map((a) => a.objectKey).filter((k) => !k.startsWith("shipped:")),
-          ...buildFiles.map((f) => f.objectKey),
+          ...buildFiles.filter((f) => !f.studio).map((f) => f.objectKey),
         ],
       };
     });

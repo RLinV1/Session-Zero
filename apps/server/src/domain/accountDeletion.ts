@@ -13,6 +13,7 @@ export function accountDeletion(deps: {
   store: RoomStore;
   registry: Pick<RoomRegistry, "closeCredentials">;
   assets: AssetStore;
+  afterDeleted?: () => Promise<void>;
   rooms: Pick<RoomLifecycle, "deleteRoomFully">;
 }) {
   const { store, registry, assets, rooms } = deps;
@@ -28,6 +29,7 @@ export function accountDeletion(deps: {
         console.error(`[vtt] could not delete object ${key} of a deleted account`, err);
       });
     }
+    await deps.afterDeleted?.();
     return true;
   };
 }

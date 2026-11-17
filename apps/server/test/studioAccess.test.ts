@@ -439,10 +439,13 @@ describe("delegated Studio access is refused or has no effect (FR-GM-26, FR-GM-2
 
   it("a closed build drops out of its grant", async () => {
     const { account, id } = await startBuild();
-    const { tokens } = await connectStudio(server.base, account, [id]);
+    const other = await startBuild(account, "Retained build");
+    const { tokens } = await connectStudio(server.base, account, [id, other.id]);
     expect((await account.request("DELETE", `/api/builds/${id}`)).status).toBe(204);
     expect((await call(tokens.access_token, "GET", `/api/studio/builds/${id}`)).status).toBe(404);
-    expect((await (await call(tokens.access_token, "GET", "/api/studio/builds")).json() as { builds: unknown[] }).builds).toEqual([]);
+    expect((await (await call(tokens.access_token, "GET", "/api/studio/builds")).json() as { builds: { id: string }[] }).builds.map((b) => b.id)).toEqual([other.id]);
+    expect((await account.request("DELETE", `/api/builds/${other.id}`)).status).toBe(204);
+    expect((await call(tokens.access_token, "GET", "/api/studio/builds")).status).toBe(401);
   });
 });
 

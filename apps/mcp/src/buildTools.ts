@@ -1,3 +1,4 @@
+import { registerStudioTools } from "./studio/tools";
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { BUILD_LIMITS, BuildPass, DraftEncounter, DraftMap, GameProfile, MAX_TERRAIN_CELLS } from "@vtt/shared";
 import { z } from "zod";
@@ -229,7 +230,7 @@ export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
 const buildIdArg = z.uuid().describe("The build's id, from list_builds.");
 
 /** The tools at /mcp/studio (ADR 0073, design D7). */
-export const STUDIO_TOOLS = ["list_builds", "get_build", ...SHARED_TOOLS.map((t) => t.name), CHECK_TOOL.name];
+export const STUDIO_TOOLS = ["studio_open", "studio_snapshot", "studio_import_files", "studio_bind_file", "studio_get_media", "list_builds", "get_build", ...SHARED_TOOLS.map((t) => t.name), CHECK_TOOL.name];
 
 /**
  * The delegated Studio tools at /mcp/studio (ADR 0073, design D7 "M1a implementation record"): the
@@ -240,6 +241,7 @@ export const STUDIO_TOOLS = ["list_builds", "get_build", ...SHARED_TOOLS.map((t)
  */
 export function createStudioBuildMcpServer(deps: BuildToolDeps, token: string): McpServer {
   const server = new McpServer({ name: "session-zero-studio", version: "1.0.0" }, { instructions: STUDIO_SERVER_INSTRUCTIONS });
+  registerStudioTools(server, { ...deps, token });
   const register = (spec: BuildTool) => {
     server.registerTool(spec.name, { title: spec.title, description: spec.description, inputSchema: z.object({ buildId: buildIdArg, ...spec.shape }) },
       ((args: { buildId: string } & Record<string, unknown>) => guarded(spec.name, () => {
@@ -263,7 +265,7 @@ export function createStudioBuildMcpServer(deps: BuildToolDeps, token: string): 
         ...build,
         fieldGuide: FIELD_GUIDE,
         limits: BUILD_LIMITS,
-        upload: { note: "Files can't be added through this connection yet. Ask the user to add maps and token art on the build page. Rules and character sheets stay with you: they aren't uploaded." },
+        upload: { note: "Use studio_open with the attached mapFiles/tokenFiles to add originals, or the Studio Add files controls. Rules and character sheets stay in chat. Private file dependencies remain drafts until protected publication is available." },
       });
     }));
   SHARED_TOOLS.forEach(register);

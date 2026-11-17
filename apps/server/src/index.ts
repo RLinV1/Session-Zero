@@ -1,3 +1,4 @@
+import { createStudioMediaStore } from "./store/studioMediaStore";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,8 +42,9 @@ await seedDevAccount(store);
 const app = await buildApp({
   store,
   assets: await createAssetStore(uploadDir),
+  studioMedia: await createStudioMediaStore(uploadDir),
   uploadDir,
   logger: httpLogFromEnv(),
 });
-await app.listen({ port, host: "0.0.0.0" });
+await app.listen({ port, host: process.env.HOST ?? "0.0.0.0" });
 console.log(`[vtt] server on http://localhost:${port} (health: /health)`);

@@ -4,6 +4,19 @@ import type { ServerEn } from "./en";
 /** Traditional Chinese for `en.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const serverZhTW = {
   "studio.invalidJson": "無效的 JSON 要求。",
+  "studio.media.origin": "尚未核准這個檔案下載來源。請重新選取或附加檔案；新的來源需要管理員檢視。",
+  "studio.media.expired": "這個檔案連結已過期或無法使用。請重新選取或附加原始檔案。",
+  "studio.media.download": "無法安全下載原始檔案。請重新選取或附加檔案。",
+  "studio.media.size": "工作室圖片上限為 25 MiB；預覽也必須符合受保護的傳輸大小限制。",
+  "studio.media.image": "請使用可讀取的單張 PNG、JPEG 或 WebP 圖片：每邊最多 16384 像素，解碼後最多 4000 萬像素。",
+  "studio.media.busy": "工作室正在處理其他上傳。請稍候再試。",
+  "studio.media.storage": "受保護的媒體儲存空間目前無法使用。請重新連線檢查已儲存的檔案，再重試缺少的原始檔。",
+  "studio.media.limit": "這次上傳超過建置限制。請移除檔案或新增建置。",
+  "studio.media.access": "這個工作室連線已結束。請重新連線，再重試尚未儲存的檔案。",
+  "studio.media.missing": "沒有這個建置或檔案。",
+  "studio.media.invalid": "這個工作室檔案要求無效。",
+  "studio.media.publish": "目前尚無法發布工作室的私人檔案。請保留草稿，等待受保護的發布功能。",
+
   "api.signInRequired": "請先登入",
   "api.notFromApp": "這項請求不是由 Session Zero 發出。",
   "api.currentPasswordWrong": "目前的密碼不正確",

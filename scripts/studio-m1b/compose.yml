@@ -1,0 +1,30 @@
+# Only an isolated throwaway project. Never pass the development stack's project name or volumes.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: ${STUDIO_TEST_PG_PASSWORD:?required}
+      POSTGRES_DB: studio_m1b
+    ports: ["127.0.0.1:${STUDIO_TEST_PG_PORT:-55434}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio -d studio_m1b"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: ["server", "-s3", "-s3.config=/run/studio-s3.json", "-dir=/data"]
+    ports: ["127.0.0.1:${STUDIO_TEST_S3_PORT:-18334}:8333"]
+    volumes:
+      - "s3data:/data"
+      - "${STUDIO_TEST_S3_CONFIG:?required}:/run/studio-s3.json:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+volumes:
+  pgdata:
+  s3data:

@@ -48,7 +48,9 @@ export class SeqConflictError extends Error {
  *  - events are never updated or deleted, except that `deleteRoom` erases a whole room's
  *    log together with the room (ADR 0009).
  */
-export interface RoomStore extends LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
+import type { StudioMediaPersistence } from "./studioMedia";
+
+export interface RoomStore extends StudioMediaPersistence, LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;

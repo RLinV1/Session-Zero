@@ -8,6 +8,19 @@ import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
  */
 export const serverEn = {
   "studio.invalidJson": "Invalid JSON request.",
+  "studio.media.origin": "This file download origin is not approved. Select or attach the file again; a new origin needs operator review.",
+  "studio.media.expired": "This file link has expired or is unavailable. Select or attach the original file again.",
+  "studio.media.download": "The original file could not be downloaded safely. Select or attach it again.",
+  "studio.media.size": "Studio images must be at most 25 MiB; their previews must fit the protected delivery limit.",
+  "studio.media.image": "Use a readable, single-frame PNG, JPEG or WebP image: at most 16384 pixels per side and 40 million decoded pixels.",
+  "studio.media.busy": "Studio is handling other uploads. Wait a moment, then try again.",
+  "studio.media.storage": "Protected media storage is unavailable. Reconnect to check saved files, then retry any missing originals.",
+  "studio.media.limit": "This upload exceeds the build limits. Remove files or start another build.",
+  "studio.media.access": "This Studio connection has ended. Reconnect, then retry the files that were not saved.",
+  "studio.media.missing": "No such build or file.",
+  "studio.media.invalid": "This Studio file request is invalid.",
+  "studio.media.publish": "Private Studio files cannot be published yet. Keep this draft until protected publication is available.",
+
   // Accounts and sign-in.
   "api.signInRequired": "Sign in to do that",
   "api.notFromApp": "This request didn't come from the app",

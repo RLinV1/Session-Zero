@@ -1,4 +1,8 @@
 import { privateJson } from "./http/privateJson";
+import { lstat } from "node:fs/promises";
+import { StudioMedia } from "./domain/studioMedia";
+import type { OriginalDownloader } from "./domain/studioDownload";
+import { isPrivateMediaKey, type StudioMediaStore } from "./store/studioMediaStore";
 import { registerRoomPreparation } from "./http/roomPreparation";
 import { registerMapLibraryRoutes } from "./http/mapLibrary";
 import { registerUvttRoutes } from "./http/uvttRoutes";
@@ -41,6 +45,8 @@ export interface AppOptions {
   uploadDir: string;
   /** Defaults to local disk, which is what tests and a container-less `pnpm dev` use. */
   assets?: AssetStore;
+  studioMedia?: StudioMediaStore | null;
+  studioDownloader?: OriginalDownloader;
   logger?: boolean;
   /** Browser origin allowed to open a socket; Socket.IO enforces CORS itself. */
   clientOrigin?: string;
@@ -94,6 +100,7 @@ export interface App {
   sweepAbandonedBuilds(): Promise<void>;
   /** The hourly sweep of expired Studio tokens, ended grants and unused clients (design D7), on demand. */
   sweepStudio(): Promise<void>;
+  sweepStudioMedia(): Promise<void>;
   listen(opts: { port: number; host: string }): Promise<void>;
   close(): Promise<void>;
 }
@@ -102,6 +109,8 @@ export async function buildApp({
   store,
   uploadDir,
   assets,
+  studioMedia = null,
+  studioDownloader,
   logger = false,
   clientOrigin = process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
   detector,
@@ -126,6 +135,10 @@ export async function buildApp({
     maxHttpBufferSize: 64 * 1024,
   });
   const assetStore = assets ?? new LocalDiskAssetStore(uploadDir);
+  const media = new StudioMedia(store, studioMedia, studioDownloader, now);
+  const internalAssets: AssetStore = { ...assetStore, put: assetStore.put.bind(assetStore), delete: assetStore.delete.bind(assetStore), sizeOf: assetStore.sizeOf.bind(assetStore),
+    readPrivate: (key, maxBytes) => isPrivateMediaKey(key) ? studioMedia?.read(key, maxBytes) ?? Promise.resolve(null) : assetStore.readPrivate(key, maxBytes) };
+  await media.sweep();
   // Wall analysis results are suggestions held here; a room reads them only when its GM applies
   // walls, and the GM hears of each finished job over their own socket (ADR 0029).
   const walls = new WallDetections(
@@ -201,9 +214,21 @@ export async function buildApp({
   registerMapLibraryRoutes(app, { store, registry, sessions, assets: assetStore, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a
   // browser second-guess their type into something that runs.
-  app.use("/uploads", (_req, res, next) => {
+  app.use("/uploads", (req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    next();
+    void (async () => {
+      let decoded = req.path;
+      for (let n = 0; n < 3; n++) { const value = decodeURIComponent(decoded); if (value === decoded) break; decoded = value; }
+      const parts = decoded.replaceAll("\\", "/").split("/").filter(Boolean);
+      if (parts.includes("studio-private") || parts.includes("..") || decoded.includes("\0")) { res.setHeader("Cache-Control", "no-store"); return void res.status(404).end(); }
+      let candidate = path.resolve(uploadDir);
+      for (const part of parts) {
+        candidate = path.join(candidate, part);
+        const info = await lstat(candidate).catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT" || e.code === "ENOTDIR") return null; throw e; });
+        if (info?.isSymbolicLink()) { res.setHeader("Cache-Control", "no-store"); return void res.status(404).end(); }
+      }
+      next();
+    })().catch(() => { res.setHeader("Cache-Control", "no-store"); res.status(404).end(); });
   });
   // Objects in object storage are streamed through here so their URLs stay origin-relative and
   // work from any device. Anything object storage does not have falls through to the disk folder,
@@ -233,15 +258,16 @@ export async function buildApp({
 
   // Redis workers may run in any process. A memory store exists only in this process, so
   // another worker could consume and discard its job without ever finding the row.
-  const detection = dispatcher ?? await createGridDetectionDispatcher(store, assetStore, {
+  const detection = dispatcher ?? await createGridDetectionDispatcher(store, internalAssets, {
     detector, redisUrl: store instanceof MemoryRoomStore ? undefined : redisUrl, visionUrl,
   });
-  registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
+  registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
   const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
-  const builds = registerBuildRoutes(app, { store, assets: assetStore, uploadDir, limits, detection, pool, sessions, now, studio });
+  const builds = registerBuildRoutes(app, { store, assets: internalAssets, uploadDir, limits, detection, pool, sessions, now, studio, media });
   const stopBuildSweep = setInterval(() => {
     void builds.sweepAbandoned();
+    void media.sweep().catch(() => console.error("[vtt] private media sweep failed"));
     void studioAccess.sweep().catch(() => console.error("[vtt] studio access sweep failed"));
   }, 60 * 60_000);
   stopBuildSweep.unref();
@@ -261,6 +287,7 @@ export async function buildApp({
     sweepGuestRooms,
     sweepAbandonedBuilds: builds.sweepAbandoned,
     sweepStudio: studioAccess.sweep,
+    sweepStudioMedia: () => media.sweep(),
     listen: ({ port, host }) =>
       new Promise((resolve, reject) => {
         server.once("error", reject);

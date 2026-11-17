@@ -1,3 +1,4 @@
+import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
@@ -106,6 +107,7 @@ export class MemoryRoomStore implements RoomStore {
   private buildFiles = new Map<string, BuildFileRecord>();
   /** `${buildId}/${kind}/${key}`, so a key an AI chose can't collide with a property name. */
   private buildItems = new Map<string, BuildItemRecord>();
+  private studioMediaJobs = new Map<string, StudioMediaJob>();
   private studioClients = new Map<string, StudioClientRecord>();
   private studioGrants = new Map<string, StudioGrantRecord>();
   private studioTokens = new Map<string, StudioTokenRecord>();
@@ -745,7 +747,7 @@ export class MemoryRoomStore implements RoomStore {
   /** Synchronous, so a check and the insert after it can't interleave with another upload. */
   private readBuildFileUsage(buildId: string): BuildFileUsage {
     const files = [...this.buildFiles.values()].filter((f) => f.buildId === buildId);
-    return { files: files.length, maps: files.filter((f) => f.kind === "map").length, bytes: files.reduce((sum, f) => sum + f.sizeBytes, 0) };
+    return { files: files.length, maps: files.filter((f) => f.kind === "map").length, bytes: files.reduce((sum, f) => sum + (f.studio?.totalBytes ?? f.sizeBytes), 0) };
   }
 
   async buildFileUsage(buildId: string) {
@@ -759,6 +761,70 @@ export class MemoryRoomStore implements RoomStore {
     this.touchBuild(build);
     const target = { scope: "build" as const, fileId: file.id };
     this.trackDetection(target, this.readDetection(target)?.status);
+  }
+
+  async recordStudioIntake(buildId: string, outcome: StudioIntakeOutcome, delegation: StudioDelegation) {
+    const build = this.openBuild(buildId);
+    this.assertDelegation(delegation, build);
+    build.studioIntake = [...(build.studioIntake ?? []).filter((o) => o.id !== outcome.id), structuredClone(outcome)].slice(-20);
+  }
+
+  async startStudioMedia(job: StudioMediaJob, delegation: StudioDelegation) {
+    const build = this.openBuild(job.buildId);
+    this.assertDelegation(delegation, build);
+    this.studioMediaJobs.set(job.id, structuredClone(job));
+  }
+
+  async commitStudioFile(file: BuildFileRecord, limits: BuildFileLimits, delegation: StudioDelegation) {
+    const build = this.openBuild(file.buildId);
+    this.assertDelegation(delegation, build);
+    const intent = this.studioMediaJobs.get(file.id);
+    if (intent?.state !== "write") throw new StudioMediaConflictError();
+    const existing = duplicateStudioFile([...this.buildFiles.values()].filter((f) => f.buildId === file.buildId), file);
+    if (existing) {
+      intent.state = "delete";
+      existing.studio!.receiptKeys = [...new Set([...existing.studio!.receiptKeys, ...file.studio!.receiptKeys])].slice(-20);
+      return { file: structuredClone(existing), created: false };
+    }
+    assertBuildFileFits(this.readBuildFileUsage(file.buildId), { ...file, sizeBytes: file.studio?.totalBytes ?? file.sizeBytes }, limits);
+    this.buildFiles.set(file.id, structuredClone(file));
+    this.studioMediaJobs.delete(file.id);
+    this.touchBuild(build);
+    const target = { scope: "build" as const, fileId: file.id };
+    this.trackDetection(target, this.readDetection(target)?.status);
+    return { file: structuredClone(file), created: true };
+  }
+
+  async bindStudioFile(buildId: string, fileId: string | null, delegation: StudioDelegation) {
+    const build = this.openBuild(buildId);
+    this.assertDelegation(delegation, build);
+    if (fileId && this.buildFiles.get(fileId)?.buildId !== buildId) throw new StudioMediaConflictError();
+    build.studioFileId = fileId;
+  }
+  async failStudioMedia(id: string) { const job = this.studioMediaJobs.get(id); if (job) job.state = "delete"; }
+  async listStudioMediaJobs(now: string) { return [...this.studioMediaJobs.values()].filter((j) => j.state === "delete" || j.expiresAt <= now).slice(0, 100).map((j) => j.id); }
+  async claimStudioMediaDeletion(id: string, now: string) {
+    const job = this.studioMediaJobs.get(id);
+    if (!job || (job.state !== "delete" && job.expiresAt > now)) return null;
+    job.state = "delete";
+    return structuredClone(job);
+  }
+  async finishStudioMediaDeletion(id: string, now: string) {
+    const job = this.studioMediaJobs.get(id);
+    if (job && job.expiresAt > now) job.state = "cancelled"; else this.studioMediaJobs.delete(id);
+  }
+  private queueStudioDeletion(file: BuildFileRecord) {
+    if (!file.studio) return;
+    const job = { id: randomUUID(), buildId: file.buildId, keys: mediaKeys(file), state: "delete" as const, expiresAt: new Date().toISOString() };
+    this.studioMediaJobs.set(job.id, job);
+  }
+  private closeStudioBuild(buildId: string) {
+    for (const job of this.studioMediaJobs.values()) if (job.buildId === buildId && job.state === "write") job.state = "cancelled";
+    for (const grant of this.studioGrants.values()) {
+      if (!grant.buildIds.includes(buildId)) continue;
+      grant.buildIds = grant.buildIds.filter((id) => id !== buildId);
+      if (!grant.buildIds.length) grant.revokedAt ??= new Date().toISOString();
+    }
   }
 
   async listBuildFiles(buildId: string) {
@@ -831,6 +897,7 @@ export class MemoryRoomStore implements RoomStore {
 
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
     const build = this.openBuild(plan.buildId);
+    if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.studio)) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
     if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.publishedAssetId !== null)) throw new BuildPublishConflictError();
     const itemId = (kind: BuildItemKind, key: string) => `${plan.buildId}/${kind}/${key}`;
     if (plan.reviewed.some((r) => this.buildItems.get(itemId(r.kind, r.key))?.updatedAt !== r.updatedAt)) throw new BuildPublishConflictError();
@@ -889,9 +956,13 @@ export class MemoryRoomStore implements RoomStore {
     }
   }
 
-  async closeBuild(id: string, ownerGmId: string) {
+  async closeBuild(id: string, ownerGmId: string, unchangedBefore?: string) {
     const build = this.builds.get(id);
     if (!build || build.ownerGmId !== ownerGmId) return null;
+    if (unchangedBefore && build.updatedAt >= unchangedBefore) return null;
+    this.closeStudioBuild(id);
+    build.studioFileId = null;
+    build.studioIntake = [];
     build.status = "closed";
     build.passHash = null;
     build.passExpiresAt = null;
@@ -899,7 +970,7 @@ export class MemoryRoomStore implements RoomStore {
     const objectKeys: string[] = [];
     for (const [fileId, file] of this.buildFiles) {
       if (file.buildId !== id || file.publishedAssetId) continue;
-      objectKeys.push(file.objectKey);
+      if (file.studio) this.queueStudioDeletion(file); else objectKeys.push(file.objectKey);
       this.buildFiles.delete(fileId);
       this.trackDetection({ scope: "build", fileId });
     }
@@ -1116,10 +1187,11 @@ export class MemoryRoomStore implements RoomStore {
       this.diceLooks.delete(id);
     }
     for (const [buildId] of owned(this.builds)) {
+      this.closeStudioBuild(buildId);
       for (const [id, file] of this.buildFiles) {
         if (file.buildId !== buildId) continue;
         // A published file's object belongs to its library row, which is collected below.
-        if (!file.publishedAssetId) objectKeys.push(file.objectKey);
+        if (!file.publishedAssetId) { if (file.studio) this.queueStudioDeletion(file); else objectKeys.push(file.objectKey); }
         this.buildFiles.delete(id);
         this.trackDetection({ scope: "build", fileId: id });
       }
