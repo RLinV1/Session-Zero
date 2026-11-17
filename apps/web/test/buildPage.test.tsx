@@ -9,7 +9,9 @@ const builds = vi.hoisted(() => ({
   confirmGrid: vi.fn(), editEncounter: vi.fn(), removeItem: vi.fn(), publish: vi.fn(), published: vi.fn(), removePublished: vi.fn(), discard: vi.fn(),
   setChoices: vi.fn(), saveMapSetup: vi.fn(),
 }));
-vi.mock("../src/net/api", async (original) => ({ ...(await original<typeof import("../src/net/api")>()), api: { builds } }));
+// The build page also lists AI app connections (ADR 0073); none here.
+const studio = vi.hoisted(() => ({ grants: vi.fn(async () => ({ grants: [] })), revoke: vi.fn() }));
+vi.mock("../src/net/api", async (original) => ({ ...(await original<typeof import("../src/net/api")>()), api: { builds, studio } }));
 vi.mock("../src/account/RequireAccount", () => ({ RequireAccount: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("../src/account/AccountPages", () => ({ AccountMenu: () => null }));
 vi.mock("../src/ui/SiteHeader", () => ({ SiteHeader: () => null, HubNav: () => null }));

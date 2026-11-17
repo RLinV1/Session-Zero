@@ -21,7 +21,22 @@ function requiredOrigin(value: string | undefined): string {
   return url.origin;
 }
 
+/** STUDIO_PUBLIC_ORIGIN, as on the room server: an https origin, or http on a loopback host for local development. */
+function studioOriginFromEnv(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const url = URL.canParse(value) ? new URL(value) : null;
+  const loopback = url !== null && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (!url || !(url.protocol === "https:" || (url.protocol === "http:" && loopback)) || url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
+    throw new Error("STUDIO_PUBLIC_ORIGIN must be an https origin such as https://example.com (http only for localhost)");
+  }
+  return url.origin;
+}
+
+const studioOrigin = studioOriginFromEnv(process.env.STUDIO_PUBLIC_ORIGIN);
+
 const running = await startMcpServer({
+  // Delegated Studio access (ADR 0073, design D7), off unless STUDIO_PUBLIC_ORIGIN is set.
+  ...(studioOrigin && { studioAccess: { publicOrigin: studioOrigin } }),
   port: Number(process.env.PORT ?? 3002),
   host: process.env.HOST ?? "0.0.0.0",
   roomServerUrl: process.env.ROOM_SERVER_URL ?? "http://127.0.0.1:3001",

@@ -81,6 +81,28 @@ export class ApiError extends Error {
   }
 }
 
+/** What the consent page shows (ADR 0073, design D7). The client's name is its own claim; its redirect host is where the answer goes. */
+export interface StudioConsentRequest {
+  client: { name: string; redirectHost: string };
+  builds: { id: string; name: string }[];
+}
+
+export type StudioConsentCheck =
+  | { ok: true; request: StudioConsentRequest }
+  /** `redirectTo` is set when the error should go back to the AI app rather than stay on the page. */
+  | { ok: false; status: number; error: string; redirectTo: string | null };
+
+/** One live AI app connection that includes a build, as the build page lists it. */
+export interface StudioGrantView {
+  id: string;
+  clientName: string;
+  redirectHost: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string;
+  builds: { id: string; name: string }[];
+}
+
 /**
  * Called when a request that needs the account gets 401: the session ended (signed out
  * elsewhere, expired, password changed). The account module registers it, so the app can go
@@ -459,6 +481,32 @@ export const api = {
       const res = await apiFetch(`/api/rooms/${encodeURIComponent(roomId)}`, { method: "DELETE", headers: { [GM_TOKEN_HEADER]: gmToken } });
       if (!res.ok && res.status !== 404) throw await errorFrom(res);
     },
+  },
+
+  /**
+   * Connecting an AI app to builds (FR-GM-26, ADR 0073, design D7): the consent page's two calls and
+   * the build page's list and disconnect. Only the owner's signed-in session makes any of them.
+   */
+  studio: {
+    /** The authorization request as the AI app sent it, checked by the server. */
+    async checkRequest(query: string): Promise<StudioConsentCheck> {
+      const res = await apiFetch(`/api/oauth/authorize${query}`);
+      if (res.status === 401) onSignedOut();
+      const body = await res.json().catch(() => ({})) as { error?: unknown; redirectTo?: unknown } & Partial<StudioConsentRequest>;
+      if (res.ok && body.client && body.builds) return { ok: true, request: { client: body.client, builds: body.builds } };
+      return {
+        ok: false,
+        status: res.status,
+        error: typeof body.error === "string" ? body.error : t("api.requestFailed", { status: res.status }),
+        redirectTo: typeof body.redirectTo === "string" ? body.redirectTo : null,
+      };
+    },
+    /** The owner's answer; the server says where to send the browser back to the AI app. */
+    decide: (params: Record<string, string>, decision: "allow" | "deny", buildIds: string[]) =>
+      accountRequest<{ redirectTo: string }>("/api/oauth/authorize", { method: "POST", ...jsonBody({ params, decision, buildIds }) }),
+    grants: (buildId: string) => accountRequest<{ grants: StudioGrantView[] }>(`${buildUrl(buildId)}/grants`),
+    /** Ends the whole connection, for every build it covers. */
+    revoke: (buildId: string, grantId: string) => accountRequest<void>(`${buildUrl(buildId)}/grants/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
   },
 
   /** AI builds: private drafts the owner reviews and publishes (FR-GM-26, FR-GM-27, ADR 0053). */

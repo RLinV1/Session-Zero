@@ -141,6 +141,16 @@ export const serverZhTW = {
   "build.busyPictures": "正在產生其他圖片，請稍後再試。",
   "build.blockNeedsGrid": "查看一塊方格範圍需要先有網格。請先用 save_map 提議網格。",
   "build.allOrNoBounds": "請同時提供 fromColumn、toColumn、fromRow 與 toRow，或全部不提供。",
+
+  // Delegated Studio access.
+  "studio.accessEnded": "與 Session Zero 的連線已結束。請使用者在 AI 應用程式中重新連線。",
+  "studio.notAvailable": "這個伺服器不支援連接 AI 應用程式。",
+  "studio.requestInvalid": "這個連線要求無效。請從你的 AI 應用程式重新開始連線。",
+  "studio.chooseBuild": "請至少選擇一個建置。",
+  "studio.tooManyConnections": "你的帳號已達 AI 連線數量上限。請先在建置頁面中斷其中一個連線。",
+  "studio.tooManyRequests": "這個連線的要求太多：每分鐘最多 120 次。請等一分鐘再繼續。",
+  "studio.tooManyInvalid": "無效連線的嘗試次數太多。請稍後再試。",
+  "studio.noSuchConnection": "找不到這個連線。",
 } satisfies Catalog<ServerEn>;
 
 /**

@@ -44,6 +44,7 @@ import { BuildChoiceFields } from "./LibraryBuilds";
 import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
 import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
 import { PassPanel } from "./PassPanel";
+import { StudioConnections } from "../studio/StudioConnections";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
 import { TerrainReview } from "./TerrainReview";
 
@@ -449,6 +450,9 @@ function Build({ id }: { id: string }) {
                   <p className="muted small-print">Turning a choice off stops your AI making more of those changes. What it already set stays above, where you can remove it.</p>
                 </Fold>
               )}
+
+              {/* AI apps connected through Session Zero's sign-in (ADR 0073); nothing shows when there are none. */}
+              {open && <StudioConnections buildId={id} />}
 
               {open && (
                 <section className="build-section build-end">

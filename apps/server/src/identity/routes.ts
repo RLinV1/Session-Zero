@@ -11,6 +11,7 @@ import {
 } from "@vtt/shared";
 import type { DeleteAccount } from "../domain/accountDeletion";
 import type { BuildStore } from "../store/buildStore";
+import type { StudioStore } from "../store/studioStore";
 import { EmailTakenError, type IdentityStore } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
 import { hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
@@ -65,6 +66,12 @@ export function accountLimits(now: () => number = Date.now) {
     buildPassRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Invalid build passes per IP, counted only on failure, so guessing gets refused and working passes don't. */
     buildPassFailuresPerIp: new RateLimiter(60, 15 * MINUTE, now),
+    /** OAuth client registrations per address (design D7): registration is open, so the table is bounded and so is this. */
+    studioRegistrationsPerIp: new RateLimiter(20, 60 * MINUTE, now),
+    /** Invalid delegated Studio tokens or token requests per address, counted only on failure, as for passes. */
+    studioTokenFailuresPerIp: new RateLimiter(60, 15 * MINUTE, now),
+    /** Requests per delegated grant, the same budget as a pass (design D7). */
+    studioGrantRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Guest room creations per address (IPv6 by /64, see `addressKey`); every attempt counts, accepted or not (guest-gm-hosting D3). */
     guestRoomsPerAddress: new RateLimiter(20, 60 * MINUTE, now),
   };
@@ -74,7 +81,7 @@ export type AccountLimits = ReturnType<typeof accountLimits>;
 /** `/api/auth/*`: sign up, sign in, sign out, who am I, change password (FR-GM-01, ADR 0017 C2). */
 export function registerIdentityRoutes(
   app: Express,
-  deps: { store: IdentityStore & Pick<BuildStore, "endBuildPasses">; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
+  deps: { store: IdentityStore & Pick<BuildStore, "endBuildPasses"> & Pick<StudioStore, "endStudioGrants">; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
 ) {
   const { store, sessions, limits, deleteAccount } = deps;
 
@@ -170,6 +177,8 @@ export function registerIdentityRoutes(
       await store.setPasswordHash(current.user.id, await hashPassword(body.data.newPassword), true);
       await sessions.endOthers(current.user.id, current.session.tokenHash);
       await store.endBuildPasses(current.user.ownerId);
+      // Delegated Studio access ends with it, as passes do (design D7).
+      await store.endStudioGrants(current.user.ownerId, new Date().toISOString());
       res.status(204).end();
     })().catch(internalError(res));
   });

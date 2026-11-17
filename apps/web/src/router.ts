@@ -7,6 +7,8 @@ export type Route =
   | { page: "gmDashboard" }
   | { page: "library" }
   | { page: "build"; buildId: string }
+  /** Where an AI app sends the owner to allow it builds (ADR 0073, design D7). */
+  | { page: "studioConnect" }
   | { page: "signin" }
   | { page: "signup" }
   | { page: "account" }
@@ -25,6 +27,7 @@ export function parseRoute(pathname: string): Route {
   if (/^\/library\/?$/.test(pathname)) return { page: "library" };
   const build = pathname.match(/^\/builds\/([^/]+)\/?$/);
   if (build) return { page: "build", buildId: decodeURIComponent(build[1]!) };
+  if (/^\/studio\/connect\/?$/.test(pathname)) return { page: "studioConnect" };
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };
   if (/^\/signup\/?$/.test(pathname)) return { page: "signup" };
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };

@@ -13,8 +13,22 @@ import {
   type LibraryAsset,
   type LibraryCreature,
   type Session,
+  type StudioGrant,
+  type StudioOAuthClient,
+  type StudioToken,
   type User,
 } from "@prisma/client";
+import {
+  StudioAccessEndedError,
+  StudioClientLimitError,
+  StudioGrantLimitError,
+  delegationAllows,
+  type StudioClientRecord,
+  type StudioDelegation,
+  type StudioGrantRecord,
+  type StudioSweepTimes,
+  type StudioTokenRecord,
+} from "./studioStore";
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
@@ -103,10 +117,50 @@ async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetR
 /** One writer per build at a time, and only while it's open, so checks and writes are one step. */
 async function lockOpenBuild(tx: Prisma.TransactionClient, buildId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
-  const build = await tx.build.findUnique({ where: { id: buildId }, select: { status: true, aiWalls: true, aiTerrain: true } });
+  const build = await tx.build.findUnique({ where: { id: buildId }, select: { id: true, ownerGmId: true, status: true, aiWalls: true, aiTerrain: true } });
   if (build?.status !== "open") throw new BuildClosedError();
   return build;
 }
+
+/**
+ * A delegated write's grant, checked inside the write (design D7). The grant row is held `FOR SHARE`
+ * until the write commits, so a revocation (an UPDATE of that row) either commits first and is seen
+ * here, or waits until this write is done. Throws `StudioAccessEndedError`.
+ */
+async function assertDelegation(tx: Prisma.TransactionClient, delegation: StudioDelegation | undefined, build: { id: string; ownerGmId: string }) {
+  if (!delegation) return;
+  const token = await tx.studioToken.findUnique({ where: { tokenHash: delegation.tokenHash } });
+  if (token) await tx.$executeRaw`SELECT 1 FROM studio_grants WHERE id = ${token.grantId}::uuid FOR SHARE`;
+  const grant = token ? await tx.studioGrant.findUnique({ where: { id: token.grantId } }) : null;
+  if (!delegationAllows(delegation, token && toStudioTokenRecord(token), grant && toStudioGrantRecord(grant), build)) throw new StudioAccessEndedError();
+}
+
+const isoOrNull = (date: Date | null) => date?.toISOString() ?? null;
+
+function toStudioClientRecord(row: StudioOAuthClient): StudioClientRecord {
+  return { id: row.id, name: row.name, redirectUris: row.redirectUris, createdAt: row.createdAt.toISOString(), lastUsedAt: isoOrNull(row.lastUsedAt) };
+}
+
+function toStudioGrantRecord(row: StudioGrant): StudioGrantRecord {
+  return {
+    id: row.id, ownerGmId: row.ownerGmId, clientId: row.clientId, resource: row.resource, scope: row.scope, buildIds: row.buildIds,
+    codeHash: row.codeHash, codeChallenge: row.codeChallenge, redirectUri: row.redirectUri, codeExpiresAt: row.codeExpiresAt.toISOString(),
+    codeUsedAt: isoOrNull(row.codeUsedAt), createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
+    revokedAt: isoOrNull(row.revokedAt), lastUsedAt: isoOrNull(row.lastUsedAt),
+  };
+}
+
+function toStudioTokenRecord(row: StudioToken): StudioTokenRecord {
+  return {
+    tokenHash: row.tokenHash, grantId: row.grantId, kind: row.kind as StudioTokenRecord["kind"], expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(), usedAt: isoOrNull(row.usedAt),
+  };
+}
+
+const studioTokenRow = (token: StudioTokenRecord) => ({
+  tokenHash: token.tokenHash, grantId: token.grantId, kind: token.kind, expiresAt: new Date(token.expiresAt), createdAt: new Date(token.createdAt),
+  usedAt: token.usedAt ? new Date(token.usedAt) : null,
+});
 
 /** A write's guard, checked under the build's lock (ADR 0053). */
 function checkGuard(guard: BuildWriteGuard, build: { aiWalls: boolean; aiTerrain: boolean }, existing: { updatedAt: Date } | null) {
@@ -759,11 +813,155 @@ export class PostgresRoomStore implements RoomStore {
     await this.prisma.build.updateMany({ where: { ownerGmId }, data: { passHash: null, passExpiresAt: null } });
   }
 
-  async saveGameProfile(buildId: string, profile: GameProfile) {
-    const result = await this.prisma.build.updateMany({
-      where: { id: buildId, status: "open" }, data: { gameProfile: profile as Prisma.InputJsonValue, updatedAt: new Date() },
+  async saveGameProfile(buildId: string, profile: GameProfile, guard: Pick<BuildWriteGuard, "delegation"> = {}) {
+    const write = async (tx: Prisma.TransactionClient) => {
+      const result = await tx.build.updateMany({
+        where: { id: buildId, status: "open" }, data: { gameProfile: profile as Prisma.InputJsonValue, updatedAt: new Date() },
+      });
+      if (result.count !== 1) throw new BuildClosedError();
+    };
+    // A pass's save stays the single statement it always was; a delegated one is checked under the build's lock.
+    if (!guard.delegation) return write(this.prisma);
+    await this.prisma.$transaction(async (tx) => {
+      const build = await lockOpenBuild(tx, buildId);
+      await assertDelegation(tx, guard.delegation, build);
+      await write(tx);
     });
-    if (result.count !== 1) throw new BuildClosedError();
+  }
+
+  // ---------- Delegated Studio access (design D7) ----------
+
+  async registerStudioClient(client: StudioClientRecord, max: number, evictUnusedBefore: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('studio_oauth_clients'))`;
+      if (await tx.studioOAuthClient.count() >= max) {
+        const stale = await tx.studioOAuthClient.findFirst({
+          where: { lastUsedAt: null, createdAt: { lt: new Date(evictUnusedBefore) }, grants: { none: {} } }, orderBy: { createdAt: "asc" }, select: { id: true },
+        });
+        if (!stale) throw new StudioClientLimitError();
+        await tx.studioOAuthClient.delete({ where: { id: stale.id } });
+      }
+      await tx.studioOAuthClient.create({
+        data: { id: client.id, name: client.name, redirectUris: client.redirectUris, createdAt: new Date(client.createdAt), lastUsedAt: client.lastUsedAt ? new Date(client.lastUsedAt) : null },
+      });
+    });
+  }
+
+  async findStudioClient(id: string) {
+    const row = await this.prisma.studioOAuthClient.findUnique({ where: { id } });
+    return row ? toStudioClientRecord(row) : null;
+  }
+
+  async createStudioGrant(grant: StudioGrantRecord, maxLive: number, now: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`studio_grants:${grant.ownerGmId}`}))`;
+      // Shared with other consents; registration and the sweep take it alone, so neither can drop
+      // this client while a grant for it is being added.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext('studio_oauth_clients'))`;
+      const at = new Date(now);
+      const held = await tx.studioGrant.count({
+        where: { ownerGmId: grant.ownerGmId, revokedAt: null, expiresAt: { gt: at }, OR: [{ codeUsedAt: { not: null } }, { codeExpiresAt: { gt: at } }] },
+      });
+      if (held >= maxLive) throw new StudioGrantLimitError();
+      await tx.studioGrant.create({
+        data: {
+          id: grant.id, ownerGmId: grant.ownerGmId, clientId: grant.clientId, resource: grant.resource, scope: grant.scope, buildIds: grant.buildIds,
+          codeHash: grant.codeHash, codeChallenge: grant.codeChallenge, redirectUri: grant.redirectUri, codeExpiresAt: new Date(grant.codeExpiresAt),
+          codeUsedAt: grant.codeUsedAt ? new Date(grant.codeUsedAt) : null, createdAt: new Date(grant.createdAt), expiresAt: new Date(grant.expiresAt),
+          revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null, lastUsedAt: grant.lastUsedAt ? new Date(grant.lastUsedAt) : null,
+        },
+      });
+    });
+  }
+
+  async findStudioGrantByCode(codeHash: string) {
+    const row = await this.prisma.studioGrant.findUnique({ where: { codeHash } });
+    return row ? toStudioGrantRecord(row) : null;
+  }
+
+  async redeemStudioCode(grantId: string, now: string, tokens: StudioTokenRecord[]) {
+    const at = new Date(now);
+    return this.prisma.$transaction(async (tx) => {
+      // Claimed by one conditional update, so two exchanges of one code can't both succeed.
+      const claimed = await tx.studioGrant.updateMany({
+        where: { id: grantId, codeUsedAt: null, revokedAt: null, codeExpiresAt: { gt: at } }, data: { codeUsedAt: at, lastUsedAt: at },
+      });
+      if (claimed.count !== 1) return false;
+      await tx.studioToken.createMany({ data: tokens.map(studioTokenRow) });
+      const grant = await tx.studioGrant.findUniqueOrThrow({ where: { id: grantId }, select: { clientId: true } });
+      await tx.studioOAuthClient.update({ where: { id: grant.clientId }, data: { lastUsedAt: at } });
+      return true;
+    });
+  }
+
+  async findStudioToken(tokenHash: string) {
+    const row = await this.prisma.studioToken.findUnique({ where: { tokenHash }, include: { grant: true } });
+    return row ? { token: toStudioTokenRecord(row), grant: toStudioGrantRecord(row.grant) } : null;
+  }
+
+  async rotateStudioRefresh(tokenHash: string, now: string, tokens: StudioTokenRecord[]) {
+    const at = new Date(now);
+    return this.prisma.$transaction(async (tx) => {
+      const token = await tx.studioToken.findUnique({ where: { tokenHash } });
+      if (!token || token.kind !== "refresh") return false;
+      // A revocation either commits first and is seen, or waits for this. FOR UPDATE, not FOR SHARE,
+      // because this updates the grant too: two rotations holding shared locks would deadlock there.
+      await tx.$executeRaw`SELECT 1 FROM studio_grants WHERE id = ${token.grantId}::uuid FOR UPDATE`;
+      const grant = await tx.studioGrant.findUnique({ where: { id: token.grantId } });
+      if (!grant || grant.codeUsedAt === null || grant.revokedAt !== null || grant.expiresAt <= at) return false;
+      const used = await tx.studioToken.updateMany({ where: { tokenHash, usedAt: null, expiresAt: { gt: at } }, data: { usedAt: at } });
+      if (used.count !== 1) return false;
+      await tx.studioToken.createMany({ data: tokens.map(studioTokenRow) });
+      await tx.studioGrant.update({ where: { id: grant.id }, data: { lastUsedAt: at } });
+      await tx.studioOAuthClient.update({ where: { id: grant.clientId }, data: { lastUsedAt: at } });
+      return true;
+    });
+  }
+
+  async revokeStudioGrant(grantId: string, now: string, ownerGmId?: string) {
+    if (!UUID.test(grantId)) return false;
+    const where = { id: grantId, ...(ownerGmId === undefined ? {} : { ownerGmId }) };
+    if (!await this.prisma.studioGrant.findFirst({ where, select: { id: true } })) return false;
+    await this.prisma.studioGrant.updateMany({ where: { ...where, revokedAt: null }, data: { revokedAt: new Date(now) } });
+    return true;
+  }
+
+  async endStudioGrants(ownerGmId: string, now: string) {
+    await this.prisma.studioGrant.updateMany({ where: { ownerGmId, revokedAt: null }, data: { revokedAt: new Date(now) } });
+  }
+
+  async listStudioGrants(ownerGmId: string, now: string) {
+    const rows = await this.prisma.studioGrant.findMany({
+      where: { ownerGmId, codeUsedAt: { not: null }, revokedAt: null, expiresAt: { gt: new Date(now) } }, orderBy: { createdAt: "desc" },
+    });
+    return rows.map(toStudioGrantRecord);
+  }
+
+  async touchStudioGrant(grantId: string, at: string) {
+    await this.prisma.studioGrant.updateMany({ where: { id: grantId }, data: { lastUsedAt: new Date(at) } });
+  }
+
+  async sweepStudio(times: StudioSweepTimes) {
+    const now = new Date(times.now), endedBefore = new Date(times.endedBefore);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('studio_oauth_clients'))`;
+      await tx.studioToken.deleteMany({ where: { expiresAt: { lte: endedBefore } } });
+      const ended = await tx.studioGrant.findMany({
+        where: { OR: [{ revokedAt: { lte: endedBefore } }, { expiresAt: { lte: endedBefore } }, { codeUsedAt: null, codeExpiresAt: { lte: now } }] }, select: { id: true },
+      });
+      const ids = ended.map((g) => g.id);
+      await tx.studioToken.deleteMany({ where: { grantId: { in: ids } } });
+      await tx.studioGrant.deleteMany({ where: { id: { in: ids } } });
+      await tx.studioOAuthClient.deleteMany({
+        where: {
+          grants: { none: {} },
+          OR: [
+            { lastUsedAt: null, createdAt: { lt: new Date(times.unusedClientsBefore) } },
+            { lastUsedAt: { lt: new Date(times.idleClientsBefore) } },
+          ],
+        },
+      });
+    });
   }
 
   async setBuildChoices(id: string, ownerGmId: string, choices: BuildChoiceValues) {
@@ -812,6 +1010,8 @@ export class PostgresRoomStore implements RoomStore {
   async saveBuildItem(item: NewBuildItem, maxForKind: number | null, guard: BuildWriteGuard = {}) {
     return this.prisma.$transaction(async (tx) => {
       const build = await lockOpenBuild(tx, item.buildId);
+      // First, so an ended grant learns nothing about the item (design D7).
+      await assertDelegation(tx, guard.delegation, build);
       const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
       const existing = await tx.buildItem.findUnique({ where });
       if (existing?.publishedId) throw new BuildItemLockedError("published");
@@ -1226,6 +1426,11 @@ export class PostgresRoomStore implements RoomStore {
       await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.buildFile.deleteMany({ where: { buildId: { in: buildIds } } });
       await tx.build.deleteMany({ where: { ownerGmId } });
+      // Delegated Studio access (design D7): under the lock a consent takes, so none lands meanwhile;
+      // tokens first, as their foreign key to grants is RESTRICT.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`studio_grants:${ownerGmId}`}))`;
+      await tx.studioToken.deleteMany({ where: { grant: { ownerGmId } } });
+      await tx.studioGrant.deleteMany({ where: { ownerGmId } });
 
       const looks = await tx.diceLook.findMany({ where: { ownerGmId } });
       const assets = await tx.libraryAsset.findMany({ where: { ownerGmId }, select: { id: true, objectKey: true } });

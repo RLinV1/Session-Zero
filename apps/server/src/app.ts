@@ -15,6 +15,7 @@ import { RoomRegistry } from "./domain/roomRegistry";
 import { createGridDetectionDispatcher, type Detector, type GridDetectionDispatcher } from "./domain/gridDetection";
 import { bullmqWallQueue, WallDetections, type WallJobQueue } from "./domain/wallDetection";
 import { registerBuildRoutes } from "./http/build";
+import { registerStudioOAuth, studioAccessFromEnv, type StudioAccessConfig } from "./http/studioOAuth";
 import { registerRoutes } from "./http/routes";
 import { attachAccount, requireSameOrigin } from "./identity/middleware";
 import { accountLimits, registerIdentityRoutes, type AccountLimits } from "./identity/routes";
@@ -63,6 +64,11 @@ export interface AppOptions {
   cookieSecure?: boolean;
   /** The clock sessions and rate limits read; tests move it forward. */
   now?: () => number;
+  /**
+   * Delegated Studio access (ADR 0073, design D7): Session Zero's OAuth authorization server and the
+   * `/api/studio/*` build routes. Defaults to `STUDIO_PUBLIC_ORIGIN`; null (unset) means none of it exists.
+   */
+  studio?: StudioAccessConfig | null;
 }
 
 /**
@@ -85,6 +91,8 @@ export interface App {
   sweepGuestRooms(): Promise<void>;
   /** The hourly sweep that closes AI builds left unchanged for 14 days (ADR 0053), on demand. */
   sweepAbandonedBuilds(): Promise<void>;
+  /** The hourly sweep of expired Studio tokens, ended grants and unused clients (design D7), on demand. */
+  sweepStudio(): Promise<void>;
   listen(opts: { port: number; host: string }): Promise<void>;
   close(): Promise<void>;
 }
@@ -103,6 +111,7 @@ export async function buildApp({
   builtinImageDir = fileURLToPath(new URL("../../web/public/img/", import.meta.url)),
   cookieSecure = cookieSecureFromEnv(),
   now = Date.now,
+  studio = studioAccessFromEnv(),
 }: AppOptions): Promise<App> {
   const app = express();
   // Don't advertise Express (and its version range) on every response (security-hardening F-02).
@@ -228,8 +237,12 @@ export async function buildApp({
   });
   registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
-  const builds = registerBuildRoutes(app, { store, assets: assetStore, uploadDir, limits, detection, pool, sessions, now });
-  const stopBuildSweep = setInterval(() => void builds.sweepAbandoned(), 60 * 60_000);
+  const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
+  const builds = registerBuildRoutes(app, { store, assets: assetStore, uploadDir, limits, detection, pool, sessions, now, studio });
+  const stopBuildSweep = setInterval(() => {
+    void builds.sweepAbandoned();
+    void studioAccess.sweep().catch(() => console.error("[vtt] studio access sweep failed"));
+  }, 60 * 60_000);
   stopBuildSweep.unref();
   registerSocket(io, { store, registry, sessions, logger });
 
@@ -246,6 +259,7 @@ export async function buildApp({
     sweepTemporaryRooms,
     sweepGuestRooms,
     sweepAbandonedBuilds: builds.sweepAbandoned,
+    sweepStudio: studioAccess.sweep,
     listen: ({ port, host }) =>
       new Promise((resolve, reject) => {
         server.once("error", reject);
