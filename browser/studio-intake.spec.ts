@@ -53,6 +53,8 @@ test("protected chat intake, picker/device controls, canonical hashes and reopen
   expect(data.files.find((f)=>f.kind==="map")!.originalSha256).toBe(expected.map.sha256);expect(data.files.find((f)=>f.kind==="token")!.originalSha256).toBe(expected.token.sha256);
   await frame.getByRole("button",{name:"Choose from ChatGPT"}).click();await expect(frame.locator("#upload-status")).toHaveText("Saved");await expect(frame.locator("#files li")).toHaveCount(2);
   await frame.locator("#kind").selectOption("token");await frame.locator("#device").setInputFiles(path.resolve("browser/fixtures/studio-token.png"));await expect(frame.locator("#upload-status")).toHaveText("Saved");
+  await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#upload-status")).toHaveText("已儲存");await expect(frame.locator("#status")).toHaveText("已顯示最新儲存的檔案");
+  await frame.locator("#language").selectOption("en");await expect(frame.locator("#upload-status")).toHaveText("Saved");
   await reopen();await expect(frame.locator("#source")).toBeVisible();await frame.getByRole("button",{name:"Expand Studio"}).click();await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {studioExpanded:boolean}).studioExpanded))).toBe(true);
   await page.screenshot({path:info.outputPath("studio-intake.png"),fullPage:true});
 });

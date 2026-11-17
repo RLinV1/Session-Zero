@@ -5,14 +5,17 @@ const $ = (id) => document.getElementById(id);
 const app = new App({name:'Session Zero Studio',version:'1.0.0'}, {});
 let locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
 let buildId = null, sourceId = null, shown = null, timer = null, stopped = false, refreshing = false, uploading = false, connected = false, generation = 0;
+let statusKey = 'loading', uploadStatusKey = null;
 const t = (key) => catalogs[locale][key] || catalogs.en[key] || catalogs.en['error.unknown'];
 function translate() {
   document.documentElement.lang = locale;
   document.title = t('title');
   document.querySelectorAll('[data-t]').forEach((node) => node.textContent = t(node.dataset.t));
   $('source').alt = t('source'); $('language').value = locale;
+  status(statusKey); if (uploadStatusKey !== null) uploadStatus(uploadStatusKey);
 }
-function status(key) { const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
+function status(key) { statusKey=key; const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
+function uploadStatus(key) { uploadStatusKey=key; const value=t(key); if ($('upload-status').textContent !== value) $('upload-status').textContent=value; }
 function clearPrivate() { generation++; $('source').removeAttribute('src'); $('source').hidden = true; $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature=''; $('build').textContent = ''; $('owner').textContent = ''; shown = null; sourceId = null; }
 function resultData(result) { if (result.structuredContent) return result.structuredContent; const text = result.content?.find((c) => c.type === 'text')?.text; return text ? JSON.parse(text) : {}; }
 async function call(name, args) {
@@ -66,8 +69,8 @@ async function refresh() {
 }
 async function importSelected(selected) {
   if (!buildId || uploading) return;
-  if (selected.length > 5) { $('upload-status').textContent = t('limitFiles'); return; }
-  uploading = true; $('pick').disabled = true; $('device').disabled = true; $('upload-status').textContent = t('queued');
+  if (selected.length > 5) { uploadStatus('limitFiles'); return; }
+  uploading = true; $('pick').disabled = true; $('device').disabled = true; uploadStatus('queued');
   const kind = $('kind').value;
   try {
     // Obtain and consume each short-lived descriptor immediately; never persist it in widget state.
@@ -76,21 +79,21 @@ async function importSelected(selected) {
       const file = {download_url:descriptor.downloadUrl,file_id:selectedFile.fileId,file_name:selectedFile.fileName,mime_type:selectedFile.mimeType};
       const data = resultData(await call('studio_import_files', {buildId,kind,files:[file]}));
       const outcome = data.outcomes[0];
-      $('upload-status').textContent = t(outcome.status === 'saved' ? 'saved' : 'error.' + outcome.code);
+      uploadStatus(outcome.status === 'saved' ? 'saved' : 'error.' + outcome.code);
       if (outcome.status === 'saved' && kind === 'map') await call('studio_bind_file',{buildId,fileId:outcome.fileId});
     }
     shown = null;
-  } catch (e) { $('upload-status').textContent = t('error.' + (e.code || 'unknown')); }
+  } catch (e) { uploadStatus('error.' + (e.code || 'unknown')); }
   finally { uploading = false; $('pick').disabled = !window.openai?.selectFiles; $('device').disabled = !window.openai?.uploadFile; $('device').value = ''; void refresh(); }
 }
-$('pick').onclick = async () => { try { await importSelected(await window.openai.selectFiles()); } catch { $('upload-status').textContent = t('error.unknown'); } };
+$('pick').onclick = async () => { try { await importSelected(await window.openai.selectFiles()); } catch { uploadStatus('error.unknown'); } };
 $('device').onchange = async (event) => {
   const files = Array.from(event.target.files || []);
-  if (files.length > 5) { $('upload-status').textContent = t('limitFiles'); return; }
+  if (files.length > 5) { uploadStatus('limitFiles'); return; }
   // Each upload is immediately resolved and imported, keeping descriptors out of queues.
   for (const file of files) {
     try { const uploaded = await window.openai.uploadFile(file); await importSelected([{fileId:uploaded.fileId,fileName:file.name,mimeType:file.type}]); }
-    catch { $('upload-status').textContent = t('error.unknown'); }
+    catch { uploadStatus('error.unknown'); }
   }
 };
 $('refresh').onclick = () => { shown=null; void refresh(); };
@@ -106,7 +109,7 @@ translate(); status('loading');
 try {
   await app.connect(new PostMessageTransport(window.parent, window.parent)); connected=true;
   $('pick').disabled = !window.openai?.selectFiles; $('device').disabled = !window.openai?.uploadFile;
-  if (!window.openai?.selectFiles && !window.openai?.uploadFile) $('upload-status').textContent=t('unsupported');
+  if (!window.openai?.selectFiles && !window.openai?.uploadFile) uploadStatus('unsupported');
   void refresh();
 } catch { status('stale'); }
 `;

@@ -67,7 +67,7 @@ HOST=127.0.0.1 PORT=3119 TRUST_PROXY=1 \
 # Terminal C: Vite (same environment/origin).
 __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=<printed-name>.trycloudflare.com \
   VTT_SERVER=http://127.0.0.1:3109 VTT_MCP=http://127.0.0.1:3119 \
-  npm run dev:web -- --host 127.0.0.1 --port 5189 --strictPort
+  npm run dev --workspace=@vtt/web -- --host 127.0.0.1 --port 5189 --strictPort
 ```
 
 Do not enable HTTP request-body logging. These are development processes, not production
