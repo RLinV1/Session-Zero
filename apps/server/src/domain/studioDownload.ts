@@ -2,7 +2,17 @@ import https from "node:https";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP, BlockList } from "node:net";
 
-export const STUDIO_DOWNLOAD_ORIGINS = new Set(["https://sdmntpreastus3.oaiusercontent.com", "https://oaisdmntpreastus3.blob.core.windows.net"]);
+/**
+ * Exact host origins only (design D9 / M1b record); a new origin needs its own provenance review.
+ * northeu and nznorth: ChatGPT composer attachments via `openai/fileParams` on 2026-11-17, same
+ * `*.oaiusercontent.com` certificate and edge as the M0-observed eastus3 host.
+ */
+export const STUDIO_DOWNLOAD_ORIGINS = new Set([
+  "https://sdmntpreastus3.oaiusercontent.com",
+  "https://sdmntprnortheu.oaiusercontent.com",
+  "https://sdmntprnznorth.oaiusercontent.com",
+  "https://oaisdmntpreastus3.blob.core.windows.net",
+]);
 export const STUDIO_FILE_BYTES = 25 * 1024 ** 2;
 export const STUDIO_DOWNLOAD_MS = 20_000;
 export class StudioIntakeError extends Error {

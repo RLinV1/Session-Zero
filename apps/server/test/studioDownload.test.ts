@@ -26,6 +26,10 @@ describe("bounded host original download (FR-GM-26)",()=>{
     expect(studioDownloadUrl("https://oaisdmntpreastus3.blob.core.windows.net/a").protocol).toBe("https:");
     for(const value of ["http://sdmntpreastus3.oaiusercontent.com/a","https://other.oaiusercontent.com/a","https://sdmntpreastus3.oaiusercontent.com.evil.test/a","https://user:pass@sdmntpreastus3.oaiusercontent.com/a","https://sdmntpreastus3.oaiusercontent.com:444/a","https://127.0.0.1/a","https://[::1]/a","https://sdmntpreastus3.oaiusercontent.com/a#x","https://sdmntpreastus3.oaiusercontent.com\\@evil.test/a","https://sdmntpreastus3.oaiusercontent.com./a","file:///etc/passwd"]) expect(()=>studioDownloadUrl(value),value).toThrow();
   });
+  it("accepts the reviewed regional composer origins exactly, never their region family",()=>{
+    for(const host of ["sdmntprnortheu.oaiusercontent.com","sdmntprnznorth.oaiusercontent.com"]) expect(studioDownloadUrl(`https://${host}/file?signed=fixture`).hostname).toBe(host);
+    for(const value of ["https://sdmntprwestus.oaiusercontent.com/a","https://sdmntprnortheu2.oaiusercontent.com/a","https://xsdmntprnortheu.oaiusercontent.com/a","https://sdmntprnortheu.oaiusercontent.com.evil.test/a","http://sdmntprnznorth.oaiusercontent.com/a","https://sdmntprnznorth.oaiusercontent.com:8443/a","https://oaisdmntprnortheu.blob.core.windows.net/a"]) expect(()=>studioDownloadUrl(value),value).toThrow();
+  });
   it.each(["0.0.0.0","127.0.0.1","10.1.1.1","172.16.0.1","192.168.1.1","169.254.169.254","100.64.0.1","224.0.0.1","::1","::","::ffff:127.0.0.1","::ffff:169.254.169.254","fc00::1","fe80::1","64:ff9b::a9fe:a9fe","2001:db8::1"])("refuses non-public destination %s",async(address)=>{
     expect(publicDownloadAddress(address)).toBe(false);vi.mocked(lookup).mockResolvedValue([{address,family:address.includes(":")?6:4}] as never);
     await expect(downloadStudioOriginal(origin)).rejects.toMatchObject({code:"origin"});expect(https.get).not.toHaveBeenCalled();
