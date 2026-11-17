@@ -809,7 +809,7 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
             onReplay={preview ? undefined : () => (replaying ? exitReplay() : setReplaying(true))}
             replaying={replaying}
             // The sidebar's steps need it open.
-            onGuide={you.role === "gm" ? () => openSidebar(() => setGuideOpen(true)) : undefined}
+            onGuide={() => openSidebar(() => setGuideOpen(true))}
             onShare={compact && you.role === "gm" && !readOnly ? () => setShareOpen(true) : undefined}
             onDemo={guestRoom && you.role === "gm" && !readOnly ? () => setDemoRestart((n) => n + 1) : undefined}
             onSave={guestRoom && you.role === "gm" && !readOnly ? () => navigate(SAVE_ACCOUNT_HREF) : undefined}

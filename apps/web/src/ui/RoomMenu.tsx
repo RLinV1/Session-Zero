@@ -17,8 +17,7 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
   /** Omitted while previewing as a player. */
   onReplay?: () => void;
   replaying: boolean;
-  /** Only a GM has the guide. */
-  onGuide?: () => void;
+  onGuide: () => void;
   /** Phone only: Share folds into this menu instead of a button of its own. */
   onShare?: () => void;
   /** Guest GM only: starts the interactive demo again. */
@@ -73,12 +72,10 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
                 <FloppyDisk size={16} aria-hidden="true" /> {t("guest.save")}
               </button>
             )}
-            {onGuide && (
-              <button type="button" className="tool-button" onClick={item(onGuide)}>
-                <GuideIcon />
-                {t("common.guide")}
-              </button>
-            )}
+            <button type="button" className="tool-button" onClick={item(onGuide)}>
+              <GuideIcon />
+              {t("common.guide")}
+            </button>
           </div>
         );
       }}
