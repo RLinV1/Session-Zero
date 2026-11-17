@@ -2976,7 +2976,7 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial {
   position: fixed; z-index: 1000;
   display: flex; flex-direction: column; gap: var(--space-2);
-  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  width: min(25rem, calc(100vw - 2 * var(--space-4)));
   padding: var(--space-3);
   background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
   border-radius: var(--radius-surface); box-shadow: 0 10px 28px var(--shadow);
@@ -3000,15 +3000,19 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .guest-tutorial p { margin: 0; text-wrap: pretty; }
 .guest-tutorial .guide-card-head { min-height: 1.25rem; }
-.guest-tutorial .tutorial-actions > .row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.guest-tutorial .tutorial-actions > .row { display: flex; gap: var(--space-2); }
 .guest-tutorial .tutorial-actions > .row:empty { display: none; }
 /* While an example plays only the step's own action is left; it sits on the right, where Next is. */
 .guest-tutorial[data-playing="true"] .tutorial-actions { justify-content: flex-end; }
-.guest-tutorial .tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.guest-tutorial .tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .guest-tutorial .tutorial-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
 .guest-tutorial .tutorial-nav:empty { display: none; }
-.guest-tutorial .tutorial-nav button { min-width: 5rem; }
-.guest-tutorial .tutorial-actions button { white-space: nowrap; }
+.guest-tutorial .tutorial-nav button { min-width: 4rem; }
+.guest-tutorial .tutorial-actions button { white-space: nowrap; padding-inline: 0.7rem; }
+/* On a very narrow screen the buttons may wrap rather than overflow. */
+@media (max-width: 26rem) {
+  .guest-tutorial .tutorial-actions, .guest-tutorial .tutorial-actions > .row { flex-wrap: wrap; }
+}
 .guest-tutorial .guide-skip { margin-left: auto; }
 .guest-tutorial .tutorial-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
