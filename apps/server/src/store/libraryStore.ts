@@ -1,4 +1,4 @@
-import type { AnimationDef, LibraryMapBoard, AssetKind, EncounterTemplateData, AttackPreset, ConditionId, DieName, GmRoomSummary, GridSpec, LegacySummary, RoomDefaults } from "@vtt/shared";
+import type { AnimationDef, LibraryFolderKind, LibraryMapBoard, AssetKind, EncounterTemplateData, AttackPreset, ConditionId, DieName, GmRoomSummary, GridSpec, LegacySummary, RoomDefaults } from "@vtt/shared";
 import type { DetectionState, UploadAnalysis } from "./gridDetectionStore";
 
 /** A stored library asset (ADR 0004). `objectKey` is the AssetStore key; it never leaves the server. */
@@ -20,6 +20,8 @@ export interface LibraryAssetRecord extends UploadAnalysis {
   detectionAttempt?: number;
   detectionResult?: import("@vtt/shared").GridDetectionCandidate | null;
   detectionUpdatedAt?: string | null;
+  /** The library folder it is filed under (ADR 0075); null or absent for none. */
+  folder?: string | null;
   createdAt: string;
 }
 
@@ -39,12 +41,16 @@ export interface LibraryCreatureRecord {
   conditions: ConditionId[];
   imageAssetId: string | null;
   imageUrl: string | null;
+  /** The library folder it is filed under, e.g. its game (ADR 0075); null for none. */
+  folder: string | null;
   createdAt: string;
 }
 
-/** Starting HP, colour and conditions may be left out for older creatures (KAN-70). */
-export type NewCreatureRecord = Omit<LibraryCreatureRecord, "imageUrl" | "hp" | "attacks" | "color" | "conditions"> & Partial<Pick<LibraryCreatureRecord, "hp" | "attacks" | "color" | "conditions">>;
-export type CreaturePatch = Partial<Pick<LibraryCreatureRecord, "name" | "size" | "hp" | "attacks" | "maxHp" | "ac" | "color" | "conditions" | "imageAssetId">>;
+/** Starting HP, colour, conditions and folder may be left out for older creatures (KAN-70, ADR 0075). */
+export type NewCreatureRecord = Omit<LibraryCreatureRecord, "imageUrl" | "hp" | "attacks" | "color" | "conditions" | "folder"> & Partial<Pick<LibraryCreatureRecord, "hp" | "attacks" | "color" | "conditions" | "folder">>;
+export type CreaturePatch = Partial<Pick<LibraryCreatureRecord, "name" | "size" | "hp" | "attacks" | "maxHp" | "ac" | "color" | "conditions" | "imageAssetId" | "folder">>;
+/** What one bulk edit may change on several creatures (ADR 0075). */
+export type BulkCreatureRecordPatch = Partial<Pick<LibraryCreatureRecord, "folder" | "size" | "maxHp" | "ac">>;
 
 /** The creature would link to token art that does not exist (or was deleted mid-request). */
 export class CreatureImageMissingError extends Error {
@@ -66,6 +72,8 @@ export interface EncounterRecord {
   mapAssetId: string | null;
   mapName: string | null;
   mapUrl: string | null;
+  /** The library folder it is filed under (ADR 0075); null or absent for none. */
+  folder?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -106,6 +114,8 @@ export interface LibraryAnimationRecord {
   ownerGmId: string;
   name: string;
   def: AnimationDef;
+  /** The library folder it is filed under (ADR 0075); null or absent for none. */
+  folder?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -255,6 +265,18 @@ export interface LibraryStore {
   /** Null when the GM has no such creature. Throws `CreatureImageMissingError` like `createCreature`. */
   updateCreature(id: string, ownerGmId: string, patch: CreaturePatch): Promise<LibraryCreatureRecord | null>;
   deleteCreature(id: string, ownerGmId: string): Promise<boolean>;
+  /**
+   * Applies one patch to several of the GM's creatures together (ADR 0075). Null, with nothing
+   * changed, when any id is not one of theirs; otherwise the updated creatures in `ids` order.
+   */
+  updateCreatures(ids: readonly string[], ownerGmId: string, patch: BulkCreatureRecordPatch): Promise<LibraryCreatureRecord[] | null>;
+  /** Deletes those of `ids` that are the GM's creatures, and says how many that was (ADR 0075). */
+  deleteCreatures(ids: readonly string[], ownerGmId: string): Promise<number>;
+  /**
+   * Files the GM's items of one kind in `folder` (null for none), all of them or none: false, with
+   * nothing changed, when any id is not one of theirs. Never changes `updatedAt` (ADR 0075).
+   */
+  moveToFolder(kind: LibraryFolderKind, ids: readonly string[], ownerGmId: string, folder: string | null): Promise<boolean>;
   /** The GM's creatures whose image is this asset, for the delete warning. */
   creaturesUsingImage(assetId: string, ownerGmId: string): Promise<{ id: string; name: string }[]>;
 

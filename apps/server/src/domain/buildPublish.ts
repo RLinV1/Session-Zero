@@ -3,6 +3,7 @@ import {
   DEFAULT_GRID,
   ENCOUNTER_TEMPLATE_VERSION,
   EMPTY_LIBRARY_BOARD,
+  MAX_LIBRARY_FOLDER,
   draftEncounterToTemplate,
   draftMapBoard,
   draftTerrainProblems,
@@ -104,7 +105,8 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
       width: file.width, height: file.height, byteSize: file.sizeBytes, grid: draft?.grid ?? null, board: draft ? draft.board : file.board,
       sourceHash: file.sourceHash, detectionSourceHash: file.detectionSourceHash, detectionVersion: file.detectionVersion, detectionError: file.detectionError,
       detectionStatus: file.detectionStatus, detectionAttempt: file.detectionAttempt, detectionResult: file.detectionResult, detectionUpdatedAt: file.detectionUpdatedAt,
-      createdAt: now,
+      // Filed under the build's name, with everything else the game brings (ADR 0075).
+      folder: buildFolder(build.name), createdAt: now,
     };
     plan.assets.push({ fileId, record });
     assetForFile.set(fileId, record);
@@ -176,6 +178,8 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
       record: {
         id: randomUUID(), ownerGmId: build.ownerGmId, name: data.name, size: data.size, hp: data.hp, maxHp: data.maxHp, ac: data.ac,
         attacks: data.attacks, color: data.color, conditions: data.conditions, imageAssetId: art?.id ?? null, createdAt: now,
+        // Filed under the build's name, so a game's items arrive together (ADR 0075).
+        folder: buildFolder(build.name),
       },
     });
     creatures.set(key, { name: data.name, size: data.size, hp: data.hp, maxHp: data.maxHp, ac: data.ac, color: data.color, conditions: data.conditions, attacks: data.attacks, imageUrl: art?.url ?? null, assetId: art?.id ?? null });
@@ -201,9 +205,15 @@ export async function planPublish(store: RoomStore, build: BuildRecord, selectio
     }
     plan.encounters.push({
       key: item.key,
-      record: { id: randomUUID(), ownerGmId: build.ownerGmId, name: data.name, version: ENCOUNTER_TEMPLATE_VERSION, data: built.data, mapAssetId: asset.id, createdAt: now, updatedAt: now },
+      record: { id: randomUUID(), ownerGmId: build.ownerGmId, name: data.name, version: ENCOUNTER_TEMPLATE_VERSION, data: built.data, mapAssetId: asset.id, folder: buildFolder(build.name), createdAt: now, updatedAt: now },
     });
   }
 
   return problems.length > 0 ? { ok: false, problems } : { ok: true, plan };
+}
+
+/** The library folder a build's maps, art, creatures and templates are published into: its name, cut to the folder limit (ADR 0075). */
+export function buildFolder(name: string): string | null {
+  const folder = name.trim().slice(0, MAX_LIBRARY_FOLDER).trim();
+  return folder === "" ? null : folder;
 }

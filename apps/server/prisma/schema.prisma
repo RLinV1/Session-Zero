@@ -233,6 +233,8 @@ model LibraryAnimation {
   ownerGmId String   @map("owner_gm_id") @db.Uuid
   name      String
   def       Json
+  /// The library folder it is filed under, e.g. its game (docs/adr/0075-library-folders.md); null for none.
+  folder    String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -265,6 +267,8 @@ model LibraryAsset {
   detectionAttempt Int @default(0) @map("detection_attempt")
   detectionResult Json? @map("detection_result")
   detectionUpdatedAt DateTime? @map("detection_updated_at") @db.Timestamptz(6)
+  /// The library folder it is filed under, e.g. its game (docs/adr/0075-library-folders.md); null for none.
+  folder    String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   owner     GmIdentity        @relation(fields: [ownerGmId], references: [id])
@@ -286,6 +290,8 @@ model EncounterTemplate {
   version    Int
   data       Json
   mapAssetId String?  @map("map_asset_id") @db.Uuid
+  /// The library folder it is filed under (docs/adr/0075-library-folders.md); null for none.
+  folder     String?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -316,6 +322,8 @@ model LibraryCreature {
   /// Conditions placed tokens start with (KAN-70).
   conditions   String[] @default([])
   imageAssetId String?  @map("image_asset_id") @db.Uuid
+  /// The library folder it is filed under, e.g. its game (docs/adr/0075-library-folders.md); null for none.
+  folder       String?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   owner GmIdentity    @relation(fields: [ownerGmId], references: [id])

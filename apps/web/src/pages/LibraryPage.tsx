@@ -1,7 +1,7 @@
 import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
 import { RoomSettingsButton } from "./RoomSettings";
 import { IconAction } from "../ui/IconAction";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
 import { api } from "../net/api";
 import { assetDisplayName, builtinsMatching } from "../net/builtinAssets";
@@ -15,10 +15,17 @@ import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { RequireAccount } from "../account/RequireAccount";
 import { LibraryMapEditor } from "./mapEditor/LibraryMapEditor";
 import { AnimationsTab } from "./LibraryAnimations";
-import { BuiltinCreatureCard, CreatureCard, CreatureForm } from "./LibraryCreatures";
+import { BuiltinCreatureCard, CreatureForm } from "./LibraryCreatures";
+import { CreaturesTab } from "./LibraryCreaturesTab";
+import { ALL_FOLDERS, libraryFolders, viewFolder, type FolderView } from "./LibraryFolders";
+import { FolderedList, type ChosenItems } from "./LibraryFolderedList";
+import { SelectableCard } from "./LibraryListTools";
+import { AssetBulkDelete, ItemsBulkDelete, type BulkDeleteOutcome } from "./LibraryBulkDelete";
+import type { CardSelection, Selection } from "../ui/selection";
 import { BUILTIN_CREATURES } from "../net/builtinCreatures";
 import { EncounterCard } from "./LibraryEncounters";
-import { LibraryPicker } from "./LibraryPicker";import { startEncounterEdit } from "./encounterEdit/startEdit";
+import { LibraryPicker } from "./LibraryPicker";
+import { startEncounterEdit } from "./encounterEdit/startEdit";
 import { DiceLookCards, DiceLookModal, DiceSignInLine, SaveBrowserLooksOffer } from "./DiceLooks";
 import { createDiceLook } from "../ui/diceSkinStore";
 import { IMAGE_ACCEPT, MAP_ACCEPT } from "../net/mapFileTypes";
@@ -119,6 +126,9 @@ function DiceLibrary() {
   );
 }
 
+const assetCreated = (a: LibraryAsset) => a.createdAt;
+const encounterSaved = (e: EncounterSummary) => e.updatedAt;
+
 /** The GM's maps, token art and creatures, managed before a session (asset-library, library-creatures). */
 function Library() {
   const [assets, setAssets] = useState<LibraryAsset[] | null>(null);
@@ -145,6 +155,12 @@ function Library() {
   /** New build's dialog, and whether the open-build limit turns its button off (FR-GM-26). */
   const [creatingBuild, setCreatingBuild] = useState(false);
   const [buildsFull, setBuildsFull] = useState(false);
+  /** Which folder each tab shows: all, one folder, or what is in none (library-organize). */
+  const [views, setViews] = useState<Partial<Record<Tab, FolderView>>>({});
+  const view = views[tab] ?? ALL_FOLDERS;
+  const setView = useCallback((next: FolderView) => setViews((all) => ({ ...all, [tab]: next })), [tab]);
+  /** Delete for the maps, token art or templates chosen on this tab, and the selection to end after. */
+  const [bulkDelete, setBulkDelete] = useState<{ ids: string[]; selection: Selection } | null>(null);
 
   /** Opens a new encounter on one of the GM's maps in a temporary room; a map with no grid gets one first. */
   async function newEncounterOn(map: LibraryAsset) {
@@ -184,7 +200,8 @@ function Library() {
   }, []);
 
   // Maps: the seeded shipped-map rows (ADR 0036) are listed under "Included with the app", not among the uploads.
-  const { shown, seededMaps, seededUrls } = useMemo(() => {
+  // The GM's own are passed unfiltered: their list searches, sorts and files them (library-organize).
+  const { own, seededMaps, seededUrls } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const mine: LibraryAsset[] = [];
     const seeded: LibraryAsset[] = [];
@@ -193,10 +210,10 @@ function Library() {
       if (a.kind !== kind) continue;
       const isShipped = kind === "map" && !!shippedMapByUrl(a.url);
       if (isShipped) urls.add(a.url);
-      if (q && !a.name.toLowerCase().includes(q)) continue;
-      (isShipped ? seeded : mine).push(a);
+      if (!isShipped) mine.push(a);
+      else if (!q || a.name.toLowerCase().includes(q)) seeded.push(a);
     }
-    return { shown: mine, seededMaps: seeded, seededUrls: urls };
+    return { own: mine, seededMaps: seeded, seededUrls: urls };
   }, [assets, kind, query]);
 
   // Static copies fill in until the account's own shipped rows exist; once a row is seeded its twin is dropped.
@@ -205,20 +222,38 @@ function Library() {
     [tab, kind, query, seededUrls],
   );
 
-  const shownCreatures = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (creatures ?? []).filter((c) => !q || c.name.toLowerCase().includes(q));
-  }, [creatures, query]);
-
   const builtinCreatures = useMemo(() => {
     const q = query.trim().toLowerCase();
     return BUILTIN_CREATURES.filter((c) => !q || c.name.toLowerCase().includes(q));
   }, [query]);
 
-  const shownEncounters = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (encounters ?? []).filter((e) => !q || e.name.toLowerCase().includes(q));
-  }, [encounters, query]);
+  useEffect(() => setBulkDelete(null), [tab]);
+
+  /** After a bulk delete: drop what went, and say so if some could not be deleted (they stay chosen). */
+  function afterBulkDelete(outcome: BulkDeleteOutcome, drop: (gone: Set<string>) => void) {
+    drop(new Set(outcome.deleted));
+    setError(outcome.failed.length > 0 ? t("library.bulk.partial", { done: outcome.deleted.length, failed: outcome.failed.length }) : null);
+    if (outcome.failed.length === 0) bulkDelete?.selection.stop();
+    setBulkDelete(null);
+  }
+
+  /** The Delete action on a tab's chosen items. */
+  const deleteAction = ({ chosen, selection }: ChosenItems<{ id: string }>) => (
+    <button type="button" className="secondary danger" disabled={chosen.length === 0} onClick={() => setBulkDelete({ ids: chosen.map((c) => c.id), selection })}>
+      <Trash size={16} aria-hidden="true" />
+      {t("library.bulk.delete")}
+    </button>
+  );
+  function chosenOf<T extends { id: string }>(list: readonly T[] | null): T[] | null {
+    return bulkDelete ? (list ?? []).filter((item) => bulkDelete.ids.includes(item.id)) : null;
+  }
+  /** Files what was just made into the folder open on its tab. */
+  const fileNew = async (kind: "asset", id: string): Promise<string | null> => {
+    const folder = viewFolder(view);
+    if (folder === null) return null;
+    await api.library.moveToFolder({ kind, ids: [id], folder });
+    return folder;
+  };
 
   const replace = (next: LibraryAsset) => setAssets((all) => (all ?? []).map((a) => (a.id === next.id ? next : a)));
 
@@ -277,6 +312,11 @@ function Library() {
               setAssets((all) => [a, ...(all ?? [])]);
               if (diagnostics) setImportResult({ assetId: a.id, diagnostics });
               if (a.kind === "map" && (!a.grid || diagnostics)) setGridTarget(a);
+              // Uploaded inside a folder: it goes in that folder.
+              void fileNew("asset", a.id).then(
+                (folder) => folder && setAssets((all) => (all ?? []).map((x) => (x.id === a.id ? { ...x, folder } : x))),
+                (err: unknown) => setError(err instanceof Error ? err.message : t("library.folder.moveFailed")),
+              );
             }}
             onError={setError}
           />
@@ -293,11 +333,11 @@ function Library() {
           <DiceLookCards query={query} onEdit={setDiceTarget} />
         </>
       ) : tab === "animation" ? (
-        <AnimationsTab query={query} onError={setError} />
+        <AnimationsTab query={query} onError={setError} view={view} onView={setView} />
       ) : tab === "encounter" ? (
         <>
           {!encounters && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
-          {encounters && shownEncounters.length === 0 && (query ? (
+          {encounters && encounters.length === 0 && (query ? (
             <p className="muted">{t("library.noEncounterMatch")}</p>
           ) : (
             // The toolbar's New encounter is right above, so the empty state adds no second one.
@@ -305,39 +345,54 @@ function Library() {
               {t("library.noEncounters")}
             </EmptyState>
           ))}
-          <ul className="plain asset-grid" role="tabpanel">
-            {shownEncounters.map((encounter) => (
-              <EncounterCard
-                key={encounter.id}
-                encounter={encounter}
-                map={encounter.mapAssetId ? assets?.find((a) => a.id === encounter.mapAssetId) : undefined}
-                onChanged={(next) => setEncounters((all) => (all ?? []).map((e) => (e.id === next.id ? next : e)))}
-                onDeleted={() => setEncounters((all) => (all ?? []).filter((e) => e.id !== encounter.id))}
-              />
-            ))}
-          </ul>
+          {encounters && encounters.length > 0 && (
+            <FolderedList
+              key="encounter"
+              kind="encounter"
+              sortKey="encounter"
+              items={encounters}
+              query={query}
+              // Templates are "newest" by when they were last saved, as the list has always run.
+              date={encounterSaved}
+              view={view}
+              onView={setView}
+              onMoved={(ids, folder) => setEncounters((all) => (all ?? []).map((e) => (ids.includes(e.id) ? { ...e, folder } : e)))}
+              noMatch={t("library.noEncounterMatch")}
+              renderCard={(encounter, selection) => (
+                <EncounterCard
+                  key={encounter.id}
+                  encounter={encounter}
+                  selection={selection}
+                  map={encounter.mapAssetId ? assets?.find((a) => a.id === encounter.mapAssetId) : undefined}
+                  onChanged={(next) => setEncounters((all) => (all ?? []).map((e) => (e.id === next.id ? next : e)))}
+                  onDeleted={() => setEncounters((all) => (all ?? []).filter((e) => e.id !== encounter.id))}
+                />
+              )}
+              actions={deleteAction}
+            />
+          )}
+          <ItemsBulkDelete
+            items={tab === "encounter" ? chosenOf(encounters) : null}
+            title={t("library.bulk.deleteTitle.encounter", { count: bulkDelete?.ids.length ?? 0 })}
+            body={t("library.bulk.encountersBody")}
+            remove={(id) => api.library.encounters.remove(id)}
+            onClose={() => setBulkDelete(null)}
+            onDeleted={(outcome) => afterBulkDelete(outcome, (gone) => setEncounters((all) => (all ?? []).filter((e) => !gone.has(e.id))))}
+          />
         </>
       ) : tab === "creature" ? (
         <>
-          {!creatures && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
-          {creatures && shownCreatures.length === 0 && (query ? (
-            <p className="muted">{t("library.noCreatureMatch")}</p>
-          ) : (
-            <EmptyState picture="empty-library">
-              {t("library.noCreatures")}
-            </EmptyState>
-          ))}
-          <ul className="plain asset-grid" role="tabpanel">
-            {shownCreatures.map((creature) => (
-                <CreatureCard
-                  key={creature.id}
-                  creature={creature}
-                  onEdit={() => setCreatureTarget(creature)}
-                  onDeleted={() => setCreatures((all) => (all ?? []).filter((c) => c.id !== creature.id))}
-                />
-              ))}
-          </ul>
-          {builtinCreatures.length > 0 && (
+          <CreaturesTab
+            creatures={creatures}
+            setCreatures={setCreatures}
+            loading={!creatures && !error}
+            query={query}
+            view={view}
+            onView={setView}
+            onEdit={setCreatureTarget}
+          />
+          {/* Included creatures are in no folder: shown under All only. */}
+          {builtinCreatures.length > 0 && view.kind === "all" && (
             <section className="builtin-assets" aria-labelledby="builtin-creatures-heading">
               <h2 id="builtin-creatures-heading">{t("library.included")}</h2>
               <p className="muted">{t("library.includedCreatures")}</p>
@@ -352,18 +407,31 @@ function Library() {
       ) : (
         <>
           {!assets && !error && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
-          {assets && shown.length === 0 && (query ? (
+          {assets && own.length === 0 && (query ? (
             <p className="muted">{t("library.noUploadMatch")}</p>
           ) : (
             <EmptyState picture="empty-library">
               {t(kind === "map" ? "library.noUploads.map" : "library.noUploads.token")}
             </EmptyState>
           ))}
-          <ul className="plain asset-grid" role="tabpanel">
-            {shown.map((asset) => (
+          {own.length > 0 && (
+            <FolderedList
+              // Maps and token art are two lists with their own folders, order and selection.
+              key={kind}
+              kind="asset"
+              sortKey={kind}
+              items={own}
+              query={query}
+              date={assetCreated}
+              view={view}
+              onView={setView}
+              onMoved={(ids, folder) => setAssets((all) => (all ?? []).map((a) => (ids.includes(a.id) ? { ...a, folder } : a)))}
+              noMatch={t("library.noUploadMatch")}
+              renderCard={(asset, selection) => (
                 <AssetCard
                   key={asset.id}
                   asset={asset}
+                  selection={selection}
                   onChanged={replace}
                   onEditGrid={() => setGridTarget(asset)}
                   onDeleted={() => {
@@ -372,12 +440,25 @@ function Library() {
                     setCreatures((all) => (all ?? []).map((c) => (c.imageAssetId === asset.id ? { ...c, imageAssetId: null, imageUrl: null } : c)));
                   }}
                 />
-              ))}
-          </ul>
+              )}
+              actions={deleteAction}
+            />
+          )}
+          <AssetBulkDelete
+            assets={tab === "map" || tab === "token" ? chosenOf(own) : null}
+            kind={kind}
+            onClose={() => setBulkDelete(null)}
+            onDeleted={(outcome) => afterBulkDelete(outcome, (gone) => {
+              setAssets((all) => (all ?? []).filter((a) => !gone.has(a.id)));
+              // As for one: creatures that used deleted art are now colour discs.
+              setCreatures((all) => (all ?? []).map((c) => (c.imageAssetId && gone.has(c.imageAssetId) ? { ...c, imageAssetId: null, imageUrl: null } : c)));
+            })}
+          />
         </>
       )}
 
-      {(builtins.length > 0 || seededMaps.length > 0) && (
+      {/* Included maps and art are in no folder: shown under All only. */}
+      {(builtins.length > 0 || seededMaps.length > 0) && view.kind === "all" && (
         <section className="builtin-assets" aria-labelledby="builtin-heading">
           <h2 id="builtin-heading">{t("library.included")}</h2>
           <p className="muted">{t("library.includedArt")}</p>
@@ -408,6 +489,8 @@ function Library() {
           <CreatureForm
             key={creatureTarget === "new" ? "new" : creatureTarget.id}
             creature={creatureTarget === "new" ? null : creatureTarget}
+            folders={libraryFolders(creatures ?? []).map((f) => f.name)}
+            defaultFolder={viewFolder(views.creature)}
             onCancel={() => setCreatureTarget(null)}
             onSaved={(saved) => {
               setCreatures((all) => [saved, ...(all ?? []).filter((c) => c.id !== saved.id)]);
@@ -417,7 +500,7 @@ function Library() {
         )}
       </Modal>
 
-      <DiceLookModal lookId={diceTarget}onClose={() => setDiceTarget(null)} />
+      <DiceLookModal lookId={diceTarget} onClose={() => setDiceTarget(null)} />
 
       <Modal open={pickingEncounterMap} title={t("library.chooseEncounterMap")} onClose={() => setPickingEncounterMap(false)}>
         {/* Only the GM's own maps: a template keeps its map by library id (ADR 0024). */}
@@ -516,6 +599,8 @@ type DeleteState =
 
 function AssetCard(props: {
   asset: LibraryAsset;
+  /** Its part in the tab's selection (library-organize). */
+  selection?: CardSelection;
   onChanged: (asset: LibraryAsset) => void;
   onEditGrid: () => void;
   onDeleted: () => void;
@@ -564,7 +649,7 @@ function AssetCard(props: {
   const standIn = asset.kind === "map" ? t("library.standIn.map") : t("library.standIn.token");
 
   return (
-    <li className="asset-card">
+    <SelectableCard className="asset-card" name={assetDisplayName(asset)} selection={props.selection}>
       <div className={asset.kind === "token" ? "asset-thumb token" : "asset-thumb"}>
         {asset.kind === "map" ? (
           <MapThumbnail url={asset.url} width={asset.width} height={asset.height} grid={asset.grid} />
@@ -639,6 +724,6 @@ function AssetCard(props: {
           />
         </div>
       )}
-    </li>
+    </SelectableCard>
   );
 }

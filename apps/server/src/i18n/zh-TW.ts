@@ -29,6 +29,7 @@ export const serverZhTW = {
   "api.noCheckpoint": "找不到這個存檔點",
 
   "api.assetNotFound": "找不到素材",
+  "api.itemsNotFound": "選取的項目中，有些不在你的素材庫裡",
   "api.onlyMapsHaveGrid": "只有地圖才有網格",
   "api.gridTooSmall": "這張地圖的網格間距太小。",
   "api.invalidMapPreparation": "地圖準備資料無效",

@@ -2053,6 +2053,92 @@ dialog.modal.build-new-modal { width: min(52rem, calc(100vw - 2rem)); }
 .confirm .row { justify-content: flex-end; }
 button.danger-fill { background: var(--danger-strong); border-color: var(--danger-strong); color: var(--accent-ink); }
 
+/* Organizing the library (library-organize): the row above each grid, creature folders,
+   choosing several cards and the bar that acts on them. */
+.library-listbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); margin: var(--space-3) 0; }
+.library-listbar-start { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 18rem; }
+.library-listbar-end { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.sort-picker { width: 11.5rem; }
+.sort-picker .picker { flex: none; }
+.select-toggle { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+button.secondary.danger { color: var(--danger); }
+
+.folder-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.folder-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%; min-height: 2rem;
+  padding: 0.2rem 0.7rem; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font-weight: 600; font-size: var(--fs-sm);
+}
+.folder-chip:hover:not(:disabled) { color: var(--text); }
+.folder-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
+.folder-count { font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); padding: 0 0.35rem; border-radius: 999px; background: var(--hover); }
+.folder-new { border-style: dashed; }
+
+.folder-heading-row { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
+.folder-heading { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: 1.1rem; min-width: 0; }
+.folder-heading-row .folder-heading { flex: 1; overflow-wrap: anywhere; }
+.folder-action { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+.library-folder-group + .library-folder-group { margin-top: var(--space-5); }
+.library-folder-group > .folder-heading { margin-bottom: var(--space-3); }
+button.folder-open { display: inline-flex; align-items: center; gap: var(--space-2); background: none; border: none; padding: 0; min-height: 0; color: var(--text); font: inherit; font-weight: 700; text-align: left; }
+button.folder-open:hover:not(:disabled) { background: none; color: var(--accent-text); }
+
+/* A card's box sits on its picture. Before selecting it shows on hover or focus, for a mouse;
+   a touch screen starts from Select instead, so there it waits until then. */
+.selectable { position: relative; }
+.select-box {
+  position: absolute; top: 0.95rem; left: 0.95rem; z-index: 1; display: grid; place-items: center;
+  width: 1.9rem; height: 1.9rem; border-radius: var(--radius-control); cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border-strong); box-shadow: 0 1px 4px var(--shadow);
+  opacity: 0; transition: opacity 120ms ease;
+}
+.select-box input { width: 1.1rem; height: 1.1rem; min-height: 0; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.selectable:hover .select-box, .select-box:focus-within, .selectable.selecting .select-box { opacity: 1; }
+@media (hover: none) { .selectable:not(.selecting) .select-box { display: none; } }
+.selectable.selecting { cursor: pointer; user-select: none; }
+/* A card's own actions step aside while choosing, keeping their space so nothing jumps. */
+.selectable.selecting .asset-actions, .selectable.selecting .confirm { visibility: hidden; }
+.selectable.selected { background: var(--raised); border-color: var(--border-strong); box-shadow: inset 0 -2px 0 var(--accent); }
+
+.selection-bar {
+  position: sticky; bottom: var(--space-3); z-index: 5; margin-top: var(--space-4);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-surface);
+  box-shadow: 0 8px 28px var(--shadow);
+}
+.selection-count { display: flex; align-items: baseline; gap: var(--space-2); white-space: nowrap; }
+.selection-count strong { font-variant-numeric: tabular-nums; }
+.selection-hint { flex: 1 1 14rem; font-size: var(--fs-sm); }
+.selection-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.selection-actions button { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+
+.folder-options { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; border: none; max-height: 18rem; overflow-y: auto; }
+.folder-option { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-control); cursor: pointer; overflow-wrap: anywhere; }
+.folder-option:hover { background: var(--hover); }
+.folder-option input { flex: none; margin: 0; accent-color: var(--accent); }
+.folder-option svg { flex: none; color: var(--muted); }
+.folder-new-name { margin: 0 0 var(--space-1) 2.1rem; width: calc(100% - 2.1rem); }
+@media (pointer: coarse), (max-width: 720px) {
+  .folder-chip, .folder-option { min-height: 44px; }
+  .select-box { width: 2.5rem; height: 2.5rem; }
+  .sort-picker { width: auto; flex: 1; }
+  .library-listbar-end { width: 100%; }
+}
+/* On a phone the chips are one row that scrolls, as the tabs above do, rather than three rows of chips. */
+@media (max-width: 720px) {
+  .library-listbar-start { flex-basis: 100%; }
+  .folder-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -1.25rem; padding-inline: 1.25rem; }
+  .folder-bar::-webkit-scrollbar { display: none; }
+  .folder-chip { flex: none; }
+  .selection-bar { padding-left: var(--space-3); }
+  /* Count and close on the first row, the actions below them. */
+  .selection-close { order: 1; margin-left: auto; }
+  .selection-hint { order: 2; flex-basis: 100%; }
+  .selection-actions { order: 3; margin-left: 0; width: 100%; }
+  .selection-actions button { flex: 1; justify-content: center; }
+}
+
 .library-picker { display: flex; flex-direction: column; gap: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-surface); padding: 0.5rem; }
 .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 0.4rem; max-height: 16rem; overflow-y: auto; }
 .picker-item {
@@ -3898,6 +3984,8 @@ dialog.modal.walls-preview-modal { width: min(64rem, calc(100vw - 2rem)); }
 .map-editor-mode[aria-checked="true"], .map-editor-mode[aria-pressed="true"], .map-editor-option[aria-checked="true"],
 .attack-panel .chip[aria-pressed="true"],
 .seg button[aria-pressed="true"],
+.folder-chip[aria-pressed="true"], .folder-chip[aria-pressed="true"]:hover:not(:disabled),
+.select-toggle[aria-pressed="true"],
 button.stage-button[aria-pressed="true"], button.stage-slot[aria-pressed="true"] {
   background: var(--raised);
   border-color: var(--border-strong);

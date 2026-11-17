@@ -84,6 +84,8 @@ export interface LibraryAnimation {
   def: AnimationDef;
   createdAt: string;
   updatedAt: string;
+  /** The library folder it is filed under (ADR 0075); null or absent means none. */
+  folder?: string | null;
 }
 
 export const CreateAnimationRequest = z.object({ name: AnimationName, def: AnimationDef });

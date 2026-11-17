@@ -18,7 +18,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   assertChoicesAllow,
@@ -61,6 +61,7 @@ import {
   type EncounterUpdate,
   type NewEncounterRecord,
   type CreaturePatch,
+  type BulkCreatureRecordPatch,
   type DiceFaceRecord,
   type DiceLookRecord,
   type LibraryAnimationRecord,
@@ -88,7 +89,7 @@ async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetR
     INSERT INTO library_assets
       (id, owner_gm_id, kind, object_key, url, name, width, height, byte_size, grid, board,
        source_hash, detection_source_hash, detection_version, detection_error,
-       detection_status, detection_attempt, detection_result, detection_updated_at, created_at)
+       detection_status, detection_attempt, detection_result, detection_updated_at, folder, created_at)
     VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
       ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height}, ${asset.byteSize ?? null}::int,
       ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
@@ -96,7 +97,7 @@ async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetR
       ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
       ${asset.detectionStatus ?? null}, ${asset.detectionAttempt ?? 0},
       ${asset.detectionResult ? JSON.stringify(asset.detectionResult) : null}::jsonb,
-      ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${new Date(asset.createdAt)})
+      ${asset.detectionStatus ? new Date(asset.detectionUpdatedAt ?? Date.now()) : null}, ${asset.folder ?? null}, ${new Date(asset.createdAt)})
   `;
 }
 
@@ -1088,6 +1089,45 @@ export class PostgresRoomStore implements RoomStore {
     return count === 1;
   }
 
+  async updateCreatures(ids: readonly string[], ownerGmId: string, patch: BulkCreatureRecordPatch) {
+    const unique = [...new Set(ids)];
+    const rows = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.libraryCreature.updateMany({ where: { id: { in: unique }, ownerGmId }, data: patch });
+      // One id that isn't theirs undoes the rest: a bulk edit changes all of them or none.
+      if (count !== unique.length) throw new BulkCreaturesMissing();
+      return tx.libraryCreature.findMany({ where: { id: { in: unique }, ownerGmId }, include: WITH_IMAGE });
+    }).catch((err: unknown) => {
+      if (err instanceof BulkCreaturesMissing) return null;
+      throw err;
+    });
+    if (!rows) return null;
+    const byId = new Map(rows.map((row) => [row.id, toCreatureRecord(row)]));
+    return unique.map((id) => byId.get(id)!);
+  }
+
+  async moveToFolder(kind: LibraryFolderKind, ids: readonly string[], ownerGmId: string, folder: string | null) {
+    const unique = [...new Set(ids)];
+    const where = { id: { in: unique }, ownerGmId };
+    return this.prisma.$transaction(async (tx) => {
+      const { count } =
+        kind === "asset" ? await tx.libraryAsset.updateMany({ where, data: { folder } })
+        : kind === "creature" ? await tx.libraryCreature.updateMany({ where, data: { folder } })
+        : kind === "encounter" ? await tx.encounterTemplate.updateMany({ where, data: { folder } })
+        : await tx.libraryAnimation.updateMany({ where, data: { folder } });
+      // One id that isn't theirs undoes the rest: a move files all of them or none.
+      if (count !== unique.length) throw new BulkCreaturesMissing();
+      return true;
+    }).catch((err: unknown) => {
+      if (err instanceof BulkCreaturesMissing) return false;
+      throw err;
+    });
+  }
+
+  async deleteCreatures(ids: readonly string[], ownerGmId: string) {
+    const { count } = await this.prisma.libraryCreature.deleteMany({ where: { id: { in: [...new Set(ids)] }, ownerGmId } });
+    return count;
+  }
+
   // ---------- Encounter templates (ADR 0024) ----------
 
   async listEncounters(ownerGmId: string) {
@@ -1584,6 +1624,7 @@ function toEncounterRecord(row: EncounterTemplate & { map: { name: string; url: 
     mapAssetId: row.mapAssetId,
     mapName: row.map?.name ?? null,
     mapUrl: row.map?.url ?? null,
+    folder: row.folder,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -1603,9 +1644,13 @@ function toCreatureRecord(row: LibraryCreature & { image: { url: string } | null
     conditions: row.conditions.filter((c): c is ConditionId => ConditionId.safeParse(c).success),
     imageAssetId: row.imageAssetId,
     imageUrl: row.image?.url ?? null,
+    folder: row.folder,
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+/** Rolls a bulk edit or folder move back when one of its ids is not the GM's (ADR 0075). */
+class BulkCreaturesMissing extends Error {}
 
 function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
   return {
@@ -1626,6 +1671,7 @@ function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
     detectionAttempt: row.detectionAttempt,
     detectionResult: (row.detectionResult as GridDetectionCandidate | null) ?? null,
     detectionUpdatedAt: row.detectionUpdatedAt?.toISOString() ?? null,
+    folder: row.folder,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -1659,6 +1705,7 @@ function toAnimationRecord(row: LibraryAnimation): LibraryAnimationRecord {
     ownerGmId: row.ownerGmId,
     name: row.name,
     def: row.def as unknown as LibraryAnimationRecord["def"],
+    folder: row.folder,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

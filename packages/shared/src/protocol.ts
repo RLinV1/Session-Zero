@@ -283,6 +283,8 @@ export interface LibraryAsset {
   height: number;
   /** Saved grid for maps; null for tokens. */
   grid: GridSpec | null;
+  /** The library folder it is filed under (ADR 0075); null or absent means none. */
+  folder?: string | null;
   createdAt: string;
 }
 
@@ -320,6 +322,40 @@ export const CreatureFields = z.object({
   imageAssetId: z.uuid().nullable(),
 });
 
+/** Longest library folder name (library-organize, ADR 0075). */
+export const MAX_LIBRARY_FOLDER = 60;
+/** Most library items one bulk change or delete may name (library-organize, ADR 0075). */
+export const MAX_BULK_ITEMS = 500;
+
+/**
+ * The folder a library item is filed under, e.g. the game it was made for (library-organize,
+ * ADR 0075). Folders are names on the items, not rows of their own: a folder exists while
+ * something is in it. Null is "no folder". Never sent to a room.
+ */
+export const LibraryFolder = z.string().trim().min(1).max(MAX_LIBRARY_FOLDER);
+
+/** Item ids for a bulk action: each named once, however often it was sent. */
+const BulkItemIds = z.array(z.uuid()).min(1).max(MAX_BULK_ITEMS).transform((ids) => [...new Set(ids)]);
+
+/** The library kinds that have folders: maps and token art are both `asset` (ADR 0075). */
+export const LIBRARY_FOLDER_KINDS = ["asset", "creature", "encounter", "animation"] as const;
+export type LibraryFolderKind = (typeof LIBRARY_FOLDER_KINDS)[number];
+
+/**
+ * Files several of the GM's items of one kind in a folder, or in none: all of them, or none when
+ * any is not the caller's (library-organize, ADR 0075). Never changes when an item was last saved.
+ */
+export const MoveToFolderRequest = z.object({
+  kind: z.enum(LIBRARY_FOLDER_KINDS),
+  ids: BulkItemIds,
+  folder: LibraryFolder.nullable(),
+}).strict();
+export type MoveToFolderRequest = z.input<typeof MoveToFolderRequest>;
+
+export interface MoveToFolderResponse {
+  moved: number;
+}
+
 export const CreateCreatureRequest = CreatureFields.extend({
   size: Token.shape.size.default(1),
   hp: TokenStats.shape.hp.default(null),
@@ -329,18 +365,46 @@ export const CreateCreatureRequest = CreatureFields.extend({
   color: Token.shape.color.default(DEFAULT_TOKEN_COLOR),
   conditions: CreatureFields.shape.conditions.default([]),
   imageAssetId: z.uuid().nullable().default(null),
+  folder: LibraryFolder.nullable().default(null),
 });
-export type CreateCreatureRequest = z.infer<typeof CreateCreatureRequest>;
+export type CreateCreatureRequest = z.input<typeof CreateCreatureRequest>;
 
 /** A saved template must place as a valid token rather than fail on HP > Max HP. */
 export function creatureHpValid(creature: { hp: number | null; maxHp: number | null }): boolean {
   return creature.hp === null || creature.maxHp === null || creature.hp <= creature.maxHp;
 }
 
-export const UpdateCreatureRequest = CreatureFields.partial().refine((p) => Object.keys(p).length > 0, {
+export const UpdateCreatureRequest = CreatureFields.extend({ folder: LibraryFolder.nullable() }).partial().refine((p) => Object.keys(p).length > 0, {
   message: validationMessage(sharedMsg("valid.nothingToChange")),
 });
 export type UpdateCreatureRequest = z.infer<typeof UpdateCreatureRequest>;
+
+/**
+ * What one edit may change on several creatures at once (library-organize, ADR 0075): the
+ * folder and the values a group of creatures shares. Name, art, attacks, starting HP and
+ * conditions belong to one creature and stay in its own form.
+ */
+export const BulkCreaturePatch = z.object({
+  folder: LibraryFolder.nullable(),
+  size: CreatureFields.shape.size,
+  maxHp: CreatureFields.shape.maxHp,
+  ac: CreatureFields.shape.ac,
+}).partial().strict().refine((p) => Object.keys(p).length > 0, {
+  message: validationMessage(sharedMsg("valid.nothingToChange")),
+});
+export type BulkCreaturePatch = z.infer<typeof BulkCreaturePatch>;
+
+/** Change several of the GM's creatures together: all of them, or none when any is not theirs. */
+export const BulkUpdateCreaturesRequest = z.object({ ids: BulkItemIds, patch: BulkCreaturePatch }).strict();
+export type BulkUpdateCreaturesRequest = z.input<typeof BulkUpdateCreaturesRequest>;
+
+/** Delete several of the GM's creatures; ids that are already gone are skipped. */
+export const BulkDeleteCreaturesRequest = z.object({ ids: BulkItemIds }).strict();
+export type BulkDeleteCreaturesRequest = z.input<typeof BulkDeleteCreaturesRequest>;
+
+export interface BulkDeleteCreaturesResponse {
+  deleted: number;
+}
 
 export interface LibraryCreature {
   id: string;
@@ -356,6 +420,8 @@ export interface LibraryCreature {
   imageAssetId: string | null;
   /** Resolved from the linked token art; null when there is none or it was deleted. */
   imageUrl: string | null;
+  /** The library folder it is filed under (ADR 0075); null or absent on older responses means none. */
+  folder?: string | null;
   createdAt: string;
 }
 
@@ -411,6 +477,8 @@ export interface EncounterSummary {
   createdAt: string;
   /** When the template was last saved; the library lists newest first. */
   updatedAt: string;
+  /** The library folder it is filed under (ADR 0075); null or absent means none. */
+  folder?: string | null;
 }
 
 
