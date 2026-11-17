@@ -14,7 +14,7 @@ const endpoint=process.env.STUDIO_TEST_S3_ENDPOINT;
 // This suite cannot select the development store: all four isolation variables are required.
 const enabled=Boolean(endpoint && process.env.STUDIO_TEST_S3_ACCESS_KEY && process.env.STUDIO_TEST_S3_SECRET_KEY && process.env.STUDIO_TEST_S3_BUCKET);
 const prefix=process.env.STUDIO_TEST_S3_BUCKET ?? "unconfigured";
-if(enabled && (!endpoint!.startsWith("http://127.0.0.1:") || endpoint!.includes(":8333") || !prefix.startsWith("studio-m1b-"))) throw new Error("Studio S3 tests require their isolated loopback endpoint/bucket prefix");
+if(enabled && (!endpoint!.startsWith("http://127.0.0.1:") || endpoint!.includes(":8333") || !/^studio-m(?:1b|2)-/.test(prefix))) throw new Error("Studio S3 tests require their isolated loopback endpoint/bucket prefix");
 const clients:S3StudioMediaStore[]=[];
 const buckets:string[]=[];
 const s3=enabled?new S3Client({endpoint,region:"us-east-1",forcePathStyle:true,requestChecksumCalculation:"WHEN_REQUIRED",credentials:{accessKeyId:process.env.STUDIO_TEST_S3_ACCESS_KEY!,secretAccessKey:process.env.STUDIO_TEST_S3_SECRET_KEY!}}):null;

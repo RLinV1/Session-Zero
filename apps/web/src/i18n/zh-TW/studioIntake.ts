@@ -46,6 +46,7 @@ export const studioIntakeZhTW = {
   "error.missing": "無法使用這個建置或檔案。",
   "error.unknown": "上傳未完成。請重新選取原始檔。",
   "previewUnavailable": "無法載入受保護的預覽。請重試連線。",
+  "websiteUnavailable": "這個平台無法開啟 Session Zero。請在瀏覽器開啟網站，登入後查看此建置。",
   "limitFiles": "每次最多選取 5 個檔案。",
   "show": "顯示這張地圖"
 } as const satisfies Catalog<typeof studioIntake>;

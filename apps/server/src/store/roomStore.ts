@@ -6,6 +6,7 @@ import type { GridDetectionStore, UploadAnalysis } from "./gridDetectionStore";
 import type { RoomUploadPurpose } from "@vtt/shared";
 import type { MembershipStore } from "./membershipStore";
 import type { StudioStore } from "./studioStore";
+import type { StudioPreparationStore } from "./studioPreparation";
 
 export interface NewEvent {
   actorId: string | null;
@@ -50,7 +51,7 @@ export class SeqConflictError extends Error {
  */
 import type { StudioMediaPersistence } from "./studioMedia";
 
-export interface RoomStore extends StudioMediaPersistence, LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
+export interface RoomStore extends StudioPreparationStore, StudioMediaPersistence, LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;

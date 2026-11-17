@@ -55,12 +55,54 @@ describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
     for(const name of ["studio_snapshot","studio_import_files","studio_bind_file","studio_get_media"])expect(tools.find((t)=>t.name===name)!._meta.ui).toMatchObject({visibility:["app"]});
     const resource=await s.rpc("resources/read",{uri:studioView.uri});const html=JSON.stringify(resource.body);expect(html).not.toContain(s.tokens.access_token);expect(html).not.toContain(s.build.id);expect(html).not.toContain("Private owner name");expect(html).not.toContain(s.bytes.toString("base64"));
     for (const forbidden of ["blob:","localStorage","setWidgetState"]) expect(VIEW_SCRIPT.includes(forbidden)).toBe(false);
+    expect(html).toContain("preparation");expect(html).toContain("__sceneStudio");
+    const context=tools.find((tool)=>tool.name==="studio_set_context")!;
+    expect(context._meta.ui).toMatchObject({visibility:["model","app"]});
+    for(const property of ["sourceFileId","mapKey","encounterKey"])expect(JSON.stringify(context.inputSchema)).toContain(property);
+  });
+  it("projects real saved preparation after explicit context selection and keeps prior layers after a refused save",async()=>{
+    const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")],tokenFiles:[s.descriptor("token")]});
+    const rows=await s.room.store.listBuildFiles(s.build.id),file=rows.find((row)=>row.kind==="map")!,art=rows.find((row)=>row.kind==="token")!;
+    await s.owner.json("PUT",`/api/builds/${s.build.id}/choices`,{aiGrid:true,aiWalls:true,aiTerrain:true});
+    for(const [name,args] of [
+      ["save_map",{key:"chapel",name:"Chapel",fileId:file.id,proposedGrid:{cellSize:30,offsetX:0,offsetY:0}}],
+      ["save_creatures",{creatures:[{key:"sentry",name:"Sentry",isPlayerCharacter:false,imageFileId:art.id}]}],
+      ["save_map_setup",{mapKey:"chapel",lines:[{from:{column:0,row:1},to:{column:3,row:1},kind:"wall"},{from:{column:1,row:1},to:{column:2,row:1},kind:"door",state:"closed"}],terrain:[{row:0,start:0,end:0,kind:"difficult"}]}],
+      ["save_encounter",{key:"watch",name:"Watch",mapKey:"chapel",tokens:[{creatureKey:"sentry",name:"East sentry",square:{column:2,row:0},hidden:true}]}],
+    ] as const)expect((await s.call(name,{buildId:s.build.id,...args})).body.result!.isError,name).not.toBe(true);
+    const context={sourceFileId:file.id,mapKey:"chapel",encounterKey:"watch"};
+    expect((await s.call("studio_set_context",{buildId:s.build.id,context})).body.result!.structuredContent).toMatchObject({buildId:s.build.id,context});
+    const saved=(await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!;
+    expect(saved).toMatchObject({context,scene:{gridStatus:"proposed",terrain:[{row:0,start:0,end:0,kind:"difficult"}],tokens:[{name:"East sentry",hidden:true,imageFileId:art.id,center:{x:75,y:15}}]}});
+    const walls=(saved.scene as {walls:unknown[]}).walls;expect(walls.length).toBe(3);
+    expect(saved.websitePath).toBe(`${TEST_ORIGIN}/builds/${s.build.id}`);
+    await s.owner.json("PUT",`/api/builds/${s.build.id}/choices`,{aiGrid:true,aiWalls:false,aiTerrain:true});
+    expect((await s.call("save_map_setup",{buildId:s.build.id,mapKey:"chapel",lines:[],terrain:[]})).body.result!.isError).toBe(true);
+    const after=(await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!;
+    expect((after.scene as {walls:unknown[]}).walls).toEqual(walls);expect((after.scene as {terrain:unknown[]}).terrain).toEqual((saved.scene as {terrain:unknown[]}).terrain);
+    expect(after.outcomes).toEqual(expect.arrayContaining([expect.objectContaining({targetKey:"chapel",status:"refused",code:"permission"})]));
+    const reopened=await s.call("studio_open",{buildId:s.build.id,context});
+    expect(reopened.body.result!.isError).not.toBe(true);expect(JSON.stringify(reopened.body)).not.toContain("East sentry");
+    const mismatch=await s.call("studio_set_context",{buildId:s.build.id,context:{...context,mapKey:null}});
+    expect(mismatch.body.result!.isError).toBe(true);expect(((await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!).context).toEqual(context);
+  });
+  it("loads a protected media cache miss without another snapshot when the view provides a routing hint",async()=>{
+    const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")]});
+    const row=(await s.room.store.listBuildFiles(s.build.id))[0]!;
+    const fetch=globalThis.fetch;const requests:string[]=[];
+    const spy=vi.spyOn(globalThis,"fetch").mockImplementation((input,init)=>{requests.push(String(input));return fetch(input,init);});
+    try {
+      const loaded=await s.call("studio_get_media",{buildId:s.build.id,fileId:row.id,privacy:"private"});
+      expect(loaded.body.result!._meta).toHaveProperty("sessionzero/media");
+      expect(requests.filter((url)=>url===`${s.room.base}/api/studio/builds/${s.build.id}/studio`)).toEqual([]);
+      expect(requests.filter((url)=>url.includes(`/files/${row.id}/media`))).toHaveLength(1);
+    } finally {spy.mockRestore();}
   });
   it("refuses foreign bindings and stale cached ids after reconnecting as another owner; revoked media returns no bytes",async()=>{
     const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")]});const row=(await s.room.store.listBuildFiles(s.build.id))[0]!;
     const stranger=await s.room.signUp({displayName:"Other owner"});const {build}=await stranger.json<{build:{id:string}}>("POST","/api/builds",{name:"Other build"});const foreign=await connectStudio(s.room.base,stranger,[build.id]);
     for(const name of ["studio_open","studio_snapshot","studio_get_media","studio_bind_file"]) {
-      const refused=await s.call(name,{buildId:s.build.id,fileId:row.id},foreign.tokens.access_token);expect(refused.body.result!.isError).toBe(true);expect(JSON.stringify(refused.body)).not.toContain(row.studio!.originalSha256);expect(refused.body.result!._meta).not.toHaveProperty("sessionzero/media");
+      const refused=await s.call(name,{buildId:s.build.id,fileId:row.id,privacy:"private"},foreign.tokens.access_token);expect(refused.body.result!.isError).toBe(true);expect(JSON.stringify(refused.body)).not.toContain(row.studio!.originalSha256);expect(refused.body.result!._meta).not.toHaveProperty("sessionzero/media");
     }
     const grant=(await s.owner.json<{grants:{id:string}[]}>("GET",`/api/builds/${s.build.id}/grants`)).grants[0]!;await s.owner.request("DELETE",`/api/builds/${s.build.id}/grants/${grant.id}`);
     const revoked=await s.call("studio_get_media",{buildId:s.build.id,fileId:row.id});expect(revoked.response.status).toBe(401);expect(revoked.response.headers.get("cache-control")).toBe("no-store");expect(revoked.body.result).toBeUndefined();

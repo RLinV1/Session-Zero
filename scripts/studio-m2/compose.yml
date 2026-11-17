@@ -1,0 +1,41 @@
+# Disposable M2 services only. The development and manual M1 projects must remain untouched.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: ${STUDIO_TEST_PG_PASSWORD:?required}
+      POSTGRES_DB: studio_m2
+    ports: ["127.0.0.1:${STUDIO_TEST_PG_PORT:?required}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio -d studio_m2"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: ["server", "-s3", "-s3.config=/run/studio-s3.json", "-dir=/data"]
+    ports: ["127.0.0.1:${STUDIO_TEST_S3_PORT:?required}:8333"]
+    volumes:
+      - "s3data:/data"
+      - "${STUDIO_TEST_S3_CONFIG:?required}:/run/studio-s3.json:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  vision:
+    build: ../../services/vision
+    environment:
+      PORT: "8000"
+      GRID_MAX_PIXELS: "16000000"
+    ports: ["127.0.0.1:${STUDIO_TEST_VISION_PORT:?required}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',8000),2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  pgdata:
+  s3data:

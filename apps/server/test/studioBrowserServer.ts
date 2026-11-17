@@ -12,7 +12,7 @@ await mkdir(uploadDir,{recursive:true});
 const map=await readFile(new URL("../../../browser/fixtures/studio-map.png",import.meta.url));
 const token=await readFile(new URL("../../../browser/fixtures/studio-token.png",import.meta.url));
 const files=new Map([["/studio-browser-map",map],["/studio-browser-token",token]]);
-const app=await buildApp({store:new MemoryRoomStore(),uploadDir,studio:{publicOrigin:"http://127.0.0.1:5189"},studioMedia:await LocalStudioMediaStore.connect(root,uploadDir),clientOrigin:"http://127.0.0.1:5189",redisUrl:undefined,visionUrl:"http://127.0.0.1:18889",wallQueue:null,
+const app=await buildApp({store:new MemoryRoomStore(),uploadDir,studio:{publicOrigin:"http://127.0.0.1:5189"},studioMedia:await LocalStudioMediaStore.connect(root,uploadDir),clientOrigin:"http://127.0.0.1:5189",redisUrl:undefined,visionUrl:process.env.VISION_URL??"http://127.0.0.1:18889",wallQueue:null,
   studioDownloader:async(raw)=>{const url=studioDownloadUrl(raw);const bytes=files.get(url.pathname);if(!bytes)throw new StudioIntakeError("expired");return bytes;}});
 app.express.get("/_test/studio-fixtures",(_req,res)=>res.json({map:{sha256:createHash("sha256").update(map).digest("hex"),bytes:map.length},token:{sha256:createHash("sha256").update(token).digest("hex"),bytes:token.length}}));
 await app.listen({port:Number(process.env.PORT??3109),host:"127.0.0.1"});

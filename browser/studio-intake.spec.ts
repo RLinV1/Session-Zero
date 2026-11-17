@@ -43,13 +43,13 @@ else if(message.id!==undefined)respond({});});
   const frame=page.frameLocator("iframe");await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
   if(options.locale)await frame.locator("#language").selectOption(options.locale);
   const notify=async(result:Record<string,unknown>)=>page.locator("iframe").evaluate((element,result)=>{(element as HTMLIFrameElement).contentWindow!.postMessage({jsonrpc:"2.0",method:"ui/notifications/tool-result",params:result},"*");},result);
-  const openOther=async()=>{if(!session.otherBuild)throw new Error("Missing second build fixture");const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.otherBuild.id,mapFiles:[descriptor()]}});await notify(opened.result);await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator("#source")).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");};
+  const openOther=async()=>{if(!session.otherBuild)throw new Error("Missing second build fixture");const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.otherBuild.id,mapFiles:[descriptor()]}});await notify(opened.result);await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");};
   return {frame,session,rpc,notify,openOther,polls:()=>polls,setToken:(next:string)=>{token=next;},setBridgeFailure:(failed:boolean)=>{bridgeFailure=failed;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveText("Saved files are up to date");}};
 }
 const noOverflow=(frame:FrameLocator)=>frame.locator("body").evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
 test("protected chat intake, picker/device controls, canonical hashes and reopened source (FR-GM-26)",async({page,request},info)=>{
   const {frame,session,rpc,reopen}=await mount(page,request);
-  await expect(frame.locator("#source")).toBeVisible();await expect(frame.locator("#source")).toHaveAttribute("src",/^data:image\/webp;base64,/);expect(await noOverflow(frame)).toBe(true);
+  await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator('[data-testid="studio-source-image"]')).toHaveAttribute("href",/^data:image\/webp;base64,/);expect(await noOverflow(frame)).toBe(true);
   await expect(frame.locator("#owner")).toHaveText("Browser GM");await expect(frame.locator("#files li")).toHaveCount(2);
   const snapshot=await rpc("tools/call",{name:"studio_snapshot",arguments:{buildId:session.build.id}});const data=snapshot.result.structuredContent as {files:{kind:string;originalSha256:string}[]};
   const expected=await (await request.get(`${ORIGIN.replace(":5189",":3109")}/_test/studio-fixtures`)).json() as {map:{sha256:string};token:{sha256:string}};
@@ -58,27 +58,27 @@ test("protected chat intake, picker/device controls, canonical hashes and reopen
   await frame.locator("#kind").selectOption("token");await frame.locator("#device").setInputFiles(path.resolve("browser/fixtures/studio-token.png"));await expect(frame.locator("#upload-status")).toHaveText("Saved");
   await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#upload-status")).toHaveText("已儲存");await expect(frame.locator("#status")).toHaveText("已顯示最新儲存的檔案");
   await frame.locator("#language").selectOption("en");await expect(frame.locator("#upload-status")).toHaveText("Saved");
-  await reopen();await expect(frame.locator("#source")).toBeVisible();await frame.getByRole("button",{name:"Expand Studio"}).click();await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {studioExpanded:boolean}).studioExpanded))).toBe(true);
+  await reopen();await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await frame.getByRole("button",{name:"Expand Studio"}).click();await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {studioExpanded:boolean}).studioExpanded))).toBe(true);
   await page.screenshot({path:info.outputPath("studio-intake.png"),fullPage:true});
 });
 test("empty and zh-TW intake states fit narrow layouts and keyboard controls (FR-GM-26, localization)",async({page,request},info)=>{
-  const {frame}=await mount(page,request,{empty:true,locale:"zh-TW"});await expect(frame.getByRole("heading",{name:"新增地圖以開始"})).toBeVisible();expect(await noOverflow(frame)).toBe(true);
-  await frame.getByRole("button",{name:"從 ChatGPT 選取"}).focus();await page.keyboard.press("Enter");await expect(frame.locator("#source")).toBeVisible();await expect(frame.locator("#upload-status")).toHaveText("已儲存");
+  const {frame}=await mount(page,request,{empty:true,locale:"zh-TW"});await expect(frame.getByText("選擇來源地圖以檢視已儲存的準備。",{exact:true})).toBeVisible();expect(await noOverflow(frame)).toBe(true);
+  await frame.getByRole("button",{name:"從 ChatGPT 選取"}).focus();await page.keyboard.press("Enter");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#upload-status")).toHaveText("已儲存");
   await page.screenshot({path:info.outputPath("studio-intake-zh.png"),fullPage:true});
 });
 test("cached binding refuses another owner, clears images and stops polling while hidden/teardown (FR-GM-26)",async({page,request,browser})=>{
-  const {frame,polls,setToken}=await mount(page,request);await expect(frame.locator("#source")).toBeVisible();
+  const {frame,polls,setToken}=await mount(page,request);await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
   await frame.locator("body").evaluate(()=>{Object.defineProperty(document,"hidden",{value:true,configurable:true});document.dispatchEvent(new Event("visibilitychange"));});const before=polls();await page.waitForTimeout(5500);expect(polls()).toBe(before);
   const foreign=await browser.newContext();const other=await connected(foreign.request,"Other GM");setToken(other.token);
   await frame.locator("body").evaluate(()=>{Object.defineProperty(document,"hidden",{value:false,configurable:true});document.dispatchEvent(new Event("visibilitychange"));});
-  await expect(frame.locator("#status")).toHaveText("This build is unavailable to this connection. Reconnect with its owner.");await expect(frame.locator("#source")).not.toHaveAttribute("src",/data:/);await expect(frame.locator("#files li")).toHaveCount(0);
+  await expect(frame.locator("#status")).toHaveText("This build is unavailable to this connection. Reconnect with its owner.");await expect(frame.locator('[data-testid="studio-source-image"]')).toHaveCount(0);await expect(frame.locator("#files li")).toHaveCount(0);
   await frame.locator("body").evaluate(()=>dispatchEvent(new Event("pagehide")));const ended=polls();await page.waitForTimeout(5500);expect(polls()).toBe(ended);await foreign.close();
 });
 test("a declined bridge refresh pauses automatic requests until explicit retry (FR-GM-26)",async({page,request})=>{
-  const {frame,polls,setBridgeFailure}=await mount(page,request);await expect(frame.locator("#source")).toBeVisible();
+  const {frame,polls,setBridgeFailure}=await mount(page,request);await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
   setBridgeFailure(true);await frame.getByRole("button",{name:"Retry connection"}).click();
   await expect(frame.locator("#status")).toHaveText("Connection interrupted. Showing the last saved view. Reconnect in your AI app, then retry.");
-  const failed=polls();await page.waitForTimeout(5500);expect(polls()).toBe(failed);await expect(frame.locator("#source")).toBeVisible();
+  const failed=polls();await page.waitForTimeout(5500);expect(polls()).toBe(failed);await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
   setBridgeFailure(false);await frame.getByRole("button",{name:"Retry connection"}).click();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
 });
 test("a late binding refusal cannot clear a newer build view (FR-GM-26)",async({page,request})=>{
@@ -87,7 +87,7 @@ test("a late binding refusal cannot clear a newer build view (FR-GM-26)",async({
   let entered!:()=>void,release!:()=>void,delivered!:()=>void;const pending=new Promise<void>((resolve)=>{entered=resolve;});const resume=new Promise<void>((resolve)=>{release=resolve;});const responseSent=new Promise<void>((resolve)=>{delivered=resolve;});
   await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {params:{name:string;arguments:{buildId:string}}};if(message.params.name!=="studio_bind_file")return route.fallback();expect(message.params.arguments.buildId).toBe(session.build.id);entered();await resume;await route.fulfill({json:{result:{isError:true,content:[],_meta:{"sessionzero/error":{status:404,code:"missing"}}}}});delivered();});
   await frame.getByRole("button",{name:"Show this map",disabled:false}).click();await pending;await openOther();release();await responseSent;await page.waitForTimeout(100);
-  await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator("#source")).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
 });
 for(const phase of ["picker","descriptor","device"] as const)test(`pending ${phase} selection cannot be retargeted to another build (FR-GM-26)`,async({page,request})=>{
   const {frame,session,rpc,openOther}=await mount(page,request,{secondBuild:true});

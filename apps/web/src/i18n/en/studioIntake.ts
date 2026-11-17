@@ -45,6 +45,7 @@ export const studioIntake = {
   "error.missing": "This build or file is unavailable.",
   "error.unknown": "The upload did not finish. Select the original again.",
   "previewUnavailable": "The protected preview is unavailable. Retry the connection.",
+  "websiteUnavailable": "The host could not open Session Zero. Open the website in your browser and sign in to this build.",
   "limitFiles": "Select at most five files at a time.",
   "show": "Show this map"
 } as const satisfies CatalogSource;

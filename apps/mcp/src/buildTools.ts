@@ -230,7 +230,7 @@ export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
 const buildIdArg = z.uuid().describe("The build's id, from list_builds.");
 
 /** The tools at /mcp/studio (ADR 0073, design D7). */
-export const STUDIO_TOOLS = ["studio_open", "studio_snapshot", "studio_import_files", "studio_bind_file", "studio_get_media", "list_builds", "get_build", ...SHARED_TOOLS.map((t) => t.name), CHECK_TOOL.name];
+export const STUDIO_TOOLS = ["studio_open", "studio_snapshot", "studio_import_files", "studio_bind_file", "studio_set_context", "studio_get_media", "list_builds", "get_build", ...SHARED_TOOLS.map((t) => t.name), CHECK_TOOL.name];
 
 /**
  * The delegated Studio tools at /mcp/studio (ADR 0073, design D7 "M1a implementation record"): the
