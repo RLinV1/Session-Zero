@@ -9,9 +9,9 @@ import { EXAMPLE_EVENT, EXAMPLE_STEPS } from "./tutorialExample";
 import { ExampleCursor } from "./ExampleCursor";
 import { useExampleRun } from "./useExampleRun";
 import { TUTORIAL_MAP } from "./tutorialMap";
-import { damageWaiting, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, restoreTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
+import { completeDemoStep, damageWaiting, dismissDemoRulings, ensureDemoTokens, ensureTutorialScene, resetTutorialScene, restoreTutorialScene, runDemoEncounter, runDemoRoll, type DemoResult } from "./tutorialDemo";
 import { ScenePreparationContext } from "../panels/ScenePreparationContext";
-import { COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type Progress, type TutorialFacts } from "./tutorialSteps";
+import { AUTO_TUTORIAL_STEPS, COMBAT_TUTORIAL_STEPS, EDITOR_TUTORIAL_STEPS, TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, stepDone, type Progress, type TutorialFacts } from "./tutorialSteps";
 
 const TITLE: Record<(typeof TUTORIAL_STEPS)[number], TextId> = {
   table: "tutorial.table.title",
@@ -84,6 +84,9 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const baseInvites = useRef(invites);
   // The roll log outlives the demo, so only attacks made after it began (or restarted) count.
   const baseMarks = useRef(rollMarks(state.rolls));
+  // Only dice the GM rolls after the demo began count for the Roll step, not the room's earlier history.
+  const ownRolls = (rolls: RoomState["rolls"]) => rolls.filter((roll) => roll.byParticipantId === selfId).length;
+  const baseOwnRolls = useRef(ownRolls(state.rolls));
   const positions = useRef(positionsOf(state.tokens));
 
   const nextPositions = useMemo(() => positionsOf(state.tokens), [state.tokens]);
@@ -118,7 +121,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const facts: TutorialFacts = {
     tokens: Object.keys(state.tokens).length,
     fog: Object.keys(state.fog).length,
-    gmRolls: state.rolls.filter((roll) => roll.byParticipantId === selfId).length,
+    gmRolls: ownRolls(state.rolls) - baseOwnRolls.current,
     moves,
     mapEdits,
     gridEdits,
@@ -136,7 +139,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const set = (next: Exclude<Progress, null>) => {
     if (next === "done" || next === "declined") {
       stop();
-      void restoreTutorialScene(connection).then(() => {
+      void dismissDemoRulings(connection).then(() => restoreTutorialScene(connection)).then(() => {
         const current = connection.snapshot?.state;
         if (current) scenePreparation?.preview(current.activeSceneId ?? "initial");
       });
@@ -169,6 +172,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     seenRestart.current = restart;
     baseInvites.current = invites;
     baseMarks.current = marks;
+    baseOwnRolls.current = ownRolls(state.rolls);
     setMoves(0);
     setMapEdits(0);
     setGridEdits(0);
@@ -188,6 +192,8 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
   const [editorHost, setEditorHost] = useState<HTMLDialogElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const pointerRoute = useRef<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
+  // Set after the early return below; lets the encounter step start its fight by itself.
+  const autoFight = useRef<(() => void) | null>(null);
   const [introAt, setIntroAt] = useState<{ x: number; y: number } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
@@ -315,6 +321,10 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     focusNext.current = false;
   }, [shown, step, restart]);
 
+  useEffect(() => {
+    if (shown && stepName === "encounter") autoFight.current?.();
+  }, [shown, stepName]);
+
   // Reaching the Move step without a token (the Token step was skipped) would leave nothing to move.
   useEffect(() => {
     if (shown && stepName === "move" && connection.snapshot?.state) void ensureDemoTokens(connection);
@@ -332,6 +342,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
     const next = ({ encounter: "attack", attack: "ruling", damage: "damage" } as Partial<Record<string, string>>)[stepName!];
     if (result.ok && next) window.setTimeout(() => reveal(next as (typeof TUTORIAL_STEPS)[number]), 300);
   };
+  autoFight.current = () => { if (!state.initiative && !demoBusy) void runDemo(() => runDemoEncounter(connection)); };
   const waitingDamage = damageWaiting(state);
 
   const asking = step === null;
@@ -360,6 +371,7 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
       keys.current = { mapKey: JSON.stringify(current.scene.map), gridKey: JSON.stringify(current.scene.grid), wallKey: JSON.stringify(current.walls), sightKey: JSON.stringify([current.scene.lineOfSight, current.scene.sightRange]), terrainKey: JSON.stringify(current.terrain ?? null) };
       positions.current = positionsOf(current.tokens);
       baseMarks.current = rollMarks(current.rolls);
+      baseOwnRolls.current = ownRolls(current.rolls);
       setMoves(0); setMapEdits(0); setGridEdits(0); setWallEdits(0); setSightEdits(0); setTerrainEdits(0);
     }
     setDemoBusy(false);
@@ -432,9 +444,6 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
             {REVEALABLE.has(stepName!) && !run.playing && (
               <button type="button" className="small primary" disabled={demoBusy} onClick={() => void showMe()}>{run.step === stepName ? t("tutorial.replay") : t("tutorial.showMe")}</button>
             )}
-            {stepName === "encounter" && (
-              <button type="button" className="small primary" data-demo="encounter" disabled={demoBusy} onClick={() => void runDemo(() => runDemoEncounter(connection))}>{t("tutorial.demo.run")}</button>
-            )}
             {stepName === "attack" && (
               <button type="button" className="small primary" data-demo="attack" disabled={demoBusy} onClick={() => void runDemo(() => runDemoRoll(connection, "toHit"))}>{t("tutorial.demo.roll")}</button>
             )}
@@ -453,8 +462,17 @@ export function GuestTutorial({ roomId, state, selfId, invites, restart, offer, 
           </div>
           <div className="tutorial-nav">
           {stepName !== "table" && stepName !== "done" && !run.playing && (
-            <button type="button" className="small primary" aria-label={t("tutorial.next")} onClick={() => {
+            <button type="button" className="small primary" aria-label={t("tutorial.next")} disabled={demoBusy} onClick={async () => {
               focusNext.current = true;
+              // Next does what the step was going to do, so nothing is skipped half-done.
+              if (AUTO_TUTORIAL_STEPS.has(stepName!) && !stepDone(stepName as (typeof TUTORIAL_STEPS)[number], facts)) {
+                if (!await prepareExample()) return;
+                setDemoBusy(true);
+                const done = await completeDemoStep(connection, stepName!);
+                setDemoBusy(false);
+                setDemoError(done.ok ? null : done.message);
+                if (!done.ok) return;
+              }
               const next = settle(step! + 1, facts);
               set(next);
               // Next from an editor or combat lesson opens what the next lesson uses; plain steps leave the screen alone.

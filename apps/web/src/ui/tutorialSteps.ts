@@ -68,6 +68,12 @@ const isDone: Record<TutorialStep, (f: TutorialFacts) => boolean> = {
   done: () => false, // ends with Finish
 };
 
+/** Whether a step's action has been done (by the guest, or by Next doing it for them). */
+export const stepDone = (step: TutorialStep, facts: TutorialFacts): boolean => isDone[step](facts);
+
+/** Steps whose action Next performs when it has not been done yet, so a step is never skipped half-done. */
+export const AUTO_TUTORIAL_STEPS: ReadonlySet<string> = new Set(["token", "move", "roll", "encounter", "attack", "ruling", "damage"]);
+
 /** The first step at or after `index` whose action is not yet done. */
 export function settle(index: number, facts: TutorialFacts): number {
   let i = index;

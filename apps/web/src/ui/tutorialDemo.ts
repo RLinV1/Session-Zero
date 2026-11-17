@@ -207,6 +207,56 @@ export async function runDemoRoll(connection: RoomConnection, kind: "toHit" | "d
   });
 }
 
+/** What Next does for a step whose action was not done, so the table is never left half-way through the lesson. */
+export async function completeDemoStep(connection: RoomConnection, step: string): Promise<DemoResult> {
+  const state = () => connection.snapshot.state;
+  const apply = async (kind: "toHit" | "damage"): Promise<DemoResult> => {
+    const item = state() && pendingRulings(state()!).find((x) => x.kind === kind);
+    if (!item) return { ok: true };
+    return send(connection, kind === "toHit" ? { type: "roll.rule", rollId: item.roll.id, verdict: "hit" } : { type: "roll.applyDamage", rollId: item.roll.id });
+  };
+  switch (step) {
+    case "token": return ensureDemoTokens(connection);
+    case "move": {
+      const made = await ensureDemoTokens(connection);
+      const now = state();
+      if (!made.ok || !now) return made;
+      const hero = Object.values(now.tokens)[0];
+      if (!hero) return { ok: false, message: t("tutorial.demo.noTokens") };
+      const spots = demoSpots(now, hero.size, hero.id, 2);
+      const to = spots?.find((p) => p.x !== hero.position.x || p.y !== hero.position.y);
+      return to ? send(connection, { type: "token.move", tokenId: hero.id, to } as Command) : { ok: false, message: t("tutorial.demo.noSpace") };
+    }
+    case "roll": return send(connection, { type: "dice.roll", expression: "1d20", visibility: "public" } as Command);
+    case "encounter": return runDemoEncounter(connection);
+    case "attack": return runDemoRoll(connection, "toHit");
+    case "ruling": {
+      if (!state() || !pendingRulings(state()!).some((x) => x.kind === "toHit")) {
+        const rolled = await runDemoRoll(connection, "toHit");
+        if (!rolled.ok) return rolled;
+      }
+      return apply("toHit");
+    }
+    case "damage": {
+      if (!state() || !damageWaiting(state()!)) {
+        const rolled = await runDemoRoll(connection, "damage");
+        if (!rolled.ok) return rolled;
+      }
+      return apply("damage");
+    }
+    default: return { ok: true };
+  }
+}
+
+/** Leaving the demo: dismiss the rulings its own rolls left waiting, so they do not sit in the GM's real Rulings. */
+export async function dismissDemoRulings(connection: RoomConnection): Promise<DemoResult> {
+  const state = connection.snapshot.state;
+  if (!state) return { ok: true };
+  const mine = new Set(demoTokenIds(state));
+  const rollIds = pendingRulings(state).filter((x) => x.roll.attack && mine.has(x.roll.attack.actorTokenId)).map((x) => x.roll.id);
+  return rollIds.length > 0 ? send(connection, { type: "roll.dismiss", rollIds } as Command) : { ok: true };
+}
+
 /** Start the demo again on a fresh practice board: leave it, then delete the old one so the next lesson makes a new one. */
 export async function resetTutorialScene(connection: RoomConnection): Promise<DemoResult> {
   const left = await restoreTutorialScene(connection);
