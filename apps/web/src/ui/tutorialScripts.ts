@@ -53,7 +53,9 @@ export function exampleScript(step: string, grid: GridSpec, map: { url?: string;
     case "sight": return [
       // A wall and a door first, so the view has something to stop at.
       { caption: "tutorial.ex.wallsBlock", at: A, run: async (api) => { for (const command of exampleCommands("walls", api.draft()!, lessonGrid, map).filter((command) => command.type === "wall.add")) await api.command(command); } },
-      { caption: "tutorial.ex.addTest", control: tool("sight-add"), at: centre(c0 + 2, r0 + 1), click: true, run: sight({ op: "place", at: centre(c0 + 2, r0 + 1) }) },
+      // The plus button first (the pointer visits it), then a click on the board to drop the token.
+      { caption: "tutorial.ex.addTest", control: tool("sight-add"), press: true },
+      { caption: "tutorial.ex.placeTest", at: centre(c0 + 2, r0 + 1), click: true, run: sight({ op: "place", at: centre(c0 + 2, r0 + 1) }) },
       { caption: "tutorial.ex.losOn", control: tool("sight-on"), press: true, skip: () => attr(tool("sight-on"), "aria-checked", "true") },
       { caption: "tutorial.ex.moveTest", from: centre(c0 + 2, r0 + 1), at: centre(c0 + 7, r0 + 1), click: true, run: sight({ op: "move", dx: 5, dy: 0 }) },
     ];
