@@ -17,8 +17,12 @@ function translate() {
 }
 function status(key) { statusKey=key; const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
 function uploadStatus(key) { uploadStatusKey=key; const value=t(key); if ($('upload-status').textContent !== value) $('upload-status').textContent=value; }
-function pauseForRetry(error) { needsRetry=true; if (error.status === 404 || error.status === 403) { clearPrivate(); status('denied'); } else status('stale'); }
-function clearPrivate() { generation++; $('source').removeAttribute('src'); $('source').hidden = true; $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature=''; $('build').textContent = ''; $('owner').textContent = ''; shown = null; sourceId = null; }
+function uploadControls() { $('pick').disabled = uploading || needsRetry || !connected || !buildId || !window.openai?.selectFiles; $('device').disabled = uploading || needsRetry || !connected || !buildId || !window.openai?.uploadFile; }
+function viewContext() { return {buildId,generation}; }
+function isCurrent(context) { return !stopped && context.buildId === buildId && context.generation === generation; }
+function intakeContext() { return {...viewContext(),kind:$('kind').value}; }
+function pauseForRetry(error) { needsRetry=true; if (error.status === 404 || error.status === 403) { clearPrivate(); status('denied'); } else status('stale'); uploadControls(); }
+function clearPrivate() { generation++; $('source').removeAttribute('src'); $('source').hidden = true; $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature=''; $('build').textContent = ''; $('owner').textContent = ''; shown = null; sourceId = null; uploading=false; uploadStatusKey=null; $('upload-status').textContent=''; $('device').value=''; $('pick').disabled=true; $('device').disabled=true; }
 function resultData(result) { if (result.structuredContent) return result.structuredContent; const text = result.content?.find((c) => c.type === 'text')?.text; return text ? JSON.parse(text) : {}; }
 async function call(name, args) {
   const result = await app.callServerTool({name, arguments:{...args, locale}});
@@ -49,7 +53,7 @@ async function refresh() {
       const li = document.createElement('li'); const name = document.createElement('span'); name.className = 'filename'; name.textContent = file.name; li.append(name);
       const details = document.createElement('small'); details.textContent = t(file.kind) + ' · ' + file.width + ' × ' + file.height; li.append(details);
       if (file.kind === 'map') { const button = document.createElement('button'); button.type = 'button'; button.textContent = t('show'); button.disabled = file.id === sourceId;
-        button.onclick = async () => { try { await call('studio_bind_file',{buildId,fileId:file.id}); needsRetry=false; shown=null; void refresh(); } catch (error) { pauseForRetry(error); } }; li.append(button); }
+        const context=viewContext(); button.onclick = async () => { if (!isCurrent(context)) return; try { await call('studio_bind_file',{buildId:context.buildId,fileId:file.id}); if (!isCurrent(context)) return; needsRetry=false; shown=null; void refresh(); } catch (error) { if (isCurrent(context)) pauseForRetry(error); } }; li.append(button); }
       fragment.append(li);
     }
     if (!data.files.length) { const li = document.createElement('li'); li.textContent = t('noFiles'); fragment.append(li); }
@@ -63,38 +67,44 @@ async function refresh() {
       $('source').src = 'data:' + media.mimeType + ';base64,' + media.data; $('source').hidden = false;
       shown = source.id + ':' + source.previewHash;
     }
-    status('ready');
+    status('ready'); uploadControls();
   } catch (e) {
     if (currentGeneration === generation && !stopped) pauseForRetry(e);
   } finally { refreshing = false; schedule(); }
 }
-async function importSelected(selected) {
-  if (!buildId || uploading) return;
+async function importSelected(selected, context = intakeContext()) {
+  if (!context.buildId || !isCurrent(context) || uploading) return;
   if (selected.length > 5) { uploadStatus('limitFiles'); return; }
-  uploading = true; $('pick').disabled = true; $('device').disabled = true; uploadStatus('queued');
-  const kind = $('kind').value;
+  uploading = true; uploadControls(); uploadStatus('queued');
+  const {kind} = context;
   try {
     // Obtain and consume each short-lived descriptor immediately; never persist it in widget state.
     for (const selectedFile of selected) {
+      if (!isCurrent(context)) return;
       const descriptor = await window.openai.getFileDownloadUrl({fileId:selectedFile.fileId});
+      if (!isCurrent(context)) return;
       const file = {download_url:descriptor.downloadUrl,file_id:selectedFile.fileId,file_name:selectedFile.fileName,mime_type:selectedFile.mimeType};
-      const data = resultData(await call('studio_import_files', {buildId,kind,files:[file]}));
+      const data = resultData(await call('studio_import_files', {buildId:context.buildId,kind,files:[file]}));
+      if (!isCurrent(context)) return;
       const outcome = data.outcomes[0];
       uploadStatus(outcome.status === 'saved' ? 'saved' : 'error.' + outcome.code);
-      if (outcome.status === 'saved' && kind === 'map') await call('studio_bind_file',{buildId,fileId:outcome.fileId});
+      if (outcome.status === 'saved' && kind === 'map') await call('studio_bind_file',{buildId:context.buildId,fileId:outcome.fileId});
+      if (!isCurrent(context)) return;
     }
     needsRetry=false; shown = null;
-  } catch (e) { if (!e.status || [401,403,404].includes(e.status)) pauseForRetry(e); uploadStatus('error.' + (e.code || 'unknown')); }
-  finally { uploading = false; $('pick').disabled = !window.openai?.selectFiles; $('device').disabled = !window.openai?.uploadFile; $('device').value = ''; void refresh(); }
+  } catch (e) { if (isCurrent(context)) { if (!e.status || [401,403,404].includes(e.status)) pauseForRetry(e); uploadStatus('error.' + (e.code || 'unknown')); } }
+  finally { if (isCurrent(context)) { uploading = false; uploadControls(); $('device').value = ''; void refresh(); } }
 }
-$('pick').onclick = async () => { try { await importSelected(await window.openai.selectFiles()); } catch { uploadStatus('error.unknown'); } };
+$('pick').onclick = async () => { const context=intakeContext(); try { await importSelected(await window.openai.selectFiles(),context); } catch { if (isCurrent(context)) uploadStatus('error.unknown'); } };
 $('device').onchange = async (event) => {
+  const context=intakeContext();
   const files = Array.from(event.target.files || []);
   if (files.length > 5) { uploadStatus('limitFiles'); return; }
   // Each upload is immediately resolved and imported, keeping descriptors out of queues.
   for (const file of files) {
-    try { const uploaded = await window.openai.uploadFile(file); await importSelected([{fileId:uploaded.fileId,fileName:file.name,mimeType:file.type}]); }
-    catch { uploadStatus('error.unknown'); }
+    if (!isCurrent(context)) return;
+    try { const uploaded = await window.openai.uploadFile(file); if (!isCurrent(context)) return; await importSelected([{fileId:uploaded.fileId,fileName:file.name,mimeType:file.type}],context); }
+    catch { if (isCurrent(context)) uploadStatus('error.unknown'); }
   }
 };
 $('refresh').onclick = () => { needsRetry=false; shown=null; void refresh(); };
@@ -109,7 +119,7 @@ document.addEventListener('visibilitychange', () => { clearTimeout(timer); if (!
 translate(); status('loading');
 try {
   await app.connect(new PostMessageTransport(window.parent, window.parent)); connected=true;
-  $('pick').disabled = !window.openai?.selectFiles; $('device').disabled = !window.openai?.uploadFile;
+  uploadControls();
   if (!window.openai?.selectFiles && !window.openai?.uploadFile) uploadStatus('unsupported');
   void refresh();
 } catch { status('stale'); }
