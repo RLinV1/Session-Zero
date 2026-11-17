@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_GRID, cellAt, distanceToSegment, emptyRoomState, type RoomState } from "@vtt/shared";
-import { demoPair, demoSpots, demoTokenIds } from "../src/ui/tutorialDemo";
-import { TUTORIAL_STEPS, countKeyChange, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
+import { demoPair, demoSpots, demoTokenIds, rememberDemoTokens } from "../src/ui/tutorialDemo";
+import { TUTORIAL_STEPS, closeDemoWindow, countKeyChange, isDemoEvent, openDemoWindow, countMarks, countMoves, loadProgress, rollMarks, saveProgress, settle, type TutorialFacts } from "../src/ui/tutorialSteps";
 
 const none: TutorialFacts = { tokens: 0, fog: 0, gmRolls: 0, moves: 0, invites: 0, mapEdits: 0, gridEdits: 0, wallEdits: 0, sightEdits: 0, terrainEdits: 0, encounters: 0, attackRolls: 0, rulings: 0, damageApplied: 0 };
 const step = (name: string) => TUTORIAL_STEPS.findIndex((s) => s === name);
@@ -71,6 +71,18 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     expect(loadProgress("r2")).toBeNull();
   });
 
+  it("keeps the demo's own events out of the Activity Log, and only those", () => {
+    expect(isDemoEvent("r1", 5)).toBe(false);
+    openDemoWindow("r1", 10);
+    expect(isDemoEvent("r1", 9)).toBe(false);
+    expect(isDemoEvent("r1", 500)).toBe(true); // still running
+    closeDemoWindow("r1", 40);
+    expect([isDemoEvent("r1", 10), isDemoEvent("r1", 40), isDemoEvent("r1", 41)]).toEqual([true, true, false]);
+    openDemoWindow("r1", 60);
+    closeDemoWindow("r1", 70);
+    expect([isDemoEvent("r1", 55), isDemoEvent("r1", 65), isDemoEvent("r2", 65)]).toEqual([false, true, false]);
+  });
+
   it("remembers a declined and a finished demo", () => {
     saveProgress("r1", "declined");
     expect(loadProgress("r1")).toBe("declined");
@@ -126,13 +138,13 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     expect(demoPair(room([hero, token("g", "Orc", { hp: null, maxHp: null, ac: null })]))).toBeNull(); // nothing to hurt
     const pair = demoPair(room([hero, token("g", "Goblin", { hp: 7, maxHp: 7, ac: 8 })]));
     expect([pair?.hero.id, pair?.foe.id, pair?.attack.name]).toEqual(["h", "g", "Sword"]);
-    expect(demoTokenIds(room([plain, token("d", "Demo hero", { hp: 1, maxHp: 1, ac: 1 })]))).toEqual(["d"]);
+    expect(demoTokenIds(room([plain, token("d", "Demo hero", { hp: 1, maxHp: 1, ac: 1 })]))).toEqual([]);
   });
 
   it("puts the demo fight's tokens on open floor, off walls and blocked terrain, inside the map (guest-gm-hosting)", () => {
     const grid = { ...DEFAULT_GRID, cellSize: 50, offsetX: 0, offsetY: 0 };
     const base = { ...emptyRoomState("r"), scene: { map: { width: 800, height: 800 }, grid } } as unknown as RoomState;
-    const spots = (state: RoomState) => demoSpots(state);
+    const spots = (state: RoomState) => demoSpots(state)!;
     expect(spots(base)).toEqual([{ x: 375, y: 375 }, { x: 425, y: 375 }]);
     const wall = { id: "w", a: { x: 400, y: 0 }, b: { x: 400, y: 800 } };
     const walled = { ...base, walls: { w: wall }, terrain: { base: [{ row: 8, start: 9, end: 12, kind: "blocked" }], effects: [] } } as unknown as RoomState;
@@ -145,5 +157,24 @@ describe("the guest room's interactive demo (guest-gm-hosting: A guest room offe
     const [a, b] = spots(walled);
     expect(b.x - a.x).toBe(50);
     for (const p of [a, b]) expect([(p.x - grid.offsetX) % 50, (p.y - grid.offsetY) % 50]).toEqual([25, 25]); // a cell centre
+  });
+
+  it("avoids occupied token footprints and reports a full map instead of stacking", () => {
+    const grid = { ...DEFAULT_GRID, cellSize: 50, offsetX: 0, offsetY: 0 };
+    const token = { id: "occupied", name: "My token", position: { x: 100, y: 100 }, size: 4, stats: { hp: 10, maxHp: 10, ac: 10 } };
+    const state = { ...emptyRoomState("r"), tokens: { occupied: token }, scene: { map: { width: 200, height: 200 }, grid } } as unknown as RoomState;
+    expect(demoSpots(state)).toBeNull();
+    expect(demoSpots({ ...state, tokens: {} })).not.toBeNull();
+    expect(demoSpots(state, 1, token.id)).not.toBeNull();
+  });
+
+  it("cleans up the first placed demo token even after it is renamed", () => {
+    const state = { ...emptyRoomState("cleanup"), tokens: {
+      demo: { id: "demo", name: "Renamed example" },
+      own: { id: "own", name: "Adventurer 2" },
+      first: { id: "first", name: "Adventurer 1" },
+    } } as unknown as RoomState;
+    rememberDemoTokens(state.roomId, ["demo", "first"]);
+    expect(demoTokenIds(state)).toEqual(["demo", "first"]);
   });
 });

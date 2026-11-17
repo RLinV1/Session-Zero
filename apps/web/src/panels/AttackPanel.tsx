@@ -25,6 +25,7 @@ import { isBoolean, usePersistentState } from "../ui/usePersistentState";
 import {
   attackExpression,
   DEFAULT_ATTACK,
+  isRollable,
   isSettingsRecord,
   kindOf,
   LAST_USED_KEY,
@@ -364,8 +365,9 @@ function AttackForm({
 
   /** The chosen attack's to-hit roll, or its damage when it has no to-hit, at every aimed target (attack-ux-polish). */
   const rollPreset = (preset: AttackPreset) => {
-    if (!target) return;
-    const [dice, rollKind]: [DicePool, AttackKind] = preset.toHit ? [preset.toHit, "toHit"] : [preset.damage!, "damage"];
+    const dice = preset.toHit ?? preset.damage;
+    if (!target || !dice) return;
+    const rollKind: AttackKind = preset.toHit ? "toHit" : "damage";
     void send({ expression: attackExpression(dice), kind: rollKind, label: presetRollLabel(preset, rollKind), targetId: target.token.id }, extras);
   };
 
@@ -574,7 +576,8 @@ function AttackForm({
               {t("attack.hiddenWarning", { name: attacker.hidden ? attacker.name : target!.token.name })}
             </p>
           )}
-          {chosen && (!customOpen || followUp) && (
+          {/* An attack whose stored dice couldn't be read has nothing to roll (legacy-attack-dice-crash). */}
+          {chosen && isRollable(chosen) && (!customOpen || followUp) && (
             <div className="attack-roll-row">
               <button
                 type="button"

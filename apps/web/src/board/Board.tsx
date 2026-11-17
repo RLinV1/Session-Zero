@@ -23,6 +23,8 @@ import type { DiceSkin } from "../ui/diceSkin";
 // Lets Pixi run under a CSP without 'unsafe-eval'.
 import "pixi.js/unsafe-eval";
 import { BoardView, type GmFogView } from "./boardView";
+import { EXAMPLE_BOARD_EVENT, type ExampleBoardApi } from "../ui/tutorialExample";
+import { demoSpots, demoTokenIds, rememberDemoTokens } from "../ui/tutorialDemo";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
 import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
@@ -68,6 +70,8 @@ interface Props {
   groupSelection?: readonly string[];
   /** GM: Shift-click on a token adds it to `groupSelection` or takes it out. */
   onToggleGroupToken?: (tokenId: string) => void;
+  /** GM: Shift-drag on empty board adds every token inside the box to `groupSelection` (ADR 0074). */
+  onSelectTokens?: (tokenIds: string[]) => void;
   /** GM: the template picked in From template; its tokens replace the selection. */
   onPickTemplate?: (templateId: string) => void;
 }
@@ -169,6 +173,9 @@ const FOG_HINTS = {
 } as const satisfies Record<string, TextId>;
 
 
+/** The GM's Select tool also boxes tokens into the selection with Shift-drag (ADR 0074). */
+const GM_SELECT_HINT: TextId = "board.hint.selectGm";
+
 /** With GM only ticked, the areas are the GM's alone; saying "everyone sees them" would mislead. */
 const GM_ONLY_AREA_HINT: TextId = "board.gmOnlyAreaHint";
 
@@ -181,7 +188,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 /** The PixiJS board plus its React toolbar and notices; Pixi objects stay inside `BoardView`. */
-export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, attackRange = null, onNukeImpact, selectOnly = false, onEditToken, groupSelection, onToggleGroupToken, onPickTemplate }, ref) {
+export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame, connection, state, you, gridPreview, readOnly = false, suppressLiveEffects = false, toolbar, notices, overlay, landedRollId, onPickTarget, attackRange = null, onNukeImpact, selectOnly = false, onEditToken, groupSelection, onToggleGroupToken, onSelectTokens, onPickTemplate }, ref) {
   const renderedState = useDisplayedHealth(state);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
@@ -228,8 +235,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   // The committed seq of `state` when it is the live room's, so the board knows when an edit it sent has landed.
   const live = connection.snapshot as RoomConnection["snapshot"] | undefined; // absent on test doubles
   const shownSeq = live && state === live.state ? live.seq : null;
-  const latest = useRef({ shownSeq, tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: true, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
-  latest.current = { shownSeq, tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
+  const latest = useRef({ shownSeq, tokenView: false, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onSelectTokens, onPickTemplate, groupSelection, gmFog: "tint" as GmFogView, showWalls: true, showPortals: true, showTerrain: true, readOnly: false, suppressLiveEffects: false, viewing: [] as string[] });
+  latest.current = { shownSeq, tokenView: tokenView && gmCanSee, state, renderedState, boardState: renderedState, you, gridPreview, onPickTarget, onNukeImpact, onToggleGroupToken, onSelectTokens, onPickTemplate, groupSelection, gmFog, showWalls, showPortals, showTerrain, readOnly, suppressLiveEffects, viewing: [] };
   // Sends nothing while previewing as a player, whatever the board is asked to do. Stable for as
   // long as the connection is, so entering and leaving a preview never rebuilds the board view.
   const guarded = useMemo(() => guardedConnection(connection, () => latest.current.readOnly), [connection]);
@@ -404,7 +411,10 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     if (!current || current.busy) return;
     placingRef.current = { ...current, busy: true };
     setPlacing(placingRef.current);
+    const demo = !!document.querySelector('.guest-tutorial[data-step="token"][data-playing="true"]');
+    const before = new Set(Object.keys(latest.current.state.tokens));
     const result = await guarded.command(placementCommand(current.source, at));
+    if (demo && result.ok) rememberDemoTokens(latest.current.state.roomId, Object.keys(latest.current.state.tokens).filter((id) => !before.has(id)));
     // Keep placing either way: on a rejection the GM can read why and try another square.
     setPlacing((now) => {
       if (now?.source !== current.source) return now;
@@ -417,6 +427,36 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   };
   const placeRef = useRef(place);
   placeRef.current = place;
+
+  useEffect(() => {
+    const lend = (event: Event) => {
+      const view = viewRef.current;
+      const canvas = hostRef.current?.querySelector("canvas");
+      if (!view || !canvas || latest.current.you.role !== "gm" || latest.current.readOnly) return;
+      const state = latest.current.state;
+      const tokens = Object.values(state.tokens);
+      const samples = new Set(demoTokenIds(state));
+      const token = tokens.find((token) => samples.has(token.id)) ?? tokens[0] ?? null;
+      const source = placingRef.current?.source;
+      const placement = demoSpots(state, source?.kind === "create" ? source.draft.size ?? 1 : source?.ghost.size ?? 1);
+      const movement = token ? demoSpots(state, token.size, token.id) : placement;
+      if (!placement || !movement) return;
+      const [place] = placement;
+      const [from, destination] = movement;
+      (event as CustomEvent<{ api: ExampleBoardApi | null }>).detail.api = {
+        screen: (point) => {
+          const rect = canvas.getBoundingClientRect(), transform = view.transform;
+          return { x: rect.left + transform.x + point.x * transform.scale, y: rect.top + transform.y + point.y * transform.scale };
+        },
+        place, token,
+        destination: token && Math.hypot(token.position.x - destination.x, token.position.y - destination.y) < state.scene.grid.cellSize / 2 ? from : destination,
+        focus: () => { if (token) view.focusToken(token.id); },
+        cancel: () => { view.cancelMovement(); },
+      };
+    };
+    window.addEventListener(EXAMPLE_BOARD_EVENT, lend);
+    return () => window.removeEventListener(EXAMPLE_BOARD_EVENT, lend);
+  }, []);
 
   useEffect(() => {
     const view = new BoardView(hostRef.current!, {
@@ -515,6 +555,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       },
       cancelAttack: () => endAttack(),
       toggleGroupToken: (tokenId) => latest.current.onToggleGroupToken?.(tokenId),
+      selectTokens: (tokenIds) => latest.current.onSelectTokens?.(tokenIds),
       pickTemplate: (templateId) => {
         setTool({ kind: "select" });
         latest.current.onPickTemplate?.(templateId);
@@ -1030,7 +1071,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       {/* Read-only boards (a player preview, a checkpoint preview) can't ping or place, so no hint. */}
       {!readOnly && (
         <p className="board-hint" aria-live={placing ? "off" : "polite"}>
-          {(() => { const hint = placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : tool.kind === "measure" ? MEASURE_HINTS[tool.mode] : HINTS[tool.kind]; return hint ? t(hint) : ""; })()}
+          {(() => { const hint = placing ? PLACING_HINT : tool.kind === "area" && tool.gmOnly ? GM_ONLY_AREA_HINT : tool.kind === "fog" ? FOG_HINTS[tool.mode] : tool.kind === "measure" ? MEASURE_HINTS[tool.mode] : tool.kind === "select" && you.role === "gm" && onSelectTokens ? GM_SELECT_HINT : HINTS[tool.kind]; return hint ? t(hint) : ""; })()}
         </p>
       )}
     </div>

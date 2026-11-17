@@ -134,9 +134,11 @@ export const DomainEvent = z.discriminatedUnion("type", [
     token: Token,
     /**
      * "defeated": removed by the auto-remove option after its HP reached 0 (ADR 0049).
-     * "mapReplaced": left unticked in Select and place on a new map (ADR 0068). Both reversible by undo.
+     * "mapReplaced": left unticked in Select and place on a new map (ADR 0068).
+     * "manual": the GM deleted it, one token or several (ADR 0074). All three are reversible by
+     * undo. A deletion committed before ADR 0074 has no reason and stays irreversible.
      */
-    reason: z.enum(["defeated", "mapReplaced"]).optional(),
+    reason: z.enum(["defeated", "mapReplaced", "manual"]).optional(),
   }),
   z.object({
     type: z.literal("TokenOwnersSet"),

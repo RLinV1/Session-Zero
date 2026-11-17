@@ -25,3 +25,15 @@ A roll held one die type: `DiceExpression = { count, sides, modifier }` and the 
 
 - **Keep `{ count, sides, modifier }` and add `extra[]`.** Rejected: any reader that ignored `extra` would silently roll the wrong dice.
 - **Store `sides: number[]` on each roll.** Rejected: it repeats what the formula already says, and old rolls would need the same derivation anyway.
+
+## Amendment: where old dice are upgraded
+
+**Status:** Proposed. Awaiting review by the Real-Time Architecture owner. **Change:** `openspec/changes/legacy-attack-dice-crash`.
+
+The decision above relied on `AttackDice`'s `z.preprocess` to read old `{ count, sides, modifier }` dice "in stored events and snapshots". That holds only where a value is parsed. Room events and encounter templates are read from storage without parsing (`PostgresRoomStore.loadEvents`, the room-summary first-event read and the encounter template mapper only cast the stored JSON). So a token given named attacks before mixed dice kept the old shape through `reduce` and the welcome snapshot. The first panel to format it threw, which blanked the room for the GM.
+
+- **On load.** Both room stores pass each stored event, and each encounter template's `data`, through the shared `upgradeStoredAttacks`. It rewrites every named attack's `toHit` / `damage` (a token's `attacks` anywhere in the payload, and `TokenAttacksSet`'s `previous`) to `{ terms, modifier }`. It is pure, returns the same object when nothing needed upgrading, and runs before `reduce`. `reduce` stays unaware of older stored shapes.
+- **History is not rewritten.** Stored rows keep their original JSON (append-only, invariant 5). Every reader of the log (live rooms, replay, history, checkpoints) sees the upgraded shape. Undo of an old `TokenAttacksSet` therefore writes its compensating event in today's shape.
+- **Writers stay current.** Events built from stored data, such as an applied template, carry today's shape. `encounter.apply` already parsed the template through `EncounterTemplateData`; the mapper upgrade gives the other readers of a template the same shape.
+- **Clients read defensively.** The web client reads a token's named attacks through `readPool`. An attack whose dice match neither shape shows no formula and offers no roll instead of throwing.
+- **Not covered.** Other stored JSON still read by cast (map boards, dice-look faces, animation definitions) holds no named attacks. Each needs its own check if its schema changes.

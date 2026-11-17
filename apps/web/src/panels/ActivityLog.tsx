@@ -6,6 +6,7 @@ import type { RoomConnection } from "../net/roomConnection";
 import { Modal } from "../ui/Modal";
 import { formatStamp } from "../ui/formatRelative";
 import { getLocale, t, useLocale } from "../i18n/locale";
+import { isDemoEvent } from "../ui/tutorialSteps";
 
 interface Props {
   roomId: string;
@@ -100,7 +101,9 @@ function History({ roomId, token, seq, state, connection }: Props) {
   const firstSeq = new Map<string, number>();
   /** Actions this page shows as undone. */
   const undone = new Set<string>();
-  for (const { committed } of page?.entries ?? []) {
+  // The guest demo's own events stay out of the log (they were only practice).
+  const entries = (page?.entries ?? []).filter(({ committed }) => !isDemoEvent(roomId, committed.seq));
+  for (const { committed } of entries) {
     if (committed.commandId && !firstSeq.has(committed.commandId)) firstSeq.set(committed.commandId, committed.seq);
     if (committed.event.type === "ActionUndone") undone.add(committed.event.commandId);
   }
@@ -123,9 +126,9 @@ function History({ roomId, token, seq, state, connection }: Props) {
     {seq > loadedSeq && <p role="status">{t("log.newActivity")}</p>}
     {error && <p role="alert" className="error">{error}{t("log.retryHint")}</p>}
     {busy && <p role="status">{t("log.loading")}</p>}
-    {page && page.entries.length === 0 && <p>{search.trim() ? t("log.noMatch") : t("log.empty")}</p>}
+    {page && entries.length === 0 && <p>{search.trim() ? t("log.noMatch") : t("log.empty")}</p>}
     <ol className="plain activity-entries" aria-busy={busy}>
-      {page?.entries.map(({ committed, sentence }) => {
+      {entries.map(({ committed, sentence }) => {
         const commandId = committed.commandId;
         // One action can span several entries (an editor save); its controls go on the newest.
         const newestOfAction = commandId !== undefined && firstSeq.get(commandId) === committed.seq;

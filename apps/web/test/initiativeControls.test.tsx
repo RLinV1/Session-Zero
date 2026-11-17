@@ -3,7 +3,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyRoomState, type CommandInput, type Participant, type RoomState, type Token } from "@vtt/shared";
 import type { RoomConnection } from "../src/net/roomConnection";
+import { useState } from "react";
 import { InitiativeTracker } from "../src/panels/InitiativeTracker";
+import type { GroupSelection } from "../src/panels/GroupSelection";
 import { ROLL_ANSWER_MS } from "../src/panels/useInitiativeRoll";
 
 beforeEach(() => {
@@ -24,6 +26,26 @@ function room(activeIndex: number, round: number): RoomState {
     tokens: { aria: token("aria", "Aria"), goblin: token("goblin", "Goblin") },
     initiative: { order: ["aria", "goblin"], activeIndex, round },
   };
+}
+
+/** The GM's selection as RoomPage keeps it: local state the tracker's checkboxes edit. */
+function Selecting({ connection, state }: { connection: RoomConnection; state: RoomState }) {
+  const [ids, setIds] = useState<string[]>([]);
+  const selection: GroupSelection = {
+    tokenIds: ids.filter((id) => state.tokens[id]),
+    toggle: (id) => setIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])),
+    remove: (id) => setIds((cur) => cur.filter((x) => x !== id)),
+    clear: () => setIds([]),
+    fromTemplate: () => {},
+  };
+  return <InitiativeTracker connection={connection} state={state} you={gm} onFocusToken={() => {}} selection={selection} />;
+}
+
+function setupSelecting(state: RoomState) {
+  const sent: CommandInput[] = [];
+  const connection = { command: vi.fn(async (c: CommandInput) => { sent.push(c); return { ok: true }; }) } as unknown as RoomConnection;
+  render(<Selecting connection={connection} state={state} />);
+  return sent;
 }
 
 function setup(state: RoomState) {
@@ -186,28 +208,57 @@ describe("mass initiative roll in Start encounter (initiative-mass-roll, ADR 006
 });
 
 describe("editing the turn order mid-encounter (FR-GM-21, ADR 0065)", () => {
-  it("removes a token, and asks before removing the last one", async () => {
-    const sent = setup(room(0, 1));
-    fireEvent.click(screen.getByRole("button", { name: "Remove Goblin from the turn order" }));
+  it("removes the ticked tokens with one button, in turn order, and asks before removing them all (ADR 0074)", async () => {
+    const sent = setupSelecting(room(0, 1));
+    expect(screen.queryByRole("button", { name: /Remove \d+ from encounter/ })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Goblin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove 1 from encounter" }));
     await waitFor(() => expect(sent).toEqual([{ type: "initiative.remove", tokenId: "goblin" }]));
-    cleanup();
+    sent.length = 0;
 
-    const lone: RoomState = { ...room(0, 1), initiative: { order: ["aria"], activeIndex: 0, round: 1 } };
-    const sentLone = setup(lone);
-    fireEvent.click(screen.getByRole("button", { name: "Remove Aria from the turn order" }));
-    const dialog = screen.getByRole("dialog", { name: "Remove the last token?" });
+    // Both ticked is the whole order: removing them ends the encounter, so it asks first.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Aria" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove 2 from encounter" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove every token?" });
     expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(sentLone).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "Remove Aria from the turn order" }));
+    expect(sent).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Remove 2 from encounter" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove every token?" })).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(sent).toEqual([{ type: "initiative.removeSeveral", tokenIds: ["aria", "goblin"] }]));
+  });
+
+  it("asks before removing the only token left", async () => {
+    const lone: RoomState = { ...room(0, 1), initiative: { order: ["aria"], activeIndex: 0, round: 1 } };
+    const sent = setupSelecting(lone);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Aria" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove 1 from encounter" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Remove the last token?" })).getByRole("button", { name: "Remove" }));
-    await waitFor(() => expect(sentLone).toEqual([{ type: "initiative.remove", tokenId: "aria" }]));
+    await waitFor(() => expect(sent).toEqual([{ type: "initiative.remove", tokenId: "aria" }]));
+  });
+
+  it("clears the selection, and has no Remove on each row", () => {
+    setupSelecting(room(0, 1));
+    expect(screen.queryByRole("button", { name: /from the turn order/ })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Goblin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect((screen.getByRole("checkbox", { name: "Select Goblin" }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole("button", { name: /from encounter/ })).toBeNull();
+  });
+
+  it("keeps a Remove on a row whose token is gone, which can't be selected", async () => {
+    const legacy: RoomState = { ...room(0, 1), initiative: { order: ["aria", "gone", "goblin"], activeIndex: 0, round: 1 } };
+    const sent = setupSelecting(legacy);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Remove (removed) from the turn order" }));
+    await waitFor(() => expect(sent).toEqual([{ type: "initiative.remove", tokenId: "gone" }]));
   });
 
   it("shows players no Remove or Add to encounter", () => {
     const connection = { command: vi.fn() } as unknown as RoomConnection;
     render(<InitiativeTracker connection={connection} state={room(0, 1)} you={{ id: "p1", role: "player", displayName: "Alice" } as Participant} onFocusToken={() => {}} />);
     expect(screen.queryByRole("button", { name: /from the turn order/ })).toBeNull();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Add to encounter" })).toBeNull();
   });
 
@@ -307,5 +358,77 @@ describe("Players' tokens filter (token-groups, ADR 0065)", () => {
     expect([box("Include Aria"), box("Include Goblin")].map((b) => b.checked)).toEqual([false, true]);
     fireEvent.click(box("Players' tokens"));
     expect([box("Include Aria"), box("Include Goblin")].map((b) => b.checked)).toEqual([true, true]);
+  });
+});
+
+/** Eleven combatants, as in a real fight: Oswin first, then Maren, the moths and the rest. */
+function crowd(activeIndex: number, round = 1): RoomState {
+  const names = ["Oswin", "Maren", "Moth 4", "Pip", "Moth 2", "Moth 1", "Party Oil", "Moth 3", "Old Wick", "Hush Clock", "Ysolde"];
+  const tokens = Object.fromEntries(names.map((name, i) => [`t${i}`, token(`t${i}`, name)]));
+  return { ...emptyRoomState("room"), tokens, initiative: { order: names.map((_, i) => `t${i}`), activeIndex, round } };
+}
+const rowNames = () => screen.getAllByRole("listitem").filter((li) => li.classList.contains("init-entry")).map((li) => li.querySelector(".init-name")!.textContent);
+
+describe("compact turn order (FR-GM-21, gm-bulk-select)", () => {
+  it("shows three rows from the active turn and folds the rest into one row that says how many", () => {
+    setup(crowd(0));
+    expect(rowNames()).toEqual(["Oswin", "Maren", "Moth 4"]);
+    const more = screen.getByRole("button", { name: "+8 more" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(more.getAttribute("aria-controls")).toBe("init-order");
+  });
+
+  it("unfolds and folds again from the keyboard's button, the active turn first throughout", () => {
+    setup(crowd(0));
+    fireEvent.click(screen.getByRole("button", { name: "+8 more" }));
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer.getAttribute("aria-expanded")).toBe("true");
+    expect(rowNames()).toHaveLength(11);
+    expect(rowNames()[0]).toBe("Oswin");
+    fireEvent.click(fewer);
+    expect(rowNames()).toEqual(["Oswin", "Maren", "Moth 4"]);
+    expect(screen.getByRole("button", { name: "+8 more" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("starts from the active turn wherever it is, wrapping into the next round when unfolded", () => {
+    setup(crowd(9, 2));
+    // Hush Clock (10th) has the turn: it, Ysolde, then Oswin opening round 3.
+    expect(rowNames()).toEqual(["Hush Clock", "Ysolde", "Oswin"]);
+    const current = screen.getByRole("button", { current: true });
+    expect(current.textContent).toContain("Hush Clock");
+    expect(current.textContent).toContain("▶");
+    // The row that opens the next round says so, to sighted readers and screen readers alike.
+    expect(screen.getByText("Round 3", { selector: ".init-round-break" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Oswin\W+Round 3/ })).toBeTruthy();
+  });
+
+  it("keeps each row's place in the order beside its name", () => {
+    setup(crowd(4));
+    const turns = screen.getAllByRole("listitem").filter((li) => li.classList.contains("init-entry")).map((li) => li.querySelector(".init-turn")!.textContent);
+    expect(turns).toEqual(["▶", "6", "7"]);
+  });
+
+  it("doesn't fold four rows: +1 more would take the row it hides", () => {
+    const four: RoomState = { ...crowd(0), initiative: { order: ["t0", "t1", "t2", "t3"], activeIndex: 1, round: 1 } };
+    setup(four);
+    expect(rowNames()).toEqual(["Maren", "Moth 4", "Pip", "Oswin"]);
+    expect(screen.queryByRole("button", { name: /more/ })).toBeNull();
+  });
+
+  it("says how many selected tokens are folded away", () => {
+    setupSelecting(crowd(0));
+    fireEvent.click(screen.getByRole("button", { name: "+8 more" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Ysolde" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Pip" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.getByRole("button", { name: /\+8 more/ }).textContent).toContain("2 selected");
+    expect(screen.getByRole("button", { name: "Remove 2 from encounter" })).toBeTruthy();
+  });
+
+  it("folds the players' list the same way", () => {
+    const connection = { command: vi.fn() } as unknown as RoomConnection;
+    render(<InitiativeTracker connection={connection} state={crowd(0)} you={{ id: "p1", role: "player", displayName: "Alice" } as Participant} onFocusToken={() => {}} />);
+    expect(rowNames()).toEqual(["Oswin", "Maren", "Moth 4"]);
+    expect(screen.getByRole("button", { name: "+8 more" })).toBeTruthy();
   });
 });

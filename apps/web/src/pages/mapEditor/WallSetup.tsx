@@ -289,6 +289,7 @@ export function WallSetup({ connection, state, token, detection: detectionEnable
                 aria-checked={mode === key}
                 className="tool-button map-editor-mode"
                 title={t(label)}
+                data-tutorial-tool={key}
                 onClick={() => setMode(key)}
               >
                 <Icon size={18} aria-hidden="true" />

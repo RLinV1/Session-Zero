@@ -987,6 +987,22 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .init-entry { display: flex; align-items: center; gap: var(--space-1); }
 .init-focus { flex: 1; min-width: 0; width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 0.3rem 0.4rem; }
 .init-remove { flex: none; }
+/* The row's checkbox selects it for Remove from encounter, in place of a Remove per row (ADR 0074). */
+.init-select { flex: none; margin: 0 0 0 0.2rem; }
+/* Three rows from the active turn, then the rest folded into one quiet row (gm-bulk-select). */
+.init-more-toggle {
+  width: 100%; display: flex; align-items: center; gap: var(--space-2); min-height: 0;
+  padding: 0.3rem 0.4rem; background: none; border: none; border-radius: 0;
+  color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; text-align: left;
+}
+.init-more-toggle:hover:not(:disabled) { filter: none; color: var(--text); }
+.init-more-selected { margin-left: auto; font-size: var(--fs-sm); }
+/* Where the list wraps into the next round. */
+.init-round-break {
+  margin: var(--space-1) 0 0; padding: var(--space-1) 0.4rem 0; border-top: 1px solid var(--rule);
+  color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.init-selection { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 /* The active turn: marker glyph, weight and a rust rule on the left, not colour alone. */
 .init-entry.active .init-focus { font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-soft); }
 .init-turn { width: 1.2rem; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -1006,6 +1022,19 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 .roster-row + .roster-row { border-top: 1px solid var(--border); }
 .roster-row.active { box-shadow: inset 2px 0 0 var(--accent); padding-left: 0.5rem; }
 .roster-main { display: flex; align-items: center; gap: var(--space-2); }
+/* The GM's selection (ADR 0074): a checkbox per row, a raised row while ticked, one bar of actions. */
+.roster-select { flex: none; margin: 0; }
+.roster-row.selected { background: var(--raised); }
+.roster-selection {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--raised);
+}
+.roster-selection-label { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.roster-selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.roster-selection-actions button { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* `secondary` would otherwise win over `danger`, as on the turn order's End encounter. */
+.roster-selection-actions button.danger { color: var(--danger); }
+.roster-selection-actions button.link { margin-left: auto; }
 .roster-focus { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.45rem; }
 .hp { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--muted); }
 
@@ -2976,28 +3005,52 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial {
   position: fixed; z-index: 1000;
   display: flex; flex-direction: column; gap: var(--space-2);
-  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  width: min(25rem, calc(100vw - 2 * var(--space-4)));
   padding: var(--space-3);
   background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
   border-radius: var(--radius-surface); box-shadow: 0 10px 28px var(--shadow);
   font-size: var(--fs-sm);
+  max-height: calc(100dvh - 2 * var(--space-4));
 }
+.guest-tutorial.sheet, .guest-tutorial.is-intro { overflow-y: auto; overscroll-behavior: contain; }
 .guest-tutorial.sheet {
   left: var(--space-4); right: var(--space-4); bottom: max(var(--space-4), env(safe-area-inset-bottom));
   width: auto; max-width: 28rem; margin-inline: auto;
 }
 .guest-tutorial.sheet-top { top: max(var(--space-4), env(safe-area-inset-top)); bottom: auto; }
+.guest-tutorial.is-intro {
+  inset: 0; margin: auto; height: fit-content;
+  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto;
+}
 /* In the map editor, keep the mobile HUD and the tab bar available around the lesson. */
 .map-editor .guest-tutorial.sheet-top, .map-picker .guest-tutorial.sheet-top, .share-modal .guest-tutorial.sheet-top { top: calc(5rem + env(safe-area-inset-top)); }
-.guest-tutorial h2 { margin: 0; font-size: var(--fs-md); }
+.guest-tutorial h2 { margin: 0; font-size: var(--fs-md); text-wrap: balance; }
 .guest-tutorial h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.guest-tutorial p { margin: 0; }
+.guest-tutorial p { margin: 0; text-wrap: pretty; }
+.guest-tutorial .guide-card-head { min-height: 1.25rem; }
+.guest-tutorial .tutorial-actions > .row { display: flex; gap: var(--space-2); }
+.guest-tutorial .tutorial-actions > .row:empty { display: none; }
+/* While an example plays only the step's own action is left; it sits on the right, where Next is. */
+.guest-tutorial[data-playing="true"] .tutorial-actions { justify-content: flex-end; }
+.guest-tutorial .tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.guest-tutorial .tutorial-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
+.guest-tutorial .tutorial-nav:empty { display: none; }
+.guest-tutorial .tutorial-nav button { min-width: 4rem; }
+.guest-tutorial .tutorial-actions button { white-space: nowrap; padding-inline: 0.7rem; }
+/* On a very narrow screen the buttons may wrap rather than overflow. */
+@media (max-width: 26rem) {
+  .guest-tutorial .tutorial-actions, .guest-tutorial .tutorial-actions > .row { flex-wrap: wrap; }
+}
+.guest-tutorial .guide-skip { margin-left: auto; }
+.guest-tutorial .tutorial-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.guest-tutorial.has-example[data-playing="true"] .tutorial-progress { display: none; }
 [data-tutorial-active]:not(.board) { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-control); }
-/* The dim is the ring's own shadow, so it needs no mask and never takes a click. Under the card (40). */
+/* Highlight the control without dimming the map or taking clicks. Under the card (40). */
 .tutorial-spotlight {
   position: fixed; z-index: 39; pointer-events: none;
   border: 2px solid var(--focus); border-radius: var(--radius-control);
-  box-shadow: 0 0 0 9999px var(--tutorial-dim);
+  box-shadow: none;
 }
 .guest-tutorial.beside::before {
   content: ""; position: absolute; left: var(--arrow-x, 1.5rem); width: 12px; height: 12px;
@@ -3007,9 +3060,42 @@ button.leave-table:hover:not(:disabled) { color: var(--danger); border-color: va
 .guest-tutorial.beside[data-side="above"]::before { bottom: -7px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 @media (prefers-reduced-motion: no-preference) {
   .guest-tutorial { animation: modal-in 0.16s ease-out; }
-  .tutorial-spotlight { animation: tutorial-ring 1.6s ease-in-out infinite; }
+  /* A transformed dialog makes its fixed tutorial card relative to the dialog and clips it. */
+  body:has(.guest-tutorial) dialog.modal[open] { animation: tutorial-dialog-in 0.3s ease-out; }
 }
-@keyframes tutorial-ring { 50% { border-color: color-mix(in srgb, var(--focus) 30%, transparent); } }
+@keyframes tutorial-dialog-in { from { opacity: 0; } to { opacity: 1; } }
+body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent; }
+
+/* The demo's animated Show me: ghost pointer, ringed tool, and the caption list (guest-gm-hosting). */
+.example-layer { position: fixed; inset: 0; z-index: 1002; pointer-events: none; }
+.example-cursor { position: absolute; left: 0; top: 0; }
+.example-hand { position: absolute; left: -9px; top: -3px; fill: #fff; stroke: #111; stroke-width: 6; paint-order: stroke; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
+.example-cursor svg { display: block; fill: #fff; stroke: #111; stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5)); }
+.example-click { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 3px solid #ffc400; background: rgb(255 196 0 / 0.3); animation: example-click 0.55s ease-out forwards; }
+.example-cursor.is-pressed::before { content: ""; position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border: 2px solid #ffc400; border-radius: 50%; background: rgb(255 196 0 / 0.25); }
+@keyframes example-click { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .example-cursor { transition: transform 0.45s cubic-bezier(0.77, 0, 0.175, 1); }
+}
+[data-tutorial-ring] { outline: 3px solid #ffc400; outline-offset: 3px; border-radius: var(--radius-control); box-shadow: 0 0 0 6px rgb(255 196 0 / 0.25); }
+.tutorial-ex { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
+.tutorial-ex li[data-state="todo"], .tutorial-ex li[data-state="done"] { opacity: 0.6; }
+.tutorial-ex li[data-state="current"] { font-weight: 600; }
+.guest-tutorial.has-example { width: min(20rem, calc(100vw - 2 * var(--space-4))); }
+.guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
+/* Captions are for the replay only; once it stops the card is just the step. */
+.guest-tutorial.has-example[data-playing="false"] .tutorial-ex { display: none; }
+.guest-tutorial.has-example[data-playing="true"] .tutorial-body,
+
+.guest-tutorial.is-following::before { display: none; }
+.guest-tutorial.is-following { max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; }
+@media (min-width: 640px) {
+  .guest-tutorial.has-example.sheet { left: auto; right: var(--space-4); margin-inline: 0; width: min(20rem, calc(100vw - 2 * var(--space-4))); top: auto; bottom: var(--space-4); }
+}
+@media (max-width: 639px) {
+  .guest-tutorial.has-example .tutorial-body, .guest-tutorial.has-example .tutorial-progress .guide-count { display: none; }
+  .guest-tutorial.has-example .tutorial-ex li:not([data-state="current"]) { display: none; }
+}
 
 /* What was just rolled (board-dice-rolls, throw-dice-on-board); never takes pointer input. */
 .board-roll-popup {
@@ -4630,9 +4716,6 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
 .build-publish-confirm { gap: var(--space-3); }
 
 /* The guest demo's Show me outlines the sample it just drew in the map editor (guest-gm-hosting). */
-.tutorial-pulse { fill: rgb(255 196 0 / 0.14); stroke: #ffc400; stroke-width: 4px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 6px #ffc400); animation: tutorial-pulse 0.9s ease-in-out 4 alternate; }
-@keyframes tutorial-pulse { from { stroke-opacity: 1; fill-opacity: 0.2; } to { stroke-opacity: 0.35; fill-opacity: 0.04; } }
-@media (prefers-reduced-motion: reduce) { .tutorial-pulse { animation: none; } }
 
 /* Connecting an AI app to builds (ADR 0073): the consent page and a build's list of connections. */
 .studio-connect { display: flex; flex-direction: column; gap: var(--space-2); max-width: 36rem; }

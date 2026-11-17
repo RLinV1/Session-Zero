@@ -1,6 +1,6 @@
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
-import { presetOf, type PresetFeatures } from "@vtt/shared";
-import { Copy, PencilSimple, Trash } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { formatList, presetOf, type PresetFeatures } from "@vtt/shared";
+import { Check, Copy, PencilSimple, Trash } from "@phosphor-icons/react";
 import {
   can,
   CreatureFields,
@@ -20,6 +20,7 @@ import { FreeAccountNote, useAccountLibrary, useGuestRoom } from "../ui/GuestRoo
 import { libraryAssetId } from "../net/builtinAssets";
 import { LibraryPicker } from "../pages/LibraryPicker";
 import { useAttackListEditor } from "./AttackListEditor";
+import { presetsForToken } from "./attackRoll";
 import { creatureFromToken } from "../pages/creatureDraft";
 import { TokenPreview } from "../ui/TokenPreview";
 import { useDisplayedStats } from "../board/nukeHealth";
@@ -32,10 +33,12 @@ import { PanelSection } from "../ui/PanelSection";
 import { CollapseToggle, GroupHeading, NewGroupButton } from "./GroupHeading";
 import { groupedTokens } from "./tokenGroups";
 import { GroupMoveMenu } from "./GroupMoveMenu";
+import type { GroupSelection } from "./GroupSelection";
+import { PopoverButton } from "../ui/Popover";
 import { hpLevel } from "../ui/palette";
 import { TokenDisc } from "../ui/TokenDisc";
 import { statHidden } from "../ui/statHidden";
-import { t } from "../i18n/locale";
+import { getLocale, t } from "../i18n/locale";
 import { inactiveText } from "../i18n/labels";
 /**
  * Focusable token roster (FR-GM-24), showing stats and conditions (FR-TAC-07/08).
@@ -47,6 +50,9 @@ import { inactiveText } from "../i18n/labels";
  * The canvas is a mouse-first surface: finding a token on a crowded map means aiming at
  * it. This list is the keyboard and search path to the same thing — every row is a real
  * button, so Tab and Enter reach every token, and selecting one centres the board on it.
+ *
+ * The GM's rows also tick tokens into the selection the board's Shift-click and Shift-drag
+ * build. With tokens selected, one bar moves them to a group or deletes them (ADR 0074).
  */
 export function TokenRoster({
   connection,
@@ -58,6 +64,7 @@ export function TokenRoster({
   onDuplicateToken,
   editingTokenId,
   onEditToken,
+  selection,
 }: {
   connection: RoomConnection;
   state: RoomState;
@@ -72,6 +79,8 @@ export function TokenRoster({
   /** The token whose editor is open. The room page owns it, so the board's token card can open it too. */
   editingTokenId: string | null;
   onEditToken: (tokenId: string | null) => void;
+  /** GM: the selection the rows' checkboxes edit and the bulk actions act on (ADR 0074). */
+  selection?: GroupSelection;
 }) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +92,8 @@ export function TokenRoster({
     return next;
   });
   const isGm = you.role === "gm";
+  const picking = isGm && selection ? selection : null;
+  const selected = new Set(picking?.tokenIds ?? []);
   const editing = editingTokenId ? state.tokens[editingTokenId] : undefined;
   const send = async (command: Parameters<RoomConnection["command"]>[0]) => {
     const r = await connection.command(command);
@@ -150,6 +161,7 @@ export function TokenRoster({
       you={you}
       hidden={{ hp: statHidden(state, you, token, "hp"), ac: statHidden(state, you, token, "ac") }}
       isActive={token.id === activeId}
+      selected={picking ? { on: selected.has(token.id), toggle: () => picking.toggle(token.id) } : undefined}
       onFocus={() => onFocusToken(token.id)}
       onEdit={() => {
         setError(null);
@@ -188,6 +200,10 @@ export function TokenRoster({
         placeholder={t("roster.searchPlaceholder")}
         autoComplete="off"
       />
+
+      {picking && picking.tokenIds.length > 0 && (
+        <SelectionBar state={state} selection={picking} send={send} />
+      )}
 
       {isGm ? (
         // The GM's roster is grouped (KAN-82); players never receive groups, so theirs is one list.
@@ -265,6 +281,7 @@ function RosterRow({
   you,
   hidden,
   isActive,
+  selected,
   onFocus,
   onEdit,
   onDuplicate,
@@ -275,6 +292,8 @@ function RosterRow({
   /** The room's rules withhold this stat from the viewer (ADR 0057). */
   hidden: { hp: boolean; ac: boolean };
   isActive: boolean;
+  /** GM: whether the token is in the selection, and how to tick it in or out (ADR 0074). */
+  selected?: { on: boolean; toggle: () => void };
   onFocus: () => void;
   onEdit: () => void;
   /** GM only (token-card-actions). */
@@ -288,8 +307,11 @@ function RosterRow({
   const fraction = hpFraction(stats);
 
   return (
-    <li className={isActive ? "roster-row active" : "roster-row"}>
+    <li className={["roster-row", isActive && "active", selected?.on && "selected"].filter(Boolean).join(" ")}>
       <div className="roster-main">
+        {selected && (
+          <input type="checkbox" className="roster-select" checked={selected.on} onChange={selected.toggle} aria-label={t("roster.selectNamed", { name: token.name })} />
+        )}
         {handle}
         <button type="button" className="roster-focus" onClick={onFocus}>
           <TokenDisc name={token.name} color={token.color} image={token.imageUrl} size="1.5rem" className="small" />
@@ -340,6 +362,101 @@ function RosterRow({
       )}
 
     </li>
+  );
+}
+
+/** Most names a bulk delete's confirmation lists before "and N more". */
+const NAMES_SHOWN = 5;
+
+/**
+ * The GM's selection as one row of actions (ADR 0074): move every selected token to a group, or
+ * delete them all after confirming. Replaces doing either one row at a time.
+ */
+function SelectionBar({ state, selection, send }: {
+  state: RoomState;
+  selection: GroupSelection;
+  send: (command: Parameters<RoomConnection["command"]>[0]) => Promise<boolean>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const tokens = selection.tokenIds.flatMap((id) => state.tokens[id] ?? []);
+  const n = tokens.length;
+  const groups = Object.values(state.groups);
+  const entries: { id: string | null; name: string }[] = [...groups.map((g) => ({ id: g.id, name: g.name })), { id: null, name: t("group.ungrouped") }];
+  const names = tokens.map((token) => token.name);
+  const listed = names.length <= NAMES_SHOWN + 1 ? names : [...names.slice(0, NAMES_SHOWN), t("roster.andMore", { n: names.length - NAMES_SHOWN })];
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      // One action, so one undo from the activity log puts them all back.
+      if (await send({ type: "token.deleteSeveral", tokenIds: tokens.map((token) => token.id) })) setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="roster-selection" role="group" aria-labelledby="roster-selection-label">
+      <p id="roster-selection-label" className="roster-selection-label">{t("group.selectedN", { n })}</p>
+      <div className="roster-selection-actions">
+        {groups.length > 0 && (
+          <PopoverButton
+            label={t("roster.moveSelected", { n })}
+            title={t("roster.moveSelected", { n })}
+            className="secondary"
+            placement="fixed"
+            buttonContent={t("roster.moveSelected", { n })}
+          >
+            {(close) => (
+              <ul className="plain stack move-menu">
+                {entries.map((entry) => {
+                  // Only the tokens not already there move; with none left, the server would refuse.
+                  const moving = tokens.filter((token) => (state.tokenGroups[token.id] ?? null) !== entry.id);
+                  return (
+                    <li key={entry.id ?? ""}>
+                      <button
+                        type="button"
+                        className="move-menu-item"
+                        disabled={moving.length === 0}
+                        aria-current={moving.length === 0 ? "true" : undefined}
+                        onClick={() => {
+                          close();
+                          void send({ type: "group.assign", groupId: entry.id, tokenIds: moving.map((token) => token.id) });
+                        }}
+                      >
+                        <span className="move-menu-check" aria-hidden="true">{moving.length === 0 && <Check size={14} />}</span>
+                        {entry.name}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </PopoverButton>
+        )}
+        <button type="button" className="secondary danger" onClick={() => setConfirming(true)}>
+          <Trash size={16} aria-hidden="true" />
+          {t("roster.deleteSelected", { n })}
+        </button>
+        <button type="button" className="link" aria-label={t("init.clearSelection")} onClick={selection.clear}>
+          {t("rail.clear")}
+        </button>
+      </div>
+      <Modal open={confirming} title={t("roster.deleteSelectedTitle", { n })} onClose={() => setConfirming(false)} initialFocus={keepRef}>
+        <p>{t("roster.deleteSelectedBody", { names: formatList(getLocale(), listed) })}</p>
+        <div className="row modal-actions">
+          {/* The safe choice has focus, as everywhere a delete asks first. */}
+          <button ref={keepRef} type="button" className="secondary" onClick={() => setConfirming(false)}>
+            {t("common.keep")}
+          </button>
+          <button type="button" className="danger-fill" disabled={busy} onClick={() => void remove()}>
+            {t("roster.deleteSelected", { n })}
+          </button>
+        </div>
+      </Modal>
+    </div>
   );
 }
 
@@ -403,7 +520,11 @@ export function TokenEditor({
   const [ac, setAc] = useState(token.stats.ac?.toString() ?? "");
   const [conditions, setConditions] = useState<ConditionId[]>(token.conditions);
   // Shared with everyone who may see them, saved with the rest of the form (ADR 0034).
-  const [attacks, setAttacks] = useState<AttackPreset[]>(token.attacks ?? []);
+  // Read as the Attack section reads them, so dice stored before mixed dice show their formula (legacy-attack-dice-crash).
+  // Compared with the list as the editor opened, not the live token: someone else's edit meanwhile
+  // must not make an untouched draft look changed and get sent over theirs.
+  const [openedAttacks] = useState<AttackPreset[]>(() => presetsForToken(token));
+  const [attacks, setAttacks] = useState<AttackPreset[]>(openedAttacks);
   const attackList = useAttackListEditor({ attacks, onChange: setAttacks });
   const [ownerId, setOwnerId] = useState(token.ownerIds[0] ?? "");
   const [hidden, setHidden] = useState(token.hidden);
@@ -446,7 +567,7 @@ export function TokenEditor({
     changes.stats = stats;
   if (!sameConditions) changes.conditions = conditions;
   // Only when changed here, so an unrelated Save never overwrites an owner's edit made meanwhile.
-  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(token.attacks ?? [])) changes.attacks = attacks;
+  if (features.attacks && JSON.stringify(attacks) !== JSON.stringify(openedAttacks)) changes.attacks = attacks;
   if (isGm && ownerId !== (token.ownerIds[0] ?? ""))
     changes.ownerIds = ownerId ? [ownerId] : [];
   if (isGm && hidden !== token.hidden) changes.hidden = hidden;

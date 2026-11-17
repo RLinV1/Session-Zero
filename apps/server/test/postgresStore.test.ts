@@ -159,6 +159,22 @@ describe.skipIf(!store)("PostgresRoomStore (docs/adr/0001-event-model.md)", () =
     const [committed] = await store!.append(roomId, 0, [{ actorId: null, event }]);
     expect((await store!.loadEvents(roomId))[0]?.event).toEqual(committed!.event);
   });
+  it("loads named attacks stored before mixed dice in today's shape, without rewriting the row (FR-TAC-09, legacy attack dice)", async () => {
+    const roomId = await newRoom();
+    const oldAttacks = [{ name: "Bite", toHit: { count: 1, sides: 20, modifier: 4 }, damage: { count: 1, sides: 6, modifier: 2 } }];
+    const token = { id: randomUUID(), name: "Wolf", position: { x: 35, y: 35 }, ownerIds: [], hidden: false, attacks: oldAttacks };
+    // The payload exactly as an older server stored it; append writes JSON as given.
+    await store!.append(roomId, 0, [{ actorId: null, event: { type: "TokenCreated", token } as unknown as DomainEvent }]);
+    const [loaded] = await store!.loadEvents(roomId);
+    expect(loaded?.event).toMatchObject({ type: "TokenCreated", token: { attacks: [{ name: "Bite", toHit: { terms: [{ count: 1, sides: 20 }], modifier: 4 }, damage: { terms: [{ count: 1, sides: 6 }], modifier: 2 } }] } });
+    const prisma = new PrismaClient({ datasources: { db: { url: url! } } });
+    try {
+      const row = await prisma.event.findFirst({ where: { roomId, seq: 1 } });
+      expect((row?.payload as { token: { attacks: unknown } }).token.attacks).toEqual(oldAttacks);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
   it("keeps conflicting concurrent appends atomic with parameterized JSON inserts", async () => {
     const roomId = await newRoom();
     const results = await Promise.allSettled([1, 2].map((n) => store!.append(roomId, 0, [

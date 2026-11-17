@@ -41,7 +41,7 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
         return (
           <div className="room-menu">
             {onShare && (
-              <button type="button" className="tool-button" onClick={item(onShare)}>
+              <button type="button" className="tool-button share-button" data-tutorial="invite" onClick={item(onShare)}>
                 <ShareNetwork size={16} aria-hidden="true" /> {t("share.share")}
               </button>
             )}

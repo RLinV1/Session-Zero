@@ -23,7 +23,6 @@ export const entryZhTW = {
   "account.tooManyAttempts": ({ minutes }) => cjk`嘗試次數過多，請等${minutes}分鐘後再試。`,
   "account.networkError": "出了點問題，請確認網路連線後再試。",
   "account.backHome": "回到首頁",
-  "account.legacyNote": "這個瀏覽器裡還有你以訪客身分或在帳號功能推出前建立的房間。登入或註冊後，就能從「你的房間」頁面將它們加入帳號。",
   "account.signIn": "登入",
   "account.signingIn": "登入中…",
   "account.continueGuest": "免登入，立即試玩",

@@ -23,8 +23,6 @@ export const entry = {
   "account.tooManyAttempts": ({ minutes }: { minutes: number }) => `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
   "account.networkError": "Something went wrong. Check your connection and try again.",
   "account.backHome": "Back to home",
-  "account.legacyNote":
-    "This browser has rooms you started here, as a guest or from before accounts. Sign in or create an account, and you can bring them with you from your rooms page.",
   "account.signIn": "Sign in",
   "account.signingIn": "Signing in…",
   "account.continueGuest": "Try without signing in",

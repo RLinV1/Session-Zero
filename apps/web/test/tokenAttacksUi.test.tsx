@@ -50,6 +50,19 @@ describe("Token editor: Attacks (shared-token-attacks, FR-TAC-07)", () => {
     expect(onSave.mock.calls[0]![0]).not.toHaveProperty("attacks");
   });
 
+  it("does not send its untouched attacks over a change someone else made meanwhile (legacy attack dice)", async () => {
+    const onSave = vi.fn(async (_changes: TokenUpdate) => {});
+    const broken = { ...goblin, attacks: [{ name: "Claw", toHit: null, damage: { sides: "x" } } as unknown as AttackPreset] };
+    const props = { roomToken: "room", isGm: true, players: [], departedOwner: null, error: null, onSave, onDelete: () => {} };
+    const { rerender } = render(<TokenEditor token={broken} {...props} />);
+    // An owner repairs the attack while the GM's editor is open.
+    rerender(<TokenEditor token={{ ...broken, attacks: [bite] }} {...props} />);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "HP" }), { target: { value: "4" } });
+    await saveEditor();
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]![0]).not.toHaveProperty("attacks");
+  });
+
   it("sends the new list once an attack is removed", async () => {
     const onSave = editor(false);
     fireEvent.click(within(attacksSection()).getAllByRole("button", { name: "Edit" })[1]!);

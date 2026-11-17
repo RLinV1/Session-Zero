@@ -63,6 +63,25 @@ describe("privacy and terms pages (site-policies)", () => {
     }
   });
 
+  it("says what reaches a person's own AI app, and what the MCP server keeps (FR-PL-08, FR-GM-26)", () => {
+    render(<PrivacyPage />);
+    const part = screen.getByRole("heading", { level: 2, name: "AI apps" }).closest("section")!;
+    expect(part.textContent).toMatch(/company that runs your AI app/);
+    expect(part.textContent).toMatch(/refuses a GM's seat/);
+    expect(part.textContent).toMatch(/stores nothing/);
+    expect(screen.getByText(/build pass stops working after 24 hours/)).toBeTruthy();
+    expect(screen.getByText(/changed for 14 days is closed/)).toBeTruthy();
+    expect(screen.getByText(/Its name ends in \(AI\)/)).toBeTruthy();
+  });
+
+  it("sets the terms for connecting an AI app (FR-PL-08, FR-GM-26)", () => {
+    render(<TermsPage />);
+    const part = screen.getByRole("heading", { level: 2, name: "AI apps" }).closest("section")!;
+    expect(part.textContent).toMatch(/counts as what you do/);
+    expect(part.textContent).toMatch(/its own terms and costs/);
+    expect(part.textContent).toMatch(/like a password/);
+  });
+
   it("covers uploads and links back to privacy", () => {
     render(<TermsPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Terms of use" })).toBeTruthy();

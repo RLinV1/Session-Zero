@@ -8,6 +8,7 @@ import { adjustGridSampleCorner, drawGridSample, GRID_CELL_SNAP, gridFromSample,
 import { beginPointerGesture, EMPTY_GESTURE, EMPTY_PLACEMENT, finishPointerGesture, interruptPointerGesture, movePointerGesture,
   repositionGridSample, transitionPlacement, type Anchor, type Placement, type PointerGesture } from "./gridSampleInteraction";
 import { t } from "../i18n/locale";
+import { EXAMPLE_GRID_EVENT, EXAMPLE_HIGHLIGHT_EVENT } from "../ui/tutorialExample";
 
 const MAX_SCALE = 8;
 const BUTTON_STEP = 1.5;
@@ -53,6 +54,14 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
   const statusId = useId();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [camera, setCamera] = useState<Camera>(FIT);
+  useEffect(() => {
+    const focus = (event: Event) => {
+      const box = (event as CustomEvent<{ x: number; y: number; w: number; h: number }>).detail;
+      setCamera({ cx: box.x + box.w / 2, cy: box.y + box.h / 2, zoom: Math.min(4, Math.max(1, Math.min(map.width / (box.w * 1.5), map.height / (box.h * 1.5)))) });
+    };
+    window.addEventListener(EXAMPLE_HIGHLIGHT_EVENT, focus);
+    return () => window.removeEventListener(EXAMPLE_HIGHLIGHT_EVENT, focus);
+  }, [map.width, map.height]);
   const [count, setCount] = useState<SampleCount>(1);
   const [placement, setPlacement] = useState<Placement>(EMPTY_PLACEMENT);
   // Keyboard/seed geometry survives pauses; visible temporary previews do not.
@@ -217,6 +226,11 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
       onChange(result.grid);
     }
   };
+  useEffect(() => {
+    const place = (event: Event) => { if (!disabled) commit((event as CustomEvent<Point>).detail); };
+    window.addEventListener(EXAMPLE_GRID_EVENT, place);
+    return () => window.removeEventListener(EXAMPLE_GRID_EVENT, place);
+  });
   const select = (anchor: Anchor) => {
     onInteraction?.();
     clearTransient();
@@ -457,10 +471,10 @@ export function MapGridPreview({ map, grid, onChange, onInteraction, onPreviewCh
                 setCount(n);
                 setMessage(null);
                 if (result.grid) { sentGeometry.current = result.grid; onChange(result.grid); }
-              }}>{n === 1 ? t("grid.oneSquare") : t("grid.nByN", { n })}</button>
+              }} data-tutorial-tool={`grid-sample-${n}`}>{n === 1 ? t("grid.oneSquare") : t("grid.nByN", { n })}</button>
           ))}
         </div>
-        <button type="button" className="secondary" disabled={disabled} onClick={() => {
+        <button type="button" className="secondary" data-tutorial-tool="grid-restart" disabled={disabled} onClick={() => {
           onInteraction?.();
           clearTransient(); setPlacement(EMPTY_PLACEMENT); setProvisionalSample(null); setMessage(null); svgRef.current?.focus();
         }}>{t("grid.startOver")}</button>

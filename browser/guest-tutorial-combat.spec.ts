@@ -65,10 +65,9 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
 
     // Show me opens Share and rings its copy-link control, with the card still on screen.
     await step(2, "Invite players");
-    await showMe();
+    await showMe(true);
     const share = page.locator("dialog.share-modal[open]");
-    // Share is in plain sight on desktop, so there is no Show me: the GM presses it.
-    if (!await share.count()) await page.locator('[data-tutorial="invite"]').first().click();
+    await expect(share).toBeVisible({ timeout: 10_000 });
     await expect(share.locator(".guest-tutorial")).toBeVisible();
     await expect(share.locator('[data-tutorial="invite"]')).toHaveAttribute("data-tutorial-active", "");
     await clearOfRing();
@@ -93,7 +92,7 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await expect(editor).toHaveCount(0);
     await step(9, "Place a token");
 
-    // One plain token and one move (socket); the fight itself is the demo's own buttons.
+    // One plain token and one move (socket); the fight itself is the real Initiative, Attack and Rulings controls.
     await command({ type: "token.create", name: "Aria", position: { x: 140, y: 140 } } as CommandInput);
     await step(10, "Move it");
     await command({ type: "token.move", tokenId: created[0]!, to: { x: 140, y: 210 } });
@@ -101,38 +100,24 @@ test("the guest demo walks from the invite to a hit, damage and a roll (guest-gm
     await showMe();
     await page.locator('button[data-tutorial="roll"]').click();
 
-    // Run demo fight adds the hero and goblin and starts the encounter, with Initiative on screen.
+    // The card sets up the hero, the goblin and the encounter; Show me points at the real turn order.
     await step(12, "Start an encounter");
-    await showMe();
-    await expect(page.getByRole("button", { name: "Start encounter", exact: true }).first()).toHaveAttribute("data-tutorial-active", "");
-    await clearOfRing();
-    await card.getByRole("button", { name: "Run demo fight" }).click();
+    await showMe(true);
 
     await step(13, "Make an attack");
     await expect(page.getByText("Demo hero").first()).toBeVisible();
     await expect(page.getByText("Demo goblin").first()).toBeVisible();
-    await showMe();
-    await card.getByRole("button", { name: "Roll the hero's attack" }).click();
+    await showMe(true);
 
-    // The roll waits in Rulings, and the GM presses Hit.
+    // Show me uses the real Hit and Apply controls; each action must advance the lesson itself.
     await step(14, "Rule on the hit");
-    await showMe();
-    const hit = page.getByRole("button", { name: /^Hit: / }).first();
-    await expect(hit).toBeVisible();
-    await expect(hit).toHaveAttribute("data-tutorial-active", "");
-    await clearOfRing();
-    await hit.click();
+    await showMe(true);
 
     await step(15, "Apply damage");
-    await card.getByRole("button", { name: "Roll damage" }).click();
-    const apply = page.getByRole("button", { name: /^Apply [0-9]+ damage/ }).first();
-    await expect(apply).toBeVisible();
-    await expect(apply).toHaveAttribute("data-tutorial-active", "");
-    await clearOfRing();
-    await apply.click();
+    await showMe(true);
 
     await step(16, "You are all set");
-    await expect(card.getByRole("button", { name: "Remove demo tokens" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Finish" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("done.png") });
   } finally { socket.disconnect(); }
 });

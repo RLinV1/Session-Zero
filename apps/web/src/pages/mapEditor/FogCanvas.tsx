@@ -1,4 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { TUTORIAL_MAP } from "../../ui/tutorialMap";
+import { EXAMPLE_DRAG_EVENT } from "../../ui/tutorialExample";
 import { MAX_FOG_POINTS, type Command, type FogRegion, type GridSpec, type MapImage, type Point } from "@vtt/shared";
 import { FOG_TEXTURE_SIZE, averageColor, fogPalette, makeFogCanvas, type Rgb } from "../../board/fogTexture";
 import { fogRegionAt } from "../../board/tools";
@@ -143,8 +145,38 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
   playerView?: boolean;
 }) {
   const fogId = useId().replace(/:/g, "");
+  // The demo's replayed drag: the same rubber band a real drag draws, grown from the start to the end point.
+  const [demoDrag, setDemoDrag] = useState<{ a: Point; b: Point } | null>(null);
+  useEffect(() => {
+    let frame = 0;
+    const toMap = (x: number, y: number): Point | null => {
+      const svg = document.querySelector<SVGSVGElement>("dialog.map-editor[open] .wall-canvas-svg");
+      const m = svg?.getScreenCTM()?.inverse();
+      if (!m) return null;
+      const p = new DOMPoint(x, y).matrixTransform(m);
+      return { x: p.x, y: p.y };
+    };
+    const onDrag = (e: Event) => {
+      cancelAnimationFrame(frame);
+      const d = (e as CustomEvent<{ from: Point; to: Point; ms: number } | null>).detail;
+      if (!d) { setDemoDrag(null); return; }
+      const began = performance.now();
+      const tick = () => {
+        const k = d.ms > 0 ? Math.min(1, (performance.now() - began) / d.ms) : 1;
+        const eased = k * k * (3 - 2 * k);
+        const a = toMap(d.from.x, d.from.y);
+        const b = toMap(d.from.x + (d.to.x - d.from.x) * eased, d.from.y + (d.to.y - d.from.y) * eased);
+        if (a && b) setDemoDrag({ a, b });
+        if (k < 1) frame = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    window.addEventListener(EXAMPLE_DRAG_EVENT, onDrag);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener(EXAMPLE_DRAG_EVENT, onDrag); };
+  }, []);
   const base = useMapColor(map.url);
-  const tint = rgbCss(fogPalette(base).dark);
+  // The practice map's warm art would tint the demo's fog olive-yellow; keep it a neutral slate.
+  const tint = map.url === TUTORIAL_MAP.url ? "rgb(34, 42, 54)" : rgbCss(fogPalette(base).dark);
   // Make the Player view texture while the GM is still drawing, once the map's colour is known.
   useEffect(() => {
     const warm = () => { fogTextureUrl(base); };
@@ -307,11 +339,18 @@ export function FogCanvas({ map, grid, fog, mode, onAdd, onRemove, onUpdate, onN
                 ))}
               </g>
             )}
+            {demoDrag && (
+              <rect
+                x={Math.min(demoDrag.a.x, demoDrag.b.x)} y={Math.min(demoDrag.a.y, demoDrag.b.y)}
+                width={Math.abs(demoDrag.b.x - demoDrag.a.x)} height={Math.abs(demoDrag.b.y - demoDrag.a.y)}
+                fill="none" stroke="#ffd166" strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`} pointerEvents="none"
+              />
+            )}
             {anchor && draft && (
               <rect
                 x={Math.min(anchor.x, draft.x)} y={Math.min(anchor.y, draft.y)}
                 width={Math.abs(draft.x - anchor.x)} height={Math.abs(draft.y - anchor.y)}
-                fill="#ffd166" fillOpacity={0.18} stroke="#ffd166" strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`}
+                fill="none" stroke="#ffd166" strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`}
               />
             )}
             {mode === "polygon" && corners.length > 0 && (

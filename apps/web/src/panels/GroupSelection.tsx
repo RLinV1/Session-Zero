@@ -3,12 +3,15 @@ import type { RoomState } from "@vtt/shared";
 import { t } from "../i18n/locale";
 
 /**
- * The GM's group selection (ADR 0046): the tokens a group roll or an area effect is for. Built on
- * the board with Shift-click or From template, edited here. Local to the GM's screen: nothing is
- * sent until a roll is made.
+ * The GM's selection (ADR 0046, ADR 0074): the tokens a group roll, an area effect or a bulk
+ * action is for. Built on the board with Shift-click, Shift-drag or From template, or with the
+ * turn order's checkboxes, and edited here. Local to the GM's screen: nothing is sent until the
+ * GM rolls or acts on it.
  */
 export interface GroupSelection {
   tokenIds: readonly string[];
+  /** Add a token, or take it out if it is already selected. */
+  toggle(tokenId: string): void;
   remove(tokenId: string): void;
   clear(): void;
   /** Put the board into template-picking mode; the picked template's tokens replace the selection. */
