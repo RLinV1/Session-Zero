@@ -188,11 +188,16 @@ openspec/changes/interactive-ai-scene-studio/tasks.md, for RLinV1/Session-Zero.
 Do not start M3 revision/correction contracts, M4 interaction or M5 publication.
 
 First verify that ALL of M1 has merged into main together: M1a PR #212 plus the stacked
-M1b PR identified in handoff.md. Record the exact main merge commit, and verify it contains
-the M1b implementation/review fixes. Require the recorded real ChatGPT map+token-art intake,
+M1b PR #216 identified in handoff.md. Record the exact main merge commit, and verify it contains
+the M1b implementation/review fixes through `7eadf503` and the final handoff. Require the recorded real ChatGPT map+token-art intake,
 M1a discovery/registration/consent/read/disconnect evidence, and architecture-owner code
 review. If any prerequisite is missing, report it and stop M2; do not merge the PRs yourself
 or substitute an unmerged M1b head as the base.
+
+The required M1 host run is recorded in evidence/m1-host-2026-11-16.md; its scope and
+unrun adversarial host exercises are explicit. At the M1b handoff, architecture-owner and
+glossary-owner reviews and the whole-M1 merge remain pending. This starter does not authorize
+M2 before those gates or turn its existing local/M0 evidence into a new host result.
 
 Read CLAUDE.md, every file in openspec/changes/interactive-ai-scene-studio/ (latest handoff
 first), ADR0073, ADR0053, ADR0002, ADR0054, docs/GLOSSARY-zh-TW.md and the current native

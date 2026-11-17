@@ -1,6 +1,9 @@
 # M1 delegated access and protected intake qualification
 
-This is the **pending real-host run**, covering M1a and M1b together (FR-GM-26/27).
+This is the real-host runbook, covering M1a and M1b together (FR-GM-26/27).
+The authorized 2026-11-16 run passed the required M1 connection/intake/recovery workflow:
+[redacted evidence and exact coverage](../../openspec/changes/interactive-ai-scene-studio/evidence/m1-host-2026-11-16.md).
+Additional adversarial host exercises below are marked separately in that record.
 The local browser bridge is useful regression evidence, but cannot qualify ChatGPT.
 Do not open a tunnel or operate the user's ChatGPT account until the user separately approves
 this run. No production deployment, DNS, edge, AWS or development-stack change is needed.
@@ -52,6 +55,7 @@ old grants are audience-bound and cannot be reused against a different origin.
 export STUDIO_PUBLIC_ORIGIN=https://<printed-name>.trycloudflare.com
 export CLIENT_ORIGIN="$STUDIO_PUBLIC_ORIGIN"
 export S3_AUTODETECT=0 S3_ENDPOINT='' REDIS_URL='' SEED_DEV_ACCOUNT=0
+export HTTP_LOG=0 COOKIE_SECURE=1
 export VISION_URL=http://127.0.0.1:18889
 export STUDIO_MEDIA_MODE=local
 export STUDIO_PRIVATE_DIR=/private/tmp/<new-private-run-directory>/media
@@ -72,6 +76,8 @@ __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=<printed-name>.trycloudflare.com \
 
 Do not enable HTTP request-body logging. These are development processes, not production
 services. Only synthetic account/build data belongs on this temporary public endpoint.
+When running the automated HTTP server suite afterward, explicitly set `COOKIE_SECURE=0`
+so it does not inherit the tunnel-only secure-cookie setting.
 
 ## Exact host workflow
 
@@ -123,11 +129,14 @@ services. Only synthetic account/build data belongs on this temporary public end
     expiry coverage remains separate evidence.
 11. While the view is open, end its connection on the website's build page. Further app
     snapshot/media and model reads must be refused. The mounted view may retain its last
-    authorized image marked stale, but must receive no new bytes. Reconnect as the same
+    authorized image marked stale, but must receive no new bytes. Dismiss the host reconnect
+    dialog: automatic refreshes must stay paused. Use the view's explicit Retry connection
+    to resume. Reconnect as the same
     synthetic owner and reopen: saved state must recover. A new connection as a second
     synthetic owner must refuse the original build and clear its cached private content.
-12. Delete the synthetic builds/account through the website. Verify new media jobs finish,
-    originals/previews are gone, and access is ended. Leave any earlier public/published
+12. Delete the synthetic builds/account through the website. Verify originals/previews are
+    gone and access is ended. Generated-key-only delayed verification jobs may remain until
+    the write lease ends; record their count rather than claiming no jobs. Leave any earlier public/published
     controls valid. Disconnect/remove the temporary ChatGPT app with the user's agreement.
 
 The content-versioned `ui://` resource must contain no account data, credentials, signed URLs
