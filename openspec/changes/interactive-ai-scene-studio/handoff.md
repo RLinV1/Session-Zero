@@ -1,5 +1,42 @@
 # Implementation handoff
 
+## M3 review fixes, 2026-11-18
+
+A read-only review of `fab6f9cb` found three defects. All three are fixed in the working tree
+on top of that commit, and D14 records the changed contract.
+
+- **Owner lockout.** A connection could fill the 32-revision history with stale proposals.
+  After that, every owner builder save, delete and publish of the enrolled scene was refused,
+  and discarding the build was the only way out. Now:
+  - Delegated proposals are still refused at a limit.
+  - Owner writes prune to 24 revisions. Pruning keeps the reference, working and
+    materialized revisions, and removes orphaned requests and receipts.
+  - Postgres reloads the full history in the same transaction only when pruning is needed.
+  - Owner deletes are never refused. Deleting an enrolled map or encounter ends the correction.
+  - The new owner route `DELETE /api/builds/:id/studio/authoring/maps/:mapKey` ends a
+    correction explicitly.
+- **Mark scope.** A mark was scope-checked by its square's top-left corner, so marks one
+  cell past the selection's right and bottom edges passed. A mark now uses its whole square,
+  clipped to the image, for selection and for its destination.
+- **Sticky dependencies.** Guarded creatures and files were the union of all history, so a
+  creature stayed guarded after its tokens were removed. They are now recomputed from the
+  current working and materialized revisions on each write. An owner edit whose scene can't
+  be captured (for example, after a used creature is deleted) is saved and shows as drifted.
+- **Evidence.**
+  - Three new or extended tests in `apps/server/test/studioAuthoring.test.ts` fail on
+    `fab6f9cb` and pass with the fixes.
+  - On Node with the default stores, lint, typecheck and `npm test` passed (5,462 tests,
+    70 optional-service skips).
+  - On a disposable Postgres 17, the builder and Studio server files passed serialized
+    twice (513 tests).
+  - Run in parallel on one shared database, those files fail intermittently on both
+    `fab6f9cb` and the fixes (4 of 5 runs on `fab6f9cb`). The failures are cross-file
+    sweeps and grant cleanup, including `studioStore`'s sweep test. This is pre-existing
+    and not addressed here.
+- **Not done.** There is no builder UI for ending a correction yet (M4). The review's
+  medium-low and low findings (owner-token working ID, guide comment, replay order, mixed
+  token snapshot, full history reads, Studio-off routes, catalog text) are unchanged.
+
 ## M3 implementation, 2026-11-18
 
 - Work is on `feat/interactive-ai-scene-studio-m3` in `/private/tmp/session-zero-studio-m3`,

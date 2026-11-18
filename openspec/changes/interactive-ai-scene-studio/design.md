@@ -120,9 +120,12 @@ revision. The implementation baseline is main `dbb6cd3d` after PRs #220 and #221
   Published library values and their exact-use manifest are part of M5.
 - Count UTF-8 bytes of the stored revision, request and receipt payloads. Limit each workspace
   to 32 revisions, 64 requests and 32 MiB, and each build to 64 MiB of authoring history.
-  Reference and stale revisions count toward the same limits. Refuse a new record before any
-  pointer changes when it would exceed a limit. The owner can inspect the existing history and
-  discard through the build lifecycle. Reads, refusals and idempotent replays leave retention
+  Reference and stale revisions count toward the same limits. Refuse a delegated proposal
+  before any pointer changes when it would exceed a limit, so a connection can't push out the
+  owner's history. Never refuse an owner write (native save, request or restore) for history:
+  it prunes to 24 revisions, oldest first, keeping the reference, working and materialized
+  revisions (and a restore's source). Pruning a revision also removes requests based on it,
+  and receipts for removed records. This amendment followed the 2026-11-18 M3 code review. Reads, refusals and idempotent replays leave retention
   timestamps alone. Discard, the 14-day abandoned-build sweep and account deletion remove
   authoring records alongside existing draft cleanup.
 
@@ -140,6 +143,7 @@ private and non-cacheable. Tool results carry metadata and authorized structured
 | `POST /requests/:requestId/proposals` | Delegated connection | `{ baseRevisionId, operationId, operations }`. Returns `{ status, requestId, revisionId, currentRevisionId }`. MCP exposes `studio_submit_correction`. |
 | `GET /maps/:mapKey/revisions` and `GET /maps/:mapKey/revisions/:revisionId` | Owner or delegated connection | List bounded revision headers newest first or return the authorized exact revision and its metadata. MCP exposes `studio_get_revision` for detailed inspection. |
 | `POST /maps/:mapKey/restore` | Owner | `{ revisionId, expectedCurrentRevisionId, operationId }`. Checks that the source, grid and dependencies still match current materialized bindings, then creates a new working revision. |
+| `DELETE /maps/:mapKey` | Owner | Ends the correction. Removes the workspace and all of its revisions, requests and receipts. The map, its encounter and their creatures can then be edited, deleted and published as ordinary drafts. Returns `{ mapKey, ended: true }`. Also the way to change an enrollment's encounter. |
 
 Request, authoring-object and operation identifiers are UUIDs. A legacy opening is exposed to
 clients by its stored authoring UUID. Enrolled requests use the current revision UUID as
@@ -149,8 +153,9 @@ the named layers `geometry`, `terrain`, and `placements`. The server validates m
 against that revision and stores the normalized region and authorized IDs. The read result
 identifies crossing objects and their complete extents. A selected crossing object requires
 the explicit whole-object acknowledgment. An acknowledgment allows changing that object's
-existing extent. New or moved line endpoints and a moved token's full snapped footprint must
-lie within the destination region. Terrain scope includes cells with positive-area intersection
+existing extent. New or moved line endpoints, a new or moved mark's whole square clipped to
+the image, and a moved token's full snapped footprint must lie within the destination region.
+A mark's extent for selection is that clipped square, not its corner. Terrain scope includes cells with positive-area intersection
 with the region clipped to the image, including cropped map edges.
 
 Use a strict discriminated union for operations. `line.add` takes a native line.
@@ -189,10 +194,16 @@ normalized input digest. A reused key with a different input is an explicit conf
   the older AI candidate in history. Return a conflict with reload guidance for old forms.
   On detector, choice or profile changes that affect the binding, serialize the relevant
   mutation and make the drift visible. Reject new requests from a drifted head until the
-  owner saves a fresh revision. Previously saved requests remain inspectable.
+  owner saves a fresh revision. Previously saved requests remain inspectable. An owner edit
+  that leaves the scene impossible to capture, such as an unusable grid, is still saved; the
+  working revision stays, and the drift stays visible until a later owner save captures the
+  scene again.
 - Guard ordinary AI and pass map/setup/encounter replacement and deletion, and mutations
-  that would bypass an enrolled dependency. Allow unrelated items through existing builder
-  routes. Guard publication against its entire dependency closure under the build lock,
+  that would bypass an enrolled dependency. The guarded creatures and files are those of the
+  current working and materialized revisions, recomputed on each write, not all history.
+  The owner's own deletes are never refused. Deleting an enrolled map or encounter ends the
+  correction. Deleting a creature the scene uses leaves it drifted. Allow unrelated items
+  through existing builder routes. Guard publication against its entire dependency closure under the build lock,
   including publication via a raw map file or another encounter sharing that map. The
   existing M2 snapshot stays readable and gains an optional working revision ID, using the
   working projection only for an exact enrolled context. Preserve old client parsing.

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
 import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 import type { BuildFileRecord } from "../src/store/buildStore";
-import type { StudioRevision } from "../src/store/studioAuthoring";
+import { AUTHORING_LIMITS, type StudioRevision } from "../src/store/studioAuthoring";
 import type { RoomStore } from "../src/store/roomStore";
 import { startServer } from "./helpers";
 import { storeCases } from "./storeHarness";
@@ -215,6 +215,66 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       expect(await (await f.propose(request.requestId, request.baseRevisionId, [operation])).json()).toMatchObject({ code: "limit" });
       expect(await f.history()).toMatchObject({ workingRevisionId: revisionId, revisions: expect.any(Array) });
       expect((await f.history()).revisions).toHaveLength(32);
+
+      // A connection filled the history, but the owner's builder save still goes through: it prunes
+      // the oldest revisions no pointer uses and keeps the reference and the advanced candidate.
+      const { items } = await f.owner.json<BuildDetail>("GET", f.base);
+      const map = items.find((item) => item.kind === "map")!;
+      const save = await f.owner.request("POST", `${f.base}/maps/chapel/grid`, { cellSize: 50, offsetX: 25, offsetY: 0 },
+        { "X-Studio-Authoring-Version": map.authoring!.token });
+      expect(save.status, await save.clone().text()).toBe(200);
+      const pruned = await f.history();
+      expect(pruned.revisions).toHaveLength(AUTHORING_LIMITS.prunedRevisions);
+      expect(pruned.revisions.map(({ id }) => id)).toEqual(expect.arrayContaining([request.baseRevisionId, revisionId, pruned.workingRevisionId]));
+      const fresh = await f.create(f.makeRequest((await f.inspect()).inspectedVersion, input.selection));
+      expect((await f.propose(fresh.requestId, fresh.baseRevisionId, [operation])).status).toBe(200);
+
+      // Ending the correction returns the map and its dependencies to the ordinary builder.
+      const resize = async () => (await f.send("POST", "/creatures", { creatures: [{ key: "guard", name: "Guard", size: 3, isPlayerCharacter: false }] })).json();
+      expect(await resize()).toMatchObject({ results: [{ key: "guard", saved: false }] });
+      expect((await f.owner.request("DELETE", f.map)).status).toBe(200);
+      expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+      expect(await resize()).toMatchObject({ results: [{ key: "guard", saved: true }] });
+    } finally { await f.server.close(); }
+  });
+
+  it("guards only current dependencies and lets the owner delete enrolled drafts", async () => {
+    const f = await fixture(makeStore());
+    try {
+      const head = await f.inspect();
+      await f.create(f.makeRequest(head.inspectedVersion, { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] }));
+      const resize = async () => (await f.send("POST", "/creatures", { creatures: [{ key: "guard", name: "Guard", size: 1, isPlayerCharacter: false }] })).json();
+      expect(await resize()).toMatchObject({ results: [{ key: "guard", saved: false }] });
+
+      // Deleting a creature the scene uses leaves the scene drifted instead of refusing the owner.
+      expect((await f.owner.request("DELETE", `${f.base}/items/creature/guard`)).status).toBe(204);
+      expect(StudioSnapshot.parse(await f.owner.json("GET", `${f.base}/studio`)).workingBindingChanged).toBe(true);
+      const { items } = await f.owner.json<BuildDetail>("GET", f.base);
+      const encounter = items.find((item) => item.kind === "encounter")!;
+      const cleared = await f.owner.request("PATCH", `${f.base}/encounters/night`, { tokens: [] },
+        { "X-Studio-Authoring-Version": encounter.authoring!.token });
+      expect(cleared.status, await cleared.clone().text()).toBe(200);
+      expect(await f.inspect()).toMatchObject({ drifted: false });
+      // The creature no longer belongs to the current scene, so the AI may write it again.
+      expect(await resize()).toMatchObject({ results: [{ key: "guard", saved: true }] });
+
+      // Deleting the enrolled encounter ends the correction.
+      expect((await f.owner.request("DELETE", `${f.base}/items/encounter/night`)).status).toBe(204);
+      expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+    } finally { await f.server.close(); }
+  });
+
+  it("scopes a mark by its whole square", async () => {
+    const f = await fixture(makeStore());
+    try {
+      const head = await f.inspect();
+      const request = await f.create(f.makeRequest(head.inspectedVersion, { region, layers: ["geometry"], objectIds: [], wholeObjectIds: [] }));
+      const mark = (column: number, row: number) => [{ op: "mark.add", mark: { square: { column, row }, reason: "Check the rubble." } }];
+      // Column 4's corner lies on the region's right edge (x 225), but its square covers x 225–275.
+      const outside = await f.propose(request.requestId, request.baseRevisionId, mark(4, 0));
+      expect(outside.status).toBe(422);
+      expect(await outside.json()).toMatchObject({ code: "scope" });
+      expect((await f.propose(request.requestId, request.baseRevisionId, mark(3, 3))).status).toBe(200);
     } finally { await f.server.close(); }
   });
 });

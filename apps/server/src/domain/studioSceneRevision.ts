@@ -119,6 +119,15 @@ function placementBounds(scene: RevisionScene, placement: DraftEncounterState["t
   const half = size * scene.grid.cellSize / 2;
   return bounds({ x: center.x - half, y: center.y - half }, { x: center.x + half, y: center.y + half });
 }
+/**
+ * A mark annotates a whole square, drawn at its center, so its extent is that cell clipped to the
+ * image like a terrain cell. Null when no part of the cell is on the image.
+ */
+function markBounds(square: { column: number; row: number }, grid: GridSpec, source: StudioFile): StudioRectangle | null {
+  const cell = cellRect(square.column, square.row, grid);
+  const clipped = { minX: Math.max(0, cell.minX), minY: Math.max(0, cell.minY), maxX: Math.min(source.width, cell.maxX), maxY: Math.min(source.height, cell.maxY) };
+  return clipped.minX < clipped.maxX && clipped.minY < clipped.maxY ? clipped : null;
+}
 export function selectionObjects(scene: RevisionScene): SelectionObject[] {
   const setup = scene.map.setup ?? EMPTY_MAP_SETUP;
   return [
@@ -129,7 +138,7 @@ export function selectionObjects(scene: RevisionScene): SelectionObject[] {
     ...mapOpenings(scene.sourceBoard).map(({ a, b }, i): SelectionObject =>
       ({ id: scene.ids.openings[i]!, layer: "geometry", bounds: bounds(a, b), segment: { a, b } })),
     ...setup.marks.map((mark, i): SelectionObject =>
-      ({ id: scene.ids.marks[i]!, layer: "geometry", bounds: bounds(cornerPoint(mark.square, scene.grid)) })),
+      ({ id: scene.ids.marks[i]!, layer: "geometry", bounds: markBounds(mark.square, scene.grid, scene.source) })),
     ...(scene.encounter?.tokens.map((p, i): SelectionObject =>
       ({ id: scene.ids.placements[i]!, layer: "placements", bounds: placementBounds(scene, p) })) ?? []),
   ];
@@ -244,7 +253,11 @@ export function applyCorrection(base: RevisionScene, scope: StudioSelection, ope
           candidate.ids.marks.splice(i, 1);
         } else {
           const previous = setup.marks[i];
-          if (!previous || digest(previous.square) !== digest(op.mark.square)) inside(cornerPoint(op.mark.square, grid));
+          if (!previous || digest(previous.square) !== digest(op.mark.square)) {
+            const cell = markBounds(op.mark.square, grid, base.source);
+            if (!cell) throw new StudioAuthoringError("invalid", "That mark is off the map.");
+            if (!contains(scope.region, cell)) outOfScope();
+          }
           setup.marks[i] = op.mark;
           if (op.op === "mark.add") candidate.ids.marks.push(randomUUID());
         }

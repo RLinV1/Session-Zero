@@ -70,6 +70,8 @@ export function registerStudioAuthoringRoutes(app: Express, deps: { store: RoomS
   read("/maps/:mapKey/revisions/:revisionId", (req) => ({ kind: "revision", mapKey: targetKey(req), revisionId: validated(z.uuid(), req.params.revisionId) }));
   app.post(owner + "/maps/:mapKey/requests", handle((req) => ({ kind: "create", mapKey: targetKey(req), input: validated(StudioCorrectionInput, req.body) }), false));
   app.post(owner + "/maps/:mapKey/restore", handle((req) => ({ kind: "restore", mapKey: targetKey(req), input: validated(StudioRestoreInput, req.body) }), false));
+  // The owner's way out of enrollment: the map edits, deletes and publishes as an ordinary draft again.
+  app.delete(owner + "/maps/:mapKey", handle((req) => ({ kind: "end", mapKey: targetKey(req) }), false));
   if (deps.grantGuard) app.post(delegated + "/requests/:requestId/proposals", deps.grantGuard,
     handle((req) => ({ kind: "propose", requestId: requestId(req), input: validated(StudioProposalInput, req.body) }), true));
 }

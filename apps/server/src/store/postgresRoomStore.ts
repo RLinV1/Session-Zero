@@ -1,4 +1,4 @@
-import { affectedWorkspaces, authoringEntryIds, guardStudioPublish, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
+import { affectedWorkspaces, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
@@ -164,10 +164,29 @@ async function studioRecords(tx: Prisma.TransactionClient, build: BuildRecord) {
   return { build, files, items };
 }
 
-async function writeAuthoring(tx: Prisma.TransactionClient, buildId: string, { workspace, entries }: AuthoringWrite) {
+/** Every entry of these maps' workspaces: what an owner write reads when it must prune history. */
+async function studioHistory(tx: Prisma.TransactionClient, buildId: string, mapKeys: string[]) {
+  return (await tx.studioAuthoringEntry.findMany({ where: { buildId, mapKey: { in: mapKeys } } })).map(entryRecord);
+}
+
+/**
+ * Runs a pure authoring step on the entries it reads, and once more on the whole history of `mapKeys`
+ * when an owner write must prune. Both runs are in the caller's transaction, under the build lock.
+ */
+async function withHistory<T>(tx: Prisma.TransactionClient, buildId: string, mapKeys: string[], entries: AuthoringEntry[], run: (entries: AuthoringEntry[], complete: boolean) => T) {
+  try { return run(entries, false); }
+  catch (error) {
+    if (!(error instanceof AuthoringHistoryNeeded)) throw error;
+    // Entries of other maps (a receipt with the same retry key) stay visible to the second run.
+    return run([...entries.filter((e) => !mapKeys.includes(e.mapKey)), ...await studioHistory(tx, buildId, mapKeys)], true);
+  }
+}
+
+async function writeAuthoring(tx: Prisma.TransactionClient, buildId: string, { workspace, entries, removed }: AuthoringWrite) {
   const mapKey = workspace.mapKey;
   const state = workspace as unknown as Prisma.InputJsonValue;
   await tx.studioAuthoringWorkspace.upsert({ where: { buildId_mapKey: { buildId, mapKey } }, create: { buildId, mapKey, state }, update: { state } });
+  if (removed.length) await tx.studioAuthoringEntry.deleteMany({ where: { buildId, mapKey, OR: removed.map(({ kind, id }) => ({ kind, id })) } });
   await tx.studioAuthoringEntry.createMany({ data: entries.map(({ id, kind, value }) => ({ buildId, mapKey, id, kind, value: value as unknown as Prisma.InputJsonValue })) });
 }
 
@@ -1113,7 +1132,7 @@ export class PostgresRoomStore implements RoomStore {
       const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
       assertStudioBuildAccess(build, access);
       if (access.passHash !== undefined || (command.kind === "propose" && !access.delegation) ||
-          ((command.kind === "create" || command.kind === "restore") && access.delegation)) {
+          ((command.kind === "create" || command.kind === "restore" || command.kind === "end") && access.delegation)) {
         throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
       }
       const workspaces = await studioWorkspaces(tx, buildId);
@@ -1129,8 +1148,11 @@ export class PostgresRoomStore implements RoomStore {
         : await studioEntries(tx, buildId, ids);
       if (request) entries.push(request);
       const records = await studioRecords(tx, build);
-      const result = runAuthoring(records, workspaces, entries, command);
+      const result = await withHistory(tx, buildId, mapKey === undefined ? [] : [mapKey], entries,
+        (rows, complete) => runAuthoring(records, workspaces, rows, command, complete));
       if (result.write) await writeAuthoring(tx, buildId, result.write);
+      // The workspace row's cascade removes its revisions, requests and receipts.
+      if (result.end) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: result.end } });
       if (result.touch) await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
       if (result.write && access.delegation) await assertDelegation(tx, access.delegation, locked);
       return result.response;
@@ -1240,9 +1262,12 @@ export class PostgresRoomStore implements RoomStore {
       const where = { buildId_kind_key: { buildId, kind, key } };
       const existing = await tx.buildItem.findUnique({ where });
       if (!existing) return false;
-      if (affectedWorkspaces(await studioWorkspaces(tx, buildId), { kind, key }).length) rejectEnrolled();
+      const workspaces = await studioWorkspaces(tx, buildId);
+      if (!byOwner && affectedWorkspaces(workspaces, { kind, key }).length) rejectEnrolled();
       if (existing.publishedId) throw new BuildItemLockedError("published");
       if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
+      const ended = byOwner ? ownerRemovalEnds(workspaces, { kind, key }) : [];
+      if (ended.length) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: { in: ended } } });
       await tx.buildItem.delete({ where });
       await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
       return true;
@@ -1266,7 +1291,8 @@ export class PostgresRoomStore implements RoomStore {
         const records = await studioRecords(tx, fullBuild);
         const entries = await studioEntries(tx, item.buildId, affected.map((w) => w.materializedId));
         const next: BuildItemRecord = { ...item, editedByUser: true, publishedId: null, updatedAt: values.updatedAt.toISOString() };
-        const writes = ownerAuthoringWrites(records, workspaces, entries, next, guard.ownerToken, guard.ownerIds);
+        const writes = await withHistory(tx, item.buildId, affected.map((w) => w.mapKey), entries,
+          (rows, complete) => ownerAuthoringWrites(records, workspaces, rows, next, guard.ownerToken, guard.ownerIds, complete));
         for (const write of writes) await writeAuthoring(tx, item.buildId, write);
       }
       const row = await tx.buildItem.upsert({ where, create: { id: randomUUID(), buildId: item.buildId, kind: item.kind, key: item.key, ...values }, update: values });
