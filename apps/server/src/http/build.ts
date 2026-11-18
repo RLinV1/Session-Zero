@@ -1,4 +1,5 @@
 import { registerStudioMediaRoutes } from "./studioMedia";
+import { preparationFailure, preparationOutcomes, preparationRows } from "./studioPreparationOutcomes";
 import type { StudioMedia } from "../domain/studioMedia";
 import { randomBytes, randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
@@ -761,8 +762,10 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
 
   /** One handler on the pass family and, when the Studio is offered, the delegated family too. */
   function aiRoute(method: "get" | "post" | "put", path: string, handler: RequestHandler) {
-    app[method](`/api/build/:buildId${path}`, passGuard, handler);
-    if (studio) app[method](`/api/studio/builds/:buildId${path}`, grantGuard, handler);
+    const operation = path === "/maps" ? "map" : path === "/maps/:key/setup" ? "setup" : path === "/creatures" ? "creature" : path === "/encounters" ? "encounter" : path === "/profile" ? "profile" : null;
+    const tracking = method !== "get" && operation ? [preparationOutcomes(store, operation, now)] : [];
+    app[method](`/api/build/:buildId${path}`, passGuard, ...tracking, handler);
+    if (studio) app[method](`/api/studio/builds/:buildId${path}`, grantGuard, ...tracking, handler);
   }
 
   /** The open builds this grant covers, and nothing else of the account. */
@@ -882,9 +885,11 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
             return;
           }
           if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
+          preparationFailure(res, err, key);
           results.push({ key, saved: false, error: err.message });
         }
       }
+      preparationRows(res, results.map(({ key, saved }) => ({ key, saved })));
       res.json({ results });
     })().catch(failed(res));
   });
@@ -994,6 +999,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
           const now_ = await store.findBuild(build.id, build.ownerGmId);
           return void res.status(403).json({ error: refusal(now_ ?? { aiWalls: false, aiTerrain: false }) ?? WALLS_NOT_ALLOWED });
         }
+        preparationFailure(res, err);
         if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: AI_READ_OLD_VERSION });
         if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
         return void res.status(409).json({ error: err.message });
@@ -1112,6 +1118,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
       res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
+      preparationFailure(res, err);
       if (err instanceof BuildItemChangedError) return void res.status(409).json({ error: AI_READ_OLD_VERSION });
       if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
       res.status(409).json({ error: err.message });

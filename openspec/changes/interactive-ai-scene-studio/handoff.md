@@ -1,6 +1,126 @@
 # Implementation handoff
 
-## Current state
+## M2 manual acceptance, 2026-11-17
+
+- The owner tested the fresh isolated M2 stack at `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`
+  in ChatGPT Work with the temporary personal plugin `Session Zero Studio M2 Manual (Fresh)`.
+  The Studio resource was `ui://session-zero/studio.08d67fe46f615e81.html`.
+- The owner reported that the exercised behavior worked well enough to close task 3.7.
+  They observed that a build created after OAuth consent was outside the existing grant.
+  That matches D7: consent covers the selected build IDs, and a new build needs a new grant.
+  The report was an overall acceptance and included no per-check matrix, original byte
+  comparison, or save-to-display measurements.
+- Stack readiness was verified separately: clean checkout, Node 22.23.2, fresh migrated
+  Postgres, private S3 startup checks, a real detector candidate, public signup and health
+  endpoints, and matching OAuth discovery and bearer challenge.
+- Full M2 code review done 2026-11-17 on `2bcfa0a1..257ab8f4`. Fixes are in `2524338e`:
+  - Poll reads use READ COMMITTED under the build lock, so a revocation is no longer reported as a storage failure.
+  - The chat view clears private data when access ends, including through the tagged MCP sign-in challenge.
+  - Refused selections keep live refresh going.
+  - Receipts cover refused 404 writes and are written once per request.
+  - One failing token image no longer takes down the view.
+  - Deliberately left: zh-TW issue-text back-translation (owner: not a priority) and
+    the dev-time Studio bundle build on MCP import. Website idle polling is task 7.1.
+  - Not verified in a real host: whether ChatGPT passes the MCP sign-in error back to the
+    view. Without that, a revoked view shows "Connection interrupted" and keeps the last scene.
+  The manual stack was left running for the owner.
+
+## Latest session — M2 chat-attachment intake, 2026-11-17
+
+- Worktree `/private/tmp/session-zero-studio-m2`, branch `feat/interactive-ai-scene-studio-m2`.
+  Started clean at `9481a162`, the interim exact-host fix, on top of M2 implementation
+  `bd9daa1a`. M2 remains unmerged. This session covers the FR-GM-26 policy amendment and
+  local commits and checks. The next session owns stack preparation and the user owns task
+  3.7 acceptance.
+- [D9](design.md#d9-original-file-intake) records the regional composer hostname pattern,
+  the interim fix's provenance, the exclusion of widget and Azure Blob origins, the removal
+  of the merged M1b view upload paths and origin-only refusal logging. The embedded view
+  and refusal messages offer chat reattachment or the existing owner build upload page in
+  English and zh-TW. Expired links still ask for reattachment in chat.
+- The eventual PR description for **Raymond's Real-Time Architecture review** should call out
+  the FR-GM-26 change from exact hosts to the bounded composer prefix and the removal of the
+  merged M1b picker/device/tool path. Include the trust boundary, origin-only logging and the
+  existing owner upload as the fallback. `CLAUDE.md` requires an ADR for changes to existing
+  `packages/shared` schemas. This patch changes no such schema, so the D9 amendment is the
+  design record for this review.
+
+### User-reported ChatGPT Work run, 2026-11-17
+
+The user ran ChatGPT Work on `sz-studio-m2-e9216bcf` and reported these observations.
+
+> - The grid suggestion showed.
+> - Walls, windows, Blocked and Difficult Base terrain, and visible and
+> - Saved changes appeared in the already-open Studio without reopening it.
+> - Camera and focus stayed put.
+> - Only failure: composer imports refused with "origin" (diagnosed above; interim fix 9481a162).
+
+The placement line ends at “visible and” in the received report. This records the observed
+run with its intake failure. Task 3.7 was open at the time. Individual results were pending
+for zh-TW, fullscreen/narrow, close recovery, disabled permissions and refused saves,
+multi-map/encounter separation, and disconnect/reconnect with a newly created build.
+
+### Independent review
+
+- The security review found that Unicode case folding could hide an IDNA-mapped raw
+  hostname. The parser now folds ASCII case only, with a regression for the Unicode
+  spelling and a positive uppercase HTTPS control.
+- The review also found that the existing website upload is reachable by file link.
+  The fallback discloses that visibility in English and zh-TW. The browser test uses
+  the real owner form with a synthetic PNG and checks that the open Studio sees it.
+- Re-review confirmed both fixes and found no further issues in the requested scope.
+  Composer hostnames can still change outside the chosen pattern. The policy constrains
+  destinations and retains its transport and decode bounds. Individual descriptors
+  remain untrusted.
+
+### Local verification and affected files
+
+- Node 22.23.2 lint and typecheck passed. `npm test` passed 5,406 tests including the
+  latency benchmark, with 65 skips for optional services. Tests ran with `COOKIE_SECURE=0`
+  and `DATABASE_URL` and `REDIS_URL` unset. The MCP Studio bundle built and loaded as
+  `ui://session-zero/studio.08d67fe46f615e81.html` from the production build.
+- Playwright consent and intake passed all 60 cases across desktop and narrow/touch
+  Chromium, Firefox and WebKit, using test-owned loopback memory/disk fixtures. The
+  fallback case verifies English and zh-TW guidance, the build-page URL, and an actual
+  synthetic owner upload visible in Studio. A WebKit teardown race was fixed by stopping
+  polling and draining bridge callbacks after the assertions. Both complete WebKit
+  projects and the fallback case on the other four projects passed the reruns.
+- The updated `studio-preparation.spec.ts` typechecked. Its Postgres/S3 and real-detector
+  browser run and the ChatGPT Work retest remain for the next stack. The user-reported
+  observations above are the only M2 real-host evidence recorded here.
+- The change updates server `studioDownload.ts`, the two server catalogs and server
+  regressions, MCP Studio tools/resource and intake tests, and the embedded
+  `SceneStudio.tsx` and English/zh-TW catalogs. It also updates both intake and preparation
+  browser specs, this OpenSpec change and the M2 runbook.
+- OpenSpec validation passed in normal mode. Strict mode still reports the two baseline
+  requirement-length warnings for native geometry and reopening. The amended intake
+  requirement is within the length limit. `git diff --check` passed.
+
+### Next stack-preparation session
+
+Use the clean M2 branch tip and [M2 runbook](../../../apps/mcp/README.studio-m2.md). Prepare
+fresh isolated Postgres and authenticated S3 with private/public buckets and run the real
+`services/vision` detector. Use Node 22.23.2 and the runbook's explicit loopback endpoints,
+migrations and synthetic fixtures. Configure the fresh HTTPS tunnel origin as
+`STUDIO_PUBLIC_ORIGIN` on server/MCP and `CLIENT_ORIGIN` on the server. Update the URL of
+`Session Zero Studio M2 Manual` to that origin plus `/mcp/studio`, refresh tools and use a new
+`studio_open` call. The existing plugin points at the stopped stack's dead tunnel.
+Retest composer originals and the owner-page link, then let the user report the pending
+qualification steps. The manual stack is stopped.
+
+## Previous M2 research session, 2026-11-17
+
+**Phase 2 authorized:** the user approved recording the Phase 1 design and beginning
+implementation. D13 and ADR 0073 record that design before dependent product code.
+
+- **Base verified:** remote main `2bcfa0a1f772a94a907f2c6597aed41d0cef0234`, checked against GitHub and `git ls-remote`. PR #212 merged as `d23a0b65001ef1d544a314c1779ea711f68b3a72`; PR #216 merged as `cd31b0552154e899d4daf06e6d2ad9968ac43fbc`. Both complete PR heads are ancestors of this base, including M1b fixes through `7eadf503` and its final handoff. Main also contains #219's legacy attack-dice test typecheck fix.
+- **Approval update from the user:** after the initial prerequisite audit found the historical owner-review rows still pending, the user reported that Raymond approved everything and explicitly waived other approval gates. This satisfies the M1 prerequisite for this session. It is user-reported approval, not a newly discovered GitHub review or a claim that the glossary owner separately reviewed the terms. The older records below retain their historical scope.
+- **Existing host evidence:** [M1 qualification](evidence/m1-host-2026-11-16.md) records actual ChatGPT discovery/DCR/consent/read/disconnect and map/token original intake, source view and reopen/recovery. Independent fixes were re-reviewed through `7eadf503`. M1 did not prepare map items or use a real detector; it does not qualify M2.
+- **Isolation:** created branch `feat/interactive-ai-scene-studio-m2` and worktree `/private/tmp/session-zero-studio-m2` from that exact main. Other worktrees and uncommitted files are preserved. Use explicit `fnm exec --using=22.23.2` for Node commands: shells do not all resolve the same Node version.
+- **Authorization:** tasks 3.1–3.7 only; research/discuss before product code. The user subsequently authorized the real ChatGPT test, temporary tunnel and synthetic-account steps autonomously, superseding the original request for a separate host-run approval. The Phase 1 design still awaits the user's go-ahead before product code. Commit/push and PR to main are authorized after implementation; no merge or deployment.
+- **Research:** see research.md's M2 section for existing layers/tools, context and status gaps, traffic budget, proposed design and verification order. These are proposals, not an agreed implementation design. No M2 task is complete; no product code, dependency install or test service has been started.
+- **Preserve active stacks:** read-only inspection found `cse416` development services and manual project `sz-studio-m1b-cce5e8a7` (Postgres 55434, S3 18334, vision 18889). Do not reuse these or their databases/buckets. Existing Playwright configuration forces memory persistence and vision 18889; it cannot be used unchanged for M2 proof.
+
+## Planning and M1 baseline
 
 - Date: 2026-11-16 (planning 2026-11-14).
 - Repository: `RLinV1/Session-Zero`, locally named `Virtual-Tabletop`. The existing Git remote still uses the older `Virtual-Tabletop` URL; it was not changed.

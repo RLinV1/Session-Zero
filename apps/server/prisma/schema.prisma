@@ -29,6 +29,8 @@ model Build {
   /// SHA-256 of the build pass. Null when there is no live pass; the pass itself is never stored.
   studioIntake  Json?     @map("studio_intake")
   studioFileId  String?   @map("studio_file_id") @db.Uuid
+  studioContext Json?     @map("studio_context")
+  studioOutcomes Json?    @map("studio_outcomes")
   passHash      String?   @unique @map("pass_hash")
   passExpiresAt DateTime? @map("pass_expires_at") @db.Timestamptz(6)
   /// The owner's choices (ADR 0053): let the AI's grid count when detection agrees, and let it set walls, doors and windows.

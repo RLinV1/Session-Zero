@@ -1,4 +1,5 @@
 import {
+  StudioSnapshot, type StudioContext,
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
   GM_TOKEN_HEADER,
   type BuildChoices,
@@ -493,6 +494,10 @@ export const api = {
    * the build page's list and disconnect. Only the owner's signed-in session makes any of them.
    */
   studio: {
+    async snapshot(buildId: string, signal?: AbortSignal): Promise<StudioSnapshot> {
+      return StudioSnapshot.parse(await accountRequest<unknown>(`${buildUrl(buildId)}/studio`, { signal, cache: "no-store" }));
+    },
+    context: (buildId: string, context: StudioContext) => accountRequest<unknown>(`${buildUrl(buildId)}/studio/context`, { method: "POST", ...jsonBody(context) }),
     /** The authorization request as the AI app sent it, checked by the server. */
     async checkRequest(query: string): Promise<StudioConsentCheck> {
       const res = await apiFetch(`/api/oauth/authorize${query}`);

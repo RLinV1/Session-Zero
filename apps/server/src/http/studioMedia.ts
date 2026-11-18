@@ -1,5 +1,5 @@
 import type { Express, Request, RequestHandler, Response } from "express";
-import { BUILD_LIMITS } from "@vtt/shared";
+import { BUILD_LIMITS, StudioContext } from "@vtt/shared";
 import { z } from "zod";
 import { requireAccount } from "../identity/middleware";
 import type { Sessions } from "../identity/sessions";
@@ -13,6 +13,8 @@ import type { AccountLimits } from "../identity/routes";
 import { serverEn } from "../i18n/en";
 import { serverZhTW } from "../i18n/zh-TW";
 import { requestLocale } from "../i18n/locale";
+import { studioFile, studioPreparationSnapshot } from "../domain/studioPreparation";
+import { StudioContextConflictError } from "../store/studioPreparation";
 
 const Descriptor = z.strictObject({ download_url: z.string().min(1).max(8192), file_id: z.string().min(1).max(512), mime_type: z.string().max(200).optional(), file_name: z.string().max(500).optional() });
 const Intake = z.strictObject({ kind: z.enum(["map", "token"]), file: Descriptor });
@@ -20,16 +22,12 @@ const Binding = z.strictObject({ fileId: z.uuid().nullable() });
 const messages = {
   origin: "studio.media.origin", expired: "studio.media.expired", download: "studio.media.download", size: "studio.media.size", image: "studio.media.image",
   busy: "studio.media.busy", storage: "studio.media.storage", limit: "studio.media.limit", access: "studio.media.access", missing: "studio.media.missing", invalid: "studio.media.invalid",
+  context: "studio.context.invalid",
 } as const;
 export function studioMediaError(res: Response, status: number, code: keyof typeof messages, extra: Record<string, unknown> = {}) {
   const id = messages[code];
   const catalog = requestLocale(res) === "zh-TW" ? serverZhTW : serverEn;
   return res.status(status).json({ error: catalog[id], messageId: id, code, ...extra });
-}
-export function studioFileView(file: BuildFileRecord) {
-  return { id: file.id, kind: file.kind, name: file.originalName, width: file.width, height: file.height, sizeBytes: file.sizeBytes,
-    privacy: file.studio ? "private" : "legacy-public", originalSha256: file.studio?.originalSha256 ?? null, canonicalId: file.studio?.canonicalId ?? null,
-    orientation: file.studio?.orientation ?? null, previewHash: file.studio?.previewSha256 ?? null };
 }
 export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore; media: StudioMedia; studio: StudioAccessConfig | null; grantGuard: RequestHandler; limits: AccountLimits; sessions: Sessions; now: () => number }) {
   const { store, media, studio, grantGuard, limits, now } = deps;
@@ -38,6 +36,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     if (e instanceof StudioAccessEndedError) return studioMediaError(res, 401, "access");
     if (e instanceof BuildClosedError) return studioMediaError(res, 404, "missing");
     if (e instanceof BuildLimitError) return studioMediaError(res, 409, "limit");
+    if (e instanceof StudioContextConflictError) return studioMediaError(res, 409, "context");
     const code = e instanceof StudioIntakeError ? e.code : "storage";
     return studioMediaError(res, code === "busy" ? 503 : code === "storage" ? 503 : code === "size" ? 413 : 422, code);
   };
@@ -70,6 +69,25 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
       return true;
     });
   })().catch(failed(res)); });
+  const ownerStudio = async (req: Request, res: Response, write: boolean) => {
+    const account = requireAccount(res); if (!account) return;
+    if (!z.uuid().safeParse(req.params.id).success) return studioMediaError(res, 404, "missing");
+    const buildId = String(req.params.id);
+    if ((await store.findBuild(buildId, account.user.ownerId))?.status !== "open") return studioMediaError(res, 404, "missing");
+    const access = { ownerGmId: account.user.ownerId };
+    if (write) {
+      const parsed = StudioContext.safeParse(req.body); if (!parsed.success) return studioMediaError(res, 400, "context");
+      if (!await deps.sessions.isLive(account.session.tokenHash)) return studioMediaError(res, 401, "access");
+      await store.setStudioContext(buildId, parsed.data, access);
+    }
+    const records = await store.readStudioPreparation(buildId, access);
+    const ownerName = await store.findBuildOwnerName(account.user.ownerId);
+    if (!await deps.sessions.isLive(account.session.tokenHash)) return studioMediaError(res, 401, "access");
+    if ((await store.findBuild(buildId, account.user.ownerId))?.status !== "open") return studioMediaError(res, 404, "missing");
+    res.json(studioPreparationSnapshot(records, ownerName, requestLocale(res)));
+  };
+  app.get("/api/builds/:id/studio", (req, res) => { void ownerStudio(req, res, false).catch(failed(res)); });
+  app.post("/api/builds/:id/studio/context", (req, res) => { void ownerStudio(req, res, true).catch(failed(res)); });
   if (!studio) return;
   const base = "/api/studio/builds/:buildId";
   app.post(`${base}/intake`, grantGuard, (req, res) => { void (async () => {
@@ -81,7 +99,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     const result = await media.intake(build.id, input.data.kind, input.data.file, res.locals.delegation as StudioDelegation);
     if (!await stillGranted(req, res, build, result.file.id)) return;
     if (result.created) limits.uploadsPerOwner.hit(budget);
-    res.status(result.created ? 201 : 200).json({ file: studioFileView(result.file), created: result.created });
+    res.status(result.created ? 201 : 200).json({ file: studioFile(result.file), created: result.created });
   })().catch(failed(res)); });
   app.post(`${base}/binding`, grantGuard, (req, res) => { void (async () => {
     const input = Binding.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "invalid");
@@ -95,11 +113,20 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
   })().catch(failed(res)); });
   app.get(`${base}/studio`, grantGuard, (req, res) => { void (async () => {
     const build = res.locals.build as BuildRecord;
-    const files = await store.listBuildFiles(build.id);
+    const records = await store.readStudioPreparation(build.id, { ownerGmId: build.ownerGmId, delegation: res.locals.delegation as StudioDelegation });
     const ownerName = await store.findBuildOwnerName(build.ownerGmId);
     if (!await stillGranted(req, res, build)) return;
-    res.json({ buildId: build.id, buildName: build.name, ownerName, sourceFileId: files.some((f) => f.id === build.studioFileId && f.kind === "map") ? build.studioFileId : files.find((f) => f.kind === "map")?.id ?? null,
-      files: files.map(studioFileView), intakeOutcomes: build.studioIntake ?? [], limits: BUILD_LIMITS });
+    res.json({ ...studioPreparationSnapshot(records, ownerName, requestLocale(res)), limits: BUILD_LIMITS });
+  })().catch(failed(res)); });
+  app.post(`${base}/studio/context`, grantGuard, (req, res) => { void (async () => {
+    const input = StudioContext.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "context");
+    const build = res.locals.build as BuildRecord;
+    const access = { ownerGmId: build.ownerGmId, delegation: res.locals.delegation as StudioDelegation };
+    await store.setStudioContext(build.id, input.data, access);
+    const records = await store.readStudioPreparation(build.id, access);
+    const ownerName = await store.findBuildOwnerName(build.ownerGmId);
+    if (!await stillGranted(req, res, build)) return;
+    res.json(studioPreparationSnapshot(records, ownerName, requestLocale(res)));
   })().catch(failed(res)); });
   app.get(`${base}/files/:fileId/media`, grantGuard, (req, res) => { void (async () => {
     const build = res.locals.build as BuildRecord;

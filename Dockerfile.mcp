@@ -10,15 +10,18 @@ COPY apps/mcp/package.json apps/mcp/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/server/prisma apps/server/prisma
-RUN npm ci --workspace=@vtt/mcp --include-workspace-root
+RUN npm ci --workspace=@vtt/mcp --workspace=@vtt/web --include-workspace-root
 
 FROM deps AS runtime
 ENV NODE_ENV=production
 COPY packages/shared packages/shared
 COPY apps/mcp apps/mcp
-# Static Studio catalogs are shared with the web UI; no web runtime is imported.
-COPY apps/web/src/i18n/en/studioIntake.ts apps/web/src/i18n/en/studioIntake.ts
-COPY apps/web/src/i18n/zh-TW/studioIntake.ts apps/web/src/i18n/zh-TW/studioIntake.ts
+# The inline Studio surface is built from the same components as the owner website.
+# Runtime serves the generated credential-free artifact; it never fetches browser code.
+COPY apps/web/src apps/web/src
+COPY tsconfig.base.json ./
+COPY apps/web/scripts/build-studio.mjs apps/web/scripts/build-studio.mjs
+RUN node apps/web/scripts/build-studio.mjs
 # The built-in maps, which get_map_image reads from disk (design D7).
 COPY apps/web/public/img/hero-map.webp apps/web/public/img/map-*.webp apps/web/public/img/
 USER node

@@ -13,6 +13,8 @@ export type BuildStatus = "open" | "closed";
 import type { StudioIntakeOutcome, StudioMediaMetadata } from "./studioMedia";
 
 export interface BuildRecord {
+  studioContext?: import("@vtt/shared").StudioContext | null;
+  studioOutcomes?: import("@vtt/shared").StudioPreparationOutcome[];
   studioFileId?: string | null;
   studioIntake?: StudioIntakeOutcome[];
   id: string;

@@ -33,6 +33,63 @@ The original `game-build-*` specs remain in active changes, not the durable capa
 
 ## Decisions
 
+### D13. M2 visible preparation implementation — agreed 2026-11-17, before dependent code
+
+The user approved the researched M2 design and implementation in this session. Exact base:
+`2bcfa0a1f772a94a907f2c6597aed41d0cef0234` (all M1 merged). Branch/worktree:
+`feat/interactive-ai-scene-studio-m2`, `/private/tmp/session-zero-studio-m2`.
+Raymond's approval of all M1 work is user-reported; the user waives remaining external review
+gates and authorizes the temporary tunnel and real ChatGPT synthetic-account test autonomously.
+Only tasks 3.1–3.7 are authorized; no merge/deployment or M3–M5 implementation.
+
+- **Projection and renderer:** add a validated saved Studio snapshot using native grid,
+  effective portal-cut geometry, terrain-grid binding and token-footprint helpers. Extract a
+  provider-free SVG viewport/layers, shared by an owner website adapter and the embedded
+  bridge adapter. Bundle the embedded React entry/styles inline with existing workspace
+  tooling; the static content-hashed resource contains no credentials/private data and loads
+  no CDN code. Retain editor-specific behavior in its wrapper. Do not change room contracts.
+- **Display context:** persist nullable `{sourceFileId, mapKey, encounterKey}` in the existing
+  build lifecycle. Validate the tuple atomically under the build lock in both stores: map
+  source matches, encounter map matches, all items belong to this build. Raw source-only
+  context is valid; ambiguous maps/encounters require explicit selection. Context does not
+  redirect existing explicitly keyed tool writes or alter any build item. Display changes
+  and reads do not refresh retention. This is not M3 enrollment/revision authority.
+- **Saved status:** snapshot includes available contexts, permitted choices, actual detection
+  and validation results, and the latest 20 sanitized real preparation outcomes. Record
+  target, operation and saved/refused result only; no rejected payloads, URLs, credentials
+  or model reasoning. Status recording requires current authority and rejected attempts do
+  not extend retention. Refused saves retain saved overlays. Transport ambiguity remains
+  unknown/stale until resolved by saved state. Snapshot reads must not mix contexts/data.
+  A display fingerprint never serves as an inspected authoring revision token.
+- **Refresh/recovery:** keep the five-second visible-only, single-flight fallback and coalesce
+  focus/local-operation reads. Bind async results to build/context/generation. Stop timers,
+  listeners and media work on hidden/teardown. Cache only in-memory active source/token art
+  by immutable identity/hash, deduplicate reused art and bound bursts within the existing
+  120-request/minute shared grant limit. Measure latency and aggregate traffic. After a
+  failed bridge refresh pause until explicit Retry/open; preserve stale authorized content,
+  but clear it on definitive foreign/unknown refusal. Authoring-choice refusal is distinct
+  from access loss and never clears an otherwise authorized scene.
+- **Presentation:** retain drawable unconfirmed grids, effective walls/openings, Difficult
+  single hatching, Blocked crosshatching, implicit Normal, clipped edge cells and native
+  hidden/large/small token footprints. Do not paint stale terrain onto another grid. Separate
+  unfinished, actual detector activity, saved, awaiting-input, invalid and uncertain states;
+  no invented percentages or reasoning. Missing grant, disabled choices, no grid, invalid
+  image and unavailable detector each explain their own recovery. Snapshot Retry is not a
+  detector retry. Studio OAuth instructions are separate from the legacy 24-hour pass prompt.
+- **Access/layout:** new controls/status use en/zh-TW catalogs/glossary. Keyboard pan/zoom/Fit,
+  context/layer review and textual issue/hidden-token cues remain available in narrow layouts;
+  fullscreen is feature-detected. Saved batches do not steal focus or reset the camera.
+  Deliberate source/context changes may fit/restore per-context cameras. Text/image tools
+  and the website remain useful without Apps. Protected media, server authority, owner
+  choices/locks and private-publication refusal until M5 remain authoritative.
+- **Verification:** synthetic users/art only; fresh isolated Postgres/S3 and real vision
+  service with explicit DATABASE_URL/storage/VISION_URL, pinned Node 22 and no default-service
+  discovery. Preserve cse416 and manual sz-studio-m1b-cce5e8a7. Verify context isolation,
+  native layer parity, actual saved/refused tool writes, cleanup/retention, private delivery,
+  restart, latency/traffic, focus/camera and localized keyboard/narrow/fullscreen workflows.
+  Run required checks/build, independent diff review and re-review, then actual ChatGPT
+  preparation before marking host proof complete. Missing evidence remains pending.
+
 ### D1. User journey and interaction contract
 
 1. A signed-in owner starts an AI build on the website and chooses permitted AI work using the existing choices.
@@ -199,6 +256,8 @@ For existing public assets, keep their provenance explicit: a new private copy c
 
 ### D9. Original file intake
 
+The 2026-11-17 M2 amendment below defines current intake policy. The M0 and M1b sections record the earlier decisions and behavior.
+
 Provide an embedded Add files path for map and token uploads. When available, add explicit import of authorized chat attachments using host file metadata. The UI reports queued/uploaded/failed per file, binds the result to the correct build and permits retry without duplicated files. Reuse build quotas, byte/type/dimension validation and decoding limits; do not send bulk file bytes through ordinary JSON tool arguments.
 
 Remote download descriptors are untrusted. Bound download size, redirects and time; reject private-network targets and unsupported origins; do not attach build/OAuth credentials to the source download. Determine host URL rules from the actual M0 exchange and primary documentation, not a guessed fixed list of vendor storage domains.
@@ -206,7 +265,7 @@ Remote download descriptors are untrusted. Bound download size, redirects and ti
 **M0 amendments (approved 2026-11-16):**
 
 - **Chat attachments are a primary intake route**, alongside the Studio's own Add files buttons (host file picker and device upload), because users already know the chat's attach button. The open/set-up tool accepts attached files directly (`openai/fileParams`), so attaching a map and asking for the Studio imports it without depending on the model choosing a separate import tool. All three routes delivered byte-identical originals in M0.
-- **Allowed download origins** are an exact list of the two observed hosts, `*.oaiusercontent.com` (chat attachments) and the Azure Blob host used by the host file picker and device upload, each with its provenance recorded. Any new origin is refused until reviewed.
+- **Allowed download origins** are the two exact observed origins, one composer host under `oaiusercontent.com` and the Azure Blob host used by the picker and device upload. Any new origin is refused until reviewed.
 - **Download on receipt.** Observed descriptor lifetimes were 5 and 10 minutes. Never hold a descriptor for later.
 
 Receiving an expired link leaves the existing draft intact and asks for another file selection. Do not substitute a low-resolution chat preview for the original silently. An independent original-file hash check proves M0's transfer; image normalization and working coordinates are recorded separately as D3 describes.
@@ -216,10 +275,18 @@ Receiving an expired link leaves the existing draft intact and asks for another 
 - `studio_open(buildId, mapFiles?, tokenFiles?)` accepts top-level arrays through `openai/fileParams`, each descriptor declaring `download_url`, `file_id`, optional `mime_type` and `file_name`. At most five files per call. The resource URI is content-hashed and static; the existing pinned SDK remains. App-only `studio_import_files`, `studio_snapshot` and `studio_get_media` support feature-detected host picker/device upload, backend recovery and `data:` display. The UI contains only identity/source display, intake outcomes, retry and reconnect actions; no M2 overlays or authoring context.
 - Both attachment and view routes use the same server-side pipeline: authorize, check quota/rate/concurrency, resolve an existing receipt if present, immediately download, validate full decode, hash original, create tracked private objects, then insert under the build lock with a fresh delegated check and quota/deduplication check. Successful earlier files survive later failures. Receipt keys are scoped to the build and kind; content identity deduplicates retries whose host ids changed. Lost-response retries return the saved file. Failed writes queue their generated objects for deletion.
 - Partial results distinguish `saved`, definite validation `failed`, and `unknown` when a transport failure or ended connection prevents confirming the commit. A post-commit access refusal can report the saved identifier without returning private metadata. Reauthorization and retry resolve uncertainty from backend receipts; an outage must never falsely claim that nothing was saved.
-- Downloads permit only `https://sdmntpreastus3.oaiusercontent.com` (M0 composer exchange) and `https://oaisdmntpreastus3.blob.core.windows.net` (M0 picker/device exchanges). D9's wildcard shorthand does not enable wildcard matching. New origins require review. HTTPS/standard port only; reject userinfo, fragments, redirects, non-public IPv4/IPv6 destinations, encoding ambiguity, compressed, incomplete and oversized bodies. DNS is bounded and all answers validated; the connection is pinned to a validated address with normal TLS hostname verification. Downloads forward no cookies, bearer, authorization or proxy credentials. Bound each download to 20 seconds and 25 MiB; bound concurrent intake. No descriptor URL or host request metadata is logged or stored. Expiry returns a catalog code with re-select/reattach guidance.
+- Merged M1b permitted two exact origins: `https://sdmntpreastus3.oaiusercontent.com` (M0 composer exchange) and `https://oaisdmntpreastus3.blob.core.windows.net` (M0 picker/device exchanges). It required HTTPS on the default port and rejected userinfo, fragments, redirects, non-public IPv4/IPv6 destinations, encoding ambiguity, compressed, incomplete and oversized bodies. Bounded DNS validated every answer and the connection used a validated address with normal TLS hostname verification. Each download had a 20-second and 25 MiB limit, with bounded concurrent intake and no forwarded cookies, bearer, authorization or proxy credentials. Expiry returned catalog guidance to select or attach again.
 - Validate actual PNG/JPEG/WebP bytes, full decode, the existing 16384-pixel edge bound, and the approved 40,000,000 decoded-pixel ceiling from M0. Reuse 100 files / 20 maps / 500 MiB per build and the existing per-owner upload budget; no original-file substitution or silent resizing. Preserve raw dimensions/orientation and report canonical dimensions. Legacy UVTT routes are unchanged.
 - New controls use `t()` with English/zh-TW catalogs; server outcomes use catalog-backed codes/messages. State clearly that provider chat/Library retention and opt-in training are outside Session Zero's storage guarantee. Existing model-visible image inspection is deliberate AI-provider sharing and never the view's protected-media channel.
 - Verification uses synthetic fixtures on isolated services: storage refusal paths on disk/S3, downloader adversarial tests, identity/orientation/partial retry tests, grant/quota races on memory/Postgres, cleanup failures and restart, browser bridge simulation plus owner media/consent checks. Local bridge simulation does not qualify ChatGPT. Tasks 2.5 and 2.8 retain their actual-host gates until the separately authorized real run.
+
+**M2 amendment — ChatGPT attachment origins and website fallback (approved 2026-11-17, FR-GM-26).**
+
+- Match the hostname against `^sdmntpr[a-z0-9]{2,32}\.oaiusercontent\.com$`. Accept HTTPS on default port 443 with a plain ASCII authority, and refuse userinfo, fragments, backslashes and control characters. Retain bounded DNS, validation of every answer as public, address pinning, normal TLS, no redirects, identity encoding, the 20-second and 25 MiB limits, no forwarded credentials, and full image decode and pixel limits. Descriptors remain untrusted.
+- The 2026-11-17 manual run received two `studio_open` composer `openai/fileParams` files from different origins, `https://sdmntprnortheu.oaiusercontent.com` and `https://sdmntprnznorth.oaiusercontent.com`. M0 recorded `https://sdmntpreastus3.oaiusercontent.com`. The reported inspection found the same `*.oaiusercontent.com` certificate on all three (Google Trust Services WE1, identical SHA-256 fingerprint), behind Cloudflare on the MarkMonitor-registered domain. Interim commit `9481a162` added the first two origins to the exact list. This amendment supersedes that interim list.
+- The bounded prefix matches the observed composer host family across regions. The broader `*.oaiusercontent.com` scope also contains `web-sandbox.oaiusercontent.com` and per-app widget origins that serve third-party developer content. Reject every `*.blob.core.windows.net` host, including the former picker/device host. Its Azure account names share a globally unique, first-come namespace. The reviewed OpenAI material documents temporary descriptors and widget helpers without publishing a composer host list, descriptor signature or attestation that Studio can verify, or a server-side fetch-by-`file_id` API. The observed certificate and naming pattern inform the policy without attesting to individual requests. [OpenAI File APIs](https://developers.openai.com/plugins/reference#file-apis), [OpenAI widget origins](https://developers.openai.com/plugins/reference#component-resource-meta-fields), [OpenAI Security & Privacy](https://developers.openai.com/plugins/guides/security-privacy), [Azure account naming](https://learn.microsoft.com/en-us/azure/azure-resource-manager/troubleshooting/error-storage-account-name).
+- This changes merged M1b behavior by removing `selectFiles`, `uploadFile`, `getFileDownloadUrl` and the app-only `studio_import_files` tool from the product Studio. The Azure URLs passed from the view are client-provided, with no host attestation to the server. Chat attachments enter via `studio_open` and `openai/fileParams`. The English and zh-TW Studio views direct users to attach an image in ChatGPT or use the owner upload on the existing `/builds/:buildId` page from the authorized snapshot. The fallback explains that anyone with a website upload's file link can access it.
+- Emit one structured `studio_attachment_origin_refused` server line per origin refusal. The only descriptor-derived field is the parsed `URL.origin`, or `null` for an unparseable URL. Path, query, signature, file ID and filename are excluded. Keep failure codes for programmatic handling and catalog translation. Show English or zh-TW guidance to attach again in chat or upload on the website. Expired links still ask the user to reattach the original in chat.
 
 ### D10. Final review, private media and atomic publication
 

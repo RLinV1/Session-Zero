@@ -45,6 +45,7 @@ import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildP
 import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
 import { PassPanel } from "./PassPanel";
 import { StudioConnections } from "../studio/StudioConnections";
+import { StudioWebsite } from "../../studio/StudioWebsite";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
 import { TerrainReview } from "./TerrainReview";
 
@@ -378,6 +379,8 @@ function Build({ id }: { id: string }) {
                 <ReviewQueue problems={issueGroups(problems)} notes={issueGroups(notes)} linkTo={linkTo} thumbFor={thumbFor}
                   editEncounter={(key) => { const found = encounters.find((item) => item.key === key); if (found) setEditingEncounter(found); }} />
               )}
+
+              {open && <StudioWebsite buildId={id} files={files} />}
 
               {open && maps.length > 0 && (
                 <MapViewer maps={maps} files={files} idFor={cardId} statusFor={mapStatus}

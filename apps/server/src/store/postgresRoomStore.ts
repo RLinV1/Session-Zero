@@ -1,4 +1,6 @@
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
+import { assertStudioBuildAccess, assertStudioContext, type StudioBuildAccess } from "./studioPreparation";
+import { StudioContext, StudioPreparationOutcome } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
 import { SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
@@ -194,6 +196,7 @@ function toBuildRecord(row: Build): BuildRecord {
   return {
     id: row.id, ownerGmId: row.ownerGmId, name: row.name, status: row.status as BuildStatus,
     gameProfile: row.gameProfile as GameProfile | null, studioFileId: row.studioFileId, studioIntake: row.studioIntake === null ? [] : StudioIntakeOutcome.array().parse(row.studioIntake),
+    studioContext: row.studioContext === null ? null : StudioContext.parse(row.studioContext), studioOutcomes: row.studioOutcomes === null ? [] : StudioPreparationOutcome.array().parse(row.studioOutcomes),
     passHash: row.passHash, passExpiresAt: row.passExpiresAt?.toISOString() ?? null,
     aiGrid: row.aiGrid, aiWalls: row.aiWalls, aiTerrain: row.aiTerrain,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
@@ -1058,7 +1061,43 @@ export class PostgresRoomStore implements RoomStore {
       const build = await lockOpenBuild(tx, buildId);
       await assertDelegation(tx, delegation, build);
       if (fileId && !await tx.buildFile.findFirst({ where: { id: fileId, buildId } })) throw new StudioMediaConflictError();
-      await tx.build.update({ where: { id: buildId }, data: { studioFileId: fileId } });
+      const current = await tx.build.findUniqueOrThrow({ where: { id: buildId }, select: { studioFileId: true } });
+      await tx.build.update({ where: { id: buildId }, data: { studioFileId: fileId, ...(current.studioFileId !== fileId && { studioContext: { sourceFileId: fileId, mapKey: null, encounterKey: null } }) } });
+    });
+  }
+  /**
+   * READ COMMITTED on purpose. Under REPEATABLE READ the snapshot is taken by the first statement,
+   * which is the lock wait itself, so a read queued behind a write would return what was there
+   * before that write, and the grant's `FOR SHARE` would fail with a serialization error (40001)
+   * when the grant was touched or revoked meanwhile. Holding the build lock is what keeps the
+   * build, files and items consistent: every write that changes them takes the same lock.
+   */
+  async readStudioPreparation(buildId: string, access: StudioBuildAccess) {
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
+      const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
+      assertStudioBuildAccess(build, access);
+      const files = (await tx.buildFile.findMany({ where: { buildId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toBuildFileRecord);
+      const items = (await tx.buildItem.findMany({ where: { buildId }, orderBy: [{ key: "asc" }, { kind: "asc" }] })).map(toBuildItemRecord);
+      return { build, files, items };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+  async setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess) {
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
+      const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } })); assertStudioBuildAccess(build, access);
+      const files = (await tx.buildFile.findMany({ where: { buildId } })).map(toBuildFileRecord);
+      const items = (await tx.buildItem.findMany({ where: { buildId } })).map(toBuildItemRecord);
+      assertStudioContext(context, files, items);
+      await tx.build.update({ where: { id: buildId }, data: { studioFileId: context.sourceFileId, studioContext: context } });
+    });
+  }
+  async recordStudioPreparation(buildId: string, outcomes: readonly StudioPreparationOutcome[], access: StudioBuildAccess) {
+    if (!outcomes.length) return;
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
+      const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } })); assertStudioBuildAccess(build, access);
+      await tx.build.update({ where: { id: buildId }, data: { studioOutcomes: [...(build.studioOutcomes ?? []), ...StudioPreparationOutcome.array().parse(outcomes)].slice(-20) } });
     });
   }
   async failStudioMedia(id: string) { await this.prisma.studioMediaJob.updateMany({ where: { id }, data: { state: "delete" } }); }
@@ -1201,7 +1240,7 @@ export class PostgresRoomStore implements RoomStore {
       for (const file of files) await queueStudioDeletion(tx, file);
       await tx.buildFile.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
       await tx.buildItem.deleteMany({ where: { buildId: id, publishedId: null } });
-      await tx.build.update({ where: { id }, data: { status: "closed", studioFileId: null, studioIntake: Prisma.DbNull, passHash: null, passExpiresAt: null, updatedAt: new Date() } });
+      await tx.build.update({ where: { id }, data: { status: "closed", studioFileId: null, studioIntake: Prisma.DbNull, studioContext: Prisma.DbNull, studioOutcomes: Prisma.DbNull, passHash: null, passExpiresAt: null, updatedAt: new Date() } });
       return { objectKeys: files.filter((f) => !f.studio).map((f) => f.objectKey) };
     });
   }

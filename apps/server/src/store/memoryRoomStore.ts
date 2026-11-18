@@ -1,4 +1,6 @@
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
+import { assertStudioBuildAccess, assertStudioContext, type StudioBuildAccess } from "./studioPreparation";
+import { StudioPreparationOutcome, type StudioContext } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
@@ -805,7 +807,25 @@ export class MemoryRoomStore implements RoomStore {
     const build = this.openBuild(buildId);
     this.assertDelegation(delegation, build);
     if (fileId && this.buildFiles.get(fileId)?.buildId !== buildId) throw new StudioMediaConflictError();
+    if (fileId !== build.studioFileId) build.studioContext = { sourceFileId: fileId, mapKey: null, encounterKey: null };
     build.studioFileId = fileId;
+  }
+  async readStudioPreparation(buildId: string, access: StudioBuildAccess) {
+    const build = this.openBuild(buildId);
+    assertStudioBuildAccess(build, access); this.assertDelegation(access.delegation, build);
+    return structuredClone({ build, files: [...this.buildFiles.values()].filter((f) => f.buildId === buildId), items: [...this.buildItems.values()].filter((i) => i.buildId === buildId) });
+  }
+  async setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess) {
+    const build = this.openBuild(buildId);
+    assertStudioBuildAccess(build, access); this.assertDelegation(access.delegation, build);
+    assertStudioContext(context, [...this.buildFiles.values()].filter((f) => f.buildId === buildId), [...this.buildItems.values()].filter((i) => i.buildId === buildId));
+    build.studioContext = structuredClone(context); build.studioFileId = context.sourceFileId;
+  }
+  async recordStudioPreparation(buildId: string, outcomes: readonly StudioPreparationOutcome[], access: StudioBuildAccess) {
+    if (!outcomes.length) return;
+    const build = this.openBuild(buildId);
+    assertStudioBuildAccess(build, access); this.assertDelegation(access.delegation, build);
+    build.studioOutcomes = [...(build.studioOutcomes ?? []), ...StudioPreparationOutcome.array().parse(outcomes)].slice(-20);
   }
   async failStudioMedia(id: string) { const job = this.studioMediaJobs.get(id); if (job) job.state = "delete"; }
   async listStudioMediaJobs(now: string) { return [...this.studioMediaJobs.values()].filter((j) => j.state === "delete" || j.expiresAt <= now).slice(0, 100).map((j) => j.id); }
@@ -975,6 +995,8 @@ export class MemoryRoomStore implements RoomStore {
     this.closeStudioBuild(id);
     build.studioFileId = null;
     build.studioIntake = [];
+    build.studioContext = null;
+    build.studioOutcomes = [];
     build.status = "closed";
     build.passHash = null;
     build.passExpiresAt = null;

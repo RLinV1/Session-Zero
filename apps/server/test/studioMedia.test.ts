@@ -99,6 +99,24 @@ describe("protected Studio intake and delivery (FR-GM-26, FR-GM-27)", () => {
     await s.server.app.sweepStudioMedia(); expect(await s.store.listBuildFiles(s.build.id)).toHaveLength(1); expect(await s.store.listStudioMediaJobs(new Date().toISOString())).toHaveLength(0);
   });
 
+  it.each([
+    ["en", "The image could not be imported. Attach the original again in the ChatGPT chat or upload it on the Session Zero website."],
+    ["zh-TW", "無法匯入這張圖片。請在 ChatGPT 聊天中重新附加原始檔，或在 Session Zero 網站上傳。"],
+  ])("returns a catalog id and %s recovery text when the source is refused", async (locale, message) => {
+    const s = await setup();
+    s.downloader.mockRejectedValueOnce(new StudioIntakeError("origin"));
+    const response = await fetch(`${s.server.base}/api/studio/builds/${s.build.id}/intake`, {
+      method: "POST",
+      headers: bearer(s.tokens.access_token, { "content-type": "application/json", "accept-language": locale }),
+      body: JSON.stringify({
+        kind: "map",
+        file: { file_id: "fixture", download_url: "https://web-sandbox.oaiusercontent.com/fixture?sig=private" },
+      }),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: message, messageId: "studio.media.origin", code: "origin" });
+  });
+
   it("rechecks expiry and revocation during intake and never commits or returns media after access ends", async () => {
     let clock = Date.now(); const s = await setup(await png(), () => clock);
     expect((await s.upload()).status).toBe(201); const file = (await s.store.listBuildFiles(s.build.id))[0]!;

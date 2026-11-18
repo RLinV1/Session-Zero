@@ -4,5 +4,5 @@
     "strict": true, "noEmit": true, "esModuleInterop": true, "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["browser/**/*.ts", "playwright.config.ts"]
+  "include": ["browser/**/*.ts", "playwright.config.ts", "playwright.studio-m2.config.ts", "playwright.studio-m2-legacy.config.ts"]
 }
