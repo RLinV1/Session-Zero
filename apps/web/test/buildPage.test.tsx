@@ -470,15 +470,6 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     });
   };
 
-  it("shows the three choices on the build page, and only the owner's page changes them (ADR 0071)", async () => {
-    builds.setChoices.mockResolvedValue({ build: detail().build });
-    await open(detail());
-    const boxes = [...host.querySelectorAll<HTMLInputElement>(".build-choices input[type=checkbox]")];
-    expect(boxes.map((b) => b.checked)).toEqual([false, false, false]);
-    await click(boxes[0]);
-    expect(builds.setChoices).toHaveBeenCalledWith("b1", { aiGrid: true, aiWalls: false, aiTerrain: false });
-  });
-
   it("draws every wall, door, window and opening, numbered, and marks what the AI set", async () => {
     await open(detail({ files: [uvttFile], items: [shop()] }));
     const kinds = [...host.querySelectorAll(".build-walls-drawn path[data-kind]")].map((p) => p.getAttribute("data-kind"));

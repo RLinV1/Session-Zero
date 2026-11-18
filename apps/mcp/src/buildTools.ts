@@ -60,9 +60,9 @@ async function callRoomServer(deps: BuildToolDeps, credential: string, method: s
       authorization: `Bearer ${credential}`,
       // So the room server's per-address limits stay per client (ADR 0052).
       "x-forwarded-for": deps.clientAddress,
-      ...(body !== undefined && { "content-type": "application/json" }),
+      ...(body !== undefined && !(body instanceof FormData) && { "content-type": "application/json" }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
   if (response.ok) return response;
   const reply = await response.json().catch(() => null) as { error?: unknown; results?: unknown } | null;
@@ -192,7 +192,27 @@ const CHECK_TOOL = buildTool("check_build", "Check the build",
   {},
   async (send) => success(await json(send("GET", "/check"))));
 
-/** The ten tools at /mcp/build (ADR 0053). None reaches anything outside the pass's own draft. */
+const MAX_TOOL_UPLOAD_BYTES = 8 * 1024 * 1024;
+const IMAGE_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+
+const UPLOAD_TOOL = buildTool("upload_file", "Upload a file",
+  `Upload one file into this build, for AI apps that can't run curl. Send the file's bytes as base64 in data. kind says what it is: token (a creature picture), map (a map image) or uvtt (a UVTT file). At most ${MAX_TOOL_UPLOAD_BYTES / 1024 / 1024} MiB: for anything bigger, or if sending it fails, ask the user to drop it in Files on their build page. Returns the file's id for save_map or save_creatures.`,
+  {
+    kind: z.enum(["token", "map", "uvtt"]),
+    fileName: z.string().min(1).max(200).describe("The file's name with its extension, such as cave.png."),
+    data: z.string().min(1).describe("The file's bytes, base64 encoded."),
+  },
+  async (send, { kind, fileName, data }) => {
+    const bytes = Buffer.from(data.replace(/^data:[^,]*,/, ""), "base64");
+    if (bytes.length === 0) throw new ToolError("That isn't base64 data.");
+    if (bytes.length > MAX_TOOL_UPLOAD_BYTES) throw new ToolError(`That file is too large to send through this tool (over ${MAX_TOOL_UPLOAD_BYTES / 1024 / 1024} MiB). Ask the user to drop it in Files on their build page, then call get_build to see it.`);
+    const type = kind === "uvtt" ? "application/octet-stream" : IMAGE_TYPES[fileName.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type }), fileName);
+    return success(await json(send("POST", `/files?kind=${kind}`, form)));
+  });
+
+/** The eleven tools at /mcp/build (ADR 0053). None reaches anything outside the pass's own draft. */
 export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
   const server = new McpServer({ name: "session-zero-build", version: "1.0.0" }, { instructions: BUILD_SERVER_INSTRUCTIONS });
   const register = (spec: BuildTool) => {
@@ -214,7 +234,7 @@ export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
         fieldGuide: FIELD_GUIDE,
         limits: BUILD_LIMITS,
         upload: {
-          note: "Files never go through a tool. If you can run commands, send each one with curl, one per file. Otherwise ask the user to drop the files on the build page. Rules and character sheets stay with you: they aren't uploaded.",
+          note: "Use the upload_file tool for files up to 8 MiB, one per call. Real maps are usually too big for a tool call: ask the user to drop them in Files on their build page, or send them with curl if you can run commands. Rules and character sheets stay with you: they aren't uploaded.",
           token: `curl -F file=@goblin.png -H "Authorization: Bearer <pass>" "${uploadUrl}?kind=token"`,
           map: `curl -F file=@cave.png -H "Authorization: Bearer <pass>" "${uploadUrl}?kind=map"`,
           uvtt: `curl -F file=@crypt.uvtt -H "Authorization: Bearer <pass>" "${uploadUrl}?kind=uvtt"`,
@@ -222,6 +242,7 @@ export function createBuildMcpServer(deps: BuildToolDeps): McpServer {
       });
     }));
   SHARED_TOOLS.forEach(register);
+  register(UPLOAD_TOOL);
   register(REMOVE_TOOL);
   register(CHECK_TOOL);
   return server;

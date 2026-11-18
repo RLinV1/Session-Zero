@@ -7,7 +7,7 @@ import { CONDITIONS } from "@vtt/shared";
 import { startMcpServer } from "../src/app";
 import { AiClient, startStack, type Stack } from "./helpers";
 
-const BUILD_TOOLS = ["check_build", "get_build", "get_map_setup", "remove_draft_item", "save_creatures", "save_encounter", "save_game_profile", "save_map", "save_map_setup", "view_file"];
+const BUILD_TOOLS = ["check_build", "get_build", "get_map_setup", "remove_draft_item", "save_creatures", "save_encounter", "save_game_profile", "save_map", "save_map_setup", "upload_file", "view_file"];
 
 let stack: Stack;
 let ai: AiClient;
@@ -40,14 +40,31 @@ const upload = async (pass: string, kind: string, name: string, width = 700, hei
 const creature = (over: Record<string, unknown> = {}) => ({ key: "goblin", name: "Goblin", isPlayerCharacter: false, hp: 7, maxHp: 7, ac: 13, ...over });
 
 describe("the build tools (FR-GM-26)", () => {
-  it("offers exactly the ten tools, and none can publish or reach outside the draft", async () => {
+  it("offers exactly the eleven tools, and none can publish or reach outside the draft", async () => {
     const names = (await ai.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(BUILD_TOOLS);
   });
 
-  it("has no argument that takes file contents or a web address", async () => {
+  it("uploads a file by base64 into the build, without curl", async () => {
+    const { pass } = await startBuild();
+    const image = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#224488" } }).png().toBuffer();
+    const result = await ai.call("upload_file", { pass, kind: "map", fileName: "cave.png", data: image.toString("base64") });
+    expect(result.isError).toBe(false);
+    const fileId = (result.json as { file: { id: string } }).file.id;
+    const { json } = await ai.call("get_build", { pass });
+    expect(JSON.stringify(json)).toContain(fileId);
+  });
+
+  it("refuses upload data that isn't base64 or is too large", async () => {
+    const { pass } = await startBuild();
+    expect(await ai.call("upload_file", { pass, kind: "token", fileName: "a.png", data: "!" })).toMatchObject({ isError: true });
+    const big = Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64");
+    expect(await ai.call("upload_file", { pass, kind: "token", fileName: "a.png", data: big })).toMatchObject({ isError: true, text: expect.stringMatching(/MiB/) });
+  });
+
+  it("has no other argument that takes file contents or a web address", async () => {
     const { tools } = await ai.listTools();
-    for (const tool of tools) {
+    for (const tool of tools.filter((t) => t.name !== "upload_file")) {
       const properties = Object.keys((tool.inputSchema as { properties?: object }).properties ?? {});
       expect(properties.filter((p) => /url|link|address|bytes|base64|image$|content/i.test(p))).toEqual([]);
     }

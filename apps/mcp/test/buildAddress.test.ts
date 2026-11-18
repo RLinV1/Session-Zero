@@ -26,7 +26,7 @@ describe("the build address (FR-GM-26)", () => {
     await player.close();
   });
 
-  it("has the same origin check, verb check and size limit as the player address", async () => {
+  it("has the same origin check and verb check as the player address, and takes files up to its own size limit", async () => {
     const init = (body: string, origin?: string): RequestInit => ({
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...(origin ? { origin } : {}) },
@@ -34,6 +34,6 @@ describe("the build address (FR-GM-26)", () => {
     });
     expect((await fetch(buildUrl, init("{}", "https://evil.example"))).status).toBe(403);
     expect((await fetch(buildUrl)).status).toBe(405);
-    expect((await fetch(buildUrl, init(JSON.stringify({ blob: "x".repeat(70_000) })))).status).toBe(413);
+    expect((await fetch(buildUrl, init(JSON.stringify({ blob: "x".repeat(13_000_000) })))).status).toBe(413);
   });
 });

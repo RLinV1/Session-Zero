@@ -40,9 +40,9 @@ import { CreatureRoster, MapViewer } from "./BuildViewers";
 import { EncounterBoard } from "./EncounterBoard";
 import { LINE_COLOUR, LinePickLayer, MapWalls, useLinePicker, type LinePicker } from "./MapLines";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
-import { BuildChoiceFields } from "./LibraryBuilds";
 import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
 import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
+import { BuildAiHelp } from "./BuildAiHelp";
 import { PassPanel } from "./PassPanel";
 import { StudioConnections } from "../studio/StudioConnections";
 import { StudioWebsite } from "../../studio/StudioWebsite";
@@ -448,9 +448,8 @@ function Build({ id }: { id: string }) {
                   <div className="row">
                     <button type="button" disabled={busy} onClick={() => (passLive ? setConfirmingNewPass(true) : makePass())}>{pending === "Making a pass…" ? "Making a pass…" : "New pass"}</button>
                     {detail.build.passExpiresAt && <button type="button" disabled={busy} onClick={() => void run(() => api.builds.cancelPass(id), "Couldn't cancel the pass.", "Cancelling…")}>{pending === "Cancelling…" ? "Cancelling…" : "Cancel pass"}</button>}
+                    <BuildAiHelp />
                   </div>
-                  <BuildChoiceFields choices={detail.build.choices} disabled={busy} onChange={(choices) => void run(() => api.builds.setChoices(id, choices), "Couldn't change what your AI may set up.")} />
-                  <p className="muted small-print">Turning a choice off stops your AI making more of those changes. What it already set stays above, where you can remove it.</p>
                 </Fold>
               )}
 
@@ -619,7 +618,7 @@ function FilesSection({ id, files, onDone, onError }: { id: string; files: reado
   return (
     // Open while there's nothing in it, since dropping files here is then the next step.
     <Fold id="build-files" title="Files" defaultOpen={files.length === 0} summary={files.length === 0 ? "None yet" : plural(files.length, "file")}>
-      <p className="muted">Your AI can upload these itself if it can run commands. Otherwise drop them here and it will see them. {RIGHTS_NOTICE}</p>
+      <p className="muted">Your AI can upload small files itself. Large maps are too big for it to send, so drop them here and it will see them. {RIGHTS_NOTICE}</p>
       <div className="build-drops">
         {zone("token", "Token art")}
         {zone("map", "Maps")}
