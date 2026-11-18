@@ -2,6 +2,8 @@
 
 **Status:** M0 complete on 2026-11-16. ADR accepted by Raymond at `6f645f29`; M0 amendments approved. M1a (2.1–2.2, unmerged PR #212) and M1b (2.3–2.8, stacked draft PR #216) are implemented and verified, including the [required real ChatGPT workflow](evidence/m1-host-2026-11-16.md). Independent review fixes were re-reviewed through `7eadf503`. No M2–M5 work has started. M1 is intended to merge to main together after architecture-owner code review and glossary-owner review; neither PR is merged.
 
+For hosted Studio testing, see the [personal EC2 pilot handoff](handoff.md#personal-ec2-pilot-2026-11-18).
+
 Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/spec.md), [research.md](research.md), [handoff.md](handoff.md) and [ADR 0073](../../../docs/adr/0073-interactive-scene-studio.md) before selecting a milestone. Trace this work to FR-GM-26/27 and native terrain behavior. M0–M5 are sequential outcomes, not a claim that every milestone will fit one chat or one PR.
 
 ## Execution contract
