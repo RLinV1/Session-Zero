@@ -2,6 +2,8 @@
 
 **Status:** M1 merged in PRs #212 and #216. M2 merged in PR #220. M3 tasks 4.1–4.8 are complete in the isolated `feat/interactive-ai-scene-studio-m3` checkout from `dbb6cd3d`. The owner waived M3 architecture review. See the [handoff](handoff.md) for verification.
 
+For hosted Studio testing, see the [personal EC2 pilot handoff](handoff.md#personal-ec2-pilot-2026-11-18).
+
 Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/spec.md), [research.md](research.md), [handoff.md](handoff.md) and [ADR 0073](../../../docs/adr/0073-interactive-scene-studio.md) before selecting a milestone. Trace this work to FR-GM-26/27 and native terrain behavior. M0–M5 are sequential outcomes, not a claim that every milestone will fit one chat or one PR.
 
 ## Execution contract

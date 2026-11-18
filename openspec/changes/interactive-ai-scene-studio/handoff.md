@@ -2,8 +2,8 @@
 
 ## M3 review fixes, 2026-11-18
 
-A read-only review of `fab6f9cb` found three defects. All three are fixed in the working tree
-on top of that commit, and D14 records the changed contract.
+A read-only review of `fab6f9cb` found three defects. All three are fixed in `7b777e92`
+on top of that commit (PR #223), and D14 records the changed contract.
 
 - **Owner lockout.** A connection could fill the 32-revision history with stale proposals.
   After that, every owner builder save, delete and publish of the enrolled scene was refused,
@@ -74,6 +74,14 @@ on top of that commit, and D14 records the changed contract.
 - M4 starts with the owner request, revision, and scoped proposal contracts in D14. It
   adds the interactive request and same-camera comparison flow, followed by real ChatGPT
   qualification. Current evidence is local HTTP, MCP and browser execution.
+
+## Personal EC2 pilot, 2026-11-18
+
+The owner deployed an isolated Studio pilot in AWS Ohio at `https://studio-test.habticraft.com`. The personal ChatGPT Work plugin connects to `https://studio-test.habticraft.com/mcp/studio`. Pilot release `7cbb867c` enabled public signup at `/signup`. Pilot accounts, OAuth grants, builds, and private media are stored separately from production and persist across restarts.
+
+Automated checks on the pilot covered OAuth discovery, access to future builds, approval of a second build on a restricted connection, and reopening a saved build after an EC2 reboot. The owner reported the pilot working after signup was enabled. The individual permission and restart checks in ChatGPT Work are still pending.
+
+The owner plans to shut down the pilot later. Check its availability and deployed revision before relying on it, and use synthetic data for tests.
 
 ## M2 manual acceptance, 2026-11-17
 
