@@ -1,5 +1,5 @@
 import { registerStudioMediaRoutes } from "./studioMedia";
-import { preparationFailure, preparationOutcomes } from "./studioPreparationOutcomes";
+import { preparationFailure, preparationOutcomes, preparationRows } from "./studioPreparationOutcomes";
 import type { StudioMedia } from "../domain/studioMedia";
 import { randomBytes, randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
@@ -889,6 +889,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
           results.push({ key, saved: false, error: err.message });
         }
       }
+      preparationRows(res, results.map(({ key, saved }) => ({ key, saved })));
       res.json({ results });
     })().catch(failed(res));
   });

@@ -1064,6 +1064,13 @@ export class PostgresRoomStore implements RoomStore {
       await tx.build.update({ where: { id: buildId }, data: { studioFileId: fileId, ...(current.studioFileId !== fileId && { studioContext: { sourceFileId: fileId, mapKey: null, encounterKey: null } }) } });
     });
   }
+  /**
+   * READ COMMITTED on purpose. Under REPEATABLE READ the snapshot is taken by the first statement,
+   * which is the lock wait itself, so a read queued behind a write would return what was there
+   * before that write, and the grant's `FOR SHARE` would fail with a serialization error (40001)
+   * when the grant was touched or revoked meanwhile. Holding the build lock is what keeps the
+   * build, files and items consistent: every write that changes them takes the same lock.
+   */
   async readStudioPreparation(buildId: string, access: StudioBuildAccess) {
     return this.prisma.$transaction(async (tx) => {
       const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
@@ -1072,7 +1079,7 @@ export class PostgresRoomStore implements RoomStore {
       const files = (await tx.buildFile.findMany({ where: { buildId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toBuildFileRecord);
       const items = (await tx.buildItem.findMany({ where: { buildId }, orderBy: [{ key: "asc" }, { kind: "asc" }] })).map(toBuildItemRecord);
       return { build, files, items };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
   async setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess) {
     await this.prisma.$transaction(async (tx) => {
@@ -1084,11 +1091,12 @@ export class PostgresRoomStore implements RoomStore {
       await tx.build.update({ where: { id: buildId }, data: { studioFileId: context.sourceFileId, studioContext: context } });
     });
   }
-  async recordStudioPreparation(buildId: string, outcome: StudioPreparationOutcome, access: StudioBuildAccess) {
+  async recordStudioPreparation(buildId: string, outcomes: readonly StudioPreparationOutcome[], access: StudioBuildAccess) {
+    if (!outcomes.length) return;
     await this.prisma.$transaction(async (tx) => {
       const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
       const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } })); assertStudioBuildAccess(build, access);
-      await tx.build.update({ where: { id: buildId }, data: { studioOutcomes: [...(build.studioOutcomes ?? []), StudioPreparationOutcome.parse(outcome)].slice(-20) } });
+      await tx.build.update({ where: { id: buildId }, data: { studioOutcomes: [...(build.studioOutcomes ?? []), ...StudioPreparationOutcome.array().parse(outcomes)].slice(-20) } });
     });
   }
   async failStudioMedia(id: string) { await this.prisma.studioMediaJob.updateMany({ where: { id }, data: { state: "delete" } }); }

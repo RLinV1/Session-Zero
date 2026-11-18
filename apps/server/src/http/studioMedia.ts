@@ -13,7 +13,7 @@ import type { AccountLimits } from "../identity/routes";
 import { serverEn } from "../i18n/en";
 import { serverZhTW } from "../i18n/zh-TW";
 import { requestLocale } from "../i18n/locale";
-import { studioPreparationSnapshot } from "../domain/studioPreparation";
+import { studioFile, studioPreparationSnapshot } from "../domain/studioPreparation";
 import { StudioContextConflictError } from "../store/studioPreparation";
 
 const Descriptor = z.strictObject({ download_url: z.string().min(1).max(8192), file_id: z.string().min(1).max(512), mime_type: z.string().max(200).optional(), file_name: z.string().max(500).optional() });
@@ -28,11 +28,6 @@ export function studioMediaError(res: Response, status: number, code: keyof type
   const id = messages[code];
   const catalog = requestLocale(res) === "zh-TW" ? serverZhTW : serverEn;
   return res.status(status).json({ error: catalog[id], messageId: id, code, ...extra });
-}
-export function studioFileView(file: BuildFileRecord) {
-  return { id: file.id, kind: file.kind, name: file.originalName, width: file.width, height: file.height, sizeBytes: file.sizeBytes,
-    privacy: file.studio ? "private" : "legacy-public", originalSha256: file.studio?.originalSha256 ?? null, canonicalId: file.studio?.canonicalId ?? null,
-    orientation: file.studio?.orientation ?? null, previewHash: file.studio?.previewSha256 ?? null };
 }
 export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore; media: StudioMedia; studio: StudioAccessConfig | null; grantGuard: RequestHandler; limits: AccountLimits; sessions: Sessions; now: () => number }) {
   const { store, media, studio, grantGuard, limits, now } = deps;
@@ -104,7 +99,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     const result = await media.intake(build.id, input.data.kind, input.data.file, res.locals.delegation as StudioDelegation);
     if (!await stillGranted(req, res, build, result.file.id)) return;
     if (result.created) limits.uploadsPerOwner.hit(budget);
-    res.status(result.created ? 201 : 200).json({ file: studioFileView(result.file), created: result.created });
+    res.status(result.created ? 201 : 200).json({ file: studioFile(result.file), created: result.created });
   })().catch(failed(res)); });
   app.post(`${base}/binding`, grantGuard, (req, res) => { void (async () => {
     const input = Binding.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "invalid");

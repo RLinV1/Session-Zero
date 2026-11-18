@@ -7,7 +7,7 @@ const app = new App({name:'Session Zero Studio',version:'2.0.0'}, {});
 let locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
 let buildId = null, snapshot = null, timer = null, stopped = false, refreshing = false, refreshAgain = false, connected = false, generation = 0;
 let statusKey = 'loading', needsRetry = false, contextSignature = null, lastStarted = 0, rendered = '', refreshAbort = null;
-const mediaCache = new Map();
+const mediaCache = new Map(), mediaFailed = new Set();
 const t = (key) => catalogs[locale][key] || catalogs.en[key] || catalogs.en['error.unknown'];
 function translate() {
   document.documentElement.lang = locale; document.title = t('title');
@@ -19,13 +19,20 @@ function status(key) { statusKey=key; const value=t(key); if ($('status').textCo
 function viewContext() { return {buildId,generation}; }
 function isCurrent(context) { return !stopped && context.buildId === buildId && context.generation === generation; }
 function clearPrivate() {
-  generation++; snapshot=null; contextSignature=null; mediaCache.clear(); rendered=''; surface.clear();
+  generation++; snapshot=null; contextSignature=null; mediaCache.clear(); mediaFailed.clear(); rendered=''; surface.clear();
   $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature='';
   $('build').textContent=''; $('owner').textContent=''; $('legacy').hidden=true;
 }
+// Access ended (401: revoked or expired), or the build is no longer in this grant (404, or a 403
+// that isn't a permission choice). Nothing private stays on screen after either.
+// The MCP server's own sign-in challenge counts too, when the host passes it back: a revoked token is refused there, before any tool runs.
+function accessEnded(error) { return error.status === 401 || error.data?.['sessionzero/error']?.status === 401; }
+function accessLost(error) { return accessEnded(error) || error.status === 404 || (error.status === 403 && error.code !== 'permission'); }
+// The build answered and said no; the connection itself is fine.
+function refusedWrite(error) { return [400,403,409,422].includes(error.status) && !accessLost(error); }
 function pauseForRetry(error) {
   needsRetry=true;
-  if (error.status === 404 || (error.status === 403 && error.code !== 'permission')) { clearPrivate(); status('denied'); }
+  if (accessLost(error)) { clearPrivate(); status('denied'); }
   else status('stale');
   renderSaved();
 }
@@ -108,14 +115,20 @@ async function refresh(force=false) {
     // Only active art is retained, reused across placements, with at most two media calls/tick.
     const active=activeFiles(data), keep=new Set(active.map(cacheKey));
     for (const key of mediaCache.keys()) if (!keep.has(key)) mediaCache.delete(key);
+    for (const key of mediaFailed) if (!keep.has(key)) mediaFailed.delete(key);
     const mediaContext=viewContext(); let fetched=0;
     for (const file of active) {
       if (stopped || document.hidden || !isCurrent(mediaContext) || fetched >= 2) break;
-      const key=cacheKey(file); if (mediaCache.has(key)) continue;
-      const result=await call('studio_get_media',{buildId:mediaContext.buildId,fileId:file.id,privacy:file.privacy},controller.signal); fetched++;
+      const key=cacheKey(file); if (mediaCache.has(key) || mediaFailed.has(key)) continue;
+      // One picture that can't be shown leaves only that picture out. Ended access still clears
+      // everything; busy (503) is tried again next refresh; anything else waits for new content or Retry.
+      let result;
+      try { result=await call('studio_get_media',{buildId:mediaContext.buildId,fileId:file.id,privacy:file.privacy},controller.signal); }
+      catch(error) { if (controller.signal.aborted || accessEnded(error)) throw error; fetched++; if (error.status !== 503) mediaFailed.add(key); continue; }
+      fetched++;
       const media=result._meta?.['sessionzero/media'];
       if (!isCurrent(mediaContext) || document.hidden) return;
-      if (!media || media.fileId !== file.id || media.mimeType !== 'image/webp' || !/^[A-Za-z0-9+/]+={0,2}$/.test(media.data)) throw new Error('Invalid protected preview');
+      if (!media || media.fileId !== file.id || media.mimeType !== 'image/webp' || !/^[A-Za-z0-9+/]+={0,2}$/.test(media.data)) { mediaFailed.add(key); continue; }
       mediaCache.set(key,'data:image/webp;base64,'+media.data); renderSaved();
     }
     status('ready'); renderSaved();
@@ -126,11 +139,18 @@ async function setContext(value) {
   const context=viewContext(); if (!isCurrent(context) || needsRetry) return;
   try {
     await call('studio_set_context',{buildId:context.buildId,context:value});
+  } catch(error) {
     if (!isCurrent(context)) return;
-    generation++; contextSignature=null; await refresh(true);
-  } catch(error) { if (isCurrent(context)) pauseForRetry(error); }
+    if (accessLost(error)) { pauseForRetry(error); return; }
+    // A refused selection (the AI changed the build meanwhile) keeps live refresh going and shows
+    // the saved selection again; anything else pauses. Either way the Studio says it failed.
+    if (refusedWrite(error)) void refresh(true); else pauseForRetry(error);
+    throw error;
+  }
+  if (!isCurrent(context)) return;
+  generation++; contextSignature=null; await refresh(true);
 }
-$('refresh').onclick=()=>{needsRetry=false;rendered='';void refresh(true);};
+$('refresh').onclick=()=>{needsRetry=false;rendered='';mediaFailed.clear();void refresh(true);};
 $('fullscreen').onclick=async()=>{try {const modes=app.getHostContext()?.availableDisplayModes;if(modes && !modes.includes('fullscreen'))return;await app.requestDisplayMode({mode:'fullscreen'});}catch{/* Inline remains usable. */}};
 $('language').onchange=()=>{locale=$('language').value;translate();renderLists();};
 app.ontoolresult=(result)=>{try {const data=resultData(result);if(data.buildId){if(data.buildId !== buildId){clearPrivate();buildId=data.buildId;}needsRetry=false;}void refresh(true);}catch{status('stale');}};

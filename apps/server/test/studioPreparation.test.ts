@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StudioSnapshot, footprintCenter, DEFAULT_GRID, type StudioContext } from "@vtt/shared";
 import type { RoomStore } from "../src/store/roomStore";
 import type { BuildFileRecord } from "../src/store/buildStore";
@@ -50,7 +50,7 @@ describe.each(storeCases)("saved Studio display context on %s (FR-GM-26, FR-GM-2
   it("retains only twenty real sanitized receipts without extending retention, and closes metadata with the build", async () => {
     const store = makeStore(), f = await fixture(store);
     const at = (await store.findBuild(f.build.id, f.access.ownerGmId))!.updatedAt;
-    for (let i = 0; i < 25; i++) await store.recordStudioPreparation(f.build.id, { id: randomUUID(), at: String(i), operation: "setup", targetKey: "first", status: "refused", code: "permission" }, f.access);
+    for (let i = 0; i < 25; i++) await store.recordStudioPreparation(f.build.id, [{ id: randomUUID(), at: String(i), operation: "setup", targetKey: "first", status: "refused", code: "permission" }], f.access);
     const records = await store.readStudioPreparation(f.build.id, f.access);
     expect(records.build.studioOutcomes).toHaveLength(20); expect(records.build.studioOutcomes![0]!.at).toBe("5"); expect(records.build.updatedAt).toBe(at);
     await store.setStudioContext(f.build.id, { sourceFileId: f.first.id, mapKey: "first", encounterKey: null }, f.access);
@@ -91,7 +91,10 @@ describe("actual saved preparation writes and both adapters (FR-GM-26, FR-GM-27)
     expect((await send("POST", "/maps", { key: "owned-map", name: "Changed", fileId: source.id })).status).toBe(409);
     let saved = StudioSnapshot.parse(await (await send("GET", "/studio")).json());
     expect(saved.outcomes.at(-1)).toMatchObject({ status: "refused", code: "locked" });
+    const record = vi.spyOn(store, "recordStudioPreparation");
     expect((await send("POST", "/creatures", { creatures: [{ key: "owned", name: "Changed", isPlayerCharacter: false }, { key: "limited", name: "New", isPlayerCharacter: false }] })).status).toBe(200);
+    // Every row of one request is one receipt write.
+    expect(record).toHaveBeenCalledTimes(1); expect(record.mock.calls[0]![1]).toHaveLength(2);
     saved = StudioSnapshot.parse(await (await send("GET", "/studio")).json());
     expect(saved.outcomes.slice(-2).map(({ targetKey, code }) => ({ targetKey, code }))).toEqual([{ targetKey: "owned", code: "locked" }, { targetKey: "limited", code: "limit" }]);
     expect((await store.findBuildItem(build.id, "map", "owned-map"))!.data.name).toBe("Synthetic map");
@@ -120,6 +123,11 @@ describe("actual saved preparation writes and both adapters (FR-GM-26, FR-GM-27)
     expect(website).toEqual(saved); expect(saved.scene.walls).toHaveLength(3); expect(saved.scene.walls.filter((w) => w.portal?.kind === "door")).toHaveLength(1);
     expect(saved.scene.terrain).toEqual(setup.terrain); expect(saved.scene.terrainState).toBe("ready");
     expect(saved.scene.tokens[0]).toMatchObject({ hidden: true, imageFileId: art.id, center: footprintCenter({ column: 2, row: 2 }, 0.5, source.grid!, source) });
+    // A setup for a map the build doesn't have is a refused write the open Studio shows (FR-GM-27).
+    expect((await send("PUT", "/maps/chapl/setup", setup)).status).toBe(404);
+    const missing = StudioSnapshot.parse(await (await send("GET", "/studio")).json());
+    expect(missing.outcomes.at(-1)).toMatchObject({ operation: "setup", targetKey: "chapl", status: "refused", code: "invalid" });
+    expect(missing.scene.walls).toEqual(saved.scene.walls);
     await store.setBuildChoices(id, account.ownerId, { aiGrid: true, aiWalls: false, aiTerrain: true });
     expect((await send("PUT", "/maps/chapel/setup", { lines: [], terrain: [] })).status).toBe(403);
     const refused = StudioSnapshot.parse(await (await send("GET", "/studio")).json());

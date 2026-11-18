@@ -8,7 +8,8 @@ export class StudioContextConflictError extends Error { constructor() { super("s
 export interface StudioPreparationStore {
   readStudioPreparation(buildId: string, access: StudioBuildAccess): Promise<StudioPreparationRecords>;
   setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess): Promise<void>;
-  recordStudioPreparation(buildId: string, outcome: StudioPreparationOutcome, access: StudioBuildAccess): Promise<void>;
+  /** Appends one request's receipts in a single write, keeping the newest twenty. */
+  recordStudioPreparation(buildId: string, outcomes: readonly StudioPreparationOutcome[], access: StudioBuildAccess): Promise<void>;
 }
 export function assertStudioBuildAccess(build: BuildRecord, access: StudioBuildAccess) {
   if (build.ownerGmId !== access.ownerGmId || (access.passHash !== undefined &&

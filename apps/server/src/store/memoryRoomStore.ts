@@ -820,10 +820,11 @@ export class MemoryRoomStore implements RoomStore {
     assertStudioContext(context, [...this.buildFiles.values()].filter((f) => f.buildId === buildId), [...this.buildItems.values()].filter((i) => i.buildId === buildId));
     build.studioContext = structuredClone(context); build.studioFileId = context.sourceFileId;
   }
-  async recordStudioPreparation(buildId: string, outcome: StudioPreparationOutcome, access: StudioBuildAccess) {
+  async recordStudioPreparation(buildId: string, outcomes: readonly StudioPreparationOutcome[], access: StudioBuildAccess) {
+    if (!outcomes.length) return;
     const build = this.openBuild(buildId);
     assertStudioBuildAccess(build, access); this.assertDelegation(access.delegation, build);
-    build.studioOutcomes = [...(build.studioOutcomes ?? []), StudioPreparationOutcome.parse(outcome)].slice(-20);
+    build.studioOutcomes = [...(build.studioOutcomes ?? []), ...StudioPreparationOutcome.array().parse(outcomes)].slice(-20);
   }
   async failStudioMedia(id: string) { const job = this.studioMediaJobs.get(id); if (job) job.state = "delete"; }
   async listStudioMediaJobs(now: string) { return [...this.studioMediaJobs.values()].filter((j) => j.state === "delete" || j.expiresAt <= now).slice(0, 100).map((j) => j.id); }

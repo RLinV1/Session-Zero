@@ -128,7 +128,9 @@ describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
     const reopened=await s.call("studio_open",{buildId:s.build.id,context});
     expect(reopened.body.result!.isError).not.toBe(true);expect(JSON.stringify(reopened.body)).not.toContain("East sentry");
     const mismatch=await s.call("studio_set_context",{buildId:s.build.id,context:{...context,mapKey:null}});
-    expect(mismatch.body.result!.isError).toBe(true);expect(((await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!).context).toEqual(context);
+    expect(mismatch.body.result!.isError).toBe(true);
+    // The AI is told to fix the selection, not to attach files again.
+    expect(JSON.stringify(mismatch.body.result!.content)).toContain(studioIntake["error.context"]);expect(((await s.call("studio_snapshot",{buildId:s.build.id})).body.result!.structuredContent!).context).toEqual(context);
   });
   it("loads a protected media cache miss without another snapshot when the view provides a routing hint",async()=>{
     const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")]});

@@ -3,9 +3,13 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import type { StudioSnapshot } from "@vtt/shared";
 
 test.use({ trace: "off" });
+// The view keeps polling through the host bridge; a poll still in flight when a test ends is not a failure.
+test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "ignoreErrors" }); });
 test.setTimeout(90_000);
 const ORIGIN = "http://127.0.0.1:5190", MCP = "http://127.0.0.1:3130/mcp/studio";
 const descriptor = (kind: "map" | "token") => ({ file_id: randomUUID(), download_url: `https://sdmntpreastus3.oaiusercontent.com/studio-browser-${kind}`, file_name: `synthetic-${kind}.png`, mime_type: "image/png" });
+type BridgeMessage = { method: string; params: { name: string; arguments?: Record<string, unknown> } };
+type Rewrite = (message: BridgeMessage) => BridgeMessage;
 async function mount(page: Page, request: APIRequestContext) {
   expect((await request.post(`${ORIGIN}/api/auth/signup`, { data: { email: `${randomUUID()}@example.com`, password: "correct horse battery", displayName: "Preparation GM" } })).status()).toBe(201);
   const { build } = await (await request.post(`${ORIGIN}/api/builds`, { data: { name: "Visible preparation", aiGrid: true, aiWalls: true, aiTerrain: true } })).json() as { build: { id: string } };
@@ -18,8 +22,10 @@ async function mount(page: Page, request: APIRequestContext) {
   const tokens = await (await request.post(`${ORIGIN}/api/oauth/token`, { form: { grant_type: "authorization_code", client_id: client.client_id, redirect_uri: redirect, resource: `${ORIGIN}/mcp/studio`, code_verifier: verifier, code: new URL(redirectTo).searchParams.get("code")! } })).json() as { access_token: string };
   const calls: { name: string; at: number }[] = [];
   let bridgeFailure = false;
+  let rewrite: Rewrite | null = null;
+  const post = (method: string, params: unknown) => request.post(MCP, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" }, data: { jsonrpc: "2.0", id: randomUUID(), method, params } });
   const rpc = async (method: string, params: unknown) => {
-    const response = await request.post(MCP, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" }, data: { jsonrpc: "2.0", id: randomUUID(), method, params } });
+    const response = await post(method, params);
     expect(response.status()).toBe(200);
     const body = await response.json() as { result: { isError?: boolean; structuredContent?: Record<string, unknown>; content?: { text?: string }[] } };
     return body.result;
@@ -32,9 +38,16 @@ async function mount(page: Page, request: APIRequestContext) {
   const resource = await rpc("resources/read", { uri: openTool._meta.ui.resourceUri });
   const html = (resource as unknown as { contents: { text: string }[] }).contents[0]!.text;
   await page.route("**/_m2_bridge", async (route) => {
-    const message = route.request().postDataJSON() as { method: string; params: { name: string } };
+    const received = route.request().postDataJSON() as BridgeMessage;
+    const message = rewrite ? rewrite(received) : received;
     if (message.method === "tools/call") calls.push({ name: message.params.name, at: Date.now() });
-    const answer = bridgeFailure ? { error: { code: -32000, message: "Synthetic dismissed connection" } } : { result: await rpc(message.method, message.params) };
+    let answer: unknown = { error: { code: -32000, message: "Synthetic dismissed connection" } };
+    if (!bridgeFailure) {
+      // A host that passes the MCP server's own JSON-RPC error (such as its sign-in challenge) back to the view.
+      const response = await post(message.method, message.params);
+      const body = await response.json() as { result?: unknown; error?: unknown };
+      answer = response.status() === 200 ? { result: body.result } : { error: body.error };
+    }
     await route.fulfill({ json: answer });
   });
   await page.route("**/m2-host", (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#121417"><iframe title="Studio" sandbox="allow-scripts" style="width:100%;height:1500px;border:0"></iframe><script>
@@ -50,7 +63,7 @@ else if(m.method==='ui/request-display-mode'){window.m2Expanded=true;respond({mo
   await page.locator("iframe").evaluate((element, html) => { (element as HTMLIFrameElement).srcdoc = html; }, html);
   const frame = page.frameLocator("iframe");
   await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
-  return { frame, build, tool, snapshot, calls, setFailure: (value: boolean) => { bridgeFailure = value; } };
+  return { frame, build, tool, snapshot, calls, setFailure: (value: boolean) => { bridgeFailure = value; }, setRewrite: (value: Rewrite | null) => { rewrite = value; } };
 }
 async function prepare(session: Awaited<ReturnType<typeof mount>>) {
   await expect.poll(async () => (await session.snapshot()).scene.detection?.status, { timeout: 35_000 }).toBe("suggested");
@@ -125,6 +138,47 @@ test("explicit context switching refuses a mismatched encounter and preserves al
   await expect.poll(async () => (await session.snapshot()).context.encounterKey).toBe("other");
   const after = await (await request.get(`${ORIGIN}/api/builds/${session.build.id}`)).json() as { items: unknown[] };
   expect(after.items).toEqual(before.items);
+});
+test("a refused selection says so in the view and keeps live refresh going (FR-GM-27)", async ({ page, request }) => {
+  const session = await mount(page, request), { file } = await prepare(session);
+  // Stands in for the AI changing the build between the view's last refresh and the click: the
+  // room server itself refuses an encounter that isn't on the chosen map (409 "context").
+  session.setRewrite((message) => message.params.name === "studio_set_context"
+    ? { ...message, params: { ...message.params, arguments: { ...message.params.arguments, context: { sourceFileId: file.id, mapKey: "chapel", encounterKey: "missing" } } } }
+    : message);
+  await session.frame.getByLabel("Active map", { exact: true }).selectOption(`source:${file.id}`);
+  await expect(session.frame.getByText("Could not change the active context", { exact: false })).toBeVisible();
+  await expect(session.frame.getByLabel("Active map", { exact: true })).toHaveValue("map:chapel");
+  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  session.setRewrite(null);
+  // Still live: the AI's next save appears without a retry.
+  expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
+  await expect(session.frame.locator('[data-kind="door"]')).toHaveCount(1, { timeout: 6500 });
+});
+test("one token picture that can't load leaves the rest of the scene live (FR-GM-27)", async ({ page, request }) => {
+  const session = await mount(page, request), { file, art } = await prepare(session);
+  // That one picture is missing on the server (404), as a legacy file whose object is gone would be.
+  session.setRewrite((message) => message.params.name === "studio_get_media" && message.params.arguments?.fileId === art.id
+    ? { ...message, params: { ...message.params, arguments: { ...message.params.arguments, fileId: randomUUID() } } }
+    : message);
+  expect((await session.tool("save_creatures", { creatures: [{ key: "sentry", name: "Sentry", isPlayerCharacter: false, size: 1, imageFileId: art.id }] })).isError).not.toBe(true);
+  expect((await session.tool("save_encounter", { key: "watch", name: "Watch", mapKey: "chapel", tokens: [{ creatureKey: "sentry", square: { column: 4, row: 4 }, hidden: false }] })).isError).not.toBe(true);
+  await session.tool("studio_set_context", { context: { sourceFileId: file.id, mapKey: "chapel", encounterKey: "watch" } });
+  await expect(session.frame.locator('[data-layer="tokens"] [data-token-index]')).toHaveCount(1);
+  await expect(session.frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
+  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
+  await expect(session.frame.locator('[data-kind="door"]')).toHaveCount(1, { timeout: 6500 });
+});
+test("ending the connection clears the private scene from an open view (FR-GM-26, FR-GM-27)", async ({ page, request }) => {
+  const session = await mount(page, request); await prepare(session);
+  await expect(session.frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
+  const { grants } = await (await request.get(`${ORIGIN}/api/builds/${session.build.id}/grants`)).json() as { grants: { id: string }[] };
+  expect((await request.delete(`${ORIGIN}/api/builds/${session.build.id}/grants/${grants[0]!.id}`)).status()).toBe(204);
+  await expect(session.frame.locator("#status")).toContainText("unavailable to this connection");
+  await expect(session.frame.locator('[data-testid="studio-scene"]')).toHaveCount(0);
+  await expect(session.frame.locator("#files li")).toHaveCount(0);
+  await expect(session.frame.locator("#build")).toHaveText("");
 });
 test("localized keyboard review fits narrow/fullscreen layouts without moving the camera (FR-GM-27, localization)", async ({ page, request }, info) => {
   const session = await mount(page, request); await prepare(session);

@@ -68,6 +68,8 @@ export class StudioAccess {
     const error = hadToken ? ', error="invalid_token", error_description="The connection has ended or is not valid. Reconnect."' : "";
     res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${this.metadataUrl}", scope="${STUDIO_ACCESS_SCOPE}"${error}`);
     res.setHeader("Cache-Control", "no-store");
-    res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Connect Session Zero to use these tools." }, id: null });
+    // `data` names the reason the way a tool error does, so an open Studio view that gets this
+    // back through its host can tell access ended (and clear what it shows) from a dropped call.
+    res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Connect Session Zero to use these tools.", data: { "sessionzero/error": { status: 401, code: "access" } } }, id: null });
   }
 }

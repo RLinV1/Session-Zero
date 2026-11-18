@@ -36,6 +36,7 @@ export const studioIntakeZhTW = {
   "error.access": "請重新連接 Session Zero，再重試尚未儲存的檔案。",
   "error.invalid": "無法使用此檔案要求。請重新附加原始檔。",
   "error.missing": "無法使用這個建置或檔案。",
+  "error.context": "請選擇這個建置中的地圖，以及使用該地圖的遭遇。已儲存的地圖與棋子位置都未變更。",
   "error.unknown": "上傳未完成。請重新附加原始檔。",
   "previewUnavailable": "無法載入受保護的預覽。請重試連線。",
   "websiteUnavailable": "這個平台無法開啟 Session Zero。請在瀏覽器開啟網站，登入後查看此建置。",

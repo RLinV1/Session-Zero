@@ -132,6 +132,8 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     const after = await rawPost({ authorization: `Bearer ${tokens.access_token}` });
     expect(after.status).toBe(401);
     expect(after.headers.get("www-authenticate")).toContain('error="invalid_token"');
+    // Tagged like a tool error, so an open Studio view can tell access ended and clear what it shows (FR-GM-27).
+    expect((await after.json() as { error: { data?: unknown } }).error.data).toEqual({ "sessionzero/error": { status: 401, code: "access" } });
   });
 
   it("refuses a token the room server says is for a different resource", async () => {

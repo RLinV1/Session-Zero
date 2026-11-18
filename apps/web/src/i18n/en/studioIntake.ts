@@ -35,6 +35,7 @@ export const studioIntake = {
   "error.access": "Reconnect to Session Zero, then retry any files not saved.",
   "error.invalid": "This file request could not be used. Attach the original again.",
   "error.missing": "This build or file is unavailable.",
+  "error.context": "Choose a map from this build and an encounter that uses that map. No saved map or placement was changed.",
   "error.unknown": "The upload did not finish. Attach the original again.",
   "previewUnavailable": "The protected preview is unavailable. Retry the connection.",
   "websiteUnavailable": "The host could not open Session Zero. Open the website in your browser and sign in to this build.",
