@@ -171,7 +171,7 @@ earlier changes are listed with it.
 - **Problem.** A token placed from a saved creature didn't reliably get the creature's saved attacks and their animations.
 - **Resolution.** A creature's attacks are copied onto each token placed from it, with their animations. Built-in creatures also got ranges and animations (2026-11-13). Attacks saved before mixed dice (ADR 0061) are now upgraded when read from stored history, encounter templates and AI-builder draft creatures. Before this, those older attacks showed as unusable or crashed the Attack section.
 - **Changes.** `attack-range-and-animations` (`719ccf25`, 2026-11-13), `legacy-attack-dice-crash` (`39169026`, `da7ed6da`, 2026-11-16). FR-TAC-09, FR-GM-13.
-- **Date fixed.** 2026-11-16, on branch `fix/legacy-attack-dice-crash`, pending merge to `main`.
+- **Date fixed.** 2026-11-16 (merged in PR #215).
 
 ### PB-03: Attack and damage dice not animated for other players
 

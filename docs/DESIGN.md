@@ -356,8 +356,9 @@ apps/server        Express + Socket.IO.
 apps/mcp           MCP server: users' own AI apps hold player seats. An ordinary client of
                    apps/server, over REST and Socket.IO only (ADR 0052). /mcp/build has the
                    game builder's tools, kept apart from the player tools (ADR 0053).
-                   studioM0/ is a flag-gated proof endpoint for the interactive scene
-                   studio (ADR 0073); it is not a shipped feature.
+                   studio/ is the interactive AI scene studio (ADR 0073), which shows a
+                   build inside the AI conversation; studioM0/ is its earlier
+                   flag-gated proof endpoint.
 apps/web           React panels + PixiJS board.
   board/             boardView.ts and everything Pixi: tools, fog, sight mask, path
                      movement and ruler, effects and sound, dice throws
@@ -678,8 +679,7 @@ real sockets and Postgres store tests that run when a database is configured
 UVTT, grid detection, scenes, terrain, guest onboarding and the guest tutorial.
 
 **Not built yet.** Wall detection does not yet classify doors and windows, and its worker is
-off by default in production. The interactive scene studio (ADR 0073) has finished its M0
-proof; M1 is next.
+off by default in production. The interactive scene studio (ADR 0073) is still in progress; see §7.
 
 **Run it — no containers.** A fresh clone plays without Docker, because the store,
 sequencer and asset sink each fall back when their environment variable is unset (§2).
@@ -858,7 +858,7 @@ rules so every participant sees the same cost.
 - **Legacy GM device identities.** `gm_identities` still holds pre-account device rows; a follow-up removes them and renames the table to `owners`.
 - **Duplicate names.** Participant and token names are not unique (KAN-61, KAN-62).
 - **Proposed ADRs.** Many ADRs below are implemented but still marked *Proposed* pending Real-Time Architecture review. The November work (ADRs 0055–0072) adds to that backlog.
-- **Interactive scene studio.** ADR 0073 is accepted and the M0 proof endpoint is in `apps/mcp/src/studioM0` behind a flag. M1 (versioned proposals and protected draft artwork) has not started.
+- **Interactive scene studio.** ADR 0073 is accepted. Milestones M0 through M3 merged between 2026-11-16 and 2026-11-18 (`apps/mcp/src/studio/`, OpenSpec change `interactive-ai-scene-studio`). This document does not yet describe the studio in detail; its scope and remaining milestones live in that change.
 - **Checkpoints in the UI.** `CheckpointsPanel.tsx` is no longer mounted. Either bring it back (for example under Manage or the activity log) or retire the panel and its strings.
 - **Human usability study.** The M5/M6 findings ([`M5-M6-live-usability-findings.md`](M5-M6-live-usability-findings.md)) come from simulated personas; an independent human follow-up study is still pending.
 
