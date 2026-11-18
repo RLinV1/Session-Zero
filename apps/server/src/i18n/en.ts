@@ -7,6 +7,16 @@ import { MAX_DICE_LOOKS, MAX_WALLS, type CatalogSource } from "@vtt/shared";
  * error that is not in this catalog.
  */
 export const serverEn = {
+  "studio.authoring.missing": "This Studio target or revision is unavailable.",
+  "studio.authoring.access": "Reconnect Studio or sign in to the owner’s website session.",
+  "studio.authoring.conflict": "This Studio draft changed. Reload and inspect the current revision.",
+  "studio.authoring.limit": "This Studio history is full. Review the saved work or discard the build.",
+  "studio.authoring.invalid": "Provide a valid correction target and input.",
+  "studio.authoring.scope": "An edit falls outside the saved scope. Ask the owner for a new selection.",
+  "studio.authoring.permission": "The owner disabled a choice required for this correction.",
+  "studio.authoring.enrolled": "This draft is enrolled in Studio. Use a saved correction request or the signed-in builder.",
+  "studio.authoring.drift": "The builder data changed. Save a fresh revision in the builder before starting a new correction.",
+  "studio.authoring.stale": "The proposal was saved in history. Inspect the current revision and request a new correction.",
   "studio.invalidJson": "Invalid JSON request.",
   "studio.media.origin": "The image could not be imported. Attach the original again in the ChatGPT chat or upload it on the Session Zero website.",
   "studio.media.expired": "This file link has expired or is unavailable. Attach the original file again in the ChatGPT chat.",

@@ -136,6 +136,8 @@ export class BuildChoiceOffError extends Error {
  * D7); otherwise `StudioAccessEndedError`, before anything else is checked.
  */
 export interface BuildWriteGuard {
+  ownerToken?: string;
+  ownerIds?: import("@vtt/shared").StudioOwnerIds;
   expectedUpdatedAt?: string | null;
   requireAiWalls?: boolean;
   requireAiTerrain?: boolean;
@@ -241,7 +243,7 @@ export interface BuildStore {
   /** Marks an item as changed by its owner, or as published. */
   markBuildItem(buildId: string, kind: BuildItemKind, key: string, state: { editedByUser?: boolean; publishedId?: string }): Promise<boolean>;
   /** The owner's change: marks the item edited, so the AI can't overwrite it. Refuses what was published. */
-  editBuildItem(item: NewBuildItem, guard?: Pick<BuildWriteGuard, "expectedUpdatedAt">): Promise<BuildItemRecord>;
+  editBuildItem(item: NewBuildItem, guard?: Pick<BuildWriteGuard, "expectedUpdatedAt" | "ownerToken" | "ownerIds">): Promise<BuildItemRecord>;
 
   /**
    * Adds everything in the plan, or nothing. Throws `UploadAllowanceError`, `EncounterLimitError`,

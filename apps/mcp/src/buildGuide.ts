@@ -20,7 +20,8 @@ export const STUDIO_SERVER_INSTRUCTIONS = [
   "If a tool says the connection has ended, ask the user to reconnect Session Zero in their AI app; that call saved nothing more than the items it names as saved.",
 ].join(" ");
 
-/** What `get_build` returns, so the AI has the rules at the moment it needs them (design D8). */
+/** What `When the owner supplies a saved correction request ID, read it with studio_get_correction_request and use studio_submit_correction against the returned base.
+get_build` returns, so the AI has the rules at the moment it needs them (design D8). */
 export const FIELD_GUIDE = {
   workflow: "Complete all enabled get_build.allowed map setup tasks for every map without waiting for another request. Inspect the map, save the enabled grid, walls, doors, windows and terrain, then check_build. Flag uncertainty and report any unfinished task. The owner reviews and publishes.",
   rule: "Never invent a value. If the source doesn't clearly give one, leave it blank and add a flag naming the field and why. Blank is always allowed.",

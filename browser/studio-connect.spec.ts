@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
@@ -112,4 +113,42 @@ test("asks a signed-out visitor to sign in, then comes back to the same request 
   } finally {
     await fresh.close();
   }
+});
+
+
+test("the website grid editor saves a new working revision on an enrolled map (FR-GM-27)", async ({ page }) => {
+  const { request, ids: { hollow: id } } = await setUp(page);
+  const base = `${ORIGIN}/api/builds/${id}`;
+  const uploaded = await request.post(base + "/files?kind=map", {
+    multipart: { file: { name: "chapel.png", mimeType: "image/png", buffer: await readFile(new URL("./fixtures/studio-preparation.png", import.meta.url)) } },
+  });
+  expect(uploaded.ok()).toBe(true);
+  const { file: { id: fileId } } = await uploaded.json() as { file: { id: string } };
+  const { pass } = await (await request.post(base + "/pass")).json() as { pass: string };
+  const saved = await request.post(`${ORIGIN}/api/build/current/maps`, {
+    headers: { authorization: `Bearer ${pass}` },
+    data: { key: "chapel", name: "Chapel", fileId, proposedGrid: { cellSize: 60, offsetX: 5, offsetY: 0 } },
+  });
+  expect(saved.ok()).toBe(true);
+  expect((await request.post(base + "/studio/context", { data: { sourceFileId: fileId, mapKey: "chapel", encounterKey: null } })).ok()).toBe(true);
+  const authoring = base + "/studio/authoring/maps/chapel";
+  const { inspectedVersion } = await (await request.get(authoring)).json() as { inspectedVersion: string };
+  const first = await request.post(authoring + "/requests", { data: {
+    inspectedVersion, encounterKey: null, operationId: randomUUID(), instruction: "Review the entry.",
+    selection: { region: { minX: 0, minY: 0, maxX: 120, maxY: 120 }, layers: ["terrain"], objectIds: [], wholeObjectIds: [] },
+  } });
+  expect(first.ok()).toBe(true);
+  const { baseRevisionId } = await first.json() as { baseRevisionId: string };
+
+  await page.goto(`/builds/${id}#map-chapel`);
+  await page.getByLabel("Offset X").fill("12");
+  const posted = page.waitForResponse((res) => res.url().endsWith("/maps/chapel/grid") && res.request().method() === "POST");
+  await page.getByRole("button", { name: "Confirm grid" }).click();
+  expect((await posted).ok()).toBe(true);
+  const history = await (await request.get(authoring + "/revisions")).json();
+  expect(history.revisions).toMatchObject([{ id: history.workingRevisionId, parentId: baseRevisionId, actor: "owner" }, { id: baseRevisionId, parentId: null }]);
+  expect(history.workingRevisionId).not.toBe(baseRevisionId);
+  expect(await (await request.get(base + "/studio")).json()).toMatchObject({
+    workingRevisionId: history.workingRevisionId, scene: { grid: { offsetX: 12 } },
+  });
 });

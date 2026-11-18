@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -106,6 +107,38 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     }
     expect(await room.store.listBuildItems(theirs.id)).toEqual([]);
     expect(await room.store.listBuildItems(notTicked.id)).toEqual([]);
+  });
+
+  it("submits a scoped correction and returns a saved stale revision through the actual MCP route", async () => {
+    const { account, id } = await startBuild();
+    const fileId = randomUUID();
+    await room.store.addBuildFile({
+      id: fileId, buildId: id, kind: "map", objectKey: "fixture", url: "/uploads/fixture", originalName: "Synthetic map",
+      width: 500, height: 500, sizeBytes: 1, grid: null, board: null, sourceHash: null, detectionSourceHash: null,
+      detectionVersion: null, detectionError: null, detectionStatus: null, detectionAttempt: 0, detectionResult: null,
+      detectionUpdatedAt: null, publishedAssetId: null, createdAt: new Date().toISOString(),
+    }, { maps: 20, files: 100, bytes: 100000 });
+    await account.json("PUT", `/api/builds/${id}/choices`, { aiGrid: false, aiWalls: true, aiTerrain: true });
+    const { tokens } = await connectStudio(room.base, account, [id]);
+    const ai = await connectAi(tokens.access_token);
+    const saved = await ai.call("save_map", { buildId: id, key: "chapel", name: "Chapel", fileId, proposedGrid: { cellSize: 50, offsetX: 0, offsetY: 0 } });
+    expect(saved.isError, saved.text).toBe(false);
+    const path = `/api/builds/${id}/studio/authoring/maps/chapel`;
+    const { inspectedVersion } = await account.json<{ inspectedVersion: string }>("GET", path);
+    const { requestId, baseRevisionId } = await account.json<{ requestId: string; baseRevisionId: string }>("POST", path + "/requests", {
+      encounterKey: null, inspectedVersion, operationId: randomUUID(), instruction: "Mark the entry as Difficult.",
+      selection: { region: { minX: 0, minY: 0, maxX: 100, maxY: 100 }, layers: ["terrain"], objectIds: [], wholeObjectIds: [] },
+    });
+    const request = await ai.call("studio_get_correction_request", { buildId: id, requestId });
+    expect(request.json).toMatchObject({ requestId, baseRevisionId, currentRevisionId: baseRevisionId, scene: { source: { id: fileId } } });
+    const args = { buildId: id, requestId, baseRevisionId, operations: [{ op: "terrain.paint", runs: [{ row: 0, start: 0, end: 0, kind: "difficult" }] }] };
+    const applied = await ai.call("studio_submit_correction", { ...args, operationId: randomUUID() });
+    expect(applied.json).toMatchObject({ status: "advanced", revisionId: expect.any(String) });
+    const stale = await ai.call("studio_submit_correction", { ...args, operationId: randomUUID() });
+    expect(stale).toMatchObject({ isError: true, json: { status: "stale", currentRevisionId: applied.json.revisionId, revisionId: expect.any(String) } });
+    const reopened = await connectAi(tokens.access_token);
+    const read = await reopened.call("studio_get_revision", { buildId: id, mapKey: "chapel", revisionId: stale.json.revisionId });
+    expect(read.json).toMatchObject({ revision: { id: stale.json.revisionId, parentId: baseRevisionId } });
   });
 
   it("ignores host request metadata naming another user", async () => {

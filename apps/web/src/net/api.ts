@@ -1,3 +1,4 @@
+import type { StudioOwnerIds } from "@vtt/shared";
 import {
   StudioSnapshot, type StudioContext,
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
@@ -171,8 +172,8 @@ async function accountRequest<T>(url: string, init: RequestInit = {}): Promise<T
 
 const buildUrl = (id: string) => `/api/builds/${encodeURIComponent(id)}`;
 
-const jsonBody = (body: unknown): RequestInit => ({
-  headers: { "content-type": "application/json" },
+const jsonBody = (body: unknown, ownerToken?: string): RequestInit => ({
+  headers: { "content-type": "application/json", ...(ownerToken ? { "X-Studio-Authoring-Version": ownerToken } : {}) },
   body: JSON.stringify(body),
 });
 
@@ -527,8 +528,8 @@ export const api = {
     /** What the owner lets their AI set up on maps (ADR 0053). Only the owner's session can change these. */
     setChoices: (id: string, choices: BuildChoices) => accountRequest<{ build: BuildSummary }>(`${buildUrl(id)}/choices`, { method: "PUT", ...jsonBody(choices) }),
     /** The owner's fix to a map's walls, doors and windows: the whole setup as the page has it, and the version it showed. */
-    saveMapSetup: (id: string, key: string, setup: DraftMapSetup, updatedAt: string) =>
-      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/setup`, { method: "PUT", ...jsonBody({ setup, updatedAt }) }),
+    saveMapSetup: (id: string, key: string, setup: DraftMapSetup, updatedAt: string, token?: string, studioIds?: StudioOwnerIds) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/setup`, { method: "PUT", ...jsonBody({ setup, updatedAt, studioIds }, token) }),
     newPass: (id: string) => accountRequest<{ pass: string; expiresAt: string }>(`${buildUrl(id)}/pass`, { method: "POST" }),
     cancelPass: (id: string) => accountRequest<void>(`${buildUrl(id)}/pass`, { method: "DELETE" }),
     upload(id: string, file: File, kind: "map" | "token" | "uvtt") {
@@ -536,14 +537,14 @@ export const api = {
       form.append("file", file);
       return accountRequest<{ file: BuildFileView }>(`${buildUrl(id)}/files?kind=${kind}`, { method: "POST", body: form });
     },
-    editCreature: (id: string, key: string, patch: Record<string, unknown>) =>
-      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/creatures/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch) }),
-    renameMap: (id: string, key: string, name: string) =>
-      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody({ name }) }),
-    confirmGrid: (id: string, key: string, grid: DraftProposedGrid) =>
-      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/grid`, { method: "POST", ...jsonBody(grid) }),
-    editEncounter: (id: string, key: string, patch: Record<string, unknown>) =>
-      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/encounters/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch) }),
+    editCreature: (id: string, key: string, patch: Record<string, unknown>, token?: string) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/creatures/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch, token) }),
+    renameMap: (id: string, key: string, name: string, token?: string) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody({ name }, token) }),
+    confirmGrid: (id: string, key: string, grid: DraftProposedGrid, token?: string) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/maps/${encodeURIComponent(key)}/grid`, { method: "POST", ...jsonBody(grid, token) }),
+    editEncounter: (id: string, key: string, patch: Record<string, unknown>, token?: string) =>
+      accountRequest<{ item: BuildItemView }>(`${buildUrl(id)}/encounters/${encodeURIComponent(key)}`, { method: "PATCH", ...jsonBody(patch, token) }),
     removeItem: (id: string, kind: BuildItemView["kind"], key: string) =>
       accountRequest<void>(`${buildUrl(id)}/items/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" }),
     publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[]; reviewed: Record<string, string> }) =>

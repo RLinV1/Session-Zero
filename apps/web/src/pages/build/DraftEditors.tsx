@@ -108,7 +108,7 @@ export function DraftCreatureEditor({ data, files, onSave, onCancel }: {
   );
 }
 
-interface TokenRow { creatureKey: string; name: string; square: { column: number; row: number } | null; hidden: boolean }
+interface TokenRow { authoringId?: string | null; creatureKey: string; name: string; square: { column: number; row: number } | null; hidden: boolean }
 
 /**
  * A draft encounter's name and tokens. Squares are the top-left square a token covers.
@@ -116,10 +116,11 @@ interface TokenRow { creatureKey: string; name: string; square: { column: number
  * Place tokens directly on their map. The roster groups each creature's tokens for readability;
  * saving preserves the AI's original order.
  */
-export function DraftEncounterEditor({ data, mapFile, files, grid, terrain, onSave, onCancel, creature }: {
+export function DraftEncounterEditor({ data, ids, mapFile, files, grid, terrain, onSave, onCancel, creature }: {
   data: DraftEncounterState;
   mapFile?: BuildFileView;
   files: readonly BuildFileView[];
+  ids?: readonly (string | null)[];
   grid: EncounterEditGrid | null;
   terrain: readonly TerrainRun[];
   creature: (key: string) => DraftCreatureState | undefined;
@@ -128,8 +129,8 @@ export function DraftEncounterEditor({ data, mapFile, files, grid, terrain, onSa
 }) {
   const creatureName = (key: string) => creature(key)?.name ?? key;
   const [name, setName] = useState(data.name);
-  const [tokens, setTokens] = useState<TokenRow[]>(data.tokens.map((t) => ({
-    creatureKey: t.creatureKey, name: t.name ?? "", square: t.square, hidden: t.hidden,
+  const [tokens, setTokens] = useState<TokenRow[]>(data.tokens.map((t, index) => ({
+    authoringId: ids?.[index], creatureKey: t.creatureKey, name: t.name ?? "", square: t.square, hidden: t.hidden,
   })));
   const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +144,7 @@ export function DraftEncounterEditor({ data, mapFile, files, grid, terrain, onSa
     try {
       await onSave({
         name,
+        ...(ids ? { studioIds: { placements: tokens.map((t) => t.authoringId ?? null) } } : {}),
         tokens: tokens.map((t) => ({
           creatureKey: t.creatureKey,
           ...(t.name.trim() ? { name: t.name.trim() } : {}),

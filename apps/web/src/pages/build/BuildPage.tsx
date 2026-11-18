@@ -1,3 +1,4 @@
+import type { StudioOwnerIds } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
   DEFAULT_GRID,
@@ -390,8 +391,12 @@ function Build({ id }: { id: string }) {
                       if (!assetId) { setError("Couldn't find this published map. Refresh and try again."); return; }
                       setUnpublishingMap({ id: assetId, name: mapOf(item).name });
                     }}>Unpublish map</button> : null} busy={busy}
-                      onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid)).item), "Couldn't confirm this grid.")}
-                      onSaveSetup={(setup) => run(async () => markReviewed((await api.builds.saveMapSetup(id, item.key, setup, item.updatedAt)).item), "Couldn't change this map's setup.")} />
+                      onConfirm={(grid) => run(async () => markReviewed((await api.builds.confirmGrid(id, item.key, grid, ...(item.authoring ? [item.authoring.token] as const : []))).item), "Couldn't confirm this grid.")}
+                      onSaveSetup={(setup, ids) => run(async () => {
+                        const args = [id, item.key, setup, item.updatedAt] as const;
+                        const saved = item.authoring ? await api.builds.saveMapSetup(...args, item.authoring.token, ids) : await api.builds.saveMapSetup(...args);
+                        markReviewed(saved.item);
+                      }, "Couldn't change this map's setup.")} />
                   )} />
               )}
 
@@ -545,7 +550,7 @@ function Build({ id }: { id: string }) {
           {editingCreature && (
             <DraftCreatureEditor data={creatureOf(editingCreature)} files={files} onCancel={() => setEditingCreature(null)}
               onSave={async (patch) => {
-                markReviewed((await api.builds.editCreature(id, editingCreature.key, patch)).item);
+                markReviewed((await api.builds.editCreature(id, editingCreature.key, patch, ...(editingCreature.authoring ? [editingCreature.authoring.token] as const : []))).item);
                 await refresh();
                 setEditingCreature(null);
               }} />
@@ -554,11 +559,11 @@ function Build({ id }: { id: string }) {
 
         <Modal open={editingEncounter !== null} title={editingEncounter ? `Edit ${nameOf(editingEncounter)}` : "Edit"} className="build-editor-modal build-encounter-editor-modal" onClose={() => setEditingEncounter(null)}>
           {editingEncounter && (
-            <DraftEncounterEditor data={encounterOf(editingEncounter)} mapFile={editingMapFile} files={files} grid={editingMapGrid} terrain={editingTerrain}
+            <DraftEncounterEditor data={encounterOf(editingEncounter)} ids={editingEncounter.authoring?.ids?.placements} mapFile={editingMapFile} files={files} grid={editingMapGrid} terrain={editingTerrain}
               creature={(key) => { const c = creatures.find((x) => x.key === key); return c ? creatureOf(c) : undefined; }}
               onCancel={() => setEditingEncounter(null)}
               onSave={async (patch) => {
-                markReviewed((await api.builds.editEncounter(id, editingEncounter.key, patch)).item);
+                markReviewed((await api.builds.editEncounter(id, editingEncounter.key, patch, ...(editingEncounter.authoring ? [editingEncounter.authoring.token] as const : []))).item);
                 await refresh();
                 setEditingEncounter(null);
               }} />
@@ -814,7 +819,7 @@ const gridStatusText = (data: DraftMapState) =>
     : data.gridDiffers ? "Your AI's grid differs from detection: check it"
       : STATUS_TEXT[data.gridStatus];
 
-function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup) => Promise<void> }) {
+function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }: { item: BuildItemView; file: BuildFileView | undefined; checkbox: ReactNode; busy?: boolean; onConfirm: (grid: DraftProposedGrid) => Promise<void>; onSaveSetup: (setup: DraftMapSetup, ids?: StudioOwnerIds) => Promise<void> }) {
   const data = mapOf(item);
   // A UVTT file's grid is exact: offering to "confirm" it would only lock the map against the AI.
   const fromFile = data.gridBy === "file";
@@ -932,7 +937,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
             onCancel={() => { setTerrain(setup.terrain ?? []); setPaintKind(undefined); }} onSave={() => { void onSaveSetup({ ...setup, terrain }); setPaintKind(undefined); }} />}
           {tab === "walls" && drawing && (
             <MapWalls setup={setup} openings={drawing.openings} blocked={drawing.blockedLines} editable={!item.published && !unsaved} editedByUser={item.editedByUser}
-              busy={busy} picker={picker} onSave={onSaveSetup} />
+              busy={busy} picker={picker} ids={item.authoring?.ids} onSave={onSaveSetup} />
           )}
           {tab === "walls" && !item.published && !unsaved && <section className="build-draw-tools" aria-label="Add map lines">
             <h4>Add to the map</h4>
@@ -940,7 +945,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
               {([["wall", "Wall", LineSegments], ["door", "Door", Door], ["window", "Window", SquaresFour]] as const).map(([kind, label, Icon]) => <button type="button" key={kind} aria-pressed={drawKind === kind} disabled={busy} onClick={() => { setDrawKind(drawKind === kind ? null : kind); setLineStart(null); }}><Icon size={18} aria-hidden="true" />{label}</button>)}
             </div>
             <p className="muted small-print" role="status">{drawKind ? lineStart ? "Click the end corner to add the line." : "Click a grid corner to start a line." : "Choose a tool, then click two grid corners on the map."}</p>
-            {JSON.stringify(draftLines) !== JSON.stringify(setup.lines) && <div className="row build-editor-actions"><button type="button" className="small primary" disabled={busy} onClick={() => void onSaveSetup({ ...setup, lines: draftLines })}>Save</button><button type="button" disabled={busy} onClick={() => { setDraftLines(setup.lines); setLineStart(null); }}>Cancel</button></div>}
+            {JSON.stringify(draftLines) !== JSON.stringify(setup.lines) && <div className="row build-editor-actions"><button type="button" className="small primary" disabled={busy} onClick={() => void onSaveSetup({ ...setup, lines: draftLines }, item.authoring?.ids?.lines ? { lines: draftLines.map((_, i) => item.authoring?.ids?.lines?.[i] ?? null) } : undefined)}>Save</button><button type="button" disabled={busy} onClick={() => { setDraftLines(setup.lines); setLineStart(null); }}>Cancel</button></div>}
           </section>}
 
           </div>

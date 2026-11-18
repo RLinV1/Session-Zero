@@ -46,3 +46,5 @@ export * from "./movement";
 export * from "./terrainVisibility";
 
 export * from "./i18n";
+
+export * from "./studioAuthoring";

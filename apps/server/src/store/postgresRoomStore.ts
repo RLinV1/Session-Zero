@@ -1,5 +1,7 @@
+import { affectedWorkspaces, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
+import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
-import { assertStudioBuildAccess, assertStudioContext, type StudioBuildAccess } from "./studioPreparation";
+import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import { StudioContext, StudioPreparationOutcome } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -142,7 +144,54 @@ async function assertDelegation(tx: Prisma.TransactionClient, delegation: Studio
 async function queueStudioDeletion(tx: Prisma.TransactionClient, file: BuildFileRecord) {
   if (file.studio) await tx.studioMediaJob.create({ data: { id: randomUUID(), buildId: file.buildId, keys: mediaKeys(file), state: "delete", expiresAt: new Date() } });
 }
+async function studioWorkspaces(tx: Prisma.TransactionClient, buildId: string): Promise<AuthoringWorkspace[]> {
+  return (await tx.studioAuthoringWorkspace.findMany({ where: { buildId }, select: { state: true } }))
+    .map(({ state }) => state as unknown as AuthoringWorkspace);
+}
+
+function entryRecord(row: { mapKey: string; id: string; kind: string; value: Prisma.JsonValue }): AuthoringEntry {
+  return { mapKey: row.mapKey, id: row.id, kind: row.kind, value: row.value } as unknown as AuthoringEntry;
+}
+
+async function studioEntries(tx: Prisma.TransactionClient, buildId: string, ids: string[]) {
+  if (!ids.length) return [];
+  return (await tx.studioAuthoringEntry.findMany({ where: { buildId, id: { in: ids } } })).map(entryRecord);
+}
+
+async function studioRecords(tx: Prisma.TransactionClient, build: BuildRecord) {
+  const files = (await tx.buildFile.findMany({ where: { buildId: build.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toBuildFileRecord);
+  const items = (await tx.buildItem.findMany({ where: { buildId: build.id }, orderBy: [{ key: "asc" }, { kind: "asc" }] })).map(toBuildItemRecord);
+  return { build, files, items };
+}
+
+/** Every entry of these maps' workspaces: what an owner write reads when it must prune history. */
+async function studioHistory(tx: Prisma.TransactionClient, buildId: string, mapKeys: string[]) {
+  return (await tx.studioAuthoringEntry.findMany({ where: { buildId, mapKey: { in: mapKeys } } })).map(entryRecord);
+}
+
+/**
+ * Runs a pure authoring step on the entries it reads, and once more on the whole history of `mapKeys`
+ * when an owner write must prune. Both runs are in the caller's transaction, under the build lock.
+ */
+async function withHistory<T>(tx: Prisma.TransactionClient, buildId: string, mapKeys: string[], entries: AuthoringEntry[], run: (entries: AuthoringEntry[], complete: boolean) => T) {
+  try { return run(entries, false); }
+  catch (error) {
+    if (!(error instanceof AuthoringHistoryNeeded)) throw error;
+    // Entries of other maps (a receipt with the same retry key) stay visible to the second run.
+    return run([...entries.filter((e) => !mapKeys.includes(e.mapKey)), ...await studioHistory(tx, buildId, mapKeys)], true);
+  }
+}
+
+async function writeAuthoring(tx: Prisma.TransactionClient, buildId: string, { workspace, entries, removed }: AuthoringWrite) {
+  const mapKey = workspace.mapKey;
+  const state = workspace as unknown as Prisma.InputJsonValue;
+  await tx.studioAuthoringWorkspace.upsert({ where: { buildId_mapKey: { buildId, mapKey } }, create: { buildId, mapKey, state }, update: { state } });
+  if (removed.length) await tx.studioAuthoringEntry.deleteMany({ where: { buildId, mapKey, OR: removed.map(({ kind, id }) => ({ kind, id })) } });
+  await tx.studioAuthoringEntry.createMany({ data: entries.map(({ id, kind, value }) => ({ buildId, mapKey, id, kind, value: value as unknown as Prisma.InputJsonValue })) });
+}
+
 async function closeStudioBuild(tx: Prisma.TransactionClient, buildId: string) {
+  await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId } });
   await tx.studioMediaJob.updateMany({ where: { buildId, state: "write" }, data: { state: "cancelled" } });
   const grants = await tx.studioGrant.findMany({ where: { buildIds: { has: buildId } }, orderBy: { id: "asc" }, select: { id: true } });
   for (const { id } of grants) {
@@ -706,7 +755,12 @@ export class PostgresRoomStore implements RoomStore {
     const result = target.scope === "library"
       ? await this.prisma.libraryAsset.updateMany({ where: { id: target.id, ...where }, data })
       : target.scope === "build"
-        ? await this.prisma.buildFile.updateMany({ where: { id: target.fileId, ...where }, data })
+        ? await this.prisma.$transaction(async (tx) => {
+          const file = await tx.buildFile.findUnique({ where: { id: target.fileId }, select: { buildId: true } });
+          if (!file) return { count: 0 };
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${file.buildId}`}))`;
+          return tx.buildFile.updateMany({ where: { id: target.fileId, ...where }, data });
+        })
         : await this.prisma.roomUpload.updateMany({ where: { roomId: target.roomId, objectKey: target.objectKey, ...where }, data });
     return result.count === 1;
   }
@@ -837,8 +891,7 @@ export class PostgresRoomStore implements RoomStore {
       });
       if (result.count !== 1) throw new BuildClosedError();
     };
-    // A pass's save stays the single statement it always was; a delegated one is checked under the build's lock.
-    if (!guard.delegation) return write(this.prisma);
+    // Profile units can change an enrolled scene's coordinate binding.
     await this.prisma.$transaction(async (tx) => {
       const build = await lockOpenBuild(tx, buildId);
       await assertDelegation(tx, guard.delegation, build);
@@ -1072,14 +1125,61 @@ export class PostgresRoomStore implements RoomStore {
    * when the grant was touched or revoked meanwhile. Holding the build lock is what keeps the
    * build, files and items consistent: every write that changes them takes the same lock.
    */
+  async studioAuthoring(buildId: string, access: StudioBuildAccess, command: AuthoringCommand) {
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await lockOpenBuild(tx, buildId);
+      await assertDelegation(tx, access.delegation, locked);
+      const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
+      assertStudioBuildAccess(build, access);
+      if (access.passHash !== undefined || (command.kind === "propose" && !access.delegation) ||
+          ((command.kind === "create" || command.kind === "restore" || command.kind === "end") && access.delegation)) {
+        throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
+      }
+      const workspaces = await studioWorkspaces(tx, buildId);
+      const requestRow = "requestId" in command ? await tx.studioAuthoringEntry.findUnique({
+        where: { buildId_kind_id: { buildId, kind: "request", id: command.requestId } },
+      }) : null;
+      const request = requestRow ? entryRecord(requestRow) : undefined;
+      const mapKey = "mapKey" in command ? command.mapKey : request?.mapKey;
+      const workspace = workspaces.find((w) => w.mapKey === mapKey);
+      const ids = authoringEntryIds(command, workspace, request);
+      const entries = command.kind === "history"
+        ? (await tx.studioAuthoringEntry.findMany({ where: { buildId, mapKey, kind: "revision" } })).map(entryRecord)
+        : await studioEntries(tx, buildId, ids);
+      if (request) entries.push(request);
+      const records = await studioRecords(tx, build);
+      const result = await withHistory(tx, buildId, mapKey === undefined ? [] : [mapKey], entries,
+        (rows, complete) => runAuthoring(records, workspaces, rows, command, complete));
+      if (result.write) await writeAuthoring(tx, buildId, result.write);
+      // The workspace row's cascade removes its revisions, requests and receipts.
+      if (result.end) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: result.end } });
+      if (result.touch) await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
+      if (result.write && access.delegation) await assertDelegation(tx, access.delegation, locked);
+      return result.response;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
+  async studioOwnerVersions(records: StudioPreparationRecords) {
+    const buildId = records.build.id;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
+      const workspaces = await studioWorkspaces(tx, buildId);
+      const entries = await studioEntries(tx, buildId, workspaces.map((w) => w.materializedId));
+      return readOwnerAuthoringVersions(records, workspaces, entries);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
   async readStudioPreparation(buildId: string, access: StudioBuildAccess) {
     return this.prisma.$transaction(async (tx) => {
       const locked = await lockOpenBuild(tx, buildId); await assertDelegation(tx, access.delegation, locked);
       const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
       assertStudioBuildAccess(build, access);
-      const files = (await tx.buildFile.findMany({ where: { buildId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toBuildFileRecord);
-      const items = (await tx.buildItem.findMany({ where: { buildId }, orderBy: [{ key: "asc" }, { kind: "asc" }] })).map(toBuildItemRecord);
-      return { build, files, items };
+      const records = await studioRecords(tx, build);
+      const context = build.studioContext;
+      const workspace = context?.mapKey && await tx.studioAuthoringWorkspace.findUnique({ where: { buildId_mapKey: { buildId, mapKey: context.mapKey } } });
+      const state = workspace && workspace.state as unknown as AuthoringWorkspace;
+      return state && state.encounterKey === context?.encounterKey
+        ? projectWorkingRevision(records, state, await studioEntries(tx, buildId, [state.workingId])) : records;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
   async setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess) {
@@ -1131,6 +1231,7 @@ export class PostgresRoomStore implements RoomStore {
       await assertDelegation(tx, guard.delegation, build);
       const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
       const existing = await tx.buildItem.findUnique({ where });
+      if (affectedWorkspaces(await studioWorkspaces(tx, item.buildId), item).length) rejectEnrolled();
       if (existing?.publishedId) throw new BuildItemLockedError("published");
       if (existing?.editedByUser) throw new BuildItemLockedError("edited");
       checkGuard(guard, build, existing);
@@ -1161,15 +1262,19 @@ export class PostgresRoomStore implements RoomStore {
       const where = { buildId_kind_key: { buildId, kind, key } };
       const existing = await tx.buildItem.findUnique({ where });
       if (!existing) return false;
+      const workspaces = await studioWorkspaces(tx, buildId);
+      if (!byOwner && affectedWorkspaces(workspaces, { kind, key }).length) rejectEnrolled();
       if (existing.publishedId) throw new BuildItemLockedError("published");
       if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
+      const ended = byOwner ? ownerRemovalEnds(workspaces, { kind, key }) : [];
+      if (ended.length) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: { in: ended } } });
       await tx.buildItem.delete({ where });
       await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
       return true;
     });
   }
 
-  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt"> = {}) {
+  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt" | "ownerToken" | "ownerIds"> = {}) {
     return this.prisma.$transaction(async (tx) => {
       const build = await lockOpenBuild(tx, item.buildId);
       const where = { buildId_kind_key: { buildId: item.buildId, kind: item.kind, key: item.key } };
@@ -1179,6 +1284,17 @@ export class PostgresRoomStore implements RoomStore {
       const values = {
         data: item.data as Prisma.InputJsonValue, flags: item.flags as Prisma.InputJsonValue, notCarriedOver: item.notCarriedOver, editedByUser: true, updatedAt: new Date(),
       };
+      const workspaces = await studioWorkspaces(tx, item.buildId);
+      const affected = affectedWorkspaces(workspaces, item);
+      if (affected.length) {
+        const fullBuild = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: item.buildId } }));
+        const records = await studioRecords(tx, fullBuild);
+        const entries = await studioEntries(tx, item.buildId, affected.map((w) => w.materializedId));
+        const next: BuildItemRecord = { ...item, editedByUser: true, publishedId: null, updatedAt: values.updatedAt.toISOString() };
+        const writes = await withHistory(tx, item.buildId, affected.map((w) => w.mapKey), entries,
+          (rows, complete) => ownerAuthoringWrites(records, workspaces, rows, next, guard.ownerToken, guard.ownerIds, complete));
+        for (const write of writes) await writeAuthoring(tx, item.buildId, write);
+      }
       const row = await tx.buildItem.upsert({ where, create: { id: randomUUID(), buildId: item.buildId, kind: item.kind, key: item.key, ...values }, update: values });
       await tx.build.update({ where: { id: item.buildId }, data: { updatedAt: new Date() } });
       return toBuildItemRecord(row);
@@ -1188,6 +1304,7 @@ export class PostgresRoomStore implements RoomStore {
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
     return missingImageAsError(() => this.prisma.$transaction(async (tx) => {
       await lockOpenBuild(tx, plan.buildId);
+      guardStudioPublish(await studioWorkspaces(tx, plan.buildId), plan);
       if (await tx.buildFile.count({ where: { id: { in: plan.assets.map((a) => a.fileId) }, studio: { not: Prisma.DbNull } } })) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
       const scope = { ownerGmId: plan.ownerGmId };
       await lockUploadAllowance(tx, scope);

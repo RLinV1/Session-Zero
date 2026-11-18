@@ -1,5 +1,80 @@
 # Implementation handoff
 
+## M3 review fixes, 2026-11-18
+
+A read-only review of `fab6f9cb` found three defects. All three are fixed in `7b777e92`
+on top of that commit (PR #223), and D14 records the changed contract.
+
+- **Owner lockout.** A connection could fill the 32-revision history with stale proposals.
+  After that, every owner builder save, delete and publish of the enrolled scene was refused,
+  and discarding the build was the only way out. Now:
+  - Delegated proposals are still refused at a limit.
+  - Owner writes prune to 24 revisions. Pruning keeps the reference, working and
+    materialized revisions, and removes orphaned requests and receipts.
+  - Postgres reloads the full history in the same transaction only when pruning is needed.
+  - Owner deletes are never refused. Deleting an enrolled map or encounter ends the correction.
+  - The new owner route `DELETE /api/builds/:id/studio/authoring/maps/:mapKey` ends a
+    correction explicitly.
+- **Mark scope.** A mark was scope-checked by its square's top-left corner, so marks one
+  cell past the selection's right and bottom edges passed. A mark now uses its whole square,
+  clipped to the image, for selection and for its destination.
+- **Sticky dependencies.** Guarded creatures and files were the union of all history, so a
+  creature stayed guarded after its tokens were removed. They are now recomputed from the
+  current working and materialized revisions on each write. An owner edit whose scene can't
+  be captured (for example, after a used creature is deleted) is saved and shows as drifted.
+- **Evidence.**
+  - Three new or extended tests in `apps/server/test/studioAuthoring.test.ts` fail on
+    `fab6f9cb` and pass with the fixes.
+  - On Node with the default stores, lint, typecheck and `npm test` passed (5,462 tests,
+    70 optional-service skips).
+  - On a disposable Postgres 17, the builder and Studio server files passed serialized
+    twice (513 tests).
+  - Run in parallel on one shared database, those files fail intermittently on both
+    `fab6f9cb` and the fixes (4 of 5 runs on `fab6f9cb`). The failures are cross-file
+    sweeps and grant cleanup, including `studioStore`'s sweep test. This is pre-existing
+    and not addressed here.
+- **Not done.** There is no builder UI for ending a correction yet (M4). The review's
+  medium-low and low findings (owner-token working ID, guide comment, replay order, mixed
+  token snapshot, full history reads, Studio-off routes, catalog text) are unchanged.
+
+## M3 implementation, 2026-11-18
+
+- Work is on `feat/interactive-ai-scene-studio-m3` in `/private/tmp/session-zero-studio-m3`,
+  with local changes based on merged main `dbb6cd3d` after PRs #220 and #221. Git metadata
+  in the original workspace is read-only, so this is an independent clone. The separate
+  build-access branch has its own credential changes.
+- The owner confirmed first-correction enrollment and that an owner website save becomes
+  the next working revision. The owner explicitly waived the M3 architecture review.
+  The exact HTTP and MCP interfaces, storage limits and requirement-to-test matrix are in
+  [D14](design.md#d14-m3-authoring-contract) and the [ADR amendment](../../../docs/adr/0073-interactive-scene-studio.md#m3-revision-and-enrollment-amendment).
+- The additive migration adds the authoring workspace and immutable entries. Both stores
+  serialize enrollment, saved proposals and native edits with the build. The signed-in
+  owner creates a request or restores history. The MCP tools read a request or revision and
+  submit scoped edits against the inspected base. Both Studio snapshots display the
+  matching working revision. The native owner editor carries the inspected version and
+  preserves line, mark and placement IDs when updating existing objects.
+- Node 22.23.2 lint, typecheck, build and the full repository test command passed
+  with 5,460 passing tests. The default run skipped 70 optional-service tests. The diff
+  review covered request authorization, legacy-write guards, owner preconditions,
+  fixture isolation and migration cleanup.
+- On isolated Postgres 17 and memory, the focused Studio and builder run passed 112 tests.
+  Checked cropped-edge erasure, portal cutting, whole-object and footprint scope, two
+  concurrent proposals, an old save tool, website saves, profile drift, revocation, retries,
+  restore, capacity, discard and ordinary publication. After a real Postgres service
+  restart, 3 workspace rows and 80 immutable entries matched the counts and content
+  fingerprints from before restart. The disposable database was stopped.
+- The real HTTP and MCP regression retrieved a signed-in owner's request, advanced its
+  revision, and reopened a saved stale candidate. Playwright passed 11 Chromium Studio
+  consent, intake and owner-save checks. The new website grid-save path passed all six
+  desktop and narrow Chromium, Firefox and WebKit projects.
+- Synthetic authoring snapshots measured 45,248 bytes for a representative scene and
+  901,786 for a dense one. The 32-revision dense estimate is 27.52 MiB before request and
+  receipt overhead. OpenSpec validation passed with the two existing geometry and
+  reopening requirement-length warnings.
+- M4 starts with the owner request, revision, and scoped proposal contracts in D14. It
+  adds the interactive request and same-camera comparison flow, followed by real ChatGPT
+  qualification. Current evidence is local HTTP, MCP and browser execution.
+
 ## Personal EC2 pilot, 2026-11-18
 
 The owner deployed an isolated Studio pilot in AWS Ohio at `https://studio-test.habticraft.com`. The personal ChatGPT Work plugin connects to `https://studio-test.habticraft.com/mcp/studio`. Pilot release `7cbb867c` enabled public signup at `/signup`. Pilot accounts, OAuth grants, builds, and private media are stored separately from production and persist across restarts.

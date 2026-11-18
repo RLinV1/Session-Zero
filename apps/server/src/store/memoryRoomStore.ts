@@ -1,5 +1,7 @@
+import { affectedWorkspaces, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
+import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
-import { assertStudioBuildAccess, assertStudioContext, type StudioBuildAccess } from "./studioPreparation";
+import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import { StudioPreparationOutcome, type StudioContext } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -106,6 +108,7 @@ export class MemoryRoomStore implements RoomStore {
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
   private animations = new Map<string, LibraryAnimationRecord>();
+  private authoring = new Map<string, { workspaces: AuthoringWorkspace[]; entries: AuthoringEntry[] }>();
   private builds = new Map<string, BuildRecord>();
   private buildFiles = new Map<string, BuildFileRecord>();
   /** `${buildId}/${kind}/${key}`, so a key an AI chose can't collide with a property name. */
@@ -810,10 +813,59 @@ export class MemoryRoomStore implements RoomStore {
     if (fileId !== build.studioFileId) build.studioContext = { sourceFileId: fileId, mapKey: null, encounterKey: null };
     build.studioFileId = fileId;
   }
+  private studioRecords(build: BuildRecord) {
+    return { build, files: [...this.buildFiles.values()].filter((f) => f.buildId === build.id),
+      items: [...this.buildItems.values()].filter((i) => i.buildId === build.id).map((i) => this.readBuildItem(i)) };
+  }
+
+  private writeAuthoring(buildId: string, write: AuthoringWrite) {
+    const ledger = this.authoring.get(buildId) ?? { workspaces: [], entries: [] };
+    ledger.workspaces = [...ledger.workspaces.filter((w) => w.mapKey !== write.workspace.mapKey), write.workspace];
+    const removed = new Set(write.removed.map(({ kind, id }) => `${kind}/${id}`));
+    ledger.entries = [...ledger.entries.filter((e) => e.mapKey !== write.workspace.mapKey || !removed.has(`${e.kind}/${e.id}`)), ...write.entries];
+    this.authoring.set(buildId, ledger);
+  }
+
+  /** Ends these maps' corrections: their workspaces and every entry go, as the Postgres cascade does. */
+  private endAuthoring(buildId: string, mapKeys: readonly string[]) {
+    const ledger = this.authoring.get(buildId);
+    if (!ledger || !mapKeys.length) return;
+    ledger.workspaces = ledger.workspaces.filter((w) => !mapKeys.includes(w.mapKey));
+    ledger.entries = ledger.entries.filter((e) => !mapKeys.includes(e.mapKey));
+  }
+
+  async studioAuthoring(buildId: string, access: StudioBuildAccess, command: AuthoringCommand) {
+    const build = this.openBuild(buildId);
+    this.assertDelegation(access.delegation, build);
+    assertStudioBuildAccess(build, access);
+    if (access.passHash !== undefined || (command.kind === "propose" && !access.delegation) ||
+        ((command.kind === "create" || command.kind === "restore" || command.kind === "end") && access.delegation)) {
+      throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
+    }
+    const ledger = this.authoring.get(buildId);
+    const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], command, true);
+    if (result.write) {
+      this.assertDelegation(access.delegation, build);
+      this.writeAuthoring(buildId, result.write);
+    }
+    if (result.end) this.endAuthoring(buildId, [result.end]);
+    if (result.touch) this.touchBuild(build);
+    return structuredClone(result.response);
+  }
+
+  async studioOwnerVersions(records: StudioPreparationRecords) {
+    const ledger = this.authoring.get(records.build.id);
+    return ledger ? structuredClone(readOwnerAuthoringVersions(records, ledger.workspaces, ledger.entries)) : new Map();
+  }
+
   async readStudioPreparation(buildId: string, access: StudioBuildAccess) {
     const build = this.openBuild(buildId);
     assertStudioBuildAccess(build, access); this.assertDelegation(access.delegation, build);
-    return structuredClone({ build, files: [...this.buildFiles.values()].filter((f) => f.buildId === buildId), items: [...this.buildItems.values()].filter((i) => i.buildId === buildId) });
+    const records = this.studioRecords(build);
+    const ledger = this.authoring.get(buildId);
+    const context = build.studioContext;
+    const workspace = context && ledger?.workspaces.find((w) => w.mapKey === context.mapKey && w.encounterKey === context.encounterKey);
+    return structuredClone(workspace && ledger ? projectWorkingRevision(records, workspace, ledger.entries) : records);
   }
   async setStudioContext(buildId: string, context: StudioContext, access: StudioBuildAccess) {
     const build = this.openBuild(buildId);
@@ -845,6 +897,7 @@ export class MemoryRoomStore implements RoomStore {
     this.studioMediaJobs.set(job.id, job);
   }
   private closeStudioBuild(buildId: string) {
+    this.authoring.delete(buildId);
     for (const job of this.studioMediaJobs.values()) if (job.buildId === buildId && job.state === "write") job.state = "cancelled";
     for (const grant of this.studioGrants.values()) {
       if (!grant.buildIds.includes(buildId)) continue;
@@ -871,6 +924,7 @@ export class MemoryRoomStore implements RoomStore {
     this.assertDelegation(guard.delegation, build);
     const id = `${item.buildId}/${item.kind}/${item.key}`;
     const existing = this.buildItems.get(id);
+    if (affectedWorkspaces(this.authoring.get(item.buildId)?.workspaces ?? [], item).length) rejectEnrolled();
     if (existing?.publishedId) throw new BuildItemLockedError("published");
     if (existing?.editedByUser) throw new BuildItemLockedError("edited");
     assertChoicesAllow(guard, build);
@@ -908,20 +962,28 @@ export class MemoryRoomStore implements RoomStore {
     const id = `${buildId}/${kind}/${key}`;
     const existing = this.buildItems.get(id);
     if (!existing) return false;
+    const workspaces = this.authoring.get(buildId)?.workspaces ?? [];
+    if (!byOwner && affectedWorkspaces(workspaces, existing).length) rejectEnrolled();
     if (existing.publishedId) throw new BuildItemLockedError("published");
     if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
+    if (byOwner) this.endAuthoring(buildId, ownerRemovalEnds(workspaces, existing));
     this.buildItems.delete(id);
     this.touchBuild(build);
     return true;
   }
 
-  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt"> = {}) {
+  async editBuildItem(item: NewBuildItem, guard: Pick<BuildWriteGuard, "expectedUpdatedAt" | "ownerToken" | "ownerIds"> = {}) {
     const build = this.openBuild(item.buildId);
     const id = `${item.buildId}/${item.kind}/${item.key}`;
     const existing = this.buildItems.get(id);
     if (existing?.publishedId) throw new BuildItemLockedError("published");
     if (guard.expectedUpdatedAt !== undefined && (existing?.updatedAt ?? null) !== guard.expectedUpdatedAt) throw new BuildItemChangedError();
     const row: BuildItemRecord = { ...structuredClone(item), editedByUser: true, publishedId: null, updatedAt: new Date().toISOString() };
+    const ledger = this.authoring.get(item.buildId);
+    if (ledger) {
+      const writes = ownerAuthoringWrites(this.studioRecords(build), ledger.workspaces, ledger.entries, row, guard.ownerToken, guard.ownerIds, true);
+      for (const write of writes) this.writeAuthoring(item.buildId, write);
+    }
     this.buildItems.set(id, row);
     this.touchBuild(build);
     return structuredClone(row);
@@ -929,6 +991,7 @@ export class MemoryRoomStore implements RoomStore {
 
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
     const build = this.openBuild(plan.buildId);
+    guardStudioPublish(this.authoring.get(plan.buildId)?.workspaces ?? [], plan);
     if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.studio)) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
     if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.publishedAssetId !== null)) throw new BuildPublishConflictError();
     const itemId = (kind: BuildItemKind, key: string) => `${plan.buildId}/${kind}/${key}`;
