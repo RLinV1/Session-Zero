@@ -81,6 +81,7 @@ export function buildMcpApp(options: McpAppOptions) {
 
   // Every type, so no Content-Type can carry a body past this limit to the transport's own parser.
   const jsonBody = express.json({ limit: "64kb", type: () => true });
+  const buildBody = express.json({ limit: "12mb", type: () => true });
 
   /**
    * Both protocol eras on one stateless endpoint. 2025-era clients (an `initialize` handshake, no
@@ -128,7 +129,7 @@ export function buildMcpApp(options: McpAppOptions) {
   })));
 
   // Kept off /mcp, so an AI reading strangers' chat at a table doesn't hold the build tools (ADR 0053).
-  if (!options.studioOnly) app.post("/mcp/build", jsonBody, serve((req) => createBuildMcpServer({
+  if (!options.studioOnly) app.post("/mcp/build", buildBody, serve((req) => createBuildMcpServer({
     roomServerUrl: options.roomServerUrl,
     clientAddress: req.ip ?? "unknown",
     publicOrigin: options.publicOrigin ?? options.allowedOrigins[0] ?? options.roomServerUrl,
