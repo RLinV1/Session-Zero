@@ -1,7 +1,7 @@
 import { PencilSimple, Trash } from "@phosphor-icons/react";
 import { IconAction } from "../ui/IconAction";
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { CreatureFields, MAX_TOKEN_ATTACKS, MIN_HP, creatureHpValid, type AttackPreset, type ConditionId, type LibraryAsset, type LibraryCreature } from "@vtt/shared";
+import { CreatureFields, MAX_LIBRARY_FOLDER, MAX_TOKEN_ATTACKS, MIN_HP, creatureHpValid, type AttackPreset, type ConditionId, type LibraryAsset, type LibraryCreature } from "@vtt/shared";
 import { PresetEditor } from "../panels/AttackPanel";
 import { presetSummary } from "../panels/attackRoll";
 import { ConditionPicker } from "../panels/ConditionMarker";
@@ -17,10 +17,14 @@ import { LibraryPicker } from "./LibraryPicker";
 import { TokenDisc } from "../ui/TokenDisc";
 import { t } from "../i18n/locale";
 import { AttackEditorContext, useGmAttackEditorEnv } from "../panels/attackEditorContext";
+import type { CardSelection } from "../ui/selection";
+import { SelectableCard } from "./LibraryListTools";
 
 /** A creature in the library's Creatures tab (library-creatures): its art or a colour disc, name and stats. */
 export function CreatureCard(props: {
   creature: LibraryCreature;
+  /** Its part in the tab's selection, when the tab lets the GM choose several (library-organize). */
+  selection?: CardSelection;
   onEdit: () => void;
   onDeleted: () => void;
 }) {
@@ -42,7 +46,7 @@ export function CreatureCard(props: {
   }
 
   return (
-    <li className="asset-card creature-card">
+    <SelectableCard className="asset-card creature-card" name={creature.name} selection={props.selection}>
       <div className="asset-thumb token">
         <TokenDisc name={creature.name} color={creature.color} image={creature.imageUrl} size="5.5rem" />
       </div>
@@ -67,7 +71,7 @@ export function CreatureCard(props: {
           <IconAction icon={<Trash size={16} aria-hidden="true" />} label={t("common.delete")} danger onClick={() => setConfirming(true)} />
         </div>
       )}
-    </li>
+    </SelectableCard>
   );
 }
 
@@ -108,12 +112,18 @@ export function CreatureForm(props: {
   creature: LibraryCreature | null;
   /** Values for a new creature, e.g. from a token on the board (Save as creature, KAN-70). */
   prefill?: CreaturePrefill;
+  /** The GM's folders, offered as they type one (library-organize). */
+  folders?: readonly string[];
+  /** The folder a new creature starts in: the one open in the library. */
+  defaultFolder?: string | null;
   onSaved: (creature: LibraryCreature) => void;
   onCancel: () => void;
 }) {
   const { creature } = props;
   const from = creature ?? props.prefill ?? null;
   const [name, setName] = useState(from?.name ?? "");
+  const [folder, setFolder] = useState(creature ? creature.folder ?? "" : props.defaultFolder ?? "");
+  const folderListId = useId();
   const [size, setSize] = useState(String(from?.size ?? 1));
   const [hp, setHp] = useState(from?.hp == null ? "" : String(from.hp));
   const [maxHp, setMaxHp] = useState(from?.maxHp == null ? "" : String(from.maxHp));
@@ -144,7 +154,8 @@ export function CreatureForm(props: {
     attacks,
     imageAssetId: image?.assetId ?? null,
   });
-  const hint = parsed.success ? null : parsed.error.issues[0]?.message === "Starting HP cannot exceed Max HP"
+  const folderTooLong = folder.trim().length > MAX_LIBRARY_FOLDER;
+  const hint = folderTooLong ? t("library.folder.tooLong", { max: MAX_LIBRARY_FOLDER }) : parsed.success ? null : parsed.error.issues[0]?.message === "Starting HP cannot exceed Max HP"
     ? t("creature.hpOverMax")
     : fieldHint(String(parsed.error.issues[0]?.path[0])) ?? t("creature.checkValues");
   const touched = creature !== null || name !== "";
@@ -154,13 +165,16 @@ export function CreatureForm(props: {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!parsed.success || saving) return;
+    if (!parsed.success || folderTooLong || saving) return;
     setSaving(true);
     setError(null);
+    // A typed folder that matches one apart from case joins it rather than starting another.
+    const typed = folder.trim();
+    const filed = typed === "" ? null : props.folders?.find((f) => f.localeCompare(typed, undefined, { sensitivity: "accent" }) === 0) ?? typed;
     try {
       const saved = creature
-        ? await api.library.creatures.update(creature.id, parsed.data)
-        : await api.library.creatures.create(parsed.data);
+        ? await api.library.creatures.update(creature.id, { ...parsed.data, folder: filed })
+        : await api.library.creatures.create({ ...parsed.data, folder: filed });
       props.onSaved(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("creature.saveFailed"));
@@ -209,6 +223,14 @@ export function CreatureForm(props: {
             </div>
           )}
         </div>
+        <label>
+          {t("library.folder.field")}
+          <input value={folder} onChange={(e) => setFolder(e.target.value)} maxLength={MAX_LIBRARY_FOLDER + 20} list={folderListId} aria-describedby={`${folderListId}-hint`} />
+          <datalist id={folderListId}>
+            {(props.folders ?? []).map((f) => <option key={f} value={f} />)}
+          </datalist>
+          <span id={`${folderListId}-hint`} className="muted small-print">{t("library.folder.fieldHint")}</span>
+        </label>
         {/* Rarely changed, so tucked away as in Add Token; open whenever it holds a value or the HP hint
             (creature-form-advanced-settings). */}
         <details className="token-editor-section" open={advancedOpen} onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}>
@@ -229,7 +251,7 @@ export function CreatureForm(props: {
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row modal-actions">
           <button type="button" className="secondary" disabled={saving} onClick={props.onCancel}>{t("common.cancel")}</button>
-          <button className="primary" type="submit" disabled={!parsed.success || saving}>
+          <button className="primary" type="submit" disabled={!parsed.success || folderTooLong || saving}>
             {saving ? t("common.saving") : creature ? t("creature.save") : t("creature.create")}
           </button>
         </div>

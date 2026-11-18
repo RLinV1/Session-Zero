@@ -11,7 +11,9 @@ import {
   LibraryPatchRequest,
   LibraryUploadFields,
   GridDetectionStatus,
+  MoveToFolderRequest,
   type GmRoomSummary,
+  type MoveToFolderResponse,
   type LibraryAsset,
   type LibraryUsageResponse,
 } from "@vtt/shared";
@@ -234,6 +236,22 @@ export function registerLibraryRoutes(
     });
   });
 
+  /**
+   * Files several of the GM's maps, token art, creatures, templates or animations in a folder, or in
+   * none (library-organize, ADR 0075). All or nothing: an id that isn't theirs answers 404, the
+   * same as for one missing item, and nothing moves.
+   */
+  app.post("/api/library/move-to-folder", (req, res) => {
+    void withGm(req, res, async (gmId) => {
+      const body = MoveToFolderRequest.safeParse(req.body);
+      if (!body.success) return void res.status(400).json({ error: body.error.issues });
+      const { kind, ids, folder } = body.data;
+      if (!(await store.moveToFolder(kind, ids, gmId, folder))) return void res.status(404).json({ error: "Not everything chosen is in your library" });
+      const response: MoveToFolderResponse = { moved: ids.length };
+      res.json(response);
+    });
+  });
+
   registerCreatureRoutes(app, { store, withGm });
   registerAnimationRoutes(app, { store, withGm });
 
@@ -277,6 +295,7 @@ export function toWire(record: LibraryAssetRecord): LibraryAsset {
     width: record.width,
     height: record.height,
     grid: record.grid,
+    folder: record.folder ?? null,
     createdAt: record.createdAt,
   };
 }

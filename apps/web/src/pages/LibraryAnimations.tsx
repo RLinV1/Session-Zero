@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Copy, PencilSimple, Sparkle, TextAa, Trash } from "@phosphor-icons/react";
 import { MAX_ANIMATION_NAME, type AnimationDef, type LibraryAnimation } from "@vtt/shared";
 import { BUILTIN_ANIMATIONS } from "../board/effectPresets";
@@ -12,6 +12,11 @@ import { AnimationThumbnail } from "../ui/AnimationThumbnail";
 import { retainThumbnailRenderer } from "../board/animationThumbnail";
 import { EmptyState } from "../ui/EmptyState";
 import { t } from "../i18n/locale";
+import { SelectableCard } from "./LibraryListTools";
+import { FolderedList } from "./LibraryFolderedList";
+import { ALL_FOLDERS, viewFolder, type FolderView } from "./LibraryFolders";
+import { ItemsBulkDelete } from "./LibraryBulkDelete";
+import type { CardSelection, Selection } from "../ui/selection";
 
 /** Library animations whose name contains `query`, in the order given (case-insensitive). */
 export function filterAnimations(animations: readonly LibraryAnimation[], query: string): LibraryAnimation[] {
@@ -25,13 +30,22 @@ export function copyName(name: string): string {
   return t("animation.copyName", { name: name.slice(0, MAX_ANIMATION_NAME - overhead).trimEnd() }).slice(0, MAX_ANIMATION_NAME);
 }
 
+const updatedAt = (a: LibraryAnimation) => a.updatedAt;
+
 /**
  * The library's Animations tab (ADR 0038): the GM's saved board animations with search, create,
- * rename, duplicate, delete and "Start from built-in", and an editor with a live preview.
+ * rename, duplicate, delete and "Start from built-in", and an editor with a live preview. Like
+ * every library tab, they sort, go in folders, and can be chosen several at a time (library-organize).
  */
-export function AnimationsTab({ query, onError }: { query: string; onError: (message: string | null) => void }) {
+export function AnimationsTab({ query, onError, view = ALL_FOLDERS, onView = () => {} }: {
+  query: string;
+  onError: (message: string | null) => void;
+  view?: FolderView;
+  onView?: (view: FolderView) => void;
+}) {
   const [animations, setAnimations] = useState<LibraryAnimation[] | null>(null);
   const [editing, setEditing] = useState<LibraryAnimation | "new" | null>(null);
+  const [deleting, setDeleting] = useState<{ chosen: LibraryAnimation[]; selection: Selection } | null>(null);
   useEffect(retainThumbnailRenderer, []);
 
   useEffect(() => {
@@ -45,13 +59,19 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
     };
   }, [onError]);
 
-  const shown = useMemo(() => filterAnimations(animations ?? [], query), [animations, query]);
   const upsert = (saved: LibraryAnimation) =>
     setAnimations((all) => (all?.some((a) => a.id === saved.id) ? all.map((a) => (a.id === saved.id ? saved : a)) : [saved, ...(all ?? [])]));
 
-  const create = async (name: string, def: AnimationDef): Promise<LibraryAnimation | null> => {
+  /** A new animation goes in `folder`: the one open, or for a copy, its original's. */
+  const file = async (saved: LibraryAnimation, folder: string | null): Promise<LibraryAnimation> => {
+    if (folder === null) return saved;
+    await api.library.moveToFolder({ kind: "animation", ids: [saved.id], folder });
+    return { ...saved, folder };
+  };
+
+  const create = async (name: string, def: AnimationDef, folder = viewFolder(view)): Promise<LibraryAnimation | null> => {
     try {
-      const saved = await api.library.animations.create({ name, def });
+      const saved = await file(await api.library.animations.create({ name, def }), folder);
       upsert(saved);
       onError(null);
       return saved;
@@ -81,7 +101,7 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
       </div>
 
       {!animations && <p className="muted" aria-busy="true">{t("common.loading")}</p>}
-      {animations && shown.length === 0 && (
+      {animations && animations.length === 0 && (
         query ? (
           <p className="muted">{t("animation.noMatch")}</p>
         ) : (
@@ -91,26 +111,59 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
           </EmptyState>
         )
       )}
-      <ul className="plain asset-grid" role="tabpanel">
-        {shown.map((animation) => (
-          <AnimationCard
-            key={animation.id}
-            animation={animation}
-            onEdit={() => setEditing(animation)}
-            onRenamed={upsert}
-            onDuplicate={() => void create(copyName(animation.name), animation.def)}
-            onDeleted={() => setAnimations((all) => (all ?? []).filter((a) => a.id !== animation.id))}
-            onError={onError}
-          />
-        ))}
-      </ul>
+      {animations && animations.length > 0 && (
+        <FolderedList
+          kind="animation"
+          sortKey="animation"
+          items={animations}
+          query={query}
+          date={updatedAt}
+          view={view}
+          onView={onView}
+          onMoved={(ids, folder) => setAnimations((all) => (all ?? []).map((a) => (ids.includes(a.id) ? { ...a, folder } : a)))}
+          noMatch={t("animation.noMatch")}
+          renderCard={(animation, selection) => (
+            <AnimationCard
+              key={animation.id}
+              animation={animation}
+              selection={selection}
+              onEdit={() => setEditing(animation)}
+              onRenamed={upsert}
+              onDuplicate={() => void create(copyName(animation.name), animation.def, animation.folder ?? null)}
+              onDeleted={() => setAnimations((all) => (all ?? []).filter((a) => a.id !== animation.id))}
+              onError={onError}
+            />
+          )}
+          actions={({ chosen, selection }) => (
+            <button type="button" className="secondary danger" disabled={chosen.length === 0} onClick={() => setDeleting({ chosen, selection })}>
+              <Trash size={16} aria-hidden="true" />
+              {t("library.bulk.delete")}
+            </button>
+          )}
+        />
+      )}
+      <ItemsBulkDelete
+        items={deleting?.chosen ?? null}
+        title={t("library.bulk.deleteTitle.animation", { count: deleting?.chosen.length ?? 0 })}
+        body={t("library.bulk.animationsBody")}
+        remove={(id) => api.library.animations.remove(id)}
+        onClose={() => setDeleting(null)}
+        onDeleted={(outcome) => {
+          const gone = new Set(outcome.deleted);
+          setAnimations((all) => (all ?? []).filter((a) => !gone.has(a.id)));
+          onError(outcome.failed.length > 0 ? t("library.bulk.partial", { done: outcome.deleted.length, failed: outcome.failed.length }) : null);
+          if (outcome.failed.length === 0) deleting?.selection.stop();
+          setDeleting(null);
+        }}
+      />
 
       {editing !== null && (
         <AnimationEditor
           key={editing === "new" ? "new" : editing.id}
           animation={editing === "new" ? null : editing}
           onSaved={(saved) => {
-            upsert(saved);
+            // A new animation goes in the folder open behind the editor.
+            void (editing === "new" ? file(saved, viewFolder(view)).catch(() => saved) : Promise.resolve(saved)).then(upsert);
             setEditing(null);
           }}
           onCancel={() => setEditing(null)}
@@ -122,6 +175,8 @@ export function AnimationsTab({ query, onError }: { query: string; onError: (mes
 
 function AnimationCard(props: {
   animation: LibraryAnimation;
+  /** Its part in the tab's selection (library-organize). */
+  selection?: CardSelection;
   onEdit: () => void;
   onRenamed: (animation: LibraryAnimation) => void;
   onDuplicate: () => void;
@@ -162,7 +217,7 @@ function AnimationCard(props: {
   };
 
   return (
-    <li className="asset-card animation-card">
+    <SelectableCard className="asset-card animation-card" name={animation.name} selection={props.selection}>
       <AnimationThumbnail animation={animation} />
       <strong className="asset-name" title={animation.name}>{animation.name}</strong>
       <Modal open={renaming !== null} title={t("animation.rename")} onClose={() => setRenaming(null)}>
@@ -193,6 +248,6 @@ function AnimationCard(props: {
           <IconAction icon={<Trash size={16} aria-hidden="true" />} label={t("common.delete")} danger onClick={() => setConfirming(true)} />
         </div>
       )}
-    </li>
+    </SelectableCard>
   );
 }

@@ -70,5 +70,5 @@ function notFound(res: Response) {
 
 /** The owner stays on the server, like an asset's object key. */
 function toWire(record: LibraryAnimationRecord): LibraryAnimation {
-  return { id: record.id, name: record.name, def: record.def, createdAt: record.createdAt, updatedAt: record.updatedAt };
+  return { id: record.id, name: record.name, def: record.def, createdAt: record.createdAt, updatedAt: record.updatedAt, folder: record.folder ?? null };
 }

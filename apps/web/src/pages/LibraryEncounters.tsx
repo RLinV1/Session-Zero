@@ -8,6 +8,8 @@ import { formatRelative } from "../ui/formatRelative";
 import { startEncounterEdit } from "./encounterEdit/startEdit";
 import { EncounterPreviewModal } from "./EncounterPreviewModal";
 import { t } from "../i18n/locale";
+import type { CardSelection } from "../ui/selection";
+import { SelectableCard } from "./LibraryListTools";
 
 /** "3 tokens · 1 fog region", for a template's card and pickers. */
 export function encounterSummary(encounter: EncounterSummary): string {
@@ -47,6 +49,8 @@ export function EncounterCard(props: {
   encounter: EncounterSummary;
   /** The template's library map, for its preview image. */
   map?: LibraryAsset;
+  /** Its part in the tab's selection (library-organize). */
+  selection?: CardSelection;
   onChanged: (encounter: EncounterSummary) => void;
   onDeleted: () => void;
 }) {
@@ -98,7 +102,7 @@ export function EncounterCard(props: {
   }
 
   return (
-    <li className="asset-card encounter-card">
+    <SelectableCard className="asset-card encounter-card" name={encounter.name} selection={props.selection}>
       <EncounterThumb map={props.map} />
       {editing ? (
         <form className="row" onSubmit={(e) => void rename(e)}>
@@ -146,6 +150,6 @@ export function EncounterCard(props: {
         </div>
       )}
       <EncounterPreviewModal templateId={previewing ? encounter.id : null} name={encounter.name} onClose={() => setPreviewing(false)} />
-    </li>
+    </SelectableCard>
   );
 }

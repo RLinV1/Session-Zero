@@ -17,7 +17,12 @@ import {
   ReplayResponse,
   type AssetKind,
   type CreateAnimationRequest,
+  type BulkDeleteCreaturesRequest,
+  type BulkDeleteCreaturesResponse,
+  type BulkUpdateCreaturesRequest,
   type CreateCreatureRequest,
+  type MoveToFolderRequest,
+  type MoveToFolderResponse,
   type DiceLookView,
   RoomDefaults,
   type DiceLooksResponse,
@@ -588,6 +593,10 @@ export const api = {
 
     remove: (id: string) => accountRequest<void>(`/api/library/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
+    /** Files several maps, token art, creatures, templates or animations in a folder, or in none (ADR 0075). */
+    moveToFolder: (request: MoveToFolderRequest) =>
+      accountRequest<MoveToFolderResponse>("/api/library/move-to-folder", { method: "POST", ...jsonBody(request) }),
+
     /** Reusable creatures placed from Add Token (library-creatures, ADR 0012). */
     creatures: {
       list: () => accountRequest<LibraryCreature[]>("/api/library/creatures"),
@@ -597,6 +606,11 @@ export const api = {
         accountRequest<LibraryCreature>(`/api/library/creatures/${encodeURIComponent(id)}`, { method: "PATCH", ...jsonBody(patch) }),
       remove: (id: string) =>
         accountRequest<void>(`/api/library/creatures/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      /** One change to several creatures, all or none: a folder move or shared values (ADR 0075). */
+      updateMany: (request: BulkUpdateCreaturesRequest) =>
+        accountRequest<LibraryCreature[]>("/api/library/creatures/bulk", { method: "PATCH", ...jsonBody(request) }),
+      removeMany: (ids: string[]) =>
+        accountRequest<BulkDeleteCreaturesResponse>("/api/library/creatures/bulk-delete", { method: "POST", ...jsonBody({ ids } satisfies BulkDeleteCreaturesRequest) }),
     },
 
     /** The GM's board animations for attacks and nukes (ADR 0038). */

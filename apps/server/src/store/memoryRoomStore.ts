@@ -6,7 +6,7 @@ import type { SaveLibraryPreparation } from "@vtt/shared";
 import { isShippedKey, SHIPPED_GRID_CORRECTIONS } from "../domain/shippedMaps";
 import { randomUUID } from "node:crypto";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, matchesDetection, type DetectionJob, type DetectionOutcome, type DetectionRecord, type DetectionTarget } from "./gridDetectionStore";
-import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, type RoomDefaults, type GameProfile, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, type RoomDefaults, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, type CommittedEvent, type DieName, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   assertChoicesAllow,
@@ -47,6 +47,7 @@ import {
   type EncounterUpdate,
   type NewEncounterRecord,
   type CreaturePatch,
+  type BulkCreatureRecordPatch,
   type DiceFaceRecord,
   type DiceLookRecord,
   type LibraryAnimationRecord,
@@ -1163,6 +1164,31 @@ export class MemoryRoomStore implements RoomStore {
     return this.creatures.delete(id);
   }
 
+  async updateCreatures(ids: readonly string[], ownerGmId: string, patch: BulkCreatureRecordPatch) {
+    const found = ids.map((id) => this.creatures.get(id));
+    if (found.some((c) => !c || c.ownerGmId !== ownerGmId)) return null;
+    return found.map((creature) => {
+      const next = { ...creature!, ...patch };
+      this.creatures.set(next.id, next);
+      return this.withImage(next);
+    });
+  }
+
+  async moveToFolder(kind: LibraryFolderKind, ids: readonly string[], ownerGmId: string, folder: string | null) {
+    const rows: Map<string, { ownerGmId: string; folder?: string | null }> =
+      kind === "asset" ? this.assets : kind === "creature" ? this.creatures : kind === "encounter" ? this.encounters : this.animations;
+    const found = [...new Set(ids)].map((id) => rows.get(id));
+    if (found.some((row) => !row || row.ownerGmId !== ownerGmId)) return false;
+    for (const row of found) row!.folder = folder;
+    return true;
+  }
+
+  async deleteCreatures(ids: readonly string[], ownerGmId: string) {
+    let deleted = 0;
+    for (const id of new Set(ids)) if (await this.deleteCreature(id, ownerGmId)) deleted++;
+    return deleted;
+  }
+
   async creaturesUsingImage(assetId: string, ownerGmId: string) {
     return [...this.creatures.values()]
       .filter((c) => c.ownerGmId === ownerGmId && c.imageAssetId === assetId)
@@ -1529,6 +1555,7 @@ export class MemoryRoomStore implements RoomStore {
       attacks: structuredClone(creature.attacks ?? []),
       color: creature.color ?? DEFAULT_TOKEN_COLOR,
       conditions: creature.conditions ?? [],
+      folder: creature.folder ?? null,
       imageUrl: image?.url ?? null,
     };
   }
