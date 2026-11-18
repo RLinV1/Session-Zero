@@ -13,9 +13,17 @@
 - Stack readiness was verified separately: clean checkout, Node 22.23.2, fresh migrated
   Postgres, private S3 startup checks, a real detector candidate, public signup and health
   endpoints, and matching OAuth discovery and bearer challenge.
-- Full M2 code review remains pending. Review from base
-  `2bcfa0a1f772a94a907f2c6597aed41d0cef0234` through implementation tip
-  `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`. The manual stack was left running for the owner.
+- Full M2 code review done 2026-11-17 on `2bcfa0a1..257ab8f4`. Fixes are in `2524338e`:
+  - Poll reads use READ COMMITTED under the build lock, so a revocation is no longer reported as a storage failure.
+  - The chat view clears private data when access ends, including through the tagged MCP sign-in challenge.
+  - Refused selections keep live refresh going.
+  - Receipts cover refused 404 writes and are written once per request.
+  - One failing token image no longer takes down the view.
+  - Deliberately left: zh-TW issue-text back-translation (owner: not a priority) and
+    the dev-time Studio bundle build on MCP import. Website idle polling is task 7.1.
+  - Not verified in a real host: whether ChatGPT passes the MCP sign-in error back to the
+    view. Without that, a revoked view shows "Connection interrupted" and keeps the last scene.
+  The manual stack was left running for the owner.
 
 ## Latest session — M2 chat-attachment intake, 2026-11-17
 

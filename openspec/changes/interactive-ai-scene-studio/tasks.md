@@ -51,7 +51,7 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 ## 3. M2 — Watch preparation from a raw map
 
-**Session status, 2026-11-17:** M2 implementation is on `feat/interactive-ai-scene-studio-m2`. D9 records the approved FR-GM-26 attachment policy amendment. The [handoff](handoff.md#m2-manual-acceptance-2026-11-17) records the owner’s acceptance of the real ChatGPT Work test and the scope of that evidence. The full M2 code review is pending.
+**Session status, 2026-11-17:** M2 implementation is on `feat/interactive-ai-scene-studio-m2`. D9 records the approved FR-GM-26 attachment policy amendment. The [handoff](handoff.md#m2-manual-acceptance-2026-11-17) records the owner’s acceptance of the real ChatGPT Work test and the scope of that evidence. The full M2 code review was done 2026-11-17 and its fixes are in `2524338e`; see the handoff.
 
 **Purpose:** Deliver the first useful visual milestone with the existing builder's authoring tools. **Dependency:** M1. **Scope:** Unified display and actual saved progress; revisioned corrections follow in M3/M4.
 
@@ -117,3 +117,9 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 - [ ] 6.9 Reconcile affected active-builder/durable-spec discrepancies, update user/client support guidance, and review the final handoff/receipts; verify all release claims name their actual evidence and archive only when the parent requirements are truly satisfied.
 
 **Exit:** The complete agreed journey is qualified in ChatGPT web, owner-only publication is preserved, and native rooms contain the reviewed result. A production deployment is claimed verified only after a separately authorized production check of the actual deployed revision; otherwise production remains explicitly unverified.
+
+## 7. Lowest priority follow-ups
+
+**Purpose:** Known costs that don't affect correctness, deferred by the owner on 2026-11-17 until everything above is done.
+
+- [ ] 7.1 Stop the website Studio panel polling when no AI is connected. `apps/web/src/pages/build/BuildPage.tsx` mounts `StudioWebsite` on every open build. It reads `GET /api/builds/:id/studio` every 5 s while the tab is visible: one transaction under the per-build write lock, plus `checkBuild` and a fingerprint. Keep the launch-prompt section, and poll only while the build has a live grant, or more slowly when it doesn't. Verify an open build page with no connection makes no snapshot requests, and live refresh still meets 3.3 once an AI connects.
