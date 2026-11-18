@@ -51,7 +51,7 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 ## 3. M2 — Watch preparation from a raw map
 
-**Session status, 2026-11-17:** M2 implementation is on `feat/interactive-ai-scene-studio-m2`. D9 records the approved FR-GM-26 attachment policy amendment and the [handoff](handoff.md) records the user-reported manual observations and pending qualification. Task 3.7 remains open.
+**Session status, 2026-11-17:** M2 implementation is on `feat/interactive-ai-scene-studio-m2`. D9 records the approved FR-GM-26 attachment policy amendment. The [handoff](handoff.md#m2-manual-acceptance-2026-11-17) records the owner’s acceptance of the real ChatGPT Work test and the scope of that evidence. The full M2 code review is pending.
 
 **Purpose:** Deliver the first useful visual milestone with the existing builder's authoring tools. **Dependency:** M1. **Scope:** Unified display and actual saved progress; revisioned corrections follow in M3/M4.
 
@@ -63,7 +63,7 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 - [ ] 3.4 Display unfinished, awaiting-input, saved, invalid and uncertain states using actual backend outcomes; verify a failed save retains the last saved overlay and no simulated reasoning or percentage is shown.
 - [ ] 3.5 Guide initial grid/geometry/terrain/token preparation using the current native rules and owner choices; verify unconfirmed grids remain inspectable and blocking issues are actionable without claiming publication readiness.
 - [ ] 3.6 Add English/zh-TW controls, keyboard review, narrow/fullscreen layouts and stable focus/camera behavior; verify relevant browser workflows and hosts without Apps retain useful tools and a website path.
-- [ ] 3.7 Run a real ChatGPT preparation from an original image plus token art; verify the grid, geometry, Base terrain and placements appear without returning to the website, then finish required checks/review and hand off evidence.
+- [x] 3.7 Run a real ChatGPT preparation from an original image plus token art; verify the grid, geometry, Base terrain and placements appear without returning to the website, then finish required checks/review and hand off evidence. Closed at the owner’s request based on their real ChatGPT Work test at `0cd8818e`. See the handoff for the evidence and outstanding code review.
 
 **Exit:** The user can watch a raw image become a prepared private draft inside ChatGPT. This is an internal useful preview of part of the feature; it does not claim the M3–M5 revision/correction guarantees already exist.
 

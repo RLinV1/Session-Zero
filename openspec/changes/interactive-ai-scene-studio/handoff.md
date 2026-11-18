@@ -1,5 +1,22 @@
 # Implementation handoff
 
+## M2 manual acceptance, 2026-11-17
+
+- The owner tested the fresh isolated M2 stack at `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`
+  in ChatGPT Work with the temporary personal plugin `Session Zero Studio M2 Manual (Fresh)`.
+  The Studio resource was `ui://session-zero/studio.08d67fe46f615e81.html`.
+- The owner reported that the exercised behavior worked well enough to close task 3.7.
+  They observed that a build created after OAuth consent was outside the existing grant.
+  That matches D7: consent covers the selected build IDs, and a new build needs a new grant.
+  The report was an overall acceptance and included no per-check matrix, original byte
+  comparison, or save-to-display measurements.
+- Stack readiness was verified separately: clean checkout, Node 22.23.2, fresh migrated
+  Postgres, private S3 startup checks, a real detector candidate, public signup and health
+  endpoints, and matching OAuth discovery and bearer challenge.
+- Full M2 code review remains pending. Review from base
+  `2bcfa0a1f772a94a907f2c6597aed41d0cef0234` through implementation tip
+  `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`. The manual stack was left running for the owner.
+
 ## Latest session — M2 chat-attachment intake, 2026-11-17
 
 - Worktree `/private/tmp/session-zero-studio-m2`, branch `feat/interactive-ai-scene-studio-m2`.
@@ -30,7 +47,7 @@ The user ran ChatGPT Work on `sz-studio-m2-e9216bcf` and reported these observat
 > - Only failure: composer imports refused with "origin" (diagnosed above; interim fix 9481a162).
 
 The placement line ends at “visible and” in the received report. This records the observed
-run with its intake failure. **Task 3.7 remains unchecked.** User confirmation is pending
+run with its intake failure. Task 3.7 was open at the time. Individual results were pending
 for zh-TW, fullscreen/narrow, close recovery, disabled permissions and refused saves,
 multi-map/encounter separation, and disconnect/reconnect with a newly created build.
 
