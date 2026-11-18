@@ -315,6 +315,7 @@ export interface BuildFileView {
 }
 
 export interface BuildItemView {
+  authoring?: import("./studioAuthoring").StudioOwnerVersion;
   publishedId?: string | null;
   kind: "creature" | "map" | "encounter";
   key: string;

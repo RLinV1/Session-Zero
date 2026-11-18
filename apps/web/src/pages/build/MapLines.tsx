@@ -1,3 +1,4 @@
+import type { StudioOwnerIds } from "@vtt/shared";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { CaretLeft, CaretRight, Flag, Trash, X } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
@@ -213,7 +214,7 @@ function Chosen({ lines, chosen, flags }: { lines: readonly DraftLine[]; chosen:
  * A map's walls, doors and windows, as the AI and the file left them (ADR 0053). The owner can change
  * any opening and change or remove anything the AI drew. The map card also offers drawing tools.
  */
-export function MapWalls({ setup, openings, blocked, editable, editedByUser, busy, picker, onSave }: {
+export function MapWalls({ setup, openings, blocked, editable, editedByUser, busy, picker, ids, onSave }: {
   setup: DraftMapSetup;
   openings: readonly OpeningView[];
   /** Drawn doors and windows a wall still blocks. */
@@ -222,7 +223,8 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
   editedByUser: boolean;
   busy: boolean;
   picker: LinePicker;
-  onSave: (setup: DraftMapSetup) => Promise<void>;
+  ids?: StudioOwnerIds;
+  onSave: (setup: DraftMapSetup, ids?: StudioOwnerIds) => Promise<void>;
 }) {
   const headId = useId();
   const [resetting, setResetting] = useState(false);
@@ -282,7 +284,7 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
     void onSave({ ...setup, openings: [...others, ...opening].sort((a, b) => a.number - b.number) });
   };
   const changeChosen = (change: (line: DraftLine) => DraftLine) =>
-    void onSave({ ...setup, lines: lines.map((l, i) => (picker.chosen.has(i) ? change(l) : l)) });
+    void onSave({ ...setup, lines: lines.map((l, i) => (picker.chosen.has(i) ? change(l) : l)) }, ids);
   const makeKind = (kind: LineKind) => {
     if (kindUnselectedFor !== chosenKey && chosenKinds.size === 1 && chosenKinds.has(kind)) {
       setKindUnselectedFor(chosenKey);
@@ -292,8 +294,8 @@ export function MapWalls({ setup, openings, blocked, editable, editedByUser, bus
     if (chosenKinds.size !== 1 || !chosenKinds.has(kind)) changeChosen((l) => withKind(l, kind));
   };
   const makeState = (state: PortalState) => { if (chosenStates.size !== 1 || !chosenStates.has(state)) changeChosen((l) => withKind(l, l.kind, state)); };
-  const removeChosen = () => void onSave({ ...setup, lines: lines.filter((_, i) => !picker.chosen.has(i)) });
-  const removeMark = (index: number) => void onSave({ ...setup, marks: setup.marks.filter((_, i) => i !== index) });
+  const removeChosen = () => void onSave({ ...setup, lines: lines.filter((_, i) => !picker.chosen.has(i)) }, { lines: ids?.lines?.filter((_, i) => !picker.chosen.has(i)) });
+  const removeMark = (index: number) => void onSave({ ...setup, marks: setup.marks.filter((_, i) => i !== index) }, { marks: ids?.marks?.filter((_, i) => i !== index) });
 
   const drawn = KINDS.filter((k) => groups[k].length > 0).map((k) => plural(groups[k].length, k));
   const summary = [

@@ -1,6 +1,6 @@
 # Tasks
 
-**Status:** M0 complete on 2026-11-16. ADR accepted by Raymond at `6f645f29`; M0 amendments approved. M1a (2.1–2.2, unmerged PR #212) and M1b (2.3–2.8, stacked draft PR #216) are implemented and verified, including the [required real ChatGPT workflow](evidence/m1-host-2026-11-16.md). Independent review fixes were re-reviewed through `7eadf503`. No M2–M5 work has started. M1 is intended to merge to main together after architecture-owner code review and glossary-owner review; neither PR is merged.
+**Status:** M1 merged in PRs #212 and #216. M2 merged in PR #220. M3 tasks 4.1–4.8 are complete in the isolated `feat/interactive-ai-scene-studio-m3` checkout from `dbb6cd3d`. The owner waived M3 architecture review. See the [handoff](handoff.md) for verification.
 
 Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/spec.md), [research.md](research.md), [handoff.md](handoff.md) and [ADR 0073](../../../docs/adr/0073-interactive-scene-studio.md) before selecting a milestone. Trace this work to FR-GM-26/27 and native terrain behavior. M0–M5 are sequential outcomes, not a claim that every milestone will fit one chat or one PR.
 
@@ -69,18 +69,18 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 ## 4. M3 — Versioned, scoped proposals
 
-**Purpose:** Make precise correction safe before adding its full interaction UI. **Dependencies:** M2; architecture review of authoring contracts and enrollment. **Scope:** Builder contracts, persistence, tool integration and deterministic validation.
+**Purpose:** Make precise correction safe before adding its full interaction UI. **Dependencies:** M2 and a recorded disposition for the authoring contracts and enrollment. The owner waived architecture review for M3. **Scope:** Builder contracts, persistence, tool integration and deterministic validation.
 
 **Investigate:** Existing array identities, setup save races, edited-item locks, source/grid binding, dependency versions and snapshot size. Record exact wire contracts and measured limits before coding their consumers.
 
-- [ ] 4.1 Finalize the authoring contracts, lifecycle states, error semantics, measured history/byte bounds and compatibility strategy in the reviewed ADR/design; verify architecture disposition and a requirement-to-test mapping before dependent schema changes.
-- [ ] 4.2 Add immutable bounded revisions, stable authoring IDs and guarded working pointers to memory/Postgres; verify persistence/restart, retry idempotency, history limits and restore-as-new-revision behavior without copying image bytes per revision.
-- [ ] 4.3 Capture source/grid/encounter and relevant creature/art dependencies in requests and revisions; verify source replacement, grid correction, cropped-edge cells and stale dependencies cannot be silently reinterpreted.
-- [ ] 4.4 Implement semantic correction operations and server-derived layer/cell/object/destination scopes; verify out-of-scope and mixed invalid corrections write nothing, including crossing-wall and multi-cell-token cases.
-- [ ] 4.5 Enroll targets and make legacy writes revision-aware or refuse them, retaining ordinary-build behavior; verify stale legacy replacement cannot overwrite a candidate and an AI proposal cannot mutate an owner-edited materialized item.
-- [ ] 4.6 Apply write-time authority/choice/revision checks across all authoring paths; race owner edits, two AI proposals, revocation and retries in both stores and verify only an allowed current proposal advances the pointer.
-- [ ] 4.7 Adapt tool reads/writes to explicit inspected revision tokens and actionable conflicts; verify native geometry, portal cutting, terrain binding and footprint checks still apply through the real HTTP/MCP stack.
-- [ ] 4.8 Complete required checks, diff review and focused regression tests, including existing builder/terrain publication; verify no new room command/event/GM authority was introduced and update the handoff.
+- [x] 4.1 Finalize the authoring contracts, lifecycle states, error semantics, measured history/byte bounds and compatibility strategy in the reviewed ADR/design; verify architecture disposition and a requirement-to-test mapping before dependent schema changes.
+- [x] 4.2 Add immutable bounded revisions, stable authoring IDs and guarded working pointers to memory/Postgres; verify persistence/restart, retry idempotency, history limits and restore-as-new-revision behavior without copying image bytes per revision.
+- [x] 4.3 Capture source/grid/encounter and relevant creature/art dependencies in requests and revisions; verify source replacement, grid correction, cropped-edge cells and stale dependencies cannot be silently reinterpreted.
+- [x] 4.4 Implement semantic correction operations and server-derived layer/cell/object/destination scopes; verify out-of-scope and mixed invalid corrections write nothing, including crossing-wall and multi-cell-token cases.
+- [x] 4.5 Enroll targets and make legacy writes revision-aware or refuse them, retaining ordinary-build behavior; verify stale legacy replacement cannot overwrite a candidate and an AI proposal cannot mutate an owner-edited materialized item.
+- [x] 4.6 Apply write-time authority/choice/revision checks across all authoring paths; race owner edits, two AI proposals, revocation and retries in both stores and verify only an allowed current proposal advances the pointer.
+- [x] 4.7 Adapt tool reads/writes to explicit inspected revision tokens and actionable conflicts; verify native geometry, portal cutting, terrain binding and footprint checks still apply through the real HTTP/MCP stack.
+- [x] 4.8 Complete required checks, diff review and focused regression tests, including existing builder/terrain publication; verify no new room command/event/GM authority was introduced and update the handoff.
 
 **Exit:** A correction can be submitted against a named base, checked, retained and promoted safely. Stale work survives for inspection; owner changes cannot be overwritten silently. Exact UI polish is M4.
 

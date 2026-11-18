@@ -90,6 +90,135 @@ Only tasks 3.1–3.7 are authorized; no merge/deployment or M3–M5 implementati
   Run required checks/build, independent diff review and re-review, then actual ChatGPT
   preparation before marking host proof complete. Missing evidence remains pending.
 
+### D14. M3 authoring contract
+
+**Review status:** The owner explicitly waived the M3 architecture review on 2026-11-18. The approved product
+choices are first-correction enrollment and using the owner's website save as the next working
+revision. The implementation baseline is main `dbb6cd3d` after PRs #220 and #221.
+
+#### Storage and versioning
+
+- Use one workspace per `(buildId, mapKey)`, with an optional, fixed encounter key. Enrollment
+  checks that the draft and its source are editable, the encounter uses that map, and the scene
+  has a usable native grid. A proposed grid is sufficient. Independent maps can enroll
+  separately. The M2 display context selects the view and never supplies an implicit edit target.
+- Keep separately addressable immutable revisions, correction requests and operation receipts.
+  A workspace points to the reference revision, current working revision, and the latest
+  materialized revision. The reference captures enrollment. The materialized pointer tracks the
+  ordinary build data last saved by the owner. The working pointer advances on an applicable
+  proposal, owner save or restore. A server-issued revision UUID serves as the compare-and-swap
+  token. Restore records the current head as parent and the restored revision as provenance.
+- Persist native authoring data with server-issued IDs for lines, editable openings, marks, and
+  placements. Resolve imported openings by their source file and native opening number. A portal can split a
+  display segment. The stable ID belongs to the authored line. The ordinary
+  owner editor carries the materialized IDs for existing rows and receives new IDs for added rows.
+- Bind each snapshot to the source file ID, canonical identity, dimensions and orientation,
+  plus exact effective grid geometry and profile units. For legacy files, bind the file ID,
+  dimensions and stored content hash when present. Record relevant creature scene values and
+  their normalized data digests, with token art identities and dimensions. Keep immutable
+  artwork in the existing media store and use the snapshot's bound values for historical reads.
+  Published library values and their exact-use manifest are part of M5.
+- Count UTF-8 bytes of the stored revision, request and receipt payloads. Limit each workspace
+  to 32 revisions, 64 requests and 32 MiB, and each build to 64 MiB of authoring history.
+  Reference and stale revisions count toward the same limits. Refuse a new record before any
+  pointer changes when it would exceed a limit. The owner can inspect the existing history and
+  discard through the build lifecycle. Reads, refusals and idempotent replays leave retention
+  timestamps alone. Discard, the 14-day abandoned-build sweep and account deletion remove
+  authoring records alongside existing draft cleanup.
+
+#### HTTP and MCP
+
+Use the owner's existing same-origin session path `/api/builds/:id/studio/authoring` and the
+verified grant path `/api/studio/builds/:buildId/authoring`. Response headers for both are
+private and non-cacheable. Tool results carry metadata and authorized structured context.
+
+| Operation | Authority | Input and output |
+| --- | --- | --- |
+| `GET /maps/:mapKey` | Owner or delegated connection | Optional `encounterKey` identifies the proposed enrollment target. Returns the explicit map/encounter, head ID when enrolled, materialized inspection version, and eligible objects with their full extents. A pre-enrollment inspection version is a digest of the materialized inputs and effective bindings. |
+| `POST /maps/:mapKey/requests` | Owner | `{ encounterKey, inspectedVersion, operationId, instruction, selection: { region, layers, objectIds, wholeObjectIds } }`. The instruction is plain text up to 2,000 characters. Server checks the inspected version, derives scope, and atomically saves the request and enrollment if needed. Returns `{ requestId, baseRevisionId, scope }`. |
+| `GET /requests/:requestId` | Owner or delegated connection | Returns the saved instruction, base scene and revision, current head ID and derived scope. MCP exposes `studio_get_correction_request`. |
+| `POST /requests/:requestId/proposals` | Delegated connection | `{ baseRevisionId, operationId, operations }`. Returns `{ status, requestId, revisionId, currentRevisionId }`. MCP exposes `studio_submit_correction`. |
+| `GET /maps/:mapKey/revisions` and `GET /maps/:mapKey/revisions/:revisionId` | Owner or delegated connection | List bounded revision headers newest first or return the authorized exact revision and its metadata. MCP exposes `studio_get_revision` for detailed inspection. |
+| `POST /maps/:mapKey/restore` | Owner | `{ revisionId, expectedCurrentRevisionId, operationId }`. Checks that the source, grid and dependencies still match current materialized bindings, then creates a new working revision. |
+
+Request, authoring-object and operation identifiers are UUIDs. A legacy opening is exposed to
+clients by its stored authoring UUID. Enrolled requests use the current revision UUID as
+`inspectedVersion`. Scope fields received with a proposal are invalid. `region` contains
+`minX`, `minY`, `maxX`, `maxY` in canonical source pixels and has positive area. Scope uses
+the named layers `geometry`, `terrain`, and `placements`. The server validates membership
+against that revision and stores the normalized region and authorized IDs. The read result
+identifies crossing objects and their complete extents. A selected crossing object requires
+the explicit whole-object acknowledgment. An acknowledgment allows changing that object's
+existing extent. New or moved line endpoints and a moved token's full snapped footprint must
+lie within the destination region. Terrain scope includes cells with positive-area intersection
+with the region clipped to the image, including cropped map edges.
+
+Use a strict discriminated union for operations. `line.add` takes a native line.
+`line.update` takes the ID and replacement native line. `line.remove` takes the ID.
+`opening.set` takes the ID and the native opening settings apart from its server-owned number.
+`mark.add`, `mark.update` and `mark.remove` follow the same pattern with the native mark.
+`terrain.paint` takes native paint runs with null clearing to implicit Normal.
+`placement.move` takes an ID and native square anchor, and `placement.set_visibility` takes
+an ID and hidden boolean. Preserve the existing JSON request limit, terrain cell limit and
+native structural limits. Resolve and validate the complete operation batch against the saved
+base. Use the native effective-wall, portal-cutting, terrain and footprint rules. Reject a
+batch introducing an off-map or blocked placement, including terrain edits under an existing
+token. Unchanged unresolved issues in the base remain inspectable.
+
+`status` is `advanced` or `stale`. A valid current proposal creates its revision and advances
+the working pointer atomically. A valid stale proposal is saved against its original base and
+returns HTTP 409 with its saved revision ID and the current head ID. A stale result remains
+structured through MCP. Use HTTP 409 with an actionable code for stale enrollment, an old
+owner edit, incompatible dependencies, history limits or a legacy replacement. Use 422
+for invalid operations or scope violations and 403 for disabled owner choices. Access loss
+follows existing 401 and opaque 404 responses. Check access before disclosing or replaying
+outcomes. Identical retries use a receipt keyed by build, operation type and UUID with a
+normalized input digest. A reused key with a different input is an explicit conflict.
+
+#### Serialization and compatibility
+
+- In Postgres, use the existing per-build advisory lock with READ COMMITTED and the grant
+  row check for delegated writes. The memory adapter makes the same transition atomically.
+  Recheck current build status, ownership or grant coverage, choices, scope, source/grid
+  bindings, dependencies and working pointer inside that boundary. A choice refusal or
+  access loss prevents saving even a stale candidate.
+- Native website edits to an enrolled map, encounter or relevant creature send the inspected
+  `X-Studio-Authoring-Version` header. It hashes the affected working IDs, their live dependency bindings and the materialized item.
+  Setup and encounter edits can carry `studioIds` alongside their native fields to preserve row identity. Save the ordinary owner edit and
+  capture the new working state from materialized data in the same transaction. Preserve
+  the older AI candidate in history. Return a conflict with reload guidance for old forms.
+  On detector, choice or profile changes that affect the binding, serialize the relevant
+  mutation and make the drift visible. Reject new requests from a drifted head until the
+  owner saves a fresh revision. Previously saved requests remain inspectable.
+- Guard ordinary AI and pass map/setup/encounter replacement and deletion, and mutations
+  that would bypass an enrolled dependency. Allow unrelated items through existing builder
+  routes. Guard publication against its entire dependency closure under the build lock,
+  including publication via a raw map file or another encounter sharing that map. The
+  existing M2 snapshot stays readable and gains an optional working revision ID, using the
+  working projection only for an exact enrolled context. Preserve old client parsing.
+- Keep history outside polling payloads. Reuse the existing signed-in and grant guards,
+  private media routes, rate limits and same-origin protection. Add the MCP tools to
+  `/mcp/studio` and use the existing connector tool refresh procedure.
+
+#### Verification matrix
+
+| Task | Required evidence |
+| --- | --- |
+| 4.1 | Record the owner’s architecture review waiver. Measure and record UTF-8 size of the implemented projection using representative and dense synthetic scenes. |
+| 4.2 | Both adapters preserve parent/actor, IDs and artwork references, reject capacity overflow and replay the original receipt. Restore records a new revision. Isolated Postgres restart preserves pointers and history. |
+| 4.3 | Source replacement, grid correction and a creature/art change invalidate old work. A cropped-edge terrain run keeps its recorded cell coordinates. |
+| 4.4 | Doorway portal cutting, whole crossing wall authorization, cropped-edge erasure and full multi-cell destination. An out-of-scope or blocked-footprint operation in a mixed batch saves zero revisions. |
+| 4.5 and 4.6 | In both stores, a native owner save wins against the AI's older base, simultaneous AI writes produce one advance, a losing legacy save cannot replace enrolled state, and revocation/choice changes are rechecked at commit. Exercise old-client behavior for an unenrolled target. |
+| 4.7 | Exercise owner request creation and delegated reads and writes through the real HTTP and MCP servers, including structured stale results and reopening the same candidate in both snapshot adapters. |
+| 4.8 | Run repository checks, focused browser regressions, existing builder/terrain publication, history cleanup and a diff review. Record exact evidence and scope in the handoff. |
+
+The initial in-memory sizing model serialized 40,542 bytes for 100 lines, 350 terrain runs
+and 40 placements. A dense fixture with 500 lines, 10,000 single-cell terrain runs, 500
+placements and 200 creature references serialized 845,198 bytes. Thirty-two dense snapshots
+consume approximately 25.79 MiB before request and receipt overhead. These measurements use
+synthetic data. On the implemented schema, the respective measurements were 45,248 and
+901,786 UTF-8 bytes. Thirty-two dense revisions consume 27.52 MiB before request and receipt overhead.
+
 ### D1. User journey and interaction contract
 
 1. A signed-in owner starts an AI build on the website and chooses permitted AI work using the existing choices.

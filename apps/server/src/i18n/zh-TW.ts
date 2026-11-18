@@ -3,6 +3,16 @@ import type { ServerEn } from "./en";
 
 /** Traditional Chinese for `en.ts`. Terms follow docs/GLOSSARY-zh-TW.md. */
 export const serverZhTW = {
+  "studio.authoring.missing": "找不到這個場景工作室目標或版本。",
+  "studio.authoring.access": "請重新連線場景工作室，或以擁有者身分登入網站。",
+  "studio.authoring.conflict": "場景工作室草稿已變更。請重新載入並查看目前版本。",
+  "studio.authoring.limit": "場景工作室的版本記錄已滿。請查看已儲存的內容，或捨棄建置。",
+  "studio.authoring.invalid": "請提供有效的修正目標與內容。",
+  "studio.authoring.scope": "有編輯超出已儲存的範圍。請擁有者重新選取。",
+  "studio.authoring.permission": "擁有者已關閉此修正所需的選項。",
+  "studio.authoring.enrolled": "此草稿已加入場景工作室。請使用已儲存的修正要求，或登入網站編輯。",
+  "studio.authoring.drift": "建置資料已變更。開始新的修正前，請先在建置頁面儲存新版本。",
+  "studio.authoring.stale": "提案已儲存在版本記錄中。請查看目前版本並提出新的修正要求。",
   "studio.invalidJson": "無效的 JSON 要求。",
   "studio.media.origin": "無法匯入這張圖片。請在 ChatGPT 聊天中重新附加原始檔，或在 Session Zero 網站上傳。",
   "studio.media.expired": "這個檔案連結已過期或無法使用。請在 ChatGPT 聊天中重新附加原始檔。",

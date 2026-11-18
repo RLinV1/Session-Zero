@@ -1,9 +1,11 @@
 import { StudioContext, type StudioPreparationOutcome } from "@vtt/shared";
 import type { BuildFileRecord, BuildItemRecord, BuildRecord } from "./buildStore";
+import type { StudioRevision } from "./studioAuthoring";
+import type { StudioTarget } from "../domain/studioSceneRevision";
 import type { StudioDelegation } from "./studioStore";
 
 export interface StudioBuildAccess { ownerGmId: string; delegation?: StudioDelegation; passHash?: string }
-export interface StudioPreparationRecords { build: BuildRecord; files: BuildFileRecord[]; items: BuildItemRecord[] }
+export interface StudioPreparationRecords { build: BuildRecord; files: BuildFileRecord[]; items: BuildItemRecord[]; working?: { target: StudioTarget; revision: StudioRevision; drifted: boolean } }
 export class StudioContextConflictError extends Error { constructor() { super("studio_context_conflict"); } }
 export interface StudioPreparationStore {
   readStudioPreparation(buildId: string, access: StudioBuildAccess): Promise<StudioPreparationRecords>;

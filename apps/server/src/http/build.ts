@@ -1,3 +1,5 @@
+import { registerStudioAuthoringRoutes, studioAuthoringFailure, studioAuthoringMessage } from "./studioAuthoring";
+import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { registerStudioMediaRoutes } from "./studioMedia";
 import { preparationFailure, preparationOutcomes, preparationRows } from "./studioPreparationOutcomes";
 import type { StudioMedia } from "../domain/studioMedia";
@@ -19,6 +21,8 @@ import {
   DraftMap,
   DraftMapSetup,
   DraftMapSetupChange,
+  StudioOwnerIds,
+  type StudioOwnerVersion,
   DraftProposedGrid,
   EMPTY_MAP_SETUP,
   GameProfile,
@@ -114,7 +118,7 @@ const RemovePublished = z.strictObject({ ids: z.array(z.uuid()).max(1000).option
  * The owner's whole setup for a map, and the version of the map the page showed. Terrain left out
  * stays as it was, and `terrain: []` clears it. Owner corrections are validated on the current grid.
  */
-const OwnerSetupSave = z.strictObject({ setup: DraftMapSetup, updatedAt: z.string().max(40) });
+const OwnerSetupSave = z.strictObject({ setup: DraftMapSetup, updatedAt: z.string().max(40), studioIds: StudioOwnerIds.optional() });
 const WALL_PARTS = ["openings", "lines", "marks"] as const;
 
 /** Whether two JSON values are the same, whatever their keys' order: Postgres's jsonb doesn't keep it. */
@@ -171,12 +175,12 @@ const unitsOf = (build: BuildRecord) => ({
 const readMap = (build: BuildRecord, data: DraftMapState, file: BuildFileRecord | null | undefined) =>
   readDraftMap(data, file ?? null, build.aiGrid, unitsOf(build));
 
-function itemView(item: BuildItemRecord, read?: { build: BuildRecord; files: ReadonlyMap<string, BuildFileRecord> }) {
+function itemView(item: BuildItemRecord, read?: { build: BuildRecord; files: ReadonlyMap<string, BuildFileRecord> }, authoring?: StudioOwnerVersion) {
   const data = item.kind === "map" && read
     ? readMap(read.build, item.data as unknown as DraftMapState, read.files.get((item.data as unknown as DraftMapState).fileId))
     : item.data;
   return {
-    kind: item.kind, key: item.key, data, flags: item.flags, notCarriedOver: item.notCarriedOver,
+    ...(authoring ? { authoring } : {}), kind: item.kind, key: item.key, data, flags: item.flags, notCarriedOver: item.notCarriedOver,
     editedByUser: item.editedByUser, published: item.publishedId !== null, publishedId: item.publishedId, updatedAt: item.updatedAt,
   };
 }
@@ -291,6 +295,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   const failed = (res: Response) => (err: unknown) => {
     // A delegated write whose grant ended between its check and its write: nothing was saved (design D7).
     if (err instanceof StudioAccessEndedError) return void (res.headersSent || studioRefusal(res));
+    if (!res.headersSent && err instanceof StudioAuthoringError) return studioAuthoringFailure(res, err);
     console.error("[vtt] build request failed", err instanceof Error ? err.name : "error");
     if (!res.headersSent) res.status(500).json({ error: "Something went wrong. Try again." });
   };
@@ -353,11 +358,12 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const [files, items] = await Promise.all([store.listBuildFiles(build.id), store.listBuildItems(build.id)]);
 
       const read = { build, files: new Map(files.map((f) => [f.id, f])) };
+      const versions = await store.studioOwnerVersions({ build, files, items });
       res.json({
         build: buildSummary(build),
         profile: build.gameProfile,
         files: files.map(fileForOwner),
-        items: items.map((item) => itemView(item, read)),
+        items: items.map((item) => itemView(item, read, versions.get(`${item.kind}/${item.key}`))),
       });
     })().catch(failed(res));
   });
@@ -427,9 +433,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   };
 
   /** Writes the owner's change, or answers why it can't be written. */
-  async function saveOwnerEdit(res: Response, item: Parameters<RoomStore["editBuildItem"]>[0], build?: BuildRecord, guard?: BuildWriteGuard) {
+  async function saveOwnerEdit(req: Request, res: Response, item: Parameters<RoomStore["editBuildItem"]>[0], build?: BuildRecord, guard?: BuildWriteGuard) {
     try {
-      const saved = await store.editBuildItem(item, guard);
+      const saved = await store.editBuildItem(item, { ...guard, ownerToken: req.get("X-Studio-Authoring-Version") });
       const files = build && saved.kind === "map" ? new Map((await store.listBuildFiles(build.id)).map((f) => [f.id, f])) : null;
       res.json({ item: itemView(saved, build && files ? { build, files } : undefined) });
     } catch (err) {
@@ -451,7 +457,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (data.imageFileId && (await store.findBuildFile(build.id, data.imageFileId))?.kind !== "token") {
         return void res.status(422).json({ error: "imageFileId: choose token art from this build." });
       }
-      await saveOwnerEdit(res, { buildId: build.id, kind: "creature", key, data, flags, notCarriedOver });
+      await saveOwnerEdit(req, res, { buildId: build.id, kind: "creature", key, data, flags, notCarriedOver });
     })().catch(failed(res));
   });
 
@@ -462,7 +468,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const { build, item } = found;
       const body = RenameMap.safeParse(req.body);
       if (!body.success) return void res.status(422).json({ error: issueText(body.error) });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, name: body.data.name }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build);
+      await saveOwnerEdit(req, res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, name: body.data.name }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build);
     })().catch(failed(res));
   });
 
@@ -499,7 +505,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const wallsChanged = WALL_PARTS.some((part) => !sameJson(walls[part], before[part]));
       const problems = wallsChanged ? mapSetupProblems(file.board, setup, read.grid ?? read.proposedGrid, file) : [];
       if (problems.length > 0) return void res.status(422).json({ error: problems.join("\n") });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt });
+      await saveOwnerEdit(req, res, { buildId: build.id, kind: "map", key: item.key, data: { ...item.data, setup }, flags: item.flags, notCarriedOver: item.notCarriedOver }, build, { expectedUpdatedAt: body.data.updatedAt, ownerIds: body.data.studioIds });
     })().catch(failed(res));
   });
 
@@ -519,7 +525,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       }
       const grid: GridSpec = { ...body.data, ...unitsOf(build) };
       const data: DraftMapState = { ...map, grid, gridStatus: "confirmed" };
-      await saveOwnerEdit(res, { buildId: build.id, kind: "map", key: item.key, data: { ...data }, flags: item.flags.filter((f) => f.field.toLowerCase() !== "grid"), notCarriedOver: item.notCarriedOver }, build);
+      await saveOwnerEdit(req, res, { buildId: build.id, kind: "map", key: item.key, data: { ...data }, flags: item.flags.filter((f) => f.field.toLowerCase() !== "grid"), notCarriedOver: item.notCarriedOver }, build);
     })().catch(failed(res));
   });
 
@@ -528,13 +534,15 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       const found = await ownerItem(req, res, "encounter");
       if (!found) return;
       const { build, item } = found;
-      const patch = (req.body ?? {}) as Record<string, unknown>;
+      const { studioIds, ...patch } = (req.body ?? {}) as Record<string, unknown>;
+      const ids = StudioOwnerIds.optional().safeParse(studioIds);
+      if (!ids.success) return void res.status(422).json({ error: issueText(ids.error) });
       const parsed = DraftEncounter.safeParse({ ...item.data, ...patch, key: item.key, flags: flagsAfter(item, patch), notCarriedOver: item.notCarriedOver });
       if (!parsed.success) return void res.status(422).json({ error: issueText(parsed.error) });
       const { key, flags, notCarriedOver, ...data } = parsed.data;
       const refused_ = await encounterProblem(build, data);
       if (refused_) return void res.status(422).json({ error: refused_ });
-      await saveOwnerEdit(res, { buildId: build.id, kind: "encounter", key, data, flags, notCarriedOver });
+      await saveOwnerEdit(req, res, { buildId: build.id, kind: "encounter", key, data, flags, notCarriedOver }, undefined, { ownerIds: ids.data });
     })().catch(failed(res));
   });
 
@@ -758,6 +766,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   };
 
+  registerStudioAuthoringRoutes(app, { store, sessions, grantGuard: studio ? grantGuard : undefined });
   registerStudioMediaRoutes(app, { store, media: deps.media, studio, grantGuard, limits, sessions, now });
 
   /** One handler on the pass family and, when the Studio is offered, the delegated family too. */
@@ -884,9 +893,9 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
             res.status(401).json({ error: STUDIO_TEXT.accessEnded, results });
             return;
           }
-          if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError)) throw err;
+          if (!(err instanceof BuildItemLockedError || err instanceof BuildLimitError || err instanceof BuildClosedError || err instanceof StudioAuthoringError)) throw err;
           preparationFailure(res, err, key);
-          results.push({ key, saved: false, error: err.message });
+          results.push({ key, saved: false, error: err instanceof StudioAuthoringError ? studioAuthoringMessage(res, err) : err.message });
         }
       }
       preparationRows(res, results.map(({ key, saved }) => ({ key, saved })));

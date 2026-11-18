@@ -31,6 +31,14 @@ The real M1 host run also refines recovery within this boundary: after a failed 
 
 The detailed proposal and alternatives are in [design.md](../../openspec/changes/interactive-ai-scene-studio/design.md). This ADR records architectural boundaries, not a final wire schema or storage vendor choice.
 
+## M3 revision and enrollment amendment
+
+The product owner selected first-correction enrollment and confirmed that a website save should become the next working revision. The exact [M3 contract and verification matrix](../../openspec/changes/interactive-ai-scene-studio/design.md#d14-m3-authoring-contract) records the implementation choices. The product owner explicitly waived architecture review for this implementation on 2026-11-18.
+
+The owner's signed-in website session creates the correction request and enrolls its map and optional encounter. The delegated connection reads the saved request and submits typed operations within its scope. The server checks the current grant, choices, source, grid, relevant dependencies and working revision in the write transaction. An applicable proposal advances only the private working pointer. A stale candidate is retained as an immutable revision, and a native owner save advances the pointer from the materialized draft the owner edited.
+
+Enrollment and ordinary saves, removals and publication use the same per-build serialization boundary. Legacy replacement cannot overwrite an enrolled draft. Review of the exact candidate for publication belongs to M5. History is bounded, shares the existing protected artwork references, and follows the build's discard and retention lifecycle.
+
 ## Consequences
 
 **M2 implementation decision (user agreed 2026-11-17, before dependent code):** design.md D13
@@ -59,4 +67,4 @@ This does not authorize publication, deployment, merging or later-milestone cont
 | M1a implementation choices | The "M1a implementation" paragraph above and design.md D7's record | Pre-approved by the user on 2026-11-16 for choices inside D7 as amended (M1a starter); recorded before dependent code. Not a separate review by Raymond of this code; the PR is open for that |
 | M1b implementation choices | The "M1b implementation" paragraph above and design.md D8/D9's records | User approved the researched design and autonomous implementation on 2026-11-16; recorded in `1a2f7639` before dependent code. Required real ChatGPT qualification passed ([evidence](../../openspec/changes/interactive-ai-scene-studio/evidence/m1-host-2026-11-16.md)); independent fixes re-reviewed through `7eadf503`. Architecture-owner code review remains pending and is not replaced by those checks. |
 
-Plan the architecture review before M1 credential/private-media integration and M3 contract implementation. A successful prototype or local agent review is not this external sign-off. Do not copy the prior terrain branch's implementation-before-review authorization into this change.
+The review rows record the decisions for each milestone. The M3 implementation used the owner’s explicit waiver recorded above. A successful prototype or local agent review is not this external sign-off. Do not copy the prior terrain branch's implementation-before-review authorization into this change.

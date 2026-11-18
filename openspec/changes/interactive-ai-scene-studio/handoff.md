@@ -1,5 +1,43 @@
 # Implementation handoff
 
+## M3 implementation, 2026-11-18
+
+- Work is on `feat/interactive-ai-scene-studio-m3` in `/private/tmp/session-zero-studio-m3`,
+  with local changes based on merged main `dbb6cd3d` after PRs #220 and #221. Git metadata
+  in the original workspace is read-only, so this is an independent clone. The separate
+  build-access branch has its own credential changes.
+- The owner confirmed first-correction enrollment and that an owner website save becomes
+  the next working revision. The owner explicitly waived the M3 architecture review.
+  The exact HTTP and MCP interfaces, storage limits and requirement-to-test matrix are in
+  [D14](design.md#d14-m3-authoring-contract) and the [ADR amendment](../../../docs/adr/0073-interactive-scene-studio.md#m3-revision-and-enrollment-amendment).
+- The additive migration adds the authoring workspace and immutable entries. Both stores
+  serialize enrollment, saved proposals and native edits with the build. The signed-in
+  owner creates a request or restores history. The MCP tools read a request or revision and
+  submit scoped edits against the inspected base. Both Studio snapshots display the
+  matching working revision. The native owner editor carries the inspected version and
+  preserves line, mark and placement IDs when updating existing objects.
+- Node 22.23.2 lint, typecheck, build and the full repository test command passed
+  with 5,460 passing tests. The default run skipped 70 optional-service tests. The diff
+  review covered request authorization, legacy-write guards, owner preconditions,
+  fixture isolation and migration cleanup.
+- On isolated Postgres 17 and memory, the focused Studio and builder run passed 112 tests.
+  Checked cropped-edge erasure, portal cutting, whole-object and footprint scope, two
+  concurrent proposals, an old save tool, website saves, profile drift, revocation, retries,
+  restore, capacity, discard and ordinary publication. After a real Postgres service
+  restart, 3 workspace rows and 80 immutable entries matched the counts and content
+  fingerprints from before restart. The disposable database was stopped.
+- The real HTTP and MCP regression retrieved a signed-in owner's request, advanced its
+  revision, and reopened a saved stale candidate. Playwright passed 11 Chromium Studio
+  consent, intake and owner-save checks. The new website grid-save path passed all six
+  desktop and narrow Chromium, Firefox and WebKit projects.
+- Synthetic authoring snapshots measured 45,248 bytes for a representative scene and
+  901,786 for a dense one. The 32-revision dense estimate is 27.52 MiB before request and
+  receipt overhead. OpenSpec validation passed with the two existing geometry and
+  reopening requirement-length warnings.
+- M4 starts with the owner request, revision, and scoped proposal contracts in D14. It
+  adds the interactive request and same-camera comparison flow, followed by real ChatGPT
+  qualification. Current evidence is local HTTP, MCP and browser execution.
+
 ## M2 manual acceptance, 2026-11-17
 
 - The owner tested the fresh isolated M2 stack at `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`

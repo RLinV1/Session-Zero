@@ -31,7 +31,7 @@ export const StudioScene = z.object({
   detection: z.object({ status: z.enum(["queued", "running", "suggested", "no_grid", "error"]), suggestion: DraftProposedGrid.nullable(), error: z.string().nullable(), attempt: z.number() }).nullable(),
   walls: z.array(Wall), terrain: z.array(TerrainRun), terrainState: z.enum(["empty", "noGrid", "otherGrid", "ready"]), marks: z.array(DraftMark),
   tokens: z.array(z.object({
-    index: z.number().int(), creatureKey: BuildKey, name: z.string(), size: z.number().positive(),
+    index: z.number().int(), id: z.uuid().optional(), creatureKey: BuildKey, name: z.string(), size: z.number().positive(),
     color: z.string(), imageFileId: z.uuid().nullable(), hidden: z.boolean(), square: DraftSquare.nullable(), center: Point.nullable(),
   })),
   issues: z.array(StudioIssue),
@@ -44,6 +44,7 @@ export const StudioSnapshot = z.object({
   maps: z.array(z.object({ key: BuildKey, name: z.string(), fileId: z.uuid() })),
   encounters: z.array(z.object({ key: BuildKey, name: z.string(), mapKey: BuildKey })),
   allowed: z.object({ grids: z.boolean(), walls: z.boolean(), terrain: z.boolean() }),
+  workingRevisionId: z.uuid().optional(), workingBindingChanged: z.boolean().optional(),
   scene: StudioScene, outcomes: z.array(StudioPreparationOutcome).max(20),
   intakeOutcomes: z.array(z.object({ id: z.string(), kind: z.enum(["map", "token"]), name: z.string(), status: z.enum(["saved", "failed"]), fileId: z.string().optional(), code: z.string().optional(), at: z.string() })),
   /** Render/cache identity only, never an authoring revision or write precondition. */

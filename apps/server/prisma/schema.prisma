@@ -44,10 +44,37 @@ model Build {
   owner GmIdentity  @relation(fields: [ownerGmId], references: [id])
   files BuildFile[]
   items BuildItem[]
+  studioWorkspaces StudioAuthoringWorkspace[]
 
   @@index([ownerGmId, status])
   @@index([status, updatedAt])
   @@map("builds")
+}
+
+/// One opt-in private authoring history per draft map (ADR 0073).
+model StudioAuthoringWorkspace {
+  buildId String @map("build_id") @db.Uuid
+  mapKey String @map("map_key")
+  state Json
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  entries StudioAuthoringEntry[]
+
+  @@id([buildId, mapKey])
+  @@map("studio_authoring_workspaces")
+}
+
+/// Immutable revision, request or idempotency receipt.
+model StudioAuthoringEntry {
+  buildId String @map("build_id") @db.Uuid
+  mapKey String @map("map_key")
+  kind String
+  id String @db.Uuid
+  value Json
+  workspace StudioAuthoringWorkspace @relation(fields: [buildId, mapKey], references: [buildId, mapKey], onDelete: Cascade)
+
+  @@id([buildId, kind, id])
+  @@index([buildId, mapKey, kind])
+  @@map("studio_authoring_entries")
 }
 
 /// A map or token image in a build. Its object stays put when published (FR-GM-27).
