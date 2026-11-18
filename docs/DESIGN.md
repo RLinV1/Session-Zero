@@ -1,7 +1,7 @@
 # Design Document — Session Zero
 
 **Course:** CSE 416 · **Team:** Antonio Cottone, Raymond Lin, Vincent Chen, Christos Psimadas ·
-**Last updated:** 2026-11-04 · **Status:** deployed
+**Last updated:** 2026-11-18 · **Status:** deployed
 
 The name comes from the "session zero" of tabletop RPGs, the meeting before a campaign where the group agrees on what to play and makes characters; the app is where that preparation starts ("Your game starts here.").
 
@@ -25,6 +25,11 @@ summarizes them and links out rather than repeating them.
 | [`DICE-SKINS.md`](DICE-SKINS.md) | Dice looks and image skins |
 | [`AI-PLAYERS.md`](AI-PLAYERS.md) | User guide: connecting your own AI app to a room (FR-PL-08, FR-PL-09) |
 | [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | User guide: having your AI app build a game from your materials (FR-GM-26, FR-GM-27) |
+| [`user/`](user/) | User guide: hosting as a GM, playing, the board tools, settings |
+| [`developer/`](developer/) | Developer guide: setup, architecture tour, adding a feature, testing, localization, workflow |
+| [`PLAYTEST-FEEDBACK.md`](PLAYTEST-FEEDBACK.md) | Playtest requests and bug reports, with how and when each was resolved |
+| [`M5-M6-live-usability-findings.md`](M5-M6-live-usability-findings.md) | Simulated first-use study against the deployed site, and its fixes |
+| [`GLOSSARY-zh-TW.md`](GLOSSARY-zh-TW.md) | Traditional Chinese terminology for the zh-TW catalog |
 | [`adr/`](adr/) | Architecture decision records — index in §8 |
 | [`../openspec/`](../openspec/) | Change proposals (`changes/`) and the accepted capability specs (`specs/`) |
 
@@ -112,21 +117,22 @@ is what makes undo, the activity log, checkpoints and replay possible.
 
 ### The command surface
 
-72 commands produce 67 event types. Grouped by area:
+88 commands produce 85 event types. Grouped by area:
 
 | Area | Commands |
 | --- | --- |
-| Map | `scene.setMap`, `scene.setGrid`, `scene.importUVTT`, `scene.savePreparation` |
+| Map | `scene.setMap`, `scene.setGrid`, `scene.importUVTT`, `scene.savePreparation`, `scene.linkMap` (ADR 0070) |
 | Sight and style | `scene.setLineOfSight`, `scene.setSightRange`, `scene.setIsometric` |
 | Scenes | `scene.create`, `scene.prepare`, `scene.copyCurrent`, `scene.rename`, `scene.switch`, `scene.delete` |
 | Terrain | `terrain.paint`, `terrain.effect.create`, `terrain.effect.rename`, `terrain.effect.remove` |
-| Tokens | `token.create`, `token.duplicate`, `token.move` (optional `via` path, ADR 0055), `token.setAppearance`, `token.configure`, `token.setImage`, `token.setStats`, `token.setConditions`, `token.setOwners`, `token.setHidden`, `token.delete` |
+| Tokens | `token.create`, `token.duplicate`, `token.move` (optional `via` path, ADR 0055), `token.placeStaged` (carried party tokens, ADR 0068), `token.setAppearance`, `token.configure`, `token.setImage`, `token.setStats`, `token.setConditions`, `token.setOwners`, `token.setHidden`, `token.delete` |
 | Groups | `group.create`, `group.rename`, `group.delete`, `group.assign` |
 | Walls and portals | `wall.add`, `wall.update`, `wall.remove`, `wall.clear`, `wall.applyDetected`, `portal.set`, `portal.setState` |
 | Fog | `fog.add`, `fog.replace`, `fog.remove` |
-| Areas | `template.place`, `template.remove` |
-| Turn order | `initiative.start`, `initiative.advance`, `initiative.end` |
-| Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.applyDamage`, `nuke.detonate` |
+| Drawings | `drawing.add`, `drawing.remove` (ADR 0064) |
+| Areas | `template.place`, `template.update` (ADR 0058), `template.remove` |
+| Turn order | `initiative.start`, `initiative.advance`, `initiative.endTurn`, `initiative.previous` (ADR 0060), `initiative.add`, `initiative.remove` (ADR 0065), `initiative.end` |
+| Dice and attacks | `dice.roll`, `dice.rollGroup`, `roll.rule`, `roll.dismiss` (ADR 0060), `roll.applyDamage` (chosen amount and conditions, ADR 0062), `nuke.detonate` |
 | Area effects | `areaEffect.start`, `areaEffect.call`, `areaEffect.rollDamage`, `areaEffect.resolve`, `areaEffect.close` |
 | Room settings | `room.setReducedEffects`, `room.setDefeatRemoval`, `room.setHideMapWithoutToken`, `room.setHideHp`, `room.setHideAc`, `room.setDiagonalRule`, `room.setDifficultTerrain`, `room.setJoinsLocked` |
 | Participants | `participant.rename`, `participant.leave`, `participant.revoke`, `participant.revokeMany`, `participant.resolveDeparture`, `participant.setDiceLook`, `participant.clearDiceLook` |
@@ -138,7 +144,7 @@ is what makes undo, the activity log, checkpoints and replay possible.
 | Channel | Carries | Persisted | Ordered | Delivery |
 | --- | --- | --- | --- | --- |
 | Committed | Commands in, events out | Yes, with `seq` | Yes | Reliable |
-| Ephemeral | `ping`, `tokenDragPreview`, `tokenMovePreview` (answered with `tokenMoveFeedback`: clear, blocked or unknown), `diceDrop`, `templatePreview` (area aiming) | No | No | `volatile.emit`, dropped under backpressure |
+| Ephemeral | `ping`, `tokenDragPreview`, `tokenMovePreview` (answered with `tokenMoveFeedback`: clear, blocked or unknown), `diceDrop`, `templatePreview` (area aiming, and live edits of a placed area) | No | No | `volatile.emit`, dropped under backpressure |
 
 Pointer chatter must never queue ahead of committed state, which is why the ephemeral
 channel gets no sequence number and no persistence (FR-SYNC-03). Ephemeral relays still
@@ -146,8 +152,10 @@ pass the visibility rules: a GM-only area aim is never relayed to players, and a
 aim says whether it was GM-only so players do not learn of it. A latency benchmark
 (`npm run test:bench --workspace=@vtt/server`) guards the channel's round-trip time.
 
-The ruler (with its personal movement budget), the Draw tool's lines and shapes, and brush
-strokes are per-viewer marks that are never sent anywhere (see §6, FR-TAC-03/04).
+The ruler's marks (Range and Movement modes) are per-viewer and never sent anywhere. Drawings
+are no longer local: since ADR 0064 they are committed with `drawing.add` and saved with the
+scene (see §6, FR-TAC-03/04). Public dice rolls of every kind, attacks included, are thrown on
+every participant's board from the committed roll event, not from a separate relay.
 
 ### Request paths
 
@@ -348,16 +356,21 @@ apps/server        Express + Socket.IO.
 apps/mcp           MCP server: users' own AI apps hold player seats. An ordinary client of
                    apps/server, over REST and Socket.IO only (ADR 0052). /mcp/build has the
                    game builder's tools, kept apart from the player tools (ADR 0053).
+                   studioM0/ is a flag-gated proof endpoint for the interactive scene
+                   studio (ADR 0073); it is not a shipped feature.
 apps/web           React panels + PixiJS board.
-  board/             boardView.ts and everything Pixi: tools, fog, sight mask, movement
-                     ruler, effects and sound, dice throws
+  board/             boardView.ts and everything Pixi: tools, fog, sight mask, path
+                     movement and ruler, effects and sound, dice throws
+  i18n/              English and Traditional Chinese (zh-TW) catalogs; all UI text goes
+                     through t() and lint enforces it (ADR 0054)
   lighting/          2.5D (isometric) rendering for maps marked isometric (ADR 0048)
   net/               roomConnection.ts is the sync client; REST client and identity
-  pages/             home, GM dashboard, library, room, map editor, encounter editor,
-                     privacy and terms
-  panels/            the room's side panels (roster, initiative, dice, attacks, chat, …)
-  ui/                shared components
-browser/           Playwright specs (UVTT, grid detection, scenes, terrain)
+  pages/             home (with the guest tutorial), GM dashboard, library, room, map
+                     editor, encounter editor, AI builds, privacy and terms
+  panels/            the room's side panels (Play, Tokens, Dice, Manage, chat, …)
+  ui/                shared components, including the Settings dialog
+browser/           Playwright specs (UVTT, grid detection, scenes, terrain, guest
+                   onboarding and tutorial, security headers)
 services/vision    Python grid detector (FastAPI) and the BullMQ wall-detection worker.
 deploy/            Caddyfile, production env template, Terraform for AWS and Google Cloud
 Dockerfile.server,
@@ -377,15 +390,175 @@ npm run test:browser  # Playwright
 npm run build
 ```
 
-CI runs on every push to `main` and every pull request: install → generate Prisma client →
-lint → typecheck → test → vision service tests (grid and wall detection) → build → boot the
-server and poll `/health`. The smoke test is the reason the in-memory fallback exists; CI
-starts no service containers. A separate `images` job builds the server, web and vision
-production images (build only, no push).
-
 Conventions: commands are `noun.verb`, events are `PastTense`, tests and PR titles carry the
 FR ID. Changes are planned with OpenSpec (`/opsx:propose`). Schema changes in
 `packages/shared` need an ADR and review by the Real-Time Architecture owner.
+
+### Testing approach
+
+Quality is checked in layers, from the cheapest and most frequent to the slowest. Each
+layer catches a kind of failure the one below it cannot:
+
+| Layer | Runs | Catches |
+| --- | --- | --- |
+| Unit tests | Every `npm test`, every CI run | Wrong rules: authorization, validation, reduction, filtering, geometry |
+| Integration tests | Every `npm test`, every CI run | Wrong behaviour over the wire: convergence, reconnection, leaks in real payloads |
+| End-to-end browser tests | `npm run test:browser`, before merging UI flows | Broken user journeys in real browsers, on desktop and phone sizes |
+| Manual browser checks | Per change, recorded in OpenSpec tasks or a `QA-*.md` log | What automation misses: look, feel, multi-person play |
+| Audits | Dependencies on every CI run; sync and visibility agents on every relevant change; security, UI and edge reviews at milestones | Known-vulnerable packages, sync-invariant violations, GM-only leaks, security gaps, design and accessibility drift |
+| Code review | Every pull request on GitHub, by an AI review agent and a teammate | Bugs, missed edge cases, unreviewed schema changes |
+
+Before declaring any task done, a developer runs `npm run lint && npm run typecheck && npm test`.
+About 4,200 automated cases run today (§4, *Tests*).
+
+#### Unit tests
+
+The kernel in `packages/shared` is pure, so its rules are tested without a server, a
+database or a browser (`packages/shared/test`, Vitest, ~1,240 cases). A fixture room
+(`test/fixtures.ts`) holds a GM and two players. Two helpers drive every test:
+
+- `run` sends a command through `decide` and `reduce`;
+- `attempt` returns the decision, so a test can assert a refusal.
+
+Dice draw from a fixed sequence, so every result is reproducible. Every feature's unit tests
+cover four things:
+
+1. **Authorization.** Who may send the command, and that everyone else gets `forbidden`. This is the README §8 "authorization" requirement at the rule level.
+2. **The event.** What the event carries, including the replaced value that undo needs (invariant 6).
+3. **Reduction.** The state after the event, and after undoing it where undo applies.
+4. **Visibility.** `filterStateForViewer` and `filterEventForViewer`, for the GM and for a player, for anything hidden.
+
+The pure helpers each have their own suites: path cost, line of sight, terrain, dice pools,
+the UVTT parser, the activity log and replay. `apps/web/test` (~1,690 cases) unit-tests the
+web app's pure helpers and its components with Vitest and Testing Library. Board geometry,
+the sync client's seq handling and the i18n lint guard are tested there too. The vision
+service has 50 Python `unittest` cases for grid and wall detection.
+
+#### Integration tests
+
+`apps/server/test` (~1,000 cases) starts a real server on a random port with in-memory
+stores (`startServer` in `test/helpers.ts`). It connects several `TestClient`s over real
+Socket.IO, as a GM and players would. These tests check what single-process unit tests can't:
+
+- **Convergence.** Every client ends with the same state after concurrent commands, and a client that reconnects or resyncs catches up (FR-SYNC-01–04, FR-PL-05, FR-PL-06).
+- **Forged payloads.** A player sends GM-only commands or commands for tokens they don't own straight down the socket, and is refused (README §8, FR-GM-15).
+- **Leaks.** `TestClient.rawLog` keeps every raw payload a client received. Tests search it for hidden names, positions and rolls. That proves the data never arrived, not just that the UI doesn't show it (FR-GM-23). Snapshots, events, REST responses, replay and ephemeral relays are all covered.
+- **The HTTP surface.** REST routes, uploads, rate limits and abuse limits (`abuseLimits`, `joinRateLimit`, `accountRateLimits`), and response headers (`apiHardening`).
+- **Postgres.** The Postgres stores have their own tests, which run when `DATABASE_URL` is set. CI runs the AI build store tests against a real Postgres service.
+- **Latency.** `ephemeralLatency.test.ts` sends pings, drag previews and area aims through a TCP proxy that adds 50 ms ± 10 ms each way. It requires p95 delivery at or under 150 ms (README §6, FR-SYNC-03). It runs last in `npm test`.
+
+`apps/mcp/test` (~210 cases) tests the AI seat and game builder tools against a test room
+server. It uses REST and Socket.IO only, as the real MCP server does (ADR 0052).
+
+#### End-to-end browser tests
+
+Playwright specs in `browser/` drive the built app end to end. Playwright starts its own
+server on port 3109 with an in-memory store, and a web server on port 5189. Each spec runs in
+six projects:
+
+| Engine | Desktop (1440 × 1000) | Phone size (390 × 844) |
+| --- | --- | --- |
+| Chromium | `chromium-desktop` | `chromium-touch` (touch) |
+| Firefox | `firefox-desktop` | `firefox-narrow` |
+| WebKit (Safari) | `webkit-desktop` | `webkit-touch` (touch) |
+
+Together these cover the README §8 cross-browser requirement. The specs cover:
+
+- UVTT import, persistence and export;
+- grid detection;
+- scenes;
+- terrain;
+- guest onboarding, the guest tutorial and its demo fight;
+- dragging on the home page;
+- security headers.
+
+`VTT_TEST_CSP=1` runs them against the production build (`vite preview`) to check the
+Content-Security-Policy. Traces and screenshots are kept on failure. The browser suite needs
+browser binaries and takes minutes, so it isn't part of CI. It runs locally before merging
+changes to the flows it covers.
+
+#### Manual browser checks
+
+Tasks in an OpenSpec change's `tasks.md` say how each one is verified ("Verify with …"). For
+UI changes that usually includes a check in a real browser, often with a GM and a player in separate browser contexts (or
+`localhost` and `127.0.0.1`, so each has its own storage). The check runs against an isolated
+in-memory server, never against production rooms. Larger checks are written up as
+verification logs in `docs/`:
+
+- [`QA-checkpoint-restoration.md`](QA-checkpoint-restoration.md)
+- [`QA-grid-sample.md`](QA-grid-sample.md)
+- [`QA-grid-preparation.md`](QA-grid-preparation.md)
+- [`QA-classical-grid.md`](QA-classical-grid.md)
+- [`QA-condition-icons.md`](QA-condition-icons.md)
+- [`QA-room-previews.md`](QA-room-previews.md)
+- [`QA-guest-gm-hosting.md`](QA-guest-gm-hosting.md)
+
+Agents ran some checks through the Playwright MCP server and Claude in Chrome. The M5/M6
+first-use study ([`M5-M6-live-usability-findings.md`](M5-M6-live-usability-findings.md)) ran
+simulated user personas against the deployed site. The team also playtested in person;
+[`PLAYTEST-FEEDBACK.md`](PLAYTEST-FEEDBACK.md) lists what came out of that and when each item
+was fixed.
+
+#### Auditing
+
+| Audit | When | What it found or guards |
+| --- | --- | --- |
+| Dependency audit (`npm run audit`, `scripts/audit-ci.mjs`) | Every CI run, as its own job | Fails on any new high or critical advisory in a production dependency. Accepted advisories are allowlisted in the script with a reason and an exit condition. |
+| Security review, 2026-10-08 | Code read of the server | Missing guess and join limits, per-connection chat limits, racing guess limits, forgeable proxy addresses. Fixed in OpenSpec change `security-hardening`. |
+| Penetration test, early November | Against the API | Findings fixed in PR #164 (zod and multer upgrades, 2026-11-05), the `/api` header hardening (F-02, 2026-11-10) and the CI audit gate (F-03, PR #172). |
+| Security review, 2026-11-13 | Code read plus 19 read-only requests to the deployed site | No critical or high findings. One medium (no browser security headers on HTML) and four low. Fixed in change `security-review-findings`, PR #193, with ADR 0069 on sign-up disclosure. |
+| Edge protection ([`audits/edge-protection-2026-11-04.md`](audits/edge-protection-2026-11-04.md)) | Before the rate-limited Caddy edge shipped | Verified per-address limits on the real images in a throwaway Docker network ([`EDGE-PROTECTION.md`](EDGE-PROTECTION.md)) |
+| Sync review (`sync-reviewer` agent, `.claude/agents/sync-reviewer.md`) | On every change that touches state, commands, events, the server pipeline or the web sync client, before the PR is reviewed | Reads the diff for event-sourcing and sync violations: state changed outside `reduce`, non-determinism in `decide` or `reduce` (`Date`, `Math.random`, I/O), events missing the replaced value undo needs, and ordering or seq problems (invariants 1, 2, 5, 6) |
+| Visibility audit (`visibility-auditor` agent, `.claude/agents/visibility-auditor.md`) | Before merging anything that touches `packages/shared` or `apps/server`, or adds state | Traces every path new data takes to a client and flags anything that could leak GM-only information to players: hidden tokens, fog, GM rolls, private metadata, in snapshots, events, REST responses or ephemeral relays (invariant 3, FR-GM-23) |
+| UI design and accessibility ([`audits/ui-design-audit-2026-10-29.md`](audits/ui-design-audit-2026-10-29.md), [`audits/ui-ai-features-audit-2026-11-10.md`](audits/ui-ai-features-audit-2026-11-10.md)) | At milestones | Checked `apps/web` against [`FRONTEND-CONTRACT.md`](FRONTEND-CONTRACT.md) and [`INTERFACE.md`](INTERFACE.md), WCAG 2.2 AA, and the visibility and coordinate invariants. Its WCAG blockers were fixed on 2026-10-29. |
+
+#### Continuous integration
+
+GitHub Actions ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs on every
+pull request to `main` and on every push to `main`. Three jobs run in parallel:
+
+| Job | Steps |
+| --- | --- |
+| `verify` | `npm ci` → Prisma client → lint (including the i18n no-literal-text guard) → typecheck → `npm test` (all Vitest suites and the latency bench) → AI build store tests against a Postgres 17 service → vision `unittest` → `npm run build` → start the server and poll `/health` |
+| `audit` | `npm run audit` on the committed lockfile |
+| `images` | Build the server, web, MCP and vision production images (no push), and validate the Caddyfile with the web image's own Caddy |
+
+The `/health` smoke test runs with no `DATABASE_URL`, using the in-memory fallback. That
+fallback is why a fresh checkout and CI need no other containers.
+
+#### Code review on GitHub
+
+Work reaches `main` through pull requests on GitHub, and CI runs on each one. The pull
+request template ([`.github/pull_request_template.md`](../.github/pull_request_template.md))
+asks the author to state the FR ID, the commands and events added, the authorization rule and
+the visibility rule. The author then confirms a checklist:
+
+- typecheck and tests pass;
+- a multi-client integration test covers convergence;
+- no state changes outside `reduce`, and events carry replaced values;
+- hidden data is filtered in snapshots, events and REST;
+- any schema change links its ADR;
+- the UI is keyboard-accessible and doesn't rely on colour alone.
+
+Each pull request is reviewed twice, once by an agent and once by people:
+
+- **Agent review on GitHub.** An AI code review agent, CodeRabbit, reviews pull requests on
+  GitHub automatically. It reads the diff and leaves review comments on the pull request:
+  bugs, missed edge cases, and departures from the project's conventions. The author fixes
+  them in follow-up commits on the same branch before merging. Examples are the
+  fixes on #88, #91 and #92, and the reviews of room-load isolation, room deletion, the tool
+  rail and line of sight.
+- **Teammates.** A teammate reviews and merges the pull request. Changes to existing
+  `packages/shared` schemas, event storage or visibility also need an ADR reviewed by the
+  Real-Time Architecture owner. ADRs stay *Proposed* until that review (§8).
+
+Before a pull request is opened, the `sync-reviewer` and `visibility-auditor` agents audit
+changes in their areas (see *Auditing* above). The `/code-review` and `/security-review`
+commands give a further local pass on a branch.
+
+**What isn't automated yet.** The Playwright suite isn't in CI. The README's study with at
+least five independent GMs and players is still pending; the M5/M6 study used simulated
+personas.
 
 ---
 
@@ -400,9 +573,12 @@ VM (§2, *Production*).
 **Working today.**
 
 - *Accounts and rooms.* A GM signs up and creates rooms from the GM dashboard; players join
-  by invite link as guests with no account. The GM can regenerate the invite, revoke a
+  by invite link as guests with no account. A signed-out visitor can also host a guest room
+  on built-in maps (ADR 0072), and the home page runs an interactive guest tutorial with a
+  scripted demo fight. The GM can regenerate the invite, lock the room, revoke a
   participant, and delete the room; a room holds at most 32 players. Signed-in users see the
-  rooms they have joined, and a lost seat can be recovered.
+  rooms they have joined, and a lost seat can be recovered. A GM's room defaults (table rules,
+  distance per square and unit) are saved per account and applied to each new room (ADR 0066).
 - *Map preparation.* Upload a map or pick one from the library (built-in maps are seeded as
   library rows). Grid detection runs automatically and the GM corrects it in a preview.
   The map editor walks through grid, walls and fog; wall detection proposes walls with
@@ -410,55 +586,100 @@ VM (§2, *Production*).
   drawn and edited by hand. UVTT/dd2vtt files import into a room or the library with
   validation, and a prepared scene exports back to `.uvtt`; imported openings can all be made
   doors in one click. Changing the map can move existing tokens with it atomically (ADR 0042).
-  The editor's Sight step previews line of sight with test tokens and marks a map flat or
-  2.5D (ADR 0048). Grid detection also uses reviewed classical line-segment estimates (ADR 0045).
-- *Terrain.* The GM paints Difficult and Blocked terrain plus up to 32 named temporary
-  effects. Moves are costed against it (Difficult doubles, Blocked refuses), resizes must
-  land on a clear footprint, and players see only an effective projection of terrain they can
-  actually see (ADR 0046, terrain).
+  The editor's Sight step previews line of sight with test tokens, sets an optional sight
+  range, and marks a map flat or 2.5D (ADR 0048). Grid detection also uses reviewed classical
+  line-segment estimates (ADR 0045). **Change map** (replace the map) and **Edit map**
+  (prepare the current one) are separate, and a prepared room map can be saved back to the
+  library and linked to it (ADR 0070). Walls, doors and windows are reviewed as a set.
+- *Terrain.* The GM paints Difficult and Blocked terrain straight onto the live board with
+  the rail's **Terrain** tool (brush or rectangle), plus up to 32 named temporary effects.
+  Terrain is outlined by area in a two-tone palette and shown to everyone by default. Moves
+  are costed against it, resizes must land on a clear footprint, and players see an effective
+  projection of terrain in any square they can see even partly (ADR 0046, 0069).
+- *Movement.* A snapped drag shows and charges the cheapest valid path to the target square,
+  routing around Blocked terrain, walls and closed doors under the room's Diagonals rule
+  (equal, alternating or Euclidean) and its Difficult terrain rule (on entry, on exit or
+  both) (ADR 0055). Players receive the walls they can see so their clients can route (ADR
+  0056). The server re-checks every leg. Tokens slide along their path on every screen and in
+  replays. A token may stand where a wall only grazes its square (ADR 0063), and a snapped
+  drop or placement can't stack two tokens in one square; free placement and arrow keys can.
 - *Tokens.* Create tokens from scratch or from saved library creatures, place several in a
   row, duplicate to a chosen square, group them, and set image, colour, size, rotation, HP,
-  conditions (painted icons), initiative score and named attacks. Assign owners; players move
-  only their own tokens (also with the arrow keys), and walls, closed portals and Blocked
-  terrain stop movement, with live clear/blocked feedback while dragging. Hide a token and it
-  never reaches player clients. Tokens at 0 HP can be removed automatically, with a death
-  animation, as a room setting (ADR 0049).
+  conditions (painted icons), initiative score and named attacks (with range and animation).
+  Token edits save without a confirmation; only deletion asks. Assign owners; players move
+  only their own tokens (also with the arrow keys). Hide a token and it never reaches player
+  clients. The GM has quick HP on the token card. Party tokens are carried across scene
+  switches, encounter template applies and map changes, and wait to be placed (ADR 0068).
 - *Line of sight.* With line of sight on, each player sees only what their tokens can see:
   walls and closed or locked doors block sight, windows and open doors do not, and an optional
   sight range limits it. Sight is computed on the server and anything outside it is concealed
   by the same filters as fog (ADR 0044). The darkness is drawn as vector shapes from every owned
   token's merged sight, so its edge is crisp at any zoom, with no fade either side. The GM can view as any token.
-- *Play.* Pan, zoom, ping, and measure with a personal movement-budget ruler (equal,
-  alternating or Euclidean diagonals). Manual fog in rectangles or polygons, drawn as flowing
-  painted fog whose border fades out over a quarter of a cell, wavering. Lines, shapes and freehand drawings
-  the whole table sees, above fog. Shared area templates (circles, cones, lines, squares) aimed live on the
-  ephemeral channel, in colours, optionally GM-only. Initiative with turn notices. Dice
-  expressions, public or GM-only, thrown on the board with 3D dice and per-player dice looks;
-  every public roll, attacks included, is thrown on every participant's board;
-  group rolls across many tokens. Attack rolls against one or several targets, with GM
-  rulings and damage application; area effects that run saves, a GM call and damage across
-  every token in an area (ADR 0046, area effects). Themed board animations and sound
-  (reducible per room). Room chat with `@` mentions.
-- *Recovery.* A human-readable activity log, undo for reversible actions, named checkpoints
-  that can be previewed, restored and deleted, and an encounter replay that any participant
-  can step through from a checkpoint or the start of an encounter, filtered as themselves.
-- *Scenes.* The GM switches between named live scenes from the room header. Leaving automatically saves the board, including token identities, HP, ownership, fog, walls, portals, terrain, initiative and groups. A new scene can be prepared privately (from the current map, an encounter template or a map) and activated when ready. Inactive scenes and their names remain GM-only. Checkpoints recover the active board; encounter templates seed reusable setups (ADR 0045, scenes).
+- *Play.* Pan, zoom, ping, and measure with a personal ruler in **Range** mode (plain
+  distance) or **Movement** mode (a multi-point route costed like a drag). Manual fog in
+  rectangles or polygons, drawn as flowing painted fog whose border fades inward, inside the
+  fogged area. Lines, shapes and freehand drawings the whole table sees, above fog; players
+  erase their own and the GM erases any (ADR 0064). Shared area templates (circles, cones,
+  lines, squares) aimed live on the ephemeral channel, in colours, optionally GM-only. A click
+  places a two-cell area and a drag sizes it with a live size label. Placed areas can be
+  moved, resized and turned (ADR 0058), and other people's areas are clipped at the viewer's
+  fog and sight (ADR 0059).
+- *Combat.* Initiative with a mass roll for every checked token, mid-encounter adds and
+  removals (ADR 0065), a turn banner with **End turn** for the token's owner, and a GM step
+  back (ADR 0060). One dice builder for every roll, with mixed die types (ADR 0061); public or
+  GM-only rolls thrown on every participant's board with 3D dice and per-player dice looks;
+  group rolls across many tokens. Named attacks carry a range (Unlimited, Melee with reach,
+  Ranged) that warns but never blocks (ADR 0067), and an animation the GM can preview. Attack
+  rolls against one or several targets go to the GM's Rulings list (Hit, Miss, or ignore; Clear
+  all). Damage resolves with a chosen amount (Half, None, or any value) and conditions (ADR
+  0062). Area effects run saves, a GM call and damage across every token in an area (ADR 0046,
+  area effects). Themed board animations and sound. Room chat with `@` mentions.
+- *Table rules and settings.* Settings has its own button with Audio, Graphics, Preferences,
+  Table (GM, shared by the room) and Language tabs. The Table tab holds Remove tokens at 0 HP
+  (All, Only NPC tokens, Off; with Off a downed token is marked), Hide map from players
+  without a token, Hide HP, Hide AC, Diagonals and Difficult terrain (ADR 0057). Per-browser
+  choices include attack animations (All, Current turn, None), reduced animations, arrow-key
+  movement and the GM's turn banner on every turn.
+- *Localization.* The site is available in English and Traditional Chinese (zh-TW), except
+  the AI build screens (`pages/build/`), which are still English-only and exempt from the lint
+  guard. Server messages people read are catalog ids, and REST honours `Accept-Language`
+  (ADR 0054).
+- *Recovery.* A human-readable activity log, undo for reversible actions, and an encounter
+  replay that any participant can step through from the start of an encounter (or an existing
+  checkpoint), filtered as themselves. Named checkpoints (create, preview, restore, delete)
+  remain in the contract, the server and the REST API, but the room's Checkpoints panel was
+  taken out of the GM sidebar when scenes shipped (2026-11-03); scenes and undo now cover
+  the same need in the UI.
+- *Scenes.* The GM switches between named live scenes from the room header. Leaving automatically saves the board, including token identities, HP, ownership, fog, walls, portals, terrain, initiative and groups. A new scene can be prepared privately (from the current map, an encounter template or a map) and activated when ready. Inactive scenes and their names remain GM-only. Encounter templates seed reusable setups, and party tokens carry across scene switches (ADR 0045, 0068).
 - *Reuse.* Encounter templates save the map, walls, portals, fog and monster roster, are
   edited in a temporary room, and are applied to a live room in one command. Game presets
   (ADR 0027) set up stats and conditions for a system.
 - *Durability.* Reload and come back as the same participant with the same role. Kill the
   server and, with Postgres configured, the room is still there.
-- *Deployment.* The production stack runs on a cloud VM over HTTPS (§2, *Production*). The
-  GM dashboard shows board previews of hosted rooms; the site has privacy and terms pages.
+- *AI at the table.* Users connect their own AI app over MCP to hold player seats (ADR 0052),
+  or to build a game from their materials as a private draft that the owner reviews and
+  publishes (ADR 0053), including AI-proposed grids, walls (curved walls and cave edges) and
+  terrain (ADR 0071). The AI build page is a workspace for reviewing and editing the draft.
+- *Resilience.* A render error inside a room shows a recovery screen with Reload and Back to
+  home, not a blank page. Named attacks saved before mixed dice are upgraded as they are read
+  from stored events and encounter templates (ADR 0061 amendment).
+- *Deployment.* The production stack runs on a cloud VM over HTTPS at
+  <https://sessionzero.codes> (§2, *Production*). The GM dashboard shows board previews of
+  hosted rooms; the site has privacy and terms pages that cover AI seats and the game builder.
 
-**Tests.** About 2,450 automated cases: ~780 unit tests over the pure kernel
-(`packages/shared/test`), ~570 server tests including multi-client integration tests over
+The playtest requests and bug reports, and when each was fixed, are tracked in
+[`PLAYTEST-FEEDBACK.md`](PLAYTEST-FEEDBACK.md).
+
+**Tests.** About 4,200 automated cases (approach in §3, *Testing approach*): ~1,240 unit tests over the pure kernel
+(`packages/shared/test`), ~1,000 server tests including multi-client integration tests over
 real sockets and Postgres store tests that run when a database is configured
-(`apps/server/test`), ~1,050 web tests (`apps/web/test`), 50 Python tests for the vision
-service, and Playwright browser specs for UVTT, grid detection, scenes and terrain.
+(`apps/server/test`), ~1,690 web tests (`apps/web/test`), ~210 MCP server tests
+(`apps/mcp/test`), 50 Python tests for the vision service, and Playwright browser specs for
+UVTT, grid detection, scenes, terrain, guest onboarding and the guest tutorial.
 
 **Not built yet.** Wall detection does not yet classify doors and windows, and its worker is
-off by default in production.
+off by default in production. The interactive scene studio (ADR 0073) has finished its M0
+proof; M1 is next.
 
 **Run it — no containers.** A fresh clone plays without Docker, because the store,
 sequencer and asset sink each fall back when their environment variable is unset (§2).
@@ -539,9 +760,12 @@ accounts, so guests are first-class and accounts remain a hosting requirement on
 Hidden information never leaves the server. Both filters in `visibility.ts` are updated
 together whenever a new kind of hidden data is added. Today that covers hidden tokens,
 tokens under fog or outside the viewer's line of sight that the viewer does not own, fog
-regions, walls (GM-only), GM-only portals and areas, GM-only rolls and rulings, canonical
-terrain layers and effect names (players get only an effective projection), inactive
-scenes and their names, checkpoint names, and private metadata. A player's sight polygon is
+regions, walls (players get only the stretches they can see, clipped at fog and sight, ADR
+0056), GM-only portals and areas, other people's areas outside the viewer's fog and sight
+(clipped, ADR 0059), GM-only rolls and rulings, canonical terrain layers and effect names
+(players get only an effective projection), other tokens' HP and AC when the table hides
+them, and every other token, area and portal while a player owns no visible token and the
+table hides the map from such players (ADR 0057), inactive scenes and their names, checkpoint names, and private metadata. A player's sight polygon is
 computed server-side and added to their filtered state; scene switches and sight changes
 reach players as filtered snapshots, never as raw events.
 Authorization is decided in `decide()`; the client's `can.*` helpers are UI hints with no
@@ -576,8 +800,8 @@ checkpoint previews are built through the same filters.
 | FR-GM-18 | Interactive portal states | `portal.setState`, movement and sight blocking | B |
 | FR-GM-19 | Dynamic line of sight | `sight.ts` on the server, `sightMask.ts` (ADR 0044) | B |
 | FR-GM-20 | Guest revocation, invite regeneration | `participant.revoke/revokeMany`, `room.setJoinsLocked`, `POST /api/rooms/:id/invite` | B |
-| FR-GM-21 | Initiative and turn order | `initiative.*`, turn notice (ADR 0022) | B |
-| FR-GM-22 | Public and GM-only rolls | `DiceVisibility` + filters | B |
+| FR-GM-21 | Initiative and turn order | `initiative.*`, mass roll, mid-encounter edits, player End turn, turn banner (ADR 0022, 0060, 0065) | B |
+| FR-GM-22 | Public and GM-only rolls | `DiceVisibility` + filters, rulings and damage resolution (ADR 0060, 0062) | B |
 | FR-GM-23 | Player-safe state filtering | `visibility.ts` | B |
 | FR-GM-24 | Focusable token roster | `TokenRoster.tsx` | B |
 | FR-GM-25 | Scene switching | `scene.create/switch/prepare/…`, `savedScenes` (ADR 0045) | B |
@@ -593,14 +817,14 @@ checkpoint previews are built through the same filters.
 | FR-GM-26 | AI game builder | `/mcp/build`, pass routes `/api/build/*`, `BuildStore`, the owner's per-build choices for AI-set grids and walls, `domain/mapOverlay.ts` (ADR 0053), [`AI-GAME-BUILDER.md`](AI-GAME-BUILDER.md) | B |
 | FR-GM-27 | Review and publish a build | Owner routes `/api/builds/*`, `domain/buildPublish.ts`, `pages/build/` with walls drawn in review (ADR 0053) | B |
 | FR-TAC-01 | Independent pan and zoom | `boardView.ts` | B |
-| FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter` | B |
-| FR-TAC-03 | Movement budget ruler | `movementRuler.ts` (personal); terrain cost `terrain.*` (ADR 0046) | B |
+| FR-TAC-02 | Continuous coords, grid snapping | `snapTokenCenter`, cheapest-path drags, no stacking on snapped drops, wall clearance (ADR 0055, 0063) | B |
+| FR-TAC-03 | Movement budget ruler | Personal ruler in Range and Movement modes; path cost in `movement.ts` under the room's Diagonals and Difficult terrain rules (ADR 0046, 0055) | B |
 | FR-TAC-04 | Drawing overlays | `drawing.add`/`drawing.remove`, `RoomState.drawings`, `simplifyStroke.ts` (ADR 0064) | B |
 | FR-TAC-05 | Target pings | Ephemeral `ping` | B |
-| FR-TAC-06 | AoE templates | `templatePreview` → `template.place`, `areaEffect.*` (ADR 0007, 0021, 0040, 0046) | B |
-| FR-TAC-07 | Token statistics and conditions | `token.setStats/setConditions`, auto-remove at 0 HP (ADR 0049) | B |
+| FR-TAC-06 | AoE templates | `templatePreview` → `template.place`/`template.update`, clipped at fog and sight, `areaEffect.*` (ADR 0007, 0021, 0040, 0046, 0058, 0059) | B |
+| FR-TAC-07 | Token statistics and conditions | `token.setStats/setConditions`, 0 HP rule and downed marker (ADR 0049, 0057) | B |
 | FR-TAC-08 | Accessible condition markers | `ConditionMarker.tsx`, painted icons | B |
-| FR-TAC-09 | Shared dice expressions | `dice.ts`, server-rolled, `dice.rollGroup` | B |
+| FR-TAC-09 | Shared dice expressions | `dice.ts`, server-rolled, mixed dice pools, `dice.rollGroup`, attack range (ADR 0061, 0067) | B |
 | FR-SYNC-01 | Server-authoritative state | `LiveRoom` | B |
 | FR-SYNC-02 | Real-time persistent sync | Postgres store | B |
 | FR-SYNC-03 | Ephemeral interaction channel | `volatile.emit` | B |
@@ -618,9 +842,11 @@ FR-TAC-04 draws lines, rectangles, circles and freehand strokes that the whole t
 saved with the scene and drawn above fog and darkness (ADR 0064). Freehand goes beyond the
 README's original scope; strokes are simplified in the browser and bounded on the server.
 
-FR-TAC-03 is now built as the README specifies it: a personal ruler with a local allowance
-and selectable diagonals, with no per-turn tracking. Terrain-aware movement cost (ADR 0046)
-goes beyond it.
+FR-TAC-03 is built as a personal ruler with no per-turn tracking. Its Range mode measures
+plain distance; its Movement mode costs a multi-point route exactly as a token drag is
+costed, under the room's shared Diagonals and Difficult terrain rules (ADR 0055). The
+earlier per-browser movement budget and diagonal preference were replaced by those room
+rules so every participant sees the same cost.
 
 ---
 
@@ -631,7 +857,10 @@ goes beyond it.
 - **Hosting beyond one VM.** The deployed VM is a single point of failure with manually backed-up volumes. Moving to managed Postgres, Redis and object storage ([`DEPLOYMENT.md`](DEPLOYMENT.md) §5) needs no code change, only environment variables.
 - **Legacy GM device identities.** `gm_identities` still holds pre-account device rows; a follow-up removes them and renames the table to `owners`.
 - **Duplicate names.** Participant and token names are not unique (KAN-61, KAN-62).
-- **Proposed ADRs.** Many ADRs below are implemented but still marked *Proposed* pending Real-Time Architecture review.
+- **Proposed ADRs.** Many ADRs below are implemented but still marked *Proposed* pending Real-Time Architecture review. The November work (ADRs 0055–0072) adds to that backlog.
+- **Interactive scene studio.** ADR 0073 is accepted and the M0 proof endpoint is in `apps/mcp/src/studioM0` behind a flag. M1 (versioned proposals and protected draft artwork) has not started.
+- **Checkpoints in the UI.** `CheckpointsPanel.tsx` is no longer mounted. Either bring it back (for example under Manage or the activity log) or retire the panel and its strings.
+- **Human usability study.** The M5/M6 findings ([`M5-M6-live-usability-findings.md`](M5-M6-live-usability-findings.md)) come from simulated personas; an independent human follow-up study is still pending.
 
 ### Prior art for map analysis
 
@@ -702,14 +931,33 @@ Our output target is UVTT wall and portal geometry (FR-GM-06, FR-GM-12), not Fou
 | [0047](adr/0047-longer-animations-for-the-nuke-siren.md) | Longer animations for the nuke's siren | Proposed |
 | [0048](adr/0048-map-isometric-flag.md) | 2.5D map style flag | Proposed |
 | [0049](adr/0049-auto-remove-defeated-tokens.md) | Auto-remove defeated tokens | Proposed |
+| [0050](adr/0050-account-deletion.md) | Account deletion | Proposed |
+| [0050](adr/0050-encounter-keep-map-setup.md) | Keep the map's setup when applying an encounter template | Proposed |
+| [0050](adr/0050-terrain-effect-client-id.md) | Optional client effect id on `terrain.effect.create` | Proposed |
 | [0051](adr/0051-seat-limits-and-room-lock.md) | Seat limits and locking a room | Proposed |
 | [0052](adr/0052-mcp-player-seats.md) | AI player seats over MCP | Proposed |
 | [0053](adr/0053-build-pass-and-approved-templates.md) | Build passes, templates from an approved draft, and AI-set grids and walls by the owner's choice | Proposed |
 | [0054](adr/0054-localized-messages.md) | Localized messages: ids on rejections, `Accept-Language` on REST | Proposed |
+| [0055](adr/0055-path-movement.md) | Path movement: cheapest-path drags, room Diagonals and Difficult terrain rules | Proposed |
+| [0056](adr/0056-visible-walls-for-players.md) | Players receive the walls they can see | Proposed |
+| [0057](adr/0057-table-rules.md) | Table rules: three-way 0 HP removal, hidden map, hidden HP and AC | Proposed |
+| [0058](adr/0058-edit-placed-area-templates.md) | Editing placed area templates | Proposed |
+| [0059](adr/0059-areas-clipped-at-fog.md) | Areas visible in part, clipped at fog and sight | Proposed |
+| [0060](adr/0060-player-end-turn-and-ruling-dismissal.md) | Players end their own turn, the GM steps back, rulings can be ignored | Proposed |
+| [0061](adr/0061-dice-pool-formulas.md) | Dice formulas with several die types; old attack dice upgraded on load | Proposed |
+| [0062](adr/0062-resolve-attack-damage.md) | Resolving attack damage with a chosen amount and conditions | Proposed |
+| [0063](adr/0063-token-wall-clearance.md) | Token wall clearance | Proposed |
 | [0064](adr/0064-shared-drawings.md) | Shared drawings: persisted per scene, public, erasable by the drawer or GM, not undoable | Proposed |
+| [0065](adr/0065-initiative-order-edits.md) | Editing the turn order mid-encounter | Proposed |
 | [0066](adr/0066-gm-room-defaults.md) | A GM's defaults for new rooms: saved per account, carried on `RoomCreated` | Proposed |
 | [0067](adr/0067-attack-range-and-shapes.md) | Attack range, the range kind on rolls, and the arrow and pierce shapes | Proposed |
+| [0068](adr/0068-carry-party-tokens.md) | Carry tokens across template applies and scene switches | Proposed |
+| [0069](adr/0069-sign-up-email-disclosure.md) | Sign-up discloses a taken email, bounded by a per-address limit | Accepted |
+| [0069](adr/0069-terrain-visible-in-part.md) | Terrain sent for squares a player can partly see | Proposed |
+| [0070](adr/0070-save-map-to-library.md) | Save a room's map to the library, and link it | Proposed |
+| [0071](adr/0071-ai-build-terrain.md) | The AI game builder proposes permanent terrain | Proposed |
 | [0072](adr/0072-guest-gm-hosting.md) | Guest GM hosting: a signed-out GM starts a room on built-in art, expiring after 30 days idle, movable into an account | Proposed |
+| [0073](adr/0073-interactive-scene-studio.md) | Versioned Studio proposals and protected draft artwork | Accepted |
 
-Numbers 0033, 0036, 0038, 0045 and 0046 were each used twice by parallel branches; ADR 0017 (accounts) is
+Numbers 0033, 0036, 0038, 0045, 0046 and 0069 were each used twice, and 0050 three times, by parallel branches; ADR 0017 (accounts) is
 referenced in code but lives in `openspec/changes/user-accounts/design.md`, not `docs/adr/`.
