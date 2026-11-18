@@ -1,5 +1,13 @@
 # Implementation handoff
 
+## Personal EC2 pilot, 2026-11-18
+
+The owner deployed an isolated Studio pilot in AWS Ohio at `https://studio-test.habticraft.com`. The personal ChatGPT Work plugin connects to `https://studio-test.habticraft.com/mcp/studio`. Pilot release `7cbb867c` enabled public signup at `/signup`. Pilot accounts, OAuth grants, builds, and private media are stored separately from production and persist across restarts.
+
+Automated checks on the pilot covered OAuth discovery, access to future builds, approval of a second build on a restricted connection, and reopening a saved build after an EC2 reboot. The owner reported the pilot working after signup was enabled. The individual permission and restart checks in ChatGPT Work are still pending.
+
+The owner plans to shut down the pilot later. Check its availability and deployed revision before relying on it, and use synthetic data for tests.
+
 ## M2 manual acceptance, 2026-11-17
 
 - The owner tested the fresh isolated M2 stack at `0cd8818e28b887b8d5c62b9c31b313f7e80f2adc`
