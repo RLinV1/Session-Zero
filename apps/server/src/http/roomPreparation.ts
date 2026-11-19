@@ -14,11 +14,6 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
   const auths = new WeakMap<Request, Auth>();
   const guard = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
-      const header = req.headers.authorization;
-      const credential = header?.startsWith("Bearer ") ? await deps.store.findCredential(hashToken(header.slice(7))) : null;
-      if (!credential || credential.roomId !== req.params.roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
-        res.status(403).json({ error: "An active GM credential for this room is required." }); return;
-      }
       let closed = false;
       let handling = false;
       let release = () => {};
@@ -26,6 +21,12 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
         closed = true;
         if (!handling) release();
       });
+      const header = req.headers.authorization;
+      const credential = header?.startsWith("Bearer ") ? await deps.store.findCredential(hashToken(header.slice(7))) : null;
+      if (!credential || credential.roomId !== req.params.roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
+        res.status(403).json({ error: "An active GM credential for this room is required." }); return;
+      }
+      if (closed) return;
       const lease = await deps.registry.acquire(credential.roomId);
       release = lease.release;
       if (closed) { release(); return; }

@@ -37,6 +37,7 @@ import {
   type UploadResponse,
 } from "@vtt/shared";
 import { hashToken, newInviteCode } from "../domain/credentials";
+import { SeatKeptError } from "../domain/liveRoom";
 import { resolveEncounter } from "../domain/encounterTemplates";
 import type { RoomLifecycle } from "../domain/roomLifecycle";
 import type { AssetStore } from "../store/assetStore";
@@ -206,7 +207,8 @@ export function registerRoutes(
           account?.user.id,
         );
       } catch (err) {
-        await store.deleteCredential(tokenHash, participantId);
+        if (err instanceof SeatKeptError) console.error(`[vtt] keeping the credential of seat ${participantId} in room ${roomId}: its seat could not be removed`, err);
+        else await store.deleteCredential(tokenHash, participantId);
         throw err;
       }
       if (!joined.ok) await store.deleteCredential(tokenHash, participantId);

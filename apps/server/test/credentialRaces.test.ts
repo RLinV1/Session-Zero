@@ -6,7 +6,7 @@ import { hashToken } from "../src/domain/credentials";
 import { MAX_EVENTS_PER_ROOM } from "@vtt/shared";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { CredentialConflictError } from "../src/store/roomStore";
-import { newGuestToken, startServer } from "./helpers";
+import { TestClient, newGuestToken, startServer } from "./helpers";
 
 class RacingStore extends MemoryRoomStore {
   conflicts = 0;
@@ -71,6 +71,18 @@ class FailingMembers extends MemoryRoomStore {
       throw new Error("membership store down");
     }
     return super.putMember(...args);
+  }
+}
+
+class StuckLeave extends FailingMembers {
+  appendsBroken = false;
+  override async putMember(...args: Parameters<MemoryRoomStore["putMember"]>) {
+    if (this.failures > 0) this.appendsBroken = true;
+    return super.putMember(...args);
+  }
+  override async append(...args: Parameters<MemoryRoomStore["append"]>) {
+    if (this.appendsBroken) throw new Error("event log down");
+    return super.append(...args);
   }
 }
 
@@ -151,6 +163,29 @@ describe("a lost credential race leaves no half-made state (PR 226 findings 4624
       expect(events.some((e) => e.event.type === "ParticipantLeft" && joined?.event.type === "ParticipantJoined" && e.event.participant.id === joined.event.participant.id)).toBe(true);
       const again = await server.joinAs(account, gm.inviteCode, "Doomed");
       expect(again.status).toBe(200);
+    } finally {
+      vi.restoreAllMocks();
+      await server.close();
+    }
+  });
+
+  it("keeps the credential of a seat it could not remove, so the same token can resume it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = new StuckLeave();
+    const server = await startServer(store);
+    try {
+      const gm = await server.createRoom();
+      const account = await server.signUp();
+      store.failures = 1;
+      const failed = await server.joinAs(account, gm.inviteCode, "Stuck");
+      expect(failed.status).toBe(500);
+      const credential = await store.findCredential(hashToken(failed.guestToken));
+      expect(credential).not.toBeNull();
+      const events = await store.loadEvents(gm.roomId);
+      expect(events.some((e) => e.event.type === "ParticipantLeft" && e.event.participant.id === credential!.participantId)).toBe(false);
+      store.appendsBroken = false;
+      const client = await TestClient.connect(server.base, { roomId: gm.roomId, guestToken: failed.guestToken });
+      expect(client.state?.participants[credential!.participantId]?.displayName).toBe("Stuck");
     } finally {
       vi.restoreAllMocks();
       await server.close();

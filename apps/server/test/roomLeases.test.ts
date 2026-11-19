@@ -36,6 +36,14 @@ function slowGet() {
   });
 }
 
+class SlowCredentials extends MemoryRoomStore {
+  slow = false;
+  override async findCredential(...args: Parameters<MemoryRoomStore["findCredential"]>) {
+    if (this.slow) await new Promise((resolve) => setTimeout(resolve, 300));
+    return super.findCredential(...args);
+  }
+}
+
 describe("every path that serves a room leases it until it is done (PR 226 finding 4624326695)", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -164,6 +172,50 @@ describe("every path that serves a room leases it until it is done (PR 226 findi
       await res.arrayBuffer();
       expect(tracked.acquired).toBeGreaterThan(0);
       await vi.waitFor(() => expect(tracked.open).toBe(0));
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("takes no socket lease when the connection drops during the credential lookup", async () => {
+    const tracked = trackLeases();
+    const store = new SlowCredentials();
+    const server = await startServer(store);
+    try {
+      const creds = await server.createRoom();
+      const before = tracked.acquired;
+      store.slow = true;
+      const socket = io(server.base, { auth: { roomId: creds.roomId, guestToken: creds.guestToken }, transports: ["websocket"], reconnection: false });
+      await new Promise<void>((resolve) => socket.once("connect_error", () => resolve()).once("connect", () => resolve()).io.engine?.once("open", () => resolve()));
+      socket.close();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(tracked.acquired).toBe(before);
+      expect(tracked.open).toBe(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("takes no request lease when the request aborts during the credential lookup", async () => {
+    const tracked = trackLeases();
+    const store = new SlowCredentials();
+    const server = await startServer(store);
+    try {
+      const creds = await server.createRoom();
+      const before = tracked.acquired;
+      store.slow = true;
+      const controller = new AbortController();
+      const pending = fetch(`${server.base}/api/rooms/${creds.roomId}/preparation`, {
+        method: "POST", signal: controller.signal,
+        headers: { authorization: `Bearer ${creds.guestToken}`, "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => null);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      controller.abort();
+      await pending;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(tracked.acquired).toBe(before);
+      expect(tracked.open).toBe(0);
     } finally {
       await server.close();
     }

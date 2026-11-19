@@ -104,6 +104,12 @@ const refuse = <C extends string>(code: C, text: MessageRef) => ({ ok: false as 
  * Every committed change goes through `runExclusive`, a per-room FIFO queue, so commands
  * are decided against the latest state and receive consecutive seqs (FR-SYNC-01/04).
  */
+export class SeatKeptError extends Error {
+  constructor(readonly participantId: string, options: { cause: unknown }) {
+    super("the seat could not be removed after its membership failed", options);
+  }
+}
+
 export class LiveRoom {
   private state: RoomState;
   private seq: number;
@@ -417,7 +423,7 @@ export class LiveRoom {
         try {
           await this.store.putMember({ roomId: this.roomId, participantId: participant.id, userId });
         } catch (err) {
-          await this.dropSeat(participant.id);
+          if (!(await this.dropSeat(participant.id))) throw new SeatKeptError(participant.id, { cause: err });
           throw err;
         }
       }
@@ -425,14 +431,17 @@ export class LiveRoom {
     });
   }
 
-  private async dropSeat(participantId: string) {
+  private async dropSeat(participantId: string): Promise<boolean> {
     const actor = this.state.participants[participantId];
-    if (!actor) return;
+    if (!actor) return true;
     try {
       const decision = decide(this.state, actor, { type: "participant.leave" }, { newId: randomUUID, random: secureRandom, lastSeq: this.seq });
-      if (decision.ok) await this.commit(participantId, decision.events);
+      if (!decision.ok) return false;
+      await this.commit(participantId, decision.events);
+      return true;
     } catch (err) {
       console.error(`[vtt] could not remove seat ${participantId} of room ${this.roomId} after its membership failed`, err);
+      return false;
     }
   }
 

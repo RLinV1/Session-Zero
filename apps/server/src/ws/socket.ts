@@ -162,6 +162,8 @@ export function registerSocket(
     // rejection and end the process. A room whose log won't replay (e.g. events from newer
     // code) must fail only this connection (room-load-isolation).
     let release: (() => void) | null = null;
+    let closed = socket.conn.readyState === "closed";
+    socket.conn.once("close", () => { closed = true; release?.(); });
     try {
       const tokenHash = hashToken(auth.data.guestToken);
       const cred = await deps.store.findCredential(tokenHash);
@@ -175,8 +177,7 @@ export function registerSocket(
       // deletes ended sessions with their seats; this catches one that ended since.
       if (cred.sessionHash && !(await deps.sessions.isLive(cred.sessionHash))) return next(new Error("signed_out"));
 
-      let closed = false;
-      socket.conn.once("close", () => { closed = true; release?.(); });
+      if (closed) return next(new Error("not_found"));
       const lease = await deps.registry.acquire(cred.roomId);
       release = lease.release;
       if (closed) return next(new Error("not_found"));

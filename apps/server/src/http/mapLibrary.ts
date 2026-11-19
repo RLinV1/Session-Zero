@@ -60,16 +60,17 @@ export function registerMapLibraryRoutes(app: Express, deps: Deps) {
   const auths = new WeakMap<Request, Auth>();
   const guard = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
+      let handling = false;
+      let closed = false;
+      let release = () => {};
+      res.once("close", () => { closed = true; if (!handling) release(); });
       const header = req.headers.authorization;
       const credential = header?.startsWith("Bearer ") ? await deps.store.findCredential(hashToken(header.slice(7))) : null;
       const roomId = req.params.roomId;
       if (!credential || credential.roomId !== roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      let handling = false;
-      let closed = false;
-      let release = () => {};
-      res.once("close", () => { closed = true; if (!handling) release(); });
+      if (closed) return;
       const lease = await deps.registry.acquire(credential.roomId);
       release = lease.release;
       if (closed) { release(); return; }
