@@ -173,10 +173,21 @@ describe("L9 common passwords (backend audit)", () => {
 describe("L12 upload budget refund and L7 log tags (backend audit)", () => {
   it("gives a counted attempt back", () => {
     const limiter = new RateLimiter(1, 60_000);
-    expect(limiter.hit("k").ok).toBe(true);
+    const first = limiter.hit("k");
+    expect(first.ok).toBe(true);
     expect(limiter.hit("k").ok).toBe(false);
-    limiter.refund("k");
+    limiter.refund("k", first.reservation);
     expect(limiter.hit("k").ok).toBe(true);
+  });
+
+  it("does not refund a later window's count (PR 226 rate limit refund)", () => {
+    let now = 0;
+    const limiter = new RateLimiter(1, 1000, () => now);
+    const old = limiter.hit("k");
+    now = 2000;
+    expect(limiter.hit("k").ok).toBe(true);
+    limiter.refund("k", old.reservation);
+    expect(limiter.hit("k").ok).toBe(false);
   });
 
   it("logs the error name and code, never its message", () => {

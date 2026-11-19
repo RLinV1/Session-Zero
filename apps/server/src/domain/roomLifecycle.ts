@@ -94,9 +94,17 @@ export function roomLifecycle(deps: {
       temporary: room.temporary ?? false,
       editsEncounterId: room.editsEncounterId ?? null,
     });
-    await store.saveCredential(hashToken(room.guestToken), { roomId, participantId, sessionHash: room.sessionHash });
+    try {
+      await store.saveCredential(hashToken(room.guestToken), { roomId, participantId, sessionHash: room.sessionHash });
+    } catch (err) {
+      await store.deleteRoom(roomId).catch((cleanupErr: unknown) => {
+        console.error(`[vtt] could not delete room ${roomId} after its credential save failed`, cleanupErr);
+      });
+      throw err;
+    }
     if (room.userId) await store.putMember({ roomId, participantId, userId: room.userId });
-    const live = await registry.get(roomId);
+    const lease = await registry.acquire(roomId);
+    const live = lease.room;
     // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
     const preset = presetOf({ preset: room.preset });
     // The GM's own defaults (ADR 0066): every table rule and the grid units, on the first event.
@@ -130,7 +138,11 @@ export function roomLifecycle(deps: {
       if (board?.walls.length) events.push({ type: "WallsAdded", walls: board.walls.map((wall) => ({ ...wall, id: randomUUID() })) });
       for (const region of board?.fog ?? []) events.push({ type: "FogAdded", region: { ...region, id: randomUUID() } });
     }
-    await live!.appendSystem(participantId, events);
+    try {
+      await live!.appendSystem(participantId, events);
+    } finally {
+      lease.release();
+    }
     return { roomId, inviteCode, participantId };
   }
 

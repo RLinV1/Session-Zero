@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sharedMsg, validationMessage } from "./i18n";
 import { GamePresetId } from "./gamePresets";
-import { visibleName } from "./names";
+import { hasVisibleCharacter, visibleName } from "./names";
 import { TokenAttacks, type AttackPreset } from "./attackPresets";
 import { Command, DEFAULT_TOKEN_COLOR } from "./commands";
 import { CommittedEvent } from "./events";
@@ -154,7 +154,7 @@ export const SOCKET_EVENTS = {
 } as const;
 
 // ---------- HTTP ----------
-const VisibleText = (max: number) => z.string().max(max * 4).transform(visibleName).pipe(z.string().min(1).max(max));
+const VisibleText = (max: number) => z.string().max(max * 4).transform(visibleName).pipe(z.string().min(1).max(max).refine(hasVisibleCharacter));
 
 export const CreateRoomRequest = z.object({
   roomName: VisibleText(80),

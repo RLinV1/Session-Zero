@@ -103,7 +103,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
       created = result.created;
       res.status(result.created ? 201 : 200).json({ file: studioFile(result.file), created: result.created });
     } finally {
-      if (!created) limits.uploadsPerOwner.refund(budget);
+      if (!created) limits.uploadsPerOwner.refund(budget, limit.reservation);
     }
   })().catch(failed(res)); });
   app.post(`${base}/binding`, grantGuard, (req, res) => { void (async () => {

@@ -437,6 +437,7 @@ function decideCommand(
       const ids = command.tokenIds ?? Object.keys(state.staged);
       if (ids.length === 0) return reject("invalid", sharedMsg("reject.nothingStaged"));
       if (ids.some((id) => !Object.hasOwn(state.staged, id))) return reject("invalid", sharedMsg("reject.notStaged"));
+      if (Object.keys(state.tokens).length + ids.length > MAX_TOKENS_PER_ROOM) return reject("invalid", sharedMsg("reject.tooManyTokens"));
       const placements = placeStaged(state, ids.map((id) => state.staged[id]!), command.origin);
       if (!placements) return reject("invalid", sharedMsg("reject.notEnoughSpace"));
       return accept({ type: "StagedTokensPlaced", placements });

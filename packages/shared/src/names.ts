@@ -6,6 +6,8 @@ export const normalizeName = (name: string) => name.replace(INVISIBLE, "").norma
 
 export const visibleName = (name: string) => name.replace(INVISIBLE_KEEPING_JOINERS, "");
 
+export const hasVisibleCharacter = (name: string) => /[^\s‌‍]/u.test(name);
+
 /**
  * `normalizeName` without the trim, for comparing a stored (already trimmed) name with a slice of
  * text the same length: trimming the slice would let "José " match a name stored decomposed.

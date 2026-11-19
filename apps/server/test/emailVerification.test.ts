@@ -104,6 +104,23 @@ describe("email verification (FR-GM-01)", () => {
       expect((await signIn("owner's own passphrase")).status).toBe(200);
     });
 
+    it("answers 409 and changes nothing when the owner verified before the replacement landed (PR 226 atomic replacement)", async () => {
+      await production();
+      await signUp();
+      const ownerToken = mail.tokenOf();
+      const real = server.store.findUserByEmail.bind(server.store);
+      vi.spyOn(server.store, "findUserByEmail").mockImplementationOnce(async (email) => {
+        const found = await real(email);
+        expect((await verify(ownerToken)).status).toBe(200);
+        return found;
+      });
+      const duplicate = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
+      expect(duplicate.status).toBe(409);
+      expect((await signIn("attacker passphrase")).status).toBe(401);
+      expect((await signIn()).status).toBe(200);
+      expect(mail.sent).toHaveLength(1);
+    });
+
     it("writes the mail in Traditional Chinese for a request that asks for it", async () => {
       await production();
       await signUp({ "accept-language": "zh-TW" });
@@ -226,14 +243,14 @@ describe("email verification (FR-GM-01)", () => {
       expect((await resend("not-an-email")).status).toBe(400);
     });
 
-    it("limits one address to 3 requests per 15 minutes with Retry-After", async () => {
+    it("stops mailing one address after 3 requests per 15 minutes but answers 204 as for an unknown one (PR 226 resend limiter)", async () => {
       await production();
       await signUp();
       for (let i = 0; i < 3; i++) expect((await resend()).status).toBe(204);
       await vi.waitFor(() => expect(mail.sent).toHaveLength(4));
       const limited = await resend();
-      expect(limited.status).toBe(429);
-      expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+      expect(limited.status).toBe(204);
+      expect(limited.headers.get("retry-after")).toBeNull();
       await new Promise((r) => setTimeout(r, 50));
       expect(mail.sent).toHaveLength(4);
     });

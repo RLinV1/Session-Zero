@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { startServer, type HttpAccount } from "./helpers";
 import {
@@ -237,6 +237,29 @@ describe("delegated Studio consent and tokens (FR-GM-26, ADR 0073)", () => {
     for (let i = 0; i < 20; i++) expect((await consent(account, authorizeParams(client.client_id, pkcePair().challenge), [id])).status).toBe(200);
     const res = await consent(account, authorizeParams(client.client_id, pkcePair().challenge), [id]);
     expect(res.status).toBe(409);
+  });
+});
+
+describe("delegated Studio token budget (FR-GM-26, PR 226 client budget)", () => {
+  it("charges the client budget only for a valid code and proof, and counts an unsupported grant against the address", async () => {
+    const budget = vi.spyOn(server.app.limits.studioRequestsPerClient, "hit");
+    const { account, id } = await startBuild();
+    const client = await (await registerClient(server.base)).json() as { client_id: string };
+    for (let i = 0; i < 61; i++) {
+      const res = await exchange(server.base, { grant_type: "password", client_id: client.client_id });
+      expect(res.status).toBe(i < 60 ? 400 : 429);
+    }
+    expect(budget).not.toHaveBeenCalled();
+    const { verifier, challenge } = pkcePair();
+    const params = authorizeParams(client.client_id, challenge);
+    const allowed = await consent(account, params, [id]);
+    const code = new URL((await allowed.json() as { redirectTo: string }).redirectTo).searchParams.get("code")!;
+    const wrong = await exchange(server.base, { grant_type: "authorization_code", code, redirect_uri: TEST_REDIRECT, client_id: client.client_id, code_verifier: pkcePair().verifier });
+    expect(wrong.status).toBe(400);
+    expect(budget).not.toHaveBeenCalled();
+    const right = await exchange(server.base, { grant_type: "authorization_code", code, redirect_uri: TEST_REDIRECT, client_id: client.client_id, code_verifier: verifier });
+    expect(right.status).toBe(200);
+    expect(budget).toHaveBeenCalledTimes(1);
   });
 });
 

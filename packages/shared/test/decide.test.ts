@@ -178,10 +178,7 @@ describe("token name uniqueness (KAN-62)", () => {
 
   it("stores the name trimmed and rejects a blank one", () => {
     expect(names(create(baseRoom(), "  Goblin  ").state)).toEqual(["Goblin"]);
-    expect(attempt(baseRoom(), gm, { type: "token.create", name: "   ", position: { x: 0, y: 0 } })).toMatchObject({
-      ok: false,
-      code: "invalid",
-    });
+    expect(Command.safeParse({ type: "token.create", name: "   ", position: { x: 0, y: 0 } }).success).toBe(false);
   });
 });
 

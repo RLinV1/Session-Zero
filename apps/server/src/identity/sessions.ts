@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AccountView } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
+import { verificationRequired } from "./mailer";
 import type { EndedSessions, IdentityStore, SessionRecord, UserRecord } from "../store/identityStore";
 
 /**
@@ -77,6 +78,7 @@ export class Sessions {
     private store: IdentityStore,
     readonly cookie: CookieOptions,
     private now: () => number = Date.now,
+    private verifying: () => boolean = verificationRequired,
   ) {}
 
   /** Called with the seat credentials that ended whenever sessions end. */
@@ -141,7 +143,7 @@ export class Sessions {
       await this.store.deleteExpiredSessions(new Date(now).toISOString(), new Date(now - SESSION_IDLE_MS).toISOString()),
     );
     await this.store.deleteExpiredVerificationTokens(new Date(now).toISOString());
-    await this.store.deleteStaleUnverifiedUsers(new Date(now - UNVERIFIED_USER_MS).toISOString());
+    if (this.verifying()) await this.store.deleteStaleUnverifiedUsers(new Date(now - UNVERIFIED_USER_MS).toISOString());
   }
 
   /**

@@ -1,4 +1,5 @@
 import type { StudioOwnerIds } from "@vtt/shared";
+import { z } from "zod";
 import {
   StudioSnapshot, type StudioContext,
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
@@ -90,6 +91,11 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+const ConsentResponse = z.object({
+  client: z.object({ name: z.string(), redirectHost: z.string(), verified: z.boolean() }),
+  builds: z.array(z.object({ id: z.string(), name: z.string() })),
+});
 
 /** What the consent page shows (ADR 0073, design D7). The client's name is its own claim; its redirect host is where the answer goes. */
 export interface StudioConsentRequest {
@@ -510,7 +516,8 @@ export const api = {
       const res = await apiFetch(`/api/oauth/authorize${query}`);
       if (res.status === 401) onSignedOut();
       const body = await res.json().catch(() => ({})) as { error?: unknown; redirectTo?: unknown } & Partial<StudioConsentRequest>;
-      if (res.ok && body.client && body.builds) return { ok: true, request: { client: body.client, builds: body.builds } };
+      const consent = res.ok ? ConsentResponse.safeParse(body) : null;
+      if (consent?.success) return { ok: true, request: consent.data };
       return {
         ok: false,
         status: res.status,

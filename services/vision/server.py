@@ -54,7 +54,11 @@ class BoundedServer(ThreadingHTTPServer):
         if not self.slots.acquire(blocking=False):
             self.shutdown_request(request)
             return
-        super().process_request(request, client_address)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
 
     def process_request_thread(self, request, client_address):
         try:

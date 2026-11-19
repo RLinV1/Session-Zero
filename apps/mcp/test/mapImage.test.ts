@@ -318,16 +318,11 @@ describe("get_map_image (FR-PL-08, FR-GM-17, FR-GM-19)", () => {
     afterAll(() => new Promise((resolve) => listener.close(resolve)));
 
     it.each([
-      "LISTENER/latest/meta-data/",
-      "http://169.254.169.254/latest/meta-data/",
-      "//evil.example/uploads/x.png",
       "/uploads/../api/health",
       "/uploads/..",
       "/uploads/a/b.png",
-      "/uploads/x.png?y=1",
       "/api/rooms",
       "/img/not-a-shipped-map.webp",
-      "file:///etc/passwd",
     ])("says %s is unavailable, and requests nothing", async (url) => {
       const { gm, inviteCode } = await openTable(stack.room);
       const { seat } = await joinAs(stack.ai, inviteCode, "Oswin");
@@ -342,6 +337,23 @@ describe("get_map_image (FR-PL-08, FR-GM-17, FR-GM-19)", () => {
       expect(requests).toBe(0);
       const roomServerRequests = fetched.mock.calls.map(([target]) => String(target)).filter((target) => target.startsWith(stack.room.base));
       expect(roomServerRequests).toEqual([]);
+      gm.close();
+    });
+
+    it.each([
+      "LISTENER/latest/meta-data/",
+      "http://169.254.169.254/latest/meta-data/",
+      "//evil.example/uploads/x.png",
+      "/uploads/x.png?y=1",
+      "file:///etc/passwd",
+    ])("never lets %s become the map, so nothing is requested", async (url) => {
+      const { gm, inviteCode } = await openTable(stack.room);
+      const { seat } = await joinAs(stack.ai, inviteCode, "Oswin");
+      requests = 0;
+      await expect(gmDoes(gm, { type: "scene.setMap", map: { url: url.replace("LISTENER", listenerUrl), width: 700, height: 700 } })).rejects.toThrow(/refused/);
+      const result = await stack.ai.call("get_map_image", { seat });
+      expect(result.images).toHaveLength(0);
+      expect(requests).toBe(0);
       gm.close();
     });
 

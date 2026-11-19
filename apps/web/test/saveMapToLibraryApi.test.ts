@@ -31,3 +31,17 @@ describe("Save to library and library export requests (asset-library, ADR 0070)"
     expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("/api/library/map%201/export");
   });
 });
+
+describe("Studio consent check (ADR 0073)", () => {
+  const request = (verified: unknown) => ({ client: { name: "App", redirectHost: "app.example", verified }, builds: [{ id: "b1", name: "Crypt" }] });
+
+  it("accepts a boolean verified flag", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(request(false))));
+    expect(await api.studio.checkRequest("?x=1")).toMatchObject({ ok: true, request: { client: { verified: false } } });
+  });
+
+  it("refuses a verified flag that is not a boolean", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(request("false"))));
+    expect(await api.studio.checkRequest("?x=1")).toMatchObject({ ok: false });
+  });
+});

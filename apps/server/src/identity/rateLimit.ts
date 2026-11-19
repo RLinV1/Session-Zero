@@ -6,6 +6,8 @@ export interface LimitResult {
   ok: boolean;
   /** Seconds until the window resets; what a refusal's `Retry-After` carries. */
   retryAfterSec: number;
+  /** The window that admitted a counted attempt; what `refund` needs to give it back. */
+  reservation: number;
 }
 
 export class RateLimiter {
@@ -23,22 +25,26 @@ export class RateLimiter {
     if (!result.ok) return result;
     const now = this.now();
     const w = this.windows.get(key);
-    if (w && w.resetAt > now) w.count++;
-    else this.windows.set(key, { count: 1, resetAt: now + this.windowMs });
-    return result;
+    if (w && w.resetAt > now) {
+      w.count++;
+      return { ...result, reservation: w.resetAt };
+    }
+    const resetAt = now + this.windowMs;
+    this.windows.set(key, { count: 1, resetAt });
+    return { ...result, reservation: resetAt };
   }
 
   /** Whether `key` may make another attempt, without counting one. */
   check(key: string): LimitResult {
     const now = this.now();
     const w = this.windows.get(key);
-    if (!w || w.resetAt <= now) return { ok: true, retryAfterSec: 0 };
-    return { ok: w.count < this.limit, retryAfterSec: Math.max(1, Math.ceil((w.resetAt - now) / 1000)) };
+    if (!w || w.resetAt <= now) return { ok: true, retryAfterSec: 0, reservation: 0 };
+    return { ok: w.count < this.limit, retryAfterSec: Math.max(1, Math.ceil((w.resetAt - now) / 1000)), reservation: 0 };
   }
 
-  refund(key: string) {
+  refund(key: string, reservation: number) {
     const w = this.windows.get(key);
-    if (w && w.resetAt > this.now() && w.count > 0) w.count--;
+    if (w && w.resetAt === reservation && w.resetAt > this.now() && w.count > 0) w.count--;
   }
 
   reset(key: string) {

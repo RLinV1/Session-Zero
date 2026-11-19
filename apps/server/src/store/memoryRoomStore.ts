@@ -1303,11 +1303,21 @@ export class MemoryRoomStore implements RoomStore {
     this.verificationTokens.set(tokenHash, { userId, expiresAt });
   }
 
+  async replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string) {
+    const user = this.users.get(userId);
+    if (!user || user.emailVerifiedAt) return false;
+    user.passwordHash = passwordHash;
+    user.passwordChangedAt = new Date().toISOString();
+    await this.createVerificationToken(userId, tokenHash, createdAt, expiresAt);
+    return true;
+  }
+
   async consumeVerificationToken(tokenHash: string, now: string) {
     const token = this.verificationTokens.get(tokenHash);
     if (!token) return null;
     this.verificationTokens.delete(tokenHash);
     if (token.expiresAt <= now) return null;
+    await this.markEmailVerified(token.userId, now);
     return this.findUserById(token.userId);
   }
 
@@ -1316,10 +1326,13 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   async deleteStaleUnverifiedUsers(createdBefore: string) {
-    const held = new Set([...this.verificationTokens.values()].map((t) => t.userId));
-    for (const user of [...this.users.values()]) {
-      if (!user.emailVerifiedAt && user.createdAt < createdBefore && !held.has(user.id)) await this.deleteUser(user.id);
-    }
+    for (const id of [...this.users.keys()]) await this.deleteUser(id, createdBefore);
+  }
+
+  private isStaleUnverified(user: UserRecord, createdBefore: string) {
+    if (user.emailVerifiedAt || user.createdAt >= createdBefore) return false;
+    for (const token of this.verificationTokens.values()) if (token.userId === user.id) return false;
+    return true;
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {
@@ -1327,11 +1340,12 @@ export class MemoryRoomStore implements RoomStore {
     if (user) user.activeDiceLookId = lookId;
   }
 
-  async deleteUser(userId: string): Promise<DeletedUser | null> {
+  async deleteUser(userId: string, staleBefore?: string): Promise<DeletedUser | null> {
     const user = this.users.get(userId);
-    if (!user) return null;
+    if (!user || (staleBefore !== undefined && !this.isStaleUnverified(user, staleBefore))) return null;
     // As the foreign key does in Postgres.
     if ((await this.listOwnedRoomIds(user.ownerId)).length > 0) throw new Error("User still owns rooms");
+    if (staleBefore !== undefined && !this.isStaleUnverified(user, staleBefore)) return null;
     const { credentialHashes } = this.endSessions((s) => s.userId === userId);
     for (const [key, member] of this.members) if (member.userId === userId) this.members.delete(key);
     const objectKeys: string[] = [];

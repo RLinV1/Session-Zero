@@ -31,6 +31,18 @@ describe("M3: room ceilings (FR-GM-15)", () => {
   });
 });
 
+describe("token.placeStaged keeps to MAX_TOKENS_PER_ROOM (FR-GM-15)", () => {
+  it("refuses a placement past the limit", () => {
+    const { state, token } = withToken(baseRoom());
+    const tokens: Record<string, Token> = {};
+    for (let i = 0; i < MAX_TOKENS_PER_ROOM - 1; i++) tokens[`t${i}`] = { ...token, id: `t${i}` };
+    const staged = { s0: { ...token, id: "s0" }, s1: { ...token, id: "s1" } };
+    const full = { ...state, tokens, staged };
+    const command = { type: "token.placeStaged", origin: { x: 35, y: 35 } } as const;
+    expect(attempt(full, gm, command)).toMatchObject({ ok: false, code: "invalid" });
+  });
+});
+
 describe("M8: image urls are origin-relative paths (FR-GM-15)", () => {
   it.each(["https://evil.example/p.png", "//evil.example/p.png", "http://x/y", "/a?b=1", "javascript:alert(1)"])("refuses %s", (imageUrl) => {
     expect(Command.safeParse({ type: "token.setImage", tokenId: "t", imageUrl }).success).toBe(false);
@@ -52,6 +64,14 @@ describe("L5: invisible characters in names (FR-PL-02)", () => {
 
   it("refuses a name that is only invisible characters", () => {
     expect(Command.safeParse({ type: "token.create", name: "​​", position: { x: 0, y: 0 } }).success).toBe(false);
+  });
+
+  it("refuses a name made only of joiners and keeps joiners inside a visible name", () => {
+    const base = { roomName: "Room", guestToken: "x".repeat(43) };
+    expect(CreateRoomRequest.safeParse({ ...base, displayName: "‍" }).success).toBe(false);
+    expect(CreateRoomRequest.safeParse({ ...base, displayName: " ‌‍ " }).success).toBe(false);
+    expect(Command.safeParse({ type: "token.create", name: "‍", position: { x: 0, y: 0 } }).success).toBe(false);
+    expect(CreateRoomRequest.parse({ ...base, displayName: "a‍b" }).displayName).toBe("a‍b");
   });
 
   it("treats a name with a zero-width character as the same name", () => {

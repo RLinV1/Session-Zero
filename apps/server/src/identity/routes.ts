@@ -70,12 +70,12 @@ export function accountLimits(now: () => number = Date.now) {
     inviteLookupsPerIp: new RateLimiter(300, 15 * MINUTE, now),
     /** Replay requests per participant: each one folds the room's whole log on the event loop (FR-PL-07). */
     replaysPerParticipant: new RateLimiter(150, MINUTE, now),
-    replaysPerRoom: new RateLimiter(120, MINUTE, now),
-    replaysPerIp: new RateLimiter(120, MINUTE, now),
+    replaysPerRoom: new RateLimiter(600, MINUTE, now),
+    replaysPerIp: new RateLimiter(600, MINUTE, now),
     /** History requests per participant: each one folds the room's whole log on the event loop (FR-REC-01). */
     historyPerParticipant: new RateLimiter(60, MINUTE, now),
-    historyPerRoom: new RateLimiter(60, MINUTE, now),
-    historyPerIp: new RateLimiter(60, MINUTE, now),
+    historyPerRoom: new RateLimiter(300, MINUTE, now),
+    historyPerIp: new RateLimiter(300, MINUTE, now),
     /** Wall detection runs per room, so one room can't hold the few server-wide job slots (FR-GM-11). */
     wallDetectionsPerRoom: new RateLimiter(50, 15 * MINUTE, now),
     /** Image uploads per account, in rooms and the library together: each one is stored and may queue analysis (FR-GM-02). */
@@ -130,9 +130,13 @@ export function registerIdentityRoutes(
       } catch (err) {
         if (!(err instanceof EmailTakenError)) throw err;
         const existing = verification ? await store.findUserByEmail(body.data.email) : null;
-        if (!existing || existing.emailVerifiedAt) return void res.status(409).json({ error: err.message, field: "email" });
-        await store.setPasswordHash(existing.id, passwordHash, true);
-        user = existing;
+        if (!verification || !existing || existing.emailVerifiedAt) return void res.status(409).json({ error: err.message, field: "email" });
+        const issued = mintVerification();
+        if (!(await store.replaceUnverifiedCredentials(existing.id, passwordHash, issued.hash, issued.createdAt, issued.expiresAt))) {
+          return void res.status(409).json({ error: err.message, field: "email" });
+        }
+        await deliverVerification(verification, existing.email, issued.token, requestLocale(res));
+        return void res.status(201).json({ verificationRequired: true, email: existing.email } satisfies SignUpResponse);
       }
       if (!verification) {
         await startSession(res, user.id);
@@ -153,7 +157,6 @@ export function registerIdentityRoutes(
         ? await store.consumeVerificationToken(hashToken(body.data.token), new Date(now()).toISOString())
         : null;
       if (!user) return void res.status(400).json({ error: "This verification link is invalid or has expired." });
-      await store.markEmailVerified(user.id, new Date(now()).toISOString());
       res.json({ account: null } satisfies MeResponse);
     })().catch(internalError(res));
   });
@@ -167,9 +170,9 @@ export function registerIdentityRoutes(
       if (!body.success) return badRequest(res, body.error.issues);
       if (!verification) return void res.status(204).end();
       const user = await store.findUserByEmail(body.data.email);
-      if (user && !user.emailVerifiedAt && refused(res, limits.resendPerEmail.hit(`resend:${body.data.email}`))) return;
+      const target = user && !user.emailVerifiedAt && limits.resendPerEmail.hit(`resend:${body.data.email}`).ok ? user : null;
       res.status(204).end();
-      if (user && !user.emailVerifiedAt) await sendVerification(verification, user.id, user.email, requestLocale(res));
+      if (target) await sendVerification(verification, target.id, target.email, requestLocale(res));
     })().catch(internalError(res));
   });
 
@@ -274,10 +277,19 @@ export function registerIdentityRoutes(
     })().catch(internalError(res));
   });
 
-  async function sendVerification(active: EmailVerification, userId: string, email: string, locale: ReturnType<typeof requestLocale>) {
+  function mintVerification() {
     const token = randomBytes(32).toString("base64url");
     const issued = now();
-    await store.createVerificationToken(userId, hashToken(token), new Date(issued).toISOString(), new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString());
+    return { token, hash: hashToken(token), createdAt: new Date(issued).toISOString(), expiresAt: new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString() };
+  }
+
+  async function sendVerification(active: EmailVerification, userId: string, email: string, locale: ReturnType<typeof requestLocale>) {
+    const issued = mintVerification();
+    await store.createVerificationToken(userId, issued.hash, issued.createdAt, issued.expiresAt);
+    await deliverVerification(active, email, issued.token, locale);
+  }
+
+  async function deliverVerification(active: EmailVerification, email: string, token: string, locale: ReturnType<typeof requestLocale>) {
     try {
       await active.mailer.send(verificationEmail(locale, email, verificationLink(clientOrigin, token)));
     } catch (err) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EmailTakenError, type SessionRecord } from "../src/store/identityStore";
 import { storeCases } from "./storeHarness";
 
@@ -182,6 +182,47 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect(await store.findUserById(stale.id)).toBeNull();
       expect(await store.findUserById(held.id)).not.toBeNull();
       expect(await store.findUserById(verified.id)).not.toBeNull();
+    });
+
+    it("replaces credentials and tokens in one step only while unverified (PR 226 atomic replacement)", async () => {
+      const user = await newUser();
+      const old = randomUUID();
+      const fresh = randomUUID();
+      await issue(user.id, old);
+      const now = Date.now();
+      expect(await store.replaceUnverifiedCredentials(user.id, "$argon2id$replaced", fresh, new Date(now).toISOString(), new Date(now + hour).toISOString())).toBe(true);
+      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$replaced");
+      expect(await store.consumeVerificationToken(old, new Date().toISOString())).toBeNull();
+      expect((await store.consumeVerificationToken(fresh, new Date().toISOString()))!.emailVerifiedAt).not.toBeNull();
+      const later = randomUUID();
+      expect(await store.replaceUnverifiedCredentials(user.id, "$argon2id$attacker", later, new Date(now).toISOString(), new Date(now + hour).toISOString())).toBe(false);
+      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$replaced");
+      expect(await store.consumeVerificationToken(later, new Date().toISOString())).toBeNull();
+    });
+
+    it("marks the user verified as it consumes the token (PR 226 atomic replacement)", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issue(user.id, hash);
+      await store.consumeVerificationToken(hash, new Date().toISOString());
+      expect((await store.findUserById(user.id))!.emailVerifiedAt).not.toBeNull();
+    });
+
+    it("keeps a user the sweep selected but who verified or got a token before deletion (PR 226 sweep recheck)", async () => {
+      const verifiedMeanwhile = await newUser();
+      const tokenedMeanwhile = await newUser();
+      const abandoned = await newUser();
+      const real = store.deleteUser.bind(store);
+      const spy = vi.spyOn(store, "deleteUser").mockImplementation(async (id: string, staleBefore?: string) => {
+        if (id === verifiedMeanwhile.id) await store.markEmailVerified(id, new Date().toISOString());
+        if (id === tokenedMeanwhile.id) await issue(id, randomUUID());
+        return real(id, staleBefore);
+      });
+      await store.deleteStaleUnverifiedUsers(new Date(Date.now() + hour).toISOString());
+      spy.mockRestore();
+      expect(await store.findUserById(verifiedMeanwhile.id)).not.toBeNull();
+      expect(await store.findUserById(tokenedMeanwhile.id)).not.toBeNull();
+      expect(await store.findUserById(abandoned.id)).toBeNull();
     });
 
     it("deletes a user's pending token with the user", async () => {

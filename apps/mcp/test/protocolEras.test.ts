@@ -52,6 +52,19 @@ describe("both MCP protocol eras on one stateless endpoint (FR-PL-08, FR-GM-26)"
     });
   }
 
+  it("sends a chunked build body over 256 KiB to the large parser, not a 413", async () => {
+    const payload = JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: envelope, pad: "x".repeat(300 * 1024) } });
+    const bytes = new TextEncoder().encode(payload);
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(bytes); c.close(); } });
+    const res = await fetch(stack.mcp.url.replace(/\/mcp$/, "/mcp/build"), {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/list" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect(res.status).not.toBe(413);
+  });
+
   it("still refuses a browser origin it doesn't know, in either era", async () => {
     const res = await post("/mcp/build", { origin: "https://evil.example", "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/list" },
       { jsonrpc: "2.0", id: 4, method: "tools/list", params: { _meta: envelope } });

@@ -427,7 +427,7 @@ describe("unique token names (KAN-62)", () => {
     const { gm } = await setup();
     const seqBefore = gm.seq;
     const res = await gm.command({ type: "token.create", name: "   ", position: { x: 0, y: 0 } });
-    expect(res).toMatchObject({ type: "rejected", code: "invalid" });
+    expect(res).toMatchObject({ type: "rejected", code: "bad_request" });
     expect(gm.seq).toBe(seqBefore);
     expect(tokens(gm)).toEqual([]);
   });

@@ -98,7 +98,7 @@ describe("the server catalog (localization)", () => {
     };
     walk(root);
     // Codes and log lines, not text for people.
-    const notForPeople = new Set(["source_changed", "invalid_image", "execution_failed", "Unsupported model"]);
+    const notForPeople = new Set(["source_changed", "invalid_image", "execution_failed", "Unsupported model", "password hashing queue is full", "credential already names another seat"]);
     const missing: string[] = [];
     for (const file of files) {
       const source = readFileSync(file, "utf8");

@@ -405,7 +405,6 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const field = (name: string) => (typeof body[name] === "string" ? body[name] as string : undefined);
       const client = field("client_id") ? await store.findStudioClient(field("client_id")!) : null;
       if (!client) return tokenFailure(req, res, 401, "invalid_client", "Unknown client_id.", true);
-      if (clientBusy(res, client.id)) return;
       if (field("resource") !== undefined && field("resource") !== resource) return tokenFailure(req, res, 400, "invalid_target", "This server only issues tokens for its Studio resource.");
       const at = now();
 
@@ -422,6 +421,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         if (Date.parse(grant.codeExpiresAt) <= at || grant.revokedAt !== null) return tokenFailure(req, res, 400, "invalid_grant", "The code has expired.");
         if (field("redirect_uri") !== grant.redirectUri) return tokenFailure(req, res, 400, "invalid_grant", "redirect_uri doesn't match the authorization request.");
         if (!verifier || !PkceValue.safeParse(verifier).success || !pkceMatches(verifier, grant.codeChallenge)) return tokenFailure(req, res, 400, "invalid_grant", "code_verifier doesn't match.");
+        if (clientBusy(res, client.id)) return;
         const issued = newTokens(grant, at);
         if (!await store.redeemStudioCode(grant.id, new Date(at).toISOString(), issued.records)) {
           // Another exchange of the same code won at the same moment: that is a replay too.
@@ -438,6 +438,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         if (found.token.kind !== "refresh" || found.grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The refresh token isn't valid.");
         const scope = field("scope");
         if (scope !== undefined && scope.split(" ").some((s) => s && s !== STUDIO_SCOPE)) return tokenFailure(req, res, 400, "invalid_scope", "Only studio:build is available.");
+        if (clientBusy(res, client.id)) return;
         if (found.token.usedAt !== null) {
           // A rotated refresh token came back: one of its two holders isn't the client. End the family.
           await store.revokeStudioGrant(found.grant.id, new Date(at).toISOString());
@@ -452,7 +453,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         return void res.json(issued.reply);
       }
 
-      oauthError(res, 400, "unsupported_grant_type", "Use authorization_code or refresh_token.");
+      tokenFailure(req, res, 400, "unsupported_grant_type", "Use authorization_code or refresh_token.", true);
     })().catch(failed(res));
   });
 

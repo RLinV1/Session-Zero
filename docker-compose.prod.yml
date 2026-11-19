@@ -38,7 +38,7 @@ services:
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 128
-    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    command: ["sh", "-c", "exec docker-entrypoint.sh redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.production}
       REDISCLI_AUTH: ${REDIS_PASSWORD}

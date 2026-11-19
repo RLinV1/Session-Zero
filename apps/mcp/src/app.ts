@@ -87,8 +87,10 @@ export function buildMcpApp(options: McpAppOptions) {
   const largeBuildBody = express.json({ limit: "12mb", type: () => true });
   let largeBuildBodies = 0;
   const buildBody = (req: Request, res: Response, next: NextFunction) => {
-    const length = Number(req.headers["content-length"] ?? 0);
-    if (!(length > SMALL_BUILD_BODY_BYTES)) return smallBuildBody(req, res, next);
+    const declared = req.headers["content-length"];
+    const length = declared === undefined ? NaN : Number(declared);
+    const small = length <= SMALL_BUILD_BODY_BYTES && !req.headers["content-encoding"];
+    if (small) return smallBuildBody(req, res, next);
     if (largeBuildBodies >= MAX_LARGE_BUILD_BODIES) {
       res.setHeader("Retry-After", "5");
       return void rpcError(res, 429, -32000, "Too many large uploads at once. Try again in a moment.");

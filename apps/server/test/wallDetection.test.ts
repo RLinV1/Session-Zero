@@ -375,10 +375,11 @@ describe("automatic wall detection through the queue (FR-GM-11, ADR 0029)", () =
     expect(data).toMatchObject({ width: 3269, height: 1882 });
 
     // Not a shipped map, and not a path out of the folder: nothing is read or queued.
-    for (const url of ["/img/missing.webp", "/img/../../server/package.json", "https://example.com/map.png"]) {
+    for (const url of ["/img/missing.webp", "/img/../../server/package.json"]) {
       expect(await gm.command({ type: "scene.setMap", map: { url, width: 700, height: 700 } })).toMatchObject({ type: "ack" });
       expect((await detect()).status).toBe(422);
     }
+    expect(await gm.command({ type: "scene.setMap", map: { url: "https://example.com/map.png", width: 700, height: 700 } })).toMatchObject({ type: "rejected", code: "bad_request" });
     expect(queue.jobs.size).toBe(1);
   });
 });

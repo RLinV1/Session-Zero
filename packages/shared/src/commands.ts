@@ -6,7 +6,7 @@ import { TokenAttacks } from "./attackPresets";
 import { ConditionId, EMPTY_STATS, TokenStats } from "./conditions";
 import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
-import { visibleName } from "./names";
+import { hasVisibleCharacter, visibleName } from "./names";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
 import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DrawingShape, Id, InitiativeScore, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
@@ -64,7 +64,7 @@ export const ChatText = z
     "Messages need at least one visible character.",
   );
 
-const CommandName = (max: number) => z.string().max(max * 4).transform(visibleName).pipe(z.string().min(1).max(max));
+const CommandName = (max: number) => z.string().max(max * 4).transform(visibleName).pipe(z.string().min(1).max(max).refine(hasVisibleCharacter));
 
 const CommandImageUrl = z.string().min(1).max(2048).regex(/^\/(?!\/)[A-Za-z0-9._/-]*$/);
 

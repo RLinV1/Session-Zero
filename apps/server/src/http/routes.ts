@@ -169,6 +169,7 @@ export function registerRoutes(
    * (ADR 0017 M1, M4); the room learns nothing about the account.
    */
   app.post("/api/invites/:inviteCode/join", (req, res) => {
+    let release = () => {};
     void (async () => {
       const body = JoinRoomRequest.safeParse(req.body);
       if (!body.success) return res.status(400).json({ error: body.error.issues });
@@ -176,7 +177,9 @@ export function registerRoutes(
       // Before the lookup, so a wrong code is counted too (ADR 0051).
       if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${addressKey(req.ip)}`), TOO_MANY_INVITE_ATTEMPTS)) return;
       const roomId = await store.findRoomByInvite(req.params.inviteCode);
-      const room = roomId ? await registry.get(roomId) : null;
+      const lease = roomId ? await registry.acquire(roomId) : null;
+      release = lease?.release ?? release;
+      const room = lease?.room ?? null;
       // A temporary encounter-editing room is its GM's alone (ADR 0033): its code reads as unknown.
       if (!roomId || !room || room.closed || (await store.isTemporaryRoom(roomId))) return res.status(404).json({ error: "Invite not found" });
       // Every attempt counts, accepted or not: each join and its leave are permanent events, and
@@ -208,11 +211,14 @@ export function registerRoutes(
         });
       } catch (err) {
         if (!(err instanceof CredentialConflictError)) throw err;
+        await room.submit(participantId, { type: "participant.leave" }).catch((leaveErr: unknown) => {
+          console.error(`[vtt] could not remove participant ${participantId} after its credential save lost a race in room ${roomId}`, leaveErr);
+        });
         return res.status(409).json({ error: CREDENTIAL_IN_USE });
       }
       const response: JoinRoomResponse = { roomId, participantId };
       return res.json(response);
-    })().catch(internalError(req, res));
+    })().catch(internalError(req, res)).finally(() => release());
   });
 
   /** Image upload for maps/tokens. GM only (FR-GM-02). Stored in S3 when configured. */
@@ -578,6 +584,10 @@ export function registerRoutes(
 function internalError(req: Request, res: Response) {
   return (err: unknown) => {
     if (refuseRoomCreation(res, err)) return;
+    if (err instanceof CredentialConflictError) {
+      if (!res.headersSent) res.status(409).json({ error: CREDENTIAL_IN_USE });
+      return;
+    }
     // The route pattern, not the URL: a join URL carries the invite code, which stays out of logs.
     const route = (req.route as { path?: string } | undefined)?.path ?? "unknown route";
     console.error(`[vtt] ${req.method} ${route} failed:`, errorTag(err));
