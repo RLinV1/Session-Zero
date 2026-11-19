@@ -49,6 +49,8 @@ export const entryZhTW = {
   "account.verify.resent": "若該電子郵件尚待驗證，新的連結已在路上。也請檢查垃圾郵件匣。",
   "account.verify.unverified": "登入前請先驗證你的電子郵件。請開啟我們寄出的連結，或重新寄送一封。",
   "account.verify.working": "正在驗證你的電子郵件…",
+  "account.verify.doneTitle": "電子郵件已驗證",
+  "account.verify.doneBody": "你的電子郵件已驗證。請登入以繼續。",
   "account.verify.failedTitle": "這個連結已失效",
   "account.verify.failedBody": "連結可能已過期或已使用過。請輸入電子郵件，我們會寄送新的連結。",
   "account.signOut": "登出",

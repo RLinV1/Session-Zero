@@ -8,6 +8,8 @@ export const studioZhTW = {
   "studio.connect.title": "將 AI 應用程式連接到你的建置",
   "studio.connect.claims": ({ name }) => `一個自稱「${name}」的應用程式要求處理你的建置。`,
   "studio.connect.returnsTo": ({ host }) => cjk`你的回覆會傳回${host}。只有在那是你正在使用的 AI 應用程式時才繼續。`,
+  "studio.connect.host": ({ host }) => cjk`來自 ${host} 的應用程式`,
+  "studio.connect.unverified": "未驗證的應用程式：這個網站無法確認它的身分。名稱由應用程式自行填寫，可能是假的。只有在你信任上方的網址時才繼續。",
   "studio.connect.signedInAs": ({ name }) => `已登入為「${name}」。`,
   "studio.connect.chooseBuilds": "它可以處理的建置",
   "studio.connect.unnamedApp": "未命名的應用程式",

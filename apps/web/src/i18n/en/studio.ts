@@ -10,6 +10,8 @@ export const studio = {
   "studio.connect.title": "Connect an AI app to your builds",
   "studio.connect.claims": ({ name }: { name: string }) => `An app that calls itself “${name}” is asking to work on your builds.`,
   "studio.connect.returnsTo": ({ host }: { host: string }) => `Your answer goes back to ${host}. Continue only if that is the AI app you are using.`,
+  "studio.connect.host": ({ host }: { host: string }) => `App at ${host}`,
+  "studio.connect.unverified": "Unverified app: this site cannot confirm who made it. The name is whatever the app chose to call itself and may be false. Continue only if you trust the address above.",
   "studio.connect.signedInAs": ({ name }: { name: string }) => `Signed in as ${name}.`,
   "studio.connect.chooseBuilds": "Builds it may work on",
   "studio.connect.unnamedApp": "Unnamed app",

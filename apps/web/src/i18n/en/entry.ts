@@ -49,6 +49,8 @@ export const entry = {
   "account.verify.resent": "If that address needs verifying, a new link is on its way. Check your spam folder too.",
   "account.verify.unverified": "Verify your email address before signing in. Open the link we sent, or ask for a new one.",
   "account.verify.working": "Verifying your email…",
+  "account.verify.doneTitle": "Email verified",
+  "account.verify.doneBody": "Your email is verified. Sign in to continue.",
   "account.verify.failedTitle": "This link no longer works",
   "account.verify.failedBody": "It may have expired or already been used. Enter your email and we will send a new one.",
   "account.signOut": "Sign out",

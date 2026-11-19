@@ -93,7 +93,7 @@ export class ApiError extends Error {
 
 /** What the consent page shows (ADR 0073, design D7). The client's name is its own claim; its redirect host is where the answer goes. */
 export interface StudioConsentRequest {
-  client: { name: string; redirectHost: string };
+  client: { name: string; redirectHost: string; verified: boolean };
   builds: { id: string; name: string }[];
 }
 
@@ -421,7 +421,7 @@ export const api = {
       return (await res.json()) as MeResponse;
     },
     signUp: (req: SignUpRequest) => postJson<MeResponse | SignUpResponse>("/api/auth/signup", req),
-    verifyEmail: (req: VerifyEmailRequest) => postJson<MeResponse>("/api/auth/verify", req),
+    verifyEmail: (req: VerifyEmailRequest) => postJson<unknown>("/api/auth/verify", req),
     resendVerification: (req: ResendVerificationRequest) =>
       accountRequest<void>("/api/auth/verify/resend", { method: "POST", ...jsonBody(req) }),
     signIn: (req: SignInRequest) => postJson<MeResponse>("/api/auth/signin", req),

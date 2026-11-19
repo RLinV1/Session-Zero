@@ -32,7 +32,7 @@ describe("the verify-email page (FR-GM-01)", () => {
     expect(parseRoute("/verify-email")).toEqual({ page: "verifyEmail" });
   });
 
-  it("submits the token once, even when effects run twice, and continues to the destination", async () => {
+  it("submits the token once, even when effects run twice, and offers sign-in to the destination", async () => {
     history.replaceState(null, "", "/verify-email?token=abc123&next=%2Flibrary");
     verifyEmail.mockResolvedValue(undefined);
     render(
@@ -40,16 +40,19 @@ describe("the verify-email page (FR-GM-01)", () => {
         <VerifyEmailPage />
       </StrictMode>,
     );
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/library", { replace: true }));
+    expect(await screen.findByRole("heading", { name: "Email verified" })).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(decodeURIComponent((screen.getByRole("link", { name: "Sign in" }) as HTMLAnchorElement).getAttribute("href") ?? "")).toContain("/library");
     expect(verifyEmail).toHaveBeenCalledTimes(1);
     expect(verifyEmail).toHaveBeenCalledWith("abc123");
   });
 
-  it("falls back to the dashboard with no next", async () => {
+  it("offers sign-in with no next", async () => {
     history.replaceState(null, "", "/verify-email?token=abc123");
     verifyEmail.mockResolvedValue(undefined);
     render(<VerifyEmailPage />);
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/gm-dashboard", { replace: true }));
+    expect(await screen.findByRole("heading", { name: "Email verified" })).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("shows the expired-link state with a resend field for a bad token", async () => {

@@ -33,6 +33,7 @@ export interface StudioM0 {
 }
 
 export async function createStudioM0(options: StudioM0Options): Promise<StudioM0> {
+  if (process.env.NODE_ENV === "production") throw new Error("The Studio M0 fixture endpoint is never served in production.");
   const log = new EvidenceLog(path.join(options.dataDir, "evidence.jsonl"));
   const auth = new StudioAuth({ publicOrigin: options.publicOrigin, resourcePath: STUDIO_PATH, dataDir: options.dataDir, accessTtlSeconds: options.accessTtlSeconds, log });
   await auth.init();
