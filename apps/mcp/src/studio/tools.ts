@@ -1,5 +1,5 @@
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
-import type { McpServer, CallToolResult } from "@modelcontextprotocol/server";
+import { ResourceNotFoundError, ResourceTemplate, type McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { StudioContext, StudioSnapshot } from "@vtt/shared";
 import { studioView } from "./view";
@@ -8,6 +8,9 @@ import { studioIntakeZhTW } from "../../../web/src/i18n/zh-TW/studioIntake";
 
 const File = z.strictObject({ download_url: z.string().min(1).max(8192), file_id: z.string().min(1).max(512), mime_type: z.string().max(200).optional(), file_name: z.string().max(500).optional() });
 const Locale = z.enum(["en", "zh-TW"]).optional();
+/** Every Studio view address, current or from an earlier build: `ui://session-zero/studio.<16 hex>.html`. */
+const STUDIO_VIEW_TEMPLATE = "ui://session-zero/studio.{version}.html";
+const STUDIO_VIEW_URI = /^ui:\/\/session-zero\/studio\.[0-9a-f]{16}\.html$/;
 const securitySchemes = [{ type: "oauth2", scopes: ["studio:build"] }];
 const appOnly = { ui: { visibility: ["app"] }, "openai/visibility": "private", "openai/widgetAccessible": true, securitySchemes };
 const text = (value: Record<string, unknown>, display = value): CallToolResult => ({
@@ -66,11 +69,23 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     const saved = StudioSnapshot.parse(await (await send(buildId, "GET", "/studio", undefined, locale)).json());
     return { ...saved, websitePath: new URL(saved.websitePath, deps.publicOrigin).toString() };
   };
+  const viewMeta = { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } };
+  const viewContents = (uri: string) => ({ contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: studioView.html, _meta: viewMeta }] });
   registerAppResource(server, "Session Zero Scene Studio", studioView.uri, {
     description: "Session Zero saved preparation and protected build intake. Static, credential-free view.",
-    _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } },
-  }, async () => ({ contents: [{ uri: studioView.uri, mimeType: RESOURCE_MIME_TYPE, text: studioView.html,
-    _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } } }] }));
+    _meta: viewMeta,
+  }, async () => viewContents(studioView.uri));
+  // A host can keep a tool listing, and the view address in it, after a deploy changes the view's
+  // hash: Claude asked for an earlier build's address in a new chat. Any Studio view address gets
+  // the current view, which is static and credential-free, rather than "not found".
+  server.registerResource("Session Zero Scene Studio (earlier address)", new ResourceTemplate(STUDIO_VIEW_TEMPLATE, { list: undefined }), {
+    description: "The current Studio view, for a host that still holds an earlier view address.",
+    mimeType: RESOURCE_MIME_TYPE,
+    _meta: viewMeta,
+  }, async (uri) => {
+    if (!STUDIO_VIEW_URI.test(uri.href)) throw new ResourceNotFoundError(uri.href);
+    return viewContents(uri.href);
+  });
   registerAppTool(server, "studio_open", {
     title: "Open Scene Studio",
     description: "Open this connected build's Studio whenever the user asks to see or reopen it, including before preparation. Pass originals attached in the ChatGPT chat in mapFiles/tokenFiles to import them. Report each failed file using its message. The owner can also upload originals on the Session Zero website at /builds/{buildId} after sign-in. The already-open view loads saved grid, geometry, terrain and placements as tool writes arrive. Use context or studio_set_context to explicitly select an existing map and its encounter; selection never redirects writes. Rules and sheets stay in chat. Reopening does not create a build. Use fullscreen to return to the view.",

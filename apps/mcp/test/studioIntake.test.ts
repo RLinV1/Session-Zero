@@ -104,6 +104,15 @@ describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
     expect(context._meta.ui).toMatchObject({visibility:["model","app"]});
     for(const property of ["sourceFileId","mapKey","encounterKey"])expect(JSON.stringify(context.inputSchema)).toContain(property);
   });
+  it("answers a view address from an earlier build with the current view, for hosts that keep tool listings across deploys",async()=>{
+    const s=await fixture();const earlier=studioView.uri==="ui://session-zero/studio.0123456789abcdef.html"?"ui://session-zero/studio.fedcba9876543210.html":"ui://session-zero/studio.0123456789abcdef.html";
+    const current=await s.rpc("resources/read",{uri:studioView.uri});const old=await s.rpc("resources/read",{uri:earlier});
+    const contents=(body:typeof old.body)=>(body.result as unknown as {contents:{uri:string;mimeType:string;text:string}[]}).contents;
+    expect(contents(old.body)).toEqual([{...contents(current.body)[0],uri:earlier}]);expect(contents(old.body)[0]!.text).toBe(studioView.html);
+    for(const uri of ["ui://session-zero/studio.html","ui://session-zero/studio.0123456789ABCDEF.html","ui://session-zero/studio.0123456789abcdef.html.js","ui://session-zero/other.html"]){
+      expect((await s.rpc("resources/read",{uri})).body).toMatchObject({error:{message:expect.stringContaining("not found")}});
+    }
+  });
   it("projects real saved preparation after explicit context selection and keeps prior layers after a refused save",async()=>{
     const s=await fixture();await s.call("studio_open",{buildId:s.build.id,mapFiles:[s.descriptor("map")],tokenFiles:[s.descriptor("token")]});
     const rows=await s.room.store.listBuildFiles(s.build.id),file=rows.find((row)=>row.kind==="map")!,art=rows.find((row)=>row.kind==="token")!;
