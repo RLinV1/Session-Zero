@@ -104,42 +104,41 @@ export function roomLifecycle(deps: {
     }
     if (room.userId) await store.putMember({ roomId, participantId, userId: room.userId });
     const lease = await registry.acquire(roomId);
-    const live = lease.room;
-    // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
-    const preset = presetOf({ preset: room.preset });
-    // The GM's own defaults (ADR 0066): every table rule and the grid units, on the first event.
-    // Their units win over the preset's. A temporary editing room edits a template or map, whose
-    // own units must survive, so it starts as before.
-    const defaults = room.temporary ? null : await store.getRoomDefaults(room.ownerGmId);
-    const units = defaults ? { unitsPerCell: defaults.unitsPerCell, unitLabel: defaults.unitLabel } : preset.grid;
-    const grid = { ...DEFAULT_GRID, ...units };
-    const events: DomainEvent[] = [
-      { type: "RoomCreated", name: room.roomName, preset: preset.id, ...(defaults && { defaults }) },
-      ...(!defaults && (grid.unitsPerCell !== DEFAULT_GRID.unitsPerCell || grid.unitLabel !== DEFAULT_GRID.unitLabel)
-        ? [{ type: "GridSet" as const, grid, previous: DEFAULT_GRID }]
-        : []),
-      {
-        type: "ParticipantJoined",
-        participant: { id: participantId, role: "gm", displayName: room.displayName.trim() },
-      },
-    ];
-    if (room.encounter) {
-      events.push({
-        type: "EncounterApplied",
-        templateId: room.encounter.id,
-        name: room.encounter.name,
-        applied: tableForPreset(withGridUnits(encounterTable(room.encounter, randomUUID), units), preset),
-        previous: { ...tableOf(emptyRoomState(roomId)), scene: { map: null, grid } },
-      });
-    } else if (room.scene) {
-      const sceneGrid = { ...room.scene.grid, ...preset.grid };
-      const board = room.scene.board;
-      events.push({ type: "MapSet", map: room.scene.map, previous: null, gridChange: { grid: sceneGrid, previous: grid }, ...(board?.terrain ? { terrainChange: { terrain: { base: board.terrain, effects: [] }, previous: { base: [], effects: [] } } } : {}) });
-      if (board?.walls.length) events.push({ type: "WallsAdded", walls: board.walls.map((wall) => ({ ...wall, id: randomUUID() })) });
-      for (const region of board?.fog ?? []) events.push({ type: "FogAdded", region: { ...region, id: randomUUID() } });
-    }
     try {
-      await live!.appendSystem(participantId, events);
+      // The game preset's defaults (KAN-63, ADR 0027): its grid units, when they aren't the default grid's.
+      const preset = presetOf({ preset: room.preset });
+      // The GM's own defaults (ADR 0066): every table rule and the grid units, on the first event.
+      // Their units win over the preset's. A temporary editing room edits a template or map, whose
+      // own units must survive, so it starts as before.
+      const defaults = room.temporary ? null : await store.getRoomDefaults(room.ownerGmId);
+      const units = defaults ? { unitsPerCell: defaults.unitsPerCell, unitLabel: defaults.unitLabel } : preset.grid;
+      const grid = { ...DEFAULT_GRID, ...units };
+      const events: DomainEvent[] = [
+        { type: "RoomCreated", name: room.roomName, preset: preset.id, ...(defaults && { defaults }) },
+        ...(!defaults && (grid.unitsPerCell !== DEFAULT_GRID.unitsPerCell || grid.unitLabel !== DEFAULT_GRID.unitLabel)
+          ? [{ type: "GridSet" as const, grid, previous: DEFAULT_GRID }]
+          : []),
+        {
+          type: "ParticipantJoined",
+          participant: { id: participantId, role: "gm", displayName: room.displayName.trim() },
+        },
+      ];
+      if (room.encounter) {
+        events.push({
+          type: "EncounterApplied",
+          templateId: room.encounter.id,
+          name: room.encounter.name,
+          applied: tableForPreset(withGridUnits(encounterTable(room.encounter, randomUUID), units), preset),
+          previous: { ...tableOf(emptyRoomState(roomId)), scene: { map: null, grid } },
+        });
+      } else if (room.scene) {
+        const sceneGrid = { ...room.scene.grid, ...preset.grid };
+        const board = room.scene.board;
+        events.push({ type: "MapSet", map: room.scene.map, previous: null, gridChange: { grid: sceneGrid, previous: grid }, ...(board?.terrain ? { terrainChange: { terrain: { base: board.terrain, effects: [] }, previous: { base: [], effects: [] } } } : {}) });
+        if (board?.walls.length) events.push({ type: "WallsAdded", walls: board.walls.map((wall) => ({ ...wall, id: randomUUID() })) });
+        for (const region of board?.fog ?? []) events.push({ type: "FogAdded", region: { ...region, id: randomUUID() } });
+      }
+      await lease.room!.appendSystem(participantId, events);
     } finally {
       lease.release();
     }

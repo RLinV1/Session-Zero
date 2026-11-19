@@ -164,7 +164,7 @@ export async function buildApp({
     detectedWalls: (roomId, mapUrl) => walls.detectedWalls(roomId, mapUrl),
     uvttLease: (roomId, actorId, id, revision, sceneId) => preparations.lease(roomId, actorId, id, revision, sceneId),
   });
-  const sessions = new Sessions(store, { secure: cookieSecure }, now);
+  const sessions = new Sessions(store, { secure: cookieSecure }, now, () => verification !== null);
   const limits = accountLimits(now);
   // Ending a session ends the seats bound to it; close their open connections (ADR 0017 M4).
   sessions.whenEnded((ended) => void registry.closeCredentials(ended.credentialHashes));

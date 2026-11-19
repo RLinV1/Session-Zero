@@ -19,7 +19,9 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
       if (!credential || credential.roomId !== req.params.roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      const room = await deps.registry.get(credential.roomId);
+      const lease = await deps.registry.acquire(credential.roomId);
+      res.once("close", lease.release);
+      const room = lease.room;
       if (!room || room.closed || room.activeParticipant(credential.participantId)?.role !== "gm") {
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }

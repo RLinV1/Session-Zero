@@ -261,6 +261,21 @@ describe("delegated Studio token budget (FR-GM-26, PR 226 client budget)", () =>
     expect(right.status).toBe(200);
     expect(budget).toHaveBeenCalledTimes(1);
   });
+
+  it("charges the client budget on revoke only for a token that belongs to the client, and still answers 200 for an unknown one (PR 226 revoke budget)", async () => {
+    const budget = vi.spyOn(server.app.limits.studioRequestsPerClient, "hit");
+    const { account, id } = await startBuild();
+    const mine = await connectStudio(server.base, account, [id]);
+    const other = await connectStudio(server.base, account, [id]);
+    budget.mockClear();
+    for (const token of ["szs_rt_" + "A".repeat(43), other.tokens.refresh_token]) {
+      expect((await fetch(`${server.base}/api/oauth/revoke`, form({ token, client_id: mine.clientId }))).status).toBe(200);
+    }
+    expect(budget).not.toHaveBeenCalled();
+    expect((await call(other.tokens.access_token, "GET", `/api/studio/builds/${id}`)).status).toBe(200);
+    expect((await fetch(`${server.base}/api/oauth/revoke`, form({ token: mine.tokens.refresh_token, client_id: mine.clientId }))).status).toBe(200);
+    expect(budget).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("delegated Studio access is refused or has no effect (FR-GM-26, FR-GM-27, ADR 0073)", () => {

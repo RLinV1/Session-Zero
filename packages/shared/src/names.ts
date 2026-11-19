@@ -6,7 +6,7 @@ export const normalizeName = (name: string) => name.replace(INVISIBLE, "").norma
 
 export const visibleName = (name: string) => name.replace(INVISIBLE_KEEPING_JOINERS, "");
 
-export const hasVisibleCharacter = (name: string) => /[^\s‌‍]/u.test(name);
+export const hasVisibleCharacter = (name: string) => /[^\s\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}⠀]/u.test(name);
 
 /**
  * `normalizeName` without the trim, for comparing a stored (already trimmed) name with a slice of

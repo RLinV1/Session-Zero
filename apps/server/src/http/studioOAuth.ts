@@ -465,10 +465,12 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const token = typeof body.token === "string" ? body.token : null;
       if (refused(res, limits.studioRevokesPerIp.hit(`studio-revoke:${addressKey(req.ip)}`), "Too many attempts. Try again later.")) return;
       if (!clientId || !await store.findStudioClient(clientId)) return oauthError(res, 401, "invalid_client", "Unknown client_id.");
-      if (clientBusy(res, clientId)) return;
       if (!token) return oauthError(res, 400, "invalid_request", "token is required.");
       const found = await store.findStudioToken(hashToken(token));
-      if (found && found.grant.clientId === clientId) await store.revokeStudioGrant(found.grant.id, new Date(now()).toISOString());
+      if (found && found.grant.clientId === clientId) {
+        if (clientBusy(res, clientId)) return;
+        await store.revokeStudioGrant(found.grant.id, new Date(now()).toISOString());
+      }
       res.status(200).json({});
     })().catch(failed(res));
   });

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { LiveRoom } from "../src/domain/liveRoom";
 import { RoomRegistry } from "../src/domain/roomRegistry";
 import { hashToken } from "../src/domain/credentials";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
@@ -83,21 +84,39 @@ describe("a lost credential race leaves no half-made state (PR 226 findings 4624
     }
   });
 
-  it("makes the just-joined participant leave and answers 409 when the join loses the credential save", async () => {
+  it("claims the credential before the join, so losing the race leaves no seat even when a leave would be refused (PR 226 finding 4624016567)", async () => {
     const store = new RacingStore();
     const server = await startServer(store);
+    const submit = vi.spyOn(LiveRoom.prototype, "submit");
     try {
       const gm = await server.createRoom();
       store.conflicts = 1;
       const refused = await server.tryJoin(gm.inviteCode, "Racer");
       expect(refused.status).toBe(409);
+      expect(submit.mock.calls.some(([, command]) => command.type === "participant.leave")).toBe(false);
       const events = await store.loadEvents(gm.roomId);
-      const joined = events.find((e) => e.event.type === "ParticipantJoined" && e.event.participant.displayName === "Racer");
-      expect(joined).toBeDefined();
-      expect(events.some((e) => e.event.type === "ParticipantLeft" && e.event.participant.displayName === "Racer")).toBe(true);
+      expect(events.some((e) => e.event.type === "ParticipantJoined" && e.event.participant.displayName === "Racer")).toBe(false);
       expect(await store.findCredential(hashToken(refused.guestToken))).toBeNull();
       const again = await server.tryJoin(gm.inviteCode, "Racer");
       expect(again.status).toBe(200);
+    } finally {
+      submit.mockRestore();
+      await server.close();
+    }
+  });
+
+  it("takes the credential back when the join is rejected, so the same token can try again", async () => {
+    const store = new RacingStore();
+    const server = await startServer(store);
+    try {
+      const gm = await server.createRoom();
+      const guestToken = newGuestToken();
+      const join = (displayName: string) => fetch(`${server.base}/api/invites/${gm.inviteCode}/join`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName, guestToken }),
+      });
+      expect((await join("GM")).status).toBe(409);
+      expect(await store.findCredential(hashToken(guestToken))).toBeNull();
+      expect((await join("Fresh")).status).toBe(200);
     } finally {
       await server.close();
     }

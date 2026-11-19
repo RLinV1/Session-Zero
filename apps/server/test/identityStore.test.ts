@@ -117,9 +117,10 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
 
   describe("email verification tokens", () => {
     const hour = 60 * 60 * 1000;
-    const issue = (userId: string, hash: string, ttl = 24 * hour) => {
+    const issue = async (userId: string, hash: string, ttl = 24 * hour) => {
       const now = Date.now();
-      return store.createVerificationToken(userId, hash, new Date(now).toISOString(), new Date(now + ttl).toISOString());
+      const user = (await store.findUserById(userId))!;
+      await store.createVerificationToken(userId, hash, new Date(now).toISOString(), new Date(now + ttl).toISOString(), user.credentialVersion);
     };
 
     it("creates a user unverified unless told otherwise, and marks it verified", async () => {

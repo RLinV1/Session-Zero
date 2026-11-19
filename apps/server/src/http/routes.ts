@@ -190,11 +190,26 @@ export function registerRoutes(
       if (await store.findCredential(hashToken(body.data.guestToken))) return res.status(409).json({ error: CREDENTIAL_IN_USE });
       const account = signedIn(res);
       const participantId = randomUUID();
-      // Join first, credential second: a rejected join must leave no credential behind (KAN-61).
-      const joined = await room.join(
-        { id: participantId, role: "player", displayName: body.data.displayName },
-        account?.user.id,
-      );
+      // Credential first, join second: losing the credential race then leaves no seat to remove, even
+      // when the room's log is full and a leave would be refused. A rejected join takes it back (KAN-61).
+      const tokenHash = hashToken(body.data.guestToken);
+      try {
+        await store.saveCredential(tokenHash, { roomId, participantId, sessionHash: account?.session.tokenHash ?? null });
+      } catch (err) {
+        if (err instanceof CredentialConflictError) return res.status(409).json({ error: CREDENTIAL_IN_USE });
+        throw err;
+      }
+      let joined;
+      try {
+        joined = await room.join(
+          { id: participantId, role: "player", displayName: body.data.displayName },
+          account?.user.id,
+        );
+      } catch (err) {
+        await store.deleteCredential(tokenHash, participantId);
+        throw err;
+      }
+      if (!joined.ok) await store.deleteCredential(tokenHash, participantId);
       // not_found: the room was deleted while this join waited in its queue (ADR 0009).
       if (!joined.ok && joined.code === "not_found") return res.status(404).json({ error: "Invite not found" });
       if (!joined.ok && joined.code === "already_member") {
@@ -205,17 +220,6 @@ export function registerRoutes(
       // Already MAX_PLAYERS_PER_ROOM players at the table (room-player-cap).
       if (!joined.ok && joined.reason === "room_full") return res.status(409).json({ error: sharedText(requestLocale(res), joined.text), code: ROOM_FULL });
       if (!joined.ok) return res.status(joined.reason === "name_taken" ? 409 : 400).json({ error: sharedText(requestLocale(res), joined.text) });
-      try {
-        await store.saveCredential(hashToken(body.data.guestToken), {
-          roomId, participantId, sessionHash: account?.session.tokenHash ?? null,
-        });
-      } catch (err) {
-        if (!(err instanceof CredentialConflictError)) throw err;
-        await room.submit(participantId, { type: "participant.leave" }).catch((leaveErr: unknown) => {
-          console.error(`[vtt] could not remove participant ${participantId} after its credential save lost a race in room ${roomId}`, leaveErr);
-        });
-        return res.status(409).json({ error: CREDENTIAL_IN_USE });
-      }
       const response: JoinRoomResponse = { roomId, participantId };
       return res.json(response);
     })().catch(internalError(req, res)).finally(() => release());

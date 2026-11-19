@@ -360,6 +360,10 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
+  async deleteCredential(tokenHash: string, participantId: string) {
+    await this.prisma.credential.deleteMany({ where: { tokenHash, participantId } });
+  }
+
   async saveCredential(tokenHash: string, record: CredentialRecord) {
     const data = { roomId: record.roomId, participantId: record.participantId, sessionHash: record.sessionHash ?? null };
     const created = await this.prisma.credential.createMany({ data: [{ tokenHash, ...data }], skipDuplicates: true });
@@ -1681,13 +1685,17 @@ export class PostgresRoomStore implements RoomStore {
     await this.prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date(at) } });
   }
 
-  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string) {
-    await this.prisma.$transaction(async (tx) => {
+  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    if (!UUID.test(userId)) return false;
+    return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || user.credentialVersion !== credentialVersion) return false;
       await tx.emailVerificationToken.deleteMany({ where: { userId } });
       await tx.emailVerificationToken.create({
-        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt) },
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
       });
+      return true;
     });
   }
 
@@ -1697,12 +1705,13 @@ export class PostgresRoomStore implements RoomStore {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const updated = await tx.user.updateMany({
         where: { id: userId, emailVerifiedAt: null },
-        data: { passwordHash, passwordChangedAt: new Date() },
+        data: { passwordHash, passwordChangedAt: new Date(), credentialVersion: { increment: 1 } },
       });
       if (updated.count === 0) return false;
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
       await tx.emailVerificationToken.deleteMany({ where: { userId } });
       await tx.emailVerificationToken.create({
-        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt) },
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion: user.credentialVersion },
       });
       return true;
     });
@@ -1715,7 +1724,7 @@ export class PostgresRoomStore implements RoomStore {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${token.userId}::uuid FOR UPDATE`;
       const deleted = await tx.emailVerificationToken.deleteMany({ where: { tokenHash } });
       if (deleted.count === 0 || token.expiresAt <= new Date(now)) return null;
-      await tx.user.updateMany({ where: { id: token.userId, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date(now) } });
+      await tx.user.updateMany({ where: { id: token.userId, emailVerifiedAt: null, credentialVersion: token.credentialVersion }, data: { emailVerifiedAt: new Date(now) } });
       const row = await tx.user.findUnique({ where: { id: token.userId } });
       return row ? toUserRecord(row) : null;
     });
@@ -2196,6 +2205,7 @@ function toUserRecord(row: User): UserRecord {
     createdAt: row.createdAt.toISOString(),
     passwordChangedAt: row.passwordChangedAt.toISOString(),
     emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
+    credentialVersion: row.credentialVersion,
   };
 }
 

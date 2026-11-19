@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMAIL_UNVERIFIED_CODE } from "@vtt/shared";
 import type { MailMessage, Mailer } from "../src/identity/mailer";
@@ -26,6 +27,7 @@ describe("email verification (FR-GM-01)", () => {
   let clock: number;
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await server?.close();
   });
 
@@ -266,6 +268,69 @@ describe("email verification (FR-GM-01)", () => {
       const limited = await resend("another@example.com");
       expect(limited.status).toBe(429);
       expect(limited.headers.get("retry-after")).not.toBeNull();
+    });
+  });
+
+  describe("tokens are bound to the credentials they were issued for (PR 226 delayed-token takeover)", () => {
+    it("sends nothing when the first mail is issued after a duplicate sign-up replaced the credentials", async () => {
+      await production();
+      const real = server.store.createVerificationToken.bind(server.store);
+      vi.spyOn(server.store, "createVerificationToken").mockImplementationOnce(async (...args) => {
+        const replaced = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
+        expect(replaced.status).toBe(201);
+        return real(...args);
+      });
+      expect((await signUp()).status).toBe(201);
+      expect(mail.sent).toHaveLength(1);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn("attacker passphrase")).status).toBe(200);
+    });
+
+    it("refuses to store a token for a version the credentials have moved past", async () => {
+      await production();
+      await signUp();
+      const user = (await server.store.findUserByEmail(credentials.email))!;
+      const now = new Date(clock).toISOString();
+      const later = new Date(clock + HOUR).toISOString();
+      expect(await server.store.replaceUnverifiedCredentials(user.id, "$argon2id$replaced", "new-hash", now, later)).toBe(true);
+      expect(await server.store.createVerificationToken(user.id, "stale-hash", now, later, user.credentialVersion)).toBe(false);
+      expect(await server.store.consumeVerificationToken("stale-hash", now)).toBeNull();
+    });
+
+    it("a resend after a replacement issues for the current credentials and the earlier link stays dead", async () => {
+      await production();
+      await signUp();
+      const first = mail.tokenOf();
+      await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
+      expect((await resend()).status).toBe(204);
+      expect(mail.sent).toHaveLength(3);
+      expect((await verify(first)).status).toBe(400);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn("owner's own passphrase")).status).toBe(200);
+    });
+  });
+
+  describe("stale unverified sweep follows the verification setting buildApp resolved (PR 226 sweep policy)", () => {
+    const orphan = async () => {
+      const user = await server.store.createUser({ id: randomUUID(), email: "orphan@example.com", displayName: "Orphan", passwordHash: "x" });
+      return user.id;
+    };
+
+    it("deletes an old unverified user without a token when verification is on", async () => {
+      server = await startServer(new MemoryRoomStore(), { now: () => Date.now() + 30 * 24 * HOUR, verification: { mailer: new Recorder() } });
+      const id = await orphan();
+      await server.app.sweep();
+      expect(await server.store.findUserById(id)).toBeNull();
+    });
+
+    it("keeps it when buildApp was given no verification, whatever NODE_ENV says", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("TRUST_PROXY", "1");
+      server = await startServer(new MemoryRoomStore(), { now: () => Date.now() + 30 * 24 * HOUR, verification: null });
+      const id = await orphan();
+      await server.app.sweep();
+      vi.unstubAllEnvs();
+      expect(await server.store.findUserById(id)).not.toBeNull();
     });
   });
 

@@ -142,7 +142,7 @@ export function registerIdentityRoutes(
         await startSession(res, user.id);
         return void res.status(201).json({ account: toAccountView(user) } satisfies MeResponse);
       }
-      await sendVerification(verification, user.id, user.email, requestLocale(res));
+      await sendVerification(verification, user.id, user.credentialVersion, user.email, requestLocale(res));
       res.status(201).json({ verificationRequired: true, email: user.email } satisfies SignUpResponse);
     })().catch(internalError(res));
   });
@@ -172,7 +172,7 @@ export function registerIdentityRoutes(
       const user = await store.findUserByEmail(body.data.email);
       const target = user && !user.emailVerifiedAt && limits.resendPerEmail.hit(`resend:${body.data.email}`).ok ? user : null;
       res.status(204).end();
-      if (target) await sendVerification(verification, target.id, target.email, requestLocale(res));
+      if (target) await sendVerification(verification, target.id, target.credentialVersion, target.email, requestLocale(res));
     })().catch(internalError(res));
   });
 
@@ -283,9 +283,9 @@ export function registerIdentityRoutes(
     return { token, hash: hashToken(token), createdAt: new Date(issued).toISOString(), expiresAt: new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString() };
   }
 
-  async function sendVerification(active: EmailVerification, userId: string, email: string, locale: ReturnType<typeof requestLocale>) {
+  async function sendVerification(active: EmailVerification, userId: string, credentialVersion: number, email: string, locale: ReturnType<typeof requestLocale>) {
     const issued = mintVerification();
-    await store.createVerificationToken(userId, issued.hash, issued.createdAt, issued.expiresAt);
+    if (!await store.createVerificationToken(userId, issued.hash, issued.createdAt, issued.expiresAt, credentialVersion)) return;
     await deliverVerification(active, email, issued.token, locale);
   }
 

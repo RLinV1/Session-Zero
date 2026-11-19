@@ -104,7 +104,7 @@ export class MemoryRoomStore implements RoomStore {
   private recoveryTargets = new Map<string, DetectionTarget>();
   private users = new Map<string, UserRecord>();
   private sessions = new Map<string, SessionRecord>();
-  private verificationTokens = new Map<string, { userId: string; expiresAt: string }>();
+  private verificationTokens = new Map<string, { userId: string; expiresAt: string; credentialVersion: number }>();
   /** `${roomId}/${participantId}` -> the account holding that seat (ADR 0017 M1). */
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
@@ -168,6 +168,10 @@ export class MemoryRoomStore implements RoomStore {
     const revokedAt = existing?.revokedAt;
     const row = { roomId: record.roomId, participantId: record.participantId, sessionHash: record.sessionHash ?? null };
     this.credentials.set(tokenHash, revokedAt ? { ...row, revokedAt } : row);
+  }
+
+  async deleteCredential(tokenHash: string, participantId: string) {
+    if (this.credentials.get(tokenHash)?.participantId === participantId) this.credentials.delete(tokenHash);
   }
 
   /** The credential for a token hash, or null when it is unknown or revoked. */
@@ -1270,7 +1274,7 @@ export class MemoryRoomStore implements RoomStore {
     // The account's owner row has no token: nothing but a session can act as it.
     const record: UserRecord = {
       ...user, ownerId: randomUUID(), activeDiceLookId: null, createdAt: now, passwordChangedAt: now,
-      emailVerifiedAt: user.emailVerifiedAt ?? null,
+      emailVerifiedAt: user.emailVerifiedAt ?? null, credentialVersion: 0,
     };
     this.users.set(user.id, record);
     return structuredClone(record);
@@ -1298,9 +1302,11 @@ export class MemoryRoomStore implements RoomStore {
     if (user) user.emailVerifiedAt = at;
   }
 
-  async createVerificationToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string) {
+  async createVerificationToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
+    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
     for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
-    this.verificationTokens.set(tokenHash, { userId, expiresAt });
+    this.verificationTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
+    return true;
   }
 
   async replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string) {
@@ -1308,15 +1314,15 @@ export class MemoryRoomStore implements RoomStore {
     if (!user || user.emailVerifiedAt) return false;
     user.passwordHash = passwordHash;
     user.passwordChangedAt = new Date().toISOString();
-    await this.createVerificationToken(userId, tokenHash, createdAt, expiresAt);
-    return true;
+    user.credentialVersion += 1;
+    return this.createVerificationToken(userId, tokenHash, createdAt, expiresAt, user.credentialVersion);
   }
 
   async consumeVerificationToken(tokenHash: string, now: string) {
     const token = this.verificationTokens.get(tokenHash);
     if (!token) return null;
     this.verificationTokens.delete(tokenHash);
-    if (token.expiresAt <= now) return null;
+    if (token.expiresAt <= now || this.users.get(token.userId)?.credentialVersion !== token.credentialVersion) return null;
     await this.markEmailVerified(token.userId, now);
     return this.findUserById(token.userId);
   }
