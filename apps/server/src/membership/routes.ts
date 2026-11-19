@@ -11,9 +11,10 @@ import {
 } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
 import type { RoomRegistry } from "../domain/roomRegistry";
+import { errorTag } from "../http/errorTag";
 import { requireAccount } from "../identity/middleware";
 import { addressKey, refused, TOO_MANY_INVITE_ATTEMPTS, type AccountLimits } from "../identity/routes";
-import type { RoomStore } from "../store/roomStore";
+import { CredentialConflictError, type RoomStore } from "../store/roomStore";
 
 const RoomIdParam = z.uuid();
 
@@ -61,9 +62,14 @@ export function registerMembershipRoutes(app: Express, deps: { store: RoomStore;
       const participant = room.activeParticipant(participantId);
       if (!participant) return void notFound(res);
 
-      await store.saveCredential(hashToken(body.data.guestToken), {
-        roomId: roomId.data, participantId, sessionHash: account.session.tokenHash,
-      });
+      try {
+        await store.saveCredential(hashToken(body.data.guestToken), {
+          roomId: roomId.data, participantId, sessionHash: account.session.tokenHash,
+        });
+      } catch (err) {
+        if (err instanceof CredentialConflictError) return void res.status(409).json({ error: "This browser already holds a seat. Reload the page and try again." });
+        throw err;
+      }
       const response: SeatResponse = { roomId: roomId.data, participantId, role: participant.role };
       res.json(response);
     })().catch(internalError(req, res));
@@ -174,7 +180,7 @@ function refuse(res: Response, reason: KeepSeatRefusedResponse["reason"], error:
 function internalError(req: Request, res: Response) {
   return (err: unknown) => {
     const route = (req.route as { path?: string } | undefined)?.path ?? "unknown route";
-    console.error(`[vtt] ${req.method} ${route} failed:`, err);
+    console.error(`[vtt] ${req.method} ${route} failed:`, errorTag(err));
     if (!res.headersSent) res.status(500).json({ error: "Internal error" });
   };
 }

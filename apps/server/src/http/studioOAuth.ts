@@ -128,6 +128,8 @@ const Registration = z.looseObject({
   scope: z.string().max(500).optional(),
 });
 
+const VERIFIED_REDIRECT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com"]);
+
 const PkceValue = z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/);
 
 /** The authorization request, as the consent page passes it back (RFC 6749 §4.1.1, RFC 7636, RFC 8707). */
@@ -206,6 +208,14 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
 
   const oauthError = (res: Response, status: number, error: string, description: string) =>
     void res.status(status).json({ error, error_description: description });
+
+  const clientBusy = (res: Response, clientId: string) => {
+    const limit = limits.studioRequestsPerClient.hit(`studio-client:${clientId}`);
+    if (limit.ok) return false;
+    res.setHeader("Retry-After", String(limit.retryAfterSec));
+    oauthError(res, 429, "temporarily_unavailable", "Too many requests for this client. Try again later.");
+    return true;
+  };
 
   // ---------- Discovery ----------
 
@@ -321,8 +331,9 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const account = requireAccount(res);
       if (!account) return;
       const builds = (await store.listBuilds(account.user.ownerId)).filter((b) => b.status === "open");
+      const redirectHost = new URL(checked.params.redirect_uri).host;
       res.json({
-        client: { name: checked.client.name, redirectHost: new URL(checked.params.redirect_uri).host },
+        client: { name: checked.client.name, redirectHost, verified: VERIFIED_REDIRECT_HOSTS.has(new URL(checked.params.redirect_uri).hostname) },
         builds: builds.map((b) => ({ id: b.id, name: b.name })),
       });
     })().catch(failed(res));
@@ -394,6 +405,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const field = (name: string) => (typeof body[name] === "string" ? body[name] as string : undefined);
       const client = field("client_id") ? await store.findStudioClient(field("client_id")!) : null;
       if (!client) return tokenFailure(req, res, 401, "invalid_client", "Unknown client_id.", true);
+      if (clientBusy(res, client.id)) return;
       if (field("resource") !== undefined && field("resource") !== resource) return tokenFailure(req, res, 400, "invalid_target", "This server only issues tokens for its Studio resource.");
       const at = now();
 
@@ -450,7 +462,9 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>;
       const clientId = typeof body.client_id === "string" ? body.client_id : null;
       const token = typeof body.token === "string" ? body.token : null;
+      if (refused(res, limits.studioRevokesPerIp.hit(`studio-revoke:${addressKey(req.ip)}`), "Too many attempts. Try again later.")) return;
       if (!clientId || !await store.findStudioClient(clientId)) return oauthError(res, 401, "invalid_client", "Unknown client_id.");
+      if (clientBusy(res, clientId)) return;
       if (!token) return oauthError(res, 400, "invalid_request", "token is required.");
       const found = await store.findStudioToken(hashToken(token));
       if (found && found.grant.clientId === clientId) await store.revokeStudioGrant(found.grant.id, new Date(now()).toISOString());

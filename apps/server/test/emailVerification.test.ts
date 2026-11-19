@@ -82,12 +82,26 @@ describe("email verification (FR-GM-01)", () => {
       expect(mail.sent).toEqual([]);
     });
 
-    it("refuses a registered address and sends no mail", async () => {
+    it("refuses a verified address and sends no mail", async () => {
       await production();
       await signUp();
+      await verify(mail.tokenOf());
       mail.sent.length = 0;
       expect((await signUp()).status).toBe(409);
       expect(mail.sent).toEqual([]);
+    });
+
+    it("lets the real owner sign up over an unverified row: new password, old link dead (BE-AUDIT squatting)", async () => {
+      await production();
+      await signUp();
+      const squatterToken = mail.tokenOf();
+      const owner = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
+      expect(owner.status).toBe(201);
+      expect(mail.sent).toHaveLength(2);
+      expect((await verify(squatterToken)).status).toBe(400);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn()).status).toBe(401);
+      expect((await signIn("owner's own passphrase")).status).toBe(200);
     });
 
     it("writes the mail in Traditional Chinese for a request that asks for it", async () => {
@@ -126,14 +140,14 @@ describe("email verification (FR-GM-01)", () => {
   });
 
   describe("verify", () => {
-    it("verifies the account, starts a session and uses the token up", async () => {
+    it("verifies the account, starts no session and uses the token up (BE-AUDIT squatting)", async () => {
       await production();
       await signUp();
       const token = mail.tokenOf();
       const res = await verify(token);
       expect(res.status).toBe(200);
-      expect(res.headers.getSetCookie().join(";")).toMatch(/vtt_session=/);
-      expect(await res.json()).toMatchObject({ account: { email: "sam@example.com", displayName: "Sam" } });
+      expect(res.headers.getSetCookie()).toEqual([]);
+      expect(await res.json()).toEqual({ account: null });
       expect((await server.store.findUserByEmail("sam@example.com"))!.emailVerifiedAt).not.toBeNull();
       expect((await verify(token)).status).toBe(400);
     });
@@ -222,6 +236,11 @@ describe("email verification (FR-GM-01)", () => {
       expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
       await new Promise((r) => setTimeout(r, 50));
       expect(mail.sent).toHaveLength(4);
+    });
+
+    it("does not count requests for an unknown address against it (BE-AUDIT mail abuse)", async () => {
+      await production();
+      for (let i = 0; i < 5; i++) expect((await resend("nobody@example.com")).status).toBe(204);
     });
 
     it("limits one client to 20 requests per hour", async () => {

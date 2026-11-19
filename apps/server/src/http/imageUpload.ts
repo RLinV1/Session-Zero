@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, statfs, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { Request, Response } from "express";
 import multer from "multer";
@@ -20,6 +20,23 @@ const REAL_FORMATS = new Map([
 ]);
 
 const UNSUPPORTED = "Use PNG, JPEG or WebP";
+const UPLOADS_PAUSED = "Uploads are paused: the server is short on storage. Try again later.";
+const DEFAULT_MIN_FREE_BYTES = 1024 ** 3;
+const DISK_CHECK_MS = 10_000;
+const diskChecks = new Map<string, { at: number; low: boolean }>();
+
+async function diskIsLow(dir: string): Promise<boolean> {
+  const floor = Number(process.env.MIN_FREE_DISK_BYTES ?? DEFAULT_MIN_FREE_BYTES);
+  const key = `${dir}|${floor}`;
+  const known = diskChecks.get(key);
+  const now = Date.now();
+  if (known && now - known.at < DISK_CHECK_MS) return known.low;
+  await mkdir(dir, { recursive: true }).catch(() => {});
+  const stats = await statfs(dir).catch(() => null);
+  const low = stats !== null && stats.bavail * stats.bsize < floor;
+  diskChecks.set(key, { at: now, low });
+  return low;
+}
 
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
@@ -44,7 +61,7 @@ export type ImageCheck = ({ ok: true } & ImageFacts) | { ok: false; status: 413 
 
 export type ImageUploadResult =
   | { ok: true; image: ReceivedImage }
-  | { ok: false; status: 413 | 415 | 400; error: string };
+  | { ok: false; status: 413 | 415 | 400 | 503; error: string };
 
 /**
  * Reads a file's real format and size from its header (upload-limits). The size is the one a
@@ -103,8 +120,9 @@ export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BY
   }).single("file");
 
   /** Runs multer and turns its errors into a status instead of an unhandled 500. */
-  return (req: Request, res: Response) =>
-    new Promise<ImageUploadResult>((resolve) => {
+  return async (req: Request, res: Response): Promise<ImageUploadResult> => {
+    if (await diskIsLow(uploadDir)) return { ok: false, status: 503, error: UPLOADS_PAUSED };
+    return new Promise<ImageUploadResult>((resolve) => {
       upload(req, res, (err: unknown) => {
         if (err instanceof multer.MulterError) {
           return resolve(
@@ -118,4 +136,5 @@ export function imageUploader(uploadDir: string, maxBytes: number = MAX_IMAGE_BY
         resolve(checkReceivedFile(req.file));
       });
     });
+  };
 }

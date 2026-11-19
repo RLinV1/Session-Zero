@@ -36,6 +36,11 @@ export class RateLimiter {
     return { ok: w.count < this.limit, retryAfterSec: Math.max(1, Math.ceil((w.resetAt - now) / 1000)) };
   }
 
+  refund(key: string) {
+    const w = this.windows.get(key);
+    if (w && w.resetAt > this.now() && w.count > 0) w.count--;
+  }
+
   reset(key: string) {
     this.windows.delete(key);
   }

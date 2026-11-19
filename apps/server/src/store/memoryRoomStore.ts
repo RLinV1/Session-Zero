@@ -77,7 +77,7 @@ import {
   type StudioSweepTimes,
   type StudioTokenRecord,
 } from "./studioStore";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /** Dev/test store. Loses everything on restart. */
 export class MemoryRoomStore implements RoomStore {
@@ -163,7 +163,9 @@ export class MemoryRoomStore implements RoomStore {
     // The foreign key Postgres enforces: a seat can only be bound to a session that exists.
     if (record.sessionHash && !this.sessions.has(record.sessionHash)) throw new Error("No such session");
     // Like the Postgres upsert, re-saving a token keeps its revoked mark: a removed token stays removed.
-    const revokedAt = this.credentials.get(tokenHash)?.revokedAt;
+    const existing = this.credentials.get(tokenHash);
+    if (existing && (existing.roomId !== record.roomId || existing.participantId !== record.participantId)) throw new CredentialConflictError();
+    const revokedAt = existing?.revokedAt;
     const row = { roomId: record.roomId, participantId: record.participantId, sessionHash: record.sessionHash ?? null };
     this.credentials.set(tokenHash, revokedAt ? { ...row, revokedAt } : row);
   }
@@ -1311,6 +1313,13 @@ export class MemoryRoomStore implements RoomStore {
 
   async deleteExpiredVerificationTokens(now: string) {
     for (const [hash, token] of this.verificationTokens) if (token.expiresAt <= now) this.verificationTokens.delete(hash);
+  }
+
+  async deleteStaleUnverifiedUsers(createdBefore: string) {
+    const held = new Set([...this.verificationTokens.values()].map((t) => t.userId));
+    for (const user of [...this.users.values()]) {
+      if (!user.emailVerifiedAt && user.createdAt < createdBefore && !held.has(user.id)) await this.deleteUser(user.id);
+    }
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {

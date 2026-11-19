@@ -165,8 +165,8 @@ describe("what a pass can reach (FR-GM-26, ADR 0053)", () => {
     const room = await server.createRoom("GM", { cookie: account.cookie });
     const routes: [string, string, unknown?][] = [
       ["GET", "/api/library"], ["GET", "/api/library/creatures"], ["GET", "/api/library/encounters"], ["GET", "/api/gm/rooms"], ["GET", "/api/me/rooms"],
-      ["GET", "/api/auth/me"], ["POST", "/api/auth/password", { currentPassword: "x", newPassword: "y".repeat(12) }], ["POST", "/api/rooms", { roomName: "R", displayName: "D", guestToken: "a".repeat(32) }],
-      ["GET", `/api/rooms/${room.roomId}/invite`], ["GET", `/api/rooms/${room.roomId}/history`], ["POST", `/api/rooms/${room.roomId}/seat`, { guestToken: "a".repeat(32) }],
+      ["GET", "/api/auth/me"], ["POST", "/api/auth/password", { currentPassword: "x", newPassword: "y".repeat(12) }], ["POST", "/api/rooms", { roomName: "R", displayName: "D", guestToken: "a".repeat(43) }],
+      ["GET", `/api/rooms/${room.roomId}/invite`], ["GET", `/api/rooms/${room.roomId}/history`], ["POST", `/api/rooms/${room.roomId}/seat`, { guestToken: "a".repeat(43) }],
       ["POST", "/api/library/uvtt/imports", {}], ["POST", "/api/uploads", {}], ["DELETE", `/api/rooms/${room.roomId}`],
       ["PATCH", "/api/library/creatures/bulk", { ids: [randomUUID()], patch: { ac: 1 } }], ["POST", "/api/library/creatures/bulk-delete", { ids: [randomUUID()] }],
       ["POST", "/api/library/move-to-folder", { kind: "asset", ids: [randomUUID()], folder: "A" }],

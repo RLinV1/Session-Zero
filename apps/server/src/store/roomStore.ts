@@ -122,3 +122,10 @@ export interface RoomStore extends StudioAuthoringStore, StudioPreparationStore,
   /** Temporary rooms opened before `at`, for the sweep that deletes ones left behind. */
   listTemporaryRoomsBefore(at: string): Promise<string[]>;
 }
+
+export class CredentialConflictError extends Error {
+  constructor() {
+    super("credential already names another seat");
+    this.name = "CredentialConflictError";
+  }
+}

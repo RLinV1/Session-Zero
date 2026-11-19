@@ -10,6 +10,7 @@ import type { EndedSessions, IdentityStore, SessionRecord, UserRecord } from "..
  * its row.
  */
 export const SESSION_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+export const UNVERIFIED_USER_MS = 7 * 24 * 60 * 60 * 1000;
 export const SESSION_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 /** `last_seen_at` is written at most this often, so ordinary requests don't each cost a write. */
 export const TOUCH_EVERY_MS = 60 * 60 * 1000;
@@ -140,6 +141,7 @@ export class Sessions {
       await this.store.deleteExpiredSessions(new Date(now).toISOString(), new Date(now - SESSION_IDLE_MS).toISOString()),
     );
     await this.store.deleteExpiredVerificationTokens(new Date(now).toISOString());
+    await this.store.deleteStaleUnverifiedUsers(new Date(now - UNVERIFIED_USER_MS).toISOString());
   }
 
   /**

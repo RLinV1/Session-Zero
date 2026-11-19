@@ -107,6 +107,8 @@ export interface App {
   /** The hourly sweep of expired Studio tokens, ended grants and unused clients (design D7), on demand. */
   sweepStudio(): Promise<void>;
   sweepStudioMedia(): Promise<void>;
+  /** Forgets loaded rooms with no connected sockets and no activity for `idleMs`; the next visit reloads them from the store. */
+  evictIdleRooms(idleMs: number): Promise<void>;
   listen(opts: { port: number; host: string }): Promise<void>;
   close(): Promise<void>;
 }
@@ -210,7 +212,7 @@ export async function buildApp({
   });
   // Every API response knows the language its request asked for (localization; ADR 0054).
   app.use("/api", attachLocale);
-  app.use(attachAccount(sessions));
+  app.use("/api", attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
   registerRoomPreparation(app, { store, registry, sessions });
   registerUvttRoutes(app, { store, registry, sessions, assets: assetStore, preparations, pool, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner, now });
@@ -269,7 +271,7 @@ export async function buildApp({
     detector, redisUrl: store instanceof MemoryRoomStore ? undefined : redisUrl, visionUrl,
   });
   registerIdentityRoutes(app, { store, sessions, limits, verification, clientOrigin, now, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
-  registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
+  registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms, sessions });
   const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
   const builds = registerBuildRoutes(app, { store, assets: internalAssets, uploadDir, limits, detection, pool, sessions, now, studio, media });
   const stopBuildSweep = setInterval(() => {
@@ -295,6 +297,7 @@ export async function buildApp({
     sweepAbandonedBuilds: builds.sweepAbandoned,
     sweepStudio: studioAccess.sweep,
     sweepStudioMedia: () => media.sweep(),
+    evictIdleRooms: (idleMs) => registry.evictIdle(idleMs),
     listen: ({ port, host }) =>
       new Promise((resolve, reject) => {
         server.once("error", reject);
@@ -333,6 +336,11 @@ export function httpLogFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.HTTP_LOG;
   if (value === undefined || value === "") return env.NODE_ENV !== "production";
   return value === "1" || value.toLowerCase() === "true";
+}
+
+export function missingProductionEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (env.NODE_ENV !== "production") return [];
+  return ["DATABASE_URL", "S3_ENDPOINT", "TRUST_PROXY"].filter((name) => !env[name]);
 }
 
 export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {

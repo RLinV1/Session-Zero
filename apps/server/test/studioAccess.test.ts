@@ -139,7 +139,7 @@ describe("delegated Studio consent and tokens (FR-GM-26, ADR 0073)", () => {
     const check = await account.request("GET", `/api/oauth/authorize?${query}`);
     expect(check.status).toBe(200);
     const shown = await check.json() as { client: { name: string; redirectHost: string }; builds: { id: string }[] };
-    expect(shown.client).toEqual({ name: "Test AI app", redirectHost: "ai-app.test.invalid" });
+    expect(shown.client).toEqual({ name: "Test AI app", redirectHost: "ai-app.test.invalid", verified: false });
     expect(shown.builds.map((b) => b.id).sort()).toEqual([id, other.id].sort());
 
     const { tokens } = await connectStudio(server.base, account, [id]);

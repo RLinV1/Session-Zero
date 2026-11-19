@@ -172,6 +172,18 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect((await store.consumeVerificationToken(live, new Date().toISOString()))!.id).toBe(other.id);
     });
 
+    it("deletes old unverified users with no token, keeping verified and token-holding ones (BE-AUDIT squatting)", async () => {
+      const stale = await newUser();
+      const held = await newUser();
+      const verified = await newUser();
+      await store.markEmailVerified(verified.id, new Date().toISOString());
+      await issue(held.id, randomUUID());
+      await store.deleteStaleUnverifiedUsers(new Date(Date.now() + hour).toISOString());
+      expect(await store.findUserById(stale.id)).toBeNull();
+      expect(await store.findUserById(held.id)).not.toBeNull();
+      expect(await store.findUserById(verified.id)).not.toBeNull();
+    });
+
     it("deletes a user's pending token with the user", async () => {
       const user = await newUser();
       const hash = randomUUID();

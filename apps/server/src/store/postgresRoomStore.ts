@@ -97,7 +97,7 @@ import {
 import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
 import type { RedisSeqSource } from "./redisSeq";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /**
  * As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043). The complete
@@ -362,11 +362,13 @@ export class PostgresRoomStore implements RoomStore {
 
   async saveCredential(tokenHash: string, record: CredentialRecord) {
     const data = { roomId: record.roomId, participantId: record.participantId, sessionHash: record.sessionHash ?? null };
-    await this.prisma.credential.upsert({
-      where: { tokenHash },
-      create: { tokenHash, ...data },
-      update: data,
+    const created = await this.prisma.credential.createMany({ data: [{ tokenHash, ...data }], skipDuplicates: true });
+    if (created.count === 1) return;
+    const updated = await this.prisma.credential.updateMany({
+      where: { tokenHash, roomId: data.roomId, participantId: data.participantId },
+      data: { sessionHash: data.sessionHash },
     });
+    if (updated.count === 0) throw new CredentialConflictError();
   }
 
   async findCredential(tokenHash: string) {
@@ -1701,6 +1703,14 @@ export class PostgresRoomStore implements RoomStore {
 
   async deleteExpiredVerificationTokens(now: string) {
     await this.prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
+  }
+
+  async deleteStaleUnverifiedUsers(createdBefore: string) {
+    const stale = await this.prisma.user.findMany({
+      where: { emailVerifiedAt: null, createdAt: { lt: new Date(createdBefore) }, verificationTokens: { none: {} } },
+      select: { id: true },
+    });
+    for (const { id } of stale) await this.deleteUser(id);
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {

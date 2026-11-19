@@ -66,6 +66,8 @@ export interface IdentityStore {
   /** Deletes the token and returns its user when it exists and has not expired at `now`; null otherwise. */
   consumeVerificationToken(tokenHash: string, now: string): Promise<UserRecord | null>;
   deleteExpiredVerificationTokens(now: string): Promise<void>;
+  /** Deletes unverified users created before `createdBefore` that hold no verification token (BE-AUDIT squatting). */
+  deleteStaleUnverifiedUsers(createdBefore: string): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */
   setActiveDiceLook(userId: string, lookId: string | null): Promise<void>;
 

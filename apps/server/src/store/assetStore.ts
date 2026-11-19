@@ -237,8 +237,8 @@ export async function createAssetStore(
   }
   if (env.S3_ENDPOINT) {
     const store = await connect({ endpoint: env.S3_ENDPOINT, ...credentials });
-    console.log(`[vtt] storing uploads in object storage at ${env.S3_ENDPOINT} (and on local disk)`);
-    return withDiskCopy(store, disk);
+    console.log(`[vtt] storing uploads in object storage at ${env.S3_ENDPOINT}${env.NODE_ENV === "production" ? "" : " (and on local disk)"}`);
+    return withDiskCopy(store, disk, env.NODE_ENV !== "production");
   }
   if (env.NODE_ENV === "production") {
     throw new Error("S3_ENDPOINT is required in production; uploads must not go to local disk");
@@ -250,7 +250,7 @@ export async function createAssetStore(
   const found = await withTimeout(connect({ endpoint: DEV_S3_ENDPOINT, ...credentials, attempts: 1 }), PROBE_TIMEOUT_MS);
   if (found) {
     console.log(`[vtt] found object storage at ${DEV_S3_ENDPOINT} — storing uploads there (and on local disk)`);
-    return withDiskCopy(found, disk);
+    return withDiskCopy(found, disk, true);
   }
   console.log(`[vtt] no object storage at ${DEV_S3_ENDPOINT} — storing uploads on local disk`);
   return disk;
@@ -262,9 +262,13 @@ export async function createAssetStore(
  * `/uploads` route reads when object storage misses, so a delete must remove both, or a deleted
  * library asset would keep loading from disk.
  */
-function withDiskCopy(s3: AssetStore, disk: LocalDiskAssetStore): AssetStore {
+function withDiskCopy(s3: AssetStore, disk: LocalDiskAssetStore, keepDisk: boolean): AssetStore {
   return {
-    put: (tempPath, filename, contentType) => s3.put(tempPath, filename, contentType),
+    put: async (tempPath, filename, contentType) => {
+      const url = await s3.put(tempPath, filename, contentType);
+      if (!keepDisk) await unlink(tempPath).catch(() => {});
+      return url;
+    },
     read: s3.read?.bind(s3),
     readPrivate: async (key, maxBytes) => {
       try {
