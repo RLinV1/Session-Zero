@@ -40,6 +40,7 @@ export function layerFor(route: Route): Layer {
       return "home";
     case "signin":
     case "signup":
+    case "verifyEmail":
     case "join":
     case "notFound":
     case "studioConnect":

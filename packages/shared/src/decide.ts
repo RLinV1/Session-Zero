@@ -25,7 +25,7 @@ import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
 import { DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./i18n/ruleIds";
-import { defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_DRAWINGS, MAX_DRAWING_POINTS, drawingPoints, type Drawing, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { isReservedKey, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_DRAWINGS, MAX_DRAWING_POINTS, drawingPoints, type Drawing, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -160,9 +160,19 @@ export function decide(
   command: Command,
   ctx: DecideContext,
 ): Decision {
+  if (hasReservedId(command)) return notFound("token");
   const decision = decideCommand(state, actor, command, ctx);
   // Every way a token is deleted takes it out of the turn order in the same action (ADR 0065).
   return decision.ok ? { ok: true, events: withInitiativeExits(state, decision.events) } : decision;
+}
+
+const ID_KEY = /^(id|ids|to|from)$|Ids?$/;
+
+function hasReservedId(value: unknown, key = ""): boolean {
+  if (typeof value === "string") return ID_KEY.test(key) && isReservedKey(value);
+  if (Array.isArray(value)) return value.some((item) => hasReservedId(item, key));
+  if (value && typeof value === "object") return Object.entries(value).some(([k, v]) => hasReservedId(v, k));
+  return false;
 }
 
 function decideCommand(

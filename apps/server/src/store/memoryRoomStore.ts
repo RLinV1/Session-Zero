@@ -104,6 +104,7 @@ export class MemoryRoomStore implements RoomStore {
   private recoveryTargets = new Map<string, DetectionTarget>();
   private users = new Map<string, UserRecord>();
   private sessions = new Map<string, SessionRecord>();
+  private verificationTokens = new Map<string, { userId: string; expiresAt: string }>();
   /** `${roomId}/${participantId}` -> the account holding that seat (ADR 0017 M1). */
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
@@ -1267,6 +1268,7 @@ export class MemoryRoomStore implements RoomStore {
     // The account's owner row has no token: nothing but a session can act as it.
     const record: UserRecord = {
       ...user, ownerId: randomUUID(), activeDiceLookId: null, createdAt: now, passwordChangedAt: now,
+      emailVerifiedAt: user.emailVerifiedAt ?? null,
     };
     this.users.set(user.id, record);
     return structuredClone(record);
@@ -1287,6 +1289,28 @@ export class MemoryRoomStore implements RoomStore {
     if (!user) return;
     user.passwordHash = passwordHash;
     if (changed) user.passwordChangedAt = new Date().toISOString();
+  }
+
+  async markEmailVerified(userId: string, at: string) {
+    const user = this.users.get(userId);
+    if (user) user.emailVerifiedAt = at;
+  }
+
+  async createVerificationToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string) {
+    for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
+    this.verificationTokens.set(tokenHash, { userId, expiresAt });
+  }
+
+  async consumeVerificationToken(tokenHash: string, now: string) {
+    const token = this.verificationTokens.get(tokenHash);
+    if (!token) return null;
+    this.verificationTokens.delete(tokenHash);
+    if (token.expiresAt <= now) return null;
+    return this.findUserById(token.userId);
+  }
+
+  async deleteExpiredVerificationTokens(now: string) {
+    for (const [hash, token] of this.verificationTokens) if (token.expiresAt <= now) this.verificationTokens.delete(hash);
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {
@@ -1334,6 +1358,7 @@ export class MemoryRoomStore implements RoomStore {
       this.trackDetection({ scope: "library", id });
       for (const ids of this.refs.values()) ids.delete(id);
     }
+    for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
     this.users.delete(userId);
     return { credentialHashes, objectKeys };
   }

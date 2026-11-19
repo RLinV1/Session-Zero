@@ -27,9 +27,21 @@ locals {
   tag       = "vtt"
 }
 
+resource "google_compute_network" "vtt" {
+  name                    = "vtt-net"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "vtt" {
+  name          = "vtt-subnet"
+  region        = var.region
+  network       = google_compute_network.vtt.id
+  ip_cidr_range = "10.20.0.0/24"
+}
+
 resource "google_compute_firewall" "web" {
   name          = "vtt-web"
-  network       = "default"
+  network       = google_compute_network.vtt.id
   source_ranges = ["0.0.0.0/0"]
   target_tags   = [local.tag]
   disabled      = var.close_web_ports
@@ -41,8 +53,9 @@ resource "google_compute_firewall" "web" {
 }
 
 resource "google_compute_firewall" "ssh" {
+  count         = var.ssh_cidr != "" ? 1 : 0
   name          = "vtt-ssh"
-  network       = "default"
+  network       = google_compute_network.vtt.id
   source_ranges = [var.ssh_cidr]
   target_tags   = [local.tag]
 
@@ -67,7 +80,7 @@ resource "google_compute_instance" "vtt" {
   }
 
   network_interface {
-    network = "default"
+    subnetwork = google_compute_subnetwork.vtt.id
     access_config {
       nat_ip = google_compute_address.vtt.address
     }
@@ -82,5 +95,14 @@ resource "google_compute_instance" "vtt" {
     postgres_pass = random_password.postgres.result
     s3_access_key = random_password.s3_access_key.result
     s3_secret_key = random_password.s3_secret_key.result
+    smtp_host     = var.smtp_host
+    smtp_port     = var.smtp_port
+    smtp_user     = var.smtp_user
+    smtp_pass     = var.smtp_pass
+    mail_from     = var.mail_from
   })
+
+  lifecycle {
+    ignore_changes = [metadata_startup_script]
+  }
 }

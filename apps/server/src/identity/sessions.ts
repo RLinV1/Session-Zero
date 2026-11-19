@@ -139,6 +139,7 @@ export class Sessions {
     this.report(
       await this.store.deleteExpiredSessions(new Date(now).toISOString(), new Date(now - SESSION_IDLE_MS).toISOString()),
     );
+    await this.store.deleteExpiredVerificationTokens(new Date(now).toISOString());
   }
 
   /**

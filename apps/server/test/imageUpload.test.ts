@@ -190,3 +190,11 @@ describe("uploads are checked on every route (FR-GM-02, FR-GM-08, FR-GM-15)", ()
     expect(await readdir(server.uploadDir)).toEqual([]);
   });
 });
+
+describe("decoded pixel cap (FR-GM-15)", () => {
+  it("refuses a flat image whose sides pass but whose pixel count is too large", async () => {
+    const file = path.join(dir, "flat.png");
+    await writeFile(file, await sharp({ create: { width: 10000, height: 10000, channels: 3, background: "#000" } }).png({ compressionLevel: 9 }).toBuffer());
+    expect(await checkImageBytes(file)).toMatchObject({ ok: false, status: 413 });
+  });
+});

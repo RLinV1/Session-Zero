@@ -19,6 +19,7 @@ export const common = {
   "title.page": ({ page }: { page: string }) => `${page} · Session Zero`,
   "title.signin": "Sign in",
   "title.signup": "Create account",
+  "title.verifyEmail": "Verify your email",
   "title.join": "Join the table",
   "title.notFound": "Page not found",
   "title.start": "Start a room",

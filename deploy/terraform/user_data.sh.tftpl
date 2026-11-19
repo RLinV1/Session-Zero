@@ -13,6 +13,40 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+apt-get install -y iptables unattended-upgrades
+systemctl enable --now unattended-upgrades
+
+cat > /etc/systemd/system/vtt-block-metadata.service <<'UNITEOF'
+[Unit]
+Description=Drop container traffic to the cloud metadata endpoint
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254 -j DROP || iptables -I DOCKER-USER -d 169.254.169.254 -j DROP'
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+systemctl daemon-reload
+systemctl enable --now vtt-block-metadata.service
+
+install -d -m 700 /var/backups/vtt
+cat > /usr/local/bin/vtt-backup <<'BAKEOF'
+#!/bin/bash
+set -eo pipefail
+cd /opt/vtt
+out=/var/backups/vtt/vtt-$(date +%F).sql.gz
+docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "$out.tmp"
+mv "$out.tmp" "$out"
+find /var/backups/vtt -name 'vtt-*.sql.gz' -mtime +7 -delete
+BAKEOF
+chmod 700 /usr/local/bin/vtt-backup
+echo '0 3 * * * root /usr/local/bin/vtt-backup >> /var/log/vtt-backup.log 2>&1' > /etc/cron.d/vtt-backup
+chmod 644 /etc/cron.d/vtt-backup
+
 git clone --branch '${repo_ref}' '${repo_url}' /opt/vtt
 cd /opt/vtt
 
@@ -28,6 +62,11 @@ POSTGRES_DB=vtt
 S3_ACCESS_KEY=${s3_access_key}
 S3_SECRET_KEY=${s3_secret_key}
 S3_BUCKET=vtt-assets
+SMTP_HOST=${smtp_host}
+SMTP_PORT=${smtp_port}
+SMTP_USER=${smtp_user}
+SMTP_PASS=${smtp_pass}
+MAIL_FROM=${mail_from}
 ENVEOF
 
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build

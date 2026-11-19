@@ -1,19 +1,27 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import {
   BUILD_LIMITS,
   ChangePasswordRequest,
   DeleteAccountRequest,
+  EMAIL_UNVERIFIED_CODE,
+  ResendVerificationRequest,
   SIGN_IN_FAILED,
   SignInRequest,
   SignUpRequest,
+  VerifyEmailRequest,
   type MeResponse,
+  type SignUpResponse,
 } from "@vtt/shared";
+import { hashToken } from "../domain/credentials";
+import { requestLocale } from "../i18n/locale";
 import type { DeleteAccount } from "../domain/accountDeletion";
 import type { BuildStore } from "../store/buildStore";
 import type { StudioStore } from "../store/studioStore";
 import { EmailTakenError, type IdentityStore } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
+import type { EmailVerification } from "./mailer";
+import { verificationEmail, verificationLink, VERIFY_LINK_LIFETIME_MS } from "./verificationEmail";
 import { hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
 import { RateLimiter, type LimitResult } from "./rateLimit";
 import { clearSessionCookie, sessionCookie, toAccountView, type Sessions } from "./sessions";
@@ -58,6 +66,8 @@ export function accountLimits(now: () => number = Date.now) {
     inviteLookupsPerIp: new RateLimiter(300, 15 * MINUTE, now),
     /** Replay requests per participant: each one folds the room's whole log on the event loop (FR-PL-07). */
     replaysPerParticipant: new RateLimiter(150, MINUTE, now),
+    /** History requests per participant: each one folds the room's whole log on the event loop (FR-REC-01). */
+    historyPerParticipant: new RateLimiter(60, MINUTE, now),
     /** Wall detection runs per room, so one room can't hold the few server-wide job slots (FR-GM-11). */
     wallDetectionsPerRoom: new RateLimiter(50, 15 * MINUTE, now),
     /** Image uploads per account, in rooms and the library together: each one is stored and may queue analysis (FR-GM-02). */
@@ -74,6 +84,10 @@ export function accountLimits(now: () => number = Date.now) {
     studioGrantRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Guest room creations per address (IPv6 by /64, see `addressKey`); every attempt counts, accepted or not (guest-gm-hosting D3). */
     guestRoomsPerAddress: new RateLimiter(20, 60 * MINUTE, now),
+    /** Verification link requests per address and per client address, counted up front as sign-in is (email-verification). */
+    resendPerEmail: new RateLimiter(3, 15 * MINUTE, now),
+    resendPerIp: new RateLimiter(20, 60 * MINUTE, now),
+    verifyPerIp: new RateLimiter(30, 15 * MINUTE, now),
   };
 }
 export type AccountLimits = ReturnType<typeof accountLimits>;
@@ -81,14 +95,14 @@ export type AccountLimits = ReturnType<typeof accountLimits>;
 /** `/api/auth/*`: sign up, sign in, sign out, who am I, change password (FR-GM-01, ADR 0017 C2). */
 export function registerIdentityRoutes(
   app: Express,
-  deps: { store: IdentityStore & Pick<BuildStore, "endBuildPasses"> & Pick<StudioStore, "endStudioGrants">; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount },
+  deps: { store: IdentityStore & Pick<BuildStore, "endBuildPasses"> & Pick<StudioStore, "endStudioGrants">; sessions: Sessions; limits: AccountLimits; deleteAccount: DeleteAccount; verification?: EmailVerification | null; clientOrigin?: string; now?: () => number },
 ) {
-  const { store, sessions, limits, deleteAccount } = deps;
+  const { store, sessions, limits, deleteAccount, verification = null, clientOrigin = "", now = Date.now } = deps;
 
   app.post("/api/auth/signup", (req, res) => {
     void (async () => {
       noStore(res);
-      if (refused(res, limits.signUpPerIp.hit(`signup:${req.ip}`))) return;
+      if (refused(res, limits.signUpPerIp.hit(`signup:${addressKey(req.ip)}`))) return;
       if (!isJson(req, res)) return;
       const body = SignUpRequest.safeParse(req.body);
       if (!body.success) return badRequest(res, body.error.issues);
@@ -99,20 +113,56 @@ export function registerIdentityRoutes(
           email: body.data.email,
           displayName: body.data.displayName,
           passwordHash: await hashPassword(body.data.password),
+          emailVerifiedAt: verification ? null : new Date(now()).toISOString(),
         });
       } catch (err) {
         if (err instanceof EmailTakenError) return void res.status(409).json({ error: err.message, field: "email" });
         throw err;
       }
+      if (!verification) {
+        await startSession(res, user.id);
+        return void res.status(201).json({ account: toAccountView(user) } satisfies MeResponse);
+      }
+      await sendVerification(verification, user.id, user.email, requestLocale(res));
+      res.status(201).json({ verificationRequired: true, email: user.email } satisfies SignUpResponse);
+    })().catch(internalError(res));
+  });
+
+  app.post("/api/auth/verify", (req, res) => {
+    void (async () => {
+      noStore(res);
+      if (refused(res, limits.verifyPerIp.hit(`verify:${addressKey(req.ip)}`))) return;
+      if (!isJson(req, res)) return;
+      const body = VerifyEmailRequest.safeParse(req.body);
+      const user = body.success
+        ? await store.consumeVerificationToken(hashToken(body.data.token), new Date(now()).toISOString())
+        : null;
+      if (!user) return void res.status(400).json({ error: "This verification link is invalid or has expired." });
+      await store.markEmailVerified(user.id, new Date(now()).toISOString());
       await startSession(res, user.id);
-      res.status(201).json({ account: toAccountView(user) } satisfies MeResponse);
+      res.json({ account: toAccountView(user) } satisfies MeResponse);
+    })().catch(internalError(res));
+  });
+
+  app.post("/api/auth/verify/resend", (req, res) => {
+    void (async () => {
+      noStore(res);
+      if (refused(res, limits.resendPerIp.hit(`resend:${addressKey(req.ip)}`))) return;
+      if (!isJson(req, res)) return;
+      const body = ResendVerificationRequest.safeParse(req.body);
+      if (!body.success) return badRequest(res, body.error.issues);
+      if (refused(res, limits.resendPerEmail.hit(`resend:${body.data.email}`))) return;
+      res.status(204).end();
+      if (!verification) return;
+      const user = await store.findUserByEmail(body.data.email);
+      if (user && !user.emailVerifiedAt) await sendVerification(verification, user.id, user.email, requestLocale(res));
     })().catch(internalError(res));
   });
 
   app.post("/api/auth/signin", (req, res) => {
     void (async () => {
       noStore(res);
-      if (refused(res, limits.signInPerIp.hit(`signin:${req.ip}`))) return;
+      if (refused(res, limits.signInPerIp.hit(`signin:${addressKey(req.ip)}`))) return;
       if (!isJson(req, res)) return;
       const body = SignInRequest.safeParse(req.body);
       if (!body.success) return void res.status(401).json({ error: SIGN_IN_FAILED });
@@ -129,6 +179,9 @@ export function registerIdentityRoutes(
         : await verifyAgainstDummy(body.data.password);
       if (!user || !ok) return void res.status(401).json({ error: SIGN_IN_FAILED });
       limits.signInFailuresPerEmail.reset(emailKey);
+      if (verification && !user.emailVerifiedAt) {
+        return void res.status(403).json({ error: "Verify your email address before signing in. Check your inbox for the link.", code: EMAIL_UNVERIFIED_CODE });
+      }
       if (needsRehash(user.passwordHash)) {
         await store.setPasswordHash(user.id, await hashPassword(body.data.password), false);
       }
@@ -204,6 +257,18 @@ export function registerIdentityRoutes(
       res.status(204).end();
     })().catch(internalError(res));
   });
+
+  async function sendVerification(active: EmailVerification, userId: string, email: string, locale: ReturnType<typeof requestLocale>) {
+    const token = randomBytes(32).toString("base64url");
+    const issued = now();
+    await store.createVerificationToken(userId, hashToken(token), new Date(issued).toISOString(), new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString());
+    try {
+      await active.mailer.send(verificationEmail(locale, email, verificationLink(clientOrigin, token)));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[vtt] verification email failed:", reason);
+    }
+  }
 
   async function startSession(res: Response, userId: string) {
     const { token, session } = await sessions.start(userId);

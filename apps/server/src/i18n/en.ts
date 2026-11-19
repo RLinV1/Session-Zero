@@ -69,6 +69,12 @@ export const serverEn = {
   "api.unknownDevice": "Unknown device identity",
   "api.nothingToBringOver": "Nothing to bring over from this browser",
   "api.signInToSave": "Sign in to save rooms and library art",
+  "api.emailUnverified": "Verify your email address before signing in. Check your inbox for the link.",
+  "api.verifyLinkInvalid": "This verification link is invalid or has expired.",
+  "mail.verify.subject": "Verify your Session Zero email address",
+  "mail.verify.intro": "Open the link below to verify your email address and finish creating your account. It works once and expires in 24 hours.",
+  "mail.verify.action": "Verify email address",
+  "mail.verify.ignore": "If you did not sign up for Session Zero, you can ignore this email.",
 
   // Rooms, invites, history and replay.
   "api.roomNotFound": "Room not found",

@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Request, Response } from "express";
 import multer from "multer";
 import sharp from "sharp";
-import { MAX_ASSET_EDGE } from "@vtt/shared";
+import { MAX_ASSET_EDGE, MAX_ASSET_PIXELS } from "@vtt/shared";
 
 export const IMAGE_TYPES: Record<string, string> = {
   "image/png": ".png",
@@ -60,6 +60,9 @@ export async function checkImageBytes(file: string): Promise<ImageCheck> {
   const height = turned ? metadata.width : metadata.height;
   if (Math.max(width, height) > MAX_ASSET_EDGE) {
     return { ok: false, status: 413, error: `Images must be ${MAX_ASSET_EDGE} pixels or smaller on each side` };
+  }
+  if (width * height > MAX_ASSET_PIXELS) {
+    return { ok: false, status: 413, error: `Images must be ${MAX_ASSET_PIXELS / 1_000_000} million pixels or fewer` };
   }
   return { ok: true, contentType, width, height };
 }

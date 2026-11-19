@@ -12,7 +12,7 @@ import {
 import { hashToken } from "../domain/credentials";
 import type { RoomRegistry } from "../domain/roomRegistry";
 import { requireAccount } from "../identity/middleware";
-import { refused, TOO_MANY_INVITE_ATTEMPTS, type AccountLimits } from "../identity/routes";
+import { addressKey, refused, TOO_MANY_INVITE_ATTEMPTS, type AccountLimits } from "../identity/routes";
 import type { RoomStore } from "../store/roomStore";
 
 const RoomIdParam = z.uuid();
@@ -112,7 +112,7 @@ export function registerMembershipRoutes(app: Express, deps: { store: RoomStore;
       res.setHeader("Cache-Control", "no-store");
       const account = requireAccount(res);
       if (!account) return;
-      if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${req.ip}`), TOO_MANY_INVITE_ATTEMPTS)) return;
+      if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${addressKey(req.ip)}`), TOO_MANY_INVITE_ATTEMPTS)) return;
       const roomId = await store.findRoomByInvite(req.params.inviteCode);
       const room = roomId ? await registry.get(roomId) : null;
       const member = roomId && room && !room.closed ? await store.findMember(roomId, account.user.id) : null;

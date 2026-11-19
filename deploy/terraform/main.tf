@@ -111,7 +111,6 @@ resource "aws_instance" "vtt" {
     http_tokens = "required"
   }
 
-  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     repo_url      = var.repo_url
     repo_ref      = var.repo_ref
@@ -121,10 +120,19 @@ resource "aws_instance" "vtt" {
     postgres_pass = random_password.postgres.result
     s3_access_key = random_password.s3_access_key.result
     s3_secret_key = random_password.s3_secret_key.result
+    smtp_host     = var.smtp_host
+    smtp_port     = var.smtp_port
+    smtp_user     = var.smtp_user
+    smtp_pass     = var.smtp_pass
+    mail_from     = var.mail_from
   })
 
   tags = {
     Name = "vtt"
+  }
+
+  lifecycle {
+    ignore_changes = [user_data]
   }
 }
 

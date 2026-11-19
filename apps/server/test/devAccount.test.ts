@@ -15,6 +15,7 @@ describe("development account seed", () => {
     expect(await seedDevAccount(store, { SEED_DEV_ACCOUNT: "1" })).toBe(false);
     const user = await store.findUserByEmail(DEV_ACCOUNT.email);
     expect(user).not.toBeNull();
+    expect(user!.emailVerifiedAt).not.toBeNull();
     expect(await verifyPassword(user!.passwordHash, DEV_ACCOUNT.password)).toBe(true);
   });
 });

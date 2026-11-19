@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { HomePage } from "./pages/HomePage";
-import { AccountPage, SignInPage, SignUpPage } from "./account/AccountPages";
+import { AccountPage, SignInPage, SignUpPage, VerifyEmailPage } from "./account/AccountPages";
 import { JoinPage } from "./pages/JoinPage";
 import { PrivacyPage, TermsPage } from "./pages/PolicyPages";
 import { useDocumentTitle, useT } from "./i18n/locale";
@@ -57,6 +57,8 @@ function RoutePage({ route }: { route: Route }) {
       return <SignInPage />;
     case "signup":
       return <SignUpPage />;
+    case "verifyEmail":
+      return <VerifyEmailPage />;
     case "account":
       return <AccountPage />;
     case "privacy":

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { t } from "../i18n/locale";
 import { CaretDown } from "@phosphor-icons/react";
-import { PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
+import { EMAIL_UNVERIFIED_CODE, PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
 import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
@@ -10,7 +10,7 @@ import { Modal } from "../ui/Modal";
 import { PopoverButton } from "../ui/Popover";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SiteFooter } from "../ui/SiteFooter";
-import { changePassword, deleteAccount, signIn, signOut, signUp, useAccount } from "./accountStore";
+import { changePassword, deleteAccount, resendVerification, signIn, signOut, signUp, useAccount, verifyEmail } from "./accountStore";
 import { safeNext } from "./safeNext";
 
 /** Where to go after signing in: the page that sent the person here, if it is on this site. */
@@ -54,6 +54,7 @@ function AccountForm(props: {
   busyLabel: string;
   busy: boolean;
   error: string | null;
+  errorAction?: ReactNode;
   onSubmit: () => void;
   children: ReactNode;
   footer: ReactNode;
@@ -78,6 +79,7 @@ function AccountForm(props: {
           {props.error}
         </p>
       )}
+      {props.error && props.errorAction}
       <button className="primary" type="submit" disabled={props.busy}>
         {props.busy ? props.busyLabel : props.submitLabel}
       </button>
@@ -88,20 +90,68 @@ function AccountForm(props: {
 }
 
 
+function ResendButton({ email }: { email: string }) {
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function resend() {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      await resendVerification(email.trim());
+      setFeedback({ ok: true, text: t("account.verify.resent") });
+    } catch (err) {
+      setFeedback({ ok: false, text: describe(err).message });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <>
+      <button type="button" disabled={busy || !email.trim()} onClick={() => void resend()}>
+        {busy ? t("account.verify.resending") : t("account.verify.resend")}
+      </button>
+      {feedback && (
+        <p role={feedback.ok ? "status" : "alert"} className={feedback.ok ? "muted small-print" : "error"}>
+          {feedback.text}
+        </p>
+      )}
+    </>
+  );
+}
+
+function CheckEmailPanel({ email, signInHref }: { email: string; signInHref: string }) {
+  return (
+    <section className="card account-form">
+      <h1>{t("account.verify.sentTitle")}</h1>
+      <p>{t("account.verify.sentBody", { email })}</p>
+      <ResendButton email={email} />
+      <p className="muted small-print">
+        <Link href={signInHref}>{t("account.signIn")}</Link>
+      </p>
+      <Link href="/">{t("account.backHome")}</Link>
+    </section>
+  );
+}
+
 function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
 
   async function submit() {
     setBusy(true);
     setError(null);
+    setUnverified(false);
     try {
       await signIn(email, password);
       onSignedIn();
     } catch (err) {
-      setError(describe(err).message);
+      const needsVerifying = err instanceof ApiError && err.detail.code === EMAIL_UNVERIFIED_CODE;
+      setUnverified(needsVerifying);
+      setError(needsVerifying ? t("account.verify.unverified") : describe(err).message);
       setPassword("");
       setBusy(false);
     }
@@ -114,6 +164,7 @@ function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn
       busyLabel={t("account.signingIn")}
       busy={busy}
       error={error}
+      errorAction={unverified ? <ResendButton email={email} /> : undefined}
       onSubmit={() => void submit()}
       footer={
         <>
@@ -145,18 +196,22 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
-      await signUp(email, password, displayName);
-      onSignedUp();
+      const pending = await signUp(email, password, displayName);
+      if (pending) setSentTo(pending.email);
+      else onSignedUp();
     } catch (err) {
       setError(describe(err));
       setBusy(false);
     }
   }
+
+  if (sentTo) return <CheckEmailPanel email={sentTo} signInHref={signInHref} />;
 
   const fieldError = (field: string) =>
     error?.field === field ? (
@@ -227,6 +282,44 @@ export function SignUpPage() {
   return (
     <EntryPage>
       <SignUpForm signInHref={withNext("/signin")} onSignedUp={() => navigate(next, { replace: true })} />
+    </EntryPage>
+  );
+}
+
+export function VerifyEmailPage() {
+  const [next] = useState(nextFromUrl);
+  const [token] = useState(() => new URLSearchParams(location.search).get("token"));
+  const [failed, setFailed] = useState(!token);
+  const [email, setEmail] = useState("");
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!token || started.current) return;
+    started.current = true;
+    verifyEmail(token).then(
+      () => navigate(next, { replace: true }),
+      () => setFailed(true),
+    );
+  }, [token, next]);
+
+  return (
+    <EntryPage>
+      <section className="card account-form">
+        {failed ? (
+          <>
+            <h1>{t("account.verify.failedTitle")}</h1>
+            <p>{t("account.verify.failedBody")}</p>
+            <label>
+              {t("account.email")}
+              <input type="email" autoComplete="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            <ResendButton email={email} />
+            <Link href="/signin">{t("account.signIn")}</Link>
+          </>
+        ) : (
+          <p role="status">{t("account.verify.working")}</p>
+        )}
+      </section>
     </EntryPage>
   );
 }

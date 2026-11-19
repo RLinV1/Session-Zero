@@ -70,7 +70,7 @@ export function roomLifecycle(deps: {
     const previous = roomCreationTails.get(room.ownerGmId) ?? Promise.resolve();
     const create = async () => {
       if ((await store.listOwnedRoomIds(room.ownerGmId)).length >= MAX_OWNED_ROOMS) throw new RoomCreationRefused("cap");
-      const rate = limits.roomCreationsPerAccount.hit(`rooms:${room.userId}`);
+      const rate = limits.roomCreationsPerAccount.hit(`rooms:${room.userId ?? room.ownerGmId}`);
       if (!rate.ok) throw new RoomCreationRefused("rate", rate.retryAfterSec);
       return insertRoomWithSeat(room);
     };

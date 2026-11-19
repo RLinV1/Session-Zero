@@ -87,7 +87,16 @@ always-on container (Fargate service, or Cloud Run with min instances 1 and CPU 
 | `CLIENT_ORIGIN` | The public web origin, for example `https://vtt.example.com` (CORS and write-origin check, ADR 0016) |
 | `COOKIE_SECURE` | `1` (HTTPS) |
 | `TRUST_PROXY` | Proxies the server sees, so client IPs and HTTPS are read from headers. `1` behind Caddy, including with a CDN in front of it |
+| `SMTP_HOST` | `smtp.resend.com` (email verification; required in production, startup fails naming any missing one) |
+| `SMTP_PORT` | `465` |
+| `SMTP_USER` | `resend` |
+| `SMTP_PASS` | The Resend API key |
+| `MAIL_FROM` | `noreply@sessionzero.codes`, on the domain verified in Resend |
 | `SEED_DEV_ACCOUNT` | Never set |
+
+In production, sign-up sends a one-time link (valid 24 hours) to the address, and sign-in is refused until it is used. The link is the first entry of `CLIENT_ORIGIN` plus `/verify-email?token=...`, so `CLIENT_ORIGIN` must be the public site address, for example `https://sessionzero.codes`. Outside production nothing is sent and accounts are verified at once. Existing accounts are marked verified by the migration.
+
+**Deploy order for this release:** set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` and `CLIENT_ORIGIN` first (in `.env.production`, or the Terraform variables `smtp_*` and `mail_from`), then run the migration, then roll out the server. A server started without them stops at once and names what is missing.
 
 The web image takes `TRUSTED_PROXIES`, the proxies in front of Caddy whose `X-Forwarded-For` it believes. See [`EDGE-PROTECTION.md`](EDGE-PROTECTION.md).
 
@@ -110,6 +119,22 @@ because it is not ready. Without the worker, a queued wall job waits for the ser
 before failing. To enable it:
 `docker compose --env-file .env.production -f docker-compose.prod.yml --profile walls up -d --build`.
 VMs created by Terraform start without it; SSH in and run that command to turn it on.
+
+### Limits, backups and hardening on the VM
+
+Every service in `docker-compose.prod.yml` has `mem_limit`, `cpus` and `pids_limit`, sized for a 4 GB VM: server 768 MB, mcp 768 MB, postgres 768 MB, s3 512 MB, redis 256 MB, web 256 MB, vision 1 GB (and 1 GB for `vision-walls` when its profile is on). The limits are ceilings, not reservations, and they add up to a little over 4 GB on purpose: a runaway container is killed by Docker instead of the kernel picking Postgres. On a VM with less than 4 GB, or with `walls` on, move up a size.
+
+The Terraform bootstrap (fresh VMs only; an existing VM needs these steps by hand) also:
+
+- installs `unattended-upgrades`, so security patches apply without a login;
+- adds an iptables rule in `DOCKER-USER` (a systemd unit, `vtt-block-metadata`) that drops container traffic to `169.254.169.254`, so a compromised container cannot read the cloud metadata endpoint. The secrets still sit in instance metadata and in Terraform state; moving them to a secret manager is a later step;
+- runs a nightly `pg_dump` at 03:00 (`/usr/local/bin/vtt-backup`, cron `/etc/cron.d/vtt-backup`) into `/var/backups/vtt/vtt-YYYY-MM-DD.sql.gz`, keeping 7 days, through `docker compose exec` so no host client is needed. These dumps are on the same disk as the data: copy them off the VM (for example `scp` or a bucket) or a lost VM loses them too. Uploaded files in `s3data` are not in the dump.
+
+Restore into a running stack: `gunzip -c /var/backups/vtt/vtt-2026-11-18.sql.gz | docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`. Stop the server first and restore into an empty database (drop and recreate it) to avoid clashes.
+
+Both Terraform instances ignore later changes to their startup script (`lifecycle { ignore_changes }`), so editing the template or changing `repo_ref`, `domain` or `smtp_pass` no longer replaces a live VM; change a running VM by SSH. The GCP stack has its own VPC (`vtt-net`) with only the `vtt-web` rule and, when `ssh_cidr` is not empty, `vtt-ssh`, so the project's default-network SSH rule does not apply.
+
+The dev `docker-compose.yml` publishes the server (3001) and web (5173) on `127.0.0.1` only, because it seeds a known login. To reach it from a phone or another machine on the LAN, change those two `ports` entries by hand.
 
 ### Settings
 

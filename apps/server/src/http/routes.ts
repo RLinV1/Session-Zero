@@ -164,14 +164,14 @@ export function registerRoutes(
       if (!body.success) return res.status(400).json({ error: body.error.issues });
 
       // Before the lookup, so a wrong code is counted too (ADR 0051).
-      if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${req.ip}`), TOO_MANY_INVITE_ATTEMPTS)) return;
+      if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${addressKey(req.ip)}`), TOO_MANY_INVITE_ATTEMPTS)) return;
       const roomId = await store.findRoomByInvite(req.params.inviteCode);
       const room = roomId ? await registry.get(roomId) : null;
       // A temporary encounter-editing room is its GM's alone (ADR 0033): its code reads as unknown.
       if (!roomId || !room || room.closed || (await store.isTemporaryRoom(roomId))) return res.status(404).json({ error: "Invite not found" });
       // Every attempt counts, accepted or not: each join and its leave are permanent events, and
       // the player cap bounds seats held at once, not seats a room stores (security-hardening D2).
-      const limit = limits.joinsPerIpPerRoom.hit(`join:${roomId}:${req.ip}`);
+      const limit = limits.joinsPerIpPerRoom.hit(`join:${roomId}:${addressKey(req.ip)}`);
       if (refused(res, limit, "Too many joins from this address. Try again later.")) return;
 
       const account = signedIn(res);
@@ -430,7 +430,7 @@ export function registerRoutes(
   registerEncounterRoutes(app, { store, registry });
   registerEncounterEditRoutes(app, { store, registry, rooms });
   registerLegacyRoutes(app, { store, registry });
-  registerDiceLookRoutes(app, { store, uploadDir, assets });
+  registerDiceLookRoutes(app, { store, uploadDir, assets, uploads: limits.uploadsPerOwner });
   registerGmSettingsRoutes(app, { store });
   registerMembershipRoutes(app, { store, registry, limits });
 
@@ -445,6 +445,7 @@ export function registerRoutes(
       const room = await registry.get(cred.roomId);
       const viewer = room?.activeParticipant(cred.participantId);
       if (!viewer || viewer.role !== "gm") return res.status(403).json({ error: "GM only" });
+      if (refused(res, limits.historyPerParticipant.hit(`history:${cred.roomId}:${cred.participantId}`), "Too many history requests. Try again in a minute.")) return;
       const query = HistoryQuery.safeParse(req.query);
       if (!query.success) return res.status(400).json({ error: "Invalid history query" });
       const events = await store.loadEvents(cred.roomId);

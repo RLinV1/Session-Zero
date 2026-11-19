@@ -114,4 +114,70 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
     expect(await store.findSession(idle.tokenHash)).toBeNull();
     expect(await store.findSession(fresh.tokenHash)).not.toBeNull();
   });
+
+  describe("email verification tokens", () => {
+    const hour = 60 * 60 * 1000;
+    const issue = (userId: string, hash: string, ttl = 24 * hour) => {
+      const now = Date.now();
+      return store.createVerificationToken(userId, hash, new Date(now).toISOString(), new Date(now + ttl).toISOString());
+    };
+
+    it("creates a user unverified unless told otherwise, and marks it verified", async () => {
+      const user = await newUser();
+      expect(user.emailVerifiedAt).toBeNull();
+      const at = new Date().toISOString();
+      await store.markEmailVerified(user.id, at);
+      expect((await store.findUserById(user.id))!.emailVerifiedAt).toBe(at);
+      const verified = await store.createUser({
+        id: randomUUID(), email: `${randomUUID()}@example.com`, displayName: "Sam", passwordHash: "x", emailVerifiedAt: at,
+      });
+      expect(verified.emailVerifiedAt).toBe(at);
+    });
+
+    it("consumes a token once and returns its user", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issue(user.id, hash);
+      expect((await store.consumeVerificationToken(hash, new Date().toISOString()))!.id).toBe(user.id);
+      expect(await store.consumeVerificationToken(hash, new Date().toISOString())).toBeNull();
+    });
+
+    it("refuses an expired or unknown token", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issue(user.id, hash, hour);
+      expect(await store.consumeVerificationToken(hash, new Date(Date.now() + 2 * hour).toISOString())).toBeNull();
+      expect(await store.consumeVerificationToken(randomUUID(), new Date().toISOString())).toBeNull();
+    });
+
+    it("replaces the user's earlier tokens when a new one is issued", async () => {
+      const user = await newUser();
+      const first = randomUUID();
+      const second = randomUUID();
+      await issue(user.id, first);
+      await issue(user.id, second);
+      expect(await store.consumeVerificationToken(first, new Date().toISOString())).toBeNull();
+      expect((await store.consumeVerificationToken(second, new Date().toISOString()))!.id).toBe(user.id);
+    });
+
+    it("sweeps expired tokens and keeps live ones", async () => {
+      const user = await newUser();
+      const other = await newUser();
+      const stale = randomUUID();
+      const live = randomUUID();
+      await issue(user.id, stale, hour);
+      await issue(other.id, live);
+      await store.deleteExpiredVerificationTokens(new Date(Date.now() + 2 * hour).toISOString());
+      expect(await store.consumeVerificationToken(stale, new Date().toISOString())).toBeNull();
+      expect((await store.consumeVerificationToken(live, new Date().toISOString()))!.id).toBe(other.id);
+    });
+
+    it("deletes a user's pending token with the user", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issue(user.id, hash);
+      expect(await store.deleteUser(user.id)).not.toBeNull();
+      expect(await store.consumeVerificationToken(hash, new Date().toISOString())).toBeNull();
+    });
+  });
 });
