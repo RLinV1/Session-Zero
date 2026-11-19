@@ -265,7 +265,8 @@ export function registerIdentityRoutes(
     try {
       await active.mailer.send(verificationEmail(locale, email, verificationLink(clientOrigin, token)));
     } catch (err) {
-      console.error("[vtt] verification email failed:", err instanceof Error ? err.name : "unknown");
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[vtt] verification email failed:", reason);
     }
   }
 
