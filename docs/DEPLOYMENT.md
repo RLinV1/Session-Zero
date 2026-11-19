@@ -134,6 +134,10 @@ Restore into a running stack: `gunzip -c /var/backups/vtt/vtt-2026-11-18.sql.gz 
 
 Both Terraform instances ignore later changes to their startup script (`lifecycle { ignore_changes }`), so editing the template or changing `repo_ref`, `domain` or `smtp_pass` no longer replaces a live VM; change a running VM by SSH. The GCP stack has its own VPC (`vtt-net`) with only the `vtt-web` rule and, when `ssh_cidr` is not empty, `vtt-ssh`, so the project's default-network SSH rule does not apply.
 
+The bootstrap also adds a 2 GB swap file. On AWS the instance sets `http_put_response_hop_limit = 1` (with IMDSv2 required), so containers cannot reach the metadata service; on GCP the instance sets `enable-oslogin` and `block-project-ssh-keys`, and the iptables rule above is the container barrier. Secrets for the VM (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_SECRET_KEY`, `SMTP_PASS`) are rendered into the startup script, so they are also in the cloud's instance metadata and in `terraform.tfstate`: keep state in an encrypted private backend, never share it, scope the Resend key to sending only, and rotate every secret if state or the VM metadata ever leaks. Existing VMs need `REDIS_PASSWORD` added to `.env.production` before the next `up`.
+
+`docker-compose.prod.yml` splits the stack into networks: `edge` (web, mcp, server), `data` (postgres, redis, s3, server, migrate), `vision` (server, vision) and `walls` (redis, vision-walls). The last three are `internal`, so `vision` and `vision-walls` cannot reach SeaweedFS or Postgres, and only the server has outbound access for SMTP. Redis requires `REDIS_PASSWORD`. `server`, `mcp`, `vision` and `vision-walls` drop all capabilities and set `no-new-privileges`; `vision` and `vision-walls` also run read-only as a non-root user. `chrislusf/seaweedfs` is still `:latest`: pin it to a release tag you have tested before the next rebuild.
+
 The dev `docker-compose.yml` publishes the server (3001) and web (5173) on `127.0.0.1` only, because it seeds a known login. To reach it from a phone or another machine on the LAN, change those two `ports` entries by hand.
 
 ### Settings

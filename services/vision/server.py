@@ -12,6 +12,7 @@ from grid_config import MAX_BYTES, MAX_PIXELS, PROCESSING_TIMEOUT, VERSION
 CONTRACT_VERSION = f"{VERSION}:max{MAX_PIXELS}"
 
 ADMISSION = threading.Lock()
+MAX_CONNECTIONS = 16
 CHILD = Path(__file__).with_name("grid_child.py")
 
 
@@ -45,7 +46,26 @@ def analyze(data, width, height, timeout=PROCESSING_TIMEOUT, command=None):
     return 200, result
 
 
+class BoundedServer(ThreadingHTTPServer):
+    daemon_threads = True
+    slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 class Handler(BaseHTTPRequestHandler):
+    timeout = 10
+
     def reply(self, status, result):
         payload = json.dumps(result, allow_nan=False).encode("utf-8")
         self.send_response(status)
@@ -96,4 +116,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", int(os.environ.get("PORT", "8000"))), Handler).serve_forever()
+    BoundedServer(("0.0.0.0", int(os.environ.get("PORT", "8000"))), Handler).serve_forever()
