@@ -18,6 +18,7 @@ export interface UserRecord {
   createdAt: string;
   passwordChangedAt: string;
   emailVerifiedAt: string | null;
+  credentialVersion: number;
 }
 
 export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash"> & { emailVerifiedAt?: string | null };
@@ -61,11 +62,21 @@ export interface IdentityStore {
    */
   setPasswordHash(userId: string, passwordHash: string, changed: boolean): Promise<void>;
   markEmailVerified(userId: string, at: string): Promise<void>;
-  /** Stores the hash of a new verification token and deletes the user's earlier ones. */
-  createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string): Promise<void>;
-  /** Deletes the token and returns its user when it exists and has not expired at `now`; null otherwise. */
+  /**
+   * Stores the hash of a new verification token for `credentialVersion` and deletes the user's
+   * earlier ones. False, storing nothing, when the user's credentials have moved past that version or the user is gone.
+   */
+  createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number): Promise<boolean>;
+  /**
+   * One step, only while the user is still unverified: replaces the password hash and the user's
+   * tokens with the new one, and moves the credential version on. False, changing nothing, when the user is verified or gone.
+   */
+  replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string): Promise<boolean>;
+  /** Deletes the token and, when it exists, has not expired at `now` and matches the user's credential version, marks its user verified at `now` and returns it; null otherwise. */
   consumeVerificationToken(tokenHash: string, now: string): Promise<UserRecord | null>;
   deleteExpiredVerificationTokens(now: string): Promise<void>;
+  /** Deletes unverified users created before `createdBefore` that hold no verification token (BE-AUDIT squatting), rechecking each one as it is deleted. */
+  deleteStaleUnverifiedUsers(createdBefore: string): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */
   setActiveDiceLook(userId: string, lookId: string | null): Promise<void>;
 
@@ -74,7 +85,7 @@ export interface IdentityStore {
    * memberships, builds, library rows, then the user and its owner row. Its rooms must already be deleted
    * (the foreign keys refuse otherwise). Null when there is no such user.
    */
-  deleteUser(userId: string): Promise<DeletedUser | null>;
+  deleteUser(userId: string, staleBefore?: string): Promise<DeletedUser | null>;
 
   createSession(session: SessionRecord): Promise<void>;
   findSession(tokenHash: string): Promise<SessionRecord | null>;

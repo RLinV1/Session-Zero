@@ -56,6 +56,8 @@ const secureRandom = () => randomInt(0, 2 ** 31) / 2 ** 31;
 /** A checkpoint restore slower than this is logged: past it, ADR 0019 calls for a snapshot cache. */
 const RESTORE_SLOW_MS = 500;
 
+export const MAX_RELAYS_PER_ROOM_PER_SECOND = 600;
+
 /** Server services a room consults while deciding, passed in so `decide` stays pure. */
 export interface RoomHooks {
   uvttLease?: (roomId: string, actorId: string, id: string, revision: number, sceneId?: string) => UvttLease;
@@ -102,6 +104,12 @@ const refuse = <C extends string>(code: C, text: MessageRef) => ({ ok: false as 
  * Every committed change goes through `runExclusive`, a per-room FIFO queue, so commands
  * are decided against the latest state and receive consecutive seqs (FR-SYNC-01/04).
  */
+export class SeatKeptError extends Error {
+  constructor(readonly participantId: string, options: { cause: unknown }) {
+    super("the seat could not be removed after its membership failed", options);
+  }
+}
+
 export class LiveRoom {
   private state: RoomState;
   private seq: number;
@@ -109,6 +117,10 @@ export class LiveRoom {
   private concealments = new Map<string, ReturnType<typeof concealmentFor>>();
   private clients = new Set<RoomClient>();
   private tail: Promise<unknown> = Promise.resolve();
+  private pending = 0;
+  private lastActiveAt = Date.now();
+  private relayWindowStart = 0;
+  private relayCount = 0;
   /** Sorted asset ids last written to the reference index, as a comparable key. */
   private assetRefsKey: string | null = null;
   /** Set once the room is being deleted (ADR 0009). Nothing is committed or relayed after. */
@@ -407,9 +419,30 @@ export class LiveRoom {
       const decision = decideJoin(this.state, participant);
       if (!decision.ok) return decision;
       await this.commit(participant.id, decision.events);
-      if (userId) await this.store.putMember({ roomId: this.roomId, participantId: participant.id, userId });
+      if (userId) {
+        try {
+          await this.store.putMember({ roomId: this.roomId, participantId: participant.id, userId });
+        } catch (err) {
+          if (!(await this.dropSeat(participant.id))) throw new SeatKeptError(participant.id, { cause: err });
+          throw err;
+        }
+      }
       return decision;
     });
+  }
+
+  private async dropSeat(participantId: string): Promise<boolean> {
+    const actor = this.state.participants[participantId];
+    if (!actor) return true;
+    try {
+      const decision = decide(this.state, actor, { type: "participant.leave" }, { newId: randomUUID, random: secureRandom, lastSeq: this.seq });
+      if (!decision.ok) return false;
+      await this.commit(participantId, decision.events);
+      return true;
+    } catch (err) {
+      console.error(`[vtt] could not remove seat ${participantId} of room ${this.roomId} after its membership failed`, err);
+      return false;
+    }
   }
 
   /** For server-originated events (room creation) that aren't client commands. */
@@ -467,6 +500,10 @@ export class LiveRoom {
     return this.clients.size;
   }
 
+  isIdleFor(ms: number, now = Date.now()) {
+    return this.clients.size === 0 && this.pending === 0 && now - this.lastActiveAt >= ms;
+  }
+
   /** Full filtered state (FR-PL-06). Used on connect, on request, and when filtering needs it. */
   sendSnapshot(client: RoomClient) {
     const viewer = this.state.participants[client.participantId];
@@ -486,11 +523,20 @@ export class LiveRoom {
     return concealment;
   }
 
+  private relayAllowed(now = Date.now()) {
+    if (now - this.relayWindowStart >= 1000) {
+      this.relayWindowStart = now;
+      this.relayCount = 0;
+    }
+    return ++this.relayCount <= MAX_RELAYS_PER_ROOM_PER_SECOND;
+  }
+
   /** Ephemeral channel (FR-SYNC-03): relayed to other clients, never persisted, no seq. */
   relayEphemeral(from: RoomClient, payload: EphemeralPayload) {
     if (this.isClosed) return;
     const sender = this.state.participants[from.participantId];
     if (!sender || !isActive(sender)) return;
+    if (!this.relayAllowed()) return;
     if (payload.type === "tokenMovePreview") {
       let concealment = this.concealments.get(sender.id);
       if (!concealment) this.concealments.set(sender.id, (concealment = concealmentFor(this.state, sender)));
@@ -590,6 +636,10 @@ export class LiveRoom {
     if (events.length === 0) return [];
     // One id for the whole batch: undo reverses a command as a unit (ADR 0013).
     const commandId = randomUUID();
+    let probe = this.state;
+    events.forEach((event, i) => {
+      probe = reduceCommitted(probe, { seq: this.seq + i + 1, at: new Date().toISOString(), actorId, commandId, event });
+    });
     const committed = await this.store.append(
       this.roomId,
       this.seq,
@@ -677,8 +727,14 @@ export class LiveRoom {
   }
 
   private runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    this.pending++;
+    this.lastActiveAt = Date.now();
+    const settle = () => {
+      this.pending--;
+      this.lastActiveAt = Date.now();
+    };
     const result = this.tail.then(fn, fn);
-    this.tail = result.catch(() => undefined);
+    this.tail = result.then(settle, settle);
     return result;
   }
 }

@@ -13,7 +13,7 @@ import {
 } from "../src";
 import { baseRoom } from "./fixtures";
 
-const request = { roomName: "Crypt", displayName: "Sam", guestToken: "g".repeat(32) };
+const request = { roomName: "Crypt", displayName: "Sam", guestToken: "g".repeat(43) };
 
 describe("guest rooms: the create request (FR-GM-01)", () => {
   it("parses with and without a shipped map", () => {

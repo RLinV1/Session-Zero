@@ -97,7 +97,7 @@ import {
 import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
 import type { RedisSeqSource } from "./redisSeq";
-import { SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 
 /**
  * As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043). The complete
@@ -360,13 +360,19 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
+  async deleteCredential(tokenHash: string, participantId: string) {
+    await this.prisma.credential.deleteMany({ where: { tokenHash, participantId } });
+  }
+
   async saveCredential(tokenHash: string, record: CredentialRecord) {
     const data = { roomId: record.roomId, participantId: record.participantId, sessionHash: record.sessionHash ?? null };
-    await this.prisma.credential.upsert({
-      where: { tokenHash },
-      create: { tokenHash, ...data },
-      update: data,
+    const created = await this.prisma.credential.createMany({ data: [{ tokenHash, ...data }], skipDuplicates: true });
+    if (created.count === 1) return;
+    const updated = await this.prisma.credential.updateMany({
+      where: { tokenHash, roomId: data.roomId, participantId: data.participantId },
+      data: { sessionHash: data.sessionHash },
     });
+    if (updated.count === 0) throw new CredentialConflictError();
   }
 
   async findCredential(tokenHash: string) {
@@ -1679,21 +1685,46 @@ export class PostgresRoomStore implements RoomStore {
     await this.prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date(at) } });
   }
 
-  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string) {
-    await this.prisma.$transaction([
-      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
-      this.prisma.emailVerificationToken.create({
-        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt) },
-      }),
-    ]);
+  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    if (!UUID.test(userId)) return false;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || user.credentialVersion !== credentialVersion) return false;
+      await tx.emailVerificationToken.deleteMany({ where: { userId } });
+      await tx.emailVerificationToken.create({
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
+      });
+      return true;
+    });
+  }
+
+  async replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string) {
+    if (!UUID.test(userId)) return false;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      const updated = await tx.user.updateMany({
+        where: { id: userId, emailVerifiedAt: null },
+        data: { passwordHash, passwordChangedAt: new Date(), credentialVersion: { increment: 1 } },
+      });
+      if (updated.count === 0) return false;
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+      await tx.emailVerificationToken.deleteMany({ where: { userId } });
+      await tx.emailVerificationToken.create({
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion: user.credentialVersion },
+      });
+      return true;
+    });
   }
 
   async consumeVerificationToken(tokenHash: string, now: string) {
     return this.prisma.$transaction(async (tx) => {
       const token = await tx.emailVerificationToken.findUnique({ where: { tokenHash } });
       if (!token) return null;
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${token.userId}::uuid FOR UPDATE`;
       const deleted = await tx.emailVerificationToken.deleteMany({ where: { tokenHash } });
       if (deleted.count === 0 || token.expiresAt <= new Date(now)) return null;
+      await tx.user.updateMany({ where: { id: token.userId, emailVerifiedAt: null, credentialVersion: token.credentialVersion }, data: { emailVerifiedAt: new Date(now) } });
       const row = await tx.user.findUnique({ where: { id: token.userId } });
       return row ? toUserRecord(row) : null;
     });
@@ -1703,12 +1734,27 @@ export class PostgresRoomStore implements RoomStore {
     await this.prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
   }
 
+  async deleteStaleUnverifiedUsers(createdBefore: string) {
+    const stale = await this.prisma.user.findMany({
+      where: { emailVerifiedAt: null, createdAt: { lt: new Date(createdBefore) }, verificationTokens: { none: {} } },
+      select: { id: true },
+    });
+    for (const { id } of stale) await this.deleteUser(id, createdBefore);
+  }
+
   async setActiveDiceLook(userId: string, lookId: string | null) {
     await this.prisma.user.update({ where: { id: userId }, data: { activeDiceLookId: lookId } });
   }
 
-  async deleteUser(userId: string): Promise<DeletedUser | null> {
+  async deleteUser(userId: string, staleBefore?: string): Promise<DeletedUser | null> {
     return this.prisma.$transaction(async (tx) => {
+      if (staleBefore !== undefined) {
+        await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+        const eligible = await tx.user.count({
+          where: { id: userId, emailVerifiedAt: null, createdAt: { lt: new Date(staleBefore) }, verificationTokens: { none: {} } },
+        });
+        if (eligible === 0) return null;
+      }
       const user = await tx.user.findUnique({ where: { id: userId }, select: { ownerId: true } });
       if (!user) return null;
       const ownerGmId = user.ownerId;
@@ -2159,6 +2205,7 @@ function toUserRecord(row: User): UserRecord {
     createdAt: row.createdAt.toISOString(),
     passwordChangedAt: row.passwordChangedAt.toISOString(),
     emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
+    credentialVersion: row.credentialVersion,
   };
 }
 

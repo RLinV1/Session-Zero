@@ -34,6 +34,8 @@ function studioOriginFromEnv(value: string | undefined): string | undefined {
 
 const studioOrigin = studioOriginFromEnv(process.env.STUDIO_PUBLIC_ORIGIN);
 
+if (process.env.STUDIO_M0 === "1" && process.env.NODE_ENV === "production") throw new Error("STUDIO_M0 is refused when NODE_ENV=production.");
+
 const running = await startMcpServer({
   // Delegated Studio access (ADR 0073, design D7), off unless STUDIO_PUBLIC_ORIGIN is set.
   ...(studioOrigin && { studioAccess: { publicOrigin: studioOrigin } }),

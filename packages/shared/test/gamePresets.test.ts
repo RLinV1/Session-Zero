@@ -67,7 +67,7 @@ describe("Game preset registry (KAN-63)", () => {
     expect(GamePresetId.safeParse("free").success).toBe(true);
     expect(GamePresetId.safeParse("dnd5e").success).toBe(false);
     expect(GamePresetId.safeParse("chess").success).toBe(false);
-    const base = { roomName: "R", displayName: "GM", guestToken: "x".repeat(32) };
+    const base = { roomName: "R", displayName: "GM", guestToken: "x".repeat(43) };
     expect(CreateRoomRequest.safeParse({ ...base, preset: "free" }).success).toBe(true);
     expect(CreateRoomRequest.safeParse({ ...base, preset: "chess" }).success).toBe(false);
     expect(CreateRoomRequest.safeParse(base).success).toBe(true);

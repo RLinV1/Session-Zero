@@ -15,6 +15,8 @@ import { createMcpServer } from "./tools";
 import { WAIT_LIMIT_MS } from "./waitForTurn";
 
 const SWEEP_EVERY_MS = 60_000;
+const SMALL_BUILD_BODY_BYTES = 256 * 1024;
+const MAX_LARGE_BUILD_BODIES = 3;
 
 export interface McpAppOptions {
   /** The room server, as this process reaches it. Never taken from a request. */
@@ -81,7 +83,22 @@ export function buildMcpApp(options: McpAppOptions) {
 
   // Every type, so no Content-Type can carry a body past this limit to the transport's own parser.
   const jsonBody = express.json({ limit: "64kb", type: () => true });
-  const buildBody = express.json({ limit: "12mb", type: () => true });
+  const smallBuildBody = express.json({ limit: "256kb", type: () => true });
+  const largeBuildBody = express.json({ limit: "12mb", type: () => true });
+  let largeBuildBodies = 0;
+  const buildBody = (req: Request, res: Response, next: NextFunction) => {
+    const declared = req.headers["content-length"];
+    const length = declared === undefined ? NaN : Number(declared);
+    const small = length <= SMALL_BUILD_BODY_BYTES && !req.headers["content-encoding"];
+    if (small) return smallBuildBody(req, res, next);
+    if (largeBuildBodies >= MAX_LARGE_BUILD_BODIES) {
+      res.setHeader("Retry-After", "5");
+      return void rpcError(res, 429, -32000, "Too many large uploads at once. Try again in a moment.");
+    }
+    largeBuildBodies += 1;
+    res.once("close", () => { largeBuildBodies -= 1; });
+    return largeBuildBody(req, res, next);
+  };
 
   /**
    * Both protocol eras on one stateless endpoint. 2025-era clients (an `initialize` handshake, no

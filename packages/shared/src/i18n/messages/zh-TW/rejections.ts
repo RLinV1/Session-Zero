@@ -21,6 +21,8 @@ export const rejectionsZhTW = {
   "reject.wallBlocked": "這個位置有牆壁阻擋。",
   "reject.squareOccupied": "那裡已經有另一枚棋子。",
   "reject.noEmptySquare": "附近沒有空的格子。",
+  "reject.roomLogFull": "這個房間的紀錄數量已達上限。",
+  "reject.tooManyTokens": "這個房間的棋子數量已達上限。",
   "reject.notEnoughSpace": "空間不足",
   "reject.carryUnknownToken": "要帶過去的棋子不在這個棋盤上。",
   "reject.carryInPreparation": "只能把棋子帶到遊戲桌上正在使用的棋盤。",

@@ -94,12 +94,17 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     const input = Intake.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "invalid");
     const build = res.locals.build as BuildRecord;
     const budget = `upload:${build.ownerGmId}`;
-    const limit = limits.uploadsPerOwner.check(budget);
+    const limit = limits.uploadsPerOwner.hit(budget);
     if (!limit.ok) { res.setHeader("Retry-After", String(limit.retryAfterSec)); return studioMediaError(res, 429, "busy"); }
-    const result = await media.intake(build.id, input.data.kind, input.data.file, res.locals.delegation as StudioDelegation);
-    if (!await stillGranted(req, res, build, result.file.id)) return;
-    if (result.created) limits.uploadsPerOwner.hit(budget);
-    res.status(result.created ? 201 : 200).json({ file: studioFile(result.file), created: result.created });
+    let created = false;
+    try {
+      const result = await media.intake(build.id, input.data.kind, input.data.file, res.locals.delegation as StudioDelegation);
+      if (!await stillGranted(req, res, build, result.file.id)) return;
+      created = result.created;
+      res.status(result.created ? 201 : 200).json({ file: studioFile(result.file), created: result.created });
+    } finally {
+      if (!created) limits.uploadsPerOwner.refund(budget, limit.reservation);
+    }
   })().catch(failed(res)); });
   app.post(`${base}/binding`, grantGuard, (req, res) => { void (async () => {
     const input = Binding.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "invalid");

@@ -19,7 +19,7 @@ describe("HTTP request budgets", () => {
     let now = 0;
     const limiter = accountLimits(() => now)[name];
     for (let i = 0; i < budget; i++) expect(limiter.hit("one").ok).toBe(true);
-    expect(limiter.hit("one")).toEqual({ ok: false, retryAfterSec: minutes * 60 });
+    expect(limiter.hit("one")).toMatchObject({ ok: false, retryAfterSec: minutes * 60 });
     expect(limiter.hit("two").ok).toBe(true);
     now += minutes * 60_000;
     expect(limiter.hit("one").ok).toBe(true);

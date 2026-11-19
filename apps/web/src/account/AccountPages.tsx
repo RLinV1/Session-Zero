@@ -11,7 +11,7 @@ import { PopoverButton } from "../ui/Popover";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SiteFooter } from "../ui/SiteFooter";
 import { changePassword, deleteAccount, resendVerification, signIn, signOut, signUp, useAccount, verifyEmail } from "./accountStore";
-import { safeNext } from "./safeNext";
+import { safeNext, signInFor } from "./safeNext";
 
 /** Where to go after signing in: the page that sent the person here, if it is on this site. */
 const nextFromUrl = () => safeNext(new URLSearchParams(location.search).get("next"));
@@ -194,11 +194,16 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function submit() {
+    if (password !== confirmPassword) {
+      setError({ message: t("account.passwordMismatch"), field: "confirmPassword" });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -258,6 +263,19 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
         />
         {fieldError("password")}
       </label>
+      <label>
+        {t("account.confirmPassword")}
+        <input
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={PASSWORD_MIN}
+          maxLength={PASSWORD_MAX}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        {fieldError("confirmPassword")}
+      </label>
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}
         <Link href="/privacy">{t("account.agree.privacy")}</Link>{t("account.agree.after")}
@@ -290,17 +308,19 @@ export function VerifyEmailPage() {
   const [next] = useState(nextFromUrl);
   const [token] = useState(() => new URLSearchParams(location.search).get("token"));
   const [failed, setFailed] = useState(!token);
+  const [verified, setVerified] = useState(false);
   const [email, setEmail] = useState("");
   const started = useRef(false);
 
   useEffect(() => {
     if (!token || started.current) return;
     started.current = true;
+    history.replaceState(history.state, "", location.pathname);
     verifyEmail(token).then(
-      () => navigate(next, { replace: true }),
+      () => setVerified(true),
       () => setFailed(true),
     );
-  }, [token, next]);
+  }, [token]);
 
   return (
     <EntryPage>
@@ -315,6 +335,12 @@ export function VerifyEmailPage() {
             </label>
             <ResendButton email={email} />
             <Link href="/signin">{t("account.signIn")}</Link>
+          </>
+        ) : verified ? (
+          <>
+            <h1>{t("account.verify.doneTitle")}</h1>
+            <p role="status">{t("account.verify.doneBody")}</p>
+            <Link href={signInFor(next)}>{t("account.signIn")}</Link>
           </>
         ) : (
           <p role="status">{t("account.verify.working")}</p>

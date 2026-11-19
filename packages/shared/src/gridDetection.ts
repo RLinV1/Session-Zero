@@ -11,7 +11,7 @@ export const GridDetectionCandidate = z.object({
 export type GridDetectionCandidate = z.infer<typeof GridDetectionCandidate>;
 
 /** Bump whenever preprocessing, detector settings, fitter or the candidate contract changes. */
-export const GRID_DETECTION_VERSION = "classical-lsd-v1:pillow11.1-exif-L:cv4.8.1.78:numpy1.26.4:std-native-a1-l20-fit4-best";
+export const GRID_DETECTION_VERSION = "classical-lsd-v1:pillow13.0-exif-L:cv4.8.1.78:numpy1.26.4:std-native-a1-l20-fit4-best";
 
 export const GridDetectionStatus = z.discriminatedUnion("status", [
   z.object({ status: z.literal("queued"), attempt: z.number().int().positive() }),

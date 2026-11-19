@@ -4,6 +4,14 @@ exec > >(tee -a /var/log/vtt-bootstrap.log) 2>&1
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 apt-get update
 apt-get install -y ca-certificates curl git
 install -m 0755 -d /etc/apt/keyrings
@@ -59,6 +67,7 @@ TRUST_PROXY=1
 POSTGRES_PASSWORD=${postgres_pass}
 POSTGRES_USER=vtt
 POSTGRES_DB=vtt
+REDIS_PASSWORD=${redis_pass}
 S3_ACCESS_KEY=${s3_access_key}
 S3_SECRET_KEY=${s3_secret_key}
 S3_BUCKET=vtt-assets

@@ -82,6 +82,20 @@ describe("sessions (FR-GM-01, ADR 0017 I1)", () => {
     expect(reported).toEqual([["seat-hash"]]);
   });
 
+  it("sweeps stale unverified accounts only while verification is required (PR 226 sweep gate)", async () => {
+    const store = new MemoryRoomStore();
+    let now = Date.now();
+    let verifying = false;
+    const sessions = new Sessions(store, { secure: false }, () => now, () => verifying);
+    const user = await store.createUser({ id: randomUUID(), email: "sam@example.com", displayName: "Sam", passwordHash: "x" });
+    now += 8 * DAY;
+    await sessions.sweep();
+    expect(await store.findUserById(user.id)).not.toBeNull();
+    verifying = true;
+    await sessions.sweep();
+    expect(await store.findUserById(user.id)).toBeNull();
+  });
+
   it("writes the exact cookie, with and without Secure", () => {
     const expires = new Date("2026-12-30T12:00:00.000Z");
     expect(sessionCookie("tok", expires, { secure: false })).toBe(

@@ -105,6 +105,7 @@ describe("email verification on sign-up and sign-in (FR-GM-01)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse battery");
+    type(/^Confirm password/, "correct horse battery");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByRole("heading", { name: "Check your email" })).toBeTruthy();
     expect(screen.getByText(/sam@example\.com/)).toBeTruthy();
@@ -123,6 +124,7 @@ describe("email verification on sign-up and sign-in (FR-GM-01)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse battery");
+    type(/^Confirm password/, "correct horse battery");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     fireEvent.click(await screen.findByRole("button", { name: "Send a new link" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Too many attempts. Try again in 10 minutes.");
@@ -282,7 +284,24 @@ describe("the pages that send a person back (gm-home: Account screens)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse");
+    type(/^Confirm password/, "correct horse");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/gm-dashboard", { replace: true }));
+    expect(signUp).toHaveBeenCalledTimes(1);
+    expect(signUp).toHaveBeenCalledWith("sam@example.com", "correct horse", "Sam");
+  });
+
+  it("blocks sign-up when the passwords differ and keeps the other fields (FR-GM-01)", () => {
+    history.replaceState(null, "", "/signup");
+    render(<SignUpPage />);
+    type(/^Display name/, "Sam");
+    type(/^Email/, "sam@example.com");
+    type(/^Password/, "correct horse");
+    type(/^Confirm password/, "correct horsf");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByRole("alert").textContent).toBe("The two passwords don't match.");
+    expect(signUp).not.toHaveBeenCalled();
+    expect((screen.getByLabelText(/^Display name/) as HTMLInputElement).value).toBe("Sam");
+    expect((screen.getByLabelText(/^Email/) as HTMLInputElement).value).toBe("sam@example.com");
   });
 });

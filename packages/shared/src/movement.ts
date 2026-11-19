@@ -14,8 +14,13 @@ export function destinationBlocked(state: RoomState, size: number, to: Point): b
 
 /** What obstructs movement in a room: blocking walls and effective terrain. Worked out once per move (ADR 0055). */
 export interface MovementObstacles { walls: Wall[]; terrain: TerrainRun[] }
+const obstacleCache = new WeakMap<object, MovementObstacles>();
 export function movementObstacles(state: Pick<RoomState, "walls" | "terrain">): MovementObstacles {
-  return { walls: Object.values(state.walls).filter(blocksMovement), terrain: effectiveTerrain(state.terrain ?? emptyTerrain()) };
+  const cached = obstacleCache.get(state);
+  if (cached) return cached;
+  const built = { walls: Object.values(state.walls).filter(blocksMovement), terrain: effectiveTerrain(state.terrain ?? emptyTerrain()) };
+  obstacleCache.set(state, built);
+  return built;
 }
 
 /**

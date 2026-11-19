@@ -20,7 +20,7 @@ import { exportUvttScene, mapImageReader } from "../uvtt/exportScene";
 import { bitmapFormat } from "../uvtt/imageValidation";
 
 interface Deps { store: RoomStore; registry: RoomRegistry; sessions: Sessions; assets: AssetStore; uploadDir: string; builtinImageDir: string | null; uploads: RateLimiter }
-interface Auth { room: LiveRoom; actorId: string; roomId: string }
+interface Auth { room: LiveRoom; actorId: string; roomId: string; begin: () => void; release: () => void }
 
 const CONTENT_TYPES = { png: "image/png", webp: "image/webp", jpeg: "image/jpeg" } as const;
 const EXTENSIONS = { png: "png", webp: "webp", jpeg: "jpg" } as const;
@@ -60,25 +60,35 @@ export function registerMapLibraryRoutes(app: Express, deps: Deps) {
   const auths = new WeakMap<Request, Auth>();
   const guard = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
+      let handling = false;
+      let closed = false;
+      let release = () => {};
+      res.once("close", () => { closed = true; if (!handling) release(); });
       const header = req.headers.authorization;
       const credential = header?.startsWith("Bearer ") ? await deps.store.findCredential(hashToken(header.slice(7))) : null;
       const roomId = req.params.roomId;
       if (!credential || credential.roomId !== roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      const room = await deps.registry.get(credential.roomId);
+      if (closed) return;
+      const lease = await deps.registry.acquire(credential.roomId);
+      release = lease.release;
+      if (closed) { release(); return; }
+      const room = lease.room;
       if (!room || room.closed || room.activeParticipant(credential.participantId)?.role !== "gm") {
+        release();
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      auths.set(req, { room, actorId: credential.participantId, roomId: credential.roomId });
+      auths.set(req, { room, actorId: credential.participantId, roomId: credential.roomId, begin: () => { handling = true; }, release: () => release() });
       next();
     })().catch(next);
   };
 
   // Save to library (asset-library, ADR 0070): the server reads the board; the browser sends none of it.
   app.post("/api/rooms/:roomId/map/library", guard, (req: Request, res: Response) => {
+    const auth = auths.get(req)!;
+    auth.begin();
     void (async () => {
-      const auth = auths.get(req)!;
       const body = SaveMapToLibraryRequest.safeParse(req.body ?? {});
       if (!body.success) return void res.status(400).json({ error: "Invalid request" });
       const owner = await resolveOwner(req, res, deps.store);
@@ -150,7 +160,7 @@ export function registerMapLibraryRoutes(app: Express, deps: Deps) {
       if (error instanceof UvttError) return void res.status(409).json({ error: error.message });
       console.error("[vtt] save map to library failed", error);
       res.status(500).json({ error: "Couldn't save the map to the library. Try again." });
-    });
+    }).finally(() => auth.release());
   });
 
   // Export .uvtt lives in the library (asset-library, ADR 0070): the map as last saved there.

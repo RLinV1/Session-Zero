@@ -175,6 +175,12 @@ export function movementFeedbackForViewer(state: RoomState, viewer: Participant,
   return legs.some((leg) => movementBlocked(state, { ...token, position: leg.from }, leg.to, request.reposition, obstacles)) ? "blocked" : "clear";
 }
 
+const PLAYER_VISIBLE_KEYS = [
+  "activeSceneId", "roomId", "name", "preset", "scene", "participants", "drawings", "chat", "fog",
+  "reducedEffects", "autoRemoveDefeated", "defeatRemoval", "hideMapWithoutToken", "hideHp", "hideAc",
+  "diagonalRule", "difficultTerrain", "joinsLocked", "boardEpoch",
+] as const satisfies readonly (keyof RoomState)[];
+
 /**
  * Player-safe state filtering (FR-GM-23).
  *
@@ -226,8 +232,8 @@ export function filterStateForViewer(state: RoomState, viewer: Participant): Roo
   // An area effect's saves and concealed targets are the GM's (ADR 0046).
   const areaEffect = state.areaEffect && !effectWithheldFrom(state.areaEffect, state, c, viewer) ? areaEffectForViewer(state.areaEffect, state, c, viewer) : null;
   // The polygons are what the player's board masks with (ADR 0044); omitted entirely when sight is off.
-  const { terrain: _terrain, terrainRevision: _terrainRevision, terrainView: _terrainView, sight: _sight, ...publicState } = state;
-  return { ...publicState, terrainView: terrainForViewer(state, c), tokens, staged, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
+  const base = Object.fromEntries(PLAYER_VISIBLE_KEYS.filter((k) => k in state).map((k) => [k, state[k]])) as Pick<RoomState, (typeof PLAYER_VISIBLE_KEYS)[number]>;
+  return { ...base, terrainView: terrainForViewer(state, c), tokens, staged, rolls, initiative, templates, walls, undo: [], checkpoints: [], groups: {}, tokenGroups: {}, areaEffect, ...((state.sceneNames || state.savedScenes) && { sceneNames: {}, savedScenes: {} }), ...(c.sight ? { sight: c.sight } : {}) };
 }
 
 export type FilteredEvent =

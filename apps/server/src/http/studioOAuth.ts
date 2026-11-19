@@ -128,6 +128,8 @@ const Registration = z.looseObject({
   scope: z.string().max(500).optional(),
 });
 
+const VERIFIED_REDIRECT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com"]);
+
 const PkceValue = z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/);
 
 /** The authorization request, as the consent page passes it back (RFC 6749 §4.1.1, RFC 7636, RFC 8707). */
@@ -206,6 +208,14 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
 
   const oauthError = (res: Response, status: number, error: string, description: string) =>
     void res.status(status).json({ error, error_description: description });
+
+  const clientBusy = (res: Response, clientId: string) => {
+    const limit = limits.studioRequestsPerClient.hit(`studio-client:${clientId}`);
+    if (limit.ok) return false;
+    res.setHeader("Retry-After", String(limit.retryAfterSec));
+    oauthError(res, 429, "temporarily_unavailable", "Too many requests for this client. Try again later.");
+    return true;
+  };
 
   // ---------- Discovery ----------
 
@@ -321,8 +331,9 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const account = requireAccount(res);
       if (!account) return;
       const builds = (await store.listBuilds(account.user.ownerId)).filter((b) => b.status === "open");
+      const redirectHost = new URL(checked.params.redirect_uri).host;
       res.json({
-        client: { name: checked.client.name, redirectHost: new URL(checked.params.redirect_uri).host },
+        client: { name: checked.client.name, redirectHost, verified: VERIFIED_REDIRECT_HOSTS.has(new URL(checked.params.redirect_uri).hostname) },
         builds: builds.map((b) => ({ id: b.id, name: b.name })),
       });
     })().catch(failed(res));
@@ -410,6 +421,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         if (Date.parse(grant.codeExpiresAt) <= at || grant.revokedAt !== null) return tokenFailure(req, res, 400, "invalid_grant", "The code has expired.");
         if (field("redirect_uri") !== grant.redirectUri) return tokenFailure(req, res, 400, "invalid_grant", "redirect_uri doesn't match the authorization request.");
         if (!verifier || !PkceValue.safeParse(verifier).success || !pkceMatches(verifier, grant.codeChallenge)) return tokenFailure(req, res, 400, "invalid_grant", "code_verifier doesn't match.");
+        if (clientBusy(res, client.id)) return;
         const issued = newTokens(grant, at);
         if (!await store.redeemStudioCode(grant.id, new Date(at).toISOString(), issued.records)) {
           // Another exchange of the same code won at the same moment: that is a replay too.
@@ -426,6 +438,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         if (found.token.kind !== "refresh" || found.grant.clientId !== client.id) return tokenFailure(req, res, 400, "invalid_grant", "The refresh token isn't valid.");
         const scope = field("scope");
         if (scope !== undefined && scope.split(" ").some((s) => s && s !== STUDIO_SCOPE)) return tokenFailure(req, res, 400, "invalid_scope", "Only studio:build is available.");
+        if (clientBusy(res, client.id)) return;
         if (found.token.usedAt !== null) {
           // A rotated refresh token came back: one of its two holders isn't the client. End the family.
           await store.revokeStudioGrant(found.grant.id, new Date(at).toISOString());
@@ -440,7 +453,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         return void res.json(issued.reply);
       }
 
-      oauthError(res, 400, "unsupported_grant_type", "Use authorization_code or refresh_token.");
+      tokenFailure(req, res, 400, "unsupported_grant_type", "Use authorization_code or refresh_token.", true);
     })().catch(failed(res));
   });
 
@@ -450,10 +463,14 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
       const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>;
       const clientId = typeof body.client_id === "string" ? body.client_id : null;
       const token = typeof body.token === "string" ? body.token : null;
+      if (refused(res, limits.studioRevokesPerIp.hit(`studio-revoke:${addressKey(req.ip)}`), "Too many attempts. Try again later.")) return;
       if (!clientId || !await store.findStudioClient(clientId)) return oauthError(res, 401, "invalid_client", "Unknown client_id.");
       if (!token) return oauthError(res, 400, "invalid_request", "token is required.");
       const found = await store.findStudioToken(hashToken(token));
-      if (found && found.grant.clientId === clientId) await store.revokeStudioGrant(found.grant.id, new Date(now()).toISOString());
+      if (found && found.grant.clientId === clientId) {
+        if (clientBusy(res, clientId)) return;
+        await store.revokeStudioGrant(found.grant.id, new Date(now()).toISOString());
+      }
       res.status(200).json({});
     })().catch(failed(res));
   });

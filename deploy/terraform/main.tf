@@ -29,6 +29,11 @@ resource "random_password" "postgres" {
   special = false
 }
 
+resource "random_password" "redis" {
+  length  = 32
+  special = false
+}
+
 resource "random_password" "s3_access_key" {
   length  = 20
   special = false
@@ -108,7 +113,8 @@ resource "aws_instance" "vtt" {
   }
 
   metadata_options {
-    http_tokens = "required"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
   }
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
@@ -118,6 +124,7 @@ resource "aws_instance" "vtt" {
     site_address  = var.enable_https ? local.host : ":80"
     cookie_secure = var.enable_https ? "1" : "0"
     postgres_pass = random_password.postgres.result
+    redis_pass    = random_password.redis.result
     s3_access_key = random_password.s3_access_key.result
     s3_secret_key = random_password.s3_secret_key.result
     smtp_host     = var.smtp_host

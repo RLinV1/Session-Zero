@@ -25,7 +25,7 @@ import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
 import { DIAGONAL_RULE_IDS, DIFFICULT_TERRAIN_IDS } from "./i18n/ruleIds";
-import { isReservedKey, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_DRAWINGS, MAX_DRAWING_POINTS, drawingPoints, type Drawing, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
+import { isReservedKey, MAX_TOKENS_PER_ROOM, defeatRemovalOf, diagonalRuleOf, difficultTerrainOf, MAX_GROUP_NAME, MAX_GROUPS, MAX_AREA_TEMPLATES, MAX_DRAWINGS, MAX_DRAWING_POINTS, drawingPoints, type Drawing, MAX_LINE_WIDTH_CELLS, MAX_CHECKPOINT_NAME, MAX_CHAT_MENTIONS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, tableOf, templateGeometry, type AreaTemplate, type ChatMention, type DiceLookOnTable, type Initiative, type Participant, type Portal, type RoomState, type TableState, type Token, type Wall } from "./state";
 
 export type RejectionCode = "forbidden" | "not_found" | "invalid";
 
@@ -161,9 +161,22 @@ export function decide(
   ctx: DecideContext,
 ): Decision {
   if (hasReservedId(command)) return notFound("token");
+  if (ctx.lastSeq !== undefined && ctx.lastSeq >= MAX_EVENTS_PER_ROOM && !SEAT_REMOVALS.has(command.type)) return reject("invalid", sharedMsg("reject.roomLogFull"));
   const decision = decideCommand(state, actor, command, ctx);
   // Every way a token is deleted takes it out of the turn order in the same action (ADR 0065).
   return decision.ok ? { ok: true, events: withInitiativeExits(state, decision.events) } : decision;
+}
+
+export const MAX_EVENTS_PER_ROOM = 250_000;
+const SEAT_REMOVALS: ReadonlySet<string> = new Set(["participant.leave", "participant.revoke", "participant.revokeMany"]);
+const BOARD_MARGIN_CELLS = 10;
+const UNMAPPED_LIMIT = 1_000_000;
+
+function offBoard(state: RoomState, p: Point): boolean {
+  const map = state.scene.map;
+  if (!map) return Math.abs(p.x) > UNMAPPED_LIMIT || Math.abs(p.y) > UNMAPPED_LIMIT;
+  const margin = state.scene.grid.cellSize * BOARD_MARGIN_CELLS;
+  return p.x < -margin || p.y < -margin || p.x > map.width + margin || p.y > map.height + margin;
 }
 
 const ID_KEY = /^(id|ids|to|from)$|Ids?$/;
@@ -388,6 +401,7 @@ function decideCommand(
 
     case "token.create": {
       if (!can.administer(actor)) return forbidden();
+      if (offBoard(state, command.position)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       const off = presetRefusal(state, { attacks: command.attacks.length > 0, conditions: command.conditions.length > 0, ac: command.stats.ac });
       if (off) return off;
       const ownerError = checkOwners(state, command.ownerIds);
@@ -424,6 +438,7 @@ function decideCommand(
       const ids = command.tokenIds ?? Object.keys(state.staged);
       if (ids.length === 0) return reject("invalid", sharedMsg("reject.nothingStaged"));
       if (ids.some((id) => !Object.hasOwn(state.staged, id))) return reject("invalid", sharedMsg("reject.notStaged"));
+      if (Object.keys(state.tokens).length + ids.length > MAX_TOKENS_PER_ROOM) return reject("invalid", sharedMsg("reject.tooManyTokens"));
       const placements = placeStaged(state, ids.map((id) => state.staged[id]!), command.origin);
       if (!placements) return reject("invalid", sharedMsg("reject.notEnoughSpace"));
       return accept({ type: "StagedTokensPlaced", placements });
@@ -437,6 +452,7 @@ function decideCommand(
       const { id: _id, initiative: _initiative, ...copy } = original;
       // At the GM's chosen square, as token.create places (ADR 0033); otherwise beside the
       // original, never on it: its own square is the first spot the spread offers.
+      if (command.position && offBoard(state, command.position)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       if (command.position && clearanceTouchesWall(command.position, copy.size, state.scene.grid, blockingWalls(state))) return wallBlocked();
       if (command.position && overlapsToken(state.tokens, command.position, copy.size, state.scene.grid)) return squareOccupied();
       const created = command.position
@@ -537,6 +553,7 @@ function decideCommand(
       const via = command.via ?? [];
       const map = state.scene.map;
       if (via.length && (command.reposition || !map || via.some((p) => p.x < 0 || p.y < 0 || p.x > map.width || p.y > map.height))) return reject("invalid", sharedMsg("reject.moveUnavailable"));
+      if (offBoard(state, command.to)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       const points = [token.position, ...via, command.to];
       const obstacles = movementObstacles(state);
       for (let i = 1; i < points.length; i++) {
@@ -570,6 +587,7 @@ function decideCommand(
         const ownerError = checkOwners(state, changes.ownerIds);
         if (ownerError) return ownerError;
       }
+      if (changes.position && offBoard(state, changes.position)) return reject("invalid", sharedMsg("reject.moveUnavailable"));
       const size = changes.size ?? token.size;
       const position = changes.position ?? resizedPosition(state, token, size);
       // Explicit displacement keeps swept movement checks; automatic anchoring only checks the result.
@@ -1783,6 +1801,7 @@ function createTokens(
   ctx: DecideContext,
   { besideOrigin = false } = {},
 ): Decision {
+  if (Object.keys(state.tokens).length + count > MAX_TOKENS_PER_ROOM) return reject("invalid", sharedMsg("reject.tooManyTokens"));
   const spread = spreadPositions(
     base.position, base.size, besideOrigin ? count + 1 : count, state.scene.grid, state.scene.map,
     // Downed tokens don't occupy their squares (token-no-stacking).

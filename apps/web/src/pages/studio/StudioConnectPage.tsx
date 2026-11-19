@@ -56,6 +56,7 @@ function StudioConsent() {
     setError(null);
     try {
       const { redirectTo } = await api.studio.decide(Object.fromEntries(new URLSearchParams(search)), decision, chosen);
+      if (!/^https?:\/\//i.test(redirectTo)) throw new Error(t("studio.connect.failed"));
       setView({ state: "returning" });
       location.assign(redirectTo);
     } catch (err) {
@@ -89,8 +90,10 @@ function StudioConsent() {
     <EntryPage>
       <form className="card studio-connect" onSubmit={submit} aria-labelledby="studio-connect-title">
         <h1 id="studio-connect-title">{t("studio.connect.title")}</h1>
-        <p>{client.name ? t("studio.connect.claims", { name: client.name }) : t("studio.connect.claimsUnnamed")}</p>
-        <p><strong>{t("studio.connect.returnsTo", { host: client.redirectHost })}</strong></p>
+        <p><strong>{t("studio.connect.host", { host: client.redirectHost })}</strong></p>
+        {!client.verified && <p role="alert" className="notice">{t("studio.connect.unverified")}</p>}
+        <p className="muted">{client.name ? t("studio.connect.claims", { name: client.name }) : t("studio.connect.claimsUnnamed")}</p>
+        <p>{t("studio.connect.returnsTo", { host: client.redirectHost })}</p>
         {account.status === "signedIn" && <p className="muted">{t("studio.connect.signedInAs", { name: account.account.displayName })}</p>}
         {builds.length === 0 ? (
           <p className="notice">{t("studio.connect.noBuilds")}</p>

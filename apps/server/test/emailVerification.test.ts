@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMAIL_UNVERIFIED_CODE } from "@vtt/shared";
 import type { MailMessage, Mailer } from "../src/identity/mailer";
@@ -26,6 +27,7 @@ describe("email verification (FR-GM-01)", () => {
   let clock: number;
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await server?.close();
   });
 
@@ -82,12 +84,43 @@ describe("email verification (FR-GM-01)", () => {
       expect(mail.sent).toEqual([]);
     });
 
-    it("refuses a registered address and sends no mail", async () => {
+    it("refuses a verified address and sends no mail", async () => {
       await production();
       await signUp();
+      await verify(mail.tokenOf());
       mail.sent.length = 0;
       expect((await signUp()).status).toBe(409);
       expect(mail.sent).toEqual([]);
+    });
+
+    it("lets the real owner sign up over an unverified row: new password, old link dead (BE-AUDIT squatting)", async () => {
+      await production();
+      await signUp();
+      const squatterToken = mail.tokenOf();
+      const owner = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
+      expect(owner.status).toBe(201);
+      expect(mail.sent).toHaveLength(2);
+      expect((await verify(squatterToken)).status).toBe(400);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn()).status).toBe(401);
+      expect((await signIn("owner's own passphrase")).status).toBe(200);
+    });
+
+    it("answers 409 and changes nothing when the owner verified before the replacement landed (PR 226 atomic replacement)", async () => {
+      await production();
+      await signUp();
+      const ownerToken = mail.tokenOf();
+      const real = server.store.findUserByEmail.bind(server.store);
+      vi.spyOn(server.store, "findUserByEmail").mockImplementationOnce(async (email) => {
+        const found = await real(email);
+        expect((await verify(ownerToken)).status).toBe(200);
+        return found;
+      });
+      const duplicate = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
+      expect(duplicate.status).toBe(409);
+      expect((await signIn("attacker passphrase")).status).toBe(401);
+      expect((await signIn()).status).toBe(200);
+      expect(mail.sent).toHaveLength(1);
     });
 
     it("writes the mail in Traditional Chinese for a request that asks for it", async () => {
@@ -126,14 +159,14 @@ describe("email verification (FR-GM-01)", () => {
   });
 
   describe("verify", () => {
-    it("verifies the account, starts a session and uses the token up", async () => {
+    it("verifies the account, starts no session and uses the token up (BE-AUDIT squatting)", async () => {
       await production();
       await signUp();
       const token = mail.tokenOf();
       const res = await verify(token);
       expect(res.status).toBe(200);
-      expect(res.headers.getSetCookie().join(";")).toMatch(/vtt_session=/);
-      expect(await res.json()).toMatchObject({ account: { email: "sam@example.com", displayName: "Sam" } });
+      expect(res.headers.getSetCookie()).toEqual([]);
+      expect(await res.json()).toEqual({ account: null });
       expect((await server.store.findUserByEmail("sam@example.com"))!.emailVerifiedAt).not.toBeNull();
       expect((await verify(token)).status).toBe(400);
     });
@@ -212,16 +245,21 @@ describe("email verification (FR-GM-01)", () => {
       expect((await resend("not-an-email")).status).toBe(400);
     });
 
-    it("limits one address to 3 requests per 15 minutes with Retry-After", async () => {
+    it("stops mailing one address after 3 requests per 15 minutes but answers 204 as for an unknown one (PR 226 resend limiter)", async () => {
       await production();
       await signUp();
       for (let i = 0; i < 3; i++) expect((await resend()).status).toBe(204);
       await vi.waitFor(() => expect(mail.sent).toHaveLength(4));
       const limited = await resend();
-      expect(limited.status).toBe(429);
-      expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+      expect(limited.status).toBe(204);
+      expect(limited.headers.get("retry-after")).toBeNull();
       await new Promise((r) => setTimeout(r, 50));
       expect(mail.sent).toHaveLength(4);
+    });
+
+    it("does not count requests for an unknown address against it (BE-AUDIT mail abuse)", async () => {
+      await production();
+      for (let i = 0; i < 5; i++) expect((await resend("nobody@example.com")).status).toBe(204);
     });
 
     it("limits one client to 20 requests per hour", async () => {
@@ -230,6 +268,69 @@ describe("email verification (FR-GM-01)", () => {
       const limited = await resend("another@example.com");
       expect(limited.status).toBe(429);
       expect(limited.headers.get("retry-after")).not.toBeNull();
+    });
+  });
+
+  describe("tokens are bound to the credentials they were issued for (PR 226 delayed-token takeover)", () => {
+    it("sends nothing when the first mail is issued after a duplicate sign-up replaced the credentials", async () => {
+      await production();
+      const real = server.store.createVerificationToken.bind(server.store);
+      vi.spyOn(server.store, "createVerificationToken").mockImplementationOnce(async (...args) => {
+        const replaced = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
+        expect(replaced.status).toBe(201);
+        return real(...args);
+      });
+      expect((await signUp()).status).toBe(201);
+      expect(mail.sent).toHaveLength(1);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn("attacker passphrase")).status).toBe(200);
+    });
+
+    it("refuses to store a token for a version the credentials have moved past", async () => {
+      await production();
+      await signUp();
+      const user = (await server.store.findUserByEmail(credentials.email))!;
+      const now = new Date(clock).toISOString();
+      const later = new Date(clock + HOUR).toISOString();
+      expect(await server.store.replaceUnverifiedCredentials(user.id, "$argon2id$replaced", "new-hash", now, later)).toBe(true);
+      expect(await server.store.createVerificationToken(user.id, "stale-hash", now, later, user.credentialVersion)).toBe(false);
+      expect(await server.store.consumeVerificationToken("stale-hash", now)).toBeNull();
+    });
+
+    it("a resend after a replacement issues for the current credentials and the earlier link stays dead", async () => {
+      await production();
+      await signUp();
+      const first = mail.tokenOf();
+      await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
+      expect((await resend()).status).toBe(204);
+      expect(mail.sent).toHaveLength(3);
+      expect((await verify(first)).status).toBe(400);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn("owner's own passphrase")).status).toBe(200);
+    });
+  });
+
+  describe("stale unverified sweep follows the verification setting buildApp resolved (PR 226 sweep policy)", () => {
+    const orphan = async () => {
+      const user = await server.store.createUser({ id: randomUUID(), email: "orphan@example.com", displayName: "Orphan", passwordHash: "x" });
+      return user.id;
+    };
+
+    it("deletes an old unverified user without a token when verification is on", async () => {
+      server = await startServer(new MemoryRoomStore(), { now: () => Date.now() + 30 * 24 * HOUR, verification: { mailer: new Recorder() } });
+      const id = await orphan();
+      await server.app.sweep();
+      expect(await server.store.findUserById(id)).toBeNull();
+    });
+
+    it("keeps it when buildApp was given no verification, whatever NODE_ENV says", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("TRUST_PROXY", "1");
+      server = await startServer(new MemoryRoomStore(), { now: () => Date.now() + 30 * 24 * HOUR, verification: null });
+      const id = await orphan();
+      await server.app.sweep();
+      vi.unstubAllEnvs();
+      expect(await server.store.findUserById(id)).not.toBeNull();
     });
   });
 

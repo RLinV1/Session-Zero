@@ -298,7 +298,7 @@ describe("guest rooms: built-in art only (FR-GM-02)", () => {
     const room = await startGuest();
     const gm = await connect(room);
     expect(await gm.command(tokenAt("/uploads/x.png"))).toMatchObject({ type: "rejected", code: GUEST_ASSET });
-    expect(await gm.command(tokenAt("https://example.com/img/x.png"))).toMatchObject({ type: "rejected", code: GUEST_ASSET });
+    expect(await gm.command(tokenAt("https://example.com/img/x.png"))).toMatchObject({ type: "rejected", code: "bad_request" });
     expect(await gm.command(tokenAt("/img/../uploads/x.png"))).toMatchObject({ type: "rejected", code: GUEST_ASSET });
     expect(Object.keys(gm.state.tokens)).toEqual([]);
 
