@@ -29,6 +29,14 @@ describe("M3: room ceilings (FR-GM-15)", () => {
     expect(decide(baseRoom(), gm, command, { ...ctx, lastSeq: MAX_EVENTS_PER_ROOM })).toMatchObject({ ok: false, code: "invalid" });
     expect(decide(baseRoom(), gm, command, { ...ctx, lastSeq: 5 })).toMatchObject({ ok: true });
   });
+
+  it("still accepts leave and revoke at the ceiling so a seat can always be removed", () => {
+    const full = { ...ctx, lastSeq: MAX_EVENTS_PER_ROOM };
+    expect(decide(baseRoom(), alice, Command.parse({ type: "participant.leave" }), full)).toMatchObject({ ok: true });
+    expect(decide(baseRoom(), gm, Command.parse({ type: "participant.revoke", participantId: alice.id }), full)).toMatchObject({ ok: true });
+    expect(decide(baseRoom(), gm, Command.parse({ type: "participant.revokeMany", participantIds: [alice.id] }), full)).toMatchObject({ ok: true });
+    expect(decide(baseRoom(), alice, Command.parse({ type: "participant.rename", displayName: "Al" }), full)).toMatchObject({ ok: false });
+  });
 });
 
 describe("token.placeStaged keeps to MAX_TOKENS_PER_ROOM (FR-GM-15)", () => {

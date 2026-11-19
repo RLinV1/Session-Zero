@@ -161,13 +161,14 @@ export function decide(
   ctx: DecideContext,
 ): Decision {
   if (hasReservedId(command)) return notFound("token");
-  if (ctx.lastSeq !== undefined && ctx.lastSeq >= MAX_EVENTS_PER_ROOM) return reject("invalid", sharedMsg("reject.roomLogFull"));
+  if (ctx.lastSeq !== undefined && ctx.lastSeq >= MAX_EVENTS_PER_ROOM && !SEAT_REMOVALS.has(command.type)) return reject("invalid", sharedMsg("reject.roomLogFull"));
   const decision = decideCommand(state, actor, command, ctx);
   // Every way a token is deleted takes it out of the turn order in the same action (ADR 0065).
   return decision.ok ? { ok: true, events: withInitiativeExits(state, decision.events) } : decision;
 }
 
 export const MAX_EVENTS_PER_ROOM = 250_000;
+const SEAT_REMOVALS: ReadonlySet<string> = new Set(["participant.leave", "participant.revoke", "participant.revokeMany"]);
 const BOARD_MARGIN_CELLS = 10;
 const UNMAPPED_LIMIT = 1_000_000;
 

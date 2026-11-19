@@ -413,9 +413,27 @@ export class LiveRoom {
       const decision = decideJoin(this.state, participant);
       if (!decision.ok) return decision;
       await this.commit(participant.id, decision.events);
-      if (userId) await this.store.putMember({ roomId: this.roomId, participantId: participant.id, userId });
+      if (userId) {
+        try {
+          await this.store.putMember({ roomId: this.roomId, participantId: participant.id, userId });
+        } catch (err) {
+          await this.dropSeat(participant.id);
+          throw err;
+        }
+      }
       return decision;
     });
+  }
+
+  private async dropSeat(participantId: string) {
+    const actor = this.state.participants[participantId];
+    if (!actor) return;
+    try {
+      const decision = decide(this.state, actor, { type: "participant.leave" }, { newId: randomUUID, random: secureRandom, lastSeq: this.seq });
+      if (decision.ok) await this.commit(participantId, decision.events);
+    } catch (err) {
+      console.error(`[vtt] could not remove seat ${participantId} of room ${this.roomId} after its membership failed`, err);
+    }
   }
 
   /** For server-originated events (room creation) that aren't client commands. */

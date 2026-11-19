@@ -175,9 +175,11 @@ export function registerSocket(
       // deletes ended sessions with their seats; this catches one that ended since.
       if (cred.sessionHash && !(await deps.sessions.isLive(cred.sessionHash))) return next(new Error("signed_out"));
 
+      let closed = false;
+      socket.conn.once("close", () => { closed = true; release?.(); });
       const lease = await deps.registry.acquire(cred.roomId);
       release = lease.release;
-      socket.conn.once("close", release);
+      if (closed) return next(new Error("not_found"));
       const room = lease.room;
       // Closed: the room is being deleted (ADR 0009). Same answer as a room that never existed.
       if (!room || room.closed) return next(new Error("not_found"));
