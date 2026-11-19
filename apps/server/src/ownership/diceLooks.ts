@@ -15,6 +15,8 @@ import {
 } from "@vtt/shared";
 import { imageUploader } from "../http/imageUpload";
 import { requireAccount } from "../identity/middleware";
+import type { RateLimiter } from "../identity/rateLimit";
+import { refused } from "../identity/routes";
 import type { SignedIn } from "../identity/sessions";
 import type { AssetStore } from "../store/assetStore";
 import { UPLOAD_ALLOWANCE, UploadAllowanceError, type DiceLookRecord } from "../store/libraryStore";
@@ -30,9 +32,9 @@ const LookIdParam = z.uuid();
  */
 export function registerDiceLookRoutes(
   app: Express,
-  deps: { store: RoomStore; uploadDir: string; assets: AssetStore },
+  deps: { store: RoomStore; uploadDir: string; assets: AssetStore; uploads: Pick<RateLimiter, "hit"> },
 ) {
-  const { store, uploadDir, assets } = deps;
+  const { store, uploadDir, assets, uploads } = deps;
   const receivePicture = imageUploader(uploadDir, MAX_DICE_PICTURE_BYTES);
 
   app.get("/api/library/dice", (req, res) => {
@@ -98,6 +100,7 @@ export function registerDiceLookRoutes(
       const id = LookIdParam.safeParse(req.params.id);
       const die = DieName.safeParse(req.params.die);
       if (!id.success || !die.success || !(await store.findDiceLook(id.data, user.ownerId))) return void notFound(res);
+      if (refused(res, uploads.hit(`upload:${user.ownerId}`), "Too many uploads. Try again later.")) return;
       const upload = await receivePicture(req, res);
       if (!upload.ok) return void res.status(upload.status).json({ error: upload.error });
       const fields = DiceLookFaceFields.safeParse(req.body);

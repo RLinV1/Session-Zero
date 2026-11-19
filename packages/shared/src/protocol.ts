@@ -244,6 +244,7 @@ export type AssetKind = z.infer<typeof AssetKind>;
 
 /** Largest image edge the library accepts, in pixels. */
 export const MAX_ASSET_EDGE = 16384;
+export const MAX_ASSET_PIXELS = 64_000_000;
 
 const AssetName = z.string().trim().min(1).max(80);
 const Dimension = z.coerce.number().int().positive().max(MAX_ASSET_EDGE);

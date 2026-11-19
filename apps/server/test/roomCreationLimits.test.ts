@@ -3,7 +3,7 @@ import { newGuestToken, startServer, type HttpAccount } from "./helpers";
 import { MAX_OWNED_ROOMS } from "../src/domain/roomLifecycle";
 import { RateLimiter } from "../src/identity/rateLimit";
 import { randomUUID } from "node:crypto";
-import { DEFAULT_GRID } from "@vtt/shared";
+import { DEFAULT_GRID, SHIPPED_MAPS } from "@vtt/shared";
 import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -107,5 +107,20 @@ describe("room creation limits (FR-GM-01)", () => {
     }
     expect((await create(sam)).status).toBe(200);
     expect(await owned(sam)).toHaveLength(1);
+  });
+});
+
+describe("guest room creation limit (FR-GM-01)", () => {
+  it("counts each guest separately, so one guest cannot use everyone's budget", async () => {
+    server.app.limits.guestRoomsPerAddress = new RateLimiter(1000, 60 * 60_000);
+    const guest = () => {
+      const token = newGuestToken();
+      return fetch(`${server.base}/api/rooms`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-gm-token": token },
+        body: JSON.stringify({ roomName: "Test", displayName: "GM", guestToken: token, shippedMap: SHIPPED_MAPS[0]!.slug }),
+      });
+    };
+    for (let i = 0; i < 21; i++) expect((await guest()).status).toBe(200);
   });
 });

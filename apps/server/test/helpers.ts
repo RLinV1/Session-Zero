@@ -50,11 +50,11 @@ export async function listenForFetch(app: App): Promise<string> {
  */
 export async function startServer(
   store: RoomStore = new MemoryRoomStore(),
-  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null; assets?: AppOptions["assets"]; studioMedia?: AppOptions["studioMedia"]; studioDownloader?: AppOptions["studioDownloader"] } = {},
+  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null; assets?: AppOptions["assets"]; studioMedia?: AppOptions["studioMedia"]; studioDownloader?: AppOptions["studioDownloader"]; verification?: AppOptions["verification"]; clientOrigin?: string } = {},
 ) {
   const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
   const app = await buildApp({
-    store, uploadDir, clientOrigin: "*", now: opts.now, detector: opts.detector, dispatcher: opts.dispatcher,
+    store, uploadDir, clientOrigin: opts.clientOrigin ?? "*", now: opts.now, verification: opts.verification ?? null, detector: opts.detector, dispatcher: opts.dispatcher,
     wallQueue: opts.wallQueue ?? null,
     // Off unless a test turns it on, so a STUDIO_PUBLIC_ORIGIN in the environment never reaches tests.
     studio: opts.studio ?? null,

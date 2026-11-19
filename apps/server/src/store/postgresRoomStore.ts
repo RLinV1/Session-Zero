@@ -1675,6 +1675,34 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
+  async markEmailVerified(userId: string, at: string) {
+    await this.prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date(at) } });
+  }
+
+  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string) {
+    await this.prisma.$transaction([
+      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
+      this.prisma.emailVerificationToken.create({
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt) },
+      }),
+    ]);
+  }
+
+  async consumeVerificationToken(tokenHash: string, now: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const token = await tx.emailVerificationToken.findUnique({ where: { tokenHash } });
+      if (!token) return null;
+      const deleted = await tx.emailVerificationToken.deleteMany({ where: { tokenHash } });
+      if (deleted.count === 0 || token.expiresAt <= new Date(now)) return null;
+      const row = await tx.user.findUnique({ where: { id: token.userId } });
+      return row ? toUserRecord(row) : null;
+    });
+  }
+
+  async deleteExpiredVerificationTokens(now: string) {
+    await this.prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
+  }
+
   async setActiveDiceLook(userId: string, lookId: string | null) {
     await this.prisma.user.update({ where: { id: userId }, data: { activeDiceLookId: lookId } });
   }
@@ -1691,6 +1719,7 @@ export class PostgresRoomStore implements RoomStore {
       // Credentials first: their foreign key to sessions is RESTRICT. No ON DELETE CASCADE anywhere.
       await tx.credential.deleteMany({ where: { sessionHash: { in: sessionHashes } } });
       await tx.session.deleteMany({ where: { userId } });
+      await tx.emailVerificationToken.deleteMany({ where: { userId } });
       await tx.roomMember.deleteMany({ where: { userId } });
       await tx.user.update({ where: { id: userId }, data: { activeDiceLookId: null } });
 
@@ -2129,6 +2158,7 @@ function toUserRecord(row: User): UserRecord {
     activeDiceLookId: row.activeDiceLookId,
     createdAt: row.createdAt.toISOString(),
     passwordChangedAt: row.passwordChangedAt.toISOString(),
+    emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
   };
 }
 

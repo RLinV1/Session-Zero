@@ -2,7 +2,7 @@ import { createStudioMediaStore } from "./store/studioMediaStore";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildApp, httpLogFromEnv } from "./app";
+import { buildApp, databaseUrlFromEnv, httpLogFromEnv } from "./app";
 import { seedDevAccount } from "./identity/devAccount";
 import { createAssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
@@ -19,13 +19,14 @@ const port = Number(process.env.PORT ?? 3001);
  * `pnpm dev` with no env vars still boots standalone, which is what CI's smoke test uses.
  */
 async function createStore(): Promise<RoomStore> {
-  if (!process.env.DATABASE_URL) {
+  const databaseUrl = databaseUrlFromEnv();
+  if (!databaseUrl) {
     console.log("[vtt] DATABASE_URL unset — using in-memory store (state is lost on restart)");
     return new MemoryRoomStore();
   }
   const seq = process.env.REDIS_URL ? await RedisSeqSource.connect(process.env.REDIS_URL) : null;
   if (!seq) console.log("[vtt] REDIS_URL unset — sequencing from Postgres alone (single instance only)");
-  const store = await PostgresRoomStore.connect(process.env.DATABASE_URL, seq);
+  const store = await PostgresRoomStore.connect(databaseUrl, seq);
   console.log("[vtt] using Postgres event store");
   return store;
 }

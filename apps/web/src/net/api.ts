@@ -59,6 +59,9 @@ import {
   type SeatResponse,
   type SignInRequest,
   type SignUpRequest,
+  type SignUpResponse,
+  type VerifyEmailRequest,
+  type ResendVerificationRequest,
   type StartEncounterEditRequest,
   type StartEncounterEditResponse,
   type UpdateAnimationRequest,
@@ -417,7 +420,10 @@ export const api = {
       if (!res.ok) throw await errorFrom(res);
       return (await res.json()) as MeResponse;
     },
-    signUp: (req: SignUpRequest) => postJson<MeResponse>("/api/auth/signup", req),
+    signUp: (req: SignUpRequest) => postJson<MeResponse | SignUpResponse>("/api/auth/signup", req),
+    verifyEmail: (req: VerifyEmailRequest) => postJson<MeResponse>("/api/auth/verify", req),
+    resendVerification: (req: ResendVerificationRequest) =>
+      accountRequest<void>("/api/auth/verify/resend", { method: "POST", ...jsonBody(req) }),
     signIn: (req: SignInRequest) => postJson<MeResponse>("/api/auth/signin", req),
     async signOut(): Promise<void> {
       await apiFetch("/api/auth/signout", { method: "POST" });

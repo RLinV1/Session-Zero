@@ -11,6 +11,7 @@ export type Route =
   | { page: "studioConnect" }
   | { page: "signin" }
   | { page: "signup" }
+  | { page: "verifyEmail" }
   | { page: "account" }
   | { page: "privacy" }
   | { page: "terms" }
@@ -30,6 +31,7 @@ export function parseRoute(pathname: string): Route {
   if (/^\/studio\/connect\/?$/.test(pathname)) return { page: "studioConnect" };
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };
   if (/^\/signup\/?$/.test(pathname)) return { page: "signup" };
+  if (/^\/verify-email\/?$/.test(pathname)) return { page: "verifyEmail" };
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };
   // The header's "Create account" pointed here for a while, so an old link still reaches the form.
   if (/^\/account\/new\/?$/.test(pathname)) return { page: "signup" };

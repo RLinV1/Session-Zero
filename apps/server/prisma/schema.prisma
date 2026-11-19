@@ -260,13 +260,30 @@ model User {
   activeDiceLookId  String?  @map("active_dice_look_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passwordChangedAt DateTime @default(now()) @map("password_changed_at") @db.Timestamptz(6)
+  /// Null until the address is verified (email-verification). Existing accounts were backfilled.
+  emailVerifiedAt   DateTime? @map("email_verified_at") @db.Timestamptz(6)
 
   owner          GmIdentity   @relation(fields: [ownerId], references: [id])
   activeDiceLook DiceLook?    @relation("ActiveDiceLook", fields: [activeDiceLookId], references: [id], onDelete: SetNull)
   sessions       Session[]
   memberships    RoomMember[]
+  verificationTokens EmailVerificationToken[]
 
   @@map("users")
+}
+
+/// A one-time email verification link (email-verification). Only the token's SHA-256 is stored.
+model EmailVerificationToken {
+  tokenHash String   @id @map("token_hash")
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
 }
 
 /// A sign-in (ADR 0017 I1). Only the cookie token's SHA-256 is stored.

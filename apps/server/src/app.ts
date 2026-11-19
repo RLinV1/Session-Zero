@@ -25,6 +25,7 @@ import { registerRoutes } from "./http/routes";
 import { attachAccount, requireSameOrigin } from "./identity/middleware";
 import { accountLimits, registerIdentityRoutes, type AccountLimits } from "./identity/routes";
 import { Sessions } from "./identity/sessions";
+import { verificationFromEnv, type EmailVerification } from "./identity/mailer";
 import { LocalDiskAssetStore, type AssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
 import type { RoomStore } from "./store/roomStore";
@@ -76,6 +77,11 @@ export interface AppOptions {
    * `/api/studio/*` build routes. Defaults to `STUDIO_PUBLIC_ORIGIN`; null (unset) means none of it exists.
    */
   studio?: StudioAccessConfig | null;
+  /**
+   * Email verification (email-verification): the mailer sign-up links go through. Defaults to the
+   * environment: on in production, which refuses to start without mail settings; null means off.
+   */
+  verification?: EmailVerification | null;
 }
 
 /**
@@ -122,6 +128,7 @@ export async function buildApp({
   cookieSecure = cookieSecureFromEnv(),
   now = Date.now,
   studio = studioAccessFromEnv(),
+  verification = verificationFromEnv(),
 }: AppOptions): Promise<App> {
   const app = express();
   // Don't advertise Express (and its version range) on every response (security-hardening F-02).
@@ -261,7 +268,7 @@ export async function buildApp({
   const detection = dispatcher ?? await createGridDetectionDispatcher(store, internalAssets, {
     detector, redisUrl: store instanceof MemoryRoomStore ? undefined : redisUrl, visionUrl,
   });
-  registerIdentityRoutes(app, { store, sessions, limits, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
+  registerIdentityRoutes(app, { store, sessions, limits, verification, clientOrigin, now, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms });
   const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
   const builds = registerBuildRoutes(app, { store, assets: internalAssets, uploadDir, limits, detection, pool, sessions, now, studio, media });
@@ -328,6 +335,13 @@ export function httpLogFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   return value === "1" || value.toLowerCase() === "true";
 }
 
+export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (!env.DATABASE_URL && env.NODE_ENV === "production") {
+    throw new Error("DATABASE_URL must be set in production; the in-memory store loses every room on restart");
+  }
+  return env.DATABASE_URL || undefined;
+}
+
 /**
  * `TRUST_PROXY`: a hop count ("1"), or "true" to trust every proxy. Unset leaves Express's default.
  *
@@ -338,8 +352,11 @@ export function httpLogFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
  */
 export function trustProxyFromEnv(env: NodeJS.ProcessEnv = process.env): number | boolean | undefined {
   const value = env.TRUST_PROXY;
-  if (!value) return undefined;
   const production = env.NODE_ENV === "production";
+  if (!value) {
+    if (production) throw new Error("TRUST_PROXY must be set in production to the number of proxies in front of the server, e.g. TRUST_PROXY=1");
+    return undefined;
+  }
   if (value === "true") {
     if (production) {
       throw new Error("TRUST_PROXY=true lets clients forge their address; set it to the number of proxies in front of the server, e.g. TRUST_PROXY=1");

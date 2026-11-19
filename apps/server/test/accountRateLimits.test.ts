@@ -10,6 +10,7 @@ describe("HTTP request budgets", () => {
     ["joinsPerIpPerRoom", 150, 15],
     ["inviteLookupsPerIp", 300, 15],
     ["replaysPerParticipant", 150, 1],
+    ["historyPerParticipant", 60, 1],
     ["wallDetectionsPerRoom", 50, 15],
     ["uploadsPerOwner", 300, 15],
     ["signInFailuresPerEmail", 10, 15],

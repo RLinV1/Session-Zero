@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChangePasswordRequest, SignInRequest, SignUpRequest } from "../src";
+import { ChangePasswordRequest, EMAIL_UNVERIFIED_CODE, ResendVerificationRequest, SignInRequest, SignUpRequest, VerifyEmailRequest } from "../src";
 
 const valid = { email: "sam@example.com", password: "correct horse", displayName: "Sam" };
 
@@ -69,5 +69,31 @@ describe("user accounts (FR-GM-01)", () => {
         "newPassword",
       );
     });
+  });
+});
+
+describe("email verification schemas (FR-GM-01)", () => {
+  it("refuses an address that a mailer would read as a list or a display name at sign-up", () => {
+    for (const email of ["x<ceo@company.com>@evil.com", "a,b@evil.com", "a;b@evil.com", 'a"b@evil.com', "a>b@evil.com"]) {
+      expect(failedField(SignUpRequest.safeParse({ ...valid, email }))).toBe("email");
+    }
+    expect(SignUpRequest.safeParse({ ...valid, email: "sam.o+tag@example.com" }).success).toBe(true);
+  });
+
+  it("accepts a token of 20 to 128 characters and refuses 19 and 129", () => {
+    expect(VerifyEmailRequest.safeParse({ token: "x".repeat(20) }).success).toBe(true);
+    expect(VerifyEmailRequest.safeParse({ token: "x".repeat(128) }).success).toBe(true);
+    expect(VerifyEmailRequest.safeParse({ token: "x".repeat(19) }).success).toBe(false);
+    expect(VerifyEmailRequest.safeParse({ token: "x".repeat(129) }).success).toBe(false);
+    expect(VerifyEmailRequest.safeParse({}).success).toBe(false);
+  });
+
+  it("trims and lowercases the email to resend to, and refuses a malformed one", () => {
+    expect(ResendVerificationRequest.parse({ email: "  Sam@Example.COM " }).email).toBe("sam@example.com");
+    expect(ResendVerificationRequest.safeParse({ email: "sam" }).success).toBe(false);
+  });
+
+  it("names the unverified sign-in code", () => {
+    expect(EMAIL_UNVERIFIED_CODE).toBe("email_unverified");
   });
 });

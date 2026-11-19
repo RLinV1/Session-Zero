@@ -17,9 +17,10 @@ export interface UserRecord {
   activeDiceLookId: string | null;
   createdAt: string;
   passwordChangedAt: string;
+  emailVerifiedAt: string | null;
 }
 
-export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash">;
+export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash"> & { emailVerifiedAt?: string | null };
 
 export interface SessionRecord {
   /** SHA-256 of the cookie token. */
@@ -59,6 +60,12 @@ export interface IdentityStore {
    * password with new parameters), which moves `passwordChangedAt`.
    */
   setPasswordHash(userId: string, passwordHash: string, changed: boolean): Promise<void>;
+  markEmailVerified(userId: string, at: string): Promise<void>;
+  /** Stores the hash of a new verification token and deletes the user's earlier ones. */
+  createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string): Promise<void>;
+  /** Deletes the token and returns its user when it exists and has not expired at `now`; null otherwise. */
+  consumeVerificationToken(tokenHash: string, now: string): Promise<UserRecord | null>;
+  deleteExpiredVerificationTokens(now: string): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */
   setActiveDiceLook(userId: string, lookId: string | null): Promise<void>;
 

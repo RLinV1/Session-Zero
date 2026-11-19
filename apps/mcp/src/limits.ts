@@ -1,3 +1,5 @@
+import { addressKey } from "./addressKey";
+
 const MINUTE = 60_000;
 
 export const SEAT_COMMANDS_PER_MINUTE = 60;
@@ -78,7 +80,7 @@ export class Limits {
    * invite code stands for its room here: only a successful join would say which room it is.
    */
   takeJoin(inviteCode: string, clientAddress: string): string | null {
-    const key = `${inviteCode}|${clientAddress}`;
+    const key = `${inviteCode}|${addressKey(clientAddress)}`;
     if (!this.joins.hasRoom(key)) return SLOW_DOWN_JOIN;
     this.joins.take(key);
     return null;
@@ -86,7 +88,7 @@ export class Limits {
 
   /** An invite that matched no room doesn't count, so the limiter can't be filled with made-up codes. */
   refundJoin(inviteCode: string, clientAddress: string) {
-    this.joins.refund(`${inviteCode}|${clientAddress}`);
+    this.joins.refund(`${inviteCode}|${addressKey(clientAddress)}`);
   }
 
   sweep() {

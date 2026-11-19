@@ -10,12 +10,14 @@ const sam: AccountView = { id: "u1", email: "sam@example.com", displayName: "Sam
 const signIn = vi.fn();
 const signUp = vi.fn();
 const signOut = vi.fn();
+const resend = vi.fn();
 const navigate = vi.fn();
 vi.mock("../src/account/accountStore", async (orig) => ({
   ...(await orig<typeof import("../src/account/accountStore")>()),
   signIn: (email: string, password: string) => signIn(email, password),
   signUp: (email: string, password: string, name: string) => signUp(email, password, name),
   signOut: () => signOut(),
+  resendVerification: (email: string) => resend(email),
 }));
 vi.mock("../src/router", async (orig) => ({
   ...(await orig<typeof import("../src/router")>()),
@@ -38,7 +40,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  for (const mock of [signIn, signUp, signOut, navigate]) mock.mockReset();
+  for (const mock of [signIn, signUp, signOut, resend, navigate]) mock.mockReset();
   accountStore.setState({ status: "signedOut" });
   history.replaceState(null, "", "/account");
 });
@@ -92,6 +94,51 @@ describe("signing in from the home page (account-page)", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("Email or password is incorrect.");
     expect((screen.getByLabelText(/^Email/) as HTMLInputElement).value).toBe("sam@example.com");
     expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("email verification on sign-up and sign-in (FR-GM-01)", () => {
+  it("shows the check-email panel after a production sign-up and signs nobody in", async () => {
+    history.replaceState(null, "", "/signup");
+    signUp.mockResolvedValue({ verificationRequired: true, email: "sam@example.com" });
+    render(<SignUpPage />);
+    type(/^Display name/, "Sam");
+    type(/^Email/, "sam@example.com");
+    type(/^Password/, "correct horse battery");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("heading", { name: "Check your email" })).toBeTruthy();
+    expect(screen.getByText(/sam@example\.com/)).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
+    resend.mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Send a new link" }));
+    expect((await screen.findByRole("status")).textContent).toMatch(/new link is on its way/);
+    expect(resend).toHaveBeenCalledWith("sam@example.com");
+  });
+
+  it("tells the person when resending is rate limited", async () => {
+    history.replaceState(null, "", "/signup");
+    signUp.mockResolvedValue({ verificationRequired: true, email: "sam@example.com" });
+    resend.mockRejectedValue(new ApiError("slow down", 429, { retryAfterSec: 600 }));
+    render(<SignUpPage />);
+    type(/^Display name/, "Sam");
+    type(/^Email/, "sam@example.com");
+    type(/^Password/, "correct horse battery");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send a new link" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Too many attempts. Try again in 10 minutes.");
+  });
+
+  it("explains an unverified sign-in and offers a new link", async () => {
+    history.replaceState(null, "", "/signin");
+    signIn.mockRejectedValue(new ApiError("not verified", 403, { code: "email_unverified" }));
+    resend.mockResolvedValue(undefined);
+    render(<SignInPage />);
+    type(/^Email/, "sam@example.com");
+    type(/^Password/, "correct horse");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Verify your email address/);
+    fireEvent.click(screen.getByRole("button", { name: "Send a new link" }));
+    await waitFor(() => expect(resend).toHaveBeenCalledWith("sam@example.com"));
   });
 });
 

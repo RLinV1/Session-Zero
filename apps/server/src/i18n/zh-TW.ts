@@ -64,6 +64,12 @@ export const serverZhTW = {
   "api.unknownDevice": "無法辨識這台裝置",
   "api.nothingToBringOver": "這個瀏覽器沒有需要轉移的舊資料。",
   "api.signInToSave": "登入後才能儲存房間與素材庫圖片",
+  "api.emailUnverified": "請先驗證你的電子郵件地址再登入。請到收件匣查看驗證連結。",
+  "api.verifyLinkInvalid": "這個驗證連結無效或已過期。",
+  "mail.verify.subject": "驗證你的 Session Zero 電子郵件地址",
+  "mail.verify.intro": "請開啟下方連結，驗證你的電子郵件地址並完成帳號建立。連結只能使用一次，24 小時後失效。",
+  "mail.verify.action": "驗證電子郵件地址",
+  "mail.verify.ignore": "如果你沒有註冊 Session Zero，請忽略這封郵件。",
 
   "api.roomNotFound": "找不到房間",
   "api.inviteNotFound": "找不到邀請連結",

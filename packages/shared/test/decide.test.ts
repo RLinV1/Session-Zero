@@ -184,3 +184,10 @@ describe("token name uniqueness (KAN-62)", () => {
     });
   });
 });
+
+describe("inherited property names as ids (FR-GM-15)", () => {
+  it.each(["constructor", "__proto__", "toString"])("rejects %s as a token id without producing an event", (tokenId) => {
+    const decision = decide(baseRoom(), gm, { type: "token.setHidden", tokenId, hidden: true } as unknown as Command, ctx);
+    expect(decision.ok).toBe(false);
+  });
+});

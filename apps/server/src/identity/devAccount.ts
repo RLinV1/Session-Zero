@@ -18,6 +18,7 @@ export async function seedDevAccount(store: RoomStore, env: NodeJS.ProcessEnv = 
       email: DEV_ACCOUNT.email,
       displayName: DEV_ACCOUNT.displayName,
       passwordHash: await hashPassword(DEV_ACCOUNT.password),
+      emailVerifiedAt: new Date().toISOString(),
     });
     console.log(`[vtt] seeded dev account ${DEV_ACCOUNT.email}`);
     return true;

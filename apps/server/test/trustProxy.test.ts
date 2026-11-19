@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildApp, trustProxyFromEnv, type App } from "../src/app";
+import { buildApp, databaseUrlFromEnv, trustProxyFromEnv, type App } from "../src/app";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { RateLimiter } from "../src/identity/rateLimit";
 import { listenForFetch, newGuestToken, startServer } from "./helpers";
@@ -23,7 +23,13 @@ describe("TRUST_PROXY can't let clients forge their address (security-hardening)
 
   it("accepts a hop count in production, and leaves the default when unset", () => {
     expect(trustProxyFromEnv({ NODE_ENV: "production", TRUST_PROXY: "1" })).toBe(1);
-    expect(trustProxyFromEnv({ NODE_ENV: "production" })).toBeUndefined();
+    expect(() => trustProxyFromEnv({ NODE_ENV: "production" })).toThrow(/TRUST_PROXY must be set/);
+  });
+
+  it("refuses a missing DATABASE_URL in production, and allows it elsewhere", () => {
+    expect(() => databaseUrlFromEnv({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/);
+    expect(databaseUrlFromEnv({ NODE_ENV: "production", DATABASE_URL: "postgres://x" })).toBe("postgres://x");
+    expect(databaseUrlFromEnv({})).toBeUndefined();
   });
 
   it("still allows TRUST_PROXY=true outside production, with a warning", () => {
@@ -35,6 +41,7 @@ describe("TRUST_PROXY can't let clients forge their address (security-hardening)
   it("refuses to build the app in production with TRUST_PROXY=true", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("TRUST_PROXY", "true");
+    for (const [name, value] of Object.entries({ SMTP_HOST: "smtp.test", SMTP_PORT: "587", SMTP_USER: "u", SMTP_PASS: "p", MAIL_FROM: "VTT <no-reply@example.test>" })) vi.stubEnv(name, value);
     const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
     await expect(buildApp({ store: new MemoryRoomStore(), uploadDir, cookieSecure: false })).rejects.toThrow(/TRUST_PROXY/);
   });

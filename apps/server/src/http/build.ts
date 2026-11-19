@@ -27,7 +27,7 @@ import {
   EMPTY_MAP_SETUP,
   GameProfile,
   LibraryUploadFields,
-  MAX_ASSET_EDGE,
+  MAX_ASSET_PIXELS,
   MAX_ENCOUNTER_TEMPLATES,
   UvttError,
   canRenderGrid,
@@ -59,7 +59,7 @@ import { hashToken } from "../domain/credentials";
 import { enqueueDetection, type GridDetectionDispatcher } from "../domain/gridDetection";
 import { inspectMapUpload } from "../domain/uploadAnalysis";
 import { requireAccount } from "../identity/middleware";
-import { refused, type AccountLimits } from "../identity/routes";
+import { addressKey, refused, type AccountLimits } from "../identity/routes";
 import type { Sessions } from "../identity/sessions";
 import type { AssetStore } from "../store/assetStore";
 import {
@@ -708,7 +708,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
   const passGuard: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       res.setHeader("Cache-Control", "no-store");
-      const address = `pass:${req.ip}`;
+      const address = `pass:${addressKey(req.ip)}`;
       if (refused(res, limits.buildPassFailuresPerIp.check(address), "Too many attempts with an invalid build pass. Try again later.")) return;
       const header = req.headers.authorization;
       const token = header?.startsWith("Bearer ") ? BuildPass.safeParse(header.slice(7)) : null;
@@ -836,7 +836,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       try {
         const bytes = await assets.readPrivate(file.objectKey, MAX_IMAGE_BYTES * 2);
         if (!bytes) return void res.status(404).json({ error: "This file's picture isn't available." });
-        const image = sharp(bytes, { sequentialRead: true, limitInputPixels: MAX_ASSET_EDGE ** 2 }).rotate();
+        const image = sharp(bytes, { sequentialRead: true, limitInputPixels: MAX_ASSET_PIXELS }).rotate();
         const small = layout
           ? await image.extract(layout.layout.crop).resize(layout.layout.out.width, layout.layout.out.height, { fit: "fill" })
             .composite([{ input: Buffer.from(layout.layout.svg), top: 0, left: 0 }]).webp({ quality: 80 }).toBuffer()

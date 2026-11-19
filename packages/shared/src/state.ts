@@ -9,6 +9,7 @@ import type { LoggedRoll } from "./dice";
 import type { AreaEffect } from "./areaEffects";
 import { DEFAULT_GRID, GridSpec, Point } from "./geometry";
 
+export const isReservedKey = (key: string) => key in Object.prototype;
 export const Id = z.string().min(1).max(64);
 export type Id = z.infer<typeof Id>;
 

@@ -1,6 +1,6 @@
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
-import type { AccountView } from "@vtt/shared";
+import type { AccountView, SignUpResponse } from "@vtt/shared";
 import { api, whenSignedOut } from "../net/api";
 
 /**
@@ -52,8 +52,20 @@ export async function signIn(email: string, password: string) {
   setAccount((await api.auth.signIn({ email, password })).account, true);
 }
 
-export async function signUp(email: string, password: string, displayName: string) {
-  setAccount((await api.auth.signUp({ email, password, displayName })).account, true);
+/** Resolves to the pending sign-up when the address must be verified first, else signs in and resolves to null. */
+export async function signUp(email: string, password: string, displayName: string): Promise<SignUpResponse | null> {
+  const body = await api.auth.signUp({ email, password, displayName });
+  if ("verificationRequired" in body) return body;
+  setAccount(body.account, true);
+  return null;
+}
+
+export async function verifyEmail(token: string) {
+  setAccount((await api.auth.verifyEmail({ token })).account, true);
+}
+
+export async function resendVerification(email: string) {
+  await api.auth.resendVerification({ email });
 }
 
 export async function signOut() {
