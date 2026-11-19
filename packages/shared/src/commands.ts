@@ -6,6 +6,7 @@ import { TokenAttacks } from "./attackPresets";
 import { ConditionId, EMPTY_STATS, TokenStats } from "./conditions";
 import { AttackKind, DiceVisibility, MAX_ATTACK_LABEL, MAX_EXPRESSION_LENGTH, MAX_GROUP_ROLL_TOKENS, Verdict } from "./dice";
 import { DamageMode, MAX_AREA_AMOUNT } from "./areaEffects";
+import { visibleName } from "./names";
 import { GridSpec, MAX_MOVE_VIA, Point } from "./geometry";
 import { MAP_TOKEN_POLICIES } from "./mapTokenAdjustment";
 import { AreaColor, AreaShape, DEFEAT_REMOVALS, DIAGONAL_RULES, DIFFICULT_TERRAIN_MODES, DrawingShape, Id, InitiativeScore, MapImage, MAX_CHAT_LENGTH, MAX_FOG_POINTS, MAX_FOG_REGIONS, MAX_PLAYERS_PER_ROOM, MAX_WALLS, Portal, PortalState, ROLL_LOG_LIMIT, TemplateGeometry, Wall } from "./state";
@@ -63,13 +64,17 @@ export const ChatText = z
     "Messages need at least one visible character.",
   );
 
+const CommandName = (max: number) => z.string().max(max * 4).transform(visibleName).pipe(z.string().min(1).max(max));
+
+const CommandImageUrl = z.string().min(1).max(2048).regex(/^\/(?!\/)[A-Za-z0-9._/-]*$/);
+
 /** Fields a token editor may change in one validated, atomic room command. */
 export const TokenUpdate = z.object({
-  name: z.string().min(1).max(60).optional(),
+  name: CommandName(60).optional(),
   position: Point.optional(),
   size: z.number().positive().max(10).optional(),
   rotation: z.number().finite().optional(),
-  imageUrl: z.string().min(1).max(2048).nullable().optional(),
+  imageUrl: CommandImageUrl.nullable().optional(),
   assetId: Id.nullable().optional(),
   stats: TokenStats.optional(),
   conditions: z.array(ConditionId).max(12).optional(),
@@ -166,7 +171,7 @@ const BoardCommand = z.discriminatedUnion("type", [
     tokenPolicy: z.enum(MAP_TOKEN_POLICIES).optional(),
     /** Select and place instead of a `tokenPolicy` (ADR 0068). */
     placeTokenIds: PlaceTokenIds.optional(),
-    map: MapImage,
+    map: MapImage.extend({ url: CommandImageUrl }),
     /** A library map's saved grid, copied into the room in the same event (ADR 0004). */
     grid: GridSpec.optional(),
     /** Resolve the owned map's saved geometry on the server and apply it in the same MapSet. */
@@ -191,13 +196,13 @@ const BoardCommand = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("token.create"),
-    name: z.string().min(1).max(60),
+    name: CommandName(60),
     position: Point,
     size: z.number().positive().max(10).default(1),
     rotation: z.number().finite().default(0),
     stats: TokenStats.default(EMPTY_STATS),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default(DEFAULT_TOKEN_COLOR),
-    imageUrl: z.string().max(2048).nullable().default(null),
+    imageUrl: CommandImageUrl.nullable().default(null),
     assetId: Id.nullable().default(null),
     ownerIds: z.array(Id).default([]),
     hidden: z.boolean().default(false),
@@ -263,7 +268,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("token.setAppearance"),
     tokenId: Id,
-    name: z.string().min(1).max(60),
+    name: CommandName(60),
     size: z.number().positive().max(10),
     rotation: z.number().finite(),
   }),
@@ -300,7 +305,7 @@ const BoardCommand = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("token.setImage"),
     tokenId: Id,
-    imageUrl: z.string().min(1).max(2048).nullable(),
+    imageUrl: CommandImageUrl.nullable(),
     /** Library asset the image came from, if any (ADR 0004). */
     assetId: Id.nullable().default(null),
   }),

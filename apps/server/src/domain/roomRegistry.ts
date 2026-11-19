@@ -77,6 +77,13 @@ export class RoomRegistry {
     return (await this.rooms.get(roomId)?.catch(() => null)) ?? null;
   }
 
+  async evictIdle(idleMs: number, now = Date.now()) {
+    for (const [roomId, loading] of [...this.rooms]) {
+      const room = await loading.catch(() => null);
+      if (room?.isIdleFor(idleMs, now) && this.rooms.get(roomId) === loading) this.rooms.delete(roomId);
+    }
+  }
+
   /** Forgets a room, so the next `get` reads the store again. */
   evict(roomId: string) {
     this.rooms.delete(roomId);

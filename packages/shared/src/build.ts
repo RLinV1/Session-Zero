@@ -726,7 +726,10 @@ const plainWords = (field: string) => {
   const words = field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim().toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
-export const buildFieldLabel = (field: string) => FIELD_LABELS[field.toLowerCase()] ?? plainWords(field);
+export const buildFieldLabel = (field: string) => {
+  const key = field.toLowerCase();
+  return Object.hasOwn(FIELD_LABELS, key) ? FIELD_LABELS[key]! : plainWords(field);
+};
 
 export interface BuildCheckInput {
   profile: GameProfile | null;

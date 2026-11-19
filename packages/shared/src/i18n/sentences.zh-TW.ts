@@ -230,7 +230,7 @@ export function formatActivityZhTW(event: DomainEvent, actorName: string, before
     const size = Number(t.size.toFixed(2));
     const width = t.shape === "line" && t.width !== undefined && t.width !== before.scene.grid.unitsPerCell
       ? cjk`，寬${Number(t.width.toFixed(2))} ${unit}` : "";
-    return cjk`${t.color ? AREA_COLOR[t.color] ?? t.color : ""}${size} ${unit}${AREA_SHAPE[t.shape] ?? t.shape}範圍` + width;
+    return cjk`${t.color ? (Object.hasOwn(AREA_COLOR, t.color) ? (AREA_COLOR[t.color] ?? t.color) : t.color) : ""}${size} ${unit}${Object.hasOwn(AREA_SHAPE, t.shape) ? (AREA_SHAPE[t.shape] ?? t.shape) : t.shape}範圍` + width;
   };
   switch (event.type) {
     case "SceneDraftCreated": return cjk`${a}準備了「${event.name}」場景`;

@@ -139,6 +139,7 @@ export const MAX_LINE_WIDTH_CELLS = 10;
  * README's 8-player target. Joins past it are refused, so an invite link can't add seats without end.
  */
 export const MAX_PLAYERS_PER_ROOM = 32;
+export const MAX_TOKENS_PER_ROOM = 500;
 
 /**
  * A placed area-of-effect template (FR-TAC-06, ADR 0007). Positions are board coordinates

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { GridSpec, Point } from "./geometry";
-import type { GmRoomSummary, SessionEndReason } from "./protocol";
+import { GuestToken, type GmRoomSummary, type SessionEndReason } from "./protocol";
 import type { Role } from "./state";
 
 /**
@@ -12,7 +12,7 @@ import type { Role } from "./state";
  * `POST /api/rooms/:roomId/seat`: a new credential for the account's seat in the room. The
  * browser generates it, as for a join (DESIGN.md §5); the server stores only its SHA-256.
  */
-export const SeatRequest = z.object({ guestToken: z.string().min(16).max(256) });
+export const SeatRequest = z.object({ guestToken: GuestToken });
 export type SeatRequest = z.infer<typeof SeatRequest>;
 
 export interface SeatResponse {
