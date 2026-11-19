@@ -194,11 +194,16 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function submit() {
+    if (password !== confirmPassword) {
+      setError({ message: t("account.passwordMismatch"), field: "confirmPassword" });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -257,6 +262,19 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           onChange={(e) => setPassword(e.target.value)}
         />
         {fieldError("password")}
+      </label>
+      <label>
+        {t("account.confirmPassword")}
+        <input
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={PASSWORD_MIN}
+          maxLength={PASSWORD_MAX}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        {fieldError("confirmPassword")}
       </label>
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}

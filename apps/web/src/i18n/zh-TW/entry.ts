@@ -35,6 +35,8 @@ export const entryZhTW = {
   "account.signUpFooter": "免費帳號能讓你的房間在任何裝置上開啟，還能上傳自己的地圖。玩家透過你的邀請連結加入，不需要帳號。已經有帳號了嗎？",
   "account.email": "電子郵件",
   "account.password": "密碼",
+  "account.confirmPassword": "確認密碼",
+  "account.passwordMismatch": "兩次輸入的密碼不一致。",
   "account.displayName": "顯示名稱",
   "account.passwordLength": ({ min, max }) => cjk`密碼長度須為${min}到${max}個字元。`,
   "account.agree.before": "建立帳號即代表你同意",

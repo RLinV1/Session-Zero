@@ -35,6 +35,8 @@ export const entry = {
   "account.signUpFooter": "A free account keeps your rooms on any device and lets you upload your own maps. Players join from your invite link with no account. Already have one?",
   "account.email": "Email",
   "account.password": "Password",
+  "account.confirmPassword": "Confirm password",
+  "account.passwordMismatch": "The two passwords don't match.",
   "account.displayName": "Display name",
   "account.passwordLength": ({ min, max }: { min: number; max: number }) => `${min} to ${max} characters.`,
   "account.agree.before": "By creating an account you agree to the ",
