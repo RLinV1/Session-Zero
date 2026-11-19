@@ -94,7 +94,7 @@ services:
       GRID_HTTP_TIMEOUT_MS: ${GRID_HTTP_TIMEOUT_MS:-40000}
       # Dev only: signs in as t@gmail.com / password with no sign-up (never set in production).
       SEED_DEV_ACCOUNT: "1"
-    ports: ["3001:3001"]
+    ports: ["127.0.0.1:3001:3001"]
     # The server exits on start if one of these is not ready, so wait until each is healthy.
     depends_on:
       postgres: { condition: service_healthy }
@@ -107,7 +107,7 @@ services:
     command: ["npm", "run", "dev", "--workspace=@vtt/web"]
     environment:
       VTT_SERVER: http://server:3001
-    ports: ["5173:5173"]
+    ports: ["127.0.0.1:5173:5173"]
     depends_on: [server]
 volumes:
   pgdata:

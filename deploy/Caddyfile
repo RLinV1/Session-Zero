@@ -78,6 +78,24 @@
 			window 10s
 			events 1000
 		}
+		zone mcp {
+			match {
+				path /mcp /mcp/*
+			}
+			key {client_ip}
+			ipv6_prefix 64
+			window 10s
+			events 200
+		}
+		zone wellknown {
+			match {
+				path /.well-known/*
+			}
+			key {client_ip}
+			ipv6_prefix 64
+			window 10s
+			events 100
+		}
 	}
 
 	# The web client connects by WebSocket only (roomConnection.ts). A polling request is never ours,
@@ -95,6 +113,9 @@
 	# answers OpenID Connect discovery with 404, so the SPA fallback below never answers these with a page.
 	@backend path /api/* /socket.io/* /uploads/* /health /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/openid-configuration /.well-known/openid-configuration/*
 	handle @backend {
+		request_body {
+			max_size 45MB
+		}
 		reverse_proxy server:3001 {
 			# Exactly one entry, the address decided above, so TRUST_PROXY=1 stays right whatever is in front of Caddy.
 			header_up X-Forwarded-For {client_ip}
@@ -104,6 +125,9 @@
 	# AI apps connect here (docs/AI-PLAYERS.md). Its address is resolved per request, so if this service is down, only this path fails.
 	@mcp path /mcp /mcp/*
 	handle @mcp {
+		request_body {
+			max_size 13MB
+		}
 		reverse_proxy mcp:3002 {
 			flush_interval -1
 			# As for the app server: one entry, so TRUST_PROXY=1 finds the real address behind anything.

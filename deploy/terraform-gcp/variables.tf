@@ -61,3 +61,33 @@ variable "close_web_ports" {
   type        = bool
   default     = false
 }
+
+variable "smtp_host" {
+  description = "SMTP server that sends verification email."
+  type        = string
+  default     = "smtp.resend.com"
+}
+
+variable "smtp_port" {
+  description = "SMTP port (465 is implicit TLS)."
+  type        = number
+  default     = 465
+}
+
+variable "smtp_user" {
+  description = "SMTP user. Resend uses the word resend."
+  type        = string
+  default     = "resend"
+}
+
+variable "smtp_pass" {
+  description = "SMTP password; for Resend, the API key."
+  type        = string
+  sensitive   = true
+}
+
+variable "mail_from" {
+  description = "Sender address of verification email, on a domain the provider has verified."
+  type        = string
+  default     = "noreply@sessionzero.codes"
+}
