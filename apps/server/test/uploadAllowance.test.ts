@@ -164,6 +164,18 @@ describe("upload allowance (FR-GM-02)", () => {
     expect((await store.findDiceLook(look.id, gm.ownerId))!.faces.d6).toMatchObject({ width: 64, height: 64 });
   });
 
+  it("lets a full account replace a die's picture with a smaller one, but not add a new die (PR 226 dice early check)", async () => {
+    const gm = await account();
+    const look = await gm.json<DiceLookView>("POST", "/api/library/dice", { name: "Jungle" });
+    const large = pngOfSize(512, 512);
+    const small = pngOfSize(64, 64);
+    expect((await toDie(gm.cookie, look.id, "d6", large, 512)).status).toBe(200);
+    await seed(gm.ownerId, maxBytes - large.length);
+    expect((await toDie(gm.cookie, look.id, "d6", small, 64)).status).toBe(200);
+    await seed(gm.ownerId, large.length - small.length);
+    await expectRefused(await toDie(gm.cookie, look.id, "d8", small, 64), STORAGE_FULL);
+  });
+
   it("counts UVTT imports to the library", async () => {
     const gm = await account();
     await seed(gm.ownerId, maxBytes);

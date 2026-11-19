@@ -66,6 +66,8 @@ export interface RoomStore extends StudioAuthoringStore, StudioPreparationStore,
 
   saveCredential(tokenHash: string, record: CredentialRecord): Promise<void>;
   findCredential(tokenHash: string): Promise<CredentialRecord | null>;
+  /** Removes the credential only while it still belongs to this participant; for a seat claimed before its join committed. */
+  deleteCredential(tokenHash: string, participantId: string): Promise<void>;
   /**
    * Marks every credential of this participant revoked (FR-GM-20, ADR 0006). Room state is the
    * authority; this row is a second lock, written after the commit and re-applied when the room
@@ -121,4 +123,11 @@ export interface RoomStore extends StudioAuthoringStore, StudioPreparationStore,
   deleteEmptyGuestOwners(registeredBefore: string): Promise<number>;
   /** Temporary rooms opened before `at`, for the sweep that deletes ones left behind. */
   listTemporaryRoomsBefore(at: string): Promise<string[]>;
+}
+
+export class CredentialConflictError extends Error {
+  constructor() {
+    super("credential already names another seat");
+    this.name = "CredentialConflictError";
+  }
 }

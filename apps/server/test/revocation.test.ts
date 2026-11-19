@@ -155,7 +155,7 @@ describe("guest revocation (FR-GM-20)", () => {
     await store.createRoom("r1", "invite1");
     await store.saveCredential("hash-sam", { roomId: "r1", participantId: "p-sam" });
     await store.revokeCredentials("r1", "p-sam");
-    await store.saveCredential("hash-sam", { roomId: "r1", participantId: "p-new" });
+    await store.saveCredential("hash-sam", { roomId: "r1", participantId: "p-sam" });
     expect(await store.findCredential("hash-sam")).toBeNull();
   });
 

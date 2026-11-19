@@ -8,15 +8,44 @@ import { hash, verify } from "@node-rs/argon2";
 const PARAMS = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
 const CURRENT = `$argon2id$v=19$m=${PARAMS.memoryCost},t=${PARAMS.timeCost},p=${PARAMS.parallelism}$`;
 
+const MAX_CONCURRENT = 4;
+const MAX_QUEUED = 64;
+let running = 0;
+const waiting: Array<() => void> = [];
+
+export class PasswordBusyError extends Error {
+  constructor() {
+    super("password hashing queue is full");
+    this.name = "PasswordBusyError";
+  }
+}
+
+async function gated<T>(work: () => Promise<T>): Promise<T> {
+  if (running >= MAX_CONCURRENT) {
+    if (waiting.length >= MAX_QUEUED) throw new PasswordBusyError();
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  } else {
+    running += 1;
+  }
+  try {
+    return await work();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else running -= 1;
+  }
+}
+
 export function hashPassword(password: string): Promise<string> {
-  return hash(password, PARAMS);
+  return gated(() => hash(password, PARAMS));
 }
 
 /** False for a wrong password, and for a stored value that is not a hash at all. */
 export async function verifyPassword(stored: string, password: string): Promise<boolean> {
   try {
-    return await verify(stored, password);
-  } catch {
+    return await gated(() => verify(stored, password));
+  } catch (err) {
+    if (err instanceof PasswordBusyError) throw err;
     return false;
   }
 }
@@ -33,7 +62,10 @@ export function needsRehash(stored: string): boolean {
 let dummy: Promise<string> | null = null;
 
 export async function verifyAgainstDummy(password: string): Promise<false> {
-  dummy ??= hashPassword(crypto.randomUUID());
+  dummy ??= hashPassword(crypto.randomUUID()).catch((err: unknown) => {
+    dummy = null;
+    throw err;
+  });
   await verifyPassword(await dummy, password);
   return false;
 }

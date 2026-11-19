@@ -1,5 +1,12 @@
 /** Comparison key for names: "raymond", "Raymond " and "RAYMOND" are one name (KAN-61, KAN-62). */
-export const normalizeName = (name: string) => name.normalize("NFC").trim().toLocaleLowerCase("en-US");
+const INVISIBLE = /[\p{Cc}\p{Cf}]/gu;
+const INVISIBLE_KEEPING_JOINERS = /\p{Cc}|(?![‌‍])\p{Cf}/gu;
+
+export const normalizeName = (name: string) => name.replace(INVISIBLE, "").normalize("NFC").trim().toLocaleLowerCase("en-US");
+
+export const visibleName = (name: string) => name.replace(INVISIBLE_KEEPING_JOINERS, "");
+
+export const hasVisibleCharacter = (name: string) => /[^\s\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}⠀]/u.test(name);
 
 /**
  * `normalizeName` without the trim, for comparing a stored (already trimmed) name with a slice of

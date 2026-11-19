@@ -8,6 +8,7 @@ import { LiveRoom, type RoomHooks } from "./liveRoom";
  */
 export class RoomRegistry {
   private rooms = new Map<string, Promise<LiveRoom>>();
+  private leases = new Map<string, number>();
 
   constructor(private store: RoomStore, private hooks: RoomHooks = {}) {}
 
@@ -35,6 +36,25 @@ export class RoomRegistry {
       });
     }
     return loading;
+  }
+
+  /** Like `get`, but the room stays out of `evictIdle` until `release` is called. */
+  async acquire(roomId: string): Promise<{ room: LiveRoom | null; release: () => void }> {
+    this.leases.set(roomId, (this.leases.get(roomId) ?? 0) + 1);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      const left = (this.leases.get(roomId) ?? 1) - 1;
+      if (left > 0) this.leases.set(roomId, left);
+      else this.leases.delete(roomId);
+    };
+    try {
+      return { room: await this.get(roomId), release };
+    } catch (err) {
+      release();
+      throw err;
+    }
   }
 
   /**
@@ -75,6 +95,14 @@ export class RoomRegistry {
   /** The room if it is already loaded; never loads one. For notices only its connected clients need. */
   async loaded(roomId: string): Promise<LiveRoom | null> {
     return (await this.rooms.get(roomId)?.catch(() => null)) ?? null;
+  }
+
+  async evictIdle(idleMs: number, now = Date.now()) {
+    for (const [roomId, loading] of [...this.rooms]) {
+      if (this.leases.has(roomId)) continue;
+      const room = await loading.catch(() => null);
+      if (room?.isIdleFor(idleMs, now) && this.rooms.get(roomId) === loading && !this.leases.has(roomId)) this.rooms.delete(roomId);
+    }
   }
 
   /** Forgets a room, so the next `get` reads the store again. */

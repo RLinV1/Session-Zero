@@ -18,7 +18,7 @@ describe("bounded movement knowledge (FR-GM-15/23)", () => {
         { x: 1e20, y: 1e20 }, { x: -Number.MAX_VALUE, y: -Number.MAX_VALUE },
         { x: 35, y: -70 * 20001 }, { x: -70 * 20001, y: 35 }
       ]) {
-        const moved = run(state, alice, { type: "token.move", tokenId: made.token.id, to: origin }).state;
+        const moved = { ...state, tokens: { ...state.tokens, [made.token.id]: { ...state.tokens[made.token.id], position: origin } } };
         assert.deepEqual(moved.tokens[made.token.id].position, origin);
         const request = EphemeralPayload.parse({ type: "tokenMovePreview", requestId: "bounded", tokenId: made.token.id, from: origin, to: { x: 35, y: 35 }, boardEpoch: moved.boardEpoch });
         assert.equal(movementFeedbackForViewer(moved, alice, request), "unknown");

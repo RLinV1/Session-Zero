@@ -161,6 +161,7 @@ export function registerSocket(
     // Socket.IO does not await middleware, so anything thrown here would be an unhandled
     // rejection and end the process. A room whose log won't replay (e.g. events from newer
     // code) must fail only this connection (room-load-isolation).
+    let release: (() => void) | null = null;
     try {
       const tokenHash = hashToken(auth.data.guestToken);
       const cred = await deps.store.findCredential(tokenHash);
@@ -174,7 +175,12 @@ export function registerSocket(
       // deletes ended sessions with their seats; this catches one that ended since.
       if (cred.sessionHash && !(await deps.sessions.isLive(cred.sessionHash))) return next(new Error("signed_out"));
 
-      const room = await deps.registry.get(cred.roomId);
+      let closed = false;
+      socket.conn.once("close", () => { closed = true; release?.(); });
+      const lease = await deps.registry.acquire(cred.roomId);
+      release = lease.release;
+      if (closed) return next(new Error("not_found"));
+      const room = lease.room;
       // Closed: the room is being deleted (ADR 0009). Same answer as a room that never existed.
       if (!room || room.closed) return next(new Error("not_found"));
       // A seat that has ended stays ended: the credential is refused, not rebound (ADR 0006).
@@ -185,16 +191,20 @@ export function registerSocket(
       socket.data.room = room;
       socket.data.participantId = cred.participantId;
       socket.data.credentialHash = tokenHash;
+      socket.data.release = release;
       next();
     } catch (err) {
       console.error(`[vtt] socket handshake for room ${auth.data.roomId} failed:`, err);
       next(new Error("not_found"));
+    } finally {
+      if (!socket.data.release) release?.();
     }
   });
 
   io.on("connection", (socket: Socket) => {
     const room = socket.data.room as LiveRoom;
     const participantId = socket.data.participantId as string;
+    const releaseLease = socket.data.release as () => void;
 
     /** Reliable, ordered delivery to this socket. */
     const send = (msg: ServerMessage) => socket.emit(SOCKET_EVENTS.event, msg);
@@ -210,12 +220,14 @@ export function registerSocket(
     if (!connectWindows.take(room, participantId, Date.now())) {
       send({ type: "error", code: "too_many_connections", message: TOO_MANY_CONNECTIONS });
       socket.disconnect(true);
+      releaseLease();
       return;
     }
     room.closeOldestConnections(participantId, MAX_CONNECTIONS_PER_SEAT - 1, TOO_MANY_CONNECTIONS);
 
     // FR-PL-06: every connection starts from an authoritative, filtered snapshot.
     room.attach(client);
+    releaseLease();
 
     // Commands are handled one at a time so a socket's commands commit in the order sent.
     // Ephemeral messages skip that queue: a ping must not wait behind a command still

@@ -22,11 +22,14 @@ import { EmailTakenError, type IdentityStore } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
 import type { EmailVerification } from "./mailer";
 import { verificationEmail, verificationLink, VERIFY_LINK_LIFETIME_MS } from "./verificationEmail";
-import { hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
+import { errorTag } from "../http/errorTag";
+import { isCommonPassword } from "./commonPasswords";
+import { PasswordBusyError, hashPassword, needsRehash, verifyAgainstDummy, verifyPassword } from "./passwords";
 import { RateLimiter, type LimitResult } from "./rateLimit";
 import { clearSessionCookie, sessionCookie, toAccountView, type Sessions } from "./sessions";
 
 const MINUTE = 60 * 1000;
+const TOO_COMMON = "That password is too common. Choose another.";
 
 /**
  * The key a client address is limited by (guest-gm-hosting D3): IPv4 as it is, an IPv4-mapped IPv6
@@ -54,6 +57,7 @@ export function addressKey(ip: string | undefined): string {
 export function accountLimits(now: () => number = Date.now) {
   return {
     signInFailuresPerEmail: new RateLimiter(10, 15 * MINUTE, now),
+    signInPerEmail: new RateLimiter(100, 15 * MINUTE, now),
     signInPerIp: new RateLimiter(150, 15 * MINUTE, now),
     signUpPerIp: new RateLimiter(50, 60 * MINUTE, now),
     /** Rooms created per account, so a script can't fill the database one room at a time (FR-GM-01). */
@@ -66,8 +70,12 @@ export function accountLimits(now: () => number = Date.now) {
     inviteLookupsPerIp: new RateLimiter(300, 15 * MINUTE, now),
     /** Replay requests per participant: each one folds the room's whole log on the event loop (FR-PL-07). */
     replaysPerParticipant: new RateLimiter(150, MINUTE, now),
+    replaysPerRoom: new RateLimiter(600, MINUTE, now),
+    replaysPerIp: new RateLimiter(600, MINUTE, now),
     /** History requests per participant: each one folds the room's whole log on the event loop (FR-REC-01). */
     historyPerParticipant: new RateLimiter(60, MINUTE, now),
+    historyPerRoom: new RateLimiter(300, MINUTE, now),
+    historyPerIp: new RateLimiter(300, MINUTE, now),
     /** Wall detection runs per room, so one room can't hold the few server-wide job slots (FR-GM-11). */
     wallDetectionsPerRoom: new RateLimiter(50, 15 * MINUTE, now),
     /** Image uploads per account, in rooms and the library together: each one is stored and may queue analysis (FR-GM-02). */
@@ -80,6 +88,8 @@ export function accountLimits(now: () => number = Date.now) {
     studioRegistrationsPerIp: new RateLimiter(20, 60 * MINUTE, now),
     /** Invalid delegated Studio tokens or token requests per address, counted only on failure, as for passes. */
     studioTokenFailuresPerIp: new RateLimiter(60, 15 * MINUTE, now),
+    studioRevokesPerIp: new RateLimiter(60, 15 * MINUTE, now),
+    studioRequestsPerClient: new RateLimiter(1200, 15 * MINUTE, now),
     /** Requests per delegated grant, the same budget as a pass (design D7). */
     studioGrantRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Guest room creations per address (IPv6 by /64, see `addressKey`); every attempt counts, accepted or not (guest-gm-hosting D3). */
@@ -106,24 +116,33 @@ export function registerIdentityRoutes(
       if (!isJson(req, res)) return;
       const body = SignUpRequest.safeParse(req.body);
       if (!body.success) return badRequest(res, body.error.issues);
+      if (isCommonPassword(body.data.password)) return badRequest(res, [{ path: ["password"], message: TOO_COMMON }]);
       let user;
+      const passwordHash = await hashPassword(body.data.password);
       try {
         user = await store.createUser({
           id: randomUUID(),
           email: body.data.email,
           displayName: body.data.displayName,
-          passwordHash: await hashPassword(body.data.password),
+          passwordHash,
           emailVerifiedAt: verification ? null : new Date(now()).toISOString(),
         });
       } catch (err) {
-        if (err instanceof EmailTakenError) return void res.status(409).json({ error: err.message, field: "email" });
-        throw err;
+        if (!(err instanceof EmailTakenError)) throw err;
+        const existing = verification ? await store.findUserByEmail(body.data.email) : null;
+        if (!verification || !existing || existing.emailVerifiedAt) return void res.status(409).json({ error: err.message, field: "email" });
+        const issued = mintVerification();
+        if (!(await store.replaceUnverifiedCredentials(existing.id, passwordHash, issued.hash, issued.createdAt, issued.expiresAt))) {
+          return void res.status(409).json({ error: err.message, field: "email" });
+        }
+        await deliverVerification(verification, existing.email, issued.token, requestLocale(res));
+        return void res.status(201).json({ verificationRequired: true, email: existing.email } satisfies SignUpResponse);
       }
       if (!verification) {
         await startSession(res, user.id);
         return void res.status(201).json({ account: toAccountView(user) } satisfies MeResponse);
       }
-      await sendVerification(verification, user.id, user.email, requestLocale(res));
+      await sendVerification(verification, user.id, user.credentialVersion, user.email, requestLocale(res));
       res.status(201).json({ verificationRequired: true, email: user.email } satisfies SignUpResponse);
     })().catch(internalError(res));
   });
@@ -138,9 +157,7 @@ export function registerIdentityRoutes(
         ? await store.consumeVerificationToken(hashToken(body.data.token), new Date(now()).toISOString())
         : null;
       if (!user) return void res.status(400).json({ error: "This verification link is invalid or has expired." });
-      await store.markEmailVerified(user.id, new Date(now()).toISOString());
-      await startSession(res, user.id);
-      res.json({ account: toAccountView(user) } satisfies MeResponse);
+      res.json({ account: null } satisfies MeResponse);
     })().catch(internalError(res));
   });
 
@@ -151,11 +168,11 @@ export function registerIdentityRoutes(
       if (!isJson(req, res)) return;
       const body = ResendVerificationRequest.safeParse(req.body);
       if (!body.success) return badRequest(res, body.error.issues);
-      if (refused(res, limits.resendPerEmail.hit(`resend:${body.data.email}`))) return;
-      res.status(204).end();
-      if (!verification) return;
+      if (!verification) return void res.status(204).end();
       const user = await store.findUserByEmail(body.data.email);
-      if (user && !user.emailVerifiedAt) await sendVerification(verification, user.id, user.email, requestLocale(res));
+      const target = user && !user.emailVerifiedAt && limits.resendPerEmail.hit(`resend:${body.data.email}`).ok ? user : null;
+      res.status(204).end();
+      if (target) await sendVerification(verification, target.id, target.credentialVersion, target.email, requestLocale(res));
     })().catch(internalError(res));
   });
 
@@ -166,7 +183,8 @@ export function registerIdentityRoutes(
       if (!isJson(req, res)) return;
       const body = SignInRequest.safeParse(req.body);
       if (!body.success) return void res.status(401).json({ error: SIGN_IN_FAILED });
-      const emailKey = `signin:${body.data.email}`;
+      const emailKey = `signin:${body.data.email}:${addressKey(req.ip)}`;
+      if (refused(res, limits.signInPerEmail.hit(`signin:${body.data.email}`))) return;
       // Counted before any password work, and cleared again on success: a limited email costs no
       // hashing, and the right password is refused too until the window passes. Counting up front
       // (not after the await) means a burst sent at once can't all pass before any failure is
@@ -224,6 +242,7 @@ export function registerIdentityRoutes(
         return void res.status(403).json({ error: "Current password is incorrect", field: "currentPassword" });
       }
       limits.passwordChangeFailuresPerUser.reset(userKey);
+      if (isCommonPassword(body.data.newPassword)) return badRequest(res, [{ path: ["newPassword"], message: TOO_COMMON }]);
       if (body.data.newPassword.trim().toLowerCase() === current.user.email) {
         return badRequest(res, [{ path: ["newPassword"], message: "Password can't be your email address" }]);
       }
@@ -258,10 +277,19 @@ export function registerIdentityRoutes(
     })().catch(internalError(res));
   });
 
-  async function sendVerification(active: EmailVerification, userId: string, email: string, locale: ReturnType<typeof requestLocale>) {
+  function mintVerification() {
     const token = randomBytes(32).toString("base64url");
     const issued = now();
-    await store.createVerificationToken(userId, hashToken(token), new Date(issued).toISOString(), new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString());
+    return { token, hash: hashToken(token), createdAt: new Date(issued).toISOString(), expiresAt: new Date(issued + VERIFY_LINK_LIFETIME_MS).toISOString() };
+  }
+
+  async function sendVerification(active: EmailVerification, userId: string, credentialVersion: number, email: string, locale: ReturnType<typeof requestLocale>) {
+    const issued = mintVerification();
+    if (!await store.createVerificationToken(userId, issued.hash, issued.createdAt, issued.expiresAt, credentialVersion)) return;
+    await deliverVerification(active, email, issued.token, locale);
+  }
+
+  async function deliverVerification(active: EmailVerification, email: string, token: string, locale: ReturnType<typeof requestLocale>) {
     try {
       await active.mailer.send(verificationEmail(locale, email, verificationLink(clientOrigin, token)));
     } catch (err) {
@@ -306,7 +334,12 @@ function noStore(res: Response) {
 /** Logs without the body: it may carry a password. */
 function internalError(res: Response) {
   return (err: unknown) => {
-    console.error("[vtt] account request failed:", err instanceof Error ? err.message : err);
+    if (err instanceof PasswordBusyError) {
+      if (!res.headersSent) res.setHeader("Retry-After", "5");
+      if (!res.headersSent) res.status(503).json({ error: "The server is busy. Try again in a moment." });
+      return;
+    }
+    console.error("[vtt] account request failed:", errorTag(err));
     if (!res.headersSent) res.status(500).json({ error: "Internal error" });
   };
 }

@@ -9,10 +9,14 @@ name: vtt
 x-rotated-logs: &rotated-logs
   driver: json-file
   options: { max-size: 10m, max-file: "3" }
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17.6
     restart: unless-stopped
+    networks: [data]
     mem_limit: 768m
     cpus: 1.0
     pids_limit: 256
@@ -28,12 +32,16 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: unless-stopped
+    networks: [data, walls]
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 128
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["sh", "-c", "exec docker-entrypoint.sh redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.production}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -46,6 +54,7 @@ services:
   s3:
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
+    networks: [data]
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 512
@@ -68,6 +77,10 @@ services:
   vision:
     build: ./services/vision
     restart: unless-stopped
+    <<: *hardened
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [vision]
     mem_limit: 1g
     cpus: 1.0
     pids_limit: 128
@@ -87,12 +100,16 @@ services:
     profiles: ["walls"]
     build: ./services/vision
     restart: unless-stopped
+    <<: *hardened
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [walls]
     mem_limit: 1g
     cpus: 1.0
     pids_limit: 128
     command: ["python", "wall_worker.py"]
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       OPENCV_IO_MAX_IMAGE_PIXELS: 40000000
     depends_on:
       redis: { condition: service_healthy }
@@ -102,6 +119,7 @@ services:
     restart: "no"
     command: ["npm", "run", "prisma:migrate", "--workspace=@vtt/server"]
     working_dir: /app
+    networks: [data]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-vtt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vtt}
     depends_on:
@@ -109,6 +127,8 @@ services:
   server:
     build: { context: ., dockerfile: Dockerfile.server }
     restart: unless-stopped
+    <<: *hardened
+    networks: [edge, data, vision]
     mem_limit: 768m
     cpus: 1.0
     pids_limit: 256
@@ -116,8 +136,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      UV_THREADPOOL_SIZE: 8
       DATABASE_URL: postgres://${POSTGRES_USER:-vtt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vtt}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       S3_ENDPOINT: http://s3:8333
       S3_BUCKET: ${S3_BUCKET:-vtt-assets}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -143,7 +164,10 @@ services:
   mcp:
     build: { context: ., dockerfile: Dockerfile.mcp }
     restart: unless-stopped
+    <<: *hardened
+    networks: [edge]
     mem_limit: 768m
+    cpus: 1.0
     pids_limit: 256
     environment:
       NODE_ENV: production
@@ -160,6 +184,7 @@ services:
     mem_limit: 256m
     cpus: 1.0
     pids_limit: 256
+    networks: [edge]
     logging: *rotated-logs
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
@@ -177,11 +202,20 @@ services:
     profiles: ["cloudflare"]
     image: cloudflare/cloudflared:2026.10.7
     restart: unless-stopped
+    networks: [edge]
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       web: { condition: service_started }
+networks:
+  edge:
+  data:
+    internal: true
+  vision:
+    internal: true
+  walls:
+    internal: true
 volumes:
   pgdata:
   redisdata:

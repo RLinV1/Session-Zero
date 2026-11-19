@@ -61,7 +61,7 @@ export async function signUp(email: string, password: string, displayName: strin
 }
 
 export async function verifyEmail(token: string) {
-  setAccount((await api.auth.verifyEmail({ token })).account, true);
+  await api.auth.verifyEmail({ token });
 }
 
 export async function resendVerification(email: string) {

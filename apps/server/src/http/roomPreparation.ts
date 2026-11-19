@@ -10,7 +10,7 @@ import { sharedText } from "../i18n/localize";
 
 /** A preparation-only body limit, authorized before parsing. Socket and other JSON limits stay unchanged. */
 export function registerRoomPreparation(app: Express, deps: { store: RoomStore; registry: RoomRegistry; sessions: Sessions }) {
-  type Auth = { room: LiveRoom; actorId: string; sessionHash?: string | null };
+  type Auth = { room: LiveRoom; actorId: string; sessionHash?: string | null; begin: () => void; release: () => void; closed: () => boolean };
   const auths = new WeakMap<Request, Auth>();
   const guard = (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
@@ -19,11 +19,22 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
       if (!credential || credential.roomId !== req.params.roomId || (credential.sessionHash && !await deps.sessions.isLive(credential.sessionHash))) {
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      const room = await deps.registry.get(credential.roomId);
+      let closed = false;
+      let handling = false;
+      let release = () => {};
+      res.once("close", () => {
+        closed = true;
+        if (!handling) release();
+      });
+      const lease = await deps.registry.acquire(credential.roomId);
+      release = lease.release;
+      if (closed) { release(); return; }
+      const room = lease.room;
       if (!room || room.closed || room.activeParticipant(credential.participantId)?.role !== "gm") {
+        release();
         res.status(403).json({ error: "An active GM credential for this room is required." }); return;
       }
-      auths.set(req, { room, actorId: credential.participantId, sessionHash: credential.sessionHash });
+      auths.set(req, { room, actorId: credential.participantId, sessionHash: credential.sessionHash, begin: () => { handling = true; }, release: () => release(), closed: () => closed });
       res.setHeader("Cache-Control", "no-store"); next();
     })().catch(next);
   };
@@ -34,16 +45,19 @@ export function registerRoomPreparation(app: Express, deps: { store: RoomStore; 
     res.status(tooLarge ? 413 : 500).json({ error: tooLarge ? "Map preparation is too large." : "Couldn't save the map draft. Try again." });
   };
   app.post("/api/rooms/:roomId/preparation", guard, express.json({ limit: MAX_PREPARATION_BYTES - 1 }), (req: Request, res: Response, next: NextFunction) => {
+    const auth = auths.get(req)!;
+    auth.begin();
     void (async () => {
       const command = PreparationRequest.safeParse(req.body);
       if (!command.success) { res.status(400).json({ error: "Invalid or oversized map preparation." }); return; }
-      const auth = auths.get(req)!;
+      if (auth.closed()) return;
       if (auth.sessionHash && !await deps.sessions.isLive(auth.sessionHash)) { res.status(403).json({ error: "Your sign-in ended before saving." }); return; }
       // submit checks the active actor and all preparation context again inside the room FIFO.
+      if (auth.closed()) return;
       const result = await auth.room.submit(auth.actorId, command.data);
       if (!result.ok) { res.status(result.code === "forbidden" ? 403 : 409).json({ error: sharedText(requestLocale(res), result.text), code: result.code }); return; }
       // No room state is returned here; snapshots and events retain the existing viewer filters.
       res.json(PreparationSaved.parse({ seq: result.seq }));
-    })().catch(next);
+    })().catch(next).finally(() => auth.release());
   }, failure);
 }

@@ -2,13 +2,20 @@ import { createStudioMediaStore } from "./store/studioMediaStore";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildApp, databaseUrlFromEnv, httpLogFromEnv } from "./app";
+import { buildApp, databaseUrlFromEnv, httpLogFromEnv, missingProductionEnv } from "./app";
 import { seedDevAccount } from "./identity/devAccount";
 import { createAssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
 import { PostgresRoomStore } from "./store/postgresRoomStore";
 import { RedisSeqSource } from "./store/redisSeq";
 import type { RoomStore } from "./store/roomStore";
+
+const missingEnv = missingProductionEnv();
+if (missingEnv.length > 0) {
+  console.error(`[vtt] refusing to start in production: set ${missingEnv.join(", ")}`);
+  process.exit(1);
+}
+process.env.UV_THREADPOOL_SIZE ??= "8";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = process.env.UPLOAD_DIR ?? path.join(here, "..", "uploads");
@@ -47,5 +54,9 @@ const app = await buildApp({
   uploadDir,
   logger: httpLogFromEnv(),
 });
+const IDLE_ROOM_MS = 30 * 60_000;
+setInterval(() => {
+  app.evictIdleRooms(IDLE_ROOM_MS).catch((err: unknown) => console.error("[vtt] idle room eviction failed:", err));
+}, 5 * 60_000).unref();
 await app.listen({ port, host: process.env.HOST ?? "0.0.0.0" });
 console.log(`[vtt] server on http://localhost:${port} (health: /health)`);

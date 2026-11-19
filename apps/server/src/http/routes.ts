@@ -22,6 +22,7 @@ import {
   activityHistory,
   DEFAULT_PRESET_ID,
   GM_TOKEN_HEADER,
+  GuestToken,
   GUEST_ROOM_IDLE_DAYS,
   GUEST_ROOM_LIMIT,
   GUEST_UPLOAD,
@@ -42,6 +43,8 @@ import type { AssetStore } from "../store/assetStore";
 import type { RoomRegistry } from "../domain/roomRegistry";
 import type { RoomStore } from "../store/roomStore";
 import { signedIn } from "../identity/middleware";
+import type { RateLimiter } from "../identity/rateLimit";
+import type { Sessions } from "../identity/sessions";
 import { addressKey, refused, TOO_MANY_INVITE_ATTEMPTS, type AccountLimits } from "../identity/routes";
 import { registerMembershipRoutes } from "../membership/routes";
 import { registerDiceLookRoutes } from "../ownership/diceLooks";
@@ -62,6 +65,11 @@ import type { WallDetections } from "../domain/wallDetection";
 import { requestLocale } from "../i18n/locale";
 import { sharedText } from "../i18n/localize";
 import { refuseRoomCreation } from "./roomCreation";
+import { ReplayCache } from "./replayCache";
+import { errorTag } from "./errorTag";
+import { CredentialConflictError } from "../store/roomStore";
+
+const CREDENTIAL_IN_USE = "This browser already holds a seat. Reload the page and try again.";
 
 /** Guest rooms one browser may hold at once (guest-gm-hosting D3). */
 const MAX_GUEST_ROOMS = 3;
@@ -71,10 +79,11 @@ export function registerRoutes(
   app: Express,
   deps: {
     store: RoomStore; registry: RoomRegistry; uploadDir: string; assets: AssetStore; limits: AccountLimits;
-    detection: GridDetectionDispatcher; walls: WallDetections; rooms: RoomLifecycle;
+    detection: GridDetectionDispatcher; walls: WallDetections; rooms: RoomLifecycle; sessions: Sessions;
   },
 ) {
-  const { store, registry, uploadDir, assets, limits, detection, walls, rooms } = deps;
+  const { store, registry, uploadDir, assets, limits, detection, walls, rooms, sessions } = deps;
+  const replays = new ReplayCache<unknown>(16);
 
   const receiveImage = imageUploader(uploadDir);
 
@@ -96,7 +105,7 @@ export function registerRoutes(
     void (async () => {
       const account = signedIn(res);
       const gmToken = req.header(GM_TOKEN_HEADER);
-      const guestToken = !account && gmToken && gmToken.length >= 16 && gmToken.length <= 256 ? gmToken : null;
+      const guestToken = !account && gmToken && GuestToken.safeParse(gmToken).success ? gmToken : null;
       if (!account && !guestToken) return res.status(401).json({ error: "Sign in to do that" });
       // Every guest attempt counts, accepted or not, before anything is read or created.
       if (guestToken && refused(res, limits.guestRoomsPerAddress.hit(`guest-room:${addressKey(req.ip)}`), "Too many rooms started from this address. Try again later.")) return;
@@ -106,6 +115,7 @@ export function registerRoutes(
       const shipped = body.data.shippedMap ? SHIPPED_MAPS.find((m) => m.slug === body.data.shippedMap) : undefined;
       const scene = shipped && { map: { url: shipped.url, width: shipped.width, height: shipped.height }, grid: shipped.grid };
 
+      if (await store.findCredential(hashToken(body.data.guestToken))) return res.status(409).json({ error: CREDENTIAL_IN_USE });
       if (!account) {
         // A guest room starts on a shipped map and never from an encounter template, which is an account's.
         if (!scene || body.data.templateId) return res.status(400).json({ error: "A guest room starts on one of the shipped maps." });
@@ -159,6 +169,7 @@ export function registerRoutes(
    * (ADR 0017 M1, M4); the room learns nothing about the account.
    */
   app.post("/api/invites/:inviteCode/join", (req, res) => {
+    let release = () => {};
     void (async () => {
       const body = JoinRoomRequest.safeParse(req.body);
       if (!body.success) return res.status(400).json({ error: body.error.issues });
@@ -166,7 +177,9 @@ export function registerRoutes(
       // Before the lookup, so a wrong code is counted too (ADR 0051).
       if (refused(res, limits.inviteLookupsPerIp.hit(`invite:${addressKey(req.ip)}`), TOO_MANY_INVITE_ATTEMPTS)) return;
       const roomId = await store.findRoomByInvite(req.params.inviteCode);
-      const room = roomId ? await registry.get(roomId) : null;
+      const lease = roomId ? await registry.acquire(roomId) : null;
+      release = lease?.release ?? release;
+      const room = lease?.room ?? null;
       // A temporary encounter-editing room is its GM's alone (ADR 0033): its code reads as unknown.
       if (!roomId || !room || room.closed || (await store.isTemporaryRoom(roomId))) return res.status(404).json({ error: "Invite not found" });
       // Every attempt counts, accepted or not: each join and its leave are permanent events, and
@@ -174,13 +187,29 @@ export function registerRoutes(
       const limit = limits.joinsPerIpPerRoom.hit(`join:${roomId}:${addressKey(req.ip)}`);
       if (refused(res, limit, "Too many joins from this address. Try again later.")) return;
 
+      if (await store.findCredential(hashToken(body.data.guestToken))) return res.status(409).json({ error: CREDENTIAL_IN_USE });
       const account = signedIn(res);
       const participantId = randomUUID();
-      // Join first, credential second: a rejected join must leave no credential behind (KAN-61).
-      const joined = await room.join(
-        { id: participantId, role: "player", displayName: body.data.displayName },
-        account?.user.id,
-      );
+      // Credential first, join second: losing the credential race then leaves no seat to remove, even
+      // when the room's log is full and a leave would be refused. A rejected join takes it back (KAN-61).
+      const tokenHash = hashToken(body.data.guestToken);
+      try {
+        await store.saveCredential(tokenHash, { roomId, participantId, sessionHash: account?.session.tokenHash ?? null });
+      } catch (err) {
+        if (err instanceof CredentialConflictError) return res.status(409).json({ error: CREDENTIAL_IN_USE });
+        throw err;
+      }
+      let joined;
+      try {
+        joined = await room.join(
+          { id: participantId, role: "player", displayName: body.data.displayName },
+          account?.user.id,
+        );
+      } catch (err) {
+        await store.deleteCredential(tokenHash, participantId);
+        throw err;
+      }
+      if (!joined.ok) await store.deleteCredential(tokenHash, participantId);
       // not_found: the room was deleted while this join waited in its queue (ADR 0009).
       if (!joined.ok && joined.code === "not_found") return res.status(404).json({ error: "Invite not found" });
       if (!joined.ok && joined.code === "already_member") {
@@ -191,12 +220,9 @@ export function registerRoutes(
       // Already MAX_PLAYERS_PER_ROOM players at the table (room-player-cap).
       if (!joined.ok && joined.reason === "room_full") return res.status(409).json({ error: sharedText(requestLocale(res), joined.text), code: ROOM_FULL });
       if (!joined.ok) return res.status(joined.reason === "name_taken" ? 409 : 400).json({ error: sharedText(requestLocale(res), joined.text) });
-      await store.saveCredential(hashToken(body.data.guestToken), {
-        roomId, participantId, sessionHash: account?.session.tokenHash ?? null,
-      });
       const response: JoinRoomResponse = { roomId, participantId };
       return res.json(response);
-    })().catch(internalError(req, res));
+    })().catch(internalError(req, res)).finally(() => release());
   });
 
   /** Image upload for maps/tokens. GM only (FR-GM-02). Stored in S3 when configured. */
@@ -438,18 +464,22 @@ export function registerRoutes(
   app.get("/api/rooms/:roomId/history", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     void (async () => {
-      const header = req.headers.authorization;
-      const cred = header?.startsWith("Bearer ")
-        ? await store.findCredential(hashToken(header.slice(7))) : null;
+      const cred = await credentialOf(req);
       if (!cred || cred.roomId !== req.params.roomId) return res.status(403).json({ error: "GM only" });
       const room = await registry.get(cred.roomId);
       const viewer = room?.activeParticipant(cred.participantId);
       if (!viewer || viewer.role !== "gm") return res.status(403).json({ error: "GM only" });
-      if (refused(res, limits.historyPerParticipant.hit(`history:${cred.roomId}:${cred.participantId}`), "Too many history requests. Try again in a minute.")) return;
+      if (refusedFold(req, res, "history", cred.roomId, cred.participantId, limits.historyPerParticipant, limits.historyPerRoom, limits.historyPerIp, "Too many history requests. Try again in a minute.")) return;
       const query = HistoryQuery.safeParse(req.query);
       if (!query.success) return res.status(400).json({ error: "Invalid history query" });
       const events = await store.loadEvents(cred.roomId);
-      return res.json(HistoryResponse.parse(activityHistory(cred.roomId, events, viewer, query.data, requestLocale(res))));
+      const locale = requestLocale(res);
+      const key = JSON.stringify(["history", cred.roomId, viewer.id, events.at(-1)?.seq ?? 0, locale, query.data]);
+      const cached = replays.get(key);
+      if (cached) return res.json(cached);
+      const history = HistoryResponse.parse(activityHistory(cred.roomId, events, viewer, query.data, locale));
+      replays.set(key, history);
+      return res.json(history);
     })().catch(internalError(req, res));
   });
 
@@ -462,9 +492,15 @@ export function registerRoutes(
     void (async () => {
       const auth = await authenticate(req);
       if (!auth || auth.roomId !== req.params.roomId) return res.status(403).json({ error: "Not in this room" });
-      if (refusedReplay(res, auth.roomId, auth.participant.id)) return;
+      if (refusedReplay(req, res, auth.roomId, auth.participant.id)) return;
       const events = await store.loadEvents(auth.roomId);
-      return res.json(ReplayPointsResponse.parse({ points: replayPoints(events, auth.participant, requestLocale(res)) }));
+      const locale = requestLocale(res);
+      const key = JSON.stringify(["points", auth.roomId, auth.participant.id, auth.participant.role, events.at(-1)?.seq ?? 0, locale]);
+      const cached = replays.get(key);
+      if (cached) return res.json(cached);
+      const points = ReplayPointsResponse.parse({ points: replayPoints(events, auth.participant, locale) });
+      replays.set(key, points);
+      return res.json(points);
     })().catch(internalError(req, res));
   });
 
@@ -473,13 +509,18 @@ export function registerRoutes(
     void (async () => {
       const auth = await authenticate(req);
       if (!auth || auth.roomId !== req.params.roomId) return res.status(403).json({ error: "Not in this room" });
-      if (refusedReplay(res, auth.roomId, auth.participant.id)) return;
+      if (refusedReplay(req, res, auth.roomId, auth.participant.id)) return;
       const started = performance.now();
       const events = await store.loadEvents(auth.roomId);
+      const locale = requestLocale(res);
+      const key = JSON.stringify(["replay", auth.roomId, auth.participant.id, auth.participant.role, events.at(-1)?.seq ?? 0, locale, req.params.pointId]);
+      const cached = replays.get(key);
+      if (cached) return res.json(cached);
       // Only a point from the viewer's own list: known starting places, never an arbitrary seq.
-      const point = replayPoints(events, auth.participant, requestLocale(res)).find((p) => p.id === req.params.pointId);
+      const point = replayPoints(events, auth.participant, locale).find((p) => p.id === req.params.pointId);
       if (!point) return res.status(404).json({ error: "No such replay point" });
-      const replay = ReplayResponse.parse(replayFrom(auth.roomId, events, auth.participant, point, undefined, requestLocale(res)));
+      const replay = ReplayResponse.parse(replayFrom(auth.roomId, events, auth.participant, point, undefined, locale));
+      replays.set(key, replay);
       const ms = performance.now() - started;
       // Same cue as a slow checkpoint restore: time for a snapshot cache (ADR 0019).
       if (ms > 500) console.warn(`[vtt] replay of room ${auth.roomId} took ${Math.round(ms)} ms (${events.length} events)`);
@@ -502,16 +543,29 @@ export function registerRoutes(
     })().catch(internalError(req, res));
   });
 
-  /** Both replay routes share one budget per participant: each request folds the whole log. */
-  function refusedReplay(res: Response, roomId: string, participantId: string) {
-    return refused(res, limits.replaysPerParticipant.hit(`replay:${roomId}:${participantId}`), "Too many replay requests. Try again in a minute.");
+  /** Both replay routes share the budgets of a participant, a room and an address: each request folds the whole log. */
+  function refusedReplay(req: Request, res: Response, roomId: string, participantId: string) {
+    return refusedFold(req, res, "replay", roomId, participantId, limits.replaysPerParticipant, limits.replaysPerRoom, limits.replaysPerIp, "Too many replay requests. Try again in a minute.");
+  }
+
+  function refusedFold(req: Request, res: Response, name: string, roomId: string, participantId: string, perParticipant: RateLimiter, perRoom: RateLimiter, perIp: RateLimiter, message: string) {
+    return refused(res, perParticipant.hit(`${name}:${roomId}:${participantId}`), message)
+      || refused(res, perRoom.hit(`${name}:${roomId}`), message)
+      || refused(res, perIp.hit(`${name}:${addressKey(req.ip)}`), message);
+  }
+
+  /** The bearer credential, only while the sign-in it is bound to lasts, as on sockets (ADR 0017 M4). */
+  async function credentialOf(req: Request) {
+    const header = req.headers.authorization;
+    if (!header?.startsWith("Bearer ")) return null;
+    const cred = await store.findCredential(hashToken(header.slice(7)));
+    if (!cred || (cred.sessionHash && !(await sessions.isLive(cred.sessionHash)))) return null;
+    return cred;
   }
 
   /** True when the bearer credential is this room's GM, still in the room. */
   async function isRoomGm(req: Request, roomId: string) {
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) return false;
-    const cred = await store.findCredential(hashToken(header.slice(7)));
+    const cred = await credentialOf(req);
     if (!cred || cred.roomId !== roomId) return false;
     const room = await registry.get(cred.roomId);
     return room?.activeParticipant(cred.participantId)?.role === "gm";
@@ -519,9 +573,7 @@ export function registerRoutes(
 
   /** The participant behind a bearer guest credential and their room, only while they are still in it. */
   async function authenticate(req: Request) {
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) return null;
-    const cred = await store.findCredential(hashToken(header.slice(7)));
+    const cred = await credentialOf(req);
     if (!cred) return null;
     const room = await registry.get(cred.roomId);
     const participant = room && !room.closed ? room.activeParticipant(cred.participantId) : undefined;
@@ -536,9 +588,13 @@ export function registerRoutes(
 function internalError(req: Request, res: Response) {
   return (err: unknown) => {
     if (refuseRoomCreation(res, err)) return;
+    if (err instanceof CredentialConflictError) {
+      if (!res.headersSent) res.status(409).json({ error: CREDENTIAL_IN_USE });
+      return;
+    }
     // The route pattern, not the URL: a join URL carries the invite code, which stays out of logs.
     const route = (req.route as { path?: string } | undefined)?.path ?? "unknown route";
-    console.error(`[vtt] ${req.method} ${route} failed:`, err);
+    console.error(`[vtt] ${req.method} ${route} failed:`, errorTag(err));
     if (!res.headersSent) res.status(500).json({ error: "Internal error" });
   };
 }

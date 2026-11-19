@@ -26,6 +26,8 @@ export const rejectionsEn = {
   "reject.wallBlocked": "That spot is blocked by a wall.",
   "reject.squareOccupied": "Another token is already there.",
   "reject.noEmptySquare": "There's no empty square nearby.",
+  "reject.roomLogFull": "This room has reached its history limit.",
+  "reject.tooManyTokens": "This room has reached its token limit.",
   "reject.notEnoughSpace": "Not enough space",
   "reject.carryUnknownToken": "A token to carry isn't on this board.",
   "reject.carryInPreparation": "Tokens can only be carried onto the live board.",

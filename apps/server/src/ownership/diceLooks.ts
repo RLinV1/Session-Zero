@@ -14,6 +14,7 @@ import {
   type DiceLooksResponse,
 } from "@vtt/shared";
 import { imageUploader } from "../http/imageUpload";
+import { ROOM_UPLOAD_NEEDS, refuseIfFull } from "../http/uploadAllowance";
 import { requireAccount } from "../identity/middleware";
 import type { RateLimiter } from "../identity/rateLimit";
 import { refused } from "../identity/routes";
@@ -99,8 +100,10 @@ export function registerDiceLookRoutes(
     void withAccount(req, res, async ({ user }) => {
       const id = LookIdParam.safeParse(req.params.id);
       const die = DieName.safeParse(req.params.die);
-      if (!id.success || !die.success || !(await store.findDiceLook(id.data, user.ownerId))) return void notFound(res);
+      const existing = id.success && die.success ? await store.findDiceLook(id.data, user.ownerId) : null;
+      if (!id.success || !die.success || !existing) return void notFound(res);
       if (refused(res, uploads.hit(`upload:${user.ownerId}`), "Too many uploads. Try again later.")) return;
+      if (!existing.faces[die.data] && await refuseIfFull(res, store, { ownerGmId: user.ownerId }, ROOM_UPLOAD_NEEDS)) return;
       const upload = await receivePicture(req, res);
       if (!upload.ok) return void res.status(upload.status).json({ error: upload.error });
       const fields = DiceLookFaceFields.safeParse(req.body);
