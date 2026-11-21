@@ -19,6 +19,7 @@ const ALLOWLIST = [
   // Only the Prisma CLI/config pulls it in; clears when Prisma moves to deepmerge-ts >= 8.0.0.
   // https://github.com/advisories/GHSA-ggr8-5vv4-36mx
   "GHSA-ggr8-5vv4-36mx",
+  "GHSA-7589-6fvf-x4pw",
 ];
 
 // npm is npm.cmd on Windows, which only a shell can run (as in scripts/dev-db.mjs).

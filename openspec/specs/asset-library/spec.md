@@ -17,7 +17,7 @@ Every library asset SHALL belong to exactly one GM identity. All library endpoin
 - **THEN** the server responds 401
 
 ### Requirement: Upload to library
-A GM SHALL be able to upload a PNG, JPEG or WebP image of up to 25 MB as either a map or a token, with a display name. The server SHALL record the image's pixel width and height. Stored object names MUST be random identifiers that do not contain the display name or original filename.
+A GM SHALL be able to upload a PNG, JPEG or WebP image of up to 25 MB as either a map or a token, with a display name. The server SHALL determine the image's format and its pixel width and height from the file's bytes, and SHALL record that size rather than the size the browser declared. Stored object names MUST be random identifiers that do not contain the display name or original filename.
 
 #### Scenario: Upload a map
 - **WHEN** a GM uploads a 2048x1536 PNG named "Goblin Cave" as a map
@@ -26,6 +26,14 @@ A GM SHALL be able to upload a PNG, JPEG or WebP image of up to 25 MB as either 
 #### Scenario: Unsupported file
 - **WHEN** a GM uploads a GIF or a file over 25 MB
 - **THEN** the upload is rejected with a clear message and nothing is added to the library
+
+#### Scenario: Renamed file
+- **WHEN** a GM uploads a GIF renamed to `cave.png`
+- **THEN** the upload is rejected with a clear message and nothing is added to the library
+
+#### Scenario: Declared size differs from the file
+- **WHEN** a GM uploads a 64x64 image as a token and the request declares 256x256
+- **THEN** the library lists the token with size 64x64
 
 #### Scenario: Object name reveals nothing
 - **WHEN** a GM uploads "beholder.png" as a token named "Beholder"
@@ -263,3 +271,31 @@ The map editor the GM opens from a library map in the GM dashboard SHALL offer E
 #### Scenario: Someone else's map
 - **WHEN** a request exports a library map the caller does not own
 - **THEN** it is refused as not found and nothing is sent
+
+### Requirement: Setup before unconfigured map placement
+Selecting an unconfigured library map for a room SHALL open private setup before placement and SHALL read the original library asset's valid cached estimate. Placement SHALL require explicit confirmation of the prepared grid; cancellation SHALL leave the room unchanged. Configured maps SHALL retain existing placement behavior. UVTT-supplied grids and shipped calibrations SHALL remain authoritative.
+
+Unconfigured library uploads, reopened library editors and room selections SHALL wait for pending grid analysis before revealing setup. Skipping the waiting step SHALL reveal manual setup while retaining the upload and analysis cache; it SHALL NOT place the map or close the editor. Cancelling editable setup SHALL preserve the room. A cached candidate SHALL prepare the draft before its first editable frame.
+
+#### Scenario: Select unconfigured library map
+- **WHEN** the GM selects a library map with no saved grid
+- **THEN** private setup opens with that asset's valid cached result, and no room map changes before explicit saving and placement
+
+#### Scenario: Cancel setup
+- **WHEN** the GM cancels setup for an unconfigured selection
+- **THEN** the current room map is preserved
+
+#### Scenario: Skip pending analysis for a selection
+- **WHEN** a selected unconfigured map is still fitting and the GM uses X, Escape, backdrop or Set up manually
+- **THEN** private manual setup opens for that same upload, later estimates require Use suggestion, and the room stays unchanged until explicit Apply map
+
+### Requirement: Detection does not implicitly edit saved map grids
+The saved grid of a newly uploaded library map SHALL remain the room default grid until the GM explicitly saves a grid in Edit grid or saves the accepted room grid to the library. An automatic suggestion SHALL NOT alter the grid copied during placement. Existing maps SHALL NOT be backfilled.
+
+#### Scenario: Analysis finishes before placement
+- **WHEN** a newly uploaded map receives a suggestion and the GM places it without saving that suggestion
+- **THEN** the room receives the map's default saved grid and no new analysis starts
+
+#### Scenario: Editor closes without save
+- **WHEN** the GM selects Use suggestion in Edit grid and dismisses the editor
+- **THEN** the library map retains its previous saved grid
