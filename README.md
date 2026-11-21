@@ -12,10 +12,19 @@ In tabletop role-playing games, a "session zero" is the meeting before the campa
 
 ---
 
+## Final report and demo
+
+- [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md): the M6 final report.
+- [`docs/README.md`](docs/README.md): index of every document in `docs/`, grouped by audience
+  (users, developers, design and ADRs, QA and audits, milestone history).
+- Live site: <https://sessionzero.codes>.
+
+---
+
 ## Getting Started
 
-Requires **Node 22** (see `.nvmrc`). This is an **npm workspace** — `apps/server`, `apps/web`
-and `packages/shared` are installed together from the repository root. There are two ways to
+Requires **Node 22** (see `.nvmrc`). This is an **npm workspace** — `apps/*` (server, web, mcp)
+and `packages/*` (shared) are installed together from the repository root. There are two ways to
 run the app. Both open at <http://localhost:5173>.
 
 | | Without Docker | With Docker Compose |

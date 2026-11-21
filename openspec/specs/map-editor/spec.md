@@ -79,11 +79,15 @@ The Walls step SHALL show the map with its walls, and offer Draw, Erase and Dete
 - **THEN** that wall is removed from the room
 
 ### Requirement: The app runs without wall detection
-The server SHALL report whether it can detect walls: a queue is configured and at least one vision worker is connected. When it cannot, Detect walls and Detect like this SHALL be shown disabled with the reason. Drawing and erasing walls, and everything else, SHALL work.
+The server SHALL report whether it can detect walls for the room's current map: it can when a queue is configured and at least one vision worker is connected, or when the current map is a built-in map with stored walls for that exact map. When it cannot, Detect walls and Detect like this SHALL be shown disabled with the reason. Drawing and erasing walls, and everything else, SHALL work.
 
 #### Scenario: No Redis or no worker
-- **WHEN** the app runs without Redis, or with no wall worker connected
+- **WHEN** the app runs without Redis, or with no wall worker connected, and the room's map is an uploaded map
 - **THEN** the Walls step shows detection as unavailable, its detect controls are disabled, and Draw and Erase still work
+
+#### Scenario: Built-in map without the vision service
+- **WHEN** the app runs without the vision service and the room's map is a built-in map with stored walls
+- **THEN** Detect walls is enabled
 
 ### Requirement: The editor works on phones and tablets
 The editor SHALL fit the viewport at phone, tablet and desktop sizes with its close button visible. On narrow or portrait screens the canvas SHALL sit above the side panel, and the panel SHALL scroll on its own instead of pushing the canvas off-screen. Every editor control SHALL be at least 44 by 44 CSS pixels. On the wall canvas, a two-finger pinch SHALL zoom about the fingers' midpoint and a two-finger drag SHALL pan in every mode. A single-finger tap SHALL do the mode's action, and a single-finger drag SHALL pan in Pan mode.
@@ -207,3 +211,96 @@ The Walls, Fog and Sight maps, in the room and library map editors, SHALL have t
 #### Scenario: Show it again
 - **WHEN** the GM checks Grid in the Show menu of the Fog step
 - **THEN** the grid is drawn in Fog, Walls and Sight as the Grid step set it
+
+### Requirement: Walls and fog are edited as a draft
+The editor SHALL copy the room's walls and fog into a draft when it opens on an applied map. Drawing, erasing, detecting, fogging and revealing in the editor SHALL change only the draft. No `wall.*` or `fog.*` command SHALL be sent until the GM saves.
+
+#### Scenario: Players see nothing until save
+- **WHEN** the GM draws fog and walls in the editor and has not saved
+- **THEN** no command has been sent and the room's walls and fog are unchanged
+
+### Requirement: Save sends the difference, hiding before revealing
+Save SHALL send only what differs between the draft and the room: new fog first, then wall removals, then wall additions, then fog removals. Wall commands SHALL respect their per-command limits. A refused command SHALL stop the save, show the reason, and keep the draft.
+
+#### Scenario: Save
+- **WHEN** the draft adds one fog rectangle, removes one wall and adds two walls
+- **THEN** `fog.add`, `wall.remove`, and one `wall.add` with two walls are sent in that order
+
+### Requirement: Closing with unsaved changes asks
+Closing the editor with unsaved walls or fog SHALL ask whether to save, discard, or keep editing.
+
+#### Scenario: Discard
+- **WHEN** the GM closes the editor with unsaved fog and chooses Discard
+- **THEN** the editor closes, nothing is sent, and the next open starts from the room's fog
+
+### Requirement: Detected walls can be edited before saving
+Applying a finished detection SHALL put its walls in the draft, fetched from a GM-only endpoint, where the GM can erase or add walls before saving.
+
+#### Scenario: Edit a detection
+- **WHEN** the GM applies 81 detected walls, erases 3, and saves
+- **THEN** the room has 78 walls
+
+### Requirement: Each editor step has a Guide
+The map editor SHALL show a compact Guide icon button (accessible name "Guide", 44px target) overlaid on the top-right corner of the map area, not in the header or over the side panel and flush in the corner with the zoom controls to its left, on every step of the room editor and the library map editor. Pressing it SHALL start a guided tour of the current step's controls, one highlighted control at a time with a card of one or two short sentences, Next, Back and Done, and Escape to close. Controls that are not on screen SHALL be skipped. Closing the tour with Escape SHALL NOT close the editor. The tour SHALL change no map data.
+
+#### Scenario: Tour the Fog step
+- **WHEN** the GM is on the Fog step and presses Guide
+- **THEN** the tools, player view and fog controls are highlighted in turn, and Done closes the tour
+
+#### Scenario: Skipped control
+- **WHEN** the map has no fogged regions
+- **THEN** the tour does not stop at the fogged regions list
+
+#### Scenario: Escape
+- **WHEN** a tour is open and the GM presses Escape
+- **THEN** the tour closes and the editor stays open
+
+### Requirement: Detect walls uses stored walls for a built-in map
+When the GM presses Detect walls and the room's current map is a built-in map with stored walls, matched by its image URL and size, detection SHALL return those stored walls, including their doors and windows, without running the vision service, and SHALL finish immediately. The walls SHALL appear in the usual detection preview, where the GM can erase false ones, and SHALL reach the room only when the GM presses Apply walls. For any other map, Detect walls SHALL run the vision service as before. Detect like this SHALL keep using the vision service.
+
+#### Scenario: Stored walls for a built-in map
+- **WHEN** the GM opens the Walls step on Hollowfrost Keep and presses Detect walls
+- **THEN** the preview shows Hollowfrost Keep's stored walls at once, and the room's walls change only after Apply walls
+
+#### Scenario: Uploaded map uses the vision service
+- **WHEN** the GM presses Detect walls on an uploaded map
+- **THEN** detection runs on the vision service, as before
+
+#### Scenario: Same image at another size
+- **WHEN** a room's map has a built-in map's URL but a different width or height
+- **THEN** the stored walls are not used
+
+### Requirement: Detected walls are reviewed in a modal preview
+When automatic wall detection finishes with at least one wall, the Walls step SHALL open a modal named "Detected walls" showing the map image with the detected walls drawn over it, the number found, and Apply and Discard buttons. The review features of `wall-confidence-review` (wall-review) SHALL live in this modal: clicking a detected wall (or activating it from the keyboard) SHALL erase it, drawn faded and struck, and again brings it back; walls the detector was unsure about SHALL carry a pink dashed halo with a legend, and the modal SHALL show how many doubtful walls are not erased; a "Review doubtful walls" control SHALL step through them with Back, Erase or Bring back, and Keep or Finish, highlighting the current wall; Apply SHALL apply every wall not erased, sending the erased indices as `exclude`; and "Apply confident walls only" SHALL leave out doubtful and erased walls and be disabled when none remain. The detected walls SHALL NOT be drawn on the editing canvas, and the side panel SHALL NOT show a preview of the result. Apply SHALL add the walls to the editor draft, sending nothing until Save changes. Discard, Close, Escape and a click on the backdrop SHALL drop the result and add nothing. Focus SHALL move into the modal when it opens and return to Detect walls when it closes.
+
+#### Scenario: Detection finishes
+- **WHEN** detection finishes with 7 walls
+- **THEN** the "Detected walls" modal opens showing the map with 7 walls and "7 walls found."
+
+#### Scenario: Apply
+- **WHEN** the GM presses Apply 7 walls in the modal
+- **THEN** the walls are added to the editor draft, the modal closes, and nothing is sent to the room until Save changes
+
+#### Scenario: Discard
+- **WHEN** the GM presses Discard or Escape in the modal
+- **THEN** the modal closes, no walls are added, and focus is on Detect walls
+
+#### Scenario: Doubtful walls
+- **WHEN** some detected walls are doubtful and the GM presses Apply confident walls only
+- **THEN** only the confident walls are added
+
+#### Scenario: Erase a wall
+- **WHEN** the GM clicks a detected wall in the modal and presses Apply
+- **THEN** that wall's index is sent as excluded and the Apply count is one lower
+
+#### Scenario: Review doubtful walls
+- **WHEN** the GM presses Review doubtful walls and Erase on the current wall
+- **THEN** the wall is erased, the doubtful count drops by one, and the next doubtful wall is current
+
+#### Scenario: Doors and windows
+- **WHEN** a result holds a plain wall, a locked door, an open window and a doubtful closed door
+- **THEN** the modal says "4 walls found: 1 wall, 2 doors, 1 window.", draws walls orange (as on the Walls canvas), doors gold and windows light blue (as in the Sight step), open ones dashed, closed ones solid and locked ones thicker with a dot at the midpoint, gives every doubtful wall, including the door, a pink dashed halo, labels each wall with its kind and state (such as "Detected wall 2, door, locked"), and lists only the kinds, states, Doubtful and Erased entries that occur in a legend
+
+#### Scenario: Modal fits its content
+- **WHEN** the modal is open
+- **THEN** the map preview is sized by the map's aspect ratio up to 65% of the viewport height, and the dialog is only as tall as its content with no empty space below it
