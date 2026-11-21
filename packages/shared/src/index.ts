@@ -40,6 +40,7 @@ export * from "./uvtt";
 export * from "./build";
 export * from "./studio";
 export * from "./chatMentions";
+export * from "./feedback";
 
 export * from "./terrain";
 export * from "./movement";

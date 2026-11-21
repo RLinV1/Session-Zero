@@ -18,6 +18,7 @@ export const shellZhTW = {
   "nav.rooms": "你的房間",
   "nav.library": "素材庫",
   "nav.policies": "法律資訊",
+  "nav.news": "最新消息",
   "nav.privacy": "隱私權政策",
   "nav.terms": "服務條款",
   "animationPicker.choose": "選擇動畫",

@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { CircleHalfTilt, Moon, Sun } from "@phosphor-icons/react";
+import { ChatCircleDots, CircleHalfTilt, Moon, Sun } from "@phosphor-icons/react";
 import { Link } from "../Link";
 import { useGroundTheme, type ThemeChoice } from "../theme";
 import { LanguageMenu } from "./LanguageMenu";
 import { useT } from "../i18n/locale";
+import { openFeedback } from "./feedback";
 
 /**
  * The product's name, in one place (design-language: "One header"). To rename the product,
@@ -63,11 +64,23 @@ export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; accoun
       )}
       <div className="site-actions">
         {settings}
+        <FeedbackButton />
         {account}
         <LanguageMenu />
         <ThemeToggle />
       </div>
     </header>
+  );
+}
+
+/** Opens the Feedback dialog from any page with the site header (FR-PL-11). */
+export function FeedbackButton() {
+  const t = useT();
+  return (
+    <button type="button" className="secondary feedback-button" onClick={() => openFeedback("bug")} title={t("feedback.title")}>
+      <ChatCircleDots size={16} aria-hidden="true" />
+      <span className="feedback-button-label">{t("feedback.open")}</span>
+    </button>
   );
 }
 

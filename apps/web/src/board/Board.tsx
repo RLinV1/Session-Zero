@@ -109,6 +109,8 @@ export interface BoardHandle {
    * animated here; then neither callback is called.
    */
   dropDice(drop: BoardDrop, skin: DiceSkin | null, onLanded: () => void, onGone?: () => void): boolean;
+  /** A PNG of this viewer's board as it is now, for a feedback report (FR-PL-11). Null before the board is ready. */
+  captureView(): Promise<Blob | null>;
 }
 
 /** What the Dice panel needs from the board to throw dice onto it (throw-dice-on-board). */
@@ -820,6 +822,7 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   };
 
   useImperativeHandle(ref, () => ({
+    captureView: () => viewRef.current?.captureView() ?? Promise.resolve(null),
     focusToken: (tokenId: string) => viewRef.current?.focusToken(tokenId),
     placeToken: (next: TokenDraft) => {
       // The rail's tools would compete with placing for the same clicks.

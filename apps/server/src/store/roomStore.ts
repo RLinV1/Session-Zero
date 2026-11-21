@@ -51,8 +51,9 @@ export class SeqConflictError extends Error {
  *    log together with the room (ADR 0009).
  */
 import type { StudioMediaPersistence } from "./studioMedia";
+import type { FeedbackStore } from "./feedbackStore";
 
-export interface RoomStore extends StudioAuthoringStore, StudioPreparationStore, StudioMediaPersistence, LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore {
+export interface RoomStore extends StudioAuthoringStore, StudioPreparationStore, StudioMediaPersistence, LibraryStore, GridDetectionStore, IdentityStore, MembershipStore, BuildStore, StudioStore, FeedbackStore {
   createRoom(roomId: string, inviteCode: string, options?: NewRoomOptions): Promise<void>;
   roomExists(roomId: string): Promise<boolean>;
   findRoomByInvite(inviteCode: string): Promise<string | null>;

@@ -13,6 +13,7 @@ export type Route =
   | { page: "signup" }
   | { page: "verifyEmail" }
   | { page: "account" }
+  | { page: "news" }
   | { page: "privacy" }
   | { page: "terms" }
   | { page: "join"; inviteCode: string }
@@ -35,6 +36,7 @@ export function parseRoute(pathname: string): Route {
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };
   // The header's "Create account" pointed here for a while, so an old link still reaches the form.
   if (/^\/account\/new\/?$/.test(pathname)) return { page: "signup" };
+  if (/^\/news\/?$/.test(pathname)) return { page: "news" };
   if (/^\/privacy\/?$/.test(pathname)) return { page: "privacy" };
   if (/^\/terms\/?$/.test(pathname)) return { page: "terms" };
   const join = pathname.match(/^\/join\/([^/]+)\/?$/);

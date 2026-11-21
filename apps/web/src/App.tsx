@@ -9,6 +9,7 @@ import { layerFor, useRouteLayer } from "./theme";
 import { Ambient } from "./ui/Ambient";
 import { EntryPage } from "./ui/SiteHeader";
 import { RouteErrorBoundary } from "./ui/RouteErrorBoundary";
+import { useFeedbackWanted } from "./ui/feedback";
 
 // The landing and account pages do not need Pixi, map editors or the animation library.
 const GmDashboardPage = lazy(() => import("./pages/GmDashboardPage").then((m) => ({ default: m.GmDashboardPage })));
@@ -17,6 +18,9 @@ const LibraryPage = lazy(() => import("./pages/LibraryPage").then((m) => ({ defa
 const StudioConnectPage = lazy(() => import("./pages/studio/StudioConnectPage").then((m) => ({ default: m.StudioConnectPage })));
 const BuildPage = lazy(() => import("./pages/build/BuildPage").then((m) => ({ default: m.BuildPage })));
 const IsometricLightingPage = lazy(() => import("./pages/IsometricLightingPage").then((m) => ({ default: m.IsometricLightingPage })));
+const NewsPage = lazy(() => import("./pages/NewsPage").then((m) => ({ default: m.NewsPage })));
+// Loaded the first time someone opens Feedback, so no page pays for it up front (FR-PL-11).
+const FeedbackHost = lazy(() => import("./ui/FeedbackDialog").then((m) => ({ default: m.FeedbackHost })));
 const RoomPage = lazy(() => import("./pages/RoomPage").then((m) => ({ default: m.RoomPage })));
 
 export function App() {
@@ -25,6 +29,7 @@ export function App() {
   useRouteLayer(route);
   useDocumentTitle(route);
   const t = useT();
+  const feedbackWanted = useFeedbackWanted();
   return (
     <>
       <Ambient layer={layerFor(route)} />
@@ -32,6 +37,8 @@ export function App() {
       <RouteErrorBoundary key={location.pathname} room={route.page === "room" || route.page === "encounterEdit"}>
         <Suspense fallback={<main className="centered"><p role="status">{t("common.loading")}</p></main>}><RoutePage route={route} /></Suspense>
       </RouteErrorBoundary>
+      {/* Outside the route's boundary, so a report can still be sent from a page that failed. */}
+      {feedbackWanted && <Suspense fallback={null}><FeedbackHost /></Suspense>}
     </>
   );
 }
@@ -61,6 +68,8 @@ function RoutePage({ route }: { route: Route }) {
       return <VerifyEmailPage />;
     case "account":
       return <AccountPage />;
+    case "news":
+      return <NewsPage />;
     case "privacy":
       return <PrivacyPage />;
     case "terms":

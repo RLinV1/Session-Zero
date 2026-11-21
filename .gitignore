@@ -8,6 +8,8 @@ coverage/
 .DS_Store
 *.log
 apps/server/uploads/
+# Exported feedback reports are user data (FR-PL-11, ADR 0079): never commit them.
+/feedback/
 playwright-report/
 test-results/
 # Check images from apps/web/scripts/home-maps.mjs

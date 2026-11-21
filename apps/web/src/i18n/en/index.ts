@@ -4,6 +4,8 @@ import { shell } from "./shell";
 import { entry } from "./entry";
 import { home } from "./home";
 import { policy } from "./policy";
+import { news } from "./news";
+import { feedback } from "./feedback";
 import { table } from "./table";
 import { hub } from "./hub";
 import { editor } from "./editor";
@@ -23,6 +25,8 @@ export const en = {
   ...entry,
   ...home,
   ...policy,
+  ...news,
+  ...feedback,
   ...table,
   ...hub,
   ...editor,

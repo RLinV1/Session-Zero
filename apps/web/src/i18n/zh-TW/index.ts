@@ -6,6 +6,8 @@ import { shellZhTW } from "./shell";
 import { entryZhTW } from "./entry";
 import { homeZhTW } from "./home";
 import { policyZhTW } from "./policy";
+import { newsZhTW } from "./news";
+import { feedbackZhTW } from "./feedback";
 import { tableZhTW } from "./table";
 import { hubZhTW } from "./hub";
 import { editorZhTW } from "./editor";
@@ -24,6 +26,8 @@ export const zhTW = {
   ...entryZhTW,
   ...homeZhTW,
   ...policyZhTW,
+  ...newsZhTW,
+  ...feedbackZhTW,
   ...tableZhTW,
   ...hubZhTW,
   ...editorZhTW,

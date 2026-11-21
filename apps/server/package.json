@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "account:reset-password": "tsx src/scripts/resetPassword.ts",
-    "uploads:backfill-sizes": "tsx src/scripts/backfillUploadSizes.ts"
+    "uploads:backfill-sizes": "tsx src/scripts/backfillUploadSizes.ts",
+    "feedback:export": "tsx src/scripts/feedbackExport.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1137.0",

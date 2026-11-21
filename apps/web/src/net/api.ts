@@ -1,4 +1,5 @@
 import type { StudioOwnerIds } from "@vtt/shared";
+import { FeedbackReceipt, type FeedbackReport } from "@vtt/shared";
 import { z } from "zod";
 import {
   StudioSnapshot, type StudioContext,
@@ -680,6 +681,20 @@ export const api = {
         accountRequest<DiceLookView>(`/api/library/dice/${encodeURIComponent(id)}/faces/${die}`, { method: "DELETE" }),
       setActive: (id: string | null) =>
         accountRequest<void>("/api/library/dice/active", { method: "PUT", ...jsonBody({ id }) }),
+    },
+  },
+  feedback: {
+    /**
+     * Sends a report and its screenshots (FR-PL-11). Not an account request: anyone may send one,
+     * and a signed-in browser's cookie goes along by itself, which is how the team can reply.
+     */
+    send: async (report: FeedbackReport, screenshots: readonly { blob: Blob; name: string }[]): Promise<FeedbackReceipt> => {
+      const form = new FormData();
+      form.append("report", JSON.stringify(report));
+      for (const shot of screenshots) form.append("screenshots", shot.blob, shot.name);
+      const res = await apiFetch("/api/feedback", { method: "POST", body: form });
+      if (!res.ok) throw await errorFrom(res);
+      return FeedbackReceipt.parse(await res.json());
     },
   },
 };

@@ -832,6 +832,7 @@ label.checkbox { flex-direction: row; align-items: center; gap: 0.4rem; font-siz
 @keyframes condition-glow { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .condition-pulse, .condition-float, .condition-glow { animation: none; } }
 .nuke-confirm-actions, .settings-actions { justify-content: flex-end; }
+.settings-actions .settings-feedback { margin-right: auto; display: inline-flex; align-items: center; gap: var(--space-1); text-decoration: none; }
 .client-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .client-settings legend { font-weight: 700; padding: 0 0 .75rem; }
 dialog.modal.client-settings-modal { width: min(38rem, calc(100vw - 2rem)); }
@@ -1417,6 +1418,80 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   .policy-terms { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
   .policy-terms dd + dt { margin-top: var(--space-3); }
 }
+
+/* What's new (pages/NewsPage.tsx): the policy page's column and hairlines, a little wider for its
+   pictures, with an index of every post beside it. On a narrow screen the index goes and the
+   column takes the width. */
+.news-layout { display: grid; grid-template-columns: 15rem minmax(0, 46rem); gap: var(--space-8); align-items: start; }
+.news { max-width: none; }
+.news-post { scroll-margin-top: var(--space-6); }
+.news-post h2 { font-size: 1.35rem; line-height: 1.3; }
+/* A press release's own sections ("How it works", "Availability"): smaller than the post title, set
+   apart by space above rather than a rule. */
+.news-post h3 { margin: var(--space-3) 0 0; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
+.news-meta { display: flex; align-items: center; gap: var(--space-3); color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.news-kind { font-family: var(--font-ui); font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 4px; background: var(--raised); color: var(--muted); }
+.news-kind-feature { background: var(--accent-soft); color: var(--accent-text); }
+.news-kind-fix { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.news-figure { margin: var(--space-2) 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.news-figure img,
+.news-figure video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-surface); border: 1px solid var(--border); background: var(--field); }
+.news-figure figcaption { color: var(--muted); font-size: var(--fs-sm); }
+.news-link { font-weight: 600; color: var(--accent-text); }
+.news-index { position: sticky; top: var(--space-6); padding-right: var(--space-4); border-right: 1px solid var(--border); font-family: var(--font-ui); }
+.news-index-title { margin: 0 0 var(--space-3); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.news-index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.news-index a { display: grid; gap: 0.1rem; padding: var(--space-2); border-radius: var(--radius-control); color: var(--muted); text-decoration: none; }
+.news-index a:hover,
+.news-index a:focus-visible { color: var(--text); background: var(--hover); }
+.news-index time { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.news-index span { font-size: var(--fs-sm); line-height: 1.4; }
+@media (max-width: 960px) {
+  .news-layout { grid-template-columns: minmax(0, 1fr); }
+  .news-index { display: none; }
+}
+.policy-meta .news-feedback-link { margin-left: var(--space-3); }
+
+/* Feedback (ui/FeedbackDialog.tsx, FR-PL-11): one dialog opened from the header, a room's More
+   menu and What's new. Plain fields, a strip of screenshot tiles, then the technical details. */
+.feedback-button { display: inline-flex; align-items: center; gap: var(--space-1); }
+@media (max-width: 640px) {
+  .feedback-button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+button.link-button { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+button.link-button:hover { filter: brightness(1.1); }
+dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
+.feedback-form { display: flex; flex-direction: column; gap: var(--space-4); margin: 0; }
+.feedback-kind { display: flex; align-self: flex-start; gap: 0; padding: 2px; margin: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--panel); }
+.feedback-kind.segmented label { flex: none; }
+.feedback-kind.segmented span { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); padding: 0.3rem 0.8rem; font-size: var(--fs-sm); }
+.feedback-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.feedback-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-sm); font-weight: 600; }
+.feedback-label-row .muted { font-weight: 400; font-variant-numeric: tabular-nums; }
+.feedback-field input { width: 100%; }
+.feedback-field textarea { width: 100%; min-height: 6rem; resize: vertical; font: inherit; font-size: var(--fs-md); color: inherit; background: var(--field); border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 0.45rem 0.55rem; line-height: 1.5; }
+.feedback-field textarea:hover { border-color: var(--muted); }
+.feedback-form .small, .feedback-footer .small { font-size: var(--fs-sm); margin: 0; }
+.feedback-shots { list-style: none; margin: 0; padding: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-surface); background: var(--field); }
+.feedback-shot { position: relative; width: 7.5rem; height: 5rem; }
+.feedback-shot img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-control); border: 1px solid var(--border); background: var(--panel); }
+.feedback-shot-remove { position: absolute; top: -0.5rem; right: -0.5rem; width: 1.6rem; height: 1.6rem; min-height: 0; padding: 0; display: grid; place-items: center; border-radius: 50%; background: var(--raised); border: 1px solid var(--border-strong); }
+.feedback-add { width: 7.5rem; height: 5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); font-size: var(--fs-sm); color: var(--muted); border-style: dashed; }
+.feedback-add:hover { color: var(--text); }
+.feedback-shot-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.feedback-shot-actions button { display: inline-flex; align-items: center; gap: var(--space-1); }
+.feedback-note { padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: var(--accent-soft); color: var(--text); }
+.feedback-technical { display: flex; flex-direction: column; gap: var(--space-1); }
+.feedback-technical label.checkbox-row { display: inline-flex; flex-direction: row; align-items: center; align-self: flex-start; gap: var(--space-2); margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.feedback-technical summary { cursor: pointer; color: var(--accent-text); font-size: var(--fs-sm); width: fit-content; }
+.feedback-technical details p { margin: var(--space-1) 0 0 var(--space-4); }
+.feedback-form .error { margin: 0; }
+.feedback-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.feedback-footer .modal-actions { margin-left: auto; }
+.feedback-sent { display: flex; flex-direction: column; gap: var(--space-2); }
+.feedback-sent h3 { margin: 0; font-size: 1.05rem; }
+.feedback-sent p { margin: 0; }
+.feedback-reference strong { display: inline-block; margin-left: var(--space-2); padding: 0.2rem 0.6rem; font-family: var(--font-mono); font-size: 1.05rem; letter-spacing: 0.06em; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--field); }
 
 /* The account page (account-page): on the hub's ground like the policies. One block per subject,
    split by a fading hairline: its name at the left, what there is to see or do at the right, as
@@ -2735,6 +2810,9 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 }
 .site-footer .footer-links a:hover,
 .site-footer .footer-links a[aria-current="page"] { color: var(--text); }
+/* Feedback is a button (it opens a dialog), dressed as one of the footer's links. */
+.site-footer .footer-links .footer-feedback { min-height: 0; padding: 0; border: 0; background: none; font: inherit; font-weight: 550; color: var(--muted); }
+.site-footer .footer-links .footer-feedback:hover { color: var(--text); filter: none; }
 @media (max-width: 640px) { .footer-links { margin-left: 0; flex-basis: 100%; } }
 
 /* ---- Mobile: every multi-column block above collapses here ---- */

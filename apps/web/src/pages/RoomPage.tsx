@@ -55,6 +55,7 @@ import { ShareButton } from "../ui/ShareButton";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { GuideTour } from "../ui/GuideTour";
 import { RoomMenu } from "../ui/RoomMenu";
+import { useFeedbackRoom } from "../ui/feedback";
 import { motionReduced } from "../ui/motion";
 import { BoardEmptyState } from "../ui/BoardEmptyState";
 import { isBoolean, usePersistentState } from "../ui/usePersistentState";
@@ -584,6 +585,8 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
   // Your dice are still showing: on the board until they fade, or in a private tray until they land.
   const rolling = ownDiceShowing(onBoard, airborne, state?.rolls ?? [], you?.id);
   const rollThrow: RollThrow = { airborne, rolling, justLandedId: landedId, onLanded: land, expectDrop };
+  // "Report a problem" adds this room's ids and can capture this viewer's board (FR-PL-11).
+  useFeedbackRoom(features.tableChrome && state && you ? { roomId: state.roomId, seq, role: you.role, captureBoard: () => boardRef.current?.captureView() ?? Promise.resolve(null) } : null);
 
   if (leaving) return <main className="centered" aria-busy="true">{t("encounterEdit.closing")}</main>;
 

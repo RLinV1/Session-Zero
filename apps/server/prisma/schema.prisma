@@ -269,6 +269,7 @@ model User {
   sessions       Session[]
   memberships    RoomMember[]
   verificationTokens EmailVerificationToken[]
+  feedbackReports FeedbackReport[]
 
   @@map("users")
 }
@@ -561,4 +562,41 @@ model StudioMediaJob {
   @@index([state, expiresAt])
   @@index([buildId])
   @@map("studio_media_jobs")
+}
+
+/// A bug report or idea sent through the Feedback dialog (FR-PL-11, ADR 0079). Read only by the
+/// team through `feedback:export`; never served by any route. A signed-in report goes with its account.
+model FeedbackReport {
+  id             String   @id @db.Uuid
+  /// What the reporter is shown, e.g. FB-7Q2K.
+  reference      String   @unique
+  kind           String
+  summary        String
+  details        String
+  /// The allow-listed technical details (FeedbackTechnical), or null when the reporter left them off.
+  technical      Json?
+  reporterUserId String?  @map("reporter_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reporter    User?                @relation(fields: [reporterUserId], references: [id], onDelete: Cascade)
+  screenshots FeedbackScreenshot[]
+
+  @@index([createdAt])
+  @@index([reporterUserId])
+  @@map("feedback_reports")
+}
+
+/// A report's screenshot, re-encoded to WebP without metadata. Private: kept here, never under /uploads.
+model FeedbackScreenshot {
+  reportId    String @map("report_id") @db.Uuid
+  position    Int
+  contentType String @map("content_type")
+  width       Int
+  height      Int
+  bytes       Bytes
+
+  report FeedbackReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@id([reportId, position])
+  @@map("feedback_screenshots")
 }
