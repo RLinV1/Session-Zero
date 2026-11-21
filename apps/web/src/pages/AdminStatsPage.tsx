@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { formatNumber, LaunchStatsResponse, type LaunchStatsCounts, type LaunchStatsDayRow } from "@vtt/shared";
 import { getLocale, useT } from "../i18n/locale";
 import { EntryPage } from "../ui/SiteHeader";
@@ -101,10 +101,12 @@ export function AdminStatsPage() {
     <div className="admin-stats">
       <main className="page-shell admin-stats-main">
         <header className="admin-stats-head">
-          <h1>{t("adminStats.heading")}</h1>
-          <p className="muted">{t("adminStats.lead")}</p>
+          <div>
+            <h1>{t("adminStats.heading")}</h1>
+            {stats && <p className="muted">{t("adminStats.range", { from: stats.range.from, to: stats.range.to })}</p>}
+          </div>
+          <RangeForm key={`${stats?.range.from}/${stats?.range.to}`} initial={stats?.range ?? range} onPick={pick} />
         </header>
-        <RangeForm key={`${stats?.range.from}/${stats?.range.to}`} initial={stats?.range ?? range} onPick={pick} />
         {load.kind === "badRange" && <p className="notice" role="alert">{t("adminStats.badRange")}</p>}
         {load.kind === "failed" && <p className="notice" role="alert">{t("adminStats.failed")}</p>}
         {stats && <StatsBody stats={stats} />}
@@ -112,6 +114,8 @@ export function AdminStatsPage() {
     </div>
   );
 }
+
+const PRESETS = [7, 30, 90] as const;
 
 function RangeForm({ initial, onPick }: { initial: Range; onPick: (range: Range) => void }) {
   const t = useT();
@@ -121,62 +125,68 @@ function RangeForm({ initial, onPick }: { initial: Range; onPick: (range: Range)
     e.preventDefault();
     onPick({ from: from || undefined, to: to || undefined });
   };
+  const current = PRESETS.find((days) => {
+    const preset = lastDays(days);
+    return preset.from === initial.from && preset.to === initial.to;
+  });
   return (
     <form className="admin-stats-range" onSubmit={submit}>
-      <label>
-        {t("adminStats.from")}
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-      </label>
-      <label>
-        {t("adminStats.to")}
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-      </label>
-      <button type="submit" className="primary">{t("adminStats.show")}</button>
-      <span className="admin-stats-presets">
-        {([7, 30, 90] as const).map((days) => (
-          <button key={days} type="button" onClick={() => onPick(lastDays(days))}>{t(`adminStats.preset.${days}`)}</button>
+      <span className="admin-stats-presets" role="group">
+        {PRESETS.map((days) => (
+          <button key={days} type="button" aria-pressed={days === current} onClick={() => onPick(lastDays(days))}>
+            {t(`adminStats.preset.${days}`)}
+          </button>
         ))}
+      </span>
+      <span className="admin-stats-dates">
+        <input type="date" aria-label={t("adminStats.from")} value={from} onChange={(e) => setFrom(e.target.value)} />
+        <span aria-hidden="true">–</span>
+        <input type="date" aria-label={t("adminStats.to")} value={to} onChange={(e) => setTo(e.target.value)} />
+        <button type="submit">{t("adminStats.show")}</button>
       </span>
     </form>
   );
 }
 
+/** The smaller charts under the main one, in reading order. */
+const SMALL: readonly Metric[] = ["activeRooms", "returningRooms", "roomsCreated", "accountsCreated", "aiSeatsJoined"];
+
 function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
   const t = useT();
   const locale = getLocale();
   const n = (value: number) => formatNumber(locale, value);
-  const [metric, setMetric] = useState<Metric>("playedRooms");
   return (
     <>
-      <p className="muted">{t("adminStats.range", { from: stats.range.from, to: stats.range.to })}</p>
-
-      <section aria-labelledby="admin-stats-totals">
-        <h2 id="admin-stats-totals">{t("adminStats.totals")}</h2>
-        <dl className="admin-stats-tiles">
-          {METRICS.map((m) => (
-            <div key={m} className={m === "playedRooms" ? "admin-stats-tile lead" : "admin-stats-tile"}>
-              <dt>{metricLabel(t, m)}</dt>
-              <dd>{n(stats.totals[m])}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <section aria-labelledby="admin-stats-chart">
-        <div className="admin-stats-chart-head">
-          <h2 id="admin-stats-chart">{t("adminStats.chart")}</h2>
-          <label>
-            {t("adminStats.chartMetric")}{" "}
-            <select value={metric} onChange={(e) => setMetric(e.target.value as Metric)}>
-              {METRICS.map((m) => <option key={m} value={m}>{metricLabel(t, m)}</option>)}
-            </select>
-          </label>
+      <section className="admin-stats-card kpi" aria-labelledby="admin-stats-playedRooms">
+        <div className="admin-stats-card-head">
+          <div>
+            <h2 id="admin-stats-playedRooms">{metricLabel(t, "playedRooms")}</h2>
+            <p className="muted">{t("adminStats.kpi")}</p>
+          </div>
+          <p className="admin-stats-total">{n(stats.totals.playedRooms)}</p>
         </div>
-        <DayChart days={stats.days} metric={metric} label={t("adminStats.chartLabel", { metric: metricLabel(t, metric) })} format={n} />
+        <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={200} />
       </section>
 
-      <section aria-labelledby="admin-stats-table">
-        <h2 id="admin-stats-table">{t("adminStats.table")}</h2>
+      <div className="admin-stats-multiples">
+        {SMALL.map((metric) => (
+          <section key={metric} className="admin-stats-card" aria-labelledby={`admin-stats-${metric}`}>
+            <div className="admin-stats-card-head">
+              <div>
+                <h2 id={`admin-stats-${metric}`}>{metricLabel(t, metric)}</h2>
+                {metric === "roomsCreated" && (
+                  <p className="muted">{t("adminStats.roomsSplit", { guests: n(stats.totals.roomsCreatedByGuests), accounts: n(stats.totals.roomsCreatedByAccounts) })}</p>
+                )}
+              </div>
+              <p className="admin-stats-total">{n(stats.totals[metric])}</p>
+            </div>
+            <LineChart days={stats.days} metric={metric} label={t("adminStats.chartLabel", { metric: metricLabel(t, metric) })} format={n} height={96} />
+          </section>
+        ))}
+      </div>
+
+      <details className="admin-stats-details">
+        <summary>{t("adminStats.table")}</summary>
         <div className="admin-stats-scroll">
           <table className="admin-stats-grid">
             <thead>
@@ -201,11 +211,11 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
             </tfoot>
           </table>
         </div>
-      </section>
+      </details>
 
-      <section aria-labelledby="admin-stats-notes" className="admin-stats-notes">
-        <h2 id="admin-stats-notes">{t("adminStats.notes")}</h2>
-        <ul>
+      <details className="admin-stats-details">
+        <summary>{t("adminStats.notes")}</summary>
+        <ul className="admin-stats-notes">
           <li>{t("adminStats.note.played")}</li>
           <li>{t("adminStats.note.active")}</li>
           <li>{t("adminStats.note.rooms")}</li>
@@ -213,7 +223,7 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
           <li>{t("adminStats.note.deleted")}</li>
           <li>{t("adminStats.note.totals")}</li>
         </ul>
-      </section>
+      </details>
     </>
   );
 }
@@ -222,39 +232,75 @@ function metricLabel(t: ReturnType<typeof useT>, metric: Metric): string {
   return t(`adminStats.metric.${metric}`);
 }
 
+const PAD = { top: 10, right: 8, bottom: 22, left: 8 };
+
 /**
- * One bar per day for one count, on a zero baseline. A single series, so no legend: the label
- * names it. Each bar shows its day and value on hover or focus; the table below holds every number.
+ * One count per day as a line on a zero baseline, drawn at the element's own width so the line
+ * and its dots keep their size. A single series, so no legend: the card's heading names it.
+ * Pointing at the chart marks the nearest day and shows its number above the chart; the table
+ * holds every number.
  */
-function DayChart({ days, metric, label, format }: { days: LaunchStatsDayRow[]; metric: Metric; label: string; format: (value: number) => string }) {
+function LineChart({ days, metric, label, format, height }: {
+  days: LaunchStatsDayRow[];
+  metric: Metric;
+  label: string;
+  format: (value: number) => string;
+  height: number;
+}) {
   const t = useT();
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
   const [active, setActive] = useState<number | null>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const max = Math.max(1, ...days.map((d) => d[metric]));
+  const plotW = Math.max(0, width - PAD.left - PAD.right);
+  const plotH = height - PAD.top - PAD.bottom;
+  const x = (i: number) => PAD.left + (days.length > 1 ? (i / (days.length - 1)) * plotW : plotW / 2);
+  const y = (value: number) => PAD.top + plotH - (value / max) * plotH;
+  const points = days.map((d, i) => `${x(i)},${y(d[metric])}`).join(" ");
   const shown = active === null ? null : days[active];
+
+  const pointAt = (clientX: number) => {
+    const rect = box.current?.getBoundingClientRect();
+    if (!rect || days.length === 0) return;
+    const ratio = (clientX - rect.left - PAD.left) / Math.max(1, plotW);
+    setActive(Math.min(days.length - 1, Math.max(0, Math.round(ratio * (days.length - 1)))));
+  };
+
   return (
-    <figure className="admin-stats-chart" aria-label={label}>
+    <figure className="admin-stats-chart">
       <div className="admin-stats-chart-meta">
         <span className="muted">{t("adminStats.chartMax", { value: format(max) })}</span>
-        <span aria-live="polite">{shown ? `${shown.date}: ${format(shown[metric])}` : ""}</span>
+        <span aria-live="polite">{shown ? t("adminStats.point", { date: shown.date, value: format(shown[metric]) }) : ""}</span>
       </div>
-      <div className="admin-stats-bars" onMouseLeave={() => setActive(null)}>
-        {days.map((day, i) => (
-          <button
-            key={day.date}
-            type="button"
-            className={i === active ? "admin-stats-bar active" : "admin-stats-bar"}
-            aria-label={`${day.date}: ${format(day[metric])}`}
-            onMouseEnter={() => setActive(i)}
-            onFocus={() => setActive(i)}
-            onBlur={() => setActive(null)}
-          >
-            <span style={{ height: `${(day[metric] / max) * 100}%` }} />
-          </button>
-        ))}
-      </div>
-      <div className="admin-stats-axis muted">
-        <span>{days[0]?.date}</span>
-        <span>{days.at(-1)?.date}</span>
+      <div
+        ref={box}
+        className="admin-stats-plot"
+        style={{ height }}
+        onPointerMove={(e) => pointAt(e.clientX)}
+        onPointerDown={(e) => pointAt(e.clientX)}
+        onPointerLeave={() => setActive(null)}
+      >
+        {width > 0 && (
+          <svg width={width} height={height} role="img" aria-label={label}>
+            <line className="admin-stats-grid-line" x1={PAD.left} x2={PAD.left + plotW} y1={y(max)} y2={y(max)} />
+            <line className="admin-stats-baseline" x1={PAD.left} x2={PAD.left + plotW} y1={y(0)} y2={y(0)} />
+            {shown && active !== null && <line className="admin-stats-guide" x1={x(active)} x2={x(active)} y1={PAD.top} y2={y(0)} />}
+            <polygon className="admin-stats-area" points={`${x(0)},${y(0)} ${points} ${x(days.length - 1)},${y(0)}`} />
+            <polyline className="admin-stats-line" points={points} />
+            {days.length <= 31 && days.map((d, i) => d[metric] > 0 && <circle key={d.date} className="admin-stats-dot" cx={x(i)} cy={y(d[metric])} r={2.5} />)}
+            {shown && active !== null && <circle className="admin-stats-dot active" cx={x(active)} cy={y(shown[metric])} r={5} />}
+            <text className="admin-stats-tick" x={PAD.left} y={height - 6} textAnchor="start">{days[0]?.date}</text>
+            <text className="admin-stats-tick" x={PAD.left + plotW} y={height - 6} textAnchor="end">{days.at(-1)?.date}</text>
+          </svg>
+        )}
       </div>
     </figure>
   );
