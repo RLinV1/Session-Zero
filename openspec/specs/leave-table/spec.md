@@ -7,11 +7,15 @@ Lets a player end their seat in a room deliberately, knowing what they give up, 
 ## Requirements
 
 ### Requirement: Players can leave the table
-The room page SHALL give every player a "Leave table" control in the room sidebar. It SHALL be reachable by keyboard, SHALL NOT be the panel's primary control, and SHALL be available on both wide and narrow layouts. It SHALL NOT be shown to the GM.
+The room page SHALL give every player a "Leave table" control in the room sidebar, on the row that says who they are and separate from that text. At rest it SHALL look like a button in the shared neutral style: small, unfilled, with a visible boundary and an icon. It SHALL turn the danger colour only when hovered. It SHALL be reachable by keyboard, SHALL NOT be the panel's primary control, and SHALL be available on both wide and narrow layouts, where a long display name SHALL NOT push it out of view. It SHALL NOT be shown to the GM.
 
 #### Scenario: Player finds Leave table
 - **WHEN** a player is in a room
-- **THEN** the sidebar shows a "Leave table" button that can be reached with Tab and activated with Enter or Space
+- **THEN** the sidebar shows a "Leave table" button beside "You are …" that looks like a button before it is hovered, and can be reached with Tab and activated with Enter or Space
+
+#### Scenario: Long name on a phone
+- **WHEN** a player with a long display name is in a room on a narrow layout
+- **THEN** the name truncates and the "Leave table" button stays fully visible
 
 #### Scenario: GM has no Leave table
 - **WHEN** the GM is in their room
@@ -71,15 +75,27 @@ Leaving SHALL NOT change, reassign or delete any token. Tokens the departed play
 - **THEN** "Aria" stays on the board at the same position and still lists Sam as its owner
 
 ### Requirement: GM is notified when a player leaves
-When a player leaves while the GM is connected, the GM's room page SHALL show a notice naming the player, announced through a polite live region. If the departed player owns any tokens, the notice SHALL offer "Review tokens". The notice SHALL be dismissible without resolving anything.
+When a player leaves, every connected client's room page SHALL show a notice "<name> has left the room." announced through a polite live region, once per departure seen happening in that session. A client that loads or reloads after the departure SHALL NOT show a notice for it. The GM's notice SHALL offer "Review tokens" if the departed player owns any tokens; a player's notice SHALL NOT offer it. Every notice SHALL be dismissible without resolving anything. A player removed by the GM SHALL NOT produce a notice for players.
 
 #### Scenario: GM sees the notice
 - **WHEN** Sam, who owns a token, leaves while the GM is in the room
-- **THEN** the GM sees "Sam left the table" with a Review tokens action
+- **THEN** the GM sees "Sam has left the room." with a Review tokens action
 
 #### Scenario: Player with no tokens leaves
 - **WHEN** a player who owns no tokens leaves
 - **THEN** the GM's notice names them and offers no Review tokens action
+
+#### Scenario: Other players are told
+- **WHEN** Sam leaves while Kim is connected
+- **THEN** Kim sees "Sam has left the room." exactly once, with Dismiss and no Review tokens action
+
+#### Scenario: Reload does not replay
+- **WHEN** Sam left earlier and Kim reloads the page
+- **THEN** Kim sees no departure notice
+
+#### Scenario: Removal is not announced to players
+- **WHEN** the GM removes Sam from the room
+- **THEN** Kim sees no departure notice
 
 ### Requirement: Unresolved departures stay listed for the GM
 The GM panel SHALL list every departed player who still owns at least one token, with the number of tokens, and SHALL let the GM open the review for each. The list SHALL be derived from room state, so it SHALL survive a reload and SHALL empty itself once no token names that player. Players SHALL NOT see this list.
