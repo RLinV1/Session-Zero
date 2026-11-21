@@ -8,6 +8,10 @@
  * out throughout. Deleted rooms are gone from every fact, because deletion erases them (ADR 0009).
  */
 export interface LaunchStatsFacts {
+  /** Accounts created before the window that still exist. */
+  accountsBefore: number;
+  /** Rooms opened before the window that still exist. */
+  roomsBefore: number;
   /** Accounts created in the window. */
   accounts: { id: string; at: string }[];
   /**

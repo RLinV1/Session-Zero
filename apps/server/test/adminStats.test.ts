@@ -87,16 +87,21 @@ describe("admin launch stats (ADR 0079)", () => {
     const res = await admin.request("GET", "/api/admin/stats?from=2026-11-01&to=2026-11-03");
     const text = await res.text();
     const stats = LaunchStatsResponse.parse(JSON.parse(text));
-    const zero = { accountsCreated: 0, roomsCreated: 0, roomsCreatedByGuests: 0, roomsCreatedByAccounts: 0, activeRooms: 0, playedRooms: 0, returningRooms: 0, aiSeatsJoined: 0 };
+    const zero = { accountsCreated: 0, roomsCreated: 0, roomsCreatedByGuests: 0, roomsCreatedByAccounts: 0, activeRooms: 0, playedRooms: 0, returningRooms: 0, aiSeatsJoined: 0, peopleActive: 0 };
+    // People: day 1 the guest GM, the table GM and Ana (AI seats aside); day 3 Bo and the admin's GM seat.
     expect(stats.days).toEqual([
-      { ...zero, date: "2026-11-01", accountsCreated: 2, roomsCreated: 2, roomsCreatedByGuests: 1, roomsCreatedByAccounts: 1, activeRooms: 2, playedRooms: 1, aiSeatsJoined: 2 },
-      { ...zero, date: "2026-11-02" },
-      { ...zero, date: "2026-11-03", roomsCreated: 1, roomsCreatedByAccounts: 1, activeRooms: 2, returningRooms: 1 },
+      { ...zero, date: "2026-11-01", accountsCreated: 2, roomsCreated: 2, roomsCreatedByGuests: 1, roomsCreatedByAccounts: 1, activeRooms: 2, playedRooms: 1, aiSeatsJoined: 2, peopleActive: 3, accountsToDate: 2, roomsToDate: 2 },
+      { ...zero, date: "2026-11-02", accountsToDate: 2, roomsToDate: 2 },
+      { ...zero, date: "2026-11-03", roomsCreated: 1, roomsCreatedByAccounts: 1, activeRooms: 2, returningRooms: 1, peopleActive: 2, accountsToDate: 2, roomsToDate: 3 },
     ]);
     expect(stats.totals).toEqual({
       accountsCreated: 2, roomsCreated: 3, roomsCreatedByGuests: 1, roomsCreatedByAccounts: 2,
-      activeRooms: 3, playedRooms: 1, returningRooms: 1, aiSeatsJoined: 2,
+      activeRooms: 3, playedRooms: 1, returningRooms: 1, aiSeatsJoined: 2, peopleActive: 5, accountsToDate: 2, roomsToDate: 3,
     });
+
+    // Growth starts from what existed before the range.
+    const later = LaunchStatsResponse.parse(await (await admin.request("GET", "/api/admin/stats?from=2026-11-03&to=2026-11-03")).json());
+    expect(later.totals).toMatchObject({ accountsToDate: 2, roomsToDate: 3, accountsCreated: 0, roomsCreated: 1 });
 
     // Counts only: nothing that names a person or a room.
     for (const secret of [admin.email, host.email, admin.view!.id, table.roomId, guest.roomId, table.inviteCode, "Secret Table Name", "Ana", "Oswin"]) {
@@ -134,6 +139,10 @@ describe.each(storeCases)("launch stats facts (%s store, ADR 0079)", (_name, mak
     expect(facts.activity.some((a) => a.roomId === temp)).toBe(false);
     expect(facts.firstDays.filter((f) => f.roomId === room)).toEqual([{ roomId: room, day: today }]);
     expect(facts.aiSeats.filter((s) => s.roomId === room)).toEqual([{ roomId: room, participantId: ai, at: expect.any(String) }]);
+
+    // Counted as existing before a window that starts after them; temporary rooms never.
+    const after = await store.launchStatsFacts(to, new Date(Date.now() + 120_000).toISOString());
+    expect(after.roomsBefore - facts.roomsBefore).toBeGreaterThanOrEqual(1);
 
     // Outside the window, none of it.
     const later = await store.launchStatsFacts(to, new Date(Date.now() + 120_000).toISOString());

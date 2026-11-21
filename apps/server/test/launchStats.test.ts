@@ -4,7 +4,7 @@ import type { LaunchStatsFacts } from "../src/store/statsStore";
 
 const NOW = Date.parse("2026-11-21T15:00:00.000Z");
 const range = (from: string, to: string): StatsRange => resolveStatsRange({ from, to }, NOW)!;
-const empty = (): LaunchStatsFacts => ({ accounts: [], rooms: [], activity: [], firstDays: [], aiSeats: [] });
+const empty = (): LaunchStatsFacts => ({ accountsBefore: 0, roomsBefore: 0, accounts: [], rooms: [], activity: [], firstDays: [], aiSeats: [] });
 
 describe("launch stats range (ADR 0079)", () => {
   it("defaults to the last 30 UTC days, today included", () => {
@@ -33,7 +33,7 @@ describe("aggregateLaunchStats (ADR 0079)", () => {
     expect(stats.days.map((d) => d.date)).toEqual(["2026-11-01", "2026-11-02", "2026-11-03"]);
     expect(stats.days[1]).toEqual({
       date: "2026-11-02", accountsCreated: 0, roomsCreated: 0, roomsCreatedByGuests: 0, roomsCreatedByAccounts: 0,
-      activeRooms: 0, playedRooms: 0, returningRooms: 0, aiSeatsJoined: 0,
+      activeRooms: 0, playedRooms: 0, returningRooms: 0, aiSeatsJoined: 0, peopleActive: 0, accountsToDate: 0, roomsToDate: 0,
     });
   });
 
@@ -98,6 +98,34 @@ describe("aggregateLaunchStats (ADR 0079)", () => {
     facts.aiSeats = [{ roomId: "r", participantId: "ai", at: "2026-10-20T09:00:00.000Z" }];
     const stats = aggregateLaunchStats(facts, range("2026-11-01", "2026-11-02"));
     expect(stats.totals).toMatchObject({ aiSeatsJoined: 0, playedRooms: 0, activeRooms: 1, returningRooms: 1 });
+  });
+
+  it("runs account and room totals on from what existed before the range", () => {
+    const facts = empty();
+    facts.accountsBefore = 10;
+    facts.roomsBefore = 4;
+    facts.accounts = [{ id: "u1", at: "2026-11-01T01:00:00.000Z" }, { id: "u2", at: "2026-11-03T01:00:00.000Z" }];
+    facts.rooms = [{ id: "r1", at: "2026-11-02T01:00:00.000Z", host: "guest" }];
+    const stats = aggregateLaunchStats(facts, range("2026-11-01", "2026-11-03"));
+    expect(stats.days.map((d) => d.accountsToDate)).toEqual([11, 11, 12]);
+    expect(stats.days.map((d) => d.roomsToDate)).toEqual([4, 5, 5]);
+    expect(stats.totals).toMatchObject({ accountsToDate: 12, roomsToDate: 5, accountsCreated: 2 });
+  });
+
+  it("counts people at tables per day, AI seats aside, and each seat once over the range", () => {
+    const facts = empty();
+    facts.activity = [
+      { roomId: "r1", day: "2026-11-01", participantId: "gm" },
+      { roomId: "r1", day: "2026-11-01", participantId: "ai" },
+      { roomId: "r1", day: "2026-11-02", participantId: "gm" },
+      { roomId: "r2", day: "2026-11-02", participantId: "gm2" },
+      { roomId: "r2", day: "2026-11-02", participantId: "p2" },
+    ];
+    facts.firstDays = [{ roomId: "r1", day: "2026-11-01" }, { roomId: "r2", day: "2026-11-02" }];
+    facts.aiSeats = [{ roomId: "r1", participantId: "ai", at: "2026-11-01T01:00:00.000Z" }];
+    const stats = aggregateLaunchStats(facts, range("2026-11-01", "2026-11-02"));
+    expect(stats.days.map((d) => d.peopleActive)).toEqual([1, 3]);
+    expect(stats.totals.peopleActive).toBe(3);
   });
 
   it("returns counts only: no id from the facts appears in the result", () => {

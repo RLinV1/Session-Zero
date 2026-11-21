@@ -8,7 +8,7 @@ The public launch needs a weekly answer to "is anyone playing?". The privacy pag
 
 ## Decision
 
-**Counts from existing rows, nothing new recorded.** `GET /api/admin/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` (inclusive UTC days, both optional; default the last 30 days; at most 366) returns per-day counts and range totals, computed on request from:
+**Counts from existing rows, nothing new recorded.** `GET /api/admin/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` (inclusive UTC days, both optional; default the last 30 days; at most 366) returns per-day counts, range totals and running all-time totals (growth), computed on request from:
 
 | Count | Source |
 |---|---|
@@ -18,6 +18,8 @@ The public launch needs a weekly answer to "is anyone playing?". The privacy pag
 | Played rooms | an active room with 2+ distinct `actor_id`s that day, AI seats aside |
 | Returning rooms | an active room whose first event (seq 1) was on an earlier day |
 | AI seats joined | `ParticipantJoined` events whose name ends in " (AI)", the label `apps/mcp` adds (ADR 0052) |
+| People at tables | distinct `actor_id`s per room that day, AI seats aside, summed over rooms (a person in two rooms is two seats; the range total counts each seat once) |
+| Accounts / rooms, all time | rooms and accounts created before the range, plus each day's new ones: a running total to the end of each day |
 
 `RoomStore.launchStatsFacts(from, to)` reads these facts (memory and Postgres); the pure `aggregateLaunchStats` turns them into counts. The ids the facts carry never leave the server: the response holds numbers and dates only, no ids, names, emails, addresses, room names or chat. The schemas are new (`packages/shared/src/adminStats.ts`); no existing schema changes and no migration.
 

@@ -38,6 +38,9 @@ const zero = (): LaunchStatsCounts => ({
   playedRooms: 0,
   returningRooms: 0,
   aiSeatsJoined: 0,
+  peopleActive: 0,
+  accountsToDate: 0,
+  roomsToDate: 0,
 });
 
 /**
@@ -49,6 +52,8 @@ const zero = (): LaunchStatsCounts => ({
  *   A person who joins twice as two guests counts twice; a person who only watched counts not at
  *   all, because only events are stored.
  * - It is returning on a day when it is active and its first event was on an earlier day.
+ * - People active is seats (AI aside) that joined or acted that day, summed over rooms.
+ * - The to-date counts run on from the accounts and rooms that existed before the range.
  */
 export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange): LaunchStatsResponse {
   const rows = new Map<string, LaunchStatsDayRow>();
@@ -98,6 +103,11 @@ export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange)
     days.set(day, set);
     if (!aiSeats.has(`${roomId}/${participantId}`)) set.add(participantId);
   }
+  for (const [, days] of people) {
+    for (const [day, set] of days) rows.get(day)!.peopleActive += set.size;
+  }
+  totals.peopleActive = new Set(facts.activity.filter((a) => rows.has(a.day) && !aiSeats.has(`${a.roomId}/${a.participantId}`)).map((a) => `${a.roomId}/${a.participantId}`)).size;
+
   const firstDay = new Map(facts.firstDays.map((f) => [f.roomId, f.day]));
   for (const [roomId, days] of people) {
     let played = false;
@@ -119,6 +129,18 @@ export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange)
     if (played) totals.playedRooms++;
     if (returning) totals.returningRooms++;
   }
+
+  // Growth: running totals from what existed before the range, so the last day is the total to date.
+  let accounts = facts.accountsBefore;
+  let rooms = facts.roomsBefore;
+  for (const row of rows.values()) {
+    accounts += row.accountsCreated;
+    rooms += row.roomsCreated;
+    row.accountsToDate = accounts;
+    row.roomsToDate = rooms;
+  }
+  totals.accountsToDate = accounts;
+  totals.roomsToDate = rooms;
 
   return { range: { from: range.from, to: range.to }, days: [...rows.values()], totals };
 }

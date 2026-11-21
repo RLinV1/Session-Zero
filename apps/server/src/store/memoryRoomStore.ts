@@ -228,6 +228,8 @@ export class MemoryRoomStore implements RoomStore {
     const accountOwners = new Set(users.map((u) => u.ownerId));
     const hostOf = (owner: string | null) => (owner && this.guestGms.has(owner) ? "guest" : owner && accountOwners.has(owner) ? "account" : "other");
     const facts: LaunchStatsFacts = {
+      accountsBefore: users.filter((u) => u.createdAt < from).length,
+      roomsBefore: [...this.rooms.values()].filter((room) => !room.temporary && room.createdAt < from).length,
       accounts: users.filter((u) => within(u.createdAt)).map((u) => ({ id: u.id, at: u.createdAt })),
       rooms: [...this.rooms.entries()]
         .filter(([, room]) => !room.temporary && within(room.createdAt))

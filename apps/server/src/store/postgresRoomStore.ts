@@ -465,6 +465,11 @@ export class PostgresRoomStore implements RoomStore {
   async launchStatsFacts(from: string, to: string): Promise<LaunchStatsFacts> {
     const start = new Date(from);
     const end = new Date(to);
+    const [before] = await this.prisma.$queryRaw<{ accounts: bigint; rooms: bigint }[]>`
+      SELECT (SELECT count(*) FROM users WHERE created_at < ${start}) AS accounts,
+        (SELECT count(*) FROM rooms WHERE NOT temporary AND created_at < ${start}) AS rooms
+    `;
+    const counts = { accountsBefore: Number(before?.accounts ?? 0), roomsBefore: Number(before?.rooms ?? 0) };
     const accounts = await this.prisma.$queryRaw<{ id: string; at: Date }[]>`
       SELECT id::text AS id, created_at AS at FROM users WHERE created_at >= ${start} AND created_at < ${end}
     `;
@@ -482,7 +487,7 @@ export class PostgresRoomStore implements RoomStore {
       WHERE NOT r.temporary AND e.actor_id IS NOT NULL AND e.created_at >= ${start} AND e.created_at < ${end}
     `;
     const roomIds = [...new Set(activity.map((a) => a.roomId))];
-    if (roomIds.length === 0) return { accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays: [], aiSeats: [] };
+    if (roomIds.length === 0) return { ...counts, accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays: [], aiSeats: [] };
     // A room's log starts at seq 1 (FR-SYNC-04), so its first event is one primary-key lookup.
     const firstDays = await this.prisma.$queryRaw<{ roomId: string; day: string }[]>`
       SELECT room_id::text AS "roomId", to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day
@@ -494,7 +499,7 @@ export class PostgresRoomStore implements RoomStore {
       WHERE type = 'ParticipantJoined' AND room_id = ANY(${roomIds}::uuid[])
         AND right(payload->'participant'->>'displayName', ${AI_SEAT_LABEL.length}::int) = ${AI_SEAT_LABEL}
     `;
-    return { accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays, aiSeats: aiSeats.map(stamped) };
+    return { ...counts, accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays, aiSeats: aiSeats.map(stamped) };
   }
 
   async findRoomOwner(roomId: string) {

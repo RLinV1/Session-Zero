@@ -40,6 +40,15 @@ export const LaunchStatsCounts = z.object({
   returningRooms: Count,
   /** Seats an AI app took through the MCP server (ADR 0052). */
   aiSeatsJoined: Count,
+  /**
+   * People at tables: seats (AI aside) that joined or did something. One person in two rooms is
+   * two seats. The range total counts each seat once.
+   */
+  peopleActive: Count,
+  /** Growth: accounts that exist and were created by the end of the day (range total: by its last day). */
+  accountsToDate: Count,
+  /** Growth: rooms that exist and were opened by the end of the day, temporary rooms aside. */
+  roomsToDate: Count,
 });
 export type LaunchStatsCounts = z.infer<typeof LaunchStatsCounts>;
 
@@ -51,8 +60,8 @@ export const LaunchStatsResponse = z.object({
   /** One row per day of the range, oldest first, days with nothing included. */
   days: z.array(LaunchStatsDayRow),
   /**
-   * The whole range. Room counts are distinct rooms, so a room played on three days counts once;
-   * the other counts are sums.
+   * The whole range. Room and seat counts are distinct, so a room played on three days counts
+   * once; the to-date counts are the last day's; the other counts are sums.
    */
   totals: LaunchStatsCounts,
 });

@@ -14,7 +14,8 @@ type Metric = keyof LaunchStatsCounts;
 
 /** The order of the tiles, the chart's choices and the table's columns: the launch's main number first. */
 const METRICS: readonly Metric[] = [
-  "playedRooms", "activeRooms", "returningRooms", "roomsCreated", "roomsCreatedByGuests", "roomsCreatedByAccounts", "accountsCreated", "aiSeatsJoined",
+  "playedRooms", "peopleActive", "activeRooms", "returningRooms", "roomsCreated", "roomsCreatedByGuests", "roomsCreatedByAccounts", "accountsCreated", "aiSeatsJoined",
+  "accountsToDate", "roomsToDate",
 ];
 
 type Load =
@@ -149,7 +150,10 @@ function RangeForm({ initial, onPick }: { initial: Range; onPick: (range: Range)
 }
 
 /** The smaller charts under the main one, in reading order. */
-const SMALL: readonly Metric[] = ["activeRooms", "returningRooms", "roomsCreated", "accountsCreated", "aiSeatsJoined"];
+const SMALL: readonly Metric[] = ["peopleActive", "activeRooms", "returningRooms", "roomsCreated", "accountsCreated", "aiSeatsJoined"];
+
+/** Running totals: how the site has grown, to the end of each day. */
+const GROWTH: readonly Metric[] = ["accountsToDate", "roomsToDate"];
 
 function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
   const t = useT();
@@ -168,6 +172,25 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
         <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={200} />
       </section>
 
+      <section className="admin-stats-growth" aria-labelledby="admin-stats-growth">
+        <div>
+          <h2 id="admin-stats-growth">{t("adminStats.growth")}</h2>
+          <p className="muted">{t("adminStats.growthLead")}</p>
+        </div>
+        <div className="admin-stats-multiples">
+          {GROWTH.map((metric) => (
+            <section key={metric} className="admin-stats-card" aria-labelledby={`admin-stats-${metric}`}>
+              <div className="admin-stats-card-head">
+                <h3 id={`admin-stats-${metric}`}>{metricLabel(t, metric)}</h3>
+                <p className="admin-stats-total">{n(stats.totals[metric])}</p>
+              </div>
+              <LineChart days={stats.days} metric={metric} label={t("adminStats.chartLabel", { metric: metricLabel(t, metric) })} format={n} height={140} />
+            </section>
+          ))}
+        </div>
+      </section>
+
+      <h2>{t("adminStats.daily")}</h2>
       <div className="admin-stats-multiples">
         {SMALL.map((metric) => (
           <section key={metric} className="admin-stats-card" aria-labelledby={`admin-stats-${metric}`}>
@@ -217,6 +240,8 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
         <summary>{t("adminStats.notes")}</summary>
         <ul className="admin-stats-notes">
           <li>{t("adminStats.note.played")}</li>
+          <li>{t("adminStats.note.people")}</li>
+          <li>{t("adminStats.note.growth")}</li>
           <li>{t("adminStats.note.active")}</li>
           <li>{t("adminStats.note.rooms")}</li>
           <li>{t("adminStats.note.ai")}</li>
