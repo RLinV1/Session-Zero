@@ -50,7 +50,7 @@ export async function listenForFetch(app: App): Promise<string> {
  */
 export async function startServer(
   store: RoomStore = new MemoryRoomStore(),
-  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null; assets?: AppOptions["assets"]; studioMedia?: AppOptions["studioMedia"]; studioDownloader?: AppOptions["studioDownloader"]; verification?: AppOptions["verification"]; clientOrigin?: string } = {},
+  opts: { now?: () => number; detector?: Detector; dispatcher?: GridDetectionDispatcher; wallQueue?: WallJobQueue | null; studio?: StudioAccessConfig | null; assets?: AppOptions["assets"]; studioMedia?: AppOptions["studioMedia"]; studioDownloader?: AppOptions["studioDownloader"]; verification?: AppOptions["verification"]; clientOrigin?: string; adminAccountIds?: ReadonlySet<string> } = {},
 ) {
   const uploadDir = await mkdtemp(path.join(tmpdir(), "vtt-uploads-"));
   const app = await buildApp({
@@ -59,6 +59,8 @@ export async function startServer(
     // Off unless a test turns it on, so a STUDIO_PUBLIC_ORIGIN in the environment never reaches tests.
     studio: opts.studio ?? null,
     assets: opts.assets, studioMedia: opts.studioMedia, studioDownloader: opts.studioDownloader,
+    // Nobody unless a test names someone, so an ADMIN_ACCOUNT_IDS in the environment never reaches tests.
+    adminAccountIds: opts.adminAccountIds ?? new Set(),
   });
   const base = await listenForFetch(app);
 

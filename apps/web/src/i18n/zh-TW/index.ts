@@ -12,6 +12,7 @@ import { editorZhTW } from "./editor";
 import { panelsZhTW } from "./panels";
 import { boardZhTW } from "./board";
 import { studioZhTW } from "./studio";
+import { adminZhTW } from "./admin";
 
 /**
  * Traditional Chinese for the whole web app. Loaded lazily (i18n/locale.ts), so English viewers
@@ -30,4 +31,5 @@ export const zhTW = {
   ...panelsZhTW,
   ...boardZhTW,
   ...studioZhTW,
+  ...adminZhTW,
 } satisfies Catalog<WebEn>;

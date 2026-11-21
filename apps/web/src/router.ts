@@ -18,6 +18,8 @@ export type Route =
   | { page: "join"; inviteCode: string }
   | { page: "room"; roomId: string }
   | { page: "encounterEdit"; roomId: string }
+  /** Site admins' launch stats (ADR 0079). Linked from nowhere; anyone else sees "Page not found". */
+  | { page: "adminStats" }
   | { page: "notFound" };
 
 export function parseRoute(pathname: string): Route {
@@ -37,6 +39,7 @@ export function parseRoute(pathname: string): Route {
   if (/^\/account\/new\/?$/.test(pathname)) return { page: "signup" };
   if (/^\/privacy\/?$/.test(pathname)) return { page: "privacy" };
   if (/^\/terms\/?$/.test(pathname)) return { page: "terms" };
+  if (/^\/admin\/stats\/?$/.test(pathname)) return { page: "adminStats" };
   const join = pathname.match(/^\/join\/([^/]+)\/?$/);
   if (join) return { page: "join", inviteCode: decodeURIComponent(join[1]!) };
   const edit = pathname.match(/^\/encounters\/edit\/([^/]+)\/?$/);

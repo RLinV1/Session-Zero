@@ -13,6 +13,7 @@ export const serverZhTW = {
   "studio.authoring.enrolled": "此草稿已加入場景工作室。請使用已儲存的修正要求，或登入網站編輯。",
   "studio.authoring.drift": "建置資料已變更。開始新的修正前，請先在建置頁面儲存新版本。",
   "studio.authoring.stale": "提案已儲存在版本記錄中。請查看目前版本並提出新的修正要求。",
+  "admin.stats.range": "請選擇有效的日期：開始日不得晚於結束日，範圍最多 366 天。",
   "studio.invalidJson": "無效的 JSON 要求。",
   "studio.media.origin": "無法匯入這張圖片。請在 ChatGPT 聊天中重新附加原始檔，或在 Session Zero 網站上傳。",
   "studio.media.expired": "這個檔案連結已過期或無法使用。請在 ChatGPT 聊天中重新附加原始檔。",

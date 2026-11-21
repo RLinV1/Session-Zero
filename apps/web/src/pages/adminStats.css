@@ -1,0 +1,87 @@
+/* Site admins' launch stats (ADR 0079): a plain working page on the entry ground, every surface a
+   solid panel so the numbers read over the photograph. Colours are the app's tokens, so light and
+   dark both follow the theme. */
+
+.admin-stats { min-height: 100dvh; font-family: var(--font-ui); }
+.admin-stats-main {
+  margin-block: var(--space-6) var(--space-8);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.admin-stats-main section { display: flex; flex-direction: column; gap: var(--space-3); }
+.admin-stats-main h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.015em; }
+.admin-stats-main h2 { margin: 0; font-size: 1.05rem; }
+.admin-stats-head p, .admin-stats-main > p { margin: 0; }
+
+.admin-stats-range { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
+.admin-stats-range label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.85rem; color: var(--muted); }
+.admin-stats-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.admin-stats-tiles {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: var(--space-3);
+}
+.admin-stats-tile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-1);
+}
+.admin-stats-tile dt { font-size: 0.85rem; color: var(--muted); }
+.admin-stats-tile dd { margin: 0; font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.admin-stats-tile.lead { border-color: var(--accent); }
+
+.admin-stats-chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.admin-stats-chart { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.admin-stats-chart-meta { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.85rem; font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.admin-stats-bars {
+  height: 12rem;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.admin-stats-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+}
+.admin-stats-bar span {
+  display: block;
+  width: 100%;
+  max-width: 2.5rem;
+  margin-inline: auto;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+}
+.admin-stats-bar.active, .admin-stats-bar:focus-visible { background: var(--accent-soft); }
+.admin-stats-axis { display: flex; justify-content: space-between; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+.admin-stats-scroll { overflow-x: auto; }
+.admin-stats-grid { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.admin-stats-grid th, .admin-stats-grid td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.admin-stats-grid th[scope="row"], .admin-stats-grid thead th:first-child { text-align: left; }
+.admin-stats-grid thead th { font-weight: 600; color: var(--muted); vertical-align: bottom; white-space: normal; }
+.admin-stats-grid tfoot th, .admin-stats-grid tfoot td { font-weight: 600; border-top: 1px solid var(--border-strong); }
+
+.admin-stats-notes ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: 0.9rem; }
+
+@media (max-width: 40rem) {
+  .admin-stats-main { padding: var(--space-4); margin-block: var(--space-4); }
+}

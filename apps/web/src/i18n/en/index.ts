@@ -10,6 +10,7 @@ import { editor } from "./editor";
 import { panels } from "./panels";
 import { board } from "./board";
 import { studio } from "./studio";
+import { admin } from "./admin";
 
 /**
  * Every English string the web app shows: shared text (rejections, conditions, activity
@@ -29,6 +30,7 @@ export const en = {
   ...panels,
   ...board,
   ...studio,
+  ...admin,
 } as const satisfies CatalogSource;
 
 export type WebEn = typeof en;

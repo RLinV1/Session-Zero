@@ -17,6 +17,7 @@ const LibraryPage = lazy(() => import("./pages/LibraryPage").then((m) => ({ defa
 const StudioConnectPage = lazy(() => import("./pages/studio/StudioConnectPage").then((m) => ({ default: m.StudioConnectPage })));
 const BuildPage = lazy(() => import("./pages/build/BuildPage").then((m) => ({ default: m.BuildPage })));
 const IsometricLightingPage = lazy(() => import("./pages/IsometricLightingPage").then((m) => ({ default: m.IsometricLightingPage })));
+const AdminStatsPage = lazy(() => import("./pages/AdminStatsPage").then((m) => ({ default: m.AdminStatsPage })));
 const RoomPage = lazy(() => import("./pages/RoomPage").then((m) => ({ default: m.RoomPage })));
 
 export function App() {
@@ -72,6 +73,8 @@ function RoutePage({ route }: { route: Route }) {
     case "encounterEdit":
       // A temporary room for editing an encounter template (ADR 0033).
       return <RoomPage key={`edit:${route.roomId}`} roomId={route.roomId} editing />;
+    case "adminStats":
+      return <AdminStatsPage />;
     case "notFound":
       return (
         <EntryPage>

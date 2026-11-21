@@ -98,6 +98,7 @@ import { assertFitsAllowance } from "./libraryStore";
 import type { KeepSeatConflict, MemberRecord } from "./membershipStore";
 import type { RedisSeqSource } from "./redisSeq";
 import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
 
 /**
  * As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043). The complete
@@ -455,6 +456,45 @@ export class PostgresRoomStore implements RoomStore {
       await this.seqSource.syncTo(roomId, events.at(-1)!.seq);
     }
     return events;
+  }
+
+  /**
+   * Reads only; no index serves `events.created_at`, so the activity read scans events. It runs
+   * on an admin's request, not per command (ADR 0079).
+   */
+  async launchStatsFacts(from: string, to: string): Promise<LaunchStatsFacts> {
+    const start = new Date(from);
+    const end = new Date(to);
+    const accounts = await this.prisma.$queryRaw<{ id: string; at: Date }[]>`
+      SELECT id::text AS id, created_at AS at FROM users WHERE created_at >= ${start} AND created_at < ${end}
+    `;
+    const rooms = await this.prisma.$queryRaw<{ id: string; at: Date; host: "guest" | "account" | "other" }[]>`
+      SELECT r.id::text AS id, r.created_at AS at,
+        CASE WHEN g.guest THEN 'guest' WHEN u.id IS NOT NULL THEN 'account' ELSE 'other' END AS host
+      FROM rooms r
+      LEFT JOIN gm_identities g ON g.id = r.owner_gm_id
+      LEFT JOIN users u ON u.owner_id = r.owner_gm_id
+      WHERE NOT r.temporary AND r.created_at >= ${start} AND r.created_at < ${end}
+    `;
+    const activity = await this.prisma.$queryRaw<{ roomId: string; day: string; participantId: string }[]>`
+      SELECT DISTINCT e.room_id::text AS "roomId", to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, e.actor_id::text AS "participantId"
+      FROM events e JOIN rooms r ON r.id = e.room_id
+      WHERE NOT r.temporary AND e.actor_id IS NOT NULL AND e.created_at >= ${start} AND e.created_at < ${end}
+    `;
+    const roomIds = [...new Set(activity.map((a) => a.roomId))];
+    if (roomIds.length === 0) return { accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays: [], aiSeats: [] };
+    // A room's log starts at seq 1 (FR-SYNC-04), so its first event is one primary-key lookup.
+    const firstDays = await this.prisma.$queryRaw<{ roomId: string; day: string }[]>`
+      SELECT room_id::text AS "roomId", to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day
+      FROM events WHERE seq = 1 AND room_id = ANY(${roomIds}::uuid[])
+    `;
+    const aiSeats = await this.prisma.$queryRaw<{ roomId: string; participantId: string; at: Date }[]>`
+      SELECT room_id::text AS "roomId", payload->'participant'->>'id' AS "participantId", created_at AS at
+      FROM events
+      WHERE type = 'ParticipantJoined' AND room_id = ANY(${roomIds}::uuid[])
+        AND right(payload->'participant'->>'displayName', ${AI_SEAT_LABEL.length}::int) = ${AI_SEAT_LABEL}
+    `;
+    return { accounts: accounts.map(stamped), rooms: rooms.map(stamped), activity, firstDays, aiSeats: aiSeats.map(stamped) };
   }
 
   async findRoomOwner(roomId: string) {
@@ -2240,4 +2280,9 @@ function toDiceLookRecord(row: DiceLook): DiceLookRecord {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/** A row with its time as the ISO string the store contract uses. */
+function stamped<T extends { at: Date }>(row: T): Omit<T, "at"> & { at: string } {
+  return { ...row, at: row.at.toISOString() };
 }
