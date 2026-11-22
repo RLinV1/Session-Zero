@@ -12,3 +12,4 @@ repo_ref   = "main"
 # enable_https = true
 # close_web_ports = true   # only behind a Cloudflare Tunnel (docs/EDGE-PROTECTION.md)
 # smtp_pass     = "re_..."   # required: the Resend API key (verification email)
+# admin_email = "admin@example.com"   # required: the admin account the server creates on first start

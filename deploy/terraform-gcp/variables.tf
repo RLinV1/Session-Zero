@@ -91,3 +91,8 @@ variable "mail_from" {
   type        = string
   default     = "noreply@sessionzero.codes"
 }
+
+variable "admin_email" {
+  description = "Email of the admin account the server creates on first start (it opens /admin/stats). Required; no default."
+  type        = string
+}
