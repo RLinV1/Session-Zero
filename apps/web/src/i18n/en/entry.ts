@@ -83,6 +83,8 @@ export const entry = {
   "account.dataDetail": "Deleting your account removes these permanently. It can't be undone.",
   "account.deleteAccount": "Delete account",
   "account.passwordChanged": "Your password is changed. Your other devices are signed out.",
+  "account.showPassword": "Show password",
+  "account.hidePassword": "Hide password",
   "account.currentPassword": "Current password",
   "account.newPassword": "New password",
   "account.newPasswordHint": ({ min, max }: { min: number; max: number }) => `${min} to ${max} characters. Your other devices will be signed out.`,
