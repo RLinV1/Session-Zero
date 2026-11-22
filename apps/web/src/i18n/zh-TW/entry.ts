@@ -83,6 +83,8 @@ export const entryZhTW = {
   "account.dataDetail": "刪除帳號後，這些資料將永久消失，無法復原。",
   "account.deleteAccount": "刪除帳號",
   "account.passwordChanged": "密碼已更新，其他裝置也已自動登出。",
+  "account.showPassword": "顯示密碼",
+  "account.hidePassword": "隱藏密碼",
   "account.currentPassword": "目前的密碼",
   "account.newPassword": "新密碼",
   "account.newPasswordHint": ({ min, max }) => cjk`密碼長度須為${min}到${max}個字元。變更後，其他裝置會自動登出。`,

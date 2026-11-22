@@ -1642,6 +1642,18 @@ dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
 .guest-option .cta { width: 100%; text-align: center; text-decoration: none; color: var(--on-accent); }
 .account-form > button.primary { background: transparent; border-color: var(--border-strong); color: var(--text); }
 .account-form > button.primary:hover:not(:disabled) { background: var(--hover); }
+/* A password field with its show/hide button inside the box, at the right end. */
+.password-field { position: relative; display: flex; }
+.password-field input { flex: 1; min-width: 0; padding-right: 2.6rem; }
+.password-field .password-toggle {
+  position: absolute; top: 50%; right: 0.2rem; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.1rem; height: 2.1rem; min-height: 0; padding: 0;
+  border: none; background: transparent; color: var(--muted); font-size: 1.1rem;
+}
+.password-field .password-toggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.password-field .password-toggle:active:not(:disabled) { transform: translateY(-50%); }
+ (pointer: coarse) { .password-field .password-toggle { width: 2.75rem; height: 2.75rem; } .password-field input { padding-right: 3rem; } }
 .hero-guest-hint { margin: 0; }
 .guest-divider { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.85rem; }
 .guest-divider::before,
