@@ -20,9 +20,9 @@
 
 - [x] 4.1 Add API client methods and account store actions for forgot and reset; verify typecheck
 - [x] 4.2 Add the `/forgot-password` and `/reset-password` pages, router entries, and a "Forgot password?" link on sign-in, with all text in the en and zh-TW catalogs; verify lint passes (no literal UI text)
-- [ ] 4.3 Verify in the running app with Playwright: request a reset in development (mail logged), open the link, set a password, land signed in on the dashboard; a used link shows "link no longer works"
+- [x] 4.3 Verify in the running app with Playwright: request a reset in development (mail logged), open the link, set a password, land signed in on the dashboard; a used link shows "link no longer works"
 
 ## 5. Finish
 
-- [ ] 5.1 Mark the `email-verification` change's "Address already registered" scenario as superseded by this change; verify `openspec validate signup-recovery-hardening` passes
-- [ ] 5.2 Run `npm run lint && npm run typecheck && npm test` once and fix every failure
+- [x] 5.1 Mark the `email-verification` change's "Address already registered" scenario as superseded by this change; verify `openspec validate signup-recovery-hardening` passes
+- [x] 5.2 Run `npm run lint && npm run typecheck && npm test` once and fix every failure

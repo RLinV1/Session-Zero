@@ -26,7 +26,7 @@ In production, sign-up SHALL create an unverified account, send one verification
 - **WHEN** the mail provider refuses or times out while sending the first link
 - **THEN** the account still exists, the response is the same as for a sent link, the failure is logged without the token, and the person can ask for another link
 
-#### Scenario: Address already registered
+#### Scenario: Address already registered (superseded by signup-recovery-hardening)
 - **WHEN** sign-up uses an address that already has an account
 - **THEN** the server refuses it as it does today, and sends no email
 
