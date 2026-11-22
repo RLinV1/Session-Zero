@@ -37,6 +37,8 @@ Requires=docker.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254 -j DROP || iptables -I DOCKER-USER -d 169.254.169.254 -j DROP'
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254 -p udp --dport 53 -j ACCEPT || iptables -I DOCKER-USER -d 169.254.169.254 -p udp --dport 53 -j ACCEPT'
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254 -p tcp --dport 53 -j ACCEPT || iptables -I DOCKER-USER -d 169.254.169.254 -p tcp --dport 53 -j ACCEPT'
 
 [Install]
 WantedBy=multi-user.target
