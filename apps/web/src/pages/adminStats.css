@@ -1,4 +1,4 @@
-/* Site admins' launch stats (ADR 0079): a plain working page on the entry ground, every surface a
+/* Site admins' launch stats (ADR 0080): a plain working page on the entry ground, every surface a
    solid panel so the numbers read over the photograph. One large line chart for the main number,
    then a small line chart per count. The line is the app's rust, which keeps 3:1 against both
    panels (dataviz validator); everything else is the app's text and border tokens. */

@@ -22,6 +22,7 @@ export const commonZhTW = {
   "title.gmDashboard": "你的房間",
   "title.library": "素材庫",
   "title.account": "你的帳號",
+  "title.news": "最新消息",
   "title.privacy": "隱私權政策",
   "title.terms": "服務條款",
   "title.isometricLighting": "光影示範",

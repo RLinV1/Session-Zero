@@ -94,6 +94,8 @@ export function accountLimits(now: () => number = Date.now) {
     studioGrantRequests: new RateLimiter(BUILD_LIMITS.requestsPerPassPerMinute, MINUTE, now),
     /** Guest room creations per address (IPv6 by /64, see `addressKey`); every attempt counts, accepted or not (guest-gm-hosting D3). */
     guestRoomsPerAddress: new RateLimiter(20, 60 * MINUTE, now),
+    /** Feedback reports per address (IPv6 by /64); every attempt counts, accepted or not (FR-PL-11, ADR 0079). */
+    feedbackPerAddress: new RateLimiter(10, 60 * MINUTE, now),
     /** Verification link requests per address and per client address, counted up front as sign-in is (email-verification). */
     resendPerEmail: new RateLimiter(3, 15 * MINUTE, now),
     resendPerIp: new RateLimiter(20, 60 * MINUTE, now),

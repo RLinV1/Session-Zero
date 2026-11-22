@@ -43,7 +43,7 @@ export function layerFor(route: Route): Layer {
     case "verifyEmail":
     case "join":
     case "notFound":
-    case "adminStats": // The not-found ground, so it looks no different to anyone it answers "not found" (ADR 0079).
+    case "adminStats": // The not-found ground, so it looks no different to anyone it answers "not found" (ADR 0080).
     case "studioConnect":
       return "entry";
     // The policy pages are long reading, so they take the hub's calm glow, not the entry photograph.
@@ -52,6 +52,7 @@ export function layerFor(route: Route): Layer {
     case "library":
     case "build":
     case "account":
+    case "news":
     case "privacy":
     case "terms":
       return "hub";

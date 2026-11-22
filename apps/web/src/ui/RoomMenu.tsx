@@ -1,11 +1,12 @@
 import type { RefObject } from "react";
-import { ClockCounterClockwise, DotsThree, FloppyDisk, Rewind, GearSix, Play, ShareNetwork } from "@phosphor-icons/react";
+import { Bug, ClockCounterClockwise, DotsThree, FloppyDisk, Rewind, GearSix, Play, ShareNetwork } from "@phosphor-icons/react";
 import { GuideIcon } from "./GuideTour";
 import { PopoverButton } from "./Popover";
 import { t } from "../i18n/locale";
+import { openFeedback } from "./feedback";
 
 /**
- * The room bar's "More" menu: the activity log, replay and the guide, folded into one button so
+ * The room bar's "More" menu: the activity log, replay, reporting a problem and the guide, folded into one button so
  * the bar stays short. Each item closes the menu, then opens its own view. Settings has its own
  * button on desktop and folds in here only on phones (client-settings).
  */
@@ -72,6 +73,9 @@ export function RoomMenu({ onActivityLog, onReplay, replaying, onGuide, onShare,
                 <FloppyDisk size={16} aria-hidden="true" /> {t("guest.save")}
               </button>
             )}
+            <button type="button" className="tool-button" onClick={item(() => openFeedback("bug"))}>
+              <Bug size={16} aria-hidden="true" /> {t("feedback.reportProblem")}
+            </button>
             <button type="button" className="tool-button" onClick={item(onGuide)}>
               <GuideIcon />
               {t("common.guide")}

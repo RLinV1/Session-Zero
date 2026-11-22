@@ -6,7 +6,7 @@ const NOW = Date.parse("2026-11-21T15:00:00.000Z");
 const range = (from: string, to: string): StatsRange => resolveStatsRange({ from, to }, NOW)!;
 const empty = (): LaunchStatsFacts => ({ accountsBefore: 0, roomsBefore: 0, accounts: [], rooms: [], activity: [], firstDays: [], aiSeats: [] });
 
-describe("launch stats range (ADR 0079)", () => {
+describe("launch stats range (ADR 0080)", () => {
   it("defaults to the last 30 UTC days, today included", () => {
     const r = resolveStatsRange({}, NOW)!;
     expect(r).toEqual({
@@ -27,7 +27,7 @@ describe("launch stats range (ADR 0079)", () => {
   });
 });
 
-describe("aggregateLaunchStats (ADR 0079)", () => {
+describe("aggregateLaunchStats (ADR 0080)", () => {
   it("has a row for every day, empty days included", () => {
     const stats = aggregateLaunchStats(empty(), range("2026-11-01", "2026-11-03"));
     expect(stats.days.map((d) => d.date)).toEqual(["2026-11-01", "2026-11-02", "2026-11-03"]);

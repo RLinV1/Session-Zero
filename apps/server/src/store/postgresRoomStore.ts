@@ -35,9 +35,10 @@ import {
   type StudioTokenRecord,
 } from "./studioStore";
 import { randomUUID } from "node:crypto";
+import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
-import { ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
+import { FeedbackKind, FeedbackTechnical, ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
 import {
   BuildClosedError,
   assertChoicesAllow,
@@ -460,7 +461,7 @@ export class PostgresRoomStore implements RoomStore {
 
   /**
    * Reads only; no index serves `events.created_at`, so the activity read scans events. It runs
-   * on an admin's request, not per command (ADR 0079).
+   * on an admin's request, not per command (ADR 0080).
    */
   async launchStatsFacts(from: string, to: string): Promise<LaunchStatsFacts> {
     const start = new Date(from);
@@ -765,6 +766,43 @@ export class PostgresRoomStore implements RoomStore {
       });
       return true;
     });
+  }
+
+  // ---------- Feedback (FR-PL-11, ADR 0079) ----------
+
+  async createFeedback(report: FeedbackRecord) {
+    try {
+      await this.prisma.feedbackReport.create({
+        data: {
+          id: report.id, reference: report.reference, kind: report.kind, summary: report.summary, details: report.details,
+          technical: report.technical ?? Prisma.DbNull, reporterUserId: report.reporterUserId, createdAt: new Date(report.createdAt),
+          // Nested, so the report and its screenshots are one statement: all of it or none.
+          screenshots: { create: report.screenshots.map((shot, position) => ({ position, contentType: shot.contentType, width: shot.width, height: shot.height, bytes: Buffer.from(shot.bytes) })) },
+        },
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === PRISMA_UNIQUE_VIOLATION) throw new FeedbackReferenceTakenError(report.reference);
+      throw err;
+    }
+  }
+
+  async listFeedback(since?: string): Promise<FeedbackRecord[]> {
+    const rows = await this.prisma.feedbackReport.findMany({
+      where: since === undefined ? {} : { createdAt: { gte: new Date(since) } },
+      orderBy: { createdAt: "asc" },
+      include: { screenshots: { orderBy: { position: "asc" } } },
+    });
+    return rows.map((row) => ({
+      id: row.id, reference: row.reference, kind: FeedbackKind.parse(row.kind), summary: row.summary, details: row.details,
+      // Written by this server through the schema; read back the same way, and dropped if it no longer parses.
+      technical: FeedbackTechnical.safeParse(row.technical).data ?? null,
+      reporterUserId: row.reporterUserId, createdAt: row.createdAt.toISOString(),
+      screenshots: row.screenshots.map((shot) => ({ contentType: shot.contentType, width: shot.width, height: shot.height, bytes: new Uint8Array(shot.bytes) })),
+    }));
+  }
+
+  async deleteFeedback(reference: string) {
+    return (await this.prisma.feedbackReport.deleteMany({ where: { reference } })).count > 0;
   }
 
   async getRoomDefaults(ownerGmId: string): Promise<RoomDefaults | null> {

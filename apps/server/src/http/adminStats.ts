@@ -6,7 +6,7 @@ import type { RoomStore } from "../store/roomStore";
 import { errorTag } from "./errorTag";
 
 /**
- * The accounts allowed to read launch stats (ADR 0079): `ADMIN_ACCOUNT_IDS`, account ids separated
+ * The accounts allowed to read launch stats (ADR 0080): `ADMIN_ACCOUNT_IDS`, account ids separated
  * by commas. Unset or empty means nobody, so the page does not exist anywhere it isn't configured.
  */
 export function adminAccountIdsFromEnv(value = process.env.ADMIN_ACCOUNT_IDS): ReadonlySet<string> {
@@ -14,7 +14,7 @@ export function adminAccountIdsFromEnv(value = process.env.ADMIN_ACCOUNT_IDS): R
 }
 
 /**
- * `GET /api/admin/stats`: aggregate launch counts for site admins (ADR 0079). Anyone else, signed in
+ * `GET /api/admin/stats`: aggregate launch counts for site admins (ADR 0080). Anyone else, signed in
  * or not, falls through to whatever answers a route that does not exist, so the response cannot
  * tell them this one does.
  */

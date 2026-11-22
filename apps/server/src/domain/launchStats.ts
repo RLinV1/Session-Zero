@@ -44,7 +44,7 @@ const zero = (): LaunchStatsCounts => ({
 });
 
 /**
- * Turns stored facts into counts per UTC day and for the whole range (ADR 0079). Pure. Only
+ * Turns stored facts into counts per UTC day and for the whole range (ADR 0080). Pure. Only
  * counts come out: the ids in `facts` are used to tell rooms and people apart and are dropped.
  *
  * - A room is active on a day when any participant joined it or did something in it that day.

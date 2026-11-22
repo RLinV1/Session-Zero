@@ -154,7 +154,7 @@ services:
       # One proxy (the web container) sits in front of the server. Stays 1 behind a CDN too: Caddy
       # sends a single address, and TRUSTED_PROXIES decides whose word it takes (docs/EDGE-PROTECTION.md).
       TRUST_PROXY: ${TRUST_PROXY:-1}
-      # Account ids allowed to read /admin/stats (ADR 0079). Empty: nobody, and the page answers 404.
+      # Account ids allowed to read /admin/stats (ADR 0080). Empty: nobody, and the page answers 404.
       ADMIN_ACCOUNT_IDS: ${ADMIN_ACCOUNT_IDS:-}
     depends_on:
       migrate: { condition: service_completed_successfully }

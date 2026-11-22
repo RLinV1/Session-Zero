@@ -1,6 +1,6 @@
 import type { CatalogSource } from "@vtt/shared";
 
-/** The admin launch stats page (ADR 0079). Only site admins ever see these. */
+/** The admin launch stats page (ADR 0080). Only site admins ever see these. */
 export const admin = {
   "title.adminStats": "Launch stats",
   "adminStats.heading": "Launch stats",

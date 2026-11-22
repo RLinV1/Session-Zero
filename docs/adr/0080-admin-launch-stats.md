@@ -1,4 +1,4 @@
-# ADR 0079 — Admin launch stats from stored data
+# ADR 0080 — Admin launch stats from stored data
 
 **Status:** Proposed · **Extends:** ADR 0017 (accounts and sessions), [ADR 0052](0052-mcp-player-seats.md) (AI seats)
 

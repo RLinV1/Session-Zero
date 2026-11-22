@@ -1,11 +1,12 @@
 import { useEffect, useId, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { Globe } from "@phosphor-icons/react";
+import { ChatCircleDots, Globe } from "@phosphor-icons/react";
 import type { CommandInput, Participant, RoomState } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { useT } from "../i18n/locale";
 import { LANGUAGE_CHOICE_ENABLED } from "../i18n/rollout";
 import { LanguageSettings } from "./LanguageMenu";
 import { Modal } from "./Modal";
+import { openFeedback } from "./feedback";
 import { TableRuleControls, tableRulesOf, type TableRules } from "./TableRuleControls";
 import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
 
@@ -110,7 +111,13 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
           {tab === "language" && <LanguageSettings atTable={!!room} />}
           {tab === "table" && room && <TableSection room={room} />}
         </div>
-        <div className="row settings-actions"><button type="button" onClick={onClose}>{t("common.done")}</button></div>
+        <div className="row settings-actions">
+          {/* Opens on top of Settings, so closing it comes back here (FR-PL-11). */}
+          <button type="button" className="link-button settings-feedback" onClick={() => openFeedback("bug")}>
+            <ChatCircleDots size={16} aria-hidden="true" /> {t("feedback.title")}
+          </button>
+          <button type="button" onClick={onClose}>{t("common.done")}</button>
+        </div>
       </div>
     </Modal>
   );

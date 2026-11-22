@@ -212,6 +212,12 @@ export const serverZhTW = {
   "studio.tooManyRequests": "這個連線的要求太多：每分鐘最多 120 次。請等一分鐘再繼續。",
   "studio.tooManyInvalid": "無效連線的嘗試次數太多。請稍後再試。",
   "studio.noSuchConnection": "找不到這個連線。",
+
+  "feedback.invalid": "這份回報無效。請檢查摘要後再試一次。",
+  "feedback.tooLarge": "每張截圖最多 5 MB。",
+  "feedback.tooMany": "最多附加 3 張截圖。",
+  "feedback.image": "截圖必須是 PNG、JPEG 或 WebP 圖片。",
+  "feedback.tooManyReports": "從這裡送出的回報太多了，請一小時後再試。",
 } satisfies Catalog<ServerEn>;
 
 /**

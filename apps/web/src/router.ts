@@ -13,12 +13,13 @@ export type Route =
   | { page: "signup" }
   | { page: "verifyEmail" }
   | { page: "account" }
+  | { page: "news" }
   | { page: "privacy" }
   | { page: "terms" }
   | { page: "join"; inviteCode: string }
   | { page: "room"; roomId: string }
   | { page: "encounterEdit"; roomId: string }
-  /** Site admins' launch stats (ADR 0079). Linked from nowhere; anyone else sees "Page not found". */
+  /** Site admins' launch stats (ADR 0080). Linked from nowhere; anyone else sees "Page not found". */
   | { page: "adminStats" }
   | { page: "notFound" };
 
@@ -37,6 +38,7 @@ export function parseRoute(pathname: string): Route {
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };
   // The header's "Create account" pointed here for a while, so an old link still reaches the form.
   if (/^\/account\/new\/?$/.test(pathname)) return { page: "signup" };
+  if (/^\/news\/?$/.test(pathname)) return { page: "news" };
   if (/^\/privacy\/?$/.test(pathname)) return { page: "privacy" };
   if (/^\/terms\/?$/.test(pathname)) return { page: "terms" };
   if (/^\/admin\/stats\/?$/.test(pathname)) return { page: "adminStats" };

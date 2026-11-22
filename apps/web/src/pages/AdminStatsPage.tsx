@@ -5,7 +5,7 @@ import { EntryPage } from "../ui/SiteHeader";
 import "./adminStats.css";
 
 /**
- * Site admins' launch stats (ADR 0079): aggregate counts per UTC day, for the weekly launch report.
+ * Site admins' launch stats (ADR 0080): aggregate counts per UTC day, for the weekly launch report.
  * Linked from nowhere. The server answers anyone else with the same 404 as an address that
  * doesn't exist, and this page then shows the same "Page not found" card as the router does.
  */
@@ -75,7 +75,7 @@ export function AdminStatsPage() {
 
   const ready = load.kind === "ready";
   useEffect(() => {
-    // The router titles this address "Page not found" (ADR 0079); only an admin's page says what it is.
+    // The router titles this address "Page not found" (ADR 0080); only an admin's page says what it is.
     if (ready) document.title = t("title.page", { page: t("title.adminStats") });
   }, [ready, t]);
 

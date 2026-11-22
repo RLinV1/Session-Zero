@@ -20,6 +20,7 @@ import { RoomRegistry } from "./domain/roomRegistry";
 import { createGridDetectionDispatcher, type Detector, type GridDetectionDispatcher } from "./domain/gridDetection";
 import { bullmqWallQueue, WallDetections, type WallJobQueue } from "./domain/wallDetection";
 import { registerBuildRoutes } from "./http/build";
+import { registerFeedbackRoutes } from "./http/feedback";
 import { registerStudioOAuth, studioAccessFromEnv, type StudioAccessConfig } from "./http/studioOAuth";
 import { registerRoutes } from "./http/routes";
 import { adminAccountIdsFromEnv, registerAdminStats } from "./http/adminStats";
@@ -83,7 +84,7 @@ export interface AppOptions {
    * environment: on in production, which refuses to start without mail settings; null means off.
    */
   verification?: EmailVerification | null;
-  /** Accounts that may read launch stats (ADR 0079). Defaults to `ADMIN_ACCOUNT_IDS`; empty means nobody. */
+  /** Accounts that may read launch stats (ADR 0080). Defaults to `ADMIN_ACCOUNT_IDS`; empty means nobody. */
   adminAccountIds?: ReadonlySet<string>;
 }
 
@@ -277,6 +278,7 @@ export async function buildApp({
   registerIdentityRoutes(app, { store, sessions, limits, verification, clientOrigin, now, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms, sessions });
   registerAdminStats(app, { store, adminAccountIds, now });
+  registerFeedbackRoutes(app, { store, limiter: limits.feedbackPerAddress, allowedOrigins: clientOrigin.split(",").map((o) => o.trim()), now });
   const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
   const builds = registerBuildRoutes(app, { store, assets: internalAssets, uploadDir, limits, detection, pool, sessions, now, studio, media });
   const stopBuildSweep = setInterval(() => {

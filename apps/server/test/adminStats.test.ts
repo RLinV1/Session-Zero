@@ -7,7 +7,7 @@ import { newGuestToken, startServer } from "./helpers";
 const DAY_1 = Date.parse("2026-11-01T12:00:00.000Z");
 const DAY_3 = Date.parse("2026-11-03T12:00:00.000Z");
 
-describe("admin launch stats (ADR 0079)", () => {
+describe("admin launch stats (ADR 0080)", () => {
   const admins = new Set<string>();
   let server: Awaited<ReturnType<typeof startServer>>;
 
@@ -110,7 +110,7 @@ describe("admin launch stats (ADR 0079)", () => {
   });
 });
 
-describe.each(storeCases)("launch stats facts (%s store, ADR 0079)", (_name, makeStore) => {
+describe.each(storeCases)("launch stats facts (%s store, ADR 0080)", (_name, makeStore) => {
   it("reads rooms, activity, first days and AI seats, leaving temporary rooms out", async () => {
     const store = makeStore();
     const from = new Date(Date.now() - 60_000).toISOString();

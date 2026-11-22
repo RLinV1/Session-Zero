@@ -28,6 +28,9 @@ export const policy = {
   "privacy.keep.build.term": "An AI build",
   "privacy.keep.build.body":
     "The files your AI app adds to a build, and the creatures, maps and encounters it drafts, are kept in a private draft that only you can see until you publish it. The pass that lets the AI in is shown once; the server keeps only a hash of it.",
+  "privacy.keep.feedback.term": "Feedback you send",
+  "privacy.keep.feedback.body":
+    "A report you send through Feedback: what you wrote, any screenshots you attached and, unless you turn them off, technical details (the page, your browser, screen size and language, and in a room its ID, event number and your role). Screenshots are re-encoded to remove location and camera data. Only the Session Zero team reads reports. If you are signed in, the report is linked to your account so we can reply.",
   "privacy.dont.title": "What we don't do",
   "privacy.dont.tracking": "No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.",
   "privacy.dont.sell": "We don't sell or share what you put in the app with anyone.",
@@ -43,6 +46,8 @@ export const policy = {
     "A build pass stops working after 24 hours, or sooner when you make a new one, cancel it, discard the build, change your password or delete your account.",
   "privacy.long.build":
     "A build nobody has changed for 14 days is closed, as if discarded: its unpublished files and drafts are deleted. What you published stays in your library.",
+  "privacy.long.feedback":
+    "Feedback is kept until we have dealt with it. Deleting your account deletes the reports you sent while signed in.",
   "privacy.where.title": "Where it is stored",
   "privacy.where.body":
     "Our hosting provider stores the database and uploaded files on our behalf. It processes them only to run the service for us.",

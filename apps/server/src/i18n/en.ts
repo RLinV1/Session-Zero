@@ -224,6 +224,13 @@ export const serverEn = {
   "studio.tooManyRequests": "Too many requests on this connection: at most 120 a minute. Wait a minute, then continue.",
   "studio.tooManyInvalid": "Too many attempts with an invalid connection. Try again later.",
   "studio.noSuchConnection": "No such connection.",
+
+  // Feedback reports (FR-PL-11).
+  "feedback.invalid": "This report isn't valid. Check the summary and try again.",
+  "feedback.tooLarge": "Each screenshot can be up to 5 MB.",
+  "feedback.tooMany": "Attach up to 3 screenshots.",
+  "feedback.image": "Screenshots must be PNG, JPEG or WebP images.",
+  "feedback.tooManyReports": "Too many reports from here. Try again in an hour.",
 } as const satisfies CatalogSource;
 
 export type ServerEn = typeof serverEn;

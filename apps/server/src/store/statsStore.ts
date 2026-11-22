@@ -1,5 +1,5 @@
 /**
- * What the admin launch stats are counted from (docs/adr/0079-admin-launch-stats.md). Every fact is
+ * What the admin launch stats are counted from (docs/adr/0080-admin-launch-stats.md). Every fact is
  * read from rows the server already keeps; nothing is recorded for stats. The ids here let the
  * counter tell rooms and people apart, and never leave the server: `aggregateLaunchStats` turns
  * these into counts.

@@ -26,6 +26,7 @@ export const common = {
   "title.gmDashboard": "Your rooms",
   "title.library": "Library",
   "title.account": "Your account",
+  "title.news": "What's new",
   "title.privacy": "Privacy",
   "title.terms": "Terms",
   "title.isometricLighting": "Lighting demo",

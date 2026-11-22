@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Launch stats for site admins (docs/adr/0079-admin-launch-stats.md): aggregate counts per UTC day,
+ * Launch stats for site admins (docs/adr/0080-admin-launch-stats.md): aggregate counts per UTC day,
  * computed from what the server already stores. Counts only: no ids, names, emails, addresses,
  * room names or chat ever appear here.
  */

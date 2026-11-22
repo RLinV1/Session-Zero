@@ -77,6 +77,7 @@ import {
   type StudioSweepTimes,
   type StudioTokenRecord,
 } from "./studioStore";
+import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
 import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
 
@@ -461,6 +462,26 @@ export class MemoryRoomStore implements RoomStore {
 
   private seededSlugs = new Map<string, Set<string>>();
   private roomDefaults = new Map<string, RoomDefaults>();
+
+  // ---------- Feedback (FR-PL-11, ADR 0079) ----------
+
+  private feedback = new Map<string, FeedbackRecord>();
+
+  async createFeedback(report: FeedbackRecord) {
+    if (this.feedback.has(report.reference)) throw new FeedbackReferenceTakenError(report.reference);
+    this.feedback.set(report.reference, structuredClone(report));
+  }
+
+  async listFeedback(since?: string) {
+    return [...this.feedback.values()]
+      .filter((report) => since === undefined || report.createdAt >= since)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((report) => structuredClone(report));
+  }
+
+  async deleteFeedback(reference: string) {
+    return this.feedback.delete(reference);
+  }
 
   async getRoomDefaults(ownerGmId: string) {
     const saved = this.roomDefaults.get(ownerGmId);
@@ -1426,6 +1447,8 @@ export class MemoryRoomStore implements RoomStore {
       for (const ids of this.refs.values()) ids.delete(id);
     }
     for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
+    // As the reporter foreign key cascades in Postgres (ADR 0079).
+    for (const [reference, report] of this.feedback) if (report.reporterUserId === userId) this.feedback.delete(reference);
     this.users.delete(userId);
     return { credentialHashes, objectKeys };
   }
