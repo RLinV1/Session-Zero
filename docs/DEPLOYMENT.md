@@ -129,7 +129,7 @@ Every service in `docker-compose.prod.yml` has `mem_limit`, `cpus` and `pids_lim
 The Terraform bootstrap (fresh VMs only; an existing VM needs these steps by hand) also:
 
 - installs `unattended-upgrades`, so security patches apply without a login;
-- adds an iptables rule in `DOCKER-USER` (a systemd unit, `vtt-block-metadata`) that drops container traffic to `169.254.169.254`, so a compromised container cannot read the cloud metadata endpoint. The secrets still sit in instance metadata and in Terraform state; moving them to a secret manager is a later step;
+- adds an iptables rule in `DOCKER-USER` (a systemd unit, `vtt-block-metadata`) that drops container traffic to `169.254.169.254`, so a compromised container cannot read the cloud metadata endpoint. On Google Cloud the same address is also the DNS resolver, so the GCP unit lets port 53 through ahead of the drop; without that, every image build fails its name lookups. The secrets still sit in instance metadata and in Terraform state; moving them to a secret manager is a later step;
 - runs a nightly `pg_dump` at 03:00 (`/usr/local/bin/vtt-backup`, cron `/etc/cron.d/vtt-backup`) into `/var/backups/vtt/vtt-YYYY-MM-DD.sql.gz`, keeping 7 days, through `docker compose exec` so no host client is needed. These dumps are on the same disk as the data: copy them off the VM (for example `scp` or a bucket) or a lost VM loses them too. Uploaded files in `s3data` are not in the dump.
 
 Restore into a running stack: `gunzip -c /var/backups/vtt/vtt-2026-11-18.sql.gz | docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`. Stop the server first and restore into an empty database (drop and recreate it) to avoid clashes.
