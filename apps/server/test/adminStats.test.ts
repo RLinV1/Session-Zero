@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GM_TOKEN_HEADER, LaunchStatsResponse, type CreateRoomResponse } from "@vtt/shared";
+import { seedAdminAccount } from "../src/identity/adminAccount";
 import { MemoryRoomStore } from "../src/store/memoryRoomStore";
 import { storeCases } from "./storeHarness";
 import { newGuestToken, startServer } from "./helpers";
@@ -48,6 +49,27 @@ describe("admin launch stats (ADR 0080)", () => {
     expect(ok.status).toBe(200);
     expect(ok.headers.get("cache-control")).toBe("no-store");
     expect(LaunchStatsResponse.parse(await ok.json()).days).toHaveLength(30);
+  });
+
+  it("opens for the seeded admin account, and not for a squatter who took the admin email first", async () => {
+    const id = "6f1c1a0e-1d8e-4a52-9d44-0b8f7c1e2a33";
+    const env = { ADMIN_ACCOUNT_IDS: id, ADMIN_EMAIL: "boss@example.com", ADMIN_PASSWORD: "a-long-seeded-secret" };
+    const seededStore = new MemoryRoomStore();
+    await seedAdminAccount(seededStore, env);
+    const seeded = await startServer(seededStore, { adminAccountIds: new Set([id]) });
+    const squatStore = new MemoryRoomStore();
+    const squatted = await startServer(squatStore, { adminAccountIds: new Set([id]) });
+    try {
+      const admin = await seeded.signIn(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
+      expect((await admin.request("GET", "/api/admin/stats")).status).toBe(200);
+
+      const squatter = await squatted.signUp({ email: env.ADMIN_EMAIL });
+      await seedAdminAccount(squatStore, env);
+      expect((await squatter.request("GET", "/api/admin/stats")).status).toBe(404);
+    } finally {
+      await seeded.close();
+      await squatted.close();
+    }
   });
 
   it("is off for everyone when no admin is configured", async () => {

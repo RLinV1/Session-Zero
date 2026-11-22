@@ -81,6 +81,9 @@ SMTP_PORT=${smtp_port}
 SMTP_USER=${smtp_user}
 SMTP_PASS=${smtp_pass}
 MAIL_FROM=${mail_from}
+ADMIN_ACCOUNT_IDS=${admin_id}
+ADMIN_EMAIL=${admin_email}
+ADMIN_PASSWORD=${admin_pass}
 ENVEOF
 
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build

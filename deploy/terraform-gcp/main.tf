@@ -1,4 +1,11 @@
 # Letters and digits only: the values go into a URL and a JSON file (see docker-compose.prod.yml).
+resource "random_uuid" "admin" {}
+
+resource "random_password" "admin" {
+  length  = 24
+  special = false
+}
+
 resource "random_password" "postgres" {
   length  = 32
   special = false
@@ -111,6 +118,9 @@ resource "google_compute_instance" "vtt" {
     smtp_user     = var.smtp_user
     smtp_pass     = var.smtp_pass
     mail_from     = var.mail_from
+    admin_id      = random_uuid.admin.result
+    admin_email   = var.admin_email
+    admin_pass    = random_password.admin.result
   })
 
   lifecycle {

@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildApp, databaseUrlFromEnv, httpLogFromEnv, missingProductionEnv } from "./app";
+import { seedAdminAccount } from "./identity/adminAccount";
 import { seedDevAccount } from "./identity/devAccount";
 import { createAssetStore } from "./store/assetStore";
 import { MemoryRoomStore } from "./store/memoryRoomStore";
@@ -47,6 +48,7 @@ process.on("unhandledRejection", (reason) => {
 await mkdir(uploadDir, { recursive: true });
 const store = await createStore();
 await seedDevAccount(store);
+await seedAdminAccount(store);
 const app = await buildApp({
   store,
   assets: await createAssetStore(uploadDir),
