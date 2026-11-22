@@ -1,0 +1,52 @@
+import type { Catalog } from "@vtt/shared";
+import type { feedback } from "../en/feedback";
+
+/** Traditional Chinese for `en/feedback.ts`. */
+export const feedbackZhTW = {
+  "feedback.open": "意見回饋",
+  "feedback.reportProblem": "回報問題",
+  "feedback.newsLink": "發現問題了嗎？傳送意見回饋",
+  "feedback.title": "傳送意見回饋",
+  "feedback.kind": "哪一種意見回饋？",
+  "feedback.kind.bug": "錯誤",
+  "feedback.kind.idea": "點子",
+  "feedback.kind.other": "其他",
+  "feedback.summary": "摘要",
+  "feedback.summaryPlaceholder.bug": "門打開後，戰爭迷霧沒有消失",
+  "feedback.summaryPlaceholder.idea": "讓玩家自己設定棋子顏色",
+  "feedback.summaryPlaceholder.other": "用一句話說明",
+  "feedback.details.bug": "發生了什麼事？你原本預期會怎樣？",
+  "feedback.details.other": "多說一點",
+  "feedback.count": ({ n, max }: { n: number; max: number }) => `${n} / ${max}`,
+  "feedback.summaryNeeded": "請先寫一段簡短的摘要。",
+  "feedback.screenshots": "截圖",
+  "feedback.screenshotCount": ({ n, max }: { n: number; max: number }) => `${n} / ${max} 張`,
+  "feedback.addImage": "加入圖片",
+  "feedback.capture": "擷取棋盤",
+  "feedback.capturing": "擷取中…",
+  "feedback.captureFailed": "無法擷取棋盤。請改用截圖後貼上。",
+  "feedback.dropHint": "也可以把圖片拖曳到這裡，或用 ⌘V / Ctrl+V 貼上",
+  "feedback.imageRules": "PNG、JPEG 或 WebP，每張最多 5 MB。儲存前會移除位置與相機資訊。",
+  "feedback.removeImage": ({ name }: { name: string }) => `移除 ${name}`,
+  "feedback.boardCapture": "棋盤擷圖",
+  "feedback.tooManyImages": ({ max }: { max: number }) => `最多只能附加 ${max} 張圖片。`,
+  "feedback.wrongType": ({ name }: { name: string }) => `${name} 不是 PNG、JPEG 或 WebP 圖片。`,
+  "feedback.tooBig": ({ name }: { name: string }) => `${name} 超過 5 MB。`,
+  "feedback.gmCaptureNote": "你是 GM，所以擷圖會包含你看得到的一切，包括被戰爭迷霧遮住的區域。只有 Session Zero 團隊會閱讀回報。",
+  "feedback.technical": "附上技術資訊",
+  "feedback.whatsSent": "會傳送哪些資訊",
+  "feedback.technicalList": "你所在的頁面（不含 ? 或 # 之後的內容）、瀏覽器、螢幕大小和語言。",
+  "feedback.technicalRoom": "在房間裡時，也會附上房間 ID、最新的事件編號，以及你是 GM 還是玩家。絕不包含房間內容。",
+  "feedback.signedInAs": ({ name }: { name: string }) => `你以 ${name} 的身分登入，我們可以用電子郵件回覆你。`,
+  "feedback.notSignedIn": "你沒有登入，所以我們無法回覆這份回報。",
+  "feedback.cancel": "取消",
+  "feedback.send": "傳送意見回饋",
+  "feedback.sending": "傳送中…",
+  "feedback.sentTitle": "謝謝，我們收到了",
+  "feedback.sentBody": ({ n }: { n: number }) =>
+    n === 0
+      ? "你的回報已送達團隊。如果之後寫信給我們，請附上這個參考編號。"
+      : `你的回報和 ${n} 張截圖已送達團隊。如果之後寫信給我們，請附上這個參考編號。`,
+  "feedback.reference": "參考編號",
+  "feedback.done": "完成",
+} satisfies Catalog<typeof feedback>;

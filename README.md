@@ -336,6 +336,8 @@ A player needs to enter a session with minimal friction and remain associated wi
 | FR-PL-07 | Player | **Encounter replay for late joiners** | Replays the action log from a chosen checkpoint so a late-arriving player can review encounter progression. |
 | FR-PL-08 | Player | **Connect your own AI** | Lets a user's own AI app join a room as an ordinary, labelled player through MCP, under the same visibility and permission rules as a browser, with no account and no model on our side. |
 | FR-PL-09 | Player | **Several AI seats at one table** | Lets one AI or several people's AIs each hold their own seat in a room, including one seat per sub-agent, with each seat seeing and acting only for itself. |
+| FR-PL-10 | Both | **What's new** | Tells everyone what changed in Session Zero on a dated page in their language, each change shown with a screenshot of the real app. |
+| FR-PL-11 | Both | **Report a problem** | Lets anyone send the team a bug report or idea with screenshots and optional technical details, from any page or from inside a room, without an account. |
 
 ### 5.4 Player and GM Need — Interact with the Tactical Board Clearly
 
@@ -518,6 +520,8 @@ Priority reflects what the encounter loop needs to function end-to-end (**Must**
 | FR-PL-07 | Encounter replay for late joiners | Stretch | Medium |
 | FR-PL-08 | Connect your own AI | Stretch | High |
 | FR-PL-09 | Several AI seats at one table | Stretch | Medium |
+| FR-PL-10 | What's new | Should | Low |
+| FR-PL-11 | Report a problem | Should | Medium |
 | FR-GM-26 | AI game builder | Stretch | High |
 | FR-GM-27 | Review and publish a build | Stretch | High |
 | FR-GM-20 | Guest revocation and invite regeneration | Stretch | Low |

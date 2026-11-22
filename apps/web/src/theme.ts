@@ -51,6 +51,7 @@ export function layerFor(route: Route): Layer {
     case "library":
     case "build":
     case "account":
+    case "news":
     case "privacy":
     case "terms":
       return "hub";

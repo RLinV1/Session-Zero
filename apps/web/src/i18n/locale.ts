@@ -196,6 +196,7 @@ const TITLE_KEYS = {
   gmDashboard: "title.gmDashboard",
   library: "title.library",
   account: "title.account",
+  news: "title.news",
   privacy: "title.privacy",
   terms: "title.terms",
   isometricLighting: "title.isometricLighting",

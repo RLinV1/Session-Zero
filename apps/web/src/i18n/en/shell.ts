@@ -17,6 +17,7 @@ export const shell = {
   "nav.rooms": "Your rooms",
   "nav.library": "Library",
   "nav.policies": "Policies",
+  "nav.news": "What's new",
   "nav.privacy": "Privacy",
   "nav.terms": "Terms",
   "animationPicker.choose": "Choose animation",

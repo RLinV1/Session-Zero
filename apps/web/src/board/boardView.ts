@@ -15,6 +15,7 @@ import {
   Matrix,
   Particle,
   ParticleContainer,
+  Rectangle,
   Sprite,
   Text,
   Texture,
@@ -1486,6 +1487,23 @@ export class BoardView {
     ghost.g.position.set(at.x, at.y);
     ghost.expires = performance.now() + 600;
     this.invalidate();
+  }
+
+  /**
+   * A PNG of exactly what this viewer's board shows now, for a feedback report (FR-PL-11, design
+   * D5): the visible frame of the stage at the canvas's own resolution, so a player's capture holds
+   * nothing they can't already see. Null before the board is ready.
+   */
+  async captureView(): Promise<Blob | null> {
+    if (!this.initialized) return null;
+    const { width, height } = this.app.screen;
+    const canvas = this.app.renderer.extract.canvas({
+      target: this.app.stage,
+      frame: new Rectangle(0, 0, width, height),
+      resolution: this.app.renderer.resolution,
+      clearColor: "#14171b",
+    }) as HTMLCanvasElement;
+    return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
   }
 
   /**
