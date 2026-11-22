@@ -57,6 +57,12 @@ export type VerifyEmailRequest = z.infer<typeof VerifyEmailRequest>;
 export const ResendVerificationRequest = z.object({ email: Email });
 export type ResendVerificationRequest = z.infer<typeof ResendVerificationRequest>;
 
+export const ForgotPasswordRequest = z.object({ email: Email });
+export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequest>;
+
+export const ResetPasswordRequest = z.object({ token: z.string().min(20).max(128), password: Password });
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequest>;
+
 export interface SignUpResponse {
   verificationRequired: true;
   email: string;

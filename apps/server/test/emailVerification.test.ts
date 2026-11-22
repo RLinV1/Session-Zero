@@ -84,29 +84,158 @@ describe("email verification (FR-GM-01)", () => {
       expect(mail.sent).toEqual([]);
     });
 
-    it("refuses a verified address and sends no mail", async () => {
+    it("writes the mail in Traditional Chinese for a request that asks for it", async () => {
+      await production();
+      await signUp({ "accept-language": "zh-TW" });
+      expect(mail.sent[0]!.subject).toBe("驗證你的 Session Zero 電子郵件地址");
+      expect(mail.sent[0]!.text).toContain("驗證電子郵件地址");
+    });
+  });
+
+  describe("repeat sign-up (FR-GM-01)", () => {
+    const attacker = { ...credentials, password: "attacker passphrase" };
+    const signUpAs = (body: typeof credentials, headers: Record<string, string> = {}) =>
+      server.anonymous().request("POST", "/api/auth/signup", body, headers);
+
+    it("cannot replace an unverified account's password: the owner's works after verify, the attacker's never does", async () => {
+      await production();
+      await signUp();
+      const first = mail.tokenOf();
+      const repeated = await signUpAs(attacker);
+      expect(repeated.status).toBe(201);
+      expect(mail.sent).toHaveLength(2);
+      expect((await verify(first)).status).toBe(400);
+      expect((await verify(mail.tokenOf())).status).toBe(200);
+      expect((await signIn("attacker passphrase")).status).toBe(401);
+      expect((await signIn()).status).toBe(200);
+    });
+
+    it("emails the owner a fresh link for the unverified account's existing credentials", async () => {
+      await production();
+      await signUp();
+      const before = await server.store.findUserByEmail(credentials.email);
+      await signUpAs(attacker);
+      const after = await server.store.findUserByEmail(credentials.email);
+      expect(after).toEqual(before);
+      expect(mail.sent[1]!.to).toBe("sam@example.com");
+      expect(mail.sent[1]!.text).toContain(`${ORIGIN}/verify-email?token=`);
+    });
+
+    it("answers a repeat sign-up exactly as a new one: same status, body shape and no cookie", async () => {
+      await production();
+      const fresh = await signUpAs({ ...credentials, email: "new@example.com" });
+      await signUp();
+      const unverifiedRepeat = await signUpAs(attacker);
+      await verify(mail.tokenOf());
+      const verifiedRepeat = await signUpAs(attacker);
+      for (const res of [unverifiedRepeat, verifiedRepeat]) {
+        expect(res.status).toBe(fresh.status);
+        expect(res.headers.getSetCookie()).toEqual([]);
+        expect(await res.json()).toEqual({ verificationRequired: true, email: "sam@example.com" });
+      }
+      expect(await fresh.json()).toEqual({ verificationRequired: true, email: "new@example.com" });
+    });
+
+    it("leaves a verified account unchanged and its sessions signed in, and mails a notice with sign-in and reset links", async () => {
+      await production();
+      await signUp();
+      await verify(mail.tokenOf());
+      const owner = await server.signIn(credentials.email, credentials.password);
+      const before = await server.store.findUserByEmail(credentials.email);
+      mail.sent.length = 0;
+      expect((await signUpAs(attacker)).status).toBe(201);
+      expect(await server.store.findUserByEmail(credentials.email)).toEqual(before);
+      expect(await owner.me()).not.toBeNull();
+      expect((await signIn("attacker passphrase")).status).toBe(401);
+      expect((await signIn()).status).toBe(200);
+      expect(mail.sent).toHaveLength(1);
+      expect(mail.sent[0]!.to).toBe("sam@example.com");
+      expect(mail.sent[0]!.text).toContain(`${ORIGIN}/signin`);
+      expect(mail.sent[0]!.text).toContain(`${ORIGIN}/forgot-password`);
+      expect(mail.sent[0]!.text).not.toContain("token=");
+      expect(mail.sent[0]!.html).toContain(`${ORIGIN}/forgot-password`);
+    });
+
+    it("creates no second account", async () => {
+      await production();
+      await signUp();
+      await signUpAs(attacker);
+      await signUpAs({ ...attacker, displayName: "Mallory" });
+      expect((await server.store.findUserByEmail(credentials.email))!.displayName).toBe("Sam");
+    });
+
+    it("writes the notice in Traditional Chinese for a request that asks for it", async () => {
       await production();
       await signUp();
       await verify(mail.tokenOf());
       mail.sent.length = 0;
-      expect((await signUp()).status).toBe(409);
-      expect(mail.sent).toEqual([]);
+      await signUpAs(attacker, { "accept-language": "zh-TW" });
+      expect(mail.sent[0]!.subject).toBe("有人嘗試使用你的電子郵件地址註冊");
     });
 
-    it("lets the real owner sign up over an unverified row: new password, old link dead (BE-AUDIT squatting)", async () => {
+    it("shares one budget of 3 per 15 minutes per email with verification resend", async () => {
       await production();
       await signUp();
-      const squatterToken = mail.tokenOf();
-      const owner = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
-      expect(owner.status).toBe(201);
-      expect(mail.sent).toHaveLength(2);
-      expect((await verify(squatterToken)).status).toBe(400);
-      expect((await verify(mail.tokenOf())).status).toBe(200);
-      expect((await signIn()).status).toBe(401);
-      expect((await signIn("owner's own passphrase")).status).toBe(200);
+      expect((await resend()).status).toBe(204);
+      expect((await resend()).status).toBe(204);
+      await vi.waitFor(() => expect(mail.sent).toHaveLength(3));
+      expect((await signUpAs(attacker)).status).toBe(201);
+      expect(mail.sent).toHaveLength(4);
+      const over = await signUpAs(attacker);
+      expect(over.status).toBe(201);
+      expect(await over.json()).toEqual({ verificationRequired: true, email: "sam@example.com" });
+      expect((await resend()).status).toBe(204);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mail.sent).toHaveLength(4);
     });
 
-    it("answers 409 and changes nothing when the owner verified before the replacement landed (PR 226 atomic replacement)", async () => {
+    it("sends no further notice over the limit and answers as before", async () => {
+      await production();
+      await signUp();
+      await verify(mail.tokenOf());
+      mail.sent.length = 0;
+      for (let i = 0; i < 6; i++) {
+        const res = await signUpAs(attacker);
+        expect(res.status).toBe(201);
+        expect(res.headers.get("retry-after")).toBeNull();
+      }
+      expect(mail.sent).toHaveLength(3);
+    });
+
+    it("frees the budget after the window", async () => {
+      await production();
+      await signUp();
+      await verify(mail.tokenOf());
+      mail.sent.length = 0;
+      for (let i = 0; i < 4; i++) await signUpAs(attacker);
+      expect(mail.sent).toHaveLength(3);
+      clock += 16 * 60 * 1000;
+      await signUpAs(attacker);
+      expect(mail.sent).toHaveLength(4);
+    });
+
+    it("answers as for a sent notice when the mail provider fails, and logs no token", async () => {
+      await production();
+      await signUp();
+      await verify(mail.tokenOf());
+      mail.failing = true;
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await signUpAs(attacker);
+      expect(res.status).toBe(201);
+      expect(JSON.stringify(log.mock.calls)).toContain("provider refused");
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/token=/);
+    });
+
+    it("still answers 409 and marks the email field when no mail is configured (development)", async () => {
+      server = await startServer();
+      await server.signUp({ email: "sam@example.com" });
+      const res = await signUpAs(attacker);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ field: "email" });
+      expect((await server.signIn("sam@example.com", "correct horse battery")).view).not.toBeNull();
+    });
+
+    it("does not change the account when the owner verifies between the lookup and the mail", async () => {
       await production();
       await signUp();
       const ownerToken = mail.tokenOf();
@@ -116,18 +245,9 @@ describe("email verification (FR-GM-01)", () => {
         expect((await verify(ownerToken)).status).toBe(200);
         return found;
       });
-      const duplicate = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
-      expect(duplicate.status).toBe(409);
+      expect((await signUpAs(attacker)).status).toBe(201);
       expect((await signIn("attacker passphrase")).status).toBe(401);
       expect((await signIn()).status).toBe(200);
-      expect(mail.sent).toHaveLength(1);
-    });
-
-    it("writes the mail in Traditional Chinese for a request that asks for it", async () => {
-      await production();
-      await signUp({ "accept-language": "zh-TW" });
-      expect(mail.sent[0]!.subject).toBe("驗證你的 Session Zero 電子郵件地址");
-      expect(mail.sent[0]!.text).toContain("驗證電子郵件地址");
     });
   });
 
@@ -272,18 +392,20 @@ describe("email verification (FR-GM-01)", () => {
   });
 
   describe("tokens are bound to the credentials they were issued for (PR 226 delayed-token takeover)", () => {
-    it("sends nothing when the first mail is issued after a duplicate sign-up replaced the credentials", async () => {
+    it("a duplicate sign-up while the first mail is being issued leaves the owner's credentials and one live link", async () => {
       await production();
       const real = server.store.createVerificationToken.bind(server.store);
       vi.spyOn(server.store, "createVerificationToken").mockImplementationOnce(async (...args) => {
-        const replaced = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
-        expect(replaced.status).toBe(201);
+        const repeated = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "attacker passphrase" });
+        expect(repeated.status).toBe(201);
         return real(...args);
       });
       expect((await signUp()).status).toBe(201);
-      expect(mail.sent).toHaveLength(1);
-      expect((await verify(mail.tokenOf())).status).toBe(200);
-      expect((await signIn("attacker passphrase")).status).toBe(200);
+      expect(mail.sent).toHaveLength(2);
+      expect((await verify(mail.tokenOf(0))).status).toBe(400);
+      expect((await verify(mail.tokenOf(1))).status).toBe(200);
+      expect((await signIn("attacker passphrase")).status).toBe(401);
+      expect((await signIn()).status).toBe(200);
     });
 
     it("refuses to store a token for a version the credentials have moved past", async () => {
@@ -292,21 +414,21 @@ describe("email verification (FR-GM-01)", () => {
       const user = (await server.store.findUserByEmail(credentials.email))!;
       const now = new Date(clock).toISOString();
       const later = new Date(clock + HOUR).toISOString();
-      expect(await server.store.replaceUnverifiedCredentials(user.id, "$argon2id$replaced", "new-hash", now, later)).toBe(true);
+      expect(await server.store.createPasswordResetToken(user.id, "reset-hash", now, later, user.credentialVersion)).toBe(true);
+      expect(await server.store.consumePasswordResetToken("reset-hash", now, "$argon2id$reset")).not.toBeNull();
       expect(await server.store.createVerificationToken(user.id, "stale-hash", now, later, user.credentialVersion)).toBe(false);
       expect(await server.store.consumeVerificationToken("stale-hash", now)).toBeNull();
     });
 
-    it("a resend after a replacement issues for the current credentials and the earlier link stays dead", async () => {
+    it("a verification link issued before a password reset stops working", async () => {
       await production();
       await signUp();
       const first = mail.tokenOf();
-      await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, password: "owner's own passphrase" });
-      expect((await resend()).status).toBe(204);
-      expect(mail.sent).toHaveLength(3);
+      const user = (await server.store.findUserByEmail(credentials.email))!;
+      const now = new Date(clock).toISOString();
+      await server.store.createPasswordResetToken(user.id, "reset-hash", now, new Date(clock + HOUR).toISOString(), user.credentialVersion);
+      await server.store.consumePasswordResetToken("reset-hash", now, "$argon2id$reset");
       expect((await verify(first)).status).toBe(400);
-      expect((await verify(mail.tokenOf())).status).toBe(200);
-      expect((await signIn("owner's own passphrase")).status).toBe(200);
     });
   });
 

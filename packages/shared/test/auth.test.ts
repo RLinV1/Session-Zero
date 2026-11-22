@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChangePasswordRequest, EMAIL_UNVERIFIED_CODE, ResendVerificationRequest, SignInRequest, SignUpRequest, VerifyEmailRequest } from "../src";
+import { ChangePasswordRequest, EMAIL_UNVERIFIED_CODE, ForgotPasswordRequest, ResendVerificationRequest, ResetPasswordRequest, SignInRequest, SignUpRequest, VerifyEmailRequest } from "../src";
 
 const valid = { email: "sam@example.com", password: "correct horse", displayName: "Sam" };
 
@@ -95,5 +95,30 @@ describe("email verification schemas (FR-GM-01)", () => {
 
   it("names the unverified sign-in code", () => {
     expect(EMAIL_UNVERIFIED_CODE).toBe("email_unverified");
+  });
+});
+
+describe("password reset schemas (FR-GM-01)", () => {
+  const token = "t".repeat(43);
+
+  it("trims and lowercases the email asked about, and refuses a malformed one", () => {
+    expect(ForgotPasswordRequest.parse({ email: "  Sam@Example.COM " }).email).toBe("sam@example.com");
+    expect(failedField(ForgotPasswordRequest.safeParse({ email: "sam" }))).toBe("email");
+  });
+
+  it("accepts a token and a password of 8 to 128 characters", () => {
+    expect(ResetPasswordRequest.safeParse({ token, password: "x".repeat(8) }).success).toBe(true);
+    expect(ResetPasswordRequest.safeParse({ token, password: "x".repeat(128) }).success).toBe(true);
+  });
+
+  it("refuses a short or overlong password, naming the field", () => {
+    expect(failedField(ResetPasswordRequest.safeParse({ token, password: "x".repeat(7) }))).toBe("password");
+    expect(failedField(ResetPasswordRequest.safeParse({ token, password: "x".repeat(129) }))).toBe("password");
+  });
+
+  it("refuses a missing, short or overlong token", () => {
+    expect(failedField(ResetPasswordRequest.safeParse({ password: "correct horse" }))).toBe("token");
+    expect(failedField(ResetPasswordRequest.safeParse({ token: "short", password: "correct horse" }))).toBe("token");
+    expect(failedField(ResetPasswordRequest.safeParse({ token: "t".repeat(129), password: "correct horse" }))).toBe("token");
   });
 });

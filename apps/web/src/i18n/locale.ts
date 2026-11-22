@@ -190,6 +190,8 @@ const TITLE_KEYS = {
   signin: "title.signin",
   signup: "title.signup",
   verifyEmail: "title.verifyEmail",
+  forgotPassword: "title.forgotPassword",
+  resetPassword: "title.resetPassword",
   join: "title.join",
   notFound: "title.notFound",
   start: "title.start",

@@ -67,14 +67,22 @@ export interface IdentityStore {
    * earlier ones. False, storing nothing, when the user's credentials have moved past that version or the user is gone.
    */
   createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number): Promise<boolean>;
-  /**
-   * One step, only while the user is still unverified: replaces the password hash and the user's
-   * tokens with the new one, and moves the credential version on. False, changing nothing, when the user is verified or gone.
-   */
-  replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string): Promise<boolean>;
   /** Deletes the token and, when it exists, has not expired at `now` and matches the user's credential version, marks its user verified at `now` and returns it; null otherwise. */
   consumeVerificationToken(tokenHash: string, now: string): Promise<UserRecord | null>;
   deleteExpiredVerificationTokens(now: string): Promise<void>;
+  /**
+   * Stores the hash of a new password reset token for `credentialVersion` and deletes the user's
+   * earlier ones. False, storing nothing, when the user's credentials have moved past that version or the user is gone.
+   */
+  createPasswordResetToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number): Promise<boolean>;
+  /** The user a reset token is valid for at `now` (it exists, has not expired and matches the credential version), without using the token; null otherwise. */
+  findUserByResetToken(tokenHash: string, now: string): Promise<UserRecord | null>;
+  /**
+   * In one step, when the token is valid as `findUserByResetToken` says: sets the password hash and
+   * `passwordChangedAt`, verifies the email if it was not, moves the credential version on, and
+   * deletes the user's reset and verification tokens. Returns the user; null, changing nothing, otherwise.
+   */
+  consumePasswordResetToken(tokenHash: string, now: string, passwordHash: string): Promise<UserRecord | null>;
   /** Deletes unverified users created before `createdBefore` that hold no verification token (BE-AUDIT squatting), rechecking each one as it is deleted. */
   deleteStaleUnverifiedUsers(createdBefore: string): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */

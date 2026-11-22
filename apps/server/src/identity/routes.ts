@@ -5,7 +5,9 @@ import {
   ChangePasswordRequest,
   DeleteAccountRequest,
   EMAIL_UNVERIFIED_CODE,
+  ForgotPasswordRequest,
   ResendVerificationRequest,
+  ResetPasswordRequest,
   SIGN_IN_FAILED,
   SignInRequest,
   SignUpRequest,
@@ -18,9 +20,10 @@ import { requestLocale } from "../i18n/locale";
 import type { DeleteAccount } from "../domain/accountDeletion";
 import type { BuildStore } from "../store/buildStore";
 import type { StudioStore } from "../store/studioStore";
-import { EmailTakenError, type IdentityStore } from "../store/identityStore";
+import { EmailTakenError, type IdentityStore, type UserRecord } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
-import type { EmailVerification } from "./mailer";
+import type { EmailVerification, MailMessage } from "./mailer";
+import { resetEmail, resetLink, RESET_LINK_LIFETIME_MS, signUpNoticeEmail } from "./recoveryEmails";
 import { verificationEmail, verificationLink, VERIFY_LINK_LIFETIME_MS } from "./verificationEmail";
 import { errorTag } from "../http/errorTag";
 import { isCommonPassword } from "./commonPasswords";
@@ -100,6 +103,9 @@ export function accountLimits(now: () => number = Date.now) {
     resendPerEmail: new RateLimiter(3, 15 * MINUTE, now),
     resendPerIp: new RateLimiter(20, 60 * MINUTE, now),
     verifyPerIp: new RateLimiter(30, 15 * MINUTE, now),
+    resetRequestsPerIp: new RateLimiter(20, 60 * MINUTE, now),
+    resetRequestsPerEmail: new RateLimiter(3, 15 * MINUTE, now),
+    resetAttemptsPerIp: new RateLimiter(30, 15 * MINUTE, now),
   };
 }
 export type AccountLimits = ReturnType<typeof accountLimits>;
@@ -131,14 +137,14 @@ export function registerIdentityRoutes(
         });
       } catch (err) {
         if (!(err instanceof EmailTakenError)) throw err;
-        const existing = verification ? await store.findUserByEmail(body.data.email) : null;
-        if (!verification || !existing || existing.emailVerifiedAt) return void res.status(409).json({ error: err.message, field: "email" });
-        const issued = mintVerification();
-        if (!(await store.replaceUnverifiedCredentials(existing.id, passwordHash, issued.hash, issued.createdAt, issued.expiresAt))) {
-          return void res.status(409).json({ error: err.message, field: "email" });
+        if (!verification) return void res.status(409).json({ error: err.message, field: "email" });
+        const existing = await store.findUserByEmail(body.data.email);
+        if (existing && limits.resendPerEmail.hit(`resend:${body.data.email}`).ok) {
+          const locale = requestLocale(res);
+          if (existing.emailVerifiedAt) await deliver(verification, signUpNoticeEmail(locale, existing.email, clientOrigin));
+          else await sendVerification(verification, existing.id, existing.credentialVersion, existing.email, locale);
         }
-        await deliverVerification(verification, existing.email, issued.token, requestLocale(res));
-        return void res.status(201).json({ verificationRequired: true, email: existing.email } satisfies SignUpResponse);
+        return void res.status(201).json({ verificationRequired: true, email: body.data.email } satisfies SignUpResponse);
       }
       if (!verification) {
         await startSession(res, user.id);
@@ -175,6 +181,47 @@ export function registerIdentityRoutes(
       const target = user && !user.emailVerifiedAt && limits.resendPerEmail.hit(`resend:${body.data.email}`).ok ? user : null;
       res.status(204).end();
       if (target) await sendVerification(verification, target.id, target.credentialVersion, target.email, requestLocale(res));
+    })().catch(internalError(res));
+  });
+
+  app.post("/api/auth/password/forgot", (req, res) => {
+    void (async () => {
+      noStore(res);
+      if (refused(res, limits.resetRequestsPerIp.hit(`reset:${addressKey(req.ip)}`))) return;
+      if (!isJson(req, res)) return;
+      const body = ForgotPasswordRequest.safeParse(req.body);
+      if (!body.success) return badRequest(res, body.error.issues);
+      const user = await store.findUserByEmail(body.data.email);
+      const target = user && limits.resetRequestsPerEmail.hit(`reset:${body.data.email}`).ok ? user : null;
+      res.status(204).end();
+      if (target) await sendReset(target, requestLocale(res));
+    })().catch(internalError(res));
+  });
+
+  app.post("/api/auth/password/reset", (req, res) => {
+    void (async () => {
+      noStore(res);
+      if (refused(res, limits.resetAttemptsPerIp.hit(`reset-attempt:${addressKey(req.ip)}`))) return;
+      if (!isJson(req, res)) return;
+      const body = ResetPasswordRequest.safeParse(req.body);
+      if (!body.success) {
+        if (body.error.issues.some((issue) => issue.path[0] === "token")) return resetLinkInvalid(res);
+        return badRequest(res, body.error.issues);
+      }
+      if (isCommonPassword(body.data.password)) return badRequest(res, [{ path: ["password"], message: TOO_COMMON }]);
+      const tokenHash = hashToken(body.data.token);
+      const found = await store.findUserByResetToken(tokenHash, new Date(now()).toISOString());
+      if (!found) return resetLinkInvalid(res);
+      if (body.data.password.trim().toLowerCase() === found.email) {
+        return badRequest(res, [{ path: ["password"], message: "Password can't be your email address" }]);
+      }
+      const user = await store.consumePasswordResetToken(tokenHash, new Date(now()).toISOString(), await hashPassword(body.data.password));
+      if (!user) return resetLinkInvalid(res);
+      await sessions.endOthers(user.id);
+      await store.endBuildPasses(user.ownerId);
+      await store.endStudioGrants(user.ownerId, new Date().toISOString());
+      await startSession(res, user.id);
+      res.json({ account: toAccountView(user) } satisfies MeResponse);
     })().catch(internalError(res));
   });
 
@@ -288,15 +335,25 @@ export function registerIdentityRoutes(
   async function sendVerification(active: EmailVerification, userId: string, credentialVersion: number, email: string, locale: ReturnType<typeof requestLocale>) {
     const issued = mintVerification();
     if (!await store.createVerificationToken(userId, issued.hash, issued.createdAt, issued.expiresAt, credentialVersion)) return;
-    await deliverVerification(active, email, issued.token, locale);
+    await deliver(active, verificationEmail(locale, email, verificationLink(clientOrigin, issued.token)));
   }
 
-  async function deliverVerification(active: EmailVerification, email: string, token: string, locale: ReturnType<typeof requestLocale>) {
+  async function sendReset(user: UserRecord, locale: ReturnType<typeof requestLocale>) {
+    const token = randomBytes(32).toString("base64url");
+    const issued = now();
+    const stored = await store.createPasswordResetToken(user.id, hashToken(token), new Date(issued).toISOString(), new Date(issued + RESET_LINK_LIFETIME_MS).toISOString(), user.credentialVersion);
+    if (!stored) return;
+    const link = resetLink(clientOrigin, token);
+    if (verification) await deliver(verification, resetEmail(locale, user.email, link));
+    else if (process.env.NODE_ENV !== "production") console.info(`[vtt] password reset link for ${user.email}: ${link}`);
+  }
+
+  async function deliver(active: EmailVerification, message: MailMessage) {
     try {
-      await active.mailer.send(verificationEmail(locale, email, verificationLink(clientOrigin, token)));
+      await active.mailer.send(message);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      console.error("[vtt] verification email failed:", reason);
+      console.error("[vtt] email failed:", reason);
     }
   }
 
@@ -327,6 +384,10 @@ function isJson(req: Request, res: Response): boolean {
 function badRequest(res: Response, issues: { path: PropertyKey[]; message: string }[]) {
   const first = issues[0];
   res.status(400).json({ error: first?.message ?? "Invalid request", field: first?.path[0] ?? null, issues });
+}
+
+function resetLinkInvalid(res: Response) {
+  res.status(400).json({ error: "This reset link is invalid or has expired." });
 }
 
 function noStore(res: Response) {

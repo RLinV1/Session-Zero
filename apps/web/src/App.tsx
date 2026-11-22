@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { HomePage } from "./pages/HomePage";
-import { AccountPage, SignInPage, SignUpPage, VerifyEmailPage } from "./account/AccountPages";
+import { AccountPage, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignUpPage, VerifyEmailPage } from "./account/AccountPages";
 import { JoinPage } from "./pages/JoinPage";
 import { PrivacyPage, TermsPage } from "./pages/PolicyPages";
 import { useDocumentTitle, useT } from "./i18n/locale";
@@ -67,6 +67,10 @@ function RoutePage({ route }: { route: Route }) {
       return <SignUpPage />;
     case "verifyEmail":
       return <VerifyEmailPage />;
+    case "forgotPassword":
+      return <ForgotPasswordPage />;
+    case "resetPassword":
+      return <ResetPasswordPage />;
     case "account":
       return <AccountPage />;
     case "news":

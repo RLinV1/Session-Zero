@@ -68,6 +68,14 @@ export async function resendVerification(email: string) {
   await api.auth.resendVerification({ email });
 }
 
+export async function forgotPassword(email: string) {
+  await api.auth.forgotPassword({ email });
+}
+
+export async function resetPassword(token: string, password: string) {
+  setAccount((await api.auth.resetPassword({ token, password })).account, true);
+}
+
 export async function signOut() {
   await api.auth.signOut().catch(() => {});
   onSignOut.forEach((fn) => fn());

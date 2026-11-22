@@ -80,6 +80,16 @@ export const serverEn = {
   "mail.verify.intro": "Open the link below to verify your email address and finish creating your account. It works once and expires in 24 hours.",
   "mail.verify.action": "Verify email address",
   "mail.verify.ignore": "If you did not sign up for Session Zero, you can ignore this email.",
+  "api.resetLinkInvalid": "This reset link is invalid or has expired.",
+  "mail.reset.subject": "Reset your Session Zero password",
+  "mail.reset.intro": "Someone asked to reset the password for your Session Zero account. Open the link below to choose a new password. It works once and expires in 1 hour.",
+  "mail.reset.action": "Choose a new password",
+  "mail.reset.ignore": "If you did not ask for this, you can ignore this email. Your password stays the same.",
+  "mail.notice.subject": "Someone tried to sign up with your email address",
+  "mail.notice.intro": "Someone tried to create a Session Zero account with this email address, which already has an account. Nothing about your account changed.",
+  "mail.notice.signIn": "Sign in to your account",
+  "mail.notice.reset": "Reset your password",
+  "mail.notice.ignore": "If this was you, sign in or reset your password. If not, you can ignore this email.",
 
   // Rooms, invites, history and replay.
   "api.roomNotFound": "Room not found",

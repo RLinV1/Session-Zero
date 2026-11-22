@@ -16,6 +16,8 @@ export const commonZhTW = {
   "title.signin": "登入",
   "title.signup": "建立帳號",
   "title.verifyEmail": "驗證電子郵件",
+  "title.forgotPassword": "忘記密碼",
+  "title.resetPassword": "重設密碼",
   "title.join": "加入遊戲桌",
   "title.notFound": "找不到頁面",
   "title.start": "建立房間",
