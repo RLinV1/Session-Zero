@@ -204,6 +204,8 @@ const TITLE_KEYS = {
   encounterEdit: "title.encounterEdit",
   build: "title.build",
   studioConnect: "title.studioConnect",
+  // "Page not found" until the stats load: anyone else must not learn the page exists (ADR 0080).
+  adminStats: "title.notFound",
 } as const satisfies Record<Exclude<Route["page"], "home">, keyof WebEn>;
 
 /** The browser tab's title: "Library · Session Zero", or the product name alone at home. */

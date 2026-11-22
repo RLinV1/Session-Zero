@@ -1,0 +1,83 @@
+/* Site admins' launch stats (ADR 0080): a plain working page on the entry ground, every surface a
+   solid panel so the numbers read over the photograph. One large line chart for the main number,
+   then a small line chart per count. The line is the app's rust, which keeps 3:1 against both
+   panels (dataviz validator); everything else is the app's text and border tokens. */
+
+.admin-stats { min-height: 100dvh; font-family: var(--font-ui); --line: #b3552d; }
+
+.admin-stats-main {
+  margin-block: var(--space-6) var(--space-8);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.admin-stats-main h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.015em; }
+.admin-stats-main h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.admin-stats-main h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.admin-stats-card h2 { font-size: 0.95rem; }
+.admin-stats-growth { display: flex; flex-direction: column; gap: var(--space-3); }
+.admin-stats-growth .muted { font-size: 0.85rem; margin-top: 2px; }
+.admin-stats-main p { margin: 0; }
+
+.admin-stats-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
+.admin-stats-head .muted { font-size: 0.85rem; margin-top: var(--space-1); }
+
+.admin-stats-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.admin-stats-presets { display: inline-flex; max-width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-control); overflow: hidden; }
+.admin-stats-presets button { flex: 1 1 auto; min-width: 0; border: 0; border-radius: 0; background: transparent; padding-inline: clamp(var(--space-2), 3vw, var(--space-3)); white-space: nowrap; }
+.admin-stats-presets button + button { border-left: 1px solid var(--border-strong); }
+.admin-stats-presets button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.admin-stats-dates { flex: 0 1 26rem; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--muted); min-width: 0; }
+.admin-stats-dates input { flex: 1 1 7.5rem; min-width: 0; }
+
+.admin-stats-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.admin-stats-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.admin-stats-card-head .muted { font-size: 0.8rem; margin-top: 2px; }
+.admin-stats-total { font-size: 1.6rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text); }
+.admin-stats-card.kpi .admin-stats-total { font-size: 2.6rem; }
+
+.admin-stats-multiples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
+  gap: var(--space-3);
+}
+
+.admin-stats-chart { margin: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.admin-stats-chart-meta { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.8rem; font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.admin-stats-plot { position: relative; width: 100%; touch-action: pan-y; }
+.admin-stats-plot svg { display: block; overflow: visible; }
+.admin-stats-line { fill: none; stroke: var(--line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.admin-stats-area { fill: var(--line); opacity: 0.12; stroke: none; }
+.admin-stats-dot { fill: var(--line); }
+.admin-stats-dot.active { stroke: var(--panel); stroke-width: 2; }
+.admin-stats-baseline { stroke: var(--border-strong); stroke-width: 1; }
+.admin-stats-grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+.admin-stats-guide { stroke: var(--muted); stroke-width: 1; opacity: 0.5; }
+.admin-stats-tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.admin-stats-details { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.admin-stats-details summary { cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+.admin-stats-details[open] summary { margin-bottom: var(--space-3); }
+.admin-stats-scroll { overflow-x: auto; }
+.admin-stats-grid { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.admin-stats-grid th, .admin-stats-grid td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.admin-stats-grid th[scope="row"], .admin-stats-grid thead th:first-child { text-align: left; }
+.admin-stats-grid thead th { font-weight: 600; color: var(--muted); vertical-align: bottom; white-space: normal; }
+.admin-stats-grid tfoot th, .admin-stats-grid tfoot td { font-weight: 600; border-top: 1px solid var(--border-strong); }
+.admin-stats-notes { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: 0.85rem; }
+
+@media (max-width: 40rem) {
+  .admin-stats-main { padding: var(--space-4); margin-block: var(--space-4); }
+}

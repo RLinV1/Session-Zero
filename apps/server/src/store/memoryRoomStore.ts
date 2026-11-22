@@ -79,6 +79,7 @@ import {
 } from "./studioStore";
 import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
 import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
+import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
 
 /** Dev/test store. Loses everything on restart. */
 export class MemoryRoomStore implements RoomStore {
@@ -220,6 +221,43 @@ export class MemoryRoomStore implements RoomStore {
       const event = upgradeStoredAttacks(e.event);
       return event === e.event ? e : { ...e, event };
     });
+  }
+
+  async launchStatsFacts(from: string, to: string): Promise<LaunchStatsFacts> {
+    const within = (at: string) => at >= from && at < to;
+    const users = [...this.users.values()];
+    const accountOwners = new Set(users.map((u) => u.ownerId));
+    const hostOf = (owner: string | null) => (owner && this.guestGms.has(owner) ? "guest" : owner && accountOwners.has(owner) ? "account" : "other");
+    const facts: LaunchStatsFacts = {
+      accountsBefore: users.filter((u) => u.createdAt < from).length,
+      roomsBefore: [...this.rooms.values()].filter((room) => !room.temporary && room.createdAt < from).length,
+      accounts: users.filter((u) => within(u.createdAt)).map((u) => ({ id: u.id, at: u.createdAt })),
+      rooms: [...this.rooms.entries()]
+        .filter(([, room]) => !room.temporary && within(room.createdAt))
+        .map(([id, room]) => ({ id, at: room.createdAt, host: hostOf(room.ownerGmId) })),
+      activity: [],
+      firstDays: [],
+      aiSeats: [],
+    };
+    for (const [roomId, room] of this.rooms) {
+      const log = this.events.get(roomId) ?? [];
+      if (room.temporary || !log.some((e) => e.actorId && within(e.at))) continue;
+      const seen = new Set<string>();
+      for (const e of log) {
+        if (!e.actorId || !within(e.at)) continue;
+        const day = e.at.slice(0, 10);
+        if (seen.has(`${day}/${e.actorId}`)) continue;
+        seen.add(`${day}/${e.actorId}`);
+        facts.activity.push({ roomId, day, participantId: e.actorId });
+      }
+      facts.firstDays.push({ roomId, day: log[0]!.at.slice(0, 10) });
+      for (const e of log) {
+        if (e.event.type === "ParticipantJoined" && e.event.participant.displayName.endsWith(AI_SEAT_LABEL)) {
+          facts.aiSeats.push({ roomId, participantId: e.event.participant.id, at: e.at });
+        }
+      }
+    }
+    return facts;
   }
 
   async findRoomOwner(roomId: string) {

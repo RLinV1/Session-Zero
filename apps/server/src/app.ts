@@ -23,6 +23,7 @@ import { registerBuildRoutes } from "./http/build";
 import { registerFeedbackRoutes } from "./http/feedback";
 import { registerStudioOAuth, studioAccessFromEnv, type StudioAccessConfig } from "./http/studioOAuth";
 import { registerRoutes } from "./http/routes";
+import { adminAccountIdsFromEnv, registerAdminStats } from "./http/adminStats";
 import { attachAccount, requireSameOrigin } from "./identity/middleware";
 import { accountLimits, registerIdentityRoutes, type AccountLimits } from "./identity/routes";
 import { Sessions } from "./identity/sessions";
@@ -83,6 +84,8 @@ export interface AppOptions {
    * environment: on in production, which refuses to start without mail settings; null means off.
    */
   verification?: EmailVerification | null;
+  /** Accounts that may read launch stats (ADR 0080). Defaults to `ADMIN_ACCOUNT_IDS`; empty means nobody. */
+  adminAccountIds?: ReadonlySet<string>;
 }
 
 /**
@@ -132,6 +135,7 @@ export async function buildApp({
   now = Date.now,
   studio = studioAccessFromEnv(),
   verification = verificationFromEnv(),
+  adminAccountIds = adminAccountIdsFromEnv(),
 }: AppOptions): Promise<App> {
   const app = express();
   // Don't advertise Express (and its version range) on every response (security-hardening F-02).
@@ -273,6 +277,7 @@ export async function buildApp({
   });
   registerIdentityRoutes(app, { store, sessions, limits, verification, clientOrigin, now, deleteAccount: accountDeletion({ store, registry, assets: assetStore, rooms, afterDeleted: () => media.sweep() }) });
   registerRoutes(app, { store, registry, uploadDir, assets: assetStore, limits, detection, walls, rooms, sessions });
+  registerAdminStats(app, { store, adminAccountIds, now });
   registerFeedbackRoutes(app, { store, limiter: limits.feedbackPerAddress, allowedOrigins: clientOrigin.split(",").map((o) => o.trim()), now });
   const studioAccess = registerStudioOAuth(app, { store, limits, studio, now });
   const builds = registerBuildRoutes(app, { store, assets: internalAssets, uploadDir, limits, detection, pool, sessions, now, studio, media });
