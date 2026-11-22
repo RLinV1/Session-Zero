@@ -2,15 +2,12 @@ import type { Locale } from "@vtt/shared";
 import { serverEn } from "../i18n/en";
 import { serverZhTW } from "../i18n/zh-TW";
 import type { MailMessage } from "./mailer";
+import { escapeHtml, siteLink } from "./siteLink";
 
 export const VERIFY_LINK_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
 export function verificationLink(clientOrigin: string, token: string): string {
-  const base = clientOrigin.split(",")[0]!.trim().replace(/\/+$/, "");
-  return `${base}/verify-email?token=${encodeURIComponent(token)}`;
+  return siteLink(clientOrigin, "/verify-email", token);
 }
 
 export function verificationEmail(locale: Locale, to: string, link: string): MailMessage {
@@ -22,7 +19,12 @@ export function verificationEmail(locale: Locale, to: string, link: string): Mai
   return {
     to,
     subject,
-    text: `${intro}\n\n${action}: ${link}\n\n${ignore}\n`,
+    text: `${intro}
+
+${action}: ${link}
+
+${ignore}
+`,
     html: `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">${escapeHtml(action)}</a></p><p>${escapeHtml(link)}</p><p>${escapeHtml(ignore)}</p>`,
   };
 }

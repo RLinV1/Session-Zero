@@ -1,7 +1,7 @@
 ## 1. Contract
 
-- [ ] 1.1 Add `ForgotPasswordRequest` and `ResetPasswordRequest` to `packages/shared` with tests in `packages/shared/test/auth.test.ts` (valid input, bad email, short password, missing token); verify the shared tests pass
-- [ ] 1.2 Write `docs/adr/0081-signup-recovery.md` (endpoints, shared per-email limit, production no longer answers 409); verify the file exists and is linked from the change
+- [x] 1.1 Add `ForgotPasswordRequest` and `ResetPasswordRequest` to `packages/shared` with tests in `packages/shared/test/auth.test.ts` (valid input, bad email, short password, missing token); verify the shared tests pass
+- [x] 1.2 Write `docs/adr/0081-signup-recovery.md` (endpoints, shared per-email limit, production no longer answers 409); verify the file exists and is linked from the change
 
 ## 2. Storage
 

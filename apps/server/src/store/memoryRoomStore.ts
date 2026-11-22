@@ -107,6 +107,7 @@ export class MemoryRoomStore implements RoomStore {
   private users = new Map<string, UserRecord>();
   private sessions = new Map<string, SessionRecord>();
   private verificationTokens = new Map<string, { userId: string; expiresAt: string; credentialVersion: number }>();
+  private resetTokens = new Map<string, { userId: string; expiresAt: string; credentialVersion: number }>();
   /** `${roomId}/${participantId}` -> the account holding that seat (ADR 0017 M1). */
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
@@ -1368,15 +1369,6 @@ export class MemoryRoomStore implements RoomStore {
     return true;
   }
 
-  async replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string) {
-    const user = this.users.get(userId);
-    if (!user || user.emailVerifiedAt) return false;
-    user.passwordHash = passwordHash;
-    user.passwordChangedAt = new Date().toISOString();
-    user.credentialVersion += 1;
-    return this.createVerificationToken(userId, tokenHash, createdAt, expiresAt, user.credentialVersion);
-  }
-
   async consumeVerificationToken(tokenHash: string, now: string) {
     const token = this.verificationTokens.get(tokenHash);
     if (!token) return null;
@@ -1388,6 +1380,38 @@ export class MemoryRoomStore implements RoomStore {
 
   async deleteExpiredVerificationTokens(now: string) {
     for (const [hash, token] of this.verificationTokens) if (token.expiresAt <= now) this.verificationTokens.delete(hash);
+  }
+
+  async createPasswordResetToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
+    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
+    for (const [hash, token] of this.resetTokens) if (token.userId === userId) this.resetTokens.delete(hash);
+    this.resetTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
+    return true;
+  }
+
+  private resetUser(tokenHash: string, now: string) {
+    const token = this.resetTokens.get(tokenHash);
+    const user = token ? this.users.get(token.userId) : undefined;
+    return token && user && token.expiresAt > now && user.credentialVersion === token.credentialVersion ? user : null;
+  }
+
+  async findUserByResetToken(tokenHash: string, now: string) {
+    const user = this.resetUser(tokenHash, now);
+    return user ? structuredClone(user) : null;
+  }
+
+  async consumePasswordResetToken(tokenHash: string, now: string, passwordHash: string) {
+    const user = this.resetUser(tokenHash, now);
+    this.resetTokens.delete(tokenHash);
+    if (!user) return null;
+    user.passwordHash = passwordHash;
+    user.passwordChangedAt = new Date().toISOString();
+    user.emailVerifiedAt ??= now;
+    user.credentialVersion += 1;
+    for (const tokens of [this.resetTokens, this.verificationTokens]) {
+      for (const [hash, token] of tokens) if (token.userId === user.id) tokens.delete(hash);
+    }
+    return structuredClone(user);
   }
 
   async deleteStaleUnverifiedUsers(createdBefore: string) {
@@ -1447,6 +1471,7 @@ export class MemoryRoomStore implements RoomStore {
       for (const ids of this.refs.values()) ids.delete(id);
     }
     for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
+    for (const [hash, token] of this.resetTokens) if (token.userId === userId) this.resetTokens.delete(hash);
     // As the reporter foreign key cascades in Postgres (ADR 0079).
     for (const [reference, report] of this.feedback) if (report.reporterUserId === userId) this.feedback.delete(reference);
     this.users.delete(userId);

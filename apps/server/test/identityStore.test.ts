@@ -185,22 +185,6 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect(await store.findUserById(verified.id)).not.toBeNull();
     });
 
-    it("replaces credentials and tokens in one step only while unverified (PR 226 atomic replacement)", async () => {
-      const user = await newUser();
-      const old = randomUUID();
-      const fresh = randomUUID();
-      await issue(user.id, old);
-      const now = Date.now();
-      expect(await store.replaceUnverifiedCredentials(user.id, "$argon2id$replaced", fresh, new Date(now).toISOString(), new Date(now + hour).toISOString())).toBe(true);
-      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$replaced");
-      expect(await store.consumeVerificationToken(old, new Date().toISOString())).toBeNull();
-      expect((await store.consumeVerificationToken(fresh, new Date().toISOString()))!.emailVerifiedAt).not.toBeNull();
-      const later = randomUUID();
-      expect(await store.replaceUnverifiedCredentials(user.id, "$argon2id$attacker", later, new Date(now).toISOString(), new Date(now + hour).toISOString())).toBe(false);
-      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$replaced");
-      expect(await store.consumeVerificationToken(later, new Date().toISOString())).toBeNull();
-    });
-
     it("marks the user verified as it consumes the token (PR 226 atomic replacement)", async () => {
       const user = await newUser();
       const hash = randomUUID();
@@ -232,6 +216,122 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       await issue(user.id, hash);
       expect(await store.deleteUser(user.id)).not.toBeNull();
       expect(await store.consumeVerificationToken(hash, new Date().toISOString())).toBeNull();
+    });
+  });
+  describe("password reset tokens", () => {
+    const hour = 60 * 60 * 1000;
+    const issueReset = async (userId: string, hash: string, ttl = hour) => {
+      const now = Date.now();
+      const user = (await store.findUserById(userId))!;
+      return store.createPasswordResetToken(userId, hash, new Date(now).toISOString(), new Date(now + ttl).toISOString(), user.credentialVersion);
+    };
+    const issueVerification = async (userId: string, hash: string) => {
+      const now = Date.now();
+      const user = (await store.findUserById(userId))!;
+      return store.createVerificationToken(userId, hash, new Date(now).toISOString(), new Date(now + 24 * hour).toISOString(), user.credentialVersion);
+    };
+    const nowIso = () => new Date().toISOString();
+
+    it("creates a token, finds its user without using it, and consumes it once", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      expect(await issueReset(user.id, hash)).toBe(true);
+      expect((await store.findUserByResetToken(hash, nowIso()))!.id).toBe(user.id);
+      expect((await store.findUserByResetToken(hash, nowIso()))!.id).toBe(user.id);
+      const consumed = (await store.consumePasswordResetToken(hash, nowIso(), "$argon2id$reset"))!;
+      expect(consumed.id).toBe(user.id);
+      expect(consumed.passwordHash).toBe("$argon2id$reset");
+      expect(await store.consumePasswordResetToken(hash, nowIso(), "$argon2id$again")).toBeNull();
+      expect(await store.findUserByResetToken(hash, nowIso())).toBeNull();
+      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$reset");
+    });
+
+    it("refuses an expired or unknown token and leaves the password", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issueReset(user.id, hash, hour);
+      const later = new Date(Date.now() + 2 * hour).toISOString();
+      expect(await store.findUserByResetToken(hash, later)).toBeNull();
+      expect(await store.consumePasswordResetToken(hash, later, "$argon2id$late")).toBeNull();
+      expect(await store.consumePasswordResetToken(randomUUID(), nowIso(), "$argon2id$none")).toBeNull();
+      expect((await store.findUserById(user.id))!.passwordHash).toBe("$argon2id$stub");
+    });
+
+    it("replaces the user's earlier reset tokens when a new one is issued", async () => {
+      const user = await newUser();
+      const first = randomUUID();
+      const second = randomUUID();
+      await issueReset(user.id, first);
+      await issueReset(user.id, second);
+      expect(await store.consumePasswordResetToken(first, nowIso(), "$argon2id$first")).toBeNull();
+      expect((await store.consumePasswordResetToken(second, nowIso(), "$argon2id$second"))!.id).toBe(user.id);
+    });
+
+    it("refuses to store a token for a credential version the account has moved past", async () => {
+      const user = await newUser();
+      const used = randomUUID();
+      await issueReset(user.id, used);
+      await store.consumePasswordResetToken(used, nowIso(), "$argon2id$moved");
+      const stale = randomUUID();
+      const now = Date.now();
+      expect(await store.createPasswordResetToken(user.id, stale, new Date(now).toISOString(), new Date(now + hour).toISOString(), user.credentialVersion)).toBe(false);
+      expect(await store.consumePasswordResetToken(stale, nowIso(), "$argon2id$stale")).toBeNull();
+    });
+
+    it("moves the credential version on and kills an outstanding verification token when consumed", async () => {
+      const user = await newUser();
+      const squatter = randomUUID();
+      const reset = randomUUID();
+      await issueVerification(user.id, squatter);
+      await issueReset(user.id, reset);
+      const consumed = (await store.consumePasswordResetToken(reset, nowIso(), "$argon2id$owner"))!;
+      expect(consumed.credentialVersion).toBe(user.credentialVersion + 1);
+      expect(await store.consumeVerificationToken(squatter, nowIso())).toBeNull();
+    });
+
+    it("verifies the email as it consumes the token, and keeps an earlier verification time", async () => {
+      const unverified = await newUser();
+      const verified = await newUser();
+      const at = "2026-01-01T00:00:00.000Z";
+      await store.markEmailVerified(verified.id, at);
+      const a = randomUUID();
+      const b = randomUUID();
+      await issueReset(unverified.id, a);
+      await issueReset(verified.id, b);
+      expect((await store.consumePasswordResetToken(a, nowIso(), "$argon2id$a"))!.emailVerifiedAt).not.toBeNull();
+      expect((await store.consumePasswordResetToken(b, nowIso(), "$argon2id$b"))!.emailVerifiedAt).toBe(at);
+    });
+
+    it("moves passwordChangedAt on consume", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issueReset(user.id, hash);
+      await new Promise((r) => setTimeout(r, 5));
+      const consumed = (await store.consumePasswordResetToken(hash, nowIso(), "$argon2id$moved"))!;
+      expect(consumed.passwordChangedAt > user.passwordChangedAt).toBe(true);
+    });
+
+    it("deletes the account's other reset tokens and verification tokens when one is consumed", async () => {
+      const user = await newUser();
+      const reset = randomUUID();
+      const verification = randomUUID();
+      await issueReset(user.id, reset);
+      await issueVerification(user.id, verification);
+      await store.consumePasswordResetToken(reset, nowIso(), "$argon2id$x");
+      expect(await store.consumeVerificationToken(verification, nowIso())).toBeNull();
+    });
+
+    it("deletes a user's pending reset token with the user", async () => {
+      const user = await newUser();
+      const hash = randomUUID();
+      await issueReset(user.id, hash);
+      expect(await store.deleteUser(user.id)).not.toBeNull();
+      expect(await store.findUserByResetToken(hash, nowIso())).toBeNull();
+      expect(await store.consumePasswordResetToken(hash, nowIso(), "$argon2id$gone")).toBeNull();
+    });
+
+    it("refuses a token for a user that is gone", async () => {
+      expect(await store.createPasswordResetToken(randomUUID(), randomUUID(), nowIso(), nowIso(), 0)).toBe(false);
     });
   });
 });

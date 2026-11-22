@@ -1782,24 +1782,6 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
-  async replaceUnverifiedCredentials(userId: string, passwordHash: string, tokenHash: string, createdAt: string, expiresAt: string) {
-    if (!UUID.test(userId)) return false;
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
-      const updated = await tx.user.updateMany({
-        where: { id: userId, emailVerifiedAt: null },
-        data: { passwordHash, passwordChangedAt: new Date(), credentialVersion: { increment: 1 } },
-      });
-      if (updated.count === 0) return false;
-      const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
-      await tx.emailVerificationToken.deleteMany({ where: { userId } });
-      await tx.emailVerificationToken.create({
-        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion: user.credentialVersion },
-      });
-      return true;
-    });
-  }
-
   async consumeVerificationToken(tokenHash: string, now: string) {
     return this.prisma.$transaction(async (tx) => {
       const token = await tx.emailVerificationToken.findUnique({ where: { tokenHash } });
@@ -1815,6 +1797,49 @@ export class PostgresRoomStore implements RoomStore {
 
   async deleteExpiredVerificationTokens(now: string) {
     await this.prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
+  }
+
+  async createPasswordResetToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    if (!UUID.test(userId)) return false;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || user.credentialVersion !== credentialVersion) return false;
+      await tx.passwordResetToken.deleteMany({ where: { userId } });
+      await tx.passwordResetToken.create({
+        data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
+      });
+      return true;
+    });
+  }
+
+  async findUserByResetToken(tokenHash: string, now: string) {
+    const token = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
+    if (!token || token.expiresAt <= new Date(now) || token.user.credentialVersion !== token.credentialVersion) return null;
+    return toUserRecord(token.user);
+  }
+
+  async consumePasswordResetToken(tokenHash: string, now: string, passwordHash: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const token = await tx.passwordResetToken.findUnique({ where: { tokenHash } });
+      if (!token) return null;
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${token.userId}::uuid FOR UPDATE`;
+      const deleted = await tx.passwordResetToken.deleteMany({ where: { tokenHash } });
+      const user = await tx.user.findUnique({ where: { id: token.userId } });
+      if (deleted.count === 0 || !user || token.expiresAt <= new Date(now) || user.credentialVersion !== token.credentialVersion) return null;
+      const updated = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          passwordChangedAt: new Date(),
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(now),
+          credentialVersion: { increment: 1 },
+        },
+      });
+      await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      await tx.emailVerificationToken.deleteMany({ where: { userId: user.id } });
+      return toUserRecord(updated);
+    });
   }
 
   async deleteStaleUnverifiedUsers(createdBefore: string) {
@@ -1849,6 +1874,7 @@ export class PostgresRoomStore implements RoomStore {
       await tx.credential.deleteMany({ where: { sessionHash: { in: sessionHashes } } });
       await tx.session.deleteMany({ where: { userId } });
       await tx.emailVerificationToken.deleteMany({ where: { userId } });
+      await tx.passwordResetToken.deleteMany({ where: { userId } });
       await tx.roomMember.deleteMany({ where: { userId } });
       await tx.user.update({ where: { id: userId }, data: { activeDiceLookId: null } });
 

@@ -269,6 +269,7 @@ model User {
   sessions       Session[]
   memberships    RoomMember[]
   verificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   feedbackReports FeedbackReport[]
 
   @@map("users")
@@ -287,6 +288,21 @@ model EmailVerificationToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("email_verification_tokens")
+}
+
+/// A one-time password reset link (signup-recovery-hardening). Only the token's SHA-256 is stored.
+model PasswordResetToken {
+  tokenHash String   @id @map("token_hash")
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  credentialVersion Int @default(0) @map("credential_version")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 /// A sign-in (ADR 0017 I1). Only the cookie token's SHA-256 is stored.
