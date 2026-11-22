@@ -3,9 +3,11 @@ import type { Express, NextFunction, Request, Response } from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { FEEDBACK_LIMITS, FeedbackReport, feedbackReference, type FeedbackReceipt } from "@vtt/shared";
+import type { Mailer } from "../identity/mailer";
 import { signedIn } from "../identity/middleware";
 import type { RateLimiter } from "../identity/rateLimit";
 import { addressKey, refused } from "../identity/routes";
+import { feedbackEmail } from "./feedbackEmail";
 import { FeedbackReferenceTakenError, type FeedbackScreenshotRecord, type FeedbackStore } from "../store/feedbackStore";
 
 /** The formats a screenshot may really be, whatever its name or declared type says. */
@@ -48,16 +50,16 @@ export async function cleanScreenshot(bytes: Uint8Array): Promise<FeedbackScreen
  * Multipart: one `report` field holding `FeedbackReport` as JSON, and up to three `screenshots`.
  * Nothing is ever read back over HTTP; the team reads reports through `feedback:export`.
  */
-export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStore; limiter: RateLimiter; allowedOrigins: readonly string[]; now: () => number }) {
-  const { store, limiter, allowedOrigins, now } = deps;
+export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStore; limiter: RateLimiter; mailLimiter: RateLimiter; mailer: Mailer | null; adminEmail: string; allowedOrigins: readonly string[]; now: () => number }) {
+  const { store, limiter, mailLimiter, mailer, adminEmail, allowedOrigins, now } = deps;
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
       fileSize: FEEDBACK_LIMITS.screenshotBytes,
       files: FEEDBACK_LIMITS.screenshots,
-      fields: 1,
+      fields: 2,
       fieldSize: FEEDBACK_LIMITS.fieldBytes,
-      parts: FEEDBACK_LIMITS.screenshots + 1,
+      parts: FEEDBACK_LIMITS.screenshots + 2,
     },
   }).fields([{ name: "screenshots", maxCount: FEEDBACK_LIMITS.screenshots }]);
 
@@ -88,7 +90,12 @@ export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStor
     },
     (req: Request, res: Response) => {
       void (async () => {
-        const field: unknown = (req.body as Record<string, unknown> | undefined)?.report;
+        const body = req.body as Record<string, unknown> | undefined;
+        if (typeof body?.website === "string" && body.website !== "") {
+          const decoy: FeedbackReceipt = { reference: feedbackReference(() => randomInt(0, 2 ** 32) / 2 ** 32), screenshots: 0 };
+          return void res.status(201).json(decoy);
+        }
+        const field: unknown = body?.report;
         let raw: unknown;
         try { raw = typeof field === "string" ? JSON.parse(field) : undefined; } catch { raw = undefined; }
         const report = FeedbackReport.safeParse(raw);
@@ -116,7 +123,11 @@ export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStor
           try {
             await store.createFeedback({ ...base, reference });
             const receipt: FeedbackReceipt = { reference, screenshots: screenshots.length };
-            return void res.status(201).json(receipt);
+            res.status(201).json(receipt);
+            if (mailer && adminEmail && mailLimiter.hit("feedback-mail").ok) {
+              mailer.send(feedbackEmail(adminEmail, report.data, reference, account?.user.email ?? null, screenshots)).catch((error: unknown) => console.error("[vtt] feedback email failed:", error));
+            }
+            return;
           } catch (err) {
             if (!(err instanceof FeedbackReferenceTakenError) || attempt >= 4) throw err;
           }

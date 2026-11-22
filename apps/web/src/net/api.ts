@@ -693,9 +693,10 @@ export const api = {
      * Sends a report and its screenshots (FR-PL-11). Not an account request: anyone may send one,
      * and a signed-in browser's cookie goes along by itself, which is how the team can reply.
      */
-    send: async (report: FeedbackReport, screenshots: readonly { blob: Blob; name: string }[]): Promise<FeedbackReceipt> => {
+    send: async (report: FeedbackReport, screenshots: readonly { blob: Blob; name: string }[], website = ""): Promise<FeedbackReceipt> => {
       const form = new FormData();
       form.append("report", JSON.stringify(report));
+      form.append("website", website);
       for (const shot of screenshots) form.append("screenshots", shot.blob, shot.name);
       const res = await apiFetch("/api/feedback", { method: "POST", body: form });
       if (!res.ok) throw await errorFrom(res);
