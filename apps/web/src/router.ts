@@ -12,6 +12,8 @@ export type Route =
   | { page: "signin" }
   | { page: "signup" }
   | { page: "verifyEmail" }
+  | { page: "forgotPassword" }
+  | { page: "resetPassword" }
   | { page: "account" }
   | { page: "news" }
   | { page: "privacy" }
@@ -35,6 +37,8 @@ export function parseRoute(pathname: string): Route {
   if (/^\/signin\/?$/.test(pathname)) return { page: "signin" };
   if (/^\/signup\/?$/.test(pathname)) return { page: "signup" };
   if (/^\/verify-email\/?$/.test(pathname)) return { page: "verifyEmail" };
+  if (/^\/forgot-password\/?$/.test(pathname)) return { page: "forgotPassword" };
+  if (/^\/reset-password\/?$/.test(pathname)) return { page: "resetPassword" };
   if (/^\/account\/?$/.test(pathname)) return { page: "account" };
   // The header's "Create account" pointed here for a while, so an old link still reaches the form.
   if (/^\/account\/new\/?$/.test(pathname)) return { page: "signup" };

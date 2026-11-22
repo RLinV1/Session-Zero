@@ -20,6 +20,8 @@ export const common = {
   "title.signin": "Sign in",
   "title.signup": "Create account",
   "title.verifyEmail": "Verify your email",
+  "title.forgotPassword": "Forgot password",
+  "title.resetPassword": "Reset password",
   "title.join": "Join the table",
   "title.notFound": "Page not found",
   "title.start": "Start a room",

@@ -41,6 +41,8 @@ export function layerFor(route: Route): Layer {
     case "signin":
     case "signup":
     case "verifyEmail":
+    case "forgotPassword":
+    case "resetPassword":
     case "join":
     case "notFound":
     case "adminStats": // The not-found ground, so it looks no different to anyone it answers "not found" (ADR 0080).

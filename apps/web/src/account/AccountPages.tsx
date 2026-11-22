@@ -10,8 +10,8 @@ import { Modal } from "../ui/Modal";
 import { PopoverButton } from "../ui/Popover";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SiteFooter } from "../ui/SiteFooter";
-import { changePassword, deleteAccount, resendVerification, signIn, signOut, signUp, useAccount, verifyEmail } from "./accountStore";
-import { safeNext, signInFor } from "./safeNext";
+import { changePassword, deleteAccount, forgotPassword, resendVerification, resetPassword, signIn, signOut, signUp, useAccount, verifyEmail } from "./accountStore";
+import { DEFAULT_NEXT, safeNext, signInFor } from "./safeNext";
 
 /** Where to go after signing in: the page that sent the person here, if it is on this site. */
 const nextFromUrl = () => safeNext(new URLSearchParams(location.search).get("next"));
@@ -186,6 +186,7 @@ function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn
           onChange={(e) => setPassword(e.target.value)}
         />
       </label>
+      <Link href="/forgot-password">{t("account.forgot.link")}</Link>
     </AccountForm>
   );
 }
@@ -346,6 +347,120 @@ export function VerifyEmailPage() {
           <p role="status">{t("account.verify.working")}</p>
         )}
       </section>
+    </EntryPage>
+  );
+}
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await forgotPassword(email.trim());
+      setSent(true);
+    } catch (err) {
+      setError(describe(err).message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <EntryPage>
+      <form className="card account-form" onSubmit={(e) => void submit(e)}>
+        <h1>{t("account.forgot.title")}</h1>
+        {sent ? (
+          <p role="status">{t("account.forgot.sent")}</p>
+        ) : (
+          <>
+            <p>{t("account.forgot.body")}</p>
+            <label>
+              {t("account.email")}
+              <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
+            <button className="primary" type="submit" disabled={busy}>
+              {busy ? t("account.verify.resending") : t("account.forgot.submit")}
+            </button>
+          </>
+        )}
+        <Link href="/signin">{t("account.signIn")}</Link>
+      </form>
+    </EntryPage>
+  );
+}
+
+export function ResetPasswordPage() {
+  const [token] = useState(() => new URLSearchParams(location.search).get("token"));
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(!token);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await resetPassword(token, password);
+      navigate(DEFAULT_NEXT, { replace: true });
+    } catch (err) {
+      const described = describe(err);
+      if (err instanceof ApiError && err.status === 400 && !described.field) setFailed(true);
+      else setError(described.message);
+      setBusy(false);
+    }
+  }
+
+  if (failed) {
+    return (
+      <EntryPage>
+        <section className="card account-form">
+          <h1>{t("account.reset.failedTitle")}</h1>
+          <p>{t("account.reset.failedBody")}</p>
+          <Link href="/forgot-password">{t("account.reset.requestNew")}</Link>
+          <Link href="/signin">{t("account.signIn")}</Link>
+        </section>
+      </EntryPage>
+    );
+  }
+
+  return (
+    <EntryPage>
+      <form className="card account-form" onSubmit={(e) => void submit(e)}>
+        <h1>{t("account.reset.title")}</h1>
+        <label>
+          {t("account.newPassword")}
+          <span className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? t("common.saving") : t("account.reset.submit")}
+        </button>
+      </form>
     </EntryPage>
   );
 }

@@ -64,6 +64,8 @@ import {
   type SignUpResponse,
   type VerifyEmailRequest,
   type ResendVerificationRequest,
+  type ForgotPasswordRequest,
+  type ResetPasswordRequest,
   type StartEncounterEditRequest,
   type StartEncounterEditResponse,
   type UpdateAnimationRequest,
@@ -431,6 +433,9 @@ export const api = {
     verifyEmail: (req: VerifyEmailRequest) => postJson<unknown>("/api/auth/verify", req),
     resendVerification: (req: ResendVerificationRequest) =>
       accountRequest<void>("/api/auth/verify/resend", { method: "POST", ...jsonBody(req) }),
+    forgotPassword: (req: ForgotPasswordRequest) =>
+      accountRequest<void>("/api/auth/password/forgot", { method: "POST", ...jsonBody(req) }),
+    resetPassword: (req: ResetPasswordRequest) => postJson<MeResponse>("/api/auth/password/reset", req),
     signIn: (req: SignInRequest) => postJson<MeResponse>("/api/auth/signin", req),
     async signOut(): Promise<void> {
       await apiFetch("/api/auth/signout", { method: "POST" });
