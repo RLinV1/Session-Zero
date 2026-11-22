@@ -5,14 +5,14 @@ import { openFeedback } from "./feedback";
 /** The site's reading pages: what changed, and the two policies. */
 export type PolicyPageName = "news" | "privacy" | "terms";
 
+/** What's new is in the header (SiteHeader's WhatsNewLink), so the footer lists the policies. */
 const POLICY_LINKS = [
-  { page: "news", href: "/news", label: "nav.news" },
   { page: "privacy", href: "/privacy", label: "nav.privacy" },
   { page: "terms", href: "/terms", label: "nav.terms" },
 ] as const satisfies readonly { page: PolicyPageName; href: string; label: string }[];
 
 /**
- * The one footer of the home and policy pages (site-policies): who built it at the left, the
+ * The one footer of the site's pages (home, hub and policy) (site-policies): who built it at the left, the
  * policies and Feedback at the right, on the header's width under a fading hairline. Quiet links, like the
  * header's Sign in: muted until hovered, the current page in the text colour.
  */
@@ -33,7 +33,7 @@ export function SiteFooter({ current }: { current?: PolicyPageName }) {
   );
 }
 
-/** The policy pages' header navigation: the other policy one step away, the current one marked. */
+/** The reading pages' header navigation: the policies one step away, the current one marked. */
 export function PolicyNav({ current }: { current: PolicyPageName }) {
   const t = useT();
   return (

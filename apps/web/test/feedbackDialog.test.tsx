@@ -47,9 +47,12 @@ function RoomStub({ room }: { room: FeedbackRoom }) {
 }
 
 describe("Feedback dialog (FR-PL-11)", () => {
-  it("opens from the site header and sends a report with screenshots and allow-listed details", async () => {
-    render(<><SiteHeader /><FeedbackHost /></>);
-    fireEvent.click(screen.getByRole("button", { name: /Feedback/ }));
+  it("opens from the site footer, not the header, and sends a report with screenshots and allow-listed details", async () => {
+    render(<><SiteHeader /><SiteFooter /><FeedbackHost /></>);
+    // The header carries What's new instead (FR-PL-10).
+    expect(within(screen.getByRole("banner")).queryByRole("button", { name: /Feedback/ })).toBeNull();
+    expect(within(screen.getByRole("banner")).getByRole("link", { name: "What's new" }).getAttribute("href")).toBe("/news");
+    fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Feedback" }));
     const form = within(dialog());
     expect(form.getByRole("radio", { name: /Bug/ })).toHaveProperty("checked", true);
     expect(form.getByText("You're not signed in, so we can't reply to this report.")).toBeTruthy();
