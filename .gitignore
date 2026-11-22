@@ -30,3 +30,6 @@ __pycache__/
 # Private Studio artwork is never a repository artifact.
 apps/server/studio-private/
 graphify-out/
+
+# Local screenshots, logs and scratch files from QA runs.
+/output/
