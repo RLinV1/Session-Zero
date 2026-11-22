@@ -12,6 +12,7 @@ import { AccountMenu } from "../account/AccountPages";
 import { EmptyState } from "../ui/EmptyState";
 import { MapThumbnail } from "../ui/MapThumbnail";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
+import { SiteFooter } from "../ui/SiteFooter";
 import { RequireAccount } from "../account/RequireAccount";
 import { LibraryMapEditor } from "./mapEditor/LibraryMapEditor";
 import { AnimationsTab } from "./LibraryAnimations";
@@ -122,6 +123,7 @@ function DiceLibrary() {
       <DiceLookCards query={query} onEdit={setEditing} />
       <DiceLookModal lookId={editing} onClose={() => setEditing(null)} />
     </main>
+    <SiteFooter />
     </>
   );
 }
@@ -517,6 +519,7 @@ function Library() {
         }}
       />
     </main>
+    <SiteFooter />
     </>
   );
 }

@@ -16,6 +16,7 @@ import { formatRelative } from "../ui/formatRelative";
 import { EmptyState } from "../ui/EmptyState";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
+import { SiteFooter } from "../ui/SiteFooter";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
 import { RoomSettingsButton } from "./RoomSettings";
 import { t } from "../i18n/locale";
@@ -76,6 +77,7 @@ function Dashboard() {
       <CreateRoom open={creating} onClose={() => setCreating(false)} />
       <p className="muted small-print">{t("dashboard.savedNote")}</p>
     </main>
+    <SiteFooter />
     </>
   );
 }

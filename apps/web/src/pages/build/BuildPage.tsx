@@ -33,6 +33,7 @@ import { navigate } from "../../router";
 import { Check, Copy, PencilSimple, Trash, LineSegments, Door, SquaresFour } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
+import { SiteFooter } from "../../ui/SiteFooter";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
 import { TerrainCells } from "../mapEditor/TerrainSetup";
 import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type ThumbFor } from "./BuildLayout";
@@ -583,6 +584,7 @@ function Build({ id }: { id: string }) {
         <RemoveDialog items={removing} onClose={() => setRemoving(null)}
           onConfirm={(ids) => { setRemoving(null); void run(() => api.builds.removePublished(id, ids), "Couldn't remove these."); }} />
       </main>
+      <SiteFooter />
     </>
   );
 }
