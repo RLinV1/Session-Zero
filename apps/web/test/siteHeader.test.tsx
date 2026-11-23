@@ -76,6 +76,7 @@ describe("one header for the home and hub pages (design-language: One header)", 
     const nav = within(header).getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Library" }).getAttribute("aria-current")).toBe("page");
     expect(within(nav).getByRole("link", { name: "Your rooms" }).getAttribute("href")).toBe("/gm-dashboard");
+    expect(screen.queryByRole("button", { name: "Feedback" })).toBeNull();
   });
 
   it("names the product the same way everywhere", () => {

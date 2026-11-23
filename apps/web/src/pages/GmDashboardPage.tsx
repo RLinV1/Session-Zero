@@ -14,6 +14,7 @@ import { Modal } from "../ui/Modal";
 import { DeleteRoomModal } from "../ui/DeleteRoomModal";
 import { formatRelative } from "../ui/formatRelative";
 import { EmptyState } from "../ui/EmptyState";
+import { FeedbackLauncher } from "../ui/FeedbackLauncher";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
 import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { SiteFooter } from "../ui/SiteFooter";
@@ -78,6 +79,7 @@ function Dashboard() {
       <p className="muted small-print">{t("dashboard.savedNote")}</p>
     </main>
     <SiteFooter />
+    <FeedbackLauncher />
     </>
   );
 }

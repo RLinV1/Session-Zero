@@ -2850,11 +2850,9 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
   color: var(--accent-ink);
   box-shadow: 0 4px 14px var(--shadow);
 }
-/* Let the bottom of the room panel scroll clear of the fixed launcher. */
-.room:has(> .feedback-launcher) .panel-body { padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
-/* On Home, leave room where the right-aligned footer links can reach the launcher. */
+/* Leave room where the right-aligned footer links can reach the launcher. */
 @media (min-width: 641px) and (max-width: 82rem) {
-  .home-page .site-footer { padding-right: calc(4.5rem + env(safe-area-inset-right, 0px)); }
+  .site-footer:has(+ .feedback-launcher) { padding-right: calc(4.5rem + env(safe-area-inset-right, 0px)); }
 }
 @media (max-width: 640px) { .footer-links { margin-left: 0; flex-basis: 100%; } }
 

@@ -55,7 +55,6 @@ import { ShareButton } from "../ui/ShareButton";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { GuideTour } from "../ui/GuideTour";
 import { RoomMenu } from "../ui/RoomMenu";
-import { FeedbackLauncher } from "../ui/FeedbackLauncher";
 import { useFeedbackRoom } from "../ui/feedback";
 import { motionReduced } from "../ui/motion";
 import { BoardEmptyState } from "../ui/BoardEmptyState";
@@ -980,7 +979,6 @@ function Room({ roomId, connection, tutorialConnection, token, features, setupSc
       </aside>
       {/* Read-only while previewing: the same refusing connection and the viewed player's state. */}
       {features.chat && <ChatPanel connection={shownConnection} state={shownState!} you={shownYou!} readOnly={readOnly} />}
-      {features.tableChrome && <FeedbackLauncher />}
       {preview && <PreviewBanner name={preview.you.displayName} onExit={() => setViewAs(null)} />}
       {you.role === "gm" && <SceneSetupModal key={`setup-${state.activeSceneId ?? "initial"}`} open={!!setupSceneId && setupSceneId === state.activeSceneId} state={state} connection={connection} onClose={() => onSetupClose?.()} onChooseMap={() => chooseMap(true)} />}
       {replaying && <ReplayBar roomId={roomId} token={token} onShow={showReplay} onExit={exitReplay} />}
