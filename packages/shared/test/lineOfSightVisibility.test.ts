@@ -103,6 +103,37 @@ describe("line of sight in player snapshots (FR-GM-19)", () => {
     for (const n of ["612.5", "120.25", "180.75"]) expect(json).not.toContain(n);
   });
 
+  it("withholds everything outside the fog from a player whose only token hides in it", () => {
+    const s = room(true);
+    const fogged = {
+      ...s,
+      fog: { f: { id: "f", shape: "rect" as const, points: [{ x: 400, y: 100 }, { x: 600, y: 100 }, { x: 600, y: 300 }, { x: 400, y: 300 }] } },
+    } as RoomState;
+    const view = filterStateForViewer(fogged, alice);
+    expect(view.tokens["hero"]).toBeDefined();
+    expect(view.tokens["orc"]).toBeUndefined(); // 200 px outside the fog, in the open
+    expect(filterStateForViewer(s, alice).tokens["orc"]).toBeDefined();
+  });
+
+  it("sends a goblin standing in a doorway whose door overshoots the corridor wall", () => {
+    const s = baseRoom();
+    const doorway = {
+      ...s,
+      scene: { ...s.scene, map: { url: "/m.png", width: 1000, height: 1000 }, lineOfSight: true },
+      tokens: Object.fromEntries([token("hero", 265, 335, { ownerIds: [alice.id] }), token("goblin", 320, 360), token("beyond", 420, 335)].map((t) => [t.id, t])),
+      walls: Object.fromEntries([
+        wall("face1", 300, 0, 300, 300),
+        wall("face2", 300, 370, 300, 1000),
+        wall("top", 300, 300, 500, 300),
+        wall("bottom", 300, 370, 500, 370),
+        wall("door", 335, 300, 335, 376, { portal: { kind: "door", state: "closed" } }),
+      ].map((w) => [w.id, w])),
+    } as RoomState;
+    const view = filterStateForViewer(doorway, alice);
+    expect(view.tokens["goblin"]).toBeDefined();
+    expect(view.tokens["beyond"]).toBeUndefined();
+  });
+
   it("withholds a portal outside sight and keeps the one on the sight edge", () => {
     const portals = (s: RoomState) => Object.values(filterStateForViewer(s, alice).walls).filter((w) => w.portal).map((w) => w.id).sort();
     expect(portals(room(true))).toEqual(["door"]);

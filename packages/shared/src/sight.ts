@@ -1,5 +1,6 @@
 import { inFogRegion, pointInPolygon, type Point, type Segment } from "./geometry";
 import { blocksMovement } from "./portals";
+import { clipSegmentsToMap, prepareSightBlockers, sightOrigin, type SightBlockers } from "./sightSegments";
 import type { Participant, RoomState, Wall } from "./state";
 
 /**
@@ -24,6 +25,10 @@ const ARC_RAYS = 90;
  * corners of each shadow. Walls are bucketed by the angle they cover, so each ray tests only a
  * handful of walls. With `maxDistance`, no ray goes further and the open boundary is an arc of rays
  * 4 degrees apart; endpoints beyond it are skipped (ADR 0044, sight range).
+ *
+ * Precondition: segments meet only at their endpoints. A crossing part-way along a segment is a
+ * corner of the visible area that no ray is aimed at, so the outline would cut straight across it.
+ * Callers with walls as drawn split them first (`splitSegments`, or `viewerSight`, which does).
  */
 export function sightPolygon(
   segments: readonly Segment[],
@@ -184,16 +189,42 @@ export function inSight(polygons: readonly (readonly Point[])[], p: Point, toler
   });
 }
 
-/**
- * What `viewer` can see with line of sight on (ADR 0044): one polygon per visible token they own.
- * Null means no limit: the GM, or line of sight off. Empty means the viewer sees nothing, as with
- * no map or no (unhidden) token of their own.
- */
 /** Whether the viewer owns a token the GM hasn't hidden: a sight origin, and their way onto the board (ADR 0057). */
 export function ownsVisibleToken(state: Pick<RoomState, "tokens">, viewer: Participant): boolean {
   return Object.values(state.tokens).some((t) => !t.hidden && t.ownerIds.includes(viewer.id));
 }
 
+/** Prepared blocking lines, per `walls` object and then per `fog` object: both are replaced whenever they change. */
+const blockerCache = new WeakMap<object, WeakMap<object, SightBlockers>>();
+
+/**
+ * The lines sight stops at in this room: walls and closed doors, and the fogged area's outer edge,
+ * split where they cross (fix-sight-crossing-walls). The same arrays come back for the same `walls`
+ * and `fog` objects, so every token and every viewer shares one split. Read-only: the arrays are
+ * frozen, but their pieces share `Point` objects with the room's walls and fog, so writing to one
+ * would corrupt both the cache and the room state.
+ */
+export function sightBlockers(state: Pick<RoomState, "walls" | "fog">): SightBlockers {
+  let byFog = blockerCache.get(state.walls);
+  if (!byFog) blockerCache.set(state.walls, (byFog = new WeakMap()));
+  let blockers = byFog.get(state.fog);
+  if (!blockers) {
+    const prepared = prepareSightBlockers(
+      Object.values(state.walls).filter(blocksSight),
+      Object.values(state.fog).map((f) => f.points),
+    );
+    blockers = Object.freeze({ segments: Object.freeze(prepared.segments), fogBoundary: Object.freeze(prepared.fogBoundary) });
+    byFog.set(state.fog, blockers);
+  }
+  return blockers;
+}
+
+/**
+ * What `viewer` can see with line of sight on (ADR 0044): one polygon per visible token they own.
+ * Null means no limit: the GM, or line of sight off. Empty means the viewer sees nothing, as with
+ * no map or no (unhidden) token of their own. Fog edges block sight like walls, but only the
+ * fogged area's outer edge: a token in fog sees the fog around it and nothing outside it.
+ */
 export function viewerSight(state: Pick<RoomState, "scene" | "walls" | "tokens" | "fog" | "hideMapWithoutToken">, viewer: Participant): Point[][] | null {
   if (viewer.role === "gm") return null;
   // "Hide map from players without a token": no sight at all, with or without line of sight (ADR 0057).
@@ -201,13 +232,17 @@ export function viewerSight(state: Pick<RoomState, "scene" | "walls" | "tokens" 
   if (state.scene.lineOfSight !== true) return null;
   const map = state.scene.map;
   if (!map) return [];
-  const walls = Object.values(state.walls).filter(blocksSight);
-  // Fog edges block sight like walls (ADR 0044): otherwise the polygon would outline the plain walls under fog.
-  const fogEdges = Object.values(state.fog).map((f) => ({ points: f.points, edges: f.points.map((a, i) => ({ a, b: f.points[(i + 1) % f.points.length]! })) }));
+  const blockers = sightBlockers(state);
+  const segments = clipSegmentsToMap(blockers.segments, map.width, map.height);
+  const fog = Object.values(state.fog);
+  const fogPoints = fog.map((f) => f.points);
   const { grid, sightRange } = state.scene;
   const maxDistance = sightRange === undefined ? undefined : (sightRange / grid.unitsPerCell) * grid.cellSize;
   return Object.values(state.tokens)
     .filter((t) => !t.hidden && t.ownerIds.includes(viewer.id))
-    // A token standing inside a fog region is not blinded by it, so that region's edges are skipped for it.
-    .map((t) => sightPolygon([...walls, ...fogEdges.filter((f) => !inFogRegion(f.points, t.position)).flatMap((f) => f.edges)], t.position, map, maxDistance));
+    .map((t) => {
+      // The same "in fog" test concealment uses, so a token hidden by fog never sees out of it.
+      const inFog = fog.some((f) => inFogRegion(f.points, t.position));
+      return sightPolygon(segments, sightOrigin(t.position, inFog, blockers, fogPoints), map, maxDistance);
+    });
 }

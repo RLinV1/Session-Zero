@@ -134,7 +134,8 @@ export function pointInPolygon(p: Point, points: readonly Point[]): boolean {
 
 /**
  * Whether `p` counts as in a fog region: inside it, or within 1 board px of its boundary. The one
- * rule for fog concealment and the sight exemption, so a token on an edge can't disagree with itself (ADR 0044).
+ * rule for fog concealment and for holding a token's sight inside the fog, so a token on an edge can't
+ * be hidden by fog yet see out of it (ADR 0044, crossing-walls amendment).
  */
 export function inFogRegion(points: readonly Point[], p: Point): boolean {
   if (pointInPolygon(p, points)) return true;
