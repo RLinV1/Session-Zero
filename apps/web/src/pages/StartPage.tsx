@@ -15,6 +15,7 @@ import { t } from "../i18n/locale";
 import { DeleteRoomModal } from "../ui/DeleteRoomModal";
 import { formatRelative } from "../ui/formatRelative";
 import { SiteHeader } from "../ui/SiteHeader";
+import { SiteFooter } from "../ui/SiteFooter";
 import { AccountLinks } from "./home/AccountLinks";
 import { RoomDetailsFields, roomDetailsReady, useRoomDetails } from "./RoomDetailsFields";
 
@@ -101,6 +102,7 @@ function GuestStart() {
           </>
         )}
       </main>
+      <SiteFooter />
     </>
   );
 }

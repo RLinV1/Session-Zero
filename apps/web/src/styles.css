@@ -1452,12 +1452,14 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
 }
 .policy-meta .news-feedback-link { margin-left: var(--space-3); }
 
-/* Feedback (ui/FeedbackDialog.tsx, FR-PL-11): one dialog opened from the header, a room's More
-   menu and What's new. Plain fields, a strip of screenshot tiles, then the technical details. */
-.feedback-button { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* What's new in the header (FR-PL-10): a quiet nav link with a mark, the mark alone on a phone. */
+.whats-new-link { display: inline-flex; align-items: center; gap: var(--space-1); }
 @media (max-width: 640px) {
-  .feedback-button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .whats-new-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+
+/* Feedback (ui/FeedbackDialog.tsx, FR-PL-11): one dialog opened from the footer, a room's More
+   menu and What's new. Plain fields, a strip of screenshot tiles, then the technical details. */
 button.link-button { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 button.link-button:hover { filter: brightness(1.1); }
 dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
@@ -1645,6 +1647,21 @@ dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
 .account-password-label { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1); }
 .account-password-label label { margin: 0; }
 .account-password-label .small { font-size: 0.8rem; }
+/* A password field with its show/hide button inside the box, at the right end. */
+.password-field { position: relative; display: flex; }
+.password-field input { flex: 1; min-width: 0; padding-right: 2.6rem; }
+.password-field .password-toggle {
+  position: absolute; top: 50%; right: 0.2rem; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.1rem; height: 2.1rem; min-height: 0; padding: 0;
+  border: none; background: transparent; color: var(--muted); font-size: 1.1rem;
+}
+.password-field .password-toggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.password-field .password-toggle:active:not(:disabled) { transform: translateY(-50%); }
+@media (pointer: coarse) {
+  .password-field .password-toggle { width: 2.75rem; height: 2.75rem; }
+  .password-field input { padding-right: 3rem; }
+}
 .hero-guest-hint { margin: 0; }
 .guest-divider { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.85rem; }
 .guest-divider::before,
@@ -2787,7 +2804,7 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 .map-grid-light { stroke: rgba(255, 255, 255, 0.2); }
 .map-grid-app line { stroke: rgba(224, 138, 98, 0.9); stroke-width: 1.5px; }
 
-/* ---- Footer (ui/SiteFooter.tsx): home and policy pages ---- */
+/* ---- Footer (ui/SiteFooter.tsx): home, hub and policy pages ---- */
 
 /* Who built it at the left, the policies at the right, like the header's mark and actions. */
 .site-footer {

@@ -462,13 +462,6 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     data: { name: "Chandlery", fileId: "f1", proposedGrid: null, gridStatus: "confirmed", grid: uvttFile.grid, gridBy: "file", setup },
     ...over,
   });
-  const choose = async (select: HTMLSelectElement | null, value: string) => {
-    expect(select).toBeTruthy();
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, value);
-      select!.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-  };
 
   it("draws every wall, door, window and opening, numbered, and marks what the AI set", async () => {
     await open(detail({ files: [uvttFile], items: [shop()] }));
@@ -477,8 +470,10 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
     expect(kinds.sort()).toEqual(["door", "opening", "wall", "wall"]);
     expect([...host.querySelectorAll(".build-walls-drawn text")].map((t) => t.textContent)).toEqual(["1", "2", "!"]);
     expect(host.querySelector("[data-ai-set]")?.getAttribute("data-ai-set")).toBe("2");
-    expect(text()).toContain("Opening 1 at column 2, row 2");
-    expect(text()).toContain("Set by your AI");
+    await typeLines("1");
+    expect(shown()).toContain("Opening 1");
+    expect(shown()).toContain("From the file at column 2, row 2");
+    expect(shown()).toContain("Set by your AI");
   });
 
   it("lists what the AI left for the owner, with its reasons", async () => {
@@ -491,7 +486,8 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   it("changes an opening, sending the whole setup", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
     await open(detail({ files: [uvttFile], items: [shop()] }));
-    await choose(host.querySelector("select[aria-label='Opening 1 state']"), "closed");
+    await typeLines("1");
+    await click(actionButton("Closed"));
     // With the version the page showed, so a change made since is refused rather than overwritten.
     expect(builds.saveMapSetup).toHaveBeenCalledWith("b1", "shop", { ...setup, openings: [{ number: 1, kind: "door", state: "closed" }, setup.openings[1]] }, "2026-11-09T00:00:00Z");
   });
@@ -499,7 +495,8 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   it("removes one line, or everything the AI set", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
     await open(detail({ files: [uvttFile], items: [shop()] }));
-    await typeLines("1");
+    // The file's two openings come first, so the AI's wall is line 3.
+    await typeLines("3");
     await click(editorButton("Remove line"));
     expect(builds.saveMapSetup).toHaveBeenLastCalledWith("b1", "shop", { ...setup, lines: [] }, "2026-11-09T00:00:00Z");
     await click(button("Reset map setup"));
@@ -533,7 +530,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
 
   it("edits a line by typing its number, with no row per line (FR-GM-27)", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     // One field for every line: no tick box, select or button per line.
     expect(host.querySelectorAll(".build-walls input[type=checkbox]")).toHaveLength(0);
     expect(host.querySelectorAll(".build-line-editor input, .build-line-editor select")).toHaveLength(1);
@@ -549,7 +546,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
 
   it("edits a range in one save, and sets doors and windows together (FR-GM-27)", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     await typeLines("3-4");
     expect(shown()).toContain("2 lines");
     expect(shown()).toContain("1 door and 1 window");
@@ -564,7 +561,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
 
   it("steps through the lines, and chooses a whole kind (FR-GM-27)", async () => {
     builds.saveMapSetup.mockResolvedValue({ item: town({ editedByUser: true }) });
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     await click(editorButton("Next line"));
     expect(lineField().value).toBe("1");
     await click(editorButton("Next line"));
@@ -579,7 +576,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   it("deselects a chosen Walls group and toggles Make Wall off without saving", async () => {
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     await click(editorButton("Walls"));
     expect(lineField().value).toBe("1-2");
     await click(editorButton("Walls"));
@@ -592,7 +589,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   it("says when a number isn't a line, and saves nothing (FR-GM-27)", async () => {
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     await typeLines("9");
     await act(async () => { lineField().form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     expect(text()).toContain("Line numbers go from 1 to 4.");
@@ -600,7 +597,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   it("picks a line by clicking it on the map, and shows its number there (FR-GM-27)", async () => {
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     const hit = (i: number) => host.querySelector(`[data-hit='${i}']`)!;
     await act(async () => { hit(1).dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
     expect(host.querySelector(".build-line-number.is-lit")?.textContent).toBe("2");
@@ -612,7 +609,7 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   it("shows the AI's marks one at a time, with the lines they are about (FR-GM-27)", async () => {
-    await open(detail({ files: [uvttFile], items: [town()] }));
+    await open(detail({ files: [file()], items: [town()] }));
     expect(text()).toContain("Is this wall curved?");
     expect(text()).toContain("Column 5, row 4 · near line 2");
     await click(button("Edit these lines"));
@@ -621,10 +618,62 @@ describe("walls, doors and windows in review (FR-GM-27, ADR 0053)", () => {
   });
 
   it("shows a published map's lines without anything to change (FR-GM-27)", async () => {
-    await open(detail({ files: [uvttFile], items: [town({ published: true })] }));
+    await open(detail({ files: [file()], items: [town({ published: true })] }));
     await typeLines("3");
     expect(shown()).toContain("Line 3");
     expect(host.querySelector(".build-line-actions")).toBeNull();
+  });
+
+  it("chooses the file's openings in the same editor, numbered as the map numbers them (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    // No row per opening: the file's two openings and the AI's wall share one field.
+    expect(host.querySelectorAll(".build-walls select")).toHaveLength(0);
+    expect(host.querySelector(".build-line-of")?.textContent).toBe("of 3");
+    await typeLines("2");
+    expect(shown()).toContain("Opening 2");
+    expect(shown()).toContain("Left for you");
+    expect(shown()).toContain("Could be an archway.");
+    // A file's opening can't become a wall or be removed: it stays a door, a window or as the file has it.
+    expect(actionButton("Wall")).toBeUndefined();
+    expect(actionButton("Original")).toBeTruthy();
+    expect(host.querySelector(".build-line-actions .danger")).toBeNull();
+    await typeLines("3");
+    expect(shown()).toContain("Line 3");
+    expect(actionButton("Wall")).toBeTruthy();
+  });
+
+  it("makes a file opening a door, and puts one back as the file has it, in one save each (FR-GM-27)", async () => {
+    builds.saveMapSetup.mockResolvedValue({ item: shop({ editedByUser: true }) });
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    await typeLines("2");
+    await click(actionButton("Door"));
+    expect(saved().openings).toEqual([{ number: 1, kind: "door", state: "locked" }, { number: 2, kind: "door", state: "closed" }]);
+    expect(saved().lines).toEqual(setup.lines);
+    await typeLines("1");
+    await click(actionButton("Original"));
+    expect(saved().openings).toEqual([setup.openings[1]]);
+    expect(builds.saveMapSetup).toHaveBeenCalledTimes(2);
+  });
+
+  it("picks a file opening by clicking it on the map (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    const hit = (i: number) => host.querySelector(`[data-hit='${i}']`)!;
+    await act(async () => { hit(1).dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+    expect(host.querySelector(".build-line-number.is-lit")?.textContent).toBe("2");
+    await click(hit(1));
+    expect(lineField().value).toBe("2");
+    await act(async () => { hit(2).dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true })); });
+    expect(shown()).toContain("1 wall and 1 opening");
+  });
+
+  it("pages through an opening left for the owner with the AI's marks (FR-GM-27)", async () => {
+    await open(detail({ files: [uvttFile], items: [shop()] }));
+    expect(host.querySelector(".build-mark-pager")?.textContent).toContain("Curved cave wall.");
+    await click(button("Next place"));
+    expect(host.querySelector(".build-mark-pager")?.textContent).toContain("Could be an archway.");
+    expect(host.querySelector(".build-mark-pager")?.textContent).toContain("Opening 2 at column 4, row 0");
+    await click(button("Edit this opening"));
+    expect(lineField().value).toBe("2");
   });
 
   const cavePattern = () => host.querySelector(".build-map pattern")?.getAttribute("width");

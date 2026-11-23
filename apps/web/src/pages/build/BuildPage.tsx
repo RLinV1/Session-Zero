@@ -33,13 +33,14 @@ import { navigate } from "../../router";
 import { Check, Copy, PencilSimple, Trash, LineSegments, Door, SquaresFour } from "@phosphor-icons/react";
 import { Modal } from "../../ui/Modal";
 import { HubNav, SiteHeader } from "../../ui/SiteHeader";
+import { SiteFooter } from "../../ui/SiteFooter";
 import { createRoomWith, emptyRoomDetails } from "../RoomDetailsFields";
 import { TerrainCells } from "../mapEditor/TerrainSetup";
 import { FlagList, Fold, NoteText, ReviewQueue, groupIssues, revealElement, type ThumbFor } from "./BuildLayout";
 import { ContentsRail, DraftMeter, type RailLink } from "./BuildRail";
 import { CreatureRoster, MapViewer } from "./BuildViewers";
 import { EncounterBoard } from "./EncounterBoard";
-import { LINE_COLOUR, LinePickLayer, MapWalls, useLinePicker, type LinePicker } from "./MapLines";
+import { LINE_COLOUR, LinePickLayer, MapWalls, pickEntries, placesLeft, useLinePicker, type LinePicker, type PickEntry } from "./MapLines";
 import { DraftCreatureEditor, DraftEncounterEditor } from "./DraftEditors";
 import { KIND_WORD, creatureOf, encounterOf, mapOf, ownerIssues } from "./buildProgress";
 import { byName, pageRank, sortCreatures, sortEncounters, sortFiles, sortMaps } from "./buildOrder";
@@ -583,6 +584,7 @@ function Build({ id }: { id: string }) {
         <RemoveDialog items={removing} onClose={() => setRemoving(null)}
           onConfirm={(ids) => { setRemoving(null); void run(() => api.builds.removePublished(id, ids), "Couldn't remove these."); }} />
       </main>
+      <SiteFooter />
     </>
   );
 }
@@ -736,7 +738,7 @@ export interface MapDrawing {
 const WALL_COLOUR = LINE_COLOUR;
 
 /** A map with its grid, walls, doors and windows drawn over it, in the image's own pixels, so what's published is what's seen. */
-export function GridOverlay({ file, grid, drawing, pick, onPaint, corners = false }: { corners?: boolean; onPaint?: (column: number, row: number) => void; file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { lines: readonly DraftLine[]; marks: readonly DraftMark[]; picker: LinePicker } }) {
+export function GridOverlay({ file, grid, drawing, pick, onPaint, corners = false }: { corners?: boolean; onPaint?: (column: number, row: number) => void; file: BuildFileView; grid: DraftProposedGrid | null; drawing?: MapDrawing; pick?: { entries: readonly PickEntry[]; marks: readonly DraftMark[]; picker: LinePicker } }) {
   const painting = useRef(false);
   const [cursor, setCursor] = useState({ column: 0, row: 0 });
   const paintAt = (e: React.PointerEvent<SVGRectElement>) => {
@@ -793,7 +795,7 @@ export function GridOverlay({ file, grid, drawing, pick, onPaint, corners = fals
               ))}
             </g>
           )}
-          {grid && grid.cellSize > 0 && pick && pick.lines.length > 0 && <LinePickLayer lines={pick.lines} marks={pick.marks} grid={grid} picker={pick.picker} labelSize={label} />}
+          {pick && pick.entries.length > 0 && <LinePickLayer entries={pick.entries} marks={pick.marks} grid={grid && grid.cellSize > 0 ? grid : null} picker={pick.picker} labelSize={label} />}
           {onPaint && grid && <>
             <rect x={grid.offsetX + cursor.column * grid.cellSize} y={grid.offsetY + cursor.row * grid.cellSize} width={grid.cellSize} height={grid.cellSize} fill="none" stroke="white" strokeWidth="2" pointerEvents="none" />
             <rect width={file.width} height={file.height} fill="transparent" style={{ pointerEvents: "all", touchAction: "none", cursor: "crosshair" }}
@@ -858,7 +860,6 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
   const [paintKind, setPaintKind] = useState<TerrainRun["kind"] | null | undefined>(undefined);
   useEffect(() => { setTerrain(setup.terrain ?? []); setPaintKind(undefined); }, [item.key, item.updatedAt]);
   const terrainOtherGrid = draftTerrainState(setup, preview) === "otherGrid";
-  const picker = useLinePicker(setup.lines.length, setup.marks.length);
   const drawing = useMemo<MapDrawing | undefined>(() => {
     if (!file) return undefined;
     const built = draftMapBoard(file.board, { ...setup, lines: draftLines }, preview, file);
@@ -876,6 +877,10 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
     };
   }, [file, data.setup, cell, x, y, terrain, tab, draftLines, terrainOtherGrid]); // `preview` is rebuilt from these three fields on every render
   const walls = drawing !== undefined && drawing.openings.length + setup.lines.length + setup.marks.length > 0;
+  // The file's openings first, then the AI's lines: one picker for the map and the editor.
+  const openings = drawing?.openings ?? [];
+  const entries = useMemo(() => pickEntries(setup.lines, openings), [setup.lines, openings]);
+  const picker = useLinePicker(entries.length, placesLeft(setup.marks, openings).length);
   return (
     <article className="build-card">
       <div className="build-card-head">
@@ -888,7 +893,7 @@ function MapCard({ item, file, checkbox, busy = false, onConfirm, onSaveSetup }:
       {file ? (
         <div className="build-map-room"><div className="build-map-review">
           <div className="build-map-side">
-            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls && tab === "walls" ? { lines: setup.lines, marks: setup.marks, picker } : undefined}
+            <GridOverlay file={file} grid={preview} drawing={drawing} pick={walls && tab === "walls" ? { entries, marks: setup.marks, picker } : undefined}
               corners={tab === "walls"}
               onPaint={tab === "walls" && drawKind && !item.published && !unsaved ? (column, row) => {
                 if (!lineStart) { setLineStart({ column, row }); return; }

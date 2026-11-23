@@ -12,6 +12,7 @@ import { SettingsMenu } from "../ui/SettingsMenu";
 import { SiteFooter } from "../ui/SiteFooter";
 import { changePassword, deleteAccount, forgotPassword, resendVerification, resetPassword, signIn, signOut, signUp, useAccount, verifyEmail } from "./accountStore";
 import { DEFAULT_NEXT, safeNext, signInFor } from "./safeNext";
+import { PasswordInput } from "./PasswordInput";
 
 /** Where to go after signing in: the page that sent the person here, if it is on this site. */
 const nextFromUrl = () => safeNext(new URLSearchParams(location.search).get("next"));
@@ -182,8 +183,7 @@ function SignInForm({ createHref, onSignedIn }: { createHref: string; onSignedIn
       </label>
       <label>
         {t("account.password")}
-        <input
-          type="password"
+        <PasswordInput
           autoComplete="current-password"
           required
           maxLength={PASSWORD_MAX}
@@ -263,10 +263,9 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           <label htmlFor="signup-password">{t("account.password")}</label>
           <span id="signup-password-hint" className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
         </div>
-        <input
+        <PasswordInput
           id="signup-password"
           aria-describedby="signup-password-hint"
-          type="password"
           autoComplete="new-password"
           required
           minLength={PASSWORD_MIN}
@@ -278,9 +277,8 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
       </div>
       <div className="account-password-field">
         <label htmlFor="signup-confirm-password">{t("account.confirmPassword")}</label>
-        <input
+        <PasswordInput
           id="signup-confirm-password"
-          type="password"
           autoComplete="new-password"
           required
           maxLength={PASSWORD_MAX}
@@ -456,8 +454,7 @@ export function ResetPasswordPage() {
         <label>
           {t("account.newPassword")}
           <span className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
-          <input
-            type="password"
+          <PasswordInput
             autoComplete="new-password"
             required
             minLength={PASSWORD_MIN}
@@ -713,9 +710,8 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
         <form onSubmit={(e) => void submit(e)}>
           <label>
             {t("account.currentPassword")}
-            <input
+            <PasswordInput
               ref={firstRef}
-              type="password"
               autoComplete="current-password"
               required
               maxLength={PASSWORD_MAX}
@@ -726,8 +722,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
           <label>
             {t("account.newPassword")}
             <span className="muted small">{t("account.newPasswordHint", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               required
               minLength={PASSWORD_MIN}
@@ -822,8 +817,7 @@ export function DeleteAccountDialog({ open, email, onClose }: { open: boolean; e
         </label>
         <label>
           {t("account.password")}
-          <input
-            type="password"
+          <PasswordInput
             autoComplete="current-password"
             required
             maxLength={PASSWORD_MAX}

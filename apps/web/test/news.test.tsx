@@ -14,6 +14,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   localStorage.clear();
+  history.replaceState(null, "", "/");
 });
 
 describe("What's new page (site-news-and-feedback)", () => {
@@ -35,13 +36,18 @@ describe("What's new page (site-news-and-feedback)", () => {
     }
   });
 
-  it("marks What's new in the header and footer navigation, and the index jumps to each post", () => {
+  it("marks What's new in the header, keeps the policies in the nav and footer, and the index jumps to each post", () => {
+    history.replaceState(null, "", "/news");
     render(<NewsPage />);
+    const header = document.querySelector<HTMLElement>(".site-header")!;
+    expect(within(header).getByRole("link", { name: "What's new" }).getAttribute("aria-current")).toBe("page");
     const main = screen.getByRole("navigation", { name: "Main" });
-    expect(within(main).getByRole("link", { name: "What's new" }).getAttribute("aria-current")).toBe("page");
     expect(within(main).getByRole("link", { name: "Privacy" }).getAttribute("aria-current")).toBeNull();
-    const footer = screen.getByRole("navigation", { name: "Policies" });
-    expect(within(footer).getByRole("link", { name: "What's new" }).getAttribute("aria-current")).toBe("page");
+    // What's new is at the top and Feedback at the bottom (FR-PL-10, FR-PL-11).
+    expect(within(header).queryByRole("button", { name: /Feedback/ })).toBeNull();
+    const footer = screen.getByRole("contentinfo");
+    expect(within(footer).queryByRole("link", { name: "What's new" })).toBeNull();
+    expect(within(footer).getByRole("button", { name: "Feedback" })).toBeTruthy();
     const index = screen.getByRole("navigation", { name: "All updates" });
     expect(within(index).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(NEWS.map((e) => `#${e.id}`));
   });

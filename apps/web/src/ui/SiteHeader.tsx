@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { ChatCircleDots, CircleHalfTilt, Moon, Sun } from "@phosphor-icons/react";
+import { CircleHalfTilt, Moon, Sparkle, Sun } from "@phosphor-icons/react";
 import { Link } from "../Link";
 import { useGroundTheme, type ThemeChoice } from "../theme";
 import { LanguageMenu } from "./LanguageMenu";
 import { useT } from "../i18n/locale";
-import { openFeedback } from "./feedback";
+import { useRoute } from "../router";
 
 /**
  * The product's name, in one place (design-language: "One header"). To rename the product,
@@ -49,8 +49,8 @@ export function ThemeToggle() {
 
 /**
  * The one header of the home and hub pages: the mark and name with the page's navigation beside
- * it, and at the right one row of settings-type controls (the page's own settings, the account,
- * the language and the theme), always in the same places.
+ * it, and at the right What's new and one row of settings-type controls (the page's own settings,
+ * the account, the language and the theme), always in the same places.
  */
 export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; account?: ReactNode; settings?: ReactNode }) {
   const t = useT();
@@ -64,7 +64,7 @@ export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; accoun
       )}
       <div className="site-actions">
         {settings}
-        <FeedbackButton />
+        <WhatsNewLink />
         {account}
         <LanguageMenu />
         <ThemeToggle />
@@ -73,14 +73,18 @@ export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; accoun
   );
 }
 
-/** Opens the Feedback dialog from any page with the site header (FR-PL-11). */
-export function FeedbackButton() {
+/**
+ * What's new, on every page with the site header (FR-PL-10). Feedback sits in the footer instead
+ * (FR-PL-11): telling people what changed is the louder of the two.
+ */
+export function WhatsNewLink() {
   const t = useT();
+  const current = useRoute().page === "news";
   return (
-    <button type="button" className="secondary feedback-button" onClick={() => openFeedback("bug")} title={t("feedback.title")}>
-      <ChatCircleDots size={16} aria-hidden="true" />
-      <span className="feedback-button-label">{t("feedback.open")}</span>
-    </button>
+    <Link href="/news" className="nav-link whats-new-link" aria-current={current ? "page" : undefined} title={t("nav.news")}>
+      <Sparkle size={16} aria-hidden="true" />
+      <span className="whats-new-label">{t("nav.news")}</span>
+    </Link>
   );
 }
 
