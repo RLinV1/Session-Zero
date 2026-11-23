@@ -81,3 +81,9 @@
 @media (max-width: 40rem) {
   .admin-stats-main { padding: var(--space-4); margin-block: var(--space-4); }
 }
+
+.admin-panel-nav { display: flex; gap: 0.5rem; }
+.admin-feedback-details { white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-feedback-screenshots { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.admin-feedback-screenshots img { display: block; width: min(12rem, 100%); height: auto; }
+.admin-feedback-report { min-width: 0; }

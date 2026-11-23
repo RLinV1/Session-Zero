@@ -19,6 +19,7 @@ const StudioConnectPage = lazy(() => import("./pages/studio/StudioConnectPage").
 const BuildPage = lazy(() => import("./pages/build/BuildPage").then((m) => ({ default: m.BuildPage })));
 const IsometricLightingPage = lazy(() => import("./pages/IsometricLightingPage").then((m) => ({ default: m.IsometricLightingPage })));
 const AdminStatsPage = lazy(() => import("./pages/AdminStatsPage").then((m) => ({ default: m.AdminStatsPage })));
+const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage").then((m) => ({ default: m.AdminFeedbackPage })));
 const NewsPage = lazy(() => import("./pages/NewsPage").then((m) => ({ default: m.NewsPage })));
 // Loaded the first time someone opens Feedback, so no page pays for it up front (FR-PL-11).
 const FeedbackHost = lazy(() => import("./ui/FeedbackDialog").then((m) => ({ default: m.FeedbackHost })));
@@ -88,6 +89,8 @@ function RoutePage({ route }: { route: Route }) {
       return <RoomPage key={`edit:${route.roomId}`} roomId={route.roomId} editing />;
     case "adminStats":
       return <AdminStatsPage />;
+    case "adminFeedback":
+      return <AdminFeedbackPage />;
     case "notFound":
       return (
         <EntryPage>

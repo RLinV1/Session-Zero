@@ -9,6 +9,7 @@ export const home = {
   "home.isometricLink": "Explore isometric lighting",
   "home.yourRooms": "Your rooms",
   "home.signIn": "Sign in",
+  "home.signUp": "Sign up",
   "home.createAccount": "Create account",
 
   "home.hero.title": "Free forever, and ready to play tonight.",

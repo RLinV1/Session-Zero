@@ -21,7 +21,7 @@ Mail exists for identity: `verificationFromEnv()` builds an SMTP `Mailer` in pro
 
 **D2. Reuse the identity mailer.** `app.ts` passes `verification?.mailer` and `env.ADMIN_EMAIL` into `registerFeedbackRoutes`. In development `verification` is null, so no mail is sent there, which matches how verification mail behaves. Tests pass a fake mailer through the existing `AppOptions.verification` and set the recipient through an `AppOptions` field defaulting to `process.env.ADMIN_EMAIL`.
 
-**D3. Cap with the existing `RateLimiter`.** A `feedbackMailPerDay: new RateLimiter(20, 24 * HOUR, now)` beside the other limits, hit with one fixed key. It is per process and resets on restart; the deployment is one VM with one server process, so that is the real limit. Alternative: a Postgres count of reports sent today; rejected as more code for the same result at this scale.
+**D3. Rolling cap.** Keep the timestamps of up to 20 notice attempts in the feedback route. An attempt stops counting 24 hours after it was made. The cap is per process and resets on restart. The deployment runs one server process.
 
 **D4. Notice after save, not awaited by the response.** The handler answers 201 first, then sends with `.catch` logging `[vtt] feedback email failed:`. The reporter never waits on SMTP and a mail error cannot turn into a 500.
 

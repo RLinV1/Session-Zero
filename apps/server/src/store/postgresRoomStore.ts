@@ -2,6 +2,7 @@ import { affectedWorkspaces, AuthoringHistoryNeeded, authoringEntryIds, guardStu
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
+import type { FeedbackCursor } from "@vtt/shared";
 import { StudioContext, StudioPreparationOutcome } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -35,7 +36,7 @@ import {
   type StudioTokenRecord,
 } from "./studioStore";
 import { randomUUID } from "node:crypto";
-import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
+import { FeedbackReferenceTakenError, type AdminFeedbackRecord, type FeedbackRecord } from "./feedbackStore";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
 import { FeedbackKind, FeedbackTechnical, ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
@@ -471,8 +472,10 @@ export class PostgresRoomStore implements RoomStore {
         (SELECT count(*) FROM rooms WHERE NOT temporary AND created_at < ${start}) AS rooms
     `;
     const counts = { accountsBefore: Number(before?.accounts ?? 0), roomsBefore: Number(before?.rooms ?? 0) };
-    const accounts = await this.prisma.$queryRaw<{ id: string; at: Date }[]>`
-      SELECT id::text AS id, created_at AS at FROM users WHERE created_at >= ${start} AND created_at < ${end}
+    const accounts = await this.prisma.$queryRaw<{ id: string; at: Date; referralSource: string | null }[]>`
+      SELECT id::text AS id, created_at AS at,
+        CASE WHEN email_verified_at IS NOT NULL THEN referral_source END AS "referralSource"
+      FROM users WHERE created_at >= ${start} AND created_at < ${end}
     `;
     const rooms = await this.prisma.$queryRaw<{ id: string; at: Date; host: "guest" | "account" | "other" }[]>`
       SELECT r.id::text AS id, r.created_at AS at,
@@ -799,6 +802,35 @@ export class PostgresRoomStore implements RoomStore {
       reporterUserId: row.reporterUserId, createdAt: row.createdAt.toISOString(),
       screenshots: row.screenshots.map((shot) => ({ contentType: shot.contentType, width: shot.width, height: shot.height, bytes: new Uint8Array(shot.bytes) })),
     }));
+  }
+
+  async listAdminFeedback(limit: number, before?: FeedbackCursor): Promise<AdminFeedbackRecord[]> {
+    const cursorTime = before ? new Date(before.createdAt) : undefined;
+    const rows = await this.prisma.feedbackReport.findMany({
+      where: before && cursorTime ? { OR: [
+        { createdAt: { lt: cursorTime } },
+        { createdAt: cursorTime, id: { lt: before.id } },
+      ] } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: {
+        id: true, reference: true, kind: true, summary: true, details: true, technical: true, createdAt: true,
+        reporter: { select: { displayName: true, email: true } },
+        screenshots: { select: { position: true, width: true, height: true }, orderBy: { position: "asc" } },
+      },
+    });
+    return rows.map((row) => ({
+      ...row, kind: FeedbackKind.parse(row.kind), technical: FeedbackTechnical.safeParse(row.technical).data ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  async getFeedbackScreenshot(reference: string, position: number) {
+    const shot = await this.prisma.feedbackScreenshot.findFirst({
+      where: { position, report: { reference } },
+      select: { contentType: true, bytes: true, width: true, height: true },
+    });
+    return shot ? { ...shot, bytes: new Uint8Array(shot.bytes) } : null;
   }
 
   async deleteFeedback(reference: string) {

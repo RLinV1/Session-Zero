@@ -25,14 +25,18 @@ The public launch needs a weekly answer to "is anyone playing?". The privacy pag
 
 **Admins by account id, from the environment.** `ADMIN_ACCOUNT_IDS` lists account ids, comma-separated. The route checks the request's signed-in account (ADR 0017 session cookie) against it on the server. Unset or empty means nobody. An id rather than an email: it never changes and can't be re-registered by someone else.
 
-**Anyone else gets a route that doesn't exist.** For a guest, a signed-in non-admin, or a server with no admins, the handler calls `next()`, so the answer is whatever an unknown `/api` path gets (Express's 404), byte for byte. The web page `/admin/stats` is linked from nowhere; when the API answers 404 it shows the router's own "Page not found" card, title and background.
+**Admin entry.** The signed-in account menu checks `GET /api/admin/me` and links to `/admin/stats` after a 204 response. For guests and accounts outside the allowlist, the admin API routes behave like an unknown `/api` path. Both admin pages show "Page not found" on a 404.
+
+**Signup referrals.** The signup form accepts an optional platform code from `/signup?r=tiktok`, `/signup?r=youtube`, or `/signup?r=instagram`. A checkbox lets the user omit attribution. The admin panel counts verified signups by platform for the selected date range, using the signup date. Account deletion removes the attribution. The migration adds one nullable column, so existing accounts have no source.
+
+**Feedback.** The Feedback tab lists saved reports newest first and loads screenshots individually. The account ID allowlist gates the list and screenshot routes. Both send `Cache-Control: no-store`. The list excludes image bytes.
 
 ## What can't be counted, and wasn't added
 
 - **People who connected but did nothing.** Connections are ephemeral (invariant 4) and leave no row. Played rooms count people who joined or acted, so a returning player who only watched is missed.
 - **People, as opposed to seats.** One person in two tabs joins as two guests and counts as two. Nothing ties guest seats to a person, by design.
 - **Deleted rooms and accounts.** Deletion erases them (ADR 0009), and idle guest rooms are deleted after 30 days, so past counts shrink over time. Read each week's numbers within the month.
-- **Visits, referrers, sign-up funnels.** These would need new collection; the privacy promise rules it out. Each social platform's own insights cover the top of the funnel.
+- **Visits and sign-up funnels.** The referral feature records signup attribution only. Each social platform's own insights cover the top of the funnel.
 
 ## Consequences
 

@@ -3,6 +3,21 @@ import type { admin } from "../en/admin";
 
 /** Traditional Chinese for `en/admin.ts`. */
 export const adminZhTW = {
+  "adminStats.referrals": "依推薦來源統計註冊",
+  "adminStats.platform": "平台",
+  "adminStats.signups": "已驗證的註冊數",
+  "adminStats.referral.tiktok": "TikTok",
+  "adminStats.referral.youtube": "YouTube",
+  "adminStats.referral.instagram": "Instagram",
+  "adminFeedback.title": "意見回饋",
+  "adminFeedback.empty": "目前沒有意見回饋。",
+  "adminFeedback.failed": "無法載入意見回饋。",
+  "adminFeedback.guest": "未登入的訪客",
+  "adminFeedback.technical": "技術資訊",
+  "adminFeedback.newest": "最新回饋",
+  "adminFeedback.older": "較早的回饋",
+  "adminFeedback.screenshot": ({ number }: { number: number }) => "螢幕截圖 " + number,
+  "adminStats.menu": "統計",
   "title.adminStats": "上線統計",
   "adminStats.heading": "上線統計",
   "adminStats.from": "開始",

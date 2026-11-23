@@ -66,10 +66,10 @@ describe("the account page's address (account-page)", () => {
 });
 
 describe("signing in from the home page (account-page)", () => {
-  it("links to the sign-in and sign-up pages, not the account page", () => {
+  it("shows a single sign-up action in the signed-out header", () => {
     render(<AccountLinks />);
-    expect(hrefOf("Sign in")).toBe("/signin");
-    expect(hrefOf("Create account")).toBe("/signup");
+    expect(hrefOf("Sign up")).toBe("/signup");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
   it("lands on the person's rooms after signing in", async () => {
@@ -160,10 +160,20 @@ describe("the account menu (account-page)", () => {
     openMenu();
     const menu = within(screen.getByRole("dialog", { name: "Account" }));
     expect(menu.getByText("sam@example.com")).toBeTruthy();
+    expect(menu.queryByRole("link", { name: "Stats" })).toBeNull();
     expect(menu.getByRole("button", { name: "Sound and graphics" })).toBeTruthy();
     expect(menu.getByRole("button", { name: "Sign out" })).toBeTruthy();
     expect(menu.queryByRole("button", { name: "Delete account" })).toBeNull();
     expect(menu.queryByRole("button", { name: "Change password" })).toBeNull();
+  });
+
+  it("links a site admin to launch stats", () => {
+    accountStore.setState({ status: "signedIn", account: sam, isAdmin: true });
+    render(<AccountMenu />);
+    openMenu();
+    expect(hrefOf("Stats")).toBe("/admin/stats");
+    fireEvent.click(screen.getByRole("link", { name: "Stats" }));
+    expect(navigate).toHaveBeenCalledWith("/admin/stats");
   });
 
   it("closes on Escape and hands focus back to its button", () => {

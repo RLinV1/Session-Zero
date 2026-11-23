@@ -51,6 +51,56 @@ describe("admin launch stats (ADR 0080)", () => {
     expect(LaunchStatsResponse.parse(await ok.json()).days).toHaveLength(30);
   });
 
+  it("answers the admin menu probe only for an allowlisted account", async () => {
+    const admin = await server.signUp();
+    const member = await server.signUp();
+    admins.add(admin.view!.id);
+    for (const who of [server.anonymous(), member]) {
+      expect((await who.request("GET", "/api/admin/me")).status).toBe(404);
+    }
+    const response = await admin.request("GET", "/api/admin/me");
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("counts signups from supported referral links", async () => {
+    const admin = await server.signUp();
+    admins.add(admin.view!.id);
+    const credentials = { email: "referral@example.com", password: "correct horse battery", displayName: "Referral" };
+    const signup = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, referralCode: "tiktok" });
+    expect(signup.status).toBe(201);
+    const unknown = await server.anonymous().request("POST", "/api/auth/signup", { ...credentials, email: "unknown@example.com", referralCode: "unknown" });
+    expect(unknown.status).toBe(201);
+    const stats = await admin.request("GET", "/api/admin/stats");
+    expect(LaunchStatsResponse.parse(await stats.json()).referralSignups).toEqual({ tiktok: 1, youtube: 0, instagram: 0 });
+  });
+
+  it("serves feedback and screenshots only to admins", async () => {
+    const admin = await server.signUp();
+    const member = await server.signUp();
+    admins.add(admin.view!.id);
+    const bytes = new Uint8Array([1, 2, 3]);
+    const record = { id: crypto.randomUUID(), reference: "FB-7Q2K", kind: "bug" as const, summary: "Fog issue",
+      details: "Fog stays visible after opening a door.", technical: null, reporterUserId: member.view!.id,
+      createdAt: new Date().toISOString(), screenshots: [{ width: 1, height: 1, contentType: "image/webp", bytes }] };
+    await server.store.createFeedback(record);
+    const listPath = "/api/admin/feedback";
+    const imagePath = "/api/admin/feedback/FB-7Q2K/screenshots/0";
+    for (const client of [server.anonymous(), member]) {
+      expect((await client.request("GET", listPath)).status).toBe(404);
+      expect((await client.request("GET", imagePath)).status).toBe(404);
+    }
+    const list = await admin.request("GET", listPath);
+    expect(list.headers.get("cache-control")).toBe("no-store");
+    expect(await list.json()).toEqual({ reports: [{ reference: record.reference, kind: record.kind,
+      summary: record.summary, details: record.details, technical: null, createdAt: record.createdAt,
+      reporter: { displayName: member.view!.displayName, email: member.email }, screenshots: [{ position: 0, width: 1, height: 1 }] }], next: null });
+    const shot = await admin.request("GET", imagePath);
+    expect(shot.headers.get("content-type")).toBe("image/webp");
+    expect(shot.headers.get("cache-control")).toBe("no-store");
+    expect(new Uint8Array(await shot.arrayBuffer())).toEqual(bytes);
+  });
+
   it("opens for the seeded admin account, and not for a squatter who took the admin email first", async () => {
     const id = "6f1c1a0e-1d8e-4a52-9d44-0b8f7c1e2a33";
     const env = { ADMIN_ACCOUNT_IDS: id, ADMIN_EMAIL: "boss@example.com", ADMIN_PASSWORD: "a-long-seeded-secret" };

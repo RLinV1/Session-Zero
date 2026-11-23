@@ -4,6 +4,8 @@
  * credentials bound to it (ADR 0017 M4), in the same transaction.
  */
 
+import type { ReferralSource } from "@vtt/shared";
+
 export interface UserRecord {
   id: string;
   /** Already trimmed and lowercased by the `Email` schema. */
@@ -19,9 +21,10 @@ export interface UserRecord {
   passwordChangedAt: string;
   emailVerifiedAt: string | null;
   credentialVersion: number;
+  referralSource?: ReferralSource | null;
 }
 
-export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash"> & { emailVerifiedAt?: string | null };
+export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash"> & Pick<UserRecord, "referralSource"> & { emailVerifiedAt?: string | null };
 
 export interface SessionRecord {
   /** SHA-256 of the cookie token. */

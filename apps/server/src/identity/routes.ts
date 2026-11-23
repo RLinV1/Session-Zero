@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
-import {
+import { ReferralSource,
   BUILD_LIMITS,
   ChangePasswordRequest,
   DeleteAccountRequest,
@@ -32,7 +32,6 @@ import { RateLimiter, type LimitResult } from "./rateLimit";
 import { clearSessionCookie, sessionCookie, toAccountView, type Sessions } from "./sessions";
 
 const MINUTE = 60 * 1000;
-const HOUR = 60 * MINUTE;
 const TOO_COMMON = "That password is too common. Choose another.";
 
 /**
@@ -100,7 +99,6 @@ export function accountLimits(now: () => number = Date.now) {
     guestRoomsPerAddress: new RateLimiter(20, 60 * MINUTE, now),
     /** Feedback reports per address (IPv6 by /64); every attempt counts, accepted or not (FR-PL-11, ADR 0079). */
     feedbackPerAddress: new RateLimiter(10, 60 * MINUTE, now),
-    feedbackMailPerDay: new RateLimiter(20, 24 * HOUR, now),
     /** Verification link requests per address and per client address, counted up front as sign-in is (email-verification). */
     resendPerEmail: new RateLimiter(3, 15 * MINUTE, now),
     resendPerIp: new RateLimiter(20, 60 * MINUTE, now),
@@ -136,6 +134,7 @@ export function registerIdentityRoutes(
           displayName: body.data.displayName,
           passwordHash,
           emailVerifiedAt: verification ? null : new Date(now()).toISOString(),
+          referralSource: ReferralSource.safeParse(body.data.referralCode).data ?? null,
         });
       } catch (err) {
         if (!(err instanceof EmailTakenError)) throw err;

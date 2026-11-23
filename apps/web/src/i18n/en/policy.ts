@@ -16,7 +16,7 @@ export const policy = {
   "privacy.keep.title": "What we keep",
   "privacy.keep.account.term": "Your account",
   "privacy.keep.account.body":
-    "Needed only to host a game. Your display name, your email and your password. The password is stored only as an Argon2 hash, so nobody can read it back, us included.",
+    "Needed only to host a game. Your display name, your email and your password. The password is stored only as an Argon2 hash, so nobody can read it back, us included. If you sign up through a referral link and leave attribution on, we keep the platform with your account and show only aggregate counts in our admin panel.",
   "privacy.keep.gm.term": "What a GM makes",
   "privacy.keep.gm.body": "Rooms, and the maps, tokens, creatures, encounters, animations and dice looks in their library.",
   "privacy.keep.room.term": "What happens in a room",
@@ -32,7 +32,7 @@ export const policy = {
   "privacy.keep.feedback.body":
     "A report you send through Feedback: what you wrote, any screenshots you attached and, unless you turn them off, technical details (the page, your browser, screen size and language, and in a room its ID, event number and your role). Screenshots are re-encoded to remove location and camera data. Only the Session Zero team reads reports. If you are signed in, the report is linked to your account so we can reply.",
   "privacy.dont.title": "What we don't do",
-  "privacy.dont.tracking": "No analytics, advertising or tracking, and no scripts, fonts or embeds loaded from other sites.",
+  "privacy.dont.tracking": "We use no advertising or third-party tracking and load no scripts, fonts or embeds from other sites.",
   "privacy.dont.sell": "We don't sell or share what you put in the app with anyone.",
   "privacy.dont.ai":
     "We don't send what you put in the app to any AI company. An AI app gets room or build data only when a person connects it, as described under AI apps below.",

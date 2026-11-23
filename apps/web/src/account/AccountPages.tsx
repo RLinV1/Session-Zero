@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { t } from "../i18n/locale";
 import { CaretDown } from "@phosphor-icons/react";
-import { EMAIL_UNVERIFIED_CODE, PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
+import { ReferralSource, EMAIL_UNVERIFIED_CODE, PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
 import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
@@ -199,6 +199,8 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [source] = useState(() => ReferralSource.safeParse(new URLSearchParams(location.search).get("r")).data);
+  const [includeSource, setIncludeSource] = useState(true);
 
   async function submit() {
     if (password !== confirmPassword) {
@@ -208,7 +210,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
     setBusy(true);
     setError(null);
     try {
-      const pending = await signUp(email, password, displayName);
+      const pending = await signUp(email, password, displayName, includeSource ? source : undefined);
       if (pending) setSentTo(pending.email);
       else onSignedUp();
     } catch (err) {
@@ -277,6 +279,12 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
         />
         {fieldError("confirmPassword")}
       </label>
+      {source && (
+        <label className="muted small-print" style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+          <input type="checkbox" checked={includeSource} onChange={(e) => setIncludeSource(e.target.checked)} />
+          {t("account.referral")}
+        </label>
+      )}
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}
         <Link href="/privacy">{t("account.agree.privacy")}</Link>{t("account.agree.after")}
@@ -629,6 +637,9 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
               <Link href="/account" className="menu-item" aria-current={onAccountPage ? "page" : undefined} onClick={close}>
                 {t("account.yourAccount")}
               </Link>
+              {account.isAdmin && (
+                <Link href="/admin/stats" className="menu-item" onClick={close}>{t("adminStats.menu")}</Link>
+              )}
               <button
                 type="button"
                 className="menu-item"

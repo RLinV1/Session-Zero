@@ -29,6 +29,7 @@ export const entry = {
   "account.guestHint": "Start a game as a guest GM. No account needed.",
   "account.orUseAccount": "Or use an account",
   "account.newHere": "New here?",
+  "account.referral": "Include this signup in the referral totals for the site I came from.",
   "account.createAnAccount": "Create an account",
   "account.createSubmit": "Create account",
   "account.creating": "Creating…",

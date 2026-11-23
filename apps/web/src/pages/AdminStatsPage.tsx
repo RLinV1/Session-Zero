@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { formatNumber, LaunchStatsResponse, type LaunchStatsCounts, type LaunchStatsDayRow } from "@vtt/shared";
+import { formatNumber, LaunchStatsResponse, ReferralSource, type LaunchStatsCounts, type LaunchStatsDayRow } from "@vtt/shared";
 import { getLocale, useT } from "../i18n/locale";
-import { EntryPage } from "../ui/SiteHeader";
+import { AdminNav, AdminNotFound } from "./AdminNav";
 import "./adminStats.css";
 
 /**
  * Site admins' launch stats (ADR 0080): aggregate counts per UTC day, for the weekly launch report.
- * Linked from nowhere. The server answers anyone else with the same 404 as an address that
+ * The server answers anyone else with the same 404 as an address that
  * doesn't exist, and this page then shows the same "Page not found" card as the router does.
  */
 
@@ -85,22 +85,13 @@ export function AdminStatsPage() {
   };
 
   if (load.kind === "loading") return <main className="centered"><p role="status">{t("common.loading")}</p></main>;
-  if (load.kind === "notFound") {
-    return (
-      <EntryPage>
-        <div className="card">
-          <h1>{t("notFound.title")}</h1>
-          <p className="muted">{t("notFound.body")}</p>
-          <a href="/">{t("notFound.home")}</a>
-        </div>
-      </EntryPage>
-    );
-  }
+  if (load.kind === "notFound") return <AdminNotFound />;
 
   const stats = load.kind === "ready" ? load.stats : null;
   return (
     <div className="admin-stats">
       <main className="page-shell admin-stats-main">
+        {stats && <AdminNav current="stats" />}
         <header className="admin-stats-head">
           <div>
             <h1>{t("adminStats.heading")}</h1>
@@ -171,6 +162,20 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
         </div>
         <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={200} />
       </section>
+
+      {stats.referralSignups && (
+        <section className="admin-stats-card" aria-labelledby="admin-referrals">
+          <h2 id="admin-referrals">{t("adminStats.referrals")}</h2>
+          <table>
+            <thead><tr><th scope="col">{t("adminStats.platform")}</th><th scope="col">{t("adminStats.signups")}</th></tr></thead>
+            <tbody>
+              {ReferralSource.options.map((source) => (
+                <tr key={source}><th scope="row">{t(`adminStats.referral.${source}`)}</th><td>{n(stats.referralSignups![source])}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="admin-stats-growth" aria-labelledby="admin-stats-growth">
         <div>

@@ -263,6 +263,7 @@ model User {
   /// Null until the address is verified (email-verification). Existing accounts were backfilled.
   emailVerifiedAt   DateTime? @map("email_verified_at") @db.Timestamptz(6)
   credentialVersion Int      @default(0) @map("credential_version")
+  referralSource    String?  @map("referral_source")
 
   owner          GmIdentity   @relation(fields: [ownerId], references: [id])
   activeDiceLook DiceLook?    @relation("ActiveDiceLook", fields: [activeDiceLookId], references: [id], onDelete: SetNull)

@@ -2,6 +2,21 @@ import type { CatalogSource } from "@vtt/shared";
 
 /** The admin launch stats page (ADR 0080). Only site admins ever see these. */
 export const admin = {
+  "adminStats.referrals": "Signups by referral",
+  "adminStats.platform": "Platform",
+  "adminStats.signups": "Verified signups",
+  "adminStats.referral.tiktok": "TikTok",
+  "adminStats.referral.youtube": "YouTube",
+  "adminStats.referral.instagram": "Instagram",
+  "adminFeedback.title": "Feedback",
+  "adminFeedback.empty": "No feedback reports in this view.",
+  "adminFeedback.failed": "Feedback could not be loaded.",
+  "adminFeedback.guest": "Signed-out visitor",
+  "adminFeedback.technical": "Technical details",
+  "adminFeedback.newest": "Newest reports",
+  "adminFeedback.older": "Older reports",
+  "adminFeedback.screenshot": ({ number }: { number: number }) => "Screenshot " + number,
+  "adminStats.menu": "Stats",
   "title.adminStats": "Launch stats",
   "adminStats.heading": "Launch stats",
   "adminStats.from": "From",

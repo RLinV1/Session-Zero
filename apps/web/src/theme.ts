@@ -45,6 +45,7 @@ export function layerFor(route: Route): Layer {
     case "resetPassword":
     case "join":
     case "notFound":
+    case "adminFeedback":
     case "adminStats": // The not-found ground, so it looks no different to anyone it answers "not found" (ADR 0080).
     case "studioConnect":
       return "entry";

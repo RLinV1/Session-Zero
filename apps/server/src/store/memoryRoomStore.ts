@@ -2,6 +2,7 @@ import { affectedWorkspaces, guardStudioPublish, ownerRemovalEnds, readOwnerAuth
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
+import type { FeedbackCursor } from "@vtt/shared";
 import { StudioPreparationOutcome, type StudioContext } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -77,7 +78,7 @@ import {
   type StudioSweepTimes,
   type StudioTokenRecord,
 } from "./studioStore";
-import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
+import { FeedbackReferenceTakenError, type AdminFeedbackRecord, type FeedbackRecord } from "./feedbackStore";
 import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
 
@@ -232,7 +233,9 @@ export class MemoryRoomStore implements RoomStore {
     const facts: LaunchStatsFacts = {
       accountsBefore: users.filter((u) => u.createdAt < from).length,
       roomsBefore: [...this.rooms.values()].filter((room) => !room.temporary && room.createdAt < from).length,
-      accounts: users.filter((u) => within(u.createdAt)).map((u) => ({ id: u.id, at: u.createdAt })),
+      accounts: users.filter((u) => within(u.createdAt)).map((u) => ({
+        id: u.id, at: u.createdAt, ...(u.emailVerifiedAt && u.referralSource ? { referralSource: u.referralSource } : {}),
+      })),
       rooms: [...this.rooms.entries()]
         .filter(([, room]) => !room.temporary && within(room.createdAt))
         .map(([id, room]) => ({ id, at: room.createdAt, host: hostOf(room.ownerGmId) })),
@@ -478,6 +481,26 @@ export class MemoryRoomStore implements RoomStore {
       .filter((report) => since === undefined || report.createdAt >= since)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((report) => structuredClone(report));
+  }
+
+  async listAdminFeedback(limit: number, before?: FeedbackCursor): Promise<AdminFeedbackRecord[]> {
+    return [...this.feedback.values()]
+      .filter(({ createdAt, id }) => !before || createdAt < before.createdAt || (createdAt === before.createdAt && id < before.id))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .slice(0, limit)
+      .map(({ reporterUserId, screenshots, ...report }) => {
+        const user = reporterUserId ? this.users.get(reporterUserId) : null;
+        return structuredClone({
+          ...report,
+          reporter: user ? { displayName: user.displayName, email: user.email } : null,
+          screenshots: screenshots.map(({ width, height }, position) => ({ position, width, height })),
+        });
+      });
+  }
+
+  async getFeedbackScreenshot(reference: string, position: number) {
+    const shot = this.feedback.get(reference)?.screenshots[position];
+    return shot ? structuredClone(shot) : null;
   }
 
   async deleteFeedback(reference: string) {

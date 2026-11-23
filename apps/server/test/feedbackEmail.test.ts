@@ -142,11 +142,12 @@ describe("feedback email alerts (FR-PL-11)", () => {
     FeedbackReceipt.parse(await res.json());
     await settle();
     expect(await server!.store.listFeedback()).toHaveLength(1);
-    expect(log).toHaveBeenCalledWith("[vtt] feedback email failed:", expect.any(Error));
+    expect(log).toHaveBeenCalledWith("[vtt] feedback email failed:", "Error");
   });
 
   it("sends at most 20 notices in 24 hours and resumes when the window passes", async () => {
-    let clock = Date.parse("2026-10-01T12:00:00.000Z");
+    const startAt = Date.parse("2026-10-01T12:00:00.000Z");
+    let clock = startAt;
     const mail = (await start({ now: () => clock }))!;
     for (let i = 0; i < 21; i++) {
       expect((await send(server!.base, report)).status).toBe(201);
@@ -156,10 +157,21 @@ describe("feedback email alerts (FR-PL-11)", () => {
     expect(mail.sent).toHaveLength(20);
     expect(await server!.store.listFeedback()).toHaveLength(21);
 
-    clock += 25 * HOUR;
-    await send(server!.base, report);
+    clock = startAt + 24 * HOUR;
+    for (let i = 0; i < 6; i++) expect((await send(server!.base, report)).status).toBe(201);
     await settle();
-    expect(mail.sent).toHaveLength(21);
+    expect(mail.sent).toHaveLength(25);
+    expect(await server!.store.listFeedback()).toHaveLength(27);
+  });
+
+  it("accepts the maximum three screenshots with an empty honeypot field", async () => {
+    const mail = (await start())!;
+    const bytes = await png();
+    const files = ["a.png", "b.png", "c.png"].map((name) => ({ name, bytes }));
+    const response = await send(server!.base, report, files, {}, "");
+    expect(response.status).toBe(201);
+    expect(FeedbackReceipt.parse(await response.json()).screenshots).toBe(3);
+    expect(mail.sent[0]?.attachments).toHaveLength(3);
   });
 
   it("drops a submission that fills the honeypot: 201, a reference, nothing stored, no mail", async () => {

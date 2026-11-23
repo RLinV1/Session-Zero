@@ -423,6 +423,10 @@ export const api = {
   },
 
   /** Accounts (FR-GM-01, ADR 0017). Errors carry the field to show them beside. */
+  admin: {
+    isAdmin: async () => (await apiFetch("/api/admin/me")).status === 204,
+  },
+
   auth: {
     async me(): Promise<MeResponse> {
       const res = await apiFetch("/api/auth/me", { cache: "no-store" });

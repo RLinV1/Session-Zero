@@ -1,5 +1,6 @@
 import { revealOnEnter } from "../ui/reveal";
 import { SiteFooter } from "../ui/SiteFooter";
+import { Link } from "../Link";
 import { SiteHeader } from "../ui/SiteHeader";
 import { AccountLinks } from "./home/AccountLinks";
 import { ClosingBand } from "./home/ClosingBand";
@@ -25,7 +26,7 @@ export function HomePage() {
   return (
     <div className="home-page">
       <div className="page-shell page-bar">
-        <SiteHeader account={<AccountLinks />} />
+        <SiteHeader nav={<Link href="/news" className="nav-link">{t("nav.news")}</Link>} account={<AccountLinks />} />
       </div>
 
       <main className="landing-shell">

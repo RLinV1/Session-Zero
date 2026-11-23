@@ -25,6 +25,10 @@ export type LaunchStatsQuery = z.infer<typeof LaunchStatsQuery>;
 
 const Count = z.number().int().nonnegative();
 
+export const ReferralSource = z.enum(["tiktok", "youtube", "instagram"]);
+export type ReferralSource = z.infer<typeof ReferralSource>;
+const ReferralSignups = z.record(ReferralSource, Count);
+
 export const LaunchStatsCounts = z.object({
   /** Accounts signed up. */
   accountsCreated: Count,
@@ -64,5 +68,6 @@ export const LaunchStatsResponse = z.object({
    * once; the to-date counts are the last day's; the other counts are sums.
    */
   totals: LaunchStatsCounts,
+  referralSignups: ReferralSignups.optional(),
 });
 export type LaunchStatsResponse = z.infer<typeof LaunchStatsResponse>;
