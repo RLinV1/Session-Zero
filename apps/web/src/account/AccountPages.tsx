@@ -62,22 +62,20 @@ function AccountForm(props: {
 }) {
   return (
     <form
-      className={props.compact ? "card account-form account-form-compact" : "card account-form"}
+      className="card account-form"
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         props.onSubmit();
       }}
     >
       <h1>{props.title}</h1>
-      {!props.compact && (
-        <>
-          <div className="guest-option">
-            <Link href="/start" className="cta" aria-describedby="account-guest-hint">{t("account.continueGuest")}</Link>
-            <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>
-          </div>
-          <div className="guest-divider">{t("account.orUseAccount")}</div>
-        </>
-      )}
+      <div className="guest-option">
+        <Link href="/start" className="cta" aria-describedby={props.compact ? undefined : "account-guest-hint"}>
+          {t("account.continueGuest")}
+        </Link>
+        {!props.compact && <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>}
+      </div>
+      {!props.compact && <div className="guest-divider">{t("account.orUseAccount")}</div>}
       {props.children}
       {props.error && (
         <p role="alert" className="error">
@@ -90,9 +88,7 @@ function AccountForm(props: {
       </button>
       <div className="account-form-footer">
         <p className="muted small-print">{props.footer}</p>
-        {props.compact
-          ? <Link href="/start">{t("account.continueGuest")}</Link>
-          : <Link href="/">{t("account.backHome")}</Link>}
+        {!props.compact && <Link href="/">{t("account.backHome")}</Link>}
       </div>
     </form>
   );

@@ -306,7 +306,10 @@ describe("the pages that send a person back (gm-home: Account screens)", () => {
     signUp.mockResolvedValue(undefined);
     render(<SignUpPage />);
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(hrefOf("Try without signing in")).toBe("/start");
+    const guest = screen.getByRole("link", { name: "Try without signing in" });
+    expect(guest.getAttribute("href")).toBe("/start");
+    expect(guest.classList.contains("cta")).toBe(true);
+    expect(guest.compareDocumentPosition(screen.getByLabelText("Display name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse");
