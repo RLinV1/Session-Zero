@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
-import {
+import { ReferralSource,
   BUILD_LIMITS,
   ChangePasswordRequest,
   DeleteAccountRequest,
@@ -20,7 +20,7 @@ import { requestLocale } from "../i18n/locale";
 import type { DeleteAccount } from "../domain/accountDeletion";
 import type { BuildStore } from "../store/buildStore";
 import type { StudioStore } from "../store/studioStore";
-import { EmailTakenError, type IdentityStore, type UserRecord } from "../store/identityStore";
+import { EmailTakenError, isExpiredUnverifiedAccount, type IdentityStore, type UserRecord } from "../store/identityStore";
 import { requireAccount, signedIn } from "./middleware";
 import type { EmailVerification, MailMessage } from "./mailer";
 import { resetEmail, resetLink, RESET_LINK_LIFETIME_MS, signUpNoticeEmail } from "./recoveryEmails";
@@ -134,6 +134,7 @@ export function registerIdentityRoutes(
           displayName: body.data.displayName,
           passwordHash,
           emailVerifiedAt: verification ? null : new Date(now()).toISOString(),
+          referralSource: ReferralSource.safeParse(body.data.referralCode).data ?? null,
         });
       } catch (err) {
         if (!(err instanceof EmailTakenError)) throw err;
@@ -244,7 +245,7 @@ export function registerIdentityRoutes(
       const ok = user
         ? await verifyPassword(user.passwordHash, body.data.password)
         : await verifyAgainstDummy(body.data.password);
-      if (!user || !ok) return void res.status(401).json({ error: SIGN_IN_FAILED });
+      if (!user || !ok || (verification && isExpiredUnverifiedAccount(user, now()))) return void res.status(401).json({ error: SIGN_IN_FAILED });
       limits.signInFailuresPerEmail.reset(emailKey);
       if (verification && !user.emailVerifiedAt) {
         return void res.status(403).json({ error: "Verify your email address before signing in. Check your inbox for the link.", code: EMAIL_UNVERIFIED_CODE });

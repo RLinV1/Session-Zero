@@ -37,6 +37,7 @@ export const SignUpRequest = z
     }),
     password: Password,
     displayName: AccountDisplayName,
+    referralCode: z.string().max(64).optional(),
   })
   .refine((r) => r.password.trim().toLowerCase() !== r.email, {
     message: validationMessage(sharedMsg("valid.passwordIsEmail")),

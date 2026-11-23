@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hashToken } from "../src/domain/credentials";
 import { RateLimiter } from "../src/identity/rateLimit";
 import {
@@ -82,18 +82,25 @@ describe("sessions (FR-GM-01, ADR 0017 I1)", () => {
     expect(reported).toEqual([["seat-hash"]]);
   });
 
-  it("sweeps stale unverified accounts only while verification is required (PR 226 sweep gate)", async () => {
+  it("automatically sweeps expired signups only while verification is required", async () => {
     const store = new MemoryRoomStore();
     let now = Date.now();
     let verifying = false;
     const sessions = new Sessions(store, { secure: false }, () => now, () => verifying);
     const user = await store.createUser({ id: randomUUID(), email: "sam@example.com", displayName: "Sam", passwordHash: "x" });
-    now += 8 * DAY;
-    await sessions.sweep();
-    expect(await store.findUserById(user.id)).not.toBeNull();
-    verifying = true;
-    await sessions.sweep();
-    expect(await store.findUserById(user.id)).toBeNull();
+    now = Date.parse(user.createdAt) + 7 * DAY;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const stop = sessions.startSweeping();
+    try {
+      await vi.advanceTimersByTimeAsync(TOUCH_EVERY_MS);
+      expect(await store.findUserById(user.id)).not.toBeNull();
+      verifying = true;
+      await vi.advanceTimersByTimeAsync(TOUCH_EVERY_MS);
+      expect(await store.findUserById(user.id)).toBeNull();
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
   });
 
   it("writes the exact cookie, with and without Secure", () => {

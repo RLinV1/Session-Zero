@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { t } from "../i18n/locale";
 import { CaretDown } from "@phosphor-icons/react";
-import { EMAIL_UNVERIFIED_CODE, PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
+import { ReferralSource, EMAIL_UNVERIFIED_CODE, PASSWORD_MAX, PASSWORD_MIN, type AccountView } from "@vtt/shared";
 import { Link } from "../Link";
 import { EntryPage, HubNav, SiteHeader } from "../ui/SiteHeader";
 import { ApiError } from "../net/api";
@@ -54,6 +54,7 @@ function AccountForm(props: {
   submitLabel: string;
   busyLabel: string;
   busy: boolean;
+  compact?: boolean;
   error: string | null;
   errorAction?: ReactNode;
   onSubmit: () => void;
@@ -70,10 +71,12 @@ function AccountForm(props: {
     >
       <h1>{props.title}</h1>
       <div className="guest-option">
-        <Link href="/start" className="cta" aria-describedby="account-guest-hint">{t("account.continueGuest")}</Link>
-        <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>
+        <Link href="/start" className="cta" aria-describedby={props.compact ? undefined : "account-guest-hint"}>
+          {t("account.continueGuest")}
+        </Link>
+        {!props.compact && <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>}
       </div>
-      <div className="guest-divider">{t("account.orUseAccount")}</div>
+      <div className="guest-divider">{t(props.compact ? "account.or" : "account.orUseAccount")}</div>
       {props.children}
       {props.error && (
         <p role="alert" className="error">
@@ -84,8 +87,10 @@ function AccountForm(props: {
       <button className="primary" type="submit" disabled={props.busy}>
         {props.busy ? props.busyLabel : props.submitLabel}
       </button>
-      <p className="muted small-print">{props.footer}</p>
-      <Link href="/">{t("account.backHome")}</Link>
+      <div className="account-form-footer">
+        <p className="muted small-print">{props.footer}</p>
+        {!props.compact && <Link href="/">{t("account.backHome")}</Link>}
+      </div>
     </form>
   );
 }
@@ -199,6 +204,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [source] = useState(() => ReferralSource.safeParse(new URLSearchParams(location.search).get("r")).data);
 
   async function submit() {
     if (password !== confirmPassword) {
@@ -208,7 +214,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
     setBusy(true);
     setError(null);
     try {
-      const pending = await signUp(email, password, displayName);
+      const pending = await signUp(email, password, displayName, source);
       if (pending) setSentTo(pending.email);
       else onSignedUp();
     } catch (err) {
@@ -221,13 +227,14 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
 
   const fieldError = (field: string) =>
     error?.field === field ? (
-      <span role="alert" className="error small">
+      <span id={`signup-${field}-error`} role="alert" className="error small">
         {error.message}
       </span>
     ) : null;
 
   return (
     <AccountForm
+      compact
       title={t("account.createAnAccount")}
       submitLabel={t("account.createSubmit")}
       busyLabel={t("account.creating")}
@@ -240,7 +247,8 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           <Link href={signInHref}>{t("account.signIn")}</Link>
         </>
       }
-    >      <label>
+    >
+      <label>
         {t("account.displayName")}
         <input autoComplete="nickname" required maxLength={40} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         {fieldError("displayName")}
@@ -250,10 +258,14 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
         <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         {fieldError("email")}
       </label>
-      <label>
-        {t("account.password")}
-        <span className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
+      <div className="account-password-field">
+        <div className="account-password-label">
+          <label htmlFor="signup-password">{t("account.password")}</label>
+          <span id="signup-password-hint" className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
+        </div>
         <PasswordInput
+          id="signup-password"
+          aria-describedby="signup-password-hint"
           autoComplete="new-password"
           required
           minLength={PASSWORD_MIN}
@@ -262,19 +274,21 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           onChange={(e) => setPassword(e.target.value)}
         />
         {fieldError("password")}
-      </label>
-      <label>
-        {t("account.confirmPassword")}
+      </div>
+      <div className="account-password-field">
+        <label htmlFor="signup-confirm-password">{t("account.confirmPassword")}</label>
         <PasswordInput
+          id="signup-confirm-password"
           autoComplete="new-password"
           required
-          minLength={PASSWORD_MIN}
           maxLength={PASSWORD_MAX}
           value={confirmPassword}
+          aria-invalid={error?.field === "confirmPassword" || undefined}
+          aria-describedby={error?.field === "confirmPassword" ? "signup-confirmPassword-error" : undefined}
           onChange={(e) => setConfirmPassword(e.target.value)}
         />
         {fieldError("confirmPassword")}
-      </label>
+      </div>
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}
         <Link href="/privacy">{t("account.agree.privacy")}</Link>{t("account.agree.after")}
@@ -626,6 +640,9 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
               <Link href="/account" className="menu-item" aria-current={onAccountPage ? "page" : undefined} onClick={close}>
                 {t("account.yourAccount")}
               </Link>
+              {account.isAdmin && (
+                <Link href="/admin/stats" className="menu-item" onClick={close}>{t("adminStats.menu")}</Link>
+              )}
               <button
                 type="button"
                 className="menu-item"

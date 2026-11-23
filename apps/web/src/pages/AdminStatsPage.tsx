@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { formatNumber, LaunchStatsResponse, type LaunchStatsCounts, type LaunchStatsDayRow } from "@vtt/shared";
+import { formatNumber, LaunchStatsResponse, ReferralSource, type LaunchStatsCounts, type LaunchStatsDayRow } from "@vtt/shared";
 import { getLocale, useT } from "../i18n/locale";
-import { EntryPage } from "../ui/SiteHeader";
+import { AdminNav, AdminNotFound } from "./AdminNav";
 import "./adminStats.css";
 
 /**
  * Site admins' launch stats (ADR 0080): aggregate counts per UTC day, for the weekly launch report.
- * Linked from nowhere. The server answers anyone else with the same 404 as an address that
+ * The server answers anyone else with the same 404 as an address that
  * doesn't exist, and this page then shows the same "Page not found" card as the router does.
  */
 
@@ -85,22 +85,13 @@ export function AdminStatsPage() {
   };
 
   if (load.kind === "loading") return <main className="centered"><p role="status">{t("common.loading")}</p></main>;
-  if (load.kind === "notFound") {
-    return (
-      <EntryPage>
-        <div className="card">
-          <h1>{t("notFound.title")}</h1>
-          <p className="muted">{t("notFound.body")}</p>
-          <a href="/">{t("notFound.home")}</a>
-        </div>
-      </EntryPage>
-    );
-  }
+  if (load.kind === "notFound") return <AdminNotFound />;
 
   const stats = load.kind === "ready" ? load.stats : null;
   return (
     <div className="admin-stats">
       <main className="page-shell admin-stats-main">
+        {stats && <AdminNav current="stats" />}
         <header className="admin-stats-head">
           <div>
             <h1>{t("adminStats.heading")}</h1>
@@ -159,18 +150,43 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
   const t = useT();
   const locale = getLocale();
   const n = (value: number) => formatNumber(locale, value);
+  const { referralSignups } = stats;
   return (
     <>
-      <section className="admin-stats-card kpi" aria-labelledby="admin-stats-playedRooms">
-        <div className="admin-stats-card-head">
-          <div>
-            <h2 id="admin-stats-playedRooms">{metricLabel(t, "playedRooms")}</h2>
-            <p className="muted">{t("adminStats.kpi")}</p>
+      <div className="admin-stats-overview">
+        <section className="admin-stats-card kpi" aria-labelledby="admin-stats-playedRooms">
+          <div className="admin-stats-card-head">
+            <div>
+              <h2 id="admin-stats-playedRooms">{metricLabel(t, "playedRooms")}</h2>
+              <p className="muted">{t("adminStats.kpi")}</p>
+            </div>
+            <p className="admin-stats-total">{n(stats.totals.playedRooms)}</p>
           </div>
-          <p className="admin-stats-total">{n(stats.totals.playedRooms)}</p>
-        </div>
-        <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={200} />
-      </section>
+          {stats.totals.playedRooms > 0 ? (
+            <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={148} />
+          ) : (
+            <p className="admin-stats-empty muted">{t("adminStats.noPlayedRooms")}</p>
+          )}
+        </section>
+        {referralSignups && (
+          <section className="admin-stats-card admin-stats-referrals" aria-labelledby="admin-referrals">
+            <h2 id="admin-referrals">{t("adminStats.referrals")}</h2>
+            <table className="admin-stats-grid" aria-labelledby="admin-referrals">
+              <thead>
+                <tr><th scope="col">{t("adminStats.platform")}</th><th scope="col">{t("adminStats.signups")}</th></tr>
+              </thead>
+              <tbody>
+                {ReferralSource.options.map((source) => (
+                  <tr key={source}>
+                    <th scope="row">{t(`adminStats.referral.${source}`)}</th>
+                    <td>{n(referralSignups[source])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
 
       <section className="admin-stats-growth" aria-labelledby="admin-stats-growth">
         <div>

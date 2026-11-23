@@ -10,6 +10,7 @@ export const homeZhTW = {
   "home.isometricLink": "體驗等角視角光影",
   "home.yourRooms": "你的房間",
   "home.signIn": "登入",
+  "home.signUp": "註冊",
   "home.createAccount": "建立帳號",
 
   "home.hero.title": "永久免費，今晚就能開玩。",

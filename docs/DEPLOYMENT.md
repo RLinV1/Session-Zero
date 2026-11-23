@@ -95,6 +95,7 @@ always-on container (Fargate service, or Cloud Run with min instances 1 and CPU 
 | `SEED_DEV_ACCOUNT` | Never set |
 | `ADMIN_ACCOUNT_IDS` | Optional. Account ids, comma-separated, that may open `/admin/stats` (aggregate launch counts, ADR 0080). Empty means nobody, and the page answers 404 |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Optional. With exactly one id in `ADMIN_ACCOUNT_IDS`, the server creates that verified account on start if no account has the id. It never changes an existing account (a changed password stays). If another account holds the email, nothing is created and the log warns. Admin access stays by id |
+| `ADMIN_EMAIL` (feedback) | Feedback notices go to `ADMIN_EMAIL` with the cleaned screenshots attached, capped at 20 a day; they need the same mail settings as verification |
 
 In production, sign-up sends a one-time link (valid 24 hours) to the address, and sign-in is refused until it is used. The link is the first entry of `CLIENT_ORIGIN` plus `/verify-email?token=...`, so `CLIENT_ORIGIN` must be the public site address, for example `https://sessionzero.codes`. Outside production nothing is sent and accounts are verified at once. Existing accounts are marked verified by the migration.
 

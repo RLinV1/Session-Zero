@@ -3,9 +3,12 @@ import type { Express, NextFunction, Request, Response } from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { FEEDBACK_LIMITS, FeedbackReport, feedbackReference, type FeedbackReceipt } from "@vtt/shared";
+import type { Mailer } from "../identity/mailer";
 import { signedIn } from "../identity/middleware";
 import type { RateLimiter } from "../identity/rateLimit";
 import { addressKey, refused } from "../identity/routes";
+import { feedbackEmail } from "./feedbackEmail";
+import { errorTag } from "./errorTag";
 import { FeedbackReferenceTakenError, type FeedbackScreenshotRecord, type FeedbackStore } from "../store/feedbackStore";
 
 /** The formats a screenshot may really be, whatever its name or declared type says. */
@@ -14,6 +17,8 @@ const SCREENSHOT_FORMATS = new Set(["png", "jpeg", "webp"]);
 const MAX_INPUT_PIXELS = 40_000_000;
 /** Stored screenshots fit inside this edge, which keeps a 5K capture readable and the row small. */
 const MAX_STORED_EDGE = 2560;
+const MAIL_LIMIT = 20;
+const MAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const TEXT = {
   invalid: "This report isn't valid. Check the summary and try again.",
@@ -45,19 +50,20 @@ export async function cleanScreenshot(bytes: Uint8Array): Promise<FeedbackScreen
 
 /**
  * `POST /api/feedback` (FR-PL-11, ADR 0079): a bug report or idea from anyone, signed in or not.
- * Multipart: one `report` field holding `FeedbackReport` as JSON, and up to three `screenshots`.
- * Nothing is ever read back over HTTP; the team reads reports through `feedback:export`.
+ * Multipart: a JSON report, an optional honeypot, and up to three screenshots.
  */
-export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStore; limiter: RateLimiter; allowedOrigins: readonly string[]; now: () => number }) {
-  const { store, limiter, allowedOrigins, now } = deps;
+export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStore; limiter: RateLimiter; mailer: Mailer | null; adminEmail: string; allowedOrigins: readonly string[]; now: () => number }) {
+  const { store, limiter, mailer, adminEmail, allowedOrigins, now } = deps;
+  let mailAttempts: number[] = [];
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
       fileSize: FEEDBACK_LIMITS.screenshotBytes,
       files: FEEDBACK_LIMITS.screenshots,
-      fields: 1,
+      fields: 2,
       fieldSize: FEEDBACK_LIMITS.fieldBytes,
-      parts: FEEDBACK_LIMITS.screenshots + 1,
+      // Busboy reports a parts limit when it reaches the threshold.
+      parts: FEEDBACK_LIMITS.screenshots + 3,
     },
   }).fields([{ name: "screenshots", maxCount: FEEDBACK_LIMITS.screenshots }]);
 
@@ -88,7 +94,12 @@ export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStor
     },
     (req: Request, res: Response) => {
       void (async () => {
-        const field: unknown = (req.body as Record<string, unknown> | undefined)?.report;
+        const body = req.body as Record<string, unknown> | undefined;
+        if (typeof body?.website === "string" && body.website !== "") {
+          const decoy: FeedbackReceipt = { reference: feedbackReference(() => randomInt(0, 2 ** 32) / 2 ** 32), screenshots: 0 };
+          return void res.status(201).json(decoy);
+        }
+        const field: unknown = body?.report;
         let raw: unknown;
         try { raw = typeof field === "string" ? JSON.parse(field) : undefined; } catch { raw = undefined; }
         const report = FeedbackReport.safeParse(raw);
@@ -116,7 +127,17 @@ export function registerFeedbackRoutes(app: Express, deps: { store: FeedbackStor
           try {
             await store.createFeedback({ ...base, reference });
             const receipt: FeedbackReceipt = { reference, screenshots: screenshots.length };
-            return void res.status(201).json(receipt);
+            res.status(201).json(receipt);
+            if (mailer && adminEmail) {
+              const at = now();
+              mailAttempts = mailAttempts.filter((attempt) => attempt > at - MAIL_WINDOW_MS);
+              if (mailAttempts.length < MAIL_LIMIT) {
+                mailAttempts.push(at);
+                void (async () => mailer.send(feedbackEmail(adminEmail, report.data, reference, account?.user.email ?? null, screenshots)))()
+                  .catch((error: unknown) => console.error("[vtt] feedback email failed:", errorTag(error)));
+              }
+            }
+            return;
           } catch (err) {
             if (!(err instanceof FeedbackReferenceTakenError) || attempt >= 4) throw err;
           }

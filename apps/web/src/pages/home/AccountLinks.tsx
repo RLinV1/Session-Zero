@@ -3,7 +3,7 @@ import { useAccount } from "../../account/accountStore";
 import { Link } from "../../Link";
 import { t } from "../../i18n/locale";
 
-/** Top bar: sign in or create an account; signed in, the account menu and the way back to your rooms. */
+/** Top bar: sign up, or return to your rooms and account menu. */
 export function AccountLinks() {
   const account = useAccount();
   if (account.status === "loading") return null;
@@ -17,15 +17,5 @@ export function AccountLinks() {
       </span>
     );
   }
-  // One group, so a phone can give the pair a row of its own and keep the toggle top right.
-  return (
-    <span className="account-pair">
-      <Link href="/signin" className="nav-link">
-        {t("home.signIn")}
-      </Link>
-      <Link href="/signup" className="nav-cta">
-        {t("home.createAccount")}
-      </Link>
-    </span>
-  );
+  return <Link href="/signup" className="nav-cta">{t("home.signUp")}</Link>;
 }

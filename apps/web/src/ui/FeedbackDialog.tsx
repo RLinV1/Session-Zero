@@ -53,6 +53,7 @@ export function FeedbackDialog({ open, initialKind, room, onClose }: {
   const [details, setDetails] = useState("");
   const [shots, setShots] = useState<Shot[]>([]);
   const [technical, setTechnical] = useState(true);
+  const [website, setWebsite] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -136,6 +137,7 @@ export function FeedbackDialog({ open, initialKind, room, onClose }: {
       const sent = await api.feedback.send(
         { kind, summary: summary.trim(), details: details.trim(), ...(technical && { technical: technicalDetails(room?.() ?? null) }) },
         shots.map((shot) => ({ blob: shot.blob, name: shot.name })),
+        website,
       );
       setReceipt(sent);
     } catch (err) {
@@ -262,6 +264,16 @@ export function FeedbackDialog({ open, initialKind, room, onClose }: {
               <p className="muted small">{t("feedback.technicalRoom")}</p>
             </details>
           </div>
+
+          <input
+            name="website"
+            value={website}
+            tabIndex={-1}
+            aria-hidden="true"
+            autoComplete="off"
+            style={{ position: "absolute", left: "-10000px", width: 1, height: 1, opacity: 0 }}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
 
           {problem && <p role="alert" className="error">{problem}</p>}
 

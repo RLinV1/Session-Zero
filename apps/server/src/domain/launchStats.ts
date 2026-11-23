@@ -1,4 +1,4 @@
-import { MAX_STATS_DAYS, type LaunchStatsCounts, type LaunchStatsDayRow, type LaunchStatsQuery, type LaunchStatsResponse } from "@vtt/shared";
+import { MAX_STATS_DAYS, ReferralSource, type LaunchStatsCounts, type LaunchStatsDayRow, type LaunchStatsQuery, type LaunchStatsResponse } from "@vtt/shared";
 import type { LaunchStatsFacts } from "../store/statsStore";
 
 /** The default range: the last 30 UTC days, today included. */
@@ -62,6 +62,7 @@ export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange)
     rows.set(date, { date, ...zero() });
   }
   const totals = zero();
+  const referralSignups = { tiktok: 0, youtube: 0, instagram: 0 };
   const inWindow = (at: string) => at >= range.window.from && at < range.window.to;
 
   for (const account of facts.accounts) {
@@ -69,6 +70,8 @@ export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange)
     if (!row) continue;
     row.accountsCreated++;
     totals.accountsCreated++;
+    const source = ReferralSource.safeParse(account.referralSource);
+    if (source.success) referralSignups[source.data]++;
   }
   for (const room of facts.rooms) {
     const row = rows.get(room.at.slice(0, 10));
@@ -142,5 +145,5 @@ export function aggregateLaunchStats(facts: LaunchStatsFacts, range: StatsRange)
   totals.accountsToDate = accounts;
   totals.roomsToDate = rooms;
 
-  return { range: { from: range.from, to: range.to }, days: [...rows.values()], totals };
+  return { range: { from: range.from, to: range.to }, days: [...rows.values()], totals, referralSignups };
 }

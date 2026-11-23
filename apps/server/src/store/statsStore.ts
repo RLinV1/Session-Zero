@@ -13,7 +13,7 @@ export interface LaunchStatsFacts {
   /** Rooms opened before the window that still exist. */
   roomsBefore: number;
   /** Accounts created in the window. */
-  accounts: { id: string; at: string }[];
+  accounts: { id: string; at: string; referralSource?: string | null }[];
   /**
    * Rooms created in the window and who hosts them: a guest identity, an account, or neither
    * (a room from before accounts, owned by a device identity or nobody).

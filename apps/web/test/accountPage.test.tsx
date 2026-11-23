@@ -15,7 +15,7 @@ const navigate = vi.fn();
 vi.mock("../src/account/accountStore", async (orig) => ({
   ...(await orig<typeof import("../src/account/accountStore")>()),
   signIn: (email: string, password: string) => signIn(email, password),
-  signUp: (email: string, password: string, name: string) => signUp(email, password, name),
+  signUp: (...args: Parameters<typeof import("../src/account/accountStore").signUp>) => signUp(...args),
   signOut: () => signOut(),
   resendVerification: (email: string) => resend(email),
 }));
@@ -66,10 +66,10 @@ describe("the account page's address (account-page)", () => {
 });
 
 describe("signing in from the home page (account-page)", () => {
-  it("links to the sign-in and sign-up pages, not the account page", () => {
+  it("shows a single sign-up action in the signed-out header", () => {
     render(<AccountLinks />);
-    expect(hrefOf("Sign in")).toBe("/signin");
-    expect(hrefOf("Create account")).toBe("/signup");
+    expect(hrefOf("Sign up")).toBe("/signup");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
   it("lands on the person's rooms after signing in", async () => {
@@ -160,10 +160,20 @@ describe("the account menu (account-page)", () => {
     openMenu();
     const menu = within(screen.getByRole("dialog", { name: "Account" }));
     expect(menu.getByText("sam@example.com")).toBeTruthy();
+    expect(menu.queryByRole("link", { name: "Stats" })).toBeNull();
     expect(menu.getByRole("button", { name: "Sound and graphics" })).toBeTruthy();
     expect(menu.getByRole("button", { name: "Sign out" })).toBeTruthy();
     expect(menu.queryByRole("button", { name: "Delete account" })).toBeNull();
     expect(menu.queryByRole("button", { name: "Change password" })).toBeNull();
+  });
+
+  it("links a site admin to launch stats", () => {
+    accountStore.setState({ status: "signedIn", account: sam, isAdmin: true });
+    render(<AccountMenu />);
+    openMenu();
+    expect(hrefOf("Stats")).toBe("/admin/stats");
+    fireEvent.click(screen.getByRole("link", { name: "Stats" }));
+    expect(navigate).toHaveBeenCalledWith("/admin/stats");
   });
 
   it("closes on Escape and hands focus back to its button", () => {
@@ -288,20 +298,28 @@ describe("the pages that send a person back (gm-home: Account screens)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/gm-dashboard", { replace: true }));
     expect(signUp).toHaveBeenCalledTimes(1);
-    expect(signUp).toHaveBeenCalledWith("sam@example.com", "correct horse", "Sam");
+    expect(signUp).toHaveBeenCalledWith("sam@example.com", "correct horse", "Sam", undefined);
   });
 
-  it("blocks sign-up when the passwords differ and keeps the other fields (FR-GM-01)", () => {
-    history.replaceState(null, "", "/signup");
+  it("requires matching passwords and passes the referral when corrected (FR-GM-01)", async () => {
+    history.replaceState(null, "", "/signup?r=tiktok");
+    signUp.mockResolvedValue(undefined);
     render(<SignUpPage />);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    const guest = screen.getByRole("link", { name: "Try without signing in" });
+    expect(guest.getAttribute("href")).toBe("/start");
+    expect(guest.classList.contains("cta")).toBe(true);
+    expect(guest.compareDocumentPosition(screen.getByLabelText("Display name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse");
-    type(/^Confirm password/, "correct horsf");
+    type(/^Confirm password/, "wrong horse");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(screen.getByRole("alert").textContent).toBe("The two passwords don't match.");
+    expect(screen.getByLabelText("Confirm password", { exact: true }).getAttribute("aria-invalid")).toBe("true");
     expect(signUp).not.toHaveBeenCalled();
-    expect((screen.getByLabelText(/^Display name/) as HTMLInputElement).value).toBe("Sam");
-    expect((screen.getByLabelText(/^Email/) as HTMLInputElement).value).toBe("sam@example.com");
+    type(/^Confirm password/, "correct horse");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(signUp).toHaveBeenCalledExactlyOnceWith("sam@example.com", "correct horse", "Sam", "tiktok"));
   });
 });

@@ -112,7 +112,7 @@ describe("privacy and terms pages (site-policies)", () => {
   it("names both on the sign-up form, with nothing the person must tick", () => {
     accountStore.setState({ status: "signedOut" });
     render(<SignUpPage />);
-    const line = screen.getByText(/By creating an account you agree/).closest("p")!;
+    const line = screen.getByText(/By signing up, you agree/).closest("p")!;
     expect(within(line).getByRole("link", { name: "terms" }).getAttribute("href")).toBe("/terms");
     expect(within(line).getByRole("link", { name: "privacy notice" }).getAttribute("href")).toBe("/privacy");
     expect(screen.queryByRole("checkbox")).toBeNull();

@@ -2,6 +2,7 @@ import { affectedWorkspaces, guardStudioPublish, ownerRemovalEnds, readOwnerAuth
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
+import type { FeedbackCursor } from "@vtt/shared";
 import { StudioPreparationOutcome, type StudioContext } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -33,6 +34,7 @@ import {
 } from "./buildStore";
 import {
   EmailTakenError,
+  isExpiredUnverifiedAccount,
   type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
@@ -77,7 +79,7 @@ import {
   type StudioSweepTimes,
   type StudioTokenRecord,
 } from "./studioStore";
-import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
+import { FeedbackReferenceTakenError, type AdminFeedbackRecord, type FeedbackRecord } from "./feedbackStore";
 import { CredentialConflictError, SeqConflictError, type CredentialRecord, type NewEvent, type RoomStore, type RoomUploadDetails } from "./roomStore";
 import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
 
@@ -232,7 +234,9 @@ export class MemoryRoomStore implements RoomStore {
     const facts: LaunchStatsFacts = {
       accountsBefore: users.filter((u) => u.createdAt < from).length,
       roomsBefore: [...this.rooms.values()].filter((room) => !room.temporary && room.createdAt < from).length,
-      accounts: users.filter((u) => within(u.createdAt)).map((u) => ({ id: u.id, at: u.createdAt })),
+      accounts: users.filter((u) => within(u.createdAt)).map((u) => ({
+        id: u.id, at: u.createdAt, ...(u.emailVerifiedAt && u.referralSource ? { referralSource: u.referralSource } : {}),
+      })),
       rooms: [...this.rooms.entries()]
         .filter(([, room]) => !room.temporary && within(room.createdAt))
         .map(([id, room]) => ({ id, at: room.createdAt, host: hostOf(room.ownerGmId) })),
@@ -478,6 +482,26 @@ export class MemoryRoomStore implements RoomStore {
       .filter((report) => since === undefined || report.createdAt >= since)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((report) => structuredClone(report));
+  }
+
+  async listAdminFeedback(limit: number, before?: FeedbackCursor): Promise<AdminFeedbackRecord[]> {
+    return [...this.feedback.values()]
+      .filter(({ createdAt, id }) => !before || createdAt < before.createdAt || (createdAt === before.createdAt && id < before.id))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .slice(0, limit)
+      .map(({ reporterUserId, screenshots, ...report }) => {
+        const user = reporterUserId ? this.users.get(reporterUserId) : null;
+        return structuredClone({
+          ...report,
+          reporter: user ? { displayName: user.displayName, email: user.email } : null,
+          screenshots: screenshots.map(({ width, height }, position) => ({ position, width, height })),
+        });
+      });
+  }
+
+  async getFeedbackScreenshot(reference: string, position: number) {
+    const shot = this.feedback.get(reference)?.screenshots[position];
+    return shot ? structuredClone(shot) : null;
   }
 
   async deleteFeedback(reference: string) {
@@ -1362,8 +1386,9 @@ export class MemoryRoomStore implements RoomStore {
     if (user) user.emailVerifiedAt = at;
   }
 
-  async createVerificationToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
-    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
+  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    const user = this.users.get(userId);
+    if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
     for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
     this.verificationTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
     return true;
@@ -1373,7 +1398,8 @@ export class MemoryRoomStore implements RoomStore {
     const token = this.verificationTokens.get(tokenHash);
     if (!token) return null;
     this.verificationTokens.delete(tokenHash);
-    if (token.expiresAt <= now || this.users.get(token.userId)?.credentialVersion !== token.credentialVersion) return null;
+    const user = this.users.get(token.userId);
+    if (!user || token.expiresAt <= now || user.credentialVersion !== token.credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
     await this.markEmailVerified(token.userId, now);
     return this.findUserById(token.userId);
   }
@@ -1382,8 +1408,9 @@ export class MemoryRoomStore implements RoomStore {
     for (const [hash, token] of this.verificationTokens) if (token.expiresAt <= now) this.verificationTokens.delete(hash);
   }
 
-  async createPasswordResetToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
-    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
+  async createPasswordResetToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    const user = this.users.get(userId);
+    if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
     for (const [hash, token] of this.resetTokens) if (token.userId === userId) this.resetTokens.delete(hash);
     this.resetTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
     return true;
@@ -1392,7 +1419,8 @@ export class MemoryRoomStore implements RoomStore {
   private resetUser(tokenHash: string, now: string) {
     const token = this.resetTokens.get(tokenHash);
     const user = token ? this.users.get(token.userId) : undefined;
-    return token && user && token.expiresAt > now && user.credentialVersion === token.credentialVersion ? user : null;
+    return token && user && token.expiresAt > now && user.credentialVersion === token.credentialVersion
+      && !isExpiredUnverifiedAccount(user, Date.parse(now)) ? user : null;
   }
 
   async findUserByResetToken(tokenHash: string, now: string) {
@@ -1419,9 +1447,7 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   private isStaleUnverified(user: UserRecord, createdBefore: string) {
-    if (user.emailVerifiedAt || user.createdAt >= createdBefore) return false;
-    for (const token of this.verificationTokens.values()) if (token.userId === user.id) return false;
-    return true;
+    return user.emailVerifiedAt === null && user.createdAt <= createdBefore;
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {

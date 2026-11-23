@@ -2,6 +2,7 @@ import { affectedWorkspaces, AuthoringHistoryNeeded, authoringEntryIds, guardStu
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
+import type { FeedbackCursor } from "@vtt/shared";
 import { StudioContext, StudioPreparationOutcome } from "@vtt/shared";
 import { preparationRevision, preparationProblem, versionedBoard, publicBoard, PreparationConflictError } from "./libraryPreparation";
 import type { SaveLibraryPreparation } from "@vtt/shared";
@@ -35,7 +36,7 @@ import {
   type StudioTokenRecord,
 } from "./studioStore";
 import { randomUUID } from "node:crypto";
-import { FeedbackReferenceTakenError, type FeedbackRecord } from "./feedbackStore";
+import { FeedbackReferenceTakenError, type AdminFeedbackRecord, type FeedbackRecord } from "./feedbackStore";
 import type { GridDetectionCandidate } from "@vtt/shared";
 import { DETECTION_STALE_MS, DETECTION_MAX_ATTEMPTS, DETECTION_VERSION, detectionJob, type DetectionJob, type DetectionError, type DetectionOutcome, type DetectionRecord, type DetectionTarget, type DetectionState } from "./gridDetectionStore";
 import { FeedbackKind, FeedbackTechnical, ConditionId, DEFAULT_GRID, DEFAULT_TOKEN_COLOR, presetFromLog, upgradeStoredAttacks, RoomDefaults, type BuildFlag, type GameProfile, type LibraryFolderKind, type LibraryMapBoard, TokenAttacks, type AssetKind, type CommittedEvent, type DieName, type DomainEvent, type GmRoomSummary, type GridSpec, type LegacySummary } from "@vtt/shared";
@@ -65,6 +66,7 @@ import {
 } from "./buildStore";
 import {
   EmailTakenError,
+  isExpiredUnverifiedAccount,
   type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
@@ -471,8 +473,10 @@ export class PostgresRoomStore implements RoomStore {
         (SELECT count(*) FROM rooms WHERE NOT temporary AND created_at < ${start}) AS rooms
     `;
     const counts = { accountsBefore: Number(before?.accounts ?? 0), roomsBefore: Number(before?.rooms ?? 0) };
-    const accounts = await this.prisma.$queryRaw<{ id: string; at: Date }[]>`
-      SELECT id::text AS id, created_at AS at FROM users WHERE created_at >= ${start} AND created_at < ${end}
+    const accounts = await this.prisma.$queryRaw<{ id: string; at: Date; referralSource: string | null }[]>`
+      SELECT id::text AS id, created_at AS at,
+        CASE WHEN email_verified_at IS NOT NULL THEN referral_source END AS "referralSource"
+      FROM users WHERE created_at >= ${start} AND created_at < ${end}
     `;
     const rooms = await this.prisma.$queryRaw<{ id: string; at: Date; host: "guest" | "account" | "other" }[]>`
       SELECT r.id::text AS id, r.created_at AS at,
@@ -799,6 +803,35 @@ export class PostgresRoomStore implements RoomStore {
       reporterUserId: row.reporterUserId, createdAt: row.createdAt.toISOString(),
       screenshots: row.screenshots.map((shot) => ({ contentType: shot.contentType, width: shot.width, height: shot.height, bytes: new Uint8Array(shot.bytes) })),
     }));
+  }
+
+  async listAdminFeedback(limit: number, before?: FeedbackCursor): Promise<AdminFeedbackRecord[]> {
+    const cursorTime = before ? new Date(before.createdAt) : undefined;
+    const rows = await this.prisma.feedbackReport.findMany({
+      where: before && cursorTime ? { OR: [
+        { createdAt: { lt: cursorTime } },
+        { createdAt: cursorTime, id: { lt: before.id } },
+      ] } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: {
+        id: true, reference: true, kind: true, summary: true, details: true, technical: true, createdAt: true,
+        reporter: { select: { displayName: true, email: true } },
+        screenshots: { select: { position: true, width: true, height: true }, orderBy: { position: "asc" } },
+      },
+    });
+    return rows.map((row) => ({
+      ...row, kind: FeedbackKind.parse(row.kind), technical: FeedbackTechnical.safeParse(row.technical).data ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  async getFeedbackScreenshot(reference: string, position: number) {
+    const shot = await this.prisma.feedbackScreenshot.findFirst({
+      where: { position, report: { reference } },
+      select: { contentType: true, bytes: true, width: true, height: true },
+    });
+    return shot ? { ...shot, bytes: new Uint8Array(shot.bytes) } : null;
   }
 
   async deleteFeedback(reference: string) {
@@ -1773,7 +1806,7 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.credentialVersion !== credentialVersion) return false;
+      if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
       await tx.emailVerificationToken.deleteMany({ where: { userId } });
       await tx.emailVerificationToken.create({
         data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
@@ -1789,9 +1822,11 @@ export class PostgresRoomStore implements RoomStore {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${token.userId}::uuid FOR UPDATE`;
       const deleted = await tx.emailVerificationToken.deleteMany({ where: { tokenHash } });
       if (deleted.count === 0 || token.expiresAt <= new Date(now)) return null;
-      await tx.user.updateMany({ where: { id: token.userId, emailVerifiedAt: null, credentialVersion: token.credentialVersion }, data: { emailVerifiedAt: new Date(now) } });
-      const row = await tx.user.findUnique({ where: { id: token.userId } });
-      return row ? toUserRecord(row) : null;
+      const user = await tx.user.findUnique({ where: { id: token.userId } });
+      if (!user || user.credentialVersion !== token.credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
+      if (user.emailVerifiedAt) return toUserRecord(user);
+      const verified = await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date(now) } });
+      return toUserRecord(verified);
     });
   }
 
@@ -1804,7 +1839,7 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.credentialVersion !== credentialVersion) return false;
+      if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
       await tx.passwordResetToken.deleteMany({ where: { userId } });
       await tx.passwordResetToken.create({
         data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
@@ -1816,6 +1851,7 @@ export class PostgresRoomStore implements RoomStore {
   async findUserByResetToken(tokenHash: string, now: string) {
     const token = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
     if (!token || token.expiresAt <= new Date(now) || token.user.credentialVersion !== token.credentialVersion) return null;
+    if (isExpiredUnverifiedAccount(token.user, Date.parse(now))) return null;
     return toUserRecord(token.user);
   }
 
@@ -1827,6 +1863,7 @@ export class PostgresRoomStore implements RoomStore {
       const deleted = await tx.passwordResetToken.deleteMany({ where: { tokenHash } });
       const user = await tx.user.findUnique({ where: { id: token.userId } });
       if (deleted.count === 0 || !user || token.expiresAt <= new Date(now) || user.credentialVersion !== token.credentialVersion) return null;
+      if (isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
       const updated = await tx.user.update({
         where: { id: user.id },
         data: {
@@ -1844,7 +1881,7 @@ export class PostgresRoomStore implements RoomStore {
 
   async deleteStaleUnverifiedUsers(createdBefore: string) {
     const stale = await this.prisma.user.findMany({
-      where: { emailVerifiedAt: null, createdAt: { lt: new Date(createdBefore) }, verificationTokens: { none: {} } },
+      where: { emailVerifiedAt: null, createdAt: { lte: new Date(createdBefore) } },
       select: { id: true },
     });
     for (const { id } of stale) await this.deleteUser(id, createdBefore);
@@ -1859,7 +1896,7 @@ export class PostgresRoomStore implements RoomStore {
       if (staleBefore !== undefined) {
         await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
         const eligible = await tx.user.count({
-          where: { id: userId, emailVerifiedAt: null, createdAt: { lt: new Date(staleBefore) }, verificationTokens: { none: {} } },
+          where: { id: userId, emailVerifiedAt: null, createdAt: { lte: new Date(staleBefore) } },
         });
         if (eligible === 0) return null;
       }

@@ -423,6 +423,10 @@ export const api = {
   },
 
   /** Accounts (FR-GM-01, ADR 0017). Errors carry the field to show them beside. */
+  admin: {
+    isAdmin: async () => (await apiFetch("/api/admin/me")).status === 204,
+  },
+
   auth: {
     async me(): Promise<MeResponse> {
       const res = await apiFetch("/api/auth/me", { cache: "no-store" });
@@ -693,9 +697,10 @@ export const api = {
      * Sends a report and its screenshots (FR-PL-11). Not an account request: anyone may send one,
      * and a signed-in browser's cookie goes along by itself, which is how the team can reply.
      */
-    send: async (report: FeedbackReport, screenshots: readonly { blob: Blob; name: string }[]): Promise<FeedbackReceipt> => {
+    send: async (report: FeedbackReport, screenshots: readonly { blob: Blob; name: string }[], website = ""): Promise<FeedbackReceipt> => {
       const form = new FormData();
       form.append("report", JSON.stringify(report));
+      form.append("website", website);
       for (const shot of screenshots) form.append("screenshots", shot.blob, shot.name);
       const res = await apiFetch("/api/feedback", { method: "POST", body: form });
       if (!res.ok) throw await errorFrom(res);

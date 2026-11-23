@@ -1,5 +1,5 @@
-import type { Express } from "express";
-import { LaunchStatsQuery, type LaunchStatsResponse } from "@vtt/shared";
+import type { Express, Response } from "express";
+import { FeedbackCursor, FeedbackReference, LaunchStatsQuery, type AdminFeedbackResponse, type LaunchStatsResponse } from "@vtt/shared";
 import { aggregateLaunchStats, resolveStatsRange } from "../domain/launchStats";
 import { signedIn } from "../identity/middleware";
 import type { RoomStore } from "../store/roomStore";
@@ -19,9 +19,41 @@ export function adminAccountIdsFromEnv(value = process.env.ADMIN_ACCOUNT_IDS): R
  * tell them this one does.
  */
 export function registerAdminStats(app: Express, { store, adminAccountIds, now }: { store: RoomStore; adminAccountIds: ReadonlySet<string>; now: () => number }) {
-  app.get("/api/admin/stats", (req, res, next) => {
+  const isAdmin = (res: Response) => {
     const account = signedIn(res);
-    if (!account || !adminAccountIds.has(account.user.id.toLowerCase())) return next();
+    return account !== null && adminAccountIds.has(account.user.id.toLowerCase());
+  };
+  app.get("/api/admin/me", (_req, res, next) => {
+    if (!isAdmin(res)) return next();
+    res.status(204).end();
+  });
+  const pageSize = 25;
+  app.get("/api/admin/feedback", async (req, res, next) => {
+    if (!isAdmin(res)) return next();
+    const { at, id } = req.query;
+    const before = at === undefined && id === undefined ? null : FeedbackCursor.safeParse({ createdAt: at, id });
+    if (before && !before.success) {
+      res.sendStatus(400);
+      return;
+    }
+    const page = await store.listAdminFeedback(pageSize + 1, before?.data);
+    const last = page.length > pageSize ? page[pageSize - 1] : undefined;
+    res.json({
+      reports: page.slice(0, pageSize).map(({ id: _id, ...report }) => report),
+      next: last ? { createdAt: last.createdAt, id: last.id } : null,
+    } satisfies AdminFeedbackResponse);
+  });
+  app.get("/api/admin/feedback/:reference/screenshots/:position", async (req, res, next) => {
+    if (!isAdmin(res)) return next();
+    const reference = FeedbackReference.safeParse(req.params.reference);
+    const position = req.params.position;
+    if (!reference.success || !/^[0-2]$/.test(position ?? "")) return next();
+    const shot = await store.getFeedbackScreenshot(reference.data, Number(position));
+    if (!shot) return next();
+    res.set("X-Content-Type-Options", "nosniff").type("webp").send(Buffer.from(shot.bytes));
+  });
+  app.get("/api/admin/stats", (req, res, next) => {
+    if (!isAdmin(res)) return next();
     void (async () => {
       const query = LaunchStatsQuery.safeParse(req.query);
       const range = query.success ? resolveStatsRange(query.data, now()) : null;

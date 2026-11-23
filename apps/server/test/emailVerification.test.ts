@@ -432,7 +432,36 @@ describe("email verification (FR-GM-01)", () => {
     });
   });
 
-  describe("stale unverified sweep follows the verification setting buildApp resolved (PR 226 sweep policy)", () => {
+  describe("automatic account expiry (FR-GM-01)", () => {
+    it("expires after seven days even if a verification link was recently resent", async () => {
+      await production();
+      clock = Date.now();
+      expect((await signUp()).status).toBe(201);
+      const user = (await server.store.findUserByEmail(credentials.email))!;
+      const deadline = Date.parse(user.createdAt) + 7 * 24 * HOUR;
+      clock = deadline - HOUR / 2;
+      expect((await resend()).status).toBe(204);
+      await vi.waitFor(() => expect(mail.sent).toHaveLength(2));
+      const token = mail.tokenOf();
+      const now = new Date(clock).toISOString();
+      expect(await server.store.createPasswordResetToken(user.id, "reset-hash", now, new Date(clock + HOUR).toISOString(), user.credentialVersion)).toBe(true);
+      await server.app.sweep();
+      expect(await server.store.findUserById(user.id)).not.toBeNull();
+
+      clock = deadline;
+      expect(await server.store.findUserByResetToken("reset-hash", new Date(clock).toISOString())).toBeNull();
+      expect(await server.store.consumePasswordResetToken("reset-hash", new Date(clock).toISOString(), "new-hash")).toBeNull();
+      expect((await verify(token)).status).toBe(400);
+      expect((await signIn()).status).toBe(401);
+      expect((await resend()).status).toBe(204);
+      await server.app.sweep();
+      expect(await server.store.findUserById(user.id)).toBeNull();
+      expect(mail.sent).toHaveLength(2);
+      expect((await signUp()).status).toBe(201);
+      const reRegistered = (await server.store.findUserByEmail(credentials.email))!;
+      expect(reRegistered.id).not.toBe(user.id);
+    });
+
     const orphan = async () => {
       const user = await server.store.createUser({ id: randomUUID(), email: "orphan@example.com", displayName: "Orphan", passwordHash: "x" });
       return user.id;

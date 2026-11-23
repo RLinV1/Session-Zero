@@ -1,6 +1,6 @@
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
-import type { AccountView, SignUpResponse } from "@vtt/shared";
+import type { AccountView, ReferralSource, SignUpResponse } from "@vtt/shared";
 import { api, whenSignedOut } from "../net/api";
 
 /**
@@ -14,7 +14,7 @@ import { api, whenSignedOut } from "../net/api";
 export type AccountState =
   | { status: "loading" }
   | { status: "signedOut" }
-  | { status: "signedIn"; account: AccountView };
+  | { status: "signedIn"; account: AccountView; isAdmin?: boolean };
 
 export const accountStore = createStore<AccountState>(() => ({ status: "loading" }));
 
@@ -35,7 +35,13 @@ export function whenThisDeviceSignsOut(fn: () => void) {
 }
 
 function setAccount(account: AccountView | null, announce: boolean) {
-  accountStore.setState(account ? { status: "signedIn", account } : { status: "signedOut" });
+  accountStore.setState(account ? { status: "signedIn", account } : { status: "signedOut" }, true);
+  const current = accountStore.getState();
+  if (current.status === "signedIn") {
+    void api.admin.isAdmin().then((isAdmin) => {
+      if (isAdmin && accountStore.getState() === current) accountStore.setState({ ...current, isAdmin }, true);
+    }).catch(() => {});
+  }
   if (announce) channel?.postMessage("changed");
 }
 
@@ -53,8 +59,8 @@ export async function signIn(email: string, password: string) {
 }
 
 /** Resolves to the pending sign-up when the address must be verified first, else signs in and resolves to null. */
-export async function signUp(email: string, password: string, displayName: string): Promise<SignUpResponse | null> {
-  const body = await api.auth.signUp({ email, password, displayName });
+export async function signUp(email: string, password: string, displayName: string, referralCode?: ReferralSource): Promise<SignUpResponse | null> {
+  const body = await api.auth.signUp({ email, password, displayName, referralCode });
   if ("verificationRequired" in body) return body;
   setAccount(body.account, true);
   return null;
