@@ -73,10 +73,7 @@ export function SiteHeader({ nav, account, settings }: { nav?: ReactNode; accoun
   );
 }
 
-/**
- * What's new, on every page with the site header (FR-PL-10). Feedback sits in the footer instead
- * (FR-PL-11): telling people what changed is the louder of the two.
- */
+/** What's new, on every page with the site header (FR-PL-10). */
 export function WhatsNewLink() {
   const t = useT();
   const current = useRoute().page === "news";

@@ -1,3 +1,4 @@
+import { ChatCircleDots } from "@phosphor-icons/react";
 import { Link } from "../Link";
 import { useT } from "../i18n/locale";
 import { openFeedback } from "./feedback";
@@ -11,25 +12,32 @@ const POLICY_LINKS = [
   { page: "terms", href: "/terms", label: "nav.terms" },
 ] as const satisfies readonly { page: PolicyPageName; href: string; label: string }[];
 
-/**
- * The one footer of the site's pages (home, hub and policy) (site-policies): who built it at the left, the
- * policies and Feedback at the right, on the header's width under a fading hairline. Quiet links, like the
- * header's Sign in: muted until hovered, the current page in the text colour.
- */
+/** Shared site policies and the viewport-anchored Feedback launcher (FR-PL-11). */
 export function SiteFooter({ current }: { current?: PolicyPageName }) {
   const t = useT();
+  const feedbackLabel = t("feedback.open");
   return (
-    <footer className="page-shell site-footer">
-      <nav className="footer-links" aria-label={t("nav.policies")}>
-        {POLICY_LINKS.map((l) => (
-          <Link key={l.page} href={l.href} aria-current={current === l.page ? "page" : undefined}>
-            {t(l.label)}
-          </Link>
-        ))}
-        {/* Not a page: it opens the Feedback dialog over this one (FR-PL-11). */}
-        <button type="button" className="footer-feedback" onClick={() => openFeedback("bug")}>{t("feedback.open")}</button>
-      </nav>
-    </footer>
+    <>
+      <footer className="page-shell site-footer">
+        <nav className="footer-links" aria-label={t("nav.policies")}>
+          {POLICY_LINKS.map((l) => (
+            <Link key={l.page} href={l.href} aria-current={current === l.page ? "page" : undefined}>
+              {t(l.label)}
+            </Link>
+          ))}
+        </nav>
+      </footer>
+      <button
+        type="button"
+        className="feedback-launcher"
+        aria-label={feedbackLabel}
+        aria-haspopup="dialog"
+        title={feedbackLabel}
+        onClick={() => openFeedback("bug")}
+      >
+        <ChatCircleDots size={26} weight="bold" aria-hidden="true" />
+      </button>
+    </>
   );
 }
 

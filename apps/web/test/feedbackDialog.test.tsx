@@ -47,12 +47,15 @@ function RoomStub({ room }: { room: FeedbackRoom }) {
 }
 
 describe("Feedback dialog (FR-PL-11)", () => {
-  it("opens from the site footer, not the header, and sends a report with screenshots and allow-listed details", async () => {
+  it("opens from the floating launcher and sends a report with screenshots and allow-listed details", async () => {
     render(<><SiteHeader /><SiteFooter /><FeedbackHost /></>);
     // The header carries What's new instead (FR-PL-10).
     expect(within(screen.getByRole("banner")).queryByRole("button", { name: /Feedback/ })).toBeNull();
     expect(within(screen.getByRole("banner")).getByRole("link", { name: "What's new" }).getAttribute("href")).toBe("/news");
-    fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Feedback" }));
+    expect(within(screen.getByRole("contentinfo")).queryByRole("button", { name: "Feedback" })).toBeNull();
+    const launcher = screen.getByRole("button", { name: "Feedback" });
+    expect(launcher.getAttribute("aria-haspopup")).toBe("dialog");
+    fireEvent.click(launcher);
     const form = within(dialog());
     expect(form.getByRole("radio", { name: /Bug/ })).toHaveProperty("checked", true);
     expect(form.getByText("You're not signed in, so we can't reply to this report.")).toBeTruthy();
@@ -78,9 +81,9 @@ describe("Feedback dialog (FR-PL-11)", () => {
     expect(sent[0]!.getAll("screenshots").map((f) => (f as File).name)).toEqual(["two.png"]);
   });
 
-  it("opens from the site footer and from Settings, on top of Settings", () => {
+  it("opens from the floating launcher and on top of Settings", () => {
     render(<><SiteFooter /><FeedbackHost /></>);
-    fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
     expect(dialog()).toBeTruthy();
     act(() => closeFeedback());
     cleanup();
