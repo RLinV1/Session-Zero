@@ -1460,7 +1460,7 @@ dialog.modal.dice-look-modal { width: min(40rem, calc(100vw - 2rem)); }
   .whats-new-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
-/* Feedback (ui/FeedbackDialog.tsx, FR-PL-11): one dialog opened from the footer, a room's More
+/* Feedback (ui/FeedbackDialog.tsx, FR-PL-11): one dialog opened from the floating launcher, a room's More
    menu and What's new. Plain fields, a strip of screenshot tiles, then the technical details. */
 button.link-button { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 button.link-button:hover { filter: brightness(1.1); }
@@ -1676,6 +1676,7 @@ dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
 .account-menu .menu-list { min-width: 0; padding-block: var(--space-1); border-top: 1px solid var(--border); }
 .account-menu .menu-list:last-child { padding-bottom: 0; }
 .account-menu .menu-item { border-radius: var(--radius-control); }
+.account-menu .portrait-account-action { display: none; }
 .account-menu .menu-item:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .account-menu .menu-item[aria-current="page"] { background: var(--hover); box-shadow: inset 0 -2px 0 var(--accent); font-weight: 600; }
 @media (pointer: coarse), (max-width: 720px) {
@@ -2834,9 +2835,26 @@ dialog.modal.prep-sheet { width: min(1120px, calc(100vw - 48px)); }
 }
 .site-footer .footer-links a:hover,
 .site-footer .footer-links a[aria-current="page"] { color: var(--text); }
-/* Feedback is a button (it opens a dialog), dressed as one of the footer's links. */
-.site-footer .footer-links .footer-feedback { min-height: 0; padding: 0; border: 0; background: none; font: inherit; font-weight: 550; color: var(--muted); }
-.site-footer .footer-links .footer-feedback:hover { color: var(--text); filter: none; }
+.feedback-launcher {
+  position: fixed;
+  right: calc(var(--space-4) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 4px 14px var(--shadow);
+}
+/* Leave room where the right-aligned footer links can reach the launcher. */
+@media (min-width: 641px) and (max-width: 82rem) {
+  .site-footer:has(+ .feedback-launcher) { padding-right: calc(4.5rem + env(safe-area-inset-right, 0px)); }
+}
 @media (max-width: 640px) { .footer-links { margin-left: 0; flex-basis: 100%; } }
 
 /* ---- Mobile: every multi-column block above collapses here ---- */
@@ -4795,6 +4813,24 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   @media (orientation: portrait) {
     .tabbar .tab { display: flex; align-items: center; justify-content: center; gap: var(--space-1); flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 var(--space-1); white-space: nowrap; }
   }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .site-header :is(.language-trigger, .theme-toggle) { min-height: 44px; }
+  .site-header :is(.whats-new-link, .theme-toggle) { width: 44px; padding-inline: 0; }
+  .site-header .site-actions .nav-cta { padding-inline: 0.55rem; }
+  .site-header:has(.account-trigger) .site-actions > :is(.whats-new-link, .room-settings-trigger) { display: none; }
+  .site-header:has(.site-nav) .site-actions { flex: 1 1 0; min-width: 0; justify-content: flex-end; }
+  .site-header .popover-anchor { display: flex; }
+  .site-header .site-actions > .popover-anchor:has(> .language-trigger) { flex: none; }
+  .site-header .account-trigger:not(:active) { transform: none; }
+  .site-header .account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-menu .portrait-account-action { display: flex; }
+}
+
+@media (max-width: 360px) and (orientation: portrait) {
+  .site-header .language-trigger { width: 44px; padding-inline: 0; }
+  .site-header .language-trigger > span { display: none; }
 }
 
 /* ==========================================================================

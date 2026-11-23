@@ -608,7 +608,7 @@ function AccountOverview({ account }: { account: AccountView }) {
  * Changing the password and deleting the account are on the account page, one step on, so the
  * permanent action never sits beside everyday ones.
  */
-export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean }) {
+export function AccountMenu({ onAccountPage = false, onRoomSettings }: { onAccountPage?: boolean; onRoomSettings?: () => void }) {
   const account = useAccount();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -625,7 +625,7 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
         buttonRef={buttonRef}
         buttonContent={
           <>
-            {displayName}
+            <span className="account-name">{displayName}</span>
             <CaretDown aria-hidden="true" />
           </>
         }
@@ -643,6 +643,16 @@ export function AccountMenu({ onAccountPage = false }: { onAccountPage?: boolean
               {account.isAdmin && (
                 <Link href="/admin/stats" className="menu-item" onClick={close}>{t("adminStats.menu")}</Link>
               )}
+              {onRoomSettings && (
+                <button type="button" className="menu-item portrait-account-action" onClick={() => {
+                  buttonRef.current?.focus();
+                  close();
+                  onRoomSettings();
+                }}>
+                  {t("roomSettings.title")}
+                </button>
+              )}
+              <Link href="/news" className="menu-item portrait-account-action" onClick={close}>{t("nav.news")}</Link>
               <button
                 type="button"
                 className="menu-item"

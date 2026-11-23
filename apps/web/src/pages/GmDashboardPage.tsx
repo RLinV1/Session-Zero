@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Plus } from "@phosphor-icons/react";
 import { presetOf } from "@vtt/shared";
 import type { EncounterSummary, GmRoomSummary, LegacySummary, MyRoomsResponse } from "@vtt/shared";
-import { AccountMenu } from "../account/AccountPages";
 import { useAccount } from "../account/accountStore";
 import { RequireAccount } from "../account/RequireAccount";
 import { api, ApiError } from "../net/api";
@@ -14,11 +13,11 @@ import { Modal } from "../ui/Modal";
 import { DeleteRoomModal } from "../ui/DeleteRoomModal";
 import { formatRelative } from "../ui/formatRelative";
 import { EmptyState } from "../ui/EmptyState";
+import { FeedbackLauncher } from "../ui/FeedbackLauncher";
 import { RoomBoardPreview } from "../ui/RoomBoardPreview";
-import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { SiteFooter } from "../ui/SiteFooter";
 import { createRoomWith, RoomDetailsFields, useRoomDetails } from "./RoomDetailsFields";
-import { RoomSettingsButton } from "./RoomSettings";
+import { RoomHubHeader } from "./RoomSettings";
 import { t } from "../i18n/locale";
 
 import { presetName } from "../i18n/labels";
@@ -56,13 +55,7 @@ function Dashboard() {
 
   return (
     <>
-    <div className="page-shell page-bar">
-      <SiteHeader
-        nav={<HubNav current="rooms" />}
-        account={<AccountMenu />}
-        settings={<RoomSettingsButton />}
-      />
-    </div>
+    <RoomHubHeader current="rooms" />
     <main className="page-shell home gm-page">
       <h1>{t("dashboard.title")}</h1>
       {account.status === "signedIn" && (
@@ -78,6 +71,7 @@ function Dashboard() {
       <p className="muted small-print">{t("dashboard.savedNote")}</p>
     </main>
     <SiteFooter />
+    <FeedbackLauncher />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { GridFour, TextAa, Trash, X } from "@phosphor-icons/react";
-import { RoomSettingsButton } from "./RoomSettings";
+import { RoomHubHeader } from "./RoomSettings";
 import { IconAction } from "../ui/IconAction";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shippedMapByUrl, type AssetKind, type EncounterSummary, type LibraryAsset, type LibraryCreature, type UvttIssue } from "@vtt/shared";
@@ -8,10 +8,9 @@ import { assetDisplayName, builtinsMatching } from "../net/builtinAssets";
 import { imageSize, nameFromFile } from "../net/imageFile";
 import { Modal } from "../ui/Modal";
 import { isCroppable, TokenArtCropper } from "../ui/TokenArtCropper";
-import { AccountMenu } from "../account/AccountPages";
 import { EmptyState } from "../ui/EmptyState";
 import { MapThumbnail } from "../ui/MapThumbnail";
-import { HubNav, SiteHeader } from "../ui/SiteHeader";
+import { SiteHeader } from "../ui/SiteHeader";
 import { SiteFooter } from "../ui/SiteFooter";
 import { RequireAccount } from "../account/RequireAccount";
 import { LibraryMapEditor } from "./mapEditor/LibraryMapEditor";
@@ -261,9 +260,7 @@ function Library() {
 
   return (
     <>
-    <div className="page-shell page-bar">
-      <SiteHeader nav={<HubNav current="library" />} account={<AccountMenu />} settings={<RoomSettingsButton />} />
-    </div>
+    <RoomHubHeader current="library" />
     <main className="page-shell home gm-page">
       <h1>{t("library.title")}</h1>
       {error && <p role="alert" className="error">{error}</p>}

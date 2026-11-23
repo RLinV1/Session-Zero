@@ -58,6 +58,7 @@ describe("the dashboard with no rooms (design-language: Empty states show the ne
     const name = await screen.findByText("The Sunken Crypt, session three");
     const card = name.closest(".room-card") as HTMLElement;
     expect(within(card).getByRole("button", { name: "Open" }).className).not.toContain("primary");
+    expect(screen.getByRole("button", { name: "Feedback" }).getAttribute("aria-haspopup")).toBe("dialog");
     expect(screen.queryByText(/No rooms yet/)).toBeNull();
   });
 });

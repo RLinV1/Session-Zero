@@ -1,9 +1,11 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { GearSix } from "@phosphor-icons/react";
 import { BUILTIN_ROOM_DEFAULTS, RoomDefaults } from "@vtt/shared";
+import { AccountMenu } from "../account/AccountPages";
 import { useAccount } from "../account/accountStore";
 import { api } from "../net/api";
 import { Modal } from "../ui/Modal";
+import { HubNav, SiteHeader } from "../ui/SiteHeader";
 import { TableRuleControls } from "../ui/TableRuleControls";
 import { t } from "../i18n/locale";
 
@@ -102,14 +104,23 @@ export function RoomSettings({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-/** The gear in the hub header's row of settings (dashboard and library) that opens Room settings. */
-export function RoomSettingsButton() {
+/** Your Rooms and Library share one room settings dialog, opened from the header or profile. */
+export function RoomHubHeader({ current }: { current: "rooms" | "library" }) {
   const [open, setOpen] = useState(false);
+  const showSettings = () => setOpen(true);
   return (
     <>
-      <button type="button" className="icon-button" onClick={() => setOpen(true)} aria-label={t("roomSettings.title")} title={t("roomSettings.title")}>
-        <GearSix aria-hidden="true" />
-      </button>
+      <div className="page-shell page-bar">
+        <SiteHeader
+          nav={<HubNav current={current} />}
+          account={<AccountMenu onRoomSettings={showSettings} />}
+          settings={
+            <button type="button" className="icon-button room-settings-trigger" onClick={showSettings} aria-label={t("roomSettings.title")} title={t("roomSettings.title")}>
+              <GearSix aria-hidden="true" />
+            </button>
+          }
+        />
+      </div>
       <RoomSettings open={open} onClose={() => setOpen(false)} />
     </>
   );
