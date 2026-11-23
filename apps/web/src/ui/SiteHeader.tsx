@@ -15,9 +15,9 @@ export const PRODUCT_NAME = "Session Zero";
 /** The mark and the name, linking home. */
 export function Brand() {
   return (
-    <Link href="/" className="brand">
+    <Link href="/" className="brand" aria-label={PRODUCT_NAME}>
       <img className="brand-mark" src="/brand-mark.png" alt="" width={28} height={28} />
-      {PRODUCT_NAME}
+      <span className="brand-name">{PRODUCT_NAME}</span>
     </Link>
   );
 }
