@@ -28,6 +28,7 @@ export const entry = {
   "account.continueGuest": "Try without signing in",
   "account.guestHint": "Start a game as a guest GM. No account needed.",
   "account.orUseAccount": "Or use an account",
+  "account.or": "or",
   "account.newHere": "New here?",
   "account.createAnAccount": "Create an account",
   "account.createSubmit": "Create account",

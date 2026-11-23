@@ -28,6 +28,7 @@ export const entryZhTW = {
   "account.continueGuest": "免登入，立即試玩",
   "account.guestHint": "以訪客 GM 身分開團，不需要帳號。",
   "account.orUseAccount": "或使用帳號",
+  "account.or": "或",
   "account.newHere": "第一次玩嗎？",
   "account.createAnAccount": "建立帳號",
   "account.createSubmit": "建立帳號",

@@ -75,7 +75,7 @@ function AccountForm(props: {
         </Link>
         {!props.compact && <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>}
       </div>
-      {!props.compact && <div className="guest-divider">{t("account.orUseAccount")}</div>}
+      <div className="guest-divider">{t(props.compact ? "account.or" : "account.orUseAccount")}</div>
       {props.children}
       {props.error && (
         <p role="alert" className="error">
