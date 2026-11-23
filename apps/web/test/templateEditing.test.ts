@@ -293,15 +293,17 @@ describe("clipping areas the viewer may not edit (FR-GM-17, ADR 0059)", () => {
     const mine = graphics(), clipped = graphics();
     const into = new Map<unknown, string[]>([[mine, []], [clipped, []]]);
     const fxLayer = { addChild: vi.fn() }, clippedAims = { addChild: vi.fn(), mask: null as unknown };
-    const masks = vi.fn(() => ({ texture: { destroy: vi.fn() }, areaMask: { destroy: vi.fn() }, aimMask: { destroy: vi.fn() } }));
+    const masks = vi.fn(() => ({ texture: { destroy: vi.fn() }, areaMask: { destroy: vi.fn() }, aimMask: { destroy: vi.fn() }, tokenMask: { destroy: vi.fn() } }));
+    const otherTokens = { mask: null as unknown };
     Object.assign(view, {
       initialized: true, marksGraphics: mine, clippedGraphics: clipped, redrawFog: vi.fn(), fxLayer, clippedAims,
       clippedAreas: { mask: null }, markLayer: { addChild: vi.fn() }, createRegionMasks: masks,
+      tokenLayer: { addChild: vi.fn() }, otherTokens,
       drawMark: (g: unknown, mark: { origin: Point; size: number }) => into.get(g)!.push(mark.size === 20 ? "circle" : "?"),
     });
     const redraw = () => { for (const list of into.values()) list.length = 0; (view as unknown as { redrawMarks(): void }).redrawMarks(); };
     const sync = () => (view as unknown as { syncVisibleRegion(): void }).syncVisibleRegion();
-    return { view, into, mine, clipped, fxLayer, clippedAims, masks, redraw, sync };
+    return { view, into, mine, clipped, fxLayer, clippedAims, otherTokens, masks, redraw, sync };
   }
 
   it("draws another player's area behind the mask and the viewer's own in the open", () => {
@@ -347,6 +349,8 @@ describe("clipping areas the viewer may not edit (FR-GM-17, ADR 0059)", () => {
     const b = clippingBoard(alice);
     b.sync();
     expect(b.masks).toHaveBeenCalledOnce();
+    // Others' tokens are clipped by the same visible region (ADR 0082).
+    expect(b.otherTokens.mask).not.toBeNull();
     b.sync();
     expect(b.masks).toHaveBeenCalledOnce();
     b.view.state = { ...b.view.state, fog: { f: { id: "f", shape: "rect", points: [{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 70 }, { x: 0, y: 70 }] } } };
@@ -355,5 +359,6 @@ describe("clipping areas the viewer may not edit (FR-GM-17, ADR 0059)", () => {
     Object.assign(b.view, { you: gm });
     b.sync();
     expect((b.view as unknown as { visibleRegion: unknown }).visibleRegion).toBeNull();
+    expect(b.otherTokens.mask).toBeNull();
   });
 });

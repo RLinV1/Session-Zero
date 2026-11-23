@@ -1,7 +1,7 @@
 # ADR 0016 — Manual fog of war
 
 **Status:** Accepted — reviewed by the Real-Time Architecture owner (Raymond), 2026-10-03 · **Extends:** `docs/adr/0001-event-model.md`, `docs/adr/0003-tactical-state.md`, `docs/adr/0007-shared-area-templates.md`, `docs/adr/0013-undo.md`
-**Amended by:** `docs/adr/0059-areas-clipped-at-fog.md` (an area is sent when any part of it is visible, and clipped on the board)
+**Amended by:** `docs/adr/0059-areas-clipped-at-fog.md` (an area is sent when any part of it is visible, and clipped on the board), `docs/adr/0082-tokens-visible-in-part.md` (a token is sent when any part of its drawn disc is visible, fog blanks a side only when it covers the whole disc, and the board clips it)
 **Change:** `openspec/changes/kan-28-manual-fog` · **Ticket:** KAN-28 (FR-GM-17)
 
 ## Context

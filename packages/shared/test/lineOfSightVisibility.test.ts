@@ -247,3 +247,33 @@ describe("line of sight in live events (FR-GM-19)", () => {
     expect(viewerSight(s, alice)).toEqual(concealmentFor(s, alice).sight);
   });
 });
+
+describe("a token is sent when any part of its disc is in sight (FR-GM-19, ADR 0082)", () => {
+  it("sends a goblin whose centre is behind the wall but whose disc reaches over it into sight", () => {
+    // Centre 20 px below the wall at y=500; the 33 px disc reaches 13 px above it.
+    const s = room(true);
+    const state = { ...s, tokens: { ...s.tokens, straddler: token("straddler", 300, 520) } };
+    expect(filterStateForViewer(state, alice).tokens["straddler"]).toBeDefined();
+  });
+
+  it("still withholds a goblin wholly behind the wall", () => {
+    const s = room(true);
+    const state = { ...s, tokens: { ...s.tokens, under: token("under", 300, 540) } };
+    expect(filterStateForViewer(state, alice).tokens["under"]).toBeUndefined();
+    expect(filterStateForViewer(state, alice).tokens["goblin"]).toBeUndefined();
+  });
+
+  it("sends a token just past the sight range whose disc reaches into it, not one past it by more than its radius", () => {
+    // 30 ft on 70 px cells of 5 ft = 420 px from the hero at (500, 200).
+    const s = room(true);
+    const state = {
+      ...s,
+      scene: { ...s.scene, sightRange: 30 },
+      // 440 px away: the disc's near edge is at 407. 460 px away: at 427.
+      tokens: { ...s.tokens, reaching: token("reaching", 940, 200), beyond: token("beyond", 40, 200) },
+    } as RoomState;
+    const view = filterStateForViewer(state, alice);
+    expect(view.tokens["reaching"]).toBeDefined();
+    expect(view.tokens["beyond"]).toBeUndefined();
+  });
+});

@@ -43,6 +43,7 @@ import {
   type DrawingShape,
   type TemplateGeometry,
   templateGeometry,
+  tokenDisc,
   type MovementPreviewRequest,
   type MovementPreviewFeedback,
 } from "@vtt/shared";
@@ -451,6 +452,14 @@ export class BoardView {
   private portalGraphics = new Graphics();
   private portalsScale = 0;
   private tokenLayer = new Container();
+  /**
+   * Tokens this viewer may see only where they can see (ADR 0082): others' tokens, for a player.
+   * A token is sent when any part of it is visible, so the rest must not be drawn over the fog.
+   * Masked by a sprite of the visible-region texture; the GM's is never masked.
+   */
+  private otherTokens = new Container();
+  /** A player's own tokens, drawn whole even in fog, above everyone else's. */
+  private ownTokens = new Container();
   /** The viewer's own measure, draw and area marks (KAN-69); never sent anywhere. */
   private markLayer = new Container();
   private marksGraphics = new Graphics();
@@ -461,7 +470,7 @@ export class BoardView {
   private clippedAreas = new Container();
   private clippedGraphics = new Graphics();
   private clippedAims = new Container();
-  private visibleRegion: { fog: RoomState["fog"]; sight: RoomState["sight"]; key: string; texture: Texture; areaMask: Sprite; aimMask: Sprite } | null = null;
+  private visibleRegion: { fog: RoomState["fog"]; sight: RoomState["sight"]; key: string; texture: Texture; areaMask: Sprite; aimMask: Sprite; tokenMask: Sprite } | null = null;
   /** The measurement and the shape being dragged out. */
   private overlayGraphics = new Graphics();
   private measureLabel = new Text({
@@ -652,6 +661,7 @@ export class BoardView {
     this.clippedAreas.addChild(this.clippedGraphics);
     this.markLayer.addChild(this.clippedAreas, this.marksGraphics, this.overlayGraphics, this.marqueeGraphics, this.measureLabel);
     this.fxLayer.addChild(this.clippedAims);
+    this.tokenLayer.addChild(this.otherTokens, this.ownTokens);
     // Marks and areas are drawn over the tokens but take no input (the eraser and From template
     // test their geometry), so a token under an area can still be clicked (ADR 0046).
     this.markLayer.eventMode = "none";
@@ -1071,8 +1081,9 @@ export class BoardView {
   }
 
   /**
-   * The mask for areas this viewer may not edit (ADR 0059): what they can see, rebuilt when fog,
-   * sight, the board's size or their role changes. The GM sees every area whole and gets none.
+   * The mask for areas and tokens this viewer may not edit (ADR 0059, ADR 0082): what they can
+   * see, rebuilt when fog, sight, the board's size or their role changes. The GM sees every area
+   * and token whole and gets none.
    */
   private syncVisibleRegion() {
     const state = this.state, you = this.you;
@@ -1085,24 +1096,26 @@ export class BoardView {
     if (!clip && !current) return;
     this.dropVisibleRegion();
     if (!clip) return;
-    const { texture, areaMask, aimMask } = this.createRegionMasks(state, width, height);
+    const { texture, areaMask, aimMask, tokenMask } = this.createRegionMasks(state, width, height);
     this.markLayer.addChild(areaMask);
     this.fxLayer.addChild(aimMask);
+    this.tokenLayer.addChild(tokenMask);
     this.clippedAreas.mask = areaMask;
     this.clippedAims.mask = aimMask;
-    this.visibleRegion = { fog: state.fog, sight: state.sight, key, texture, areaMask, aimMask };
+    this.otherTokens.mask = tokenMask;
+    this.visibleRegion = { fog: state.fog, sight: state.sight, key, texture, areaMask, aimMask, tokenMask };
   }
 
   /** One visible-region texture, and a sprite of it for each clipped container (a mask has one owner). */
   private createRegionMasks(state: RoomState, width: number, height: number) {
     const { canvas, scale } = makeVisibleRegionCanvas(state.fog, state.sight, width, height);
     const texture = Texture.from(canvas);
-    const areaMask = new Sprite(texture), aimMask = new Sprite(texture);
-    for (const mask of [areaMask, aimMask]) {
+    const areaMask = new Sprite(texture), aimMask = new Sprite(texture), tokenMask = new Sprite(texture);
+    for (const mask of [areaMask, aimMask, tokenMask]) {
       mask.scale.set(1 / scale);
       mask.eventMode = "none";
     }
-    return { texture, areaMask, aimMask };
+    return { texture, areaMask, aimMask, tokenMask };
   }
 
   private dropVisibleRegion() {
@@ -1111,8 +1124,10 @@ export class BoardView {
     this.visibleRegion = null;
     this.clippedAreas.mask = null;
     this.clippedAims.mask = null;
+    this.otherTokens.mask = null;
     current.areaMask.destroy();
     current.aimMask.destroy();
+    current.tokenMask.destroy();
     current.texture.destroy(true);
   }
 
@@ -1477,12 +1492,14 @@ export class BoardView {
     if (!token || !this.state) return;
     let ghost = this.ghosts.get(tokenId);
     if (!ghost) {
-      const g = new Graphics();
-      this.fxLayer.addChild(g);
-      ghost = { g, expires: 0 };
+      ghost = { g: new Graphics(), expires: 0 };
       this.ghosts.set(tokenId, ghost);
     }
-    const r = (token.size * this.state.scene.grid.cellSize) / 2 - 2;
+    // Someone else's ghost of a token this viewer doesn't own shows only where they can see, as
+    // the token itself does (ADR 0082). The GM's clipped layer has no mask.
+    const layer = this.tokenGroup(token) === this.ownTokens ? this.fxLayer : this.clippedAims;
+    if (ghost.g.parent !== layer) layer.addChild(ghost.g);
+    const r = tokenDisc(token, this.state.scene.grid).radius;
     ghost.g.clear().circle(0, 0, r).stroke({ width: 3, color: token.color, alpha: 0.8 });
     ghost.g.position.set(at.x, at.y);
     ghost.expires = performance.now() + 600;
@@ -2096,8 +2113,9 @@ export class BoardView {
 
   /**
    * Draw fog: opaque clouds for players; for a GM with fog on, a flat tint over the walls and tokens, so a
-   * fogged token looks covered but stays visible; a GM with fog off sees no fog at all. Players
-   * never have what is under fog in their state (ADR 0016), so for them the order changes nothing.
+   * fogged token looks covered but stays visible; a GM with fog off sees no fog at all. Players keep
+   * fog under the tokens, so their own tokens in fog stay whole; others' tokens, sent when any part
+   * of them is visible, are clipped by the visible-region mask instead (ADR 0082).
    */
   private redrawFog() {
     const state = this.state;
@@ -2507,9 +2525,9 @@ export class BoardView {
     if (!token && target.position.x === attacker.position.x && target.position.y === attacker.position.y) return;
     const grid = state.scene.grid;
     const px = 1 / this.world.scale.x;
-    // A token's disc is size × cell / 2 − 2; its active-turn ring reaches 9 beyond (see drawDecor).
-    // An empty square has no rings: the arrow runs to just short of its centre.
-    const clearance = (t: { size: number }, isToken = true) => isToken ? (t.size * grid.cellSize) / 2 - 2 + 9 + 3 * px : 6 * px;
+    // Its active-turn ring reaches 9 beyond a token's disc (see drawDecor). An empty square has
+    // no rings: the arrow runs to just short of its centre.
+    const clearance = (t: { position: Point; size: number }, isToken = true) => isToken ? tokenDisc(t, grid).radius + 9 + 3 * px : 6 * px;
 
     const from = attacker.position;
     const to = target.position;
@@ -2572,13 +2590,30 @@ export class BoardView {
     this.showLabel(label, { x: (start.x + tip.x) / 2, y: (start.y + tip.y) / 2 }, tint);
   }
 
+  /**
+   * Where a token's view goes (ADR 0082): a player's own tokens are drawn whole, everyone else's
+   * through the visible-region mask. The GM's are all in one unmasked group, so their order is
+   * as before.
+   */
+  private tokenGroup(token: Pick<Token, "ownerIds">): Container {
+    const you = this.you;
+    return you && you.role !== "gm" && token.ownerIds.includes(you.id) ? this.ownTokens : this.otherTokens;
+  }
+
+  /** A token view's drawing order: own tokens above others', then by place in its group. */
+  private tokenDepth(container: Container): number {
+    const group = container.parent;
+    if (!group) return -1;
+    return (group === this.ownTokens ? this.otherTokens.children.length : 0) + group.getChildIndex(container);
+  }
+
   /** The topmost token whose disc contains `p`, other than `exceptId`. */
   private tokenAt(p: Point, exceptId: string): string | null {
     const state = this.state;
     if (!state) return null;
     const cell = state.scene.grid.cellSize;
-    // Later children of the token layer draw on top, so search from the top down.
-    const views = [...this.tokens.entries()].sort(([, a], [, b]) => this.tokenLayer.getChildIndex(b.container) - this.tokenLayer.getChildIndex(a.container));
+    // Later children draw on top, and own tokens over others', so search from the top down.
+    const views = [...this.tokens.entries()].sort(([, a], [, b]) => this.tokenDepth(b.container) - this.tokenDepth(a.container));
     for (const [id] of views) {
       const t = state.tokens[id];
       if (!t || id === exceptId) continue;
@@ -2830,7 +2865,7 @@ export class BoardView {
     art.addChild(body, image, imageMask);
     container.addChild(art, decor, markers, label);
     container.on("pointerdown", (e: FederatedPointerEvent) => this.onTokenDown(e, tokenId));
-    this.tokenLayer.addChild(container);
+    // `drawToken` moves it to its group.
     return {
       container, art, body, image, imageMask, imageUrl: null, radius: 0, decor, markers, label, drawnKey: "",
       conditions: [], looping: false, shake: { x: 0, y: 0 }, shakeOwner: null, tremble: { x: 0, y: 0 }, grey: null,
@@ -2853,10 +2888,13 @@ export class BoardView {
     // Every visible token takes presses so a click can select it; only movable ones start a drag.
     view.container.eventMode = "static";
     view.container.cursor = this.placement || this.tool.kind !== "select" ? this.toolCursor() : movable ? "grab" : "pointer";
+    // Owned or not decides whether the token is clipped (ADR 0082); keep its place when unchanged.
+    const group = this.tokenGroup(token);
+    if (view.container.parent !== group) group.addChild(view.container);
     if (key === view.drawnKey) return;
     view.drawnKey = key;
 
-    const r = (token.size * grid.cellSize) / 2 - 2;
+    const r = tokenDisc(token, grid).radius;
     view.radius = r;
     view.body.clear().circle(0, 0, r).fill({ color: token.color });
     view.imageMask.clear().circle(0, 0, r).fill({ color: 0xffffff });
@@ -3477,7 +3515,7 @@ export class BoardView {
     this.dragDownAt = { x: e.global.x, y: e.global.y };
     if (!movable) return;
     view.container.cursor = "grabbing";
-    this.tokenLayer.addChild(view.container); // bring to front
+    view.container.parent?.addChild(view.container); // bring to front, within its group
     this.invalidate();
   };
 

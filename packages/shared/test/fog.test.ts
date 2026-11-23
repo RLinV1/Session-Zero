@@ -151,7 +151,8 @@ describe("content under fog is not sent to players (FR-GM-17, FR-GM-23)", () => 
   it("redacts events about a token under fog", () => {
     const { state: withGoblin, token } = withToken(baseRoom(), { name: "Goblin" });
     const { state } = addFog(withGoblin);
-    const moveInside: DomainEvent = { type: "TokenMoved", tokenId: token.id, from: token.position, to: { x: 40, y: 40 } };
+    // Still wholly inside the one-cell fog: the 33 px disc ends at 69 px (ADR 0082).
+    const moveInside: DomainEvent = { type: "TokenMoved", tokenId: token.id, from: token.position, to: { x: 36, y: 36 } };
     expect(filterEventForViewer(committed(moveInside), state, alice)).toEqual({ kind: "redacted", seq: 10 });
     const stats: DomainEvent = { type: "TokenStatsSet", tokenId: token.id, stats: { hp: 3, maxHp: 7, ac: null }, previous: token.stats };
     expect(filterEventForViewer(committed(stats), state, alice)).toEqual({ kind: "redacted", seq: 10 });
