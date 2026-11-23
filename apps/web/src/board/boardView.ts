@@ -15,6 +15,7 @@ import {
   Matrix,
   Particle,
   ParticleContainer,
+  MaskFilter,
   Rectangle,
   Sprite,
   Text,
@@ -455,7 +456,7 @@ export class BoardView {
   /**
    * Tokens this viewer may see only where they can see (ADR 0082): others' tokens, for a player.
    * A token is sent when any part of it is visible, so the rest must not be drawn over the fog.
-   * Masked by a sprite of the visible-region texture; the GM's is never masked.
+   * Masked by a filter reading the visible-region texture; the GM's is never masked.
    */
   private otherTokens = new Container();
   /** A player's own tokens, drawn whole even in fog, above everyone else's. */
@@ -465,12 +466,12 @@ export class BoardView {
   private marksGraphics = new Graphics();
   /**
    * Areas and others' aims this viewer may not edit, drawn only where they can see: outside fog
-   * and inside sight (ADR 0059). Masked by sprites of one visible-region texture.
+   * and inside sight (ADR 0059). Masked by filters reading one visible-region texture.
    */
   private clippedAreas = new Container();
   private clippedGraphics = new Graphics();
   private clippedAims = new Container();
-  private visibleRegion: { fog: RoomState["fog"]; sight: RoomState["sight"]; key: string; texture: Texture; areaMask: Sprite; aimMask: Sprite; tokenMask: Sprite } | null = null;
+  private visibleRegion: { fog: RoomState["fog"]; sight: RoomState["sight"]; key: string; texture: Texture; sprites: Sprite[]; filters: MaskFilter[] } | null = null;
   /** The measurement and the shape being dragged out. */
   private overlayGraphics = new Graphics();
   private measureLabel = new Text({
@@ -1096,38 +1097,56 @@ export class BoardView {
     if (!clip && !current) return;
     this.dropVisibleRegion();
     if (!clip) return;
-    const { texture, areaMask, aimMask, tokenMask } = this.createRegionMasks(state, width, height);
-    this.markLayer.addChild(areaMask);
-    this.fxLayer.addChild(aimMask);
-    this.tokenLayer.addChild(tokenMask);
-    this.clippedAreas.mask = areaMask;
-    this.clippedAims.mask = aimMask;
-    this.otherTokens.mask = tokenMask;
-    this.visibleRegion = { fog: state.fog, sight: state.sight, key, texture, areaMask, aimMask, tokenMask };
+    const { texture, sprites, filters } = this.createRegionMasks(state, width, height);
+    const [areaSprite, aimSprite, tokenSprite] = sprites as [Sprite, Sprite, Sprite];
+    const [areaFilter, aimFilter, tokenFilter] = filters as [MaskFilter, MaskFilter, MaskFilter];
+    // Each sprite stays in the scene, never drawn, so its transform follows the board's.
+    this.markLayer.addChild(areaSprite);
+    this.fxLayer.addChild(aimSprite);
+    this.tokenLayer.addChild(tokenSprite);
+    this.clippedAreas.filters = [areaFilter];
+    this.clippedAims.filters = [aimFilter];
+    this.otherTokens.filters = [tokenFilter];
+    this.visibleRegion = { fog: state.fog, sight: state.sight, key, texture, sprites, filters };
   }
 
-  /** One visible-region texture, and a sprite of it for each clipped container (a mask has one owner). */
-  private createRegionMasks(state: RoomState, width: number, height: number) {
+  /**
+   * One visible-region texture, and for each clipped container (areas, aims, tokens) a sprite of
+   * it and a mask filter reading that sprite.
+   *
+   * A filter, not `container.mask`: Pixi draws a sprite-masked container through an offscreen
+   * texture the size of its whole bounds, never clipped to the screen, and a masked container with
+   * nothing in it measures as infinite once the board is zoomed. Zoomed in, that texture passes what
+   * the GPU can hold, WebGL loses its context, and the board goes black. The same mask as a filter
+   * clipped to the screen draws at most a screen's worth, and nothing at all when empty.
+   */
+  private createRegionMasks(state: RoomState, width: number, height: number): { texture: Texture; sprites: Sprite[]; filters: MaskFilter[] } {
     const { canvas, scale } = makeVisibleRegionCanvas(state.fog, state.sight, width, height);
     const texture = Texture.from(canvas);
-    const areaMask = new Sprite(texture), aimMask = new Sprite(texture), tokenMask = new Sprite(texture);
-    for (const mask of [areaMask, aimMask, tokenMask]) {
-      mask.scale.set(1 / scale);
-      mask.eventMode = "none";
-    }
-    return { texture, areaMask, aimMask, tokenMask };
+    const sprites = [0, 1, 2].map(() => {
+      const sprite = new Sprite(texture);
+      sprite.scale.set(1 / scale);
+      sprite.eventMode = "none";
+      sprite.renderable = false;
+      return sprite;
+    });
+    const filters = sprites.map((sprite) => {
+      const filter = new MaskFilter({ sprite });
+      filter.clipToViewport = true;
+      return filter;
+    });
+    return { texture, sprites, filters };
   }
 
   private dropVisibleRegion() {
     const current = this.visibleRegion;
     if (!current) return;
     this.visibleRegion = null;
-    this.clippedAreas.mask = null;
-    this.clippedAims.mask = null;
-    this.otherTokens.mask = null;
-    current.areaMask.destroy();
-    current.aimMask.destroy();
-    current.tokenMask.destroy();
+    this.clippedAreas.filters = null;
+    this.clippedAims.filters = null;
+    this.otherTokens.filters = null;
+    for (const filter of current.filters) filter.destroy();
+    for (const sprite of current.sprites) sprite.destroy();
     current.texture.destroy(true);
   }
 
