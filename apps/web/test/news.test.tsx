@@ -43,12 +43,9 @@ describe("What's new page (site-news-and-feedback)", () => {
     expect(within(header).getByRole("link", { name: "What's new" }).getAttribute("aria-current")).toBe("page");
     const main = screen.getByRole("navigation", { name: "Main" });
     expect(within(main).getByRole("link", { name: "Privacy" }).getAttribute("aria-current")).toBeNull();
-    // What's new is in the header and Feedback is a floating launcher (FR-PL-10, FR-PL-11).
-    expect(within(header).queryByRole("button", { name: /Feedback/ })).toBeNull();
     const footer = screen.getByRole("contentinfo");
     expect(within(footer).queryByRole("link", { name: "What's new" })).toBeNull();
-    expect(within(footer).queryByRole("button", { name: "Feedback" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Feedback" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Feedback" })).toBeNull();
     const index = screen.getByRole("navigation", { name: "All updates" });
     expect(within(index).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(NEWS.map((e) => `#${e.id}`));
   });

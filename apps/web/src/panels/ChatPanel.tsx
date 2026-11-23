@@ -20,6 +20,8 @@ const isChatSpot = (v: unknown): v is ChatSpot | null =>
 /** The chat button's size and the window margin it keeps, in pixels (3.25rem and --space-4). */
 const FAB_PX = 52;
 const EDGE_PX = 16;
+/** The 56px feedback launcher, its edge margin, and an 8px gap. */
+const FEEDBACK_CLEARANCE_PX = 80;
 /** A press that moves this far is a drag, not a click. */
 const DRAG_PX = 5;
 /** How far Shift+arrow moves the button. */
@@ -63,7 +65,7 @@ function timeLabel(at: string | null): string {
 }
 
 /**
- * Room chat (KAN-75, ADR 0015): a floating button at the bottom right of the screen that opens a
+ * Room chat (KAN-75, ADR 0015): a floating button that opens a
  * popup with the most recent messages, oldest first, and a box to add one.
  *
  * Message text is rendered as plain React children, never as markup. The input's `maxLength`
@@ -99,7 +101,7 @@ export function ChatPanel({
   const pendingCaret = useRef<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
-  /** Moved by dragging the button, or Shift+arrows on it; null keeps the bottom-right corner. */
+  /** Moved by dragging the button, or Shift+arrows on it; null keeps the bottom-left corner. */
   const [spot, setSpot] = usePersistentState<ChatSpot | null>("vtt.ui.chatSpot", null, isChatSpot);
   const drag = useRef<{ x: number; y: number; from: ChatSpot; moved: boolean } | null>(null);
   /** Set by a drag's release, so the click that follows doesn't open the chat. */
@@ -204,7 +206,11 @@ export function ChatPanel({
   };
 
   // Until moved, the button rests at the bottom left.
-  const here = clampChatSpot(spot ?? { right: window.innerWidth - EDGE_PX - FAB_PX, bottom: EDGE_PX }, window.innerWidth, window.innerHeight);
+  const clamped = clampChatSpot(spot ?? { right: window.innerWidth - EDGE_PX - FAB_PX, bottom: EDGE_PX }, window.innerWidth, window.innerHeight);
+  // A saved or dragged position leaves the bottom-right corner clear for Feedback.
+  const here = clamped.right < FEEDBACK_CLEARANCE_PX && clamped.bottom < FEEDBACK_CLEARANCE_PX
+    ? { ...clamped, right: FEEDBACK_CLEARANCE_PX }
+    : clamped;
   // The popup opens toward the middle of the window, whichever corner the button is in. In the
   // left or top half the widget is pinned by its left or top edge, so the popup grows away from
   // the edge instead of past it.

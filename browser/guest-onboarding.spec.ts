@@ -2,6 +2,23 @@ import { expect, test } from "@playwright/test";
 
 test("the landing page explains the first session and account choices without overflow", async ({ page }, info) => {
   await page.goto("/");
+  if (page.viewportSize()!.width <= 640) {
+    const header = page.locator(".site-header");
+    const controls = [
+      header.getByRole("link", { name: "Session Zero" }),
+      header.getByRole("link", { name: "What's new" }),
+      header.getByRole("link", { name: "Sign up", exact: true }),
+      header.getByRole("button", { name: "Language: English" }),
+      header.locator(".theme-toggle"),
+    ];
+    await expect(controls[2]!).toBeVisible();
+    const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+    const top = boxes[0]!.y;
+    for (const box of boxes) {
+      expect(box!.height).toBe(44);
+      expect(box!.y).toBeCloseTo(top, 0);
+    }
+  }
   const guide = page.getByRole("region", { name: "From map to first move." });
   await guide.scrollIntoViewIfNeeded();
   await expect(guide.getByRole("listitem")).toHaveCount(3);
@@ -13,9 +30,13 @@ test("the landing page explains the first session and account choices without ov
 });
 
 test("a first-time GM reaches guest setup directly and sees one onboarding prompt (M5/M6)", async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem("vtt.ui.chatSpot", JSON.stringify({ right: 16, bottom: 16 })));
   await page.goto("/");
+  const feedback = page.getByRole("button", { name: "Feedback", exact: true });
+  await expect(feedback).toBeVisible();
   await page.getByRole("link", { name: "Try without signing in", exact: true }).first().click();
   await expect(page).toHaveURL(/\/start$/);
+  await expect(feedback).toHaveCount(0);
   await page.getByRole("textbox", { name: "Room name", exact: true }).fill("Onboarding QA");
   await page.getByRole("textbox", { name: "Your name", exact: true }).fill("First-time GM");
   await page.getByRole("button", { name: "Start the room", exact: true }).click();
@@ -30,4 +51,12 @@ test("a first-time GM reaches guest setup directly and sees one onboarding promp
   await page.reload();
   await expect(page.locator(".room-title")).toHaveText("Onboarding QA", { timeout: 30_000 });
   await expect(page.locator(".guest-room-notice")).toBeHidden();
+  await feedback.click({ trial: true });
+  await feedback.press("Enter");
+  const report = page.getByRole("dialog", { name: "Send feedback" });
+  await expect(report).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(report).toBeHidden();
+  await expect(feedback).toBeFocused();
+  await page.screenshot({ path: info.outputPath("room-feedback.png") });
 });

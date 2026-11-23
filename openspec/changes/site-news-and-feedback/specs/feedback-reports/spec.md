@@ -5,7 +5,7 @@ Lets anyone using Session Zero tell the team about a bug or an idea, with screen
 ## ADDED Requirements
 
 ### Requirement: One Feedback dialog everywhere
-The web app SHALL offer one Feedback dialog, opened from a floating button at the bottom right of site pages, the Settings dialog, "Report a problem" in the room's More menu, and the What's new page. Opened from Settings, it SHALL appear on top of Settings, so closing it returns there. The dialog SHALL ask for a kind (Bug, Idea or Other), a summary of 1 to 120 characters and optional details of up to 4,000 characters.
+The web app SHALL offer one Feedback dialog, opened from a floating button at the bottom right of the home page and active rooms, the Settings dialog, "Report a problem" in the room's More menu, and the What's new page. Opened from Settings, it SHALL appear on top of Settings, so closing it returns there. The dialog SHALL ask for a kind (Bug, Idea or Other), a summary of 1 to 120 characters and optional details of up to 4,000 characters.
 
 #### Scenario: Opening from a room
 - **WHEN** a participant chooses "Report a problem" in the room's More menu

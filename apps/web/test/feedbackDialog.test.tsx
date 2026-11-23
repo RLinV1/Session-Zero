@@ -4,9 +4,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { accountStore } from "../src/account/accountStore";
 import { closeFeedback, openFeedback, useFeedbackRoom, type FeedbackRoom } from "../src/ui/feedback";
 import { FeedbackHost } from "../src/ui/FeedbackDialog";
+import { HomePage } from "../src/pages/HomePage";
 import { RoomMenu } from "../src/ui/RoomMenu";
-import { SiteHeader } from "../src/ui/SiteHeader";
-import { SiteFooter } from "../src/ui/SiteFooter";
 import { SettingsMenu } from "../src/ui/SettingsMenu";
 
 beforeAll(() => {
@@ -48,10 +47,11 @@ function RoomStub({ room }: { room: FeedbackRoom }) {
 
 describe("Feedback dialog (FR-PL-11)", () => {
   it("opens from the floating launcher and sends a report with screenshots and allow-listed details", async () => {
-    render(<><SiteHeader /><SiteFooter /><FeedbackHost /></>);
+    render(<><HomePage /><FeedbackHost /></>);
     // The header carries What's new instead (FR-PL-10).
-    expect(within(screen.getByRole("banner")).queryByRole("button", { name: /Feedback/ })).toBeNull();
-    expect(within(screen.getByRole("banner")).getByRole("link", { name: "What's new" }).getAttribute("href")).toBe("/news");
+    const header = within(document.querySelector<HTMLElement>(".site-header")!);
+    expect(header.queryByRole("button", { name: /Feedback/ })).toBeNull();
+    expect(header.getByRole("link", { name: "What's new" }).getAttribute("href")).toBe("/news");
     expect(within(screen.getByRole("contentinfo")).queryByRole("button", { name: "Feedback" })).toBeNull();
     const launcher = screen.getByRole("button", { name: "Feedback" });
     expect(launcher.getAttribute("aria-haspopup")).toBe("dialog");
@@ -82,7 +82,7 @@ describe("Feedback dialog (FR-PL-11)", () => {
   });
 
   it("opens from the floating launcher and on top of Settings", () => {
-    render(<><SiteFooter /><FeedbackHost /></>);
+    render(<><HomePage /><FeedbackHost /></>);
     fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
     expect(dialog()).toBeTruthy();
     act(() => closeFeedback());

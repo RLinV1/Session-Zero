@@ -1,4 +1,5 @@
 import { revealOnEnter } from "../ui/reveal";
+import { FeedbackLauncher } from "../ui/FeedbackLauncher";
 import { SiteFooter } from "../ui/SiteFooter";
 import { SiteHeader } from "../ui/SiteHeader";
 import { AccountLinks } from "./home/AccountLinks";
@@ -64,6 +65,7 @@ export function HomePage() {
       </main>
 
       <SiteFooter />
+      <FeedbackLauncher />
     </div>
   );
 }

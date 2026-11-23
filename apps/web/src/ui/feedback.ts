@@ -25,7 +25,7 @@ interface FeedbackState {
 
 const feedbackStore = createStore<FeedbackState>(() => ({ open: false, wanted: false, kind: "bug", room: null }));
 
-/** Opens the one Feedback dialog, from anywhere: the header, a room's menu, the news page. */
+/** Opens the shared Feedback dialog from a launcher or contextual action. */
 export function openFeedback(kind: FeedbackKind = "bug") {
   feedbackStore.setState({ open: true, wanted: true, kind });
 }
