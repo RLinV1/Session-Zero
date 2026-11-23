@@ -1676,6 +1676,7 @@ dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
 .account-menu .menu-list { min-width: 0; padding-block: var(--space-1); border-top: 1px solid var(--border); }
 .account-menu .menu-list:last-child { padding-bottom: 0; }
 .account-menu .menu-item { border-radius: var(--radius-control); }
+.account-menu .portrait-account-action { display: none; }
 .account-menu .menu-item:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .account-menu .menu-item[aria-current="page"] { background: var(--hover); box-shadow: inset 0 -2px 0 var(--accent); font-weight: 600; }
 @media (pointer: coarse), (max-width: 720px) {
@@ -4795,7 +4796,7 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   .animation-editor-tabs .map-editor-step { flex: 1 1 0; padding-inline: var(--space-1); font-size: var(--fs-sm); }
 
   /* Site header links and the account forms' way back: 44px, same size as the text around them. */
-  .site-header :is(.nav-link, .nav-cta, .account-trigger, .language-trigger, .theme-toggle) { min-height: 44px; }
+  .site-header .nav-link, .site-header .nav-cta, .site-header .account-trigger { min-height: 44px; display: inline-flex; align-items: center; }
   .entry form > a { font-size: var(--fs-sm); display: inline-flex; align-items: center; min-height: 44px; }
 
   /* Library pickers: names wrap to two lines instead of cutting off. */
@@ -4814,12 +4815,20 @@ button.secondary.share-reset:hover:not(:disabled) { border-color: var(--danger);
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px) and (orientation: portrait) {
+  .site-header :is(.language-trigger, .theme-toggle) { min-height: 44px; }
   .site-header :is(.whats-new-link, .theme-toggle) { width: 44px; padding-inline: 0; }
   .site-header .site-actions .nav-cta { padding-inline: 0.55rem; }
+  .site-header:has(.account-trigger) .site-actions > :is(.whats-new-link, .room-settings-trigger) { display: none; }
+  .site-header:has(.site-nav) .site-actions { flex: 1 1 0; min-width: 0; justify-content: flex-end; }
+  .site-header .popover-anchor { display: flex; }
+  .site-header .site-actions > .popover-anchor:has(> .language-trigger) { flex: none; }
+  .site-header .account-trigger:not(:active) { transform: none; }
+  .site-header .account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-menu .portrait-account-action { display: flex; }
 }
 
-@media (max-width: 360px) {
+@media (max-width: 360px) and (orientation: portrait) {
   .site-header .language-trigger { width: 44px; padding-inline: 0; }
   .site-header .language-trigger > span { display: none; }
 }
