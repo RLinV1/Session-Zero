@@ -77,7 +77,7 @@ export const serverEn = {
   "api.emailUnverified": "Verify your email address before signing in. Check your inbox for the link.",
   "api.verifyLinkInvalid": "This verification link is invalid or has expired.",
   "mail.verify.subject": "Verify your Session Zero email address",
-  "mail.verify.intro": "Open the link below to verify your email address and finish creating your account. It works once and expires in 24 hours.",
+  "mail.verify.intro": "Open the link below to verify your email address. The link works once and is valid for up to 24 hours. Verify within 7 days of signing up to keep your account.",
   "mail.verify.action": "Verify email address",
   "mail.verify.ignore": "If you did not sign up for Session Zero, you can ignore this email.",
   "api.resetLinkInvalid": "This reset link is invalid or has expired.",

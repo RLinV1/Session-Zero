@@ -204,12 +204,17 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [source] = useState(() => ReferralSource.safeParse(new URLSearchParams(location.search).get("r")).data);
 
   async function submit() {
+    if (password !== confirmPassword) {
+      setError({ message: t("account.passwordMismatch"), field: "confirmPassword" });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -226,7 +231,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
 
   const fieldError = (field: string) =>
     error?.field === field ? (
-      <span role="alert" className="error small">
+      <span id={`signup-${field}-error`} role="alert" className="error small">
         {error.message}
       </span>
     ) : null;
@@ -274,6 +279,21 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           onChange={(e) => setPassword(e.target.value)}
         />
         {fieldError("password")}
+      </div>
+      <div className="account-password-field">
+        <label htmlFor="signup-confirm-password">{t("account.confirmPassword")}</label>
+        <input
+          id="signup-confirm-password"
+          type="password"
+          autoComplete="new-password"
+          required
+          maxLength={PASSWORD_MAX}
+          value={confirmPassword}
+          aria-invalid={error?.field === "confirmPassword" || undefined}
+          aria-describedby={error?.field === "confirmPassword" ? "signup-confirmPassword-error" : undefined}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        {fieldError("confirmPassword")}
       </div>
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}

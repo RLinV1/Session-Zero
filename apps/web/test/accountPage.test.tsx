@@ -105,6 +105,7 @@ describe("email verification on sign-up and sign-in (FR-GM-01)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse battery");
+    type(/^Confirm password/, "correct horse battery");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByRole("heading", { name: "Check your email" })).toBeTruthy();
     expect(screen.getByText(/sam@example\.com/)).toBeTruthy();
@@ -123,6 +124,7 @@ describe("email verification on sign-up and sign-in (FR-GM-01)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse battery");
+    type(/^Confirm password/, "correct horse battery");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     fireEvent.click(await screen.findByRole("button", { name: "Send a new link" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Too many attempts. Try again in 10 minutes.");
@@ -292,23 +294,29 @@ describe("the pages that send a person back (gm-home: Account screens)", () => {
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse");
+    type(/^Confirm password/, "correct horse");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/gm-dashboard", { replace: true }));
     expect(signUp).toHaveBeenCalledTimes(1);
     expect(signUp).toHaveBeenCalledWith("sam@example.com", "correct horse", "Sam", undefined);
   });
 
-  it("submits a recognized referral from the shorter form without a checkbox (FR-GM-01)", () => {
+  it("requires matching passwords and passes the referral when corrected (FR-GM-01)", async () => {
     history.replaceState(null, "", "/signup?r=tiktok");
     signUp.mockResolvedValue(undefined);
     render(<SignUpPage />);
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByLabelText(/^Confirm password/)).toBeNull();
     expect(hrefOf("Try without signing in")).toBe("/start");
     type(/^Display name/, "Sam");
     type(/^Email/, "sam@example.com");
     type(/^Password/, "correct horse");
+    type(/^Confirm password/, "wrong horse");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(signUp).toHaveBeenCalledWith("sam@example.com", "correct horse", "Sam", "tiktok");
+    expect(screen.getByRole("alert").textContent).toBe("The two passwords don't match.");
+    expect(screen.getByLabelText("Confirm password", { exact: true }).getAttribute("aria-invalid")).toBe("true");
+    expect(signUp).not.toHaveBeenCalled();
+    type(/^Confirm password/, "correct horse");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(signUp).toHaveBeenCalledExactlyOnceWith("sam@example.com", "correct horse", "Sam", "tiktok"));
   });
 });

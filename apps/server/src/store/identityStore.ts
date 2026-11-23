@@ -26,6 +26,16 @@ export interface UserRecord {
 
 export type NewUserRecord = Pick<UserRecord, "id" | "email" | "displayName" | "passwordHash"> & Pick<UserRecord, "referralSource"> & { emailVerifiedAt?: string | null };
 
+export const UNVERIFIED_USER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** An unverified account has one deadline, measured from signup. */
+export function isExpiredUnverifiedAccount(
+  user: { createdAt: string | Date; emailVerifiedAt: string | Date | null },
+  now: number,
+): boolean {
+  return user.emailVerifiedAt === null && new Date(user.createdAt).getTime() <= now - UNVERIFIED_USER_MS;
+}
+
 export interface SessionRecord {
   /** SHA-256 of the cookie token. */
   tokenHash: string;
@@ -86,7 +96,7 @@ export interface IdentityStore {
    * deletes the user's reset and verification tokens. Returns the user; null, changing nothing, otherwise.
    */
   consumePasswordResetToken(tokenHash: string, now: string, passwordHash: string): Promise<UserRecord | null>;
-  /** Deletes unverified users created before `createdBefore` that hold no verification token (BE-AUDIT squatting), rechecking each one as it is deleted. */
+  /** Deletes users still unverified who were created at or before the cutoff, rechecking before deletion. */
   deleteStaleUnverifiedUsers(createdBefore: string): Promise<void>;
   /** The caller has checked the look belongs to the user's owner row. */
   setActiveDiceLook(userId: string, lookId: string | null): Promise<void>;

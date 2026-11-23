@@ -34,6 +34,7 @@ import {
 } from "./buildStore";
 import {
   EmailTakenError,
+  isExpiredUnverifiedAccount,
   type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
@@ -1385,8 +1386,9 @@ export class MemoryRoomStore implements RoomStore {
     if (user) user.emailVerifiedAt = at;
   }
 
-  async createVerificationToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
-    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
+  async createVerificationToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    const user = this.users.get(userId);
+    if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
     for (const [hash, token] of this.verificationTokens) if (token.userId === userId) this.verificationTokens.delete(hash);
     this.verificationTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
     return true;
@@ -1396,7 +1398,8 @@ export class MemoryRoomStore implements RoomStore {
     const token = this.verificationTokens.get(tokenHash);
     if (!token) return null;
     this.verificationTokens.delete(tokenHash);
-    if (token.expiresAt <= now || this.users.get(token.userId)?.credentialVersion !== token.credentialVersion) return null;
+    const user = this.users.get(token.userId);
+    if (!user || token.expiresAt <= now || user.credentialVersion !== token.credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
     await this.markEmailVerified(token.userId, now);
     return this.findUserById(token.userId);
   }
@@ -1405,8 +1408,9 @@ export class MemoryRoomStore implements RoomStore {
     for (const [hash, token] of this.verificationTokens) if (token.expiresAt <= now) this.verificationTokens.delete(hash);
   }
 
-  async createPasswordResetToken(userId: string, tokenHash: string, _createdAt: string, expiresAt: string, credentialVersion: number) {
-    if (this.users.get(userId)?.credentialVersion !== credentialVersion) return false;
+  async createPasswordResetToken(userId: string, tokenHash: string, createdAt: string, expiresAt: string, credentialVersion: number) {
+    const user = this.users.get(userId);
+    if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
     for (const [hash, token] of this.resetTokens) if (token.userId === userId) this.resetTokens.delete(hash);
     this.resetTokens.set(tokenHash, { userId, expiresAt, credentialVersion });
     return true;
@@ -1415,7 +1419,8 @@ export class MemoryRoomStore implements RoomStore {
   private resetUser(tokenHash: string, now: string) {
     const token = this.resetTokens.get(tokenHash);
     const user = token ? this.users.get(token.userId) : undefined;
-    return token && user && token.expiresAt > now && user.credentialVersion === token.credentialVersion ? user : null;
+    return token && user && token.expiresAt > now && user.credentialVersion === token.credentialVersion
+      && !isExpiredUnverifiedAccount(user, Date.parse(now)) ? user : null;
   }
 
   async findUserByResetToken(tokenHash: string, now: string) {
@@ -1442,9 +1447,7 @@ export class MemoryRoomStore implements RoomStore {
   }
 
   private isStaleUnverified(user: UserRecord, createdBefore: string) {
-    if (user.emailVerifiedAt || user.createdAt >= createdBefore) return false;
-    for (const token of this.verificationTokens.values()) if (token.userId === user.id) return false;
-    return true;
+    return user.emailVerifiedAt === null && user.createdAt <= createdBefore;
   }
 
   async setActiveDiceLook(userId: string, lookId: string | null) {

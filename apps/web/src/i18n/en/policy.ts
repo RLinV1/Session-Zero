@@ -39,7 +39,7 @@ export const policy = {
   "privacy.dont.ip":
     "Your IP address is used to slow down repeated requests, including sign-in, sign-up and join attempts. It is held in memory for an hour at most and never saved.",
   "privacy.long.title": "How long we keep it",
-  "privacy.long.account": "Account data (name, email, password hash, library) is kept until you delete your account.",
+  "privacy.long.account": "We keep verified account data (name, email, password hash, library) until you delete your account. Unverified signups expire after 7 days and are deleted automatically.",
   "privacy.long.room": "A room and its history are kept until its GM deletes the room, or the GM's account is deleted.",
   "privacy.long.session": "A sign-in session ends after 30 days without use, or 90 days at most.",
   "privacy.long.pass":

@@ -42,7 +42,7 @@ In production, sign-in SHALL be refused for an account whose address is not veri
 - **THEN** the response is the ordinary failed-sign-in answer, identical to an unknown address
 
 ### Requirement: Verification links are one-time and expire
-A verification link SHALL carry a random token that works once and expires 24 hours after it was issued. The server SHALL store only a hash of the token. Issuing a new link for an account SHALL invalidate that account's earlier links.
+A verification link SHALL carry a random token that works once and expires when it is 24 hours old or when the pending account expires, whichever comes first. The server SHALL store only a hash of the token. Issuing a new link for an account SHALL invalidate that account's earlier links.
 
 #### Scenario: Using a valid link
 - **WHEN** a person submits a valid, unexpired, unused token
@@ -70,6 +70,9 @@ Loading the verification page SHALL NOT verify the account. The token SHALL be c
 #### Scenario: Scanner fetches the link
 - **WHEN** an automated scanner requests the link's URL without running the page
 - **THEN** the token remains unused and valid
+
+### Requirement: Unverified accounts expire after seven days
+An account that still requires email verification SHALL expire seven days after signup. Resending a verification link SHALL preserve the original deadline. At the deadline, the server SHALL refuse verification and password reset for that pending account and delete it with its tokens during the next hourly cleanup. Accounts verified before the deadline SHALL be kept.
 
 ### Requirement: A new link can be requested
 The server SHALL accept a request for a new verification link by email address. It SHALL answer the same way whether or not the address has an unverified account, and SHALL send mail only when it does. Requests SHALL be rate limited per address and per client address.

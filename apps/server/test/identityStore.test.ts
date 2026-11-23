@@ -151,6 +151,26 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect(await store.consumeVerificationToken(randomUUID(), new Date().toISOString())).toBeNull();
     });
 
+    it("refuses verification and password reset links once an unverified account expires", async () => {
+      const user = await newUser();
+      const deadline = Date.parse(user.createdAt) + 7 * DAY;
+      const issued = new Date(deadline - hour / 2).toISOString();
+      const expires = new Date(deadline + hour).toISOString();
+      const atDeadline = new Date(deadline).toISOString();
+      const verificationHash = randomUUID();
+      const resetHash = randomUUID();
+      expect(await store.createVerificationToken(user.id, verificationHash, issued, expires, user.credentialVersion)).toBe(true);
+      expect(await store.createPasswordResetToken(user.id, resetHash, issued, expires, user.credentialVersion)).toBe(true);
+      expect((await store.findUserByResetToken(resetHash, issued))?.id).toBe(user.id);
+
+      expect(await store.consumeVerificationToken(verificationHash, atDeadline)).toBeNull();
+      expect(await store.findUserByResetToken(resetHash, atDeadline)).toBeNull();
+      expect(await store.consumePasswordResetToken(resetHash, atDeadline, "new hash")).toBeNull();
+      expect(await store.createVerificationToken(user.id, randomUUID(), atDeadline, expires, user.credentialVersion)).toBe(false);
+      expect(await store.createPasswordResetToken(user.id, randomUUID(), atDeadline, expires, user.credentialVersion)).toBe(false);
+      expect((await store.findUserById(user.id))?.emailVerifiedAt).toBeNull();
+    });
+
     it("replaces the user's earlier tokens when a new one is issued", async () => {
       const user = await newUser();
       const first = randomUUID();
@@ -173,7 +193,7 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect((await store.consumeVerificationToken(live, new Date().toISOString()))!.id).toBe(other.id);
     });
 
-    it("deletes old unverified users with no token, keeping verified and token-holding ones (BE-AUDIT squatting)", async () => {
+    it("deletes old unverified users even when a verification link is outstanding", async () => {
       const stale = await newUser();
       const held = await newUser();
       const verified = await newUser();
@@ -181,7 +201,7 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       await issue(held.id, randomUUID());
       await store.deleteStaleUnverifiedUsers(new Date(Date.now() + hour).toISOString());
       expect(await store.findUserById(stale.id)).toBeNull();
-      expect(await store.findUserById(held.id)).not.toBeNull();
+      expect(await store.findUserById(held.id)).toBeNull();
       expect(await store.findUserById(verified.id)).not.toBeNull();
     });
 
@@ -193,7 +213,7 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       expect((await store.findUserById(user.id))!.emailVerifiedAt).not.toBeNull();
     });
 
-    it("keeps a user the sweep selected but who verified or got a token before deletion (PR 226 sweep recheck)", async () => {
+    it("rechecks verification before deleting and ignores newly issued links", async () => {
       const verifiedMeanwhile = await newUser();
       const tokenedMeanwhile = await newUser();
       const abandoned = await newUser();
@@ -206,7 +226,7 @@ describe.each(storeCases)("identity store, %s (FR-GM-01)", (_name, makeStore) =>
       await store.deleteStaleUnverifiedUsers(new Date(Date.now() + hour).toISOString());
       spy.mockRestore();
       expect(await store.findUserById(verifiedMeanwhile.id)).not.toBeNull();
-      expect(await store.findUserById(tokenedMeanwhile.id)).not.toBeNull();
+      expect(await store.findUserById(tokenedMeanwhile.id)).toBeNull();
       expect(await store.findUserById(abandoned.id)).toBeNull();
     });
 

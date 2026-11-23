@@ -66,6 +66,7 @@ import {
 } from "./buildStore";
 import {
   EmailTakenError,
+  isExpiredUnverifiedAccount,
   type DeletedUser,
   type EndedSessions,
   type NewUserRecord,
@@ -1805,7 +1806,7 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.credentialVersion !== credentialVersion) return false;
+      if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
       await tx.emailVerificationToken.deleteMany({ where: { userId } });
       await tx.emailVerificationToken.create({
         data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
@@ -1821,9 +1822,11 @@ export class PostgresRoomStore implements RoomStore {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${token.userId}::uuid FOR UPDATE`;
       const deleted = await tx.emailVerificationToken.deleteMany({ where: { tokenHash } });
       if (deleted.count === 0 || token.expiresAt <= new Date(now)) return null;
-      await tx.user.updateMany({ where: { id: token.userId, emailVerifiedAt: null, credentialVersion: token.credentialVersion }, data: { emailVerifiedAt: new Date(now) } });
-      const row = await tx.user.findUnique({ where: { id: token.userId } });
-      return row ? toUserRecord(row) : null;
+      const user = await tx.user.findUnique({ where: { id: token.userId } });
+      if (!user || user.credentialVersion !== token.credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
+      if (user.emailVerifiedAt) return toUserRecord(user);
+      const verified = await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date(now) } });
+      return toUserRecord(verified);
     });
   }
 
@@ -1836,7 +1839,7 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.credentialVersion !== credentialVersion) return false;
+      if (!user || user.credentialVersion !== credentialVersion || isExpiredUnverifiedAccount(user, Date.parse(createdAt))) return false;
       await tx.passwordResetToken.deleteMany({ where: { userId } });
       await tx.passwordResetToken.create({
         data: { tokenHash, userId, createdAt: new Date(createdAt), expiresAt: new Date(expiresAt), credentialVersion },
@@ -1848,6 +1851,7 @@ export class PostgresRoomStore implements RoomStore {
   async findUserByResetToken(tokenHash: string, now: string) {
     const token = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
     if (!token || token.expiresAt <= new Date(now) || token.user.credentialVersion !== token.credentialVersion) return null;
+    if (isExpiredUnverifiedAccount(token.user, Date.parse(now))) return null;
     return toUserRecord(token.user);
   }
 
@@ -1859,6 +1863,7 @@ export class PostgresRoomStore implements RoomStore {
       const deleted = await tx.passwordResetToken.deleteMany({ where: { tokenHash } });
       const user = await tx.user.findUnique({ where: { id: token.userId } });
       if (deleted.count === 0 || !user || token.expiresAt <= new Date(now) || user.credentialVersion !== token.credentialVersion) return null;
+      if (isExpiredUnverifiedAccount(user, Date.parse(now))) return null;
       const updated = await tx.user.update({
         where: { id: user.id },
         data: {
@@ -1876,7 +1881,7 @@ export class PostgresRoomStore implements RoomStore {
 
   async deleteStaleUnverifiedUsers(createdBefore: string) {
     const stale = await this.prisma.user.findMany({
-      where: { emailVerifiedAt: null, createdAt: { lt: new Date(createdBefore) }, verificationTokens: { none: {} } },
+      where: { emailVerifiedAt: null, createdAt: { lte: new Date(createdBefore) } },
       select: { id: true },
     });
     for (const { id } of stale) await this.deleteUser(id, createdBefore);
@@ -1891,7 +1896,7 @@ export class PostgresRoomStore implements RoomStore {
       if (staleBefore !== undefined) {
         await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
         const eligible = await tx.user.count({
-          where: { id: userId, emailVerifiedAt: null, createdAt: { lt: new Date(staleBefore) }, verificationTokens: { none: {} } },
+          where: { id: userId, emailVerifiedAt: null, createdAt: { lte: new Date(staleBefore) } },
         });
         if (eligible === 0) return null;
       }

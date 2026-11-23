@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AccountView } from "@vtt/shared";
 import { hashToken } from "../domain/credentials";
 import { verificationRequired } from "./mailer";
-import type { EndedSessions, IdentityStore, SessionRecord, UserRecord } from "../store/identityStore";
+import { UNVERIFIED_USER_MS, type EndedSessions, type IdentityStore, type SessionRecord, type UserRecord } from "../store/identityStore";
 
 /**
  * Sessions (ADR 0017 I1). The server mints an opaque token and sets it as an HttpOnly cookie, so
@@ -11,7 +11,6 @@ import type { EndedSessions, IdentityStore, SessionRecord, UserRecord } from "..
  * its row.
  */
 export const SESSION_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
-export const UNVERIFIED_USER_MS = 7 * 24 * 60 * 60 * 1000;
 export const SESSION_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 /** `last_seen_at` is written at most this often, so ordinary requests don't each cost a write. */
 export const TOUCH_EVERY_MS = 60 * 60 * 1000;
@@ -136,7 +135,7 @@ export class Sessions {
     this.report(await this.store.deleteUserSessions(userId, keepHash));
   }
 
-  /** Deletes ended sessions and their seats. Runs hourly; also safe to call at any time. */
+  /** Deletes ended sessions, their seats, and expired pending signups. Runs hourly. */
   async sweep() {
     const now = this.now();
     this.report(
