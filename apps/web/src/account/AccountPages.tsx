@@ -53,6 +53,7 @@ function AccountForm(props: {
   submitLabel: string;
   busyLabel: string;
   busy: boolean;
+  compact?: boolean;
   error: string | null;
   errorAction?: ReactNode;
   onSubmit: () => void;
@@ -61,18 +62,22 @@ function AccountForm(props: {
 }) {
   return (
     <form
-      className="card account-form"
+      className={props.compact ? "card account-form account-form-compact" : "card account-form"}
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         props.onSubmit();
       }}
     >
       <h1>{props.title}</h1>
-      <div className="guest-option">
-        <Link href="/start" className="cta" aria-describedby="account-guest-hint">{t("account.continueGuest")}</Link>
-        <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>
-      </div>
-      <div className="guest-divider">{t("account.orUseAccount")}</div>
+      {!props.compact && (
+        <>
+          <div className="guest-option">
+            <Link href="/start" className="cta" aria-describedby="account-guest-hint">{t("account.continueGuest")}</Link>
+            <p id="account-guest-hint" className="muted small-print">{t("account.guestHint")}</p>
+          </div>
+          <div className="guest-divider">{t("account.orUseAccount")}</div>
+        </>
+      )}
       {props.children}
       {props.error && (
         <p role="alert" className="error">
@@ -83,8 +88,12 @@ function AccountForm(props: {
       <button className="primary" type="submit" disabled={props.busy}>
         {props.busy ? props.busyLabel : props.submitLabel}
       </button>
-      <p className="muted small-print">{props.footer}</p>
-      <Link href="/">{t("account.backHome")}</Link>
+      <div className="account-form-footer">
+        <p className="muted small-print">{props.footer}</p>
+        {props.compact
+          ? <Link href="/start">{t("account.continueGuest")}</Link>
+          : <Link href="/">{t("account.backHome")}</Link>}
+      </div>
     </form>
   );
 }
@@ -195,22 +204,16 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [source] = useState(() => ReferralSource.safeParse(new URLSearchParams(location.search).get("r")).data);
-  const [includeSource, setIncludeSource] = useState(true);
 
   async function submit() {
-    if (password !== confirmPassword) {
-      setError({ message: t("account.passwordMismatch"), field: "confirmPassword" });
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      const pending = await signUp(email, password, displayName, includeSource ? source : undefined);
+      const pending = await signUp(email, password, displayName, source);
       if (pending) setSentTo(pending.email);
       else onSignedUp();
     } catch (err) {
@@ -230,6 +233,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
 
   return (
     <AccountForm
+      compact
       title={t("account.createAnAccount")}
       submitLabel={t("account.createSubmit")}
       busyLabel={t("account.creating")}
@@ -242,7 +246,8 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           <Link href={signInHref}>{t("account.signIn")}</Link>
         </>
       }
-    >      <label>
+    >
+      <label>
         {t("account.displayName")}
         <input autoComplete="nickname" required maxLength={40} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         {fieldError("displayName")}
@@ -252,10 +257,14 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
         <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         {fieldError("email")}
       </label>
-      <label>
-        {t("account.password")}
-        <span className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
+      <div className="account-password-field">
+        <div className="account-password-label">
+          <label htmlFor="signup-password">{t("account.password")}</label>
+          <span id="signup-password-hint" className="muted small">{t("account.passwordLength", { min: PASSWORD_MIN, max: PASSWORD_MAX })}</span>
+        </div>
         <input
+          id="signup-password"
+          aria-describedby="signup-password-hint"
           type="password"
           autoComplete="new-password"
           required
@@ -265,26 +274,7 @@ function SignUpForm({ signInHref, onSignedUp }: { signInHref: string; onSignedUp
           onChange={(e) => setPassword(e.target.value)}
         />
         {fieldError("password")}
-      </label>
-      <label>
-        {t("account.confirmPassword")}
-        <input
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={PASSWORD_MIN}
-          maxLength={PASSWORD_MAX}
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-        />
-        {fieldError("confirmPassword")}
-      </label>
-      {source && (
-        <label className="muted small-print" style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
-          <input type="checkbox" checked={includeSource} onChange={(e) => setIncludeSource(e.target.checked)} />
-          {t("account.referral")}
-        </label>
-      )}
+      </div>
       <p className="muted small-print">
         {t("account.agree.before")}<Link href="/terms">{t("account.agree.terms")}</Link>{t("account.agree.middle")}
         <Link href="/privacy">{t("account.agree.privacy")}</Link>{t("account.agree.after")}

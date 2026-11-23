@@ -27,7 +27,7 @@ The public launch needs a weekly answer to "is anyone playing?". The privacy pag
 
 **Admin entry.** The signed-in account menu checks `GET /api/admin/me` and links to `/admin/stats` after a 204 response. For guests and accounts outside the allowlist, the admin API routes behave like an unknown `/api` path. Both admin pages show "Page not found" on a 404.
 
-**Signup referrals.** The signup form accepts an optional platform code from `/signup?r=tiktok`, `/signup?r=youtube`, or `/signup?r=instagram`. A checkbox lets the user omit attribution. The admin panel counts verified signups by platform for the selected date range, using the signup date. Account deletion removes the attribution. The migration adds one nullable column, so existing accounts have no source.
+**Signup referrals.** The signup form passes a recognized platform code from `/signup?r=tiktok`, `/signup?r=youtube`, or `/signup?r=instagram`. The privacy notice describes the attribution. The admin panel counts verified signups by platform for the selected date range, using the signup date. Account deletion removes the attribution. The migration adds one nullable column, so existing accounts have no source.
 
 **Feedback.** The Feedback tab lists saved reports newest first and loads screenshots individually. The account ID allowlist gates the list and screenshot routes. Both send `Cache-Control: no-store`. The list excludes image bytes.
 

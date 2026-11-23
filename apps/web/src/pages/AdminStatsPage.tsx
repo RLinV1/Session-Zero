@@ -150,32 +150,43 @@ function StatsBody({ stats }: { stats: LaunchStatsResponse }) {
   const t = useT();
   const locale = getLocale();
   const n = (value: number) => formatNumber(locale, value);
+  const { referralSignups } = stats;
   return (
     <>
-      <section className="admin-stats-card kpi" aria-labelledby="admin-stats-playedRooms">
-        <div className="admin-stats-card-head">
-          <div>
-            <h2 id="admin-stats-playedRooms">{metricLabel(t, "playedRooms")}</h2>
-            <p className="muted">{t("adminStats.kpi")}</p>
+      <div className="admin-stats-overview">
+        <section className="admin-stats-card kpi" aria-labelledby="admin-stats-playedRooms">
+          <div className="admin-stats-card-head">
+            <div>
+              <h2 id="admin-stats-playedRooms">{metricLabel(t, "playedRooms")}</h2>
+              <p className="muted">{t("adminStats.kpi")}</p>
+            </div>
+            <p className="admin-stats-total">{n(stats.totals.playedRooms)}</p>
           </div>
-          <p className="admin-stats-total">{n(stats.totals.playedRooms)}</p>
-        </div>
-        <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={200} />
-      </section>
-
-      {stats.referralSignups && (
-        <section className="admin-stats-card" aria-labelledby="admin-referrals">
-          <h2 id="admin-referrals">{t("adminStats.referrals")}</h2>
-          <table>
-            <thead><tr><th scope="col">{t("adminStats.platform")}</th><th scope="col">{t("adminStats.signups")}</th></tr></thead>
-            <tbody>
-              {ReferralSource.options.map((source) => (
-                <tr key={source}><th scope="row">{t(`adminStats.referral.${source}`)}</th><td>{n(stats.referralSignups![source])}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          {stats.totals.playedRooms > 0 ? (
+            <LineChart days={stats.days} metric="playedRooms" label={t("adminStats.chartLabel", { metric: metricLabel(t, "playedRooms") })} format={n} height={148} />
+          ) : (
+            <p className="admin-stats-empty muted">{t("adminStats.noPlayedRooms")}</p>
+          )}
         </section>
-      )}
+        {referralSignups && (
+          <section className="admin-stats-card admin-stats-referrals" aria-labelledby="admin-referrals">
+            <h2 id="admin-referrals">{t("adminStats.referrals")}</h2>
+            <table className="admin-stats-grid" aria-labelledby="admin-referrals">
+              <thead>
+                <tr><th scope="col">{t("adminStats.platform")}</th><th scope="col">{t("adminStats.signups")}</th></tr>
+              </thead>
+              <tbody>
+                {ReferralSource.options.map((source) => (
+                  <tr key={source}>
+                    <th scope="row">{t(`adminStats.referral.${source}`)}</th>
+                    <td>{n(referralSignups[source])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
 
       <section className="admin-stats-growth" aria-labelledby="admin-stats-growth">
         <div>

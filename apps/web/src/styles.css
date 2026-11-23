@@ -1640,6 +1640,15 @@ dialog.modal.feedback-modal { width: min(36rem, calc(100vw - 2rem)); }
 .guest-option .cta { width: 100%; text-align: center; text-decoration: none; color: var(--on-accent); }
 .account-form > button.primary { background: transparent; border-color: var(--border-strong); color: var(--text); }
 .account-form > button.primary:hover:not(:disabled) { background: var(--hover); }
+.account-form-footer { display: grid; gap: var(--space-3); }
+.account-form-compact > button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.account-form-compact > button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.account-form-compact .account-form-footer { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-3); font-size: 0.85rem; }
+.account-form-compact .account-form-footer > a { text-decoration: underline; text-underline-offset: 0.15em; }
+.account-password-field { display: grid; gap: var(--space-1); }
+.account-password-label { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1); }
+.account-password-label label { margin: 0; }
+.account-password-label .small { font-size: 0.8rem; }
 .hero-guest-hint { margin: 0; }
 .guest-divider { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.85rem; }
 .guest-divider::before,

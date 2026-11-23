@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { AdminFeedbackResponse, type AdminFeedbackReport, type FeedbackCursor } from "@vtt/shared";
+import { AdminFeedbackResponse, type AdminFeedbackReport, type FeedbackCursor, type FeedbackTechnical } from "@vtt/shared";
 import { getLocale, useT } from "../i18n/locale";
 import { AdminNav, AdminNotFound } from "./AdminNav";
 import "./adminStats.css";
 
 type Load = { kind: "loading" | "failed" | "notFound" } | { kind: "ready"; data: AdminFeedbackResponse };
+
+const TECHNICAL_FIELDS = ["pagePath", "appVersion", "userAgent", "screen", "viewport", "pixelRatio", "locale", "roomId", "seq", "role"] as const satisfies readonly (keyof FeedbackTechnical)[];
 
 export function AdminFeedbackPage() {
   const t = useT();
@@ -50,10 +52,13 @@ export function AdminFeedbackPage() {
       <main className="page-shell admin-stats-main">
         <AdminNav current="feedback" />
         <h1>{t("adminFeedback.title")}</h1>
-        {reports.length === 0 && <p>{t("adminFeedback.empty")}</p>}
-        {reports.map((report) => <ReportCard key={report.reference} report={report} dateFormat={dateFormat} />)}
+        {reports.length === 0 ? (
+          <p className="muted">{t("adminFeedback.empty")}</p>
+        ) : (
+          <div>{reports.map((report) => <ReportCard key={report.reference} report={report} dateFormat={dateFormat} />)}</div>
+        )}
         {(cursor || next) && (
-          <div className="row">
+          <div className="admin-feedback-pagination">
             {cursor && <button type="button" onClick={() => showPage(null)}>{t("adminFeedback.newest")}</button>}
             {next && <button type="button" onClick={() => showPage(next)}>{t("adminFeedback.older")}</button>}
           </div>
@@ -65,16 +70,31 @@ export function AdminFeedbackPage() {
 
 function ReportCard({ report, dateFormat }: { report: AdminFeedbackReport; dateFormat: Intl.DateTimeFormat }) {
   const t = useT();
+  const { technical } = report;
   return (
-    <article className="admin-stats-card admin-feedback-report">
-      <p className="muted"><strong>{report.reference}</strong> · {t(`feedback.kind.${report.kind}`)} · <time dateTime={report.createdAt}>{dateFormat.format(new Date(report.createdAt))}</time></p>
+    <article className="admin-feedback-report">
+      <div className="admin-feedback-meta">
+        <p><strong>{report.reference}</strong> · {t(`feedback.kind.${report.kind}`)}</p>
+        <time dateTime={report.createdAt}>{dateFormat.format(new Date(report.createdAt))}</time>
+      </div>
       <h2>{report.summary}</h2>
-      <p className="admin-feedback-details">{report.details}</p>
-      <p>{report.reporter ? <>{report.reporter.displayName} · <a href={`mailto:${encodeURIComponent(report.reporter.email)}`}>{report.reporter.email}</a></> : t("adminFeedback.guest")}</p>
-      {report.technical && (
-        <details>
+      {report.details && <p className="admin-feedback-details">{report.details}</p>}
+      <p className="admin-feedback-reporter muted">{report.reporter ? <>{report.reporter.displayName} · <a href={`mailto:${encodeURIComponent(report.reporter.email)}`}>{report.reporter.email}</a></> : t("adminFeedback.guest")}</p>
+      {technical && (
+        <details className="admin-feedback-technical">
           <summary>{t("adminFeedback.technical")}</summary>
-          <pre className="admin-feedback-details">{JSON.stringify(report.technical, null, 2)}</pre>
+          <dl>
+            {TECHNICAL_FIELDS.map((field) => {
+              const value = technical[field];
+              if (value === undefined) return null;
+              return (
+                <div key={field}>
+                  <dt>{t(`adminFeedback.field.${field}`)}</dt>
+                  <dd>{typeof value === "object" ? `${value.width} × ${value.height}` : value}</dd>
+                </div>
+              );
+            })}
+          </dl>
         </details>
       )}
       {report.screenshots.length > 0 && (

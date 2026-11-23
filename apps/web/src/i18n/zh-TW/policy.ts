@@ -12,7 +12,7 @@ export const policyZhTW = {
   "privacy.lead": ({ product }) => cjk`${product}是線上跑團平台。這裡會說明我們收集與儲存哪些資料、為什麼需要這些資料，以及如何申請刪除。`,
   "privacy.keep.title": "我們儲存的資料",
   "privacy.keep.account.term": "帳號資料",
-  "privacy.keep.account.body": "只有 GM 開團才需要帳號。我們會儲存你的顯示名稱、電子郵件，以及經過 Argon2 雜湊處理的密碼。密碼無法還原成原文，連我們也無法讀取。如果你透過推薦連結註冊且保留來源歸因，我們會在帳號資料中記錄來源平台，管理面板只會顯示統計總數。",
+  "privacy.keep.account.body": "只有 GM 開團才需要帳號。我們會儲存你的顯示名稱、電子郵件，以及經過 Argon2 雜湊處理的密碼。密碼無法還原成原文，連我們也無法讀取。如果你透過推薦連結註冊，我們會在帳號資料中記錄來源平台，管理面板只會顯示統計總數。",
   "privacy.keep.gm.term": "GM 建立的房間與素材",
   "privacy.keep.gm.body": "GM 建立的房間，以及素材庫中的地圖、棋子、生物、遭遇、動畫和骰子外觀。",
   "privacy.keep.room.term": "房間活動紀錄",

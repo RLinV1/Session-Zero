@@ -16,7 +16,7 @@ export const policy = {
   "privacy.keep.title": "What we keep",
   "privacy.keep.account.term": "Your account",
   "privacy.keep.account.body":
-    "Needed only to host a game. Your display name, your email and your password. The password is stored only as an Argon2 hash, so nobody can read it back, us included. If you sign up through a referral link and leave attribution on, we keep the platform with your account and show only aggregate counts in our admin panel.",
+    "Needed only to host a game. Your display name, your email and your password. The password is stored only as an Argon2 hash, so nobody can read it back, us included. If you sign up through a referral link, we record the platform with your account and show only aggregate counts in our admin panel.",
   "privacy.keep.gm.term": "What a GM makes",
   "privacy.keep.gm.body": "Rooms, and the maps, tokens, creatures, encounters, animations and dice looks in their library.",
   "privacy.keep.room.term": "What happens in a room",
