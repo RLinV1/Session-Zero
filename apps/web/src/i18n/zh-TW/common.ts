@@ -71,7 +71,7 @@ export const commonZhTW = {
   "settings.attackAnimations.none": "不顯示",
   "settings.arrowKeyMove": "使用方向鍵移動選取的棋子",
   "settings.gmTurnBanner": "每個回合都顯示回合橫幅",
-  "settings.gmTurnBannerHint": "在每個棋子的回合都於房間頂端顯示附有「結束回合」的橫幅，而不只在輪到你操作時。",
+  "settings.gmTurnBannerHint": "在每個棋子的回合都於房間頂端顯示橫幅，而不只在你自己的回合。輪到你可以結束的回合時，會出現「結束回合」。",
   "settings.tableShared": "這項設定會套用到遊戲桌上的所有人。",
   "settings.removeAtZero": "HP 歸零時移除棋子",
   "settings.removeAtZeroHint": "棋子的 HP 降至 0 或以下時會自動移除，使用「復原」即可將棋子放回。",

@@ -4,7 +4,7 @@ import type { DoorsMode } from "./tools";
 import { extendStroke, startStroke, strokePaint, strokeRuns, type TerrainContext, type TerrainStroke } from "./terrainStroke";
 import { plainWallLines } from "./wallLines";
 import { slideDistance, slideDuration } from "./tokenSlide";
-import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
+import { dragPlan, rangeMeasure, routePlan, routeSearched, type DragPlan, type MovementPreview } from "./movementRuler";
 import { attackAim } from "./attackAim";
 import {
   Application,
@@ -1992,20 +1992,31 @@ export class BoardView {
     return this.measurement?.kind === "route" ? this.measurement : null;
   }
 
-  /** A Movement-mode click: start a route (from the selected token, if any) or add a snapped point to it. */
+  /** The footprint a route's stops snap to: the starting token's when its legs are searched like a drag, else one square. */
+  private routeSnapSize(route: { points: Point[]; tokenSize?: number } | null, origin: Point | null, tokenSize: number): number {
+    const start = route?.points[0] ?? origin;
+    const size = route ? route.tokenSize ?? 1 : origin ? tokenSize : 1;
+    return start && this.state && routeSearched(this.state, start, size) ? size : 1;
+  }
+
+  /** A Movement-mode click: start a route (from the selected token, if any) or add a snapped stop to it. */
   private routeClick(at: Point) {
     const grid = this.state?.scene.grid;
     if (!grid) return;
-    const point = snapTokenCenter(at, 1, grid);
     const route = this.route;
     if (route && !route.done) {
+      const point = snapTokenCenter(at, this.routeSnapSize(route, null, 1), grid);
       const last = route.points[route.points.length - 1]!;
       if (last.x !== point.x || last.y !== point.y) this.measurement = { ...route, points: [...route.points, point] };
+      this.routeHover = point;
     } else {
       const origin = this.movementOrigin;
-      this.measurement = { kind: "route", points: origin && (origin.x !== point.x || origin.y !== point.y) ? [origin, point] : [origin ?? point], done: false };
+      // From a token, its footprint: the legs then route as dragging it would (ruler-modes).
+      const tokenSize = origin ? this.movementTokenSize : undefined;
+      const point = snapTokenCenter(at, this.routeSnapSize(null, origin, this.movementTokenSize), grid);
+      this.measurement = { kind: "route", points: origin && (origin.x !== point.x || origin.y !== point.y) ? [origin, point] : [origin ?? point], done: false, tokenSize };
+      this.routeHover = point;
     }
-    this.routeHover = point;
     this.redrawOverlay();
   }
 
@@ -2617,9 +2628,10 @@ export class BoardView {
         const last = mark.points[mark.points.length - 1]!;
         const points = hover && (hover.x !== last.x || hover.y !== last.y) ? [...mark.points, hover] : mark.points;
         if (!this.you || points.length === 0) return;
-        const plan = routePlan(this.state!, this.you, points);
+        // The line follows the searched path; the dots stay on the stops the viewer placed.
+        const plan = routePlan(this.state!, this.you, points, mark.tokenSize);
         const color = plan.blocked ? 0xffa570 : MEASURE_COLOR;
-        const [first, ...rest] = points;
+        const [first, ...rest] = plan.points;
         g.moveTo(first!.x, first!.y);
         for (const p of rest) g.lineTo(p.x, p.y);
         g.stroke({ width: 3 * px, color, join: "round" });
@@ -3570,7 +3582,7 @@ export class BoardView {
       this.redrawOverlay();
     }
     if (this.tool.kind === "measure" && this.route && !this.route.done && this.state) {
-      const hover = snapTokenCenter(this.toBoard(e.global), 1, this.state.scene.grid);
+      const hover = snapTokenCenter(this.toBoard(e.global), this.routeSnapSize(this.route, null, 1), this.state.scene.grid);
       if (hover.x !== this.routeHover?.x || hover.y !== this.routeHover?.y) {
         this.routeHover = hover;
         this.redrawOverlay();

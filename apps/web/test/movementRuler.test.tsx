@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_GRID } from "@vtt/shared";
 import { measure } from "../src/board/tools";
-import { emptyRoomState, filterStateForViewer, type Participant, type RoomState, type TerrainRun } from "@vtt/shared";
-import { costLabel, rangeMeasure, routePlan } from "../src/board/movementRuler";
+import { emptyRoomState, filterStateForViewer, type Participant, type RoomState, type TerrainRun, type Token, type Wall } from "@vtt/shared";
+import { costLabel, dragPlan, rangeMeasure, routePlan } from "../src/board/movementRuler";
 import { MovementControls, useRulerMode } from "../src/board/MovementControls";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -98,15 +98,79 @@ describe("Movement mode route labels (ruler-modes)", () => {
   it("reads 30 ft for right 3 then down 3 on open ground", () => {
     expect(routePlan(board(), gm, [square(0, 0), square(3, 0), square(3, 3)]).label).toBe("30 ft");
   });
-  it("counts Difficult squares on a run", () => {
-    expect(routePlan(board(runs("difficult", [1, 0], [2, 0])), gm, [square(0, 0), square(3, 0)]).label).toBe("25 ft · 2 difficult");
+  it("counts Difficult squares on a run with no cheaper way round", () => {
+    // Columns 1 and 2 are Difficult top to bottom, so the route must cross them.
+    const crossing = runs("difficult", ...Array.from({ length: 10 }, (_, row) => [[1, row], [2, row]] as [number, number][]).flat());
+    expect(routePlan(board(crossing), gm, [square(0, 0), square(3, 0)]).label).toBe("25 ft · 2 difficult");
   });
-  it("reads Blocked when a run steps onto Blocked ground", () => {
-    expect(routePlan(board(runs("blocked", [2, 0])), gm, [square(0, 0), square(3, 0)]).label).toBe("Blocked");
+  it("reads Blocked when no path reaches a stop", () => {
+    const ring = runs("blocked", [4, 4], [5, 4], [6, 4], [4, 5], [6, 5], [4, 6], [5, 6], [6, 6]);
+    const plan = routePlan(board(ring), gm, [square(0, 0), square(5, 5)]);
+    expect(plan).toMatchObject({ label: "Blocked", blocked: true, points: [square(0, 0), square(5, 5)] });
   });
   it("costs fogged Difficult squares as Normal for a player", () => {
     const fog = { f: { id: "f", shape: "rect" as const, points: [{ x: 70, y: 0 }, { x: 210, y: 0 }, { x: 210, y: 70 }, { x: 70, y: 70 }] } };
     const s = board(runs("difficult", [1, 0], [2, 0]), { fog, participants: { p: player } });
     expect(routePlan(filterStateForViewer(s, player), player, [square(0, 0), square(3, 0)]).label).toBe("15 ft");
+  });
+});
+
+describe("Movement mode routes each leg like a drag (ruler-modes)", () => {
+  const token = (size: number, position = square(0, 1)): Token => ({
+    id: "t", name: "Hero", position, size, rotation: 0, color: "#445566", imageUrl: null, ownerIds: [player.id], hidden: false,
+    conditions: [], stats: { hp: null, maxHp: null, ac: null },
+  });
+  // A wall down the line between columns 2 and 3, rows 0 to 2, with the way round below it.
+  const wall: Wall = { id: "w", a: { x: 210, y: 0 }, b: { x: 210, y: 210 } };
+
+  it("bends around a wall the viewer knows of", () => {
+    const plan = routePlan(board([], { walls: { w: wall } }), gm, [square(1, 1), square(4, 1)]);
+    expect(plan.blocked).toBe(false);
+    expect(plan.points.length).toBeGreaterThan(2);
+    expect(plan.points.some((p) => p.y >= square(0, 3).y)).toBe(true);
+  });
+
+  it("goes around a Blocked patch without being marked Blocked", () => {
+    const plan = routePlan(board(runs("blocked", [2, 0], [2, 1], [2, 2])), gm, [square(0, 1), square(4, 1)]);
+    expect(plan.blocked).toBe(false);
+    expect(plan.label).not.toBe("Blocked");
+  });
+
+  it("shows the same route and cost as dragging the same 2-square token", () => {
+    const corner = (col: number, row: number) => ({ x: col * 70, y: row * 70 });
+    const hero = token(2, corner(1, 2));
+    const s = board(runs("blocked", [3, 0], [3, 1], [3, 2], [3, 3]), { tokens: { t: hero } });
+    const drag = dragPlan(s, gm, hero, hero.position, corner(6, 2), false, false);
+    const ruler = routePlan(s, gm, [hero.position, corner(6, 2)], 2);
+    expect(drag.via.length).toBeGreaterThan(0);
+    expect(ruler.points).toEqual(drag.points);
+    expect(ruler.label).toBe(drag.label);
+  });
+
+  it("passes through every stop", () => {
+    const plan = routePlan(board(), gm, [square(0, 0), square(2, 3), square(4, 0)]);
+    expect(plan.points).toContainEqual(square(2, 3));
+    expect(plan.label).toBe("30 ft");
+  });
+
+  it("does not mark a route ending on a token Blocked", () => {
+    const goblin = { ...token(1, square(3, 0)), id: "g", name: "Goblin", ownerIds: [] };
+    const plan = routePlan(board([], { tokens: { g: goblin } }), gm, [square(0, 0), square(3, 0)]);
+    expect(plan).toMatchObject({ label: "15 ft", blocked: false });
+  });
+
+  it("runs straight through a wall a player's state doesn't hold", () => {
+    const s = board([], { walls: { w: wall }, fog: { f: { id: "f", shape: "rect" as const, points: [{ x: 0, y: 0 }, { x: 700, y: 0 }, { x: 700, y: 700 }, { x: 0, y: 700 }] } }, participants: { p: player } });
+    const view = filterStateForViewer(s, player);
+    expect(Object.keys(view.walls)).toHaveLength(0);
+    const plan = routePlan(view, player, [square(1, 1), square(4, 1)]);
+    expect(plan.points).toEqual([square(1, 1), square(4, 1)]);
+    expect(plan.label).toBe("15 ft");
+  });
+
+  it("keeps straight legs from a token of fractional size", () => {
+    const s = board([], { walls: { w: wall } });
+    const plan = routePlan(s, gm, [square(1, 1), square(4, 1)], 1.5);
+    expect(plan.points).toEqual([square(1, 1), square(4, 1)]);
   });
 });

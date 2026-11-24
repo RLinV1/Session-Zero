@@ -63,3 +63,21 @@ describe("route cost over placed points (FR-TAC-03, ruler Movement mode)", () =>
     expect(routeCost([at(0, 0), at(4, 0)], grid, rules("equal"), terrain)).toEqual(rulerPathCost(at(0, 0), at(4, 0), grid, rules("equal"), terrain));
   });
 });
+
+describe("route cost for a token's footprint and across stops (ruler-modes)", () => {
+  // A 2-square token's centre sits on the corner between its four squares.
+  const corner = (col: number, row: number) => ({ x: col * 10, y: row * 10 });
+
+  it("costs every square a 2-square footprint lands on", () => {
+    // Anchor (0,0) -> (1,0) -> (2,0): the second step lands the footprint on column 3, row 1.
+    const r = routeCost([corner(1, 1), corner(3, 1)], grid, rules("equal", "entry"), [run("difficult", 3, 3, 1)], 2);
+    expect(r).toMatchObject({ cells: 2, cost: 15, difficult: 1, blocked: false });
+    // The same route for a 1-square footprint never touches that square.
+    expect(routeCost([at(0, 0), at(2, 0)], grid, rules("equal", "entry"), [run("difficult", 3, 3, 1)])).toMatchObject({ cost: 10, difficult: 0 });
+  });
+
+  it("keeps counting Alternating diagonals across a stop", () => {
+    // One diagonal to the stop, two after it: 1 + 2 + 1 squares, 20 ft.
+    expect(routeCost([at(0, 0), at(1, 1), at(3, 3)], grid, rules("alternating"), []).cost).toBe(20);
+  });
+});

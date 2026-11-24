@@ -100,6 +100,19 @@ describe("Table settings tab (FR-TAC-07, FR-GM-23, table-rules)", () => {
   });
 });
 
+describe("Turn banner on every turn switch (turn-notice, client-settings)", () => {
+  it("is offered to players and the GM in a room, and not outside one", () => {
+    const { connection } = connectionWith({ ok: true, seq: 1 });
+    const { rerender } = render(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: player }} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preferences" }));
+    expect(screen.getByRole("switch", { name: "Turn banner on every turn" })).toBeTruthy();
+    rerender(<SettingsMenu open onClose={() => {}} room={{ connection, state: state(), you: gm }} />);
+    expect(screen.getByRole("switch", { name: "Turn banner on every turn" })).toBeTruthy();
+    rerender(<SettingsMenu open onClose={() => {}} />);
+    expect(screen.queryByRole("switch", { name: "Turn banner on every turn" })).toBeNull();
+  });
+});
+
 describe("defeat animation decision (FR-TAC-07)", () => {
   const defeated = (hidden = false) => ({ type: "TokenDeleted", token: token(hidden), reason: "defeated" }) as const;
 

@@ -1,29 +1,32 @@
 import { useEffect, useState } from "react";
-import type { Participant, RoomState } from "@vtt/shared";
+import { can, type Participant, type RoomState } from "@vtt/shared";
 import { useClientSettings } from "./clientSettings";
 import { t } from "../i18n/locale";
 
 /**
- * The token a banner names: the active token, when the viewer is a player who owns it. For the
- * GM, every turn's token when they chose "Turn banner on every turn" in Settings, and none
- * otherwise. Null when a token hidden from a player has the turn (their order then has no active
- * entry) (turn-notice, ADR 0060).
+ * The token a banner names, and whether the viewer may end its turn: a player's own active token;
+ * with "Turn banner on every turn" chosen in Settings, every turn's token, for the GM and players
+ * alike; otherwise none. `canEnd` follows the server's rule: the GM, or one of the token's owners.
+ * Null when a token hidden from a player has the turn (their order then has no active entry)
+ * (turn-notice, ADR 0060).
  */
-export function turnBannerToken(state: RoomState, you: Participant, gmEveryTurn = false): { id: string; name: string; round: number } | null {
+export function turnBannerToken(state: RoomState, you: Participant, everyTurn = false): { id: string; name: string; round: number; canEnd: boolean } | null {
   const init = state.initiative;
-  if (!init || (you.role === "gm" && !gmEveryTurn)) return null;
+  if (!init) return null;
   const activeId = init.order[init.activeIndex];
   const token = activeId === undefined ? undefined : state.tokens[activeId];
   if (!token) return null;
-  return you.role === "gm" || token.ownerIds.includes(you.id) ? { id: token.id, name: token.name, round: init.round } : null;
+  const owned = token.ownerIds.includes(you.id);
+  if (!everyTurn && (you.role === "gm" || !owned)) return null;
+  return { id: token.id, name: token.name, round: init.round, canEnd: can.endTurn(you, token) };
 }
 
 /** What ending a turn answered: nothing to show, or the server's reason it refused. */
 export type EndTurnResult = { ok: true } | { ok: false; message: string };
 
 /**
- * Tells a player, across the top of the room, that it is their token's turn, for as long as it is
- * (turn-notice). Read from the current state, so a reload mid-turn shows it again. End turn hands
+ * Tells a viewer, across the top of the room, whose turn it is: their own token's, or every token's
+ * when they chose that in Settings (turn-notice). Read from the current state, so a reload mid-turn shows it again. End turn hands
  * the turn on (ADR 0060).
  */
 export function TurnBanner({ state, you, onFocusToken, onEndTurn }: {
@@ -69,7 +72,7 @@ export function TurnBanner({ state, you, onFocusToken, onEndTurn }: {
             <button type="button" className="small secondary" onClick={() => onFocusToken(turn.id)}>
               {t("turn.show")}
             </button>
-            {onEndTurn && (
+            {onEndTurn && turn.canEnd && (
               <button type="button" className="small primary" onClick={() => void endTurn()} disabled={busy} aria-label={t("turn.endNamed", { name: turn.name })}>
                 {t("turn.end")}
               </button>

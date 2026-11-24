@@ -80,9 +80,44 @@ export function rangeMeasure(state: Pick<RoomState, "scene" | "diagonalRule">, f
   return measure(from, to, state.scene.grid, free, free ? "euclidean" : diagonalRuleOf(state), tokenSize);
 }
 
-/** A Movement-mode route's cost and label (ruler-modes): "30 ft", " · N difficult", or "Blocked". */
-export function routePlan(state: RoomState, you: Participant, points: readonly Point[]) {
-  const grid = state.scene.grid;
-  const route = routeCost(points, grid, stepRulesOf(state), viewerRuns(state, you));
-  return { ...route, label: route.blocked ? t("board.blocked") : costLabel(route.cost, route.difficult, grid) };
+/** Searched legs, per room state and viewer, so a pointer move re-searches only the live leg (ruler-modes). */
+const legCache = new WeakMap<RoomState, Map<string, Point[] | null>>();
+
+/** Whether a ruler of `size` from `start` routes its legs as a drag would: on the grid, whole squares, a map to bound it. */
+export function routeSearched(state: RoomState, start: Point, size: number): boolean {
+  return !!state.scene.map && Number.isInteger(size) && size >= 1 && isSnapped(start, size, state.scene.grid);
+}
+
+/**
+ * A Movement-mode route (ruler-modes): between each pair of stops, the path a drag of the same
+ * footprint would show — cheapest, around Blocked terrain and the walls and doors this viewer knows
+ * of — then priced in one pass so Alternating diagonals count across the stops. A leg with no path
+ * stays straight and marks the route "Blocked". A start off the grid or of fractional size keeps
+ * straight legs. Tokens are not checked: measuring up to one stays clear.
+ */
+export function routePlan(state: RoomState, you: Participant, stops: readonly Point[], tokenSize = 1) {
+  const grid = state.scene.grid, rules = stepRulesOf(state), runs = viewerRuns(state, you);
+  const searched = stops.length > 0 && routeSearched(state, stops[0]!, tokenSize);
+  const size = searched ? tokenSize : 1;
+  let points: Point[] = [...stops], noPath = false;
+  if (searched) {
+    const knowledge = { kinds: terrainCells(runs), walls: Object.values(state.walls).filter(blocksMovement), map: state.scene.map! };
+    let cache = legCache.get(state);
+    if (!cache) legCache.set(state, cache = new Map());
+    points = stops.length > 0 ? [stops[0]!] : [];
+    for (let i = 1; i < stops.length; i++) {
+      const a = stops[i - 1]!, b = stops[i]!;
+      const key = `${you.id}|${size}|${a.x},${a.y}>${b.x},${b.y}`;
+      let via = cache.get(key);
+      if (via === undefined) {
+        via = cheapestPath(a, b, size, grid, rules, knowledge, "line")?.via ?? null;
+        cache.set(key, via);
+      }
+      if (via === null) noPath = true;
+      points.push(...(via ?? []), b);
+    }
+  }
+  const route = routeCost(points, grid, rules, runs, size);
+  const blocked = route.blocked || noPath;
+  return { ...route, blocked, points, label: blocked ? t("board.blocked") : costLabel(route.cost, route.difficult, grid) };
 }

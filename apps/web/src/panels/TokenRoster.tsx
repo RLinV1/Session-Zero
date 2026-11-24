@@ -559,6 +559,8 @@ export function TokenEditor({
   const changes: TokenUpdate = {};
   if (isGm && (name.trim() !== token.name || Number(size) !== token.size || Number(rotation) !== token.rotation))
     Object.assign(changes, { name, size: Number(size), rotation: Number(rotation) });
+  // Owners may rename their token, and only that; size and rotation stay the GM's (player-rename-own-tokens).
+  if (!isGm && name.trim() !== token.name) changes.name = name;
   if (isGm && (Number(x) !== token.position.x || Number(y) !== token.position.y))
     changes.position = { x: Number(x), y: Number(y) };
   if (isGm && (image.url !== token.imageUrl || image.assetId !== (token.assetId ?? null)))
@@ -615,7 +617,8 @@ export function TokenEditor({
         if (hasChanges && !uploading && !busy) void save();
       }}
     >
-      {isGm && <label>{t("common.name")}<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus /></label>}
+      {/* The GM and the token's owners: the editor only opens for someone who may edit it. */}
+      <label>{t("common.name")}<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoFocus={isGm} /></label>
       <div className="stats-row">
         <label>
           {t("creature.stat.hp")}

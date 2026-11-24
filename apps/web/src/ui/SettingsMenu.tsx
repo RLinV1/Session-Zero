@@ -97,7 +97,8 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
                 <input type="checkbox" role="switch" checked={settings.arrowKeyMove} onChange={(e) => setClientSettings({ arrowKeyMove: e.target.checked })} />
                 {t("settings.arrowKeyMove")}
               </label>
-              {room?.you.role === "gm" && (
+              {/* Everyone in a room, GM and players alike; meaningless outside one (turn-notice). */}
+              {room && (
                 <>
                   <label className="checkbox">
                     <input type="checkbox" role="switch" checked={settings.gmTurnBanner} onChange={(e) => setClientSettings({ gmTurnBanner: e.target.checked })} />

@@ -183,8 +183,11 @@ export type Mark =
   | { kind: "measure"; from: Point; to: Point; free: boolean; tokenSize?: number }
   | { kind: "draw"; shape: Exclude<DrawShape, "brush">; color: number; from: Point; to: Point }
   | { kind: "stroke"; color: number; points: Point[] }
-  /** A Movement-mode ruler route: square centres, start first; `done` once Enter finishes it. */
-  | { kind: "route"; points: Point[]; done: boolean }
+  /**
+   * A Movement-mode ruler route: its stops, start first, as centres of the footprint it measures;
+   * `done` once Enter finishes it. `tokenSize` is the starting token's, when it started from one.
+   */
+  | { kind: "route"; points: Point[]; done: boolean; tokenSize?: number }
   | { kind: "area"; shape: AreaShape; size: number; origin: Point; toward: Point; free: boolean; gmOnly?: boolean; width?: number; color?: AreaColor };
 
 /** A placed, shared template as a mark, for drawing and hit testing. Its origin is already snapped. */

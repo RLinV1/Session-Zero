@@ -43,7 +43,7 @@ The home page has an interactive tutorial with a short scripted fight. Each step
 | **Tool rail** (left of the board) | Select, Measure, Draw, AoE, Eraser, and for the GM Fog, Terrain and Doors. See [Board tools](board-tools.md). |
 | **Room bar** (top) | Room name, who's here, **Share** (GM), **Settings**, **More** (activity log, replay, guide), **Leave table**. |
 | **Sidebar** (right) | Tabs: **Play**, **Tokens**, **Dice**, and **Manage** for the GM. Drag its edge to resize it, or hide it to give the board the whole screen. |
-| **Turn banner** (top of the board) | During an encounter: whose turn it is, the round, and **End turn** for that token's owner. |
+| **Turn banner** (top of the board) | During an encounter: whose turn it is, the round, and **End turn** for that token's owner. Shows on your own tokens' turns, or on every turn with **Settings → Preferences → Turn banner on every turn**. |
 
 | Sidebar tab | GM | Player |
 | --- | --- | --- |

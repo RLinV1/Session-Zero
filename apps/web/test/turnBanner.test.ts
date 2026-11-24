@@ -22,7 +22,7 @@ function withTurn(activeIndex: number, order = ["goblin", "aria", "bran"], round
 
 describe("turn banner (turn-notice, FR-GM-21)", () => {
   it("names the player's active token and the round", () => {
-    expect(turnBannerToken(withTurn(1), player)).toEqual({ id: "aria", name: "Aria", round: 2 });
+    expect(turnBannerToken(withTurn(1), player)).toEqual({ id: "aria", name: "Aria", round: 2, canEnd: true });
   });
 
   it("shows straight from the state, so a reload mid-turn shows it", () => {
@@ -47,13 +47,22 @@ describe("turn banner (turn-notice, FR-GM-21)", () => {
   });
 
   it("names every turn's token for the GM who turned on Turn banner on every turn (turn-notice)", () => {
-    expect(turnBannerToken(withTurn(0), gm, true)).toEqual({ id: "goblin", name: "Goblin", round: 2 });
+    expect(turnBannerToken(withTurn(0), gm, true)).toEqual({ id: "goblin", name: "Goblin", round: 2, canEnd: true });
     expect(turnBannerToken(withTurn(1), gm, true)?.name).toBe("Aria");
     expect(turnBannerToken({ ...withTurn(1), initiative: null }, gm, true)).toBeNull();
   });
 
-  it("never widens a player's banner, whatever the setting says", () => {
-    expect(turnBannerToken(withTurn(0), player, true)).toBeNull();
-    expect(turnBannerToken(withTurn(1), other, true)).toBeNull();
+  it("names every visible turn's token for a player who turned it on, with End turn only on their own (turn-notice)", () => {
+    expect(turnBannerToken(withTurn(0), player, true)).toEqual({ id: "goblin", name: "Goblin", round: 2, canEnd: false });
+    expect(turnBannerToken(withTurn(1), player, true)).toEqual({ id: "aria", name: "Aria", round: 2, canEnd: true });
+    expect(turnBannerToken(withTurn(1), other, true)).toEqual({ id: "aria", name: "Aria", round: 2, canEnd: false });
+  });
+
+  it("still shows a player nothing while a hidden token has the turn, whatever the setting says", () => {
+    expect(turnBannerToken(withTurn(2, ["goblin", "aria"]), player, true)).toBeNull();
+  });
+
+  it("lets the GM end every turn", () => {
+    for (const i of [0, 1, 2]) expect(turnBannerToken(withTurn(i), gm, true)?.canEnd).toBe(true);
   });
 });

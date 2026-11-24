@@ -72,3 +72,20 @@ describe("Deleting a token asks first (token-editor)", () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Owner renames their token (FR-PL-04, player-rename-own-tokens)", () => {
+  it("sends only the new name", () => {
+    const { onSave } = editor(false);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Goblin Chief" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]![0]).toEqual({ name: "Goblin Chief" });
+  });
+
+  it("sends nothing when only surrounding spaces were added", () => {
+    const { onSave } = editor(false);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: " Goblin " } });
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});

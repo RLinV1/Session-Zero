@@ -79,7 +79,7 @@ export const common = {
   "settings.attackAnimations.none": "None",
   "settings.arrowKeyMove": "Arrow keys move selected token",
   "settings.gmTurnBanner": "Turn banner on every turn",
-  "settings.gmTurnBannerHint": "Shows the banner with End turn at the top of the room on every token's turn, not just when it's yours to play.",
+  "settings.gmTurnBannerHint": "Shows the banner at the top of the room on every token's turn, not just your own. End turn appears when the turn is yours to end.",
   "settings.tableShared": "This setting is shared by everyone at the table.",
   "settings.removeAtZero": "Remove tokens at 0 HP",
   "settings.removeAtZeroHint": "Tokens are removed when their HP reaches 0 or below. Undo brings one back.",

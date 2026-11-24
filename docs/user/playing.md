@@ -5,7 +5,8 @@
 The GM gives you control of one or more tokens. They appear under **My tokens** on the
 **Play** tab. Click a name to find the token on the map.
 
-You can edit your own tokens' HP and conditions from the **Tokens** tab. Depending on the
+You can edit your own tokens' name, HP and conditions from the **Tokens** tab. A name is kept
+exactly as you type it, even if another token has the same one. Depending on the
 table's rules, you may not see other tokens' HP or AC.
 
 ## Moving
@@ -34,6 +35,9 @@ hides the map from players without a token, your board stays dark until you're g
 When your token's turn comes up, a banner appears at the top of the room: "It's *name*'s
 turn · Round *n*". When you're done, press **End turn** on the banner.
 
+To follow every turn, turn on **Settings → Preferences → Turn banner on every turn**. The
+banner then names whoever is up; **End turn** only appears on your own tokens' turns.
+
 ## Attacking
 
 1. On the **Play** tab, under **Attack**, choose your target from the list, or **Pick target on
@@ -58,8 +62,10 @@ also drag a die onto the map to throw it there.
 Pick **Measure** on the tool rail:
 
 - **Range** mode measures straight-line distance, ignoring terrain. Use it for spell ranges.
-- **Movement** mode plans a route: click to add points, Enter to finish. It's costed the same
-  way a drag is.
+- **Movement** mode plans a route: click to add stops, Enter to finish. Between stops it takes
+  the same path a drag would, around walls, closed doors and Blocked terrain, and costs it the
+  same way. Started from your selected token, it plans for that token's size. If no path
+  reaches a stop, the route is marked **Blocked**.
 
 Only you see your measurements.
 

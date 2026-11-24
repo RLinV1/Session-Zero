@@ -14,7 +14,10 @@ export interface ClientSettings {
   /** The arrow keys move the selected token one square (client-settings). */
   arrowKeyMove: boolean;
   attackAnimations: AttackAnimations;
-  /** GM only: show the turn banner, with End turn, on every token's turn, not just their own (turn-notice). */
+  /**
+   * Show the turn banner on every token's turn, not just the viewer's own; End turn only where they may
+   * end it (turn-notice). Named for when it was GM-only; kept so saved choices carry over.
+   */
   gmTurnBanner: boolean;
 }
 export const CLIENT_SETTINGS_KEY = "vtt.ui.settings";

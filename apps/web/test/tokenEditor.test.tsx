@@ -75,9 +75,10 @@ describe("condensed token editor (condense-token-editor)", () => {
     expect(found.find((s) => s.title === "Advanced")!.summary).toBe("Advanced 2 cells · 0° · no image");
   });
 
-  it("shows a player (an owner) only stats and closed Conditions and Attacks sections (shared-token-attacks)", () => {
+  it("shows a player (an owner) the name, stats and closed Conditions and Attacks sections (shared-token-attacks, player-rename-own-tokens)", () => {
     const html = render(false);
     expect(sections(html).map((s) => s.title)).toEqual(["Conditions", "Attacks"]);
-    for (const label of ["Name<input", "Board X", "Controlled by", "Remove image", "Upload image"]) expect(html).not.toContain(label);
+    expect(html).toContain("Name<input");
+    for (const label of ["Board X", "Size", "Rotation", "Controlled by", "Remove image", "Upload image"]) expect(html).not.toContain(label);
   });
 });
