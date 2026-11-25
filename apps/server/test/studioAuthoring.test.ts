@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { StudioChatSelectionReference, StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
+import { StudioChatSelectionReference, StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioSnapshot, type BuildDetail, type StudioChatSelectionUpdate, type StudioCorrectionInput } from "@vtt/shared";
 import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import type { BuildFileRecord } from "../src/store/buildStore";
@@ -241,14 +241,16 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
     const f = await fixture(store, null, () => now);
     try {
       const inspected = StudioInspection.parse(await f.inspect());
-      const draft = { mapKey: "chapel", encounterKey: "night", inspectedVersion: inspected.inspectedVersion,
+      const draft: NonNullable<StudioChatSelectionUpdate["draft"]> = { mapKey: "chapel", encounterKey: "night", inspectedVersion: inspected.inspectedVersion,
         selection: { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] } };
       const path = "/authoring/chat-selections";
       const stage = (viewId: string, sequence: number, value: typeof draft | null = draft) =>
         f.send("POST", path, { viewId, sequence, draft: value });
       const identify = async (response: Response) => {
         expect(response.status).toBe(200);
-        return StudioChatSelectionReference.parse(await response.json()).selectionId!;
+        const { selectionId, expiresAt } = StudioChatSelectionReference.parse(await response.json());
+        expect(expiresAt).toBe(new Date(now + CHAT_SELECTION_LIMITS.ttlMs).toISOString());
+        return selectionId!;
       };
       const start = (id: string, instruction = "Remove the rubble.", token?: string) =>
         f.send("POST", `${path}/${id}/request`, { instruction }, token);
@@ -260,6 +262,13 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       const active = await identify(await stage(view, 2, { ...draft, selection: { ...draft.selection, region: rectangle } }));
       expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
       expect((await stage(view, 1)).status).toBe(409);
+      expect((await stage(view, 3, { ...draft, inspectedVersion: "stale" })).status).toBe(409);
+      const unapproved = await stage(view, 3, { ...draft, selection: { ...draft.selection, objectIds: [inspected.objects[0]!.id] } });
+      expect(unapproved.status).toBe(422);
+      const owner = (await store.findUserById(f.owner.view!.id))!.ownerId;
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
+      expect((await stage(view, 3)).status).toBe(403);
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: true });
       expect((await start(original)).status).toBe(409);
       expect(await (await stage(secondView, 2, null)).json()).toEqual({ selectionId: null });
       expect((await start(cancelled)).status).toBe(409);
@@ -290,6 +299,28 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       const history = StudioCorrectionHistory.parse(await f.owner.json("GET", `${f.map}/revisions`));
       expect(history.requests).toHaveLength(1);
       expect(history.requests[0]).toMatchObject(saved);
+    } finally { await f.server.close(); }
+  });
+
+  it("bounds recent view records and keeps clear ordering through a retry", async () => {
+    let now = Date.now();
+    const f = await fixture(makeStore(), null, () => now);
+    try {
+      const path = "/authoring/chat-selections";
+      const viewId = randomUUID();
+      const stage = (view: string, sequence: number, draft: unknown) => f.send("POST", path, { viewId: view, sequence, draft });
+      await stage(viewId, 2, null);
+      for (let count = 1; count < CHAT_SELECTION_LIMITS.viewsPerBuild; count++) {
+        expect((await stage(randomUUID(), 1, null)).status).toBe(200);
+      }
+      expect(await (await stage(randomUUID(), 1, null)).json()).toMatchObject({ code: "limit" });
+      const { inspectedVersion } = await f.inspect();
+      const draft = { mapKey: "chapel", encounterKey: "night", inspectedVersion,
+        selection: { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] } };
+      expect(await (await stage(viewId, 1, draft)).json()).toMatchObject({ code: "conflict" });
+      expect((await stage(viewId, 3, draft)).status).toBe(200);
+      now += CHAT_SELECTION_LIMITS.ttlMs + 1;
+      expect((await stage(randomUUID(), 1, draft)).status).toBe(200);
     } finally { await f.server.close(); }
   });
 
@@ -498,8 +529,15 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       expect(await resize()).toMatchObject({ results: [{ key: "guard", saved: true }] });
 
       // Deleting the enrolled encounter ends the correction.
+      const stagedResponse = await f.send("POST", "/authoring/chat-selections", { viewId: randomUUID(), sequence: 1, draft: {
+        mapKey: "chapel", encounterKey: "night", inspectedVersion: (await f.inspect()).inspectedVersion,
+        selection: { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] },
+      } });
+      expect(stagedResponse.status).toBe(200);
+      const { selectionId } = StudioChatSelectionReference.parse(await stagedResponse.json());
       expect((await f.owner.request("DELETE", `${f.base}/items/encounter/night`)).status).toBe(204);
       expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+      expect((await f.send("POST", `/authoring/chat-selections/${selectionId}/request`, { instruction: "Clear rubble." })).status).toBe(409);
     } finally { await f.server.close(); }
   });
 

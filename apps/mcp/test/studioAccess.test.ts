@@ -128,6 +128,18 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     const saved = await ai.call("save_map", { buildId: id, key: "chapel", name: "Chapel", fileId, proposedGrid: { cellSize: 50, offsetX: 0, offsetY: 0 } });
     expect(saved.isError, saved.text).toBe(false);
     const path = `/api/builds/${id}/studio/authoring/maps/chapel`;
+    await ai.call("save_map_setup", { buildId: id, mapKey: "chapel", lines: [
+      { kind: "wall", from: { column: 0, row: 1 }, to: { column: 1, row: 1 } },
+    ] });
+    const inspection = await account.json<{ inspectedVersion: string; objects: { id: string }[] }>("GET", path);
+    const viewId = randomUUID();
+    const stage = await ai.call("studio_stage_chat_selection", { buildId: id, viewId, sequence: 1, draft: {
+      mapKey: "chapel", encounterKey: null, inspectedVersion: inspection.inspectedVersion,
+      selection: { region: { minX: 0, minY: 0, maxX: 100, maxY: 100 }, layers: ["geometry"],
+        objectIds: Array.from({ length: 2550 }, () => inspection.objects[0]!.id), wholeObjectIds: [] },
+    } });
+    expect(stage.isError, stage.text).toBe(false);
+    expect(stage.json).toMatchObject({ selectionId: expect.any(String), expiresAt: expect.any(String) });
     const { inspectedVersion } = await account.json<{ inspectedVersion: string }>("GET", path);
     const { requestId, baseRevisionId } = await account.json<{ requestId: string; baseRevisionId: string }>("POST", path + "/requests", {
       encounterKey: null, inspectedVersion, operationId: randomUUID(), instruction: "Mark the entry as Difficult.",

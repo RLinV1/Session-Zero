@@ -101,7 +101,8 @@ export const StudioChatSelectionUpdate = z.strictObject({
   viewId: id, sequence: z.number().int().min(1).max(2 ** 31 - 1), draft: StudioChatSelectionDraft.nullable(),
 });
 export type StudioChatSelectionUpdate = z.infer<typeof StudioChatSelectionUpdate>;
-export const StudioChatSelectionReference = z.object({ selectionId: id.nullable() });
+export const StudioChatSelectionReference = z.object({ selectionId: id.nullable(), expiresAt: z.iso.datetime().optional() });
+export type StudioChatSelectionReference = z.infer<typeof StudioChatSelectionReference>;
 export const StudioChatCorrectionInput = z.strictObject({ instruction: CorrectionInstruction });
 
 const opening = z.strictObject({

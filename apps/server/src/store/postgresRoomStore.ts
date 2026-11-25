@@ -1,4 +1,4 @@
-import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, nextChatSelection, startChatCorrection, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
+import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, chatSelectionReference, nextChatSelection, startChatCorrection, validateChatSelection, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringResult, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import type { FeedbackCursor } from "@vtt/shared";
@@ -193,6 +193,13 @@ async function writeAuthoring(tx: Prisma.TransactionClient, buildId: string, { w
   await tx.studioAuthoringWorkspace.upsert({ where: { buildId_mapKey: { buildId, mapKey } }, create: { buildId, mapKey, state }, update: { state } });
   if (removed.length) await tx.studioAuthoringEntry.deleteMany({ where: { buildId, mapKey, OR: removed.map(({ kind, id }) => ({ kind, id })) } });
   await tx.studioAuthoringEntry.createMany({ data: entries.map(({ id, kind, value }) => ({ buildId, mapKey, id, kind, value: value as unknown as Prisma.InputJsonValue })) });
+}
+
+async function endStudioAuthoring(tx: Prisma.TransactionClient, buildId: string, mapKeys: string[]) {
+  if (!mapKeys.length) return;
+  // The workspace row's cascade removes its revisions, requests and receipts.
+  await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: { in: mapKeys } } });
+  await tx.studioChatSelection.deleteMany({ where: { buildId, OR: mapKeys.map((mapKey) => ({ draft: { path: ["mapKey"], equals: mapKey } })) } });
 }
 
 async function closeStudioBuild(tx: Prisma.TransactionClient, buildId: string) {
@@ -1251,7 +1258,7 @@ export class PostgresRoomStore implements RoomStore {
    * build, files and items consistent: every write that changes them takes the same lock.
    */
   async studioAuthoring(buildId: string, access: StudioBuildAccess, command: AuthoringCommand) {
-    const completed = await this.prisma.$transaction(async (tx) => {
+    const completed = await this.prisma.$transaction<AuthoringResult>(async (tx) => {
       const locked = await lockOpenBuild(tx, buildId);
       const grant = await assertDelegation(tx, access.delegation, locked);
       const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
@@ -1264,17 +1271,23 @@ export class PostgresRoomStore implements RoomStore {
         const key = { buildId, grantId, viewId };
         const where = { buildId_grantId_viewId: key };
         const previous = await tx.studioChatSelection.findUnique({ where });
-        if (command.update.draft && (!previous?.draft || previous.expiresAt.getTime() <= now)) {
+        if (!previous || previous.expiresAt.getTime() <= now) {
           assertChatSelectionCapacity(await tx.studioChatSelection.count({
-            where: { buildId, draft: { not: Prisma.DbNull }, expiresAt: { gt: new Date(now) } },
+            where: { buildId, expiresAt: { gt: new Date(now) } },
           }));
         }
         const staged = nextChatSelection(previous, buildId, grantId, command.update, now);
+        const draft = command.update.draft;
+        if (draft) {
+          const workspace = (await studioWorkspaces(tx, buildId)).find((w) => w.mapKey === draft.mapKey);
+          const entries = workspace ? await studioEntries(tx, buildId, [workspace.workingId]) : [];
+          validateChatSelection(await studioRecords(tx, build), workspace, entries, draft);
+        }
         const data = { id: staged.id, sequence: staged.sequence, expiresAt: staged.expiresAt,
           draft: staged.draft === null ? Prisma.DbNull : staged.draft as Prisma.InputJsonObject };
         await tx.studioChatSelection.upsert({ where, create: { ...key, ...data }, update: data });
         await assertDelegation(tx, access.delegation, locked);
-        return { response: { selectionId: staged.draft ? staged.id : null } };
+        return { response: chatSelectionReference(staged) };
       }
       const sceneCommand = command.kind === "startChatCorrection"
         ? startChatCorrection(await tx.studioChatSelection.findUnique({ where: { id: command.selectionId } }),
@@ -1306,11 +1319,7 @@ export class PostgresRoomStore implements RoomStore {
           UPDATE studio_authoring_workspaces SET state = jsonb_set(state, '{historyVersion}', to_jsonb(${historyVersion}::text))
           WHERE build_id = ${buildId}::uuid AND map_key = ${mapKey}`;
       }
-      // The workspace row's cascade removes its revisions, requests and receipts.
-      if (result.end) {
-        await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: result.end } });
-        await tx.studioChatSelection.deleteMany({ where: { buildId, draft: { path: ["mapKey"], equals: result.end } } });
-      }
+      if (result.end) await endStudioAuthoring(tx, buildId, [result.end]);
       if (result.touch) await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
       if ((result.write || result.activity) && access.delegation) assertStudioAuthoringAccess(access, command, await assertDelegation(tx, access.delegation, locked));
       return result;
@@ -1427,7 +1436,7 @@ export class PostgresRoomStore implements RoomStore {
       if (existing.publishedId) throw new BuildItemLockedError("published");
       if (existing.editedByUser && !byOwner) throw new BuildItemLockedError("edited");
       const ended = byOwner ? ownerRemovalEnds(workspaces, { kind, key }) : [];
-      if (ended.length) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: { in: ended } } });
+      await endStudioAuthoring(tx, buildId, ended);
       await tx.buildItem.delete({ where });
       await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
       return true;

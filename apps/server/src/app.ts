@@ -223,9 +223,13 @@ export async function buildApp({
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
   registerRoomPreparation(app, { store, registry, sessions });
   registerUvttRoutes(app, { store, registry, sessions, assets: assetStore, preparations, pool, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner, now });
-  // Room/UVTT preparation authorizes and parses above; library geometry has its own 1 MiB parser.
+  // Geometry and Studio selection routes with larger bounded bodies parse after their own checks.
   const json = privateJson(express.json({ limit: "64kb" }));
-  app.use((req, res, next) => (/^\/api\/library\/[^/]+\/(board|preparation)$/.test(req.path) ? next() : json(req, res, next)));
+  app.use((req, res, next) => {
+    const libraryGeometry = /^\/api\/library\/[^/]+\/(board|preparation)$/.test(req.path);
+    const studioSelection = req.method === "POST" && /^\/api\/studio\/builds\/[^/]+\/authoring\/(chat-selections|maps\/[^/]+\/requests)\/?$/i.test(req.path);
+    return libraryGeometry || studioSelection ? next() : json(req, res, next);
+  });
   // Save to library and library export (ADR 0070), after the small JSON parser.
   registerMapLibraryRoutes(app, { store, registry, sessions, assets: assetStore, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a

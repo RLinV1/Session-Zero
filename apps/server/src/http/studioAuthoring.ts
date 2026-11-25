@@ -1,7 +1,8 @@
-import type { Express, Request, RequestHandler, Response } from "express";
+import express, { type Express, type Request, type RequestHandler, type Response } from "express";
 import { BuildKey, StudioChatCorrectionInput, StudioChatSelectionUpdate, StudioCorrectionInput, StudioProposalInput, StudioRestoreInput, type StudioSelection } from "@vtt/shared";
 import { z } from "zod";
 import { requireAccount } from "../identity/middleware";
+import { privateJson } from "./privateJson";
 import type { Sessions } from "../identity/sessions";
 import { StudioAuthoringError, type RevisionScene } from "../domain/studioSceneRevision";
 import { renderStudioCrop } from "../domain/studioCrop";
@@ -35,6 +36,8 @@ const requestId = (req: Request) => validated(z.uuid(), req.params.requestId);
 export function registerStudioAuthoringRoutes(app: Express, deps: { store: RoomStore; assets: AssetStore; sessions: Sessions; grantGuard?: RequestHandler }) {
   const owner = "/api/builds/:id/studio/authoring";
   const delegated = "/api/studio/builds/:buildId/authoring";
+  // A supported selection can name up to 2,550 objects in each of its two UUID lists.
+  const selectionJson = privateJson(express.json({ limit: "256kb" }));
   let cropsRunning = 0;
   const handle = (getCommand: (req: Request) => AuthoringCommand, viaGrant: boolean): RequestHandler => (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -91,16 +94,16 @@ export function registerStudioAuthoringRoutes(app: Express, deps: { store: RoomS
   read("/maps/:mapKey/revisions", (req) => ({ kind: "history", mapKey: targetKey(req) }));
   read("/maps/:mapKey/revisions/:revisionId", (req) => ({ kind: "revision", mapKey: targetKey(req), revisionId: validated(z.uuid(), req.params.revisionId) }));
   read("/maps/:mapKey/revisions/:revisionId/view", (req) => ({ kind: "revisionView", mapKey: targetKey(req), revisionId: validated(z.uuid(), req.params.revisionId) }));
-  function write(path: string, command: (req: Request) => AuthoringCommand) {
+  function write(path: string, command: (req: Request) => AuthoringCommand, ...delegatedParsers: RequestHandler[]) {
     app.post(owner + path, handle(command, false));
-    if (deps.grantGuard) app.post(delegated + path, deps.grantGuard, handle(command, true));
+    if (deps.grantGuard) app.post(delegated + path, deps.grantGuard, ...delegatedParsers, handle(command, true));
   }
-  write("/maps/:mapKey/requests", (req) => ({ kind: "create", mapKey: targetKey(req), input: validated(StudioCorrectionInput, req.body) }));
+  write("/maps/:mapKey/requests", (req) => ({ kind: "create", mapKey: targetKey(req), input: validated(StudioCorrectionInput, req.body) }), selectionJson);
   write("/maps/:mapKey/restore", (req) => ({ kind: "restore", mapKey: targetKey(req), input: validated(StudioRestoreInput, req.body) }));
   // The owner's way out of enrollment: the map edits, deletes and publishes as an ordinary draft again.
   app.delete(owner + "/maps/:mapKey", handle((req) => ({ kind: "end", mapKey: targetKey(req) }), false));
   if (deps.grantGuard) {
-    app.post(delegated + "/chat-selections", deps.grantGuard,
+    app.post(delegated + "/chat-selections", deps.grantGuard, selectionJson,
       handle((req) => ({ kind: "stageChatSelection", update: validated(StudioChatSelectionUpdate, req.body) }), true));
     app.post(delegated + "/chat-selections/:selectionId/request", deps.grantGuard,
       handle((req) => ({ kind: "startChatCorrection", selectionId: validated(z.uuid(), req.params.selectionId),

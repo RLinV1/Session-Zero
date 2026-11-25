@@ -166,7 +166,7 @@ export function buildMcpApp(options: McpAppOptions) {
         tokens.set(req, token);
         next();
       }, () => delegated.unavailable(res));
-    }, jsonBody, serve((req) => createStudioBuildMcpServer({
+    }, smallBuildBody, serve((req) => createStudioBuildMcpServer({
       roomServerUrl: options.roomServerUrl,
       clientAddress: req.ip ?? "unknown",
       publicOrigin: options.studioAccess!.publicOrigin,

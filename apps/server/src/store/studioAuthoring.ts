@@ -59,9 +59,9 @@ export type AuthoringCommand = SceneCommand
 
 export const CHAT_SELECTION_LIMITS = { viewsPerBuild: 24, ttlMs: 30 * 60_000 } as const;
 
-export function assertChatSelectionCapacity(activeViews: number) {
-  if (activeViews >= CHAT_SELECTION_LIMITS.viewsPerBuild) {
-    throw new StudioAuthoringError("limit", "Too many selections on this build. Try again after an older selection expires.");
+export function assertChatSelectionCapacity(recentViews: number) {
+  if (recentViews >= CHAT_SELECTION_LIMITS.viewsPerBuild) {
+    throw new StudioAuthoringError("limit", "Too many recent Studio views on this build. Try again after an older selection expires.");
   }
 }
 
@@ -116,6 +116,28 @@ function checkCorrectionLayers(build: BuildRecord, layers: readonly StudioEditLa
   }
 }
 
+function correctionBase(records: StudioPreparationRecords, workspace: AuthoringWorkspace | undefined,
+  entries: readonly AuthoringEntry[], target: StudioTarget, inspectedVersion: string) {
+  const materialized = captureScene(records, target);
+  const head = workspace ? getRevision(entries, workspace.workingId, target.mapKey) : null;
+  if (inspectedVersion !== (head?.id ?? materialized.materializedVersion) || (head && head.scene.binding !== materialized.binding)) {
+    conflict("The saved scene changed. Review the current draft before requesting a correction.");
+  }
+  return { head, scene: head?.scene ?? materialized };
+}
+
+export function validateChatSelection(records: StudioPreparationRecords, workspace: AuthoringWorkspace | undefined,
+  entries: readonly AuthoringEntry[], draft: NonNullable<StudioChatSelectionUpdate["draft"]>) {
+  checkCorrectionLayers(records.build, draft.selection.layers);
+  if (workspace && workspace.encounterKey !== draft.encounterKey) conflict("This map is already enrolled with a different encounter.");
+  const { scene } = correctionBase(records, workspace, entries, { mapKey: draft.mapKey, encounterKey: draft.encounterKey }, draft.inspectedVersion);
+  deriveScope(scene, draft.selection);
+}
+
+export function chatSelectionReference(staged: ChatSelectionRecord) {
+  return staged.draft ? { selectionId: staged.id, expiresAt: staged.expiresAt.toISOString() } : { selectionId: null };
+}
+
 function checkRestoreChoices(build: BuildRecord, from: RevisionScene, to: RevisionScene) {
   const geometry = ({ map }: RevisionScene) => [map.setup?.lines ?? [], map.setup?.openings ?? [], map.setup?.marks ?? []];
   const terrain = ({ map }: RevisionScene) => [map.setup?.terrain ?? [], map.setup?.terrainGrid ?? null];
@@ -126,7 +148,7 @@ function checkRestoreChoices(build: BuildRecord, from: RevisionScene, to: Revisi
   }
 }
 
-interface AuthoringResult {
+export interface AuthoringResult {
   response: Record<string, unknown>;
   write?: AuthoringWrite;
   touch?: boolean;
@@ -390,12 +412,9 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
         scene: studioRevisionScene(scene), objects: selectionObjects(scene) } };
     }
     case "create": {
-      const materialized = live();
-      const base = workspace ? current() : revision(materialized, null, "owner");
-      if (command.input.inspectedVersion !== (workspace ? base.id : materialized.materializedVersion) || base.scene.binding !== materialized.binding) {
-        conflict("The saved scene changed. Review the current draft before requesting a correction.");
-      }
-      const scope = deriveScope(base.scene, command.input.selection);
+      const { head, scene } = correctionBase(records, workspace, entries, target, command.input.inspectedVersion);
+      const scope = deriveScope(scene, command.input.selection);
+      const base = head ?? revision(scene, null, "owner");
       const requestId = command.chatSelectionId ?? randomUUID();
       const additions: AuthoringEntry[] = [{ id: requestId, mapKey, kind: "request",
         value: { baseRevisionId: base.id, instruction: command.input.instruction, scope, at: new Date().toISOString() } }];

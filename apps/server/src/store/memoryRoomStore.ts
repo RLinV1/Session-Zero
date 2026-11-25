@@ -1,4 +1,4 @@
-import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, nextChatSelection, startChatCorrection, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite, type ChatSelectionRecord } from "./studioAuthoring";
+import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, chatSelectionReference, nextChatSelection, startChatCorrection, validateChatSelection, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite, type ChatSelectionRecord } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import type { FeedbackCursor } from "@vtt/shared";
@@ -942,26 +942,29 @@ export class MemoryRoomStore implements RoomStore {
     const grant = this.assertDelegation(access.delegation, build);
     assertStudioAuthoringAccess(access, command, grant);
     const views = this.chatSelections.get(buildId);
+    const ledger = this.authoring.get(buildId);
     if (command.kind === "stageChatSelection") {
       const now = access.delegation!.now();
       const key = `${grant!.id}/${command.update.viewId}`;
       const buildViews = views ?? new Map<string, ChatSelectionRecord>();
       const previous = buildViews.get(key) ?? null;
       for (const [id, view] of buildViews) if (view.expiresAt.getTime() <= now) buildViews.delete(id);
-      if (command.update.draft && (!previous?.draft || previous.expiresAt.getTime() <= now)) {
-        assertChatSelectionCapacity([...buildViews.values()].filter((view) => view.draft).length);
+      if (!previous || previous.expiresAt.getTime() <= now) {
+        // Cleared views keep their sequence until expiry, so a delayed redraw cannot revive them.
+        assertChatSelectionCapacity(buildViews.size);
       }
       const staged = nextChatSelection(previous, buildId, grant!.id, command.update, now);
+      const draft = command.update.draft;
+      if (draft) validateChatSelection(this.studioRecords(build), ledger?.workspaces.find((w) => w.mapKey === draft.mapKey), ledger?.entries ?? [], draft);
       this.assertDelegation(access.delegation, build);
       buildViews.set(key, structuredClone(staged));
       this.chatSelections.set(buildId, buildViews);
-      return { selectionId: staged.draft ? staged.id : null };
+      return chatSelectionReference(staged);
     }
     const sceneCommand = command.kind === "startChatCorrection"
       ? startChatCorrection(views && [...views.values()].find((view) => view.id === command.selectionId),
         buildId, grant!.id, command.instruction, access.delegation!.now())
       : command;
-    const ledger = this.authoring.get(buildId);
     const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], sceneCommand, true, !!grant);
     if (result.write || result.activity) assertStudioAuthoringAccess(access, command, this.assertDelegation(access.delegation, build));
     if (result.write) this.writeAuthoring(buildId, result.write);
