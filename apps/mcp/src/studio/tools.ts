@@ -162,9 +162,12 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     title: "Show a saved revision", description: "Read the display projection of one exact revision for comparison.",
     inputSchema: mapArgs.extend({ revisionId: z.uuid() }), annotations: readOnly, _meta: appOnly,
   }, ({ buildId, mapKey, revisionId, locale }) => guarded(locale, async () => text(StudioRevisionView.parse(await authoring(buildId, mapKey, "GET", `/revisions/${revisionId}/view`, locale)))));
+  // Read-only to the host on purpose: it changes no build content, only this view's expiring selection note, like widget
+  // state. ChatGPT silently drops write tools a view calls without a click, and this call follows every drag. The server
+  // still checks the grant and bounds every edit to the saved selection.
   registerAppTool(server, "studio_stage_chat_selection", {
     title: "Attach a Studio selection", description: "Replace or clear this view's temporary correction scope.",
-    inputSchema: StudioChatSelectionUpdate.extend({ buildId: z.uuid(), locale: Locale }), annotations: privateWrite, _meta: appOnly,
+    inputSchema: StudioChatSelectionUpdate.extend({ buildId: z.uuid(), locale: Locale }), annotations: readOnly, _meta: appOnly,
   }, ({ buildId, locale, ...update }) => guarded(locale, async () => text(StudioChatSelectionReference.parse(
     await (await send(buildId, "POST", "/authoring/chat-selections", update, locale)).json()))));
   registerAppTool(server, "studio_create_correction_request", {

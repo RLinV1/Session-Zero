@@ -70,6 +70,8 @@ function attachToChat(context,update,title,details) {
         _meta:{'openai/title':title}}] : []);
       return {selectionId:attached ? selectionId : null};
     } catch(error) {
+      // The note in the view stays short; the reason goes to the console for diagnosis.
+      console.warn('Session Zero Studio: selection not attached:', error?.code || error?.message || error);
       await publish([]).catch(()=>undefined);
       if (isCurrent(context) && accessEnded(error)) pauseForRetry(error);
       throw error;
