@@ -64,15 +64,19 @@ test("an owner allows chosen builds, returns to the app, then disconnects on the
   await expect(section).toBeVisible();
   await expect(section.getByText("Test AI app, returning to ai-app.test.invalid")).toBeVisible();
   await expect(section.getByText("Builds: Hollow Coast")).toBeVisible();
+  await expect(page.getByTestId("studio-scene")).toHaveCount(0);
   expect(await noSidewaysScroll(page)).toBe(true);
   await section.screenshot({ path: testInfo.outputPath("connections.png") });
   await section.getByRole("button", { name: "Disconnect Test AI app" }).click();
-  await expect(section).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Disconnect Test AI app" })).toHaveCount(0);
+  await expect(section.getByText("Continue in your connected Studio")).toBeVisible();
   expect((await asAi(ids.hollow)).status()).toBe(401);
-  // The other build never had a connection to show.
+  // The launch text is available before an owner connects the build.
   await page.goto(`/builds/${ids.lantern}`);
   await expect(page.getByRole("heading", { name: "Lanternfall" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "AI app connections" })).toHaveCount(0);
+  await section.getByText("Continue in your connected Studio").click();
+  await expect(section.getByRole("textbox", { name: "Copy Studio launch text" })).toHaveValue(new RegExp(ids.lantern));
+  await expect(section.getByRole("button", { name: "Disconnect Test AI app" })).toHaveCount(0);
 });
 
 test("refusing sends access_denied back and grants nothing (FR-GM-26)", async ({ page }) => {
@@ -84,7 +88,9 @@ test("refusing sends access_denied back and grants nothing (FR-GM-26)", async ({
   expect(new URL(page.url()).searchParams.get("error")).toBe("access_denied");
   await page.goto(`/builds/${ids.hollow}`);
   await expect(page.getByRole("heading", { name: "Hollow Coast" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "AI app connections" })).toHaveCount(0);
+  const section = page.getByRole("region", { name: "AI app connections" });
+  await expect(section.getByText("Continue in your connected Studio")).toBeVisible();
+  await expect(section.getByRole("button", { name: "Disconnect Test AI app" })).toHaveCount(0);
 });
 
 test("a request for an unregistered address stays on the page (FR-GM-26)", async ({ page }) => {

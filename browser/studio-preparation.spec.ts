@@ -6,20 +6,27 @@ test.use({ trace: "off" });
 // The view keeps polling through the host bridge; a poll still in flight when a test ends is not a failure.
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "ignoreErrors" }); });
 test.setTimeout(90_000);
-const ORIGIN = "http://127.0.0.1:5190", MCP = "http://127.0.0.1:3130/mcp/studio";
+const ORIGIN = `http://127.0.0.1:${process.env.STUDIO_TEST_WEB_PORT}`;
+const MCP = `http://127.0.0.1:${process.env.STUDIO_TEST_MCP_PORT}/mcp/studio`;
+const redirect = "https://ai.test.invalid/callback";
+let clientId: string;
+test.beforeAll(async ({ request }) => {
+  // The simulated host registers once per worker, then each test grants its own fresh build.
+  const registration = await request.post(`${ORIGIN}/api/oauth/register`, { data: { client_name: "M2 browser", redirect_uris: [redirect], token_endpoint_auth_method: "none" } });
+  expect(registration.status()).toBe(201);
+  clientId = ((await registration.json()) as { client_id: string }).client_id;
+});
 const descriptor = (kind: "map" | "token") => ({ file_id: randomUUID(), download_url: `https://sdmntpreastus3.oaiusercontent.com/studio-browser-${kind}`, file_name: `synthetic-${kind}.png`, mime_type: "image/png" });
 type BridgeMessage = { method: string; params: { name: string; arguments?: Record<string, unknown> } };
 type Rewrite = (message: BridgeMessage) => BridgeMessage;
 async function mount(page: Page, request: APIRequestContext) {
   expect((await request.post(`${ORIGIN}/api/auth/signup`, { data: { email: `${randomUUID()}@example.com`, password: "correct horse battery", displayName: "Preparation GM" } })).status()).toBe(201);
   const { build } = await (await request.post(`${ORIGIN}/api/builds`, { data: { name: "Visible preparation", aiGrid: true, aiWalls: true, aiTerrain: true } })).json() as { build: { id: string } };
-  const redirect = "https://ai.test.invalid/callback";
-  const client = await (await request.post(`${ORIGIN}/api/oauth/register`, { data: { client_name: "M2 browser", redirect_uris: [redirect], token_endpoint_auth_method: "none" } })).json() as { client_id: string };
   const verifier = randomBytes(32).toString("base64url");
-  const consent = await request.post(`${ORIGIN}/api/oauth/authorize`, { data: { params: { response_type: "code", state: "m2-fixture", client_id: client.client_id, redirect_uri: redirect, scope: "studio:build", resource: `${ORIGIN}/mcp/studio`, code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256" }, decision: "allow", buildIds: [build.id] } });
+  const consent = await request.post(`${ORIGIN}/api/oauth/authorize`, { data: { params: { response_type: "code", state: "m2-fixture", client_id: clientId, redirect_uri: redirect, scope: "studio:build", resource: `${ORIGIN}/mcp/studio`, code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256" }, decision: "allow", buildIds: [build.id] } });
   expect(consent.status()).toBe(200);
   const { redirectTo } = await consent.json() as { redirectTo: string };
-  const tokens = await (await request.post(`${ORIGIN}/api/oauth/token`, { form: { grant_type: "authorization_code", client_id: client.client_id, redirect_uri: redirect, resource: `${ORIGIN}/mcp/studio`, code_verifier: verifier, code: new URL(redirectTo).searchParams.get("code")! } })).json() as { access_token: string };
+  const tokens = await (await request.post(`${ORIGIN}/api/oauth/token`, { form: { grant_type: "authorization_code", client_id: clientId, redirect_uri: redirect, resource: `${ORIGIN}/mcp/studio`, code_verifier: verifier, code: new URL(redirectTo).searchParams.get("code")! } })).json() as { access_token: string };
   const calls: { name: string; at: number }[] = [];
   let bridgeFailure = false;
   let rewrite: Rewrite | null = null;
@@ -98,7 +105,6 @@ test("actual saved tools update an open Studio with the native scene (FR-GM-27)"
   expect(native.scene).toEqual(embedded.scene);
   await page.screenshot({ path: info.outputPath("saved-preparation.png"), fullPage: true });
   await info.attach("local saved-write measurements", { body: JSON.stringify({ latencyMs: latency, refreshIntervalMs: embedded.refreshIntervalMs, calls: session.calls.map((call) => call.name) }), contentType: "application/json" });
-  await page.context().addCookies((await request.storageState()).cookies);
 });
 test("refused save keeps saved overlays, camera and focus with an actionable permission result (FR-GM-27)", async ({ page, request }) => {
   const session = await mount(page, request); await prepare(session);
