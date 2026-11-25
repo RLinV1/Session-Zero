@@ -1,5 +1,35 @@
 # Implementation handoff
 
+## M4 local verification and PR handoff, 2026-11-25
+
+Verified `feat/studio-m4-chat-selection` from `origin/main` at `4c24533d`. The review covered the M4 diff through `7bb44d3f`. The follow-up commits are `9a9fcef4` (staging validation and limits), `8c38fc5a` (composer and map controls), `153d10f0` (preparation and website browser checks) and `959156be` (stable per-widget selection slot).
+
+### Checks
+
+- All Node commands used Node 22.23.2. `npm ci --no-audit --no-fund`, `npm run lint`, `npm run typecheck`, `npm run build` and `npm test` passed. The full test command passed **5,758** tests, including 1,995 shared, 292 MCP, 1,415 server, 2,054 web and 2 server benchmark tests. The default run skipped 71 optional-service tests.
+- `node scripts/studio-m2/prepare.mjs` generated the run configuration with alternate loopback app ports because an earlier M2 run still owned the defaults. Through `with-env.mjs`, `compose up -d --build --wait`, `npm run prisma:migrate --workspace=@vtt/server` (37 migrations) and `node scripts/studio-m2/buckets.mjs` succeeded. The browser used the committed synthetic fixtures and real storage and detection.
+- `node scripts/studio-m2/with-env.mjs <run.env> npx playwright test -c playwright.studio-m2.config.ts` passed **32/32**. The first native-browser run passed 20 cases before hitting the OAuth registration budget. The fixture now registers once per worker and obtains a separate grant for each test build.
+- Through the same wrapper, `npm test --workspace=@vtt/server -- --no-file-parallelism test/studioAuthoring.test.ts test/studioPostgresRace.test.ts` passed **30/30** across the memory and Postgres cases, including the build-lock race. `compose down -v` removed the disposable project and both volumes. The generated run configuration directory was deleted.
+- `STUDIO_BROWSER_TEST=1 npx playwright test browser/studio-intake.spec.ts --project=<project>` passed **21/21** across three fresh runs, in Chromium, Firefox and WebKit order. The final intake runs exercised the stable widget ID after an encounter switch, redraw after a refused attachment, clear during a pending stage and advertised expiry.
+- `STUDIO_BROWSER_TEST=1 npx playwright test browser/studio-connect.spec.ts --project=chromium-desktop` passed **6/6**. The website checks cover the launch text before consent and after disconnecting, absence of the embedded Studio, and the native editor's working revision.
+- `openspec validate interactive-ai-scene-studio` passed with two pre-existing requirement-length warnings. `git diff --check origin/main...HEAD` passed.
+
+| Project | Preparation | Intake |
+| --- | --- | --- |
+| `chromium-desktop` | 8/8 | 7/7 |
+| `chromium-touch` | 8/8 | |
+| `firefox-narrow` | 8/8 | |
+| `firefox-desktop` | | 7/7 |
+| `webkit-desktop` | 8/8 | 7/7 |
+
+### Review
+
+- The sync reviewer and visibility auditor checked the private authoring path, both stores and live-room boundaries. They found no new player data path or cross-build, credential or private-media disclosure outside the deliberately shared correction crop. The high-effort branch review used the read-only Codex review agent after automatic approval review rejected the external Claude Code invocation for potential source egress.
+- Fixed stale and unauthorized staging, bounded both staged and cleared view records, and removed stale PostgreSQL references when the owner deletes an enrolled draft. The two HTTP hops now accept the schema's supported selection sizes behind the existing grant checks. Request creation still validates the saved scope and current authority.
+- Fixed delayed attachments appearing after clear, expiry leaving a selection attached, an earlier request clearing a newer draft, and retrying the same selection after a refusal. The widget keeps one view ID and an increasing sequence across map/encounter changes.
+- Restored keyboard object picking and explicit inclusion of a whole crossing object. A new rectangle uses the currently approved layers, and a stale inspection keeps navigation available while the view asks for a fresh inspection. Browser checks exercise zoom below fit, pan and pinch handling with synthetic input.
+- Deferred physical trackpad classification across devices and real ChatGPT composer behavior across views. Task 5.10 remains open for hosted redraw, clear, a second view and one started correction. The local browser checks use a simulated host. [Earlier hosted correction sequence](evidence/m4-host-2026-11-18.md) · [Hosted selection attach](evidence/m4-host-2026-11-25.md)
+
 ## M4 hosted selection attach, 2026-11-25
 
 Commit `f3bb8259` on `feat/studio-m4-chat-selection`, the same change as `7249e8d1` on `feat/studio-m4-declutter`. The pilot runs `7249e8d1`; rollback is `d84d44a9`.
@@ -8,7 +38,7 @@ In ChatGPT, every selection failed to attach. ChatGPT's tool proxy answered the 
 
 The commit labels `studio_stage_chat_selection` read-only and logs the reason for an attach failure to the view's console. It was made before the root cause was known. The product owner kept the label ([D15](design.md#d15-m4-correction-interaction)). Lint, typecheck and `npm test` passed on this branch (5,757 tests, 71 optional-service skips). On `feat/studio-m4-declutter`, the Studio intake browser spec passed in Chromium (6 tests) and the composer test passed in WebKit. Running all six browser projects at once hit the OAuth registration rate limit (HTTP 429), which is a harness limit, not a product failure. Still not run: `browser/studio-preparation.spec.ts` under its M2 Docker stack, and an independent diff review. Task 8.1 is resolved by the declutter.
 
-**Next:** run the preparation browser suite and a review, then open one M4 PR from this branch. Finish task 5.10 in ChatGPT: redraw, clear, a second view, and one started correction.
+See the [local verification and PR handoff](#m4-local-verification-and-pr-handoff-2026-11-25) for the follow-up review and browser runs. Task 5.10 remains open for redraw, clear, a second view and one started correction in ChatGPT.
 
 ## M4 Studio declutter, 2026-11-24
 
