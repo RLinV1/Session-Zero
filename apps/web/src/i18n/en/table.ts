@@ -104,6 +104,7 @@ export const table = {
   "rail.areaColour": "Area colour",
   "rail.gmOnlyHint": "Players won't see areas placed while this is on",
   "rail.gmOnly": "GM only",
+  "dice.dieType": ({ sides }: { sides: number }) => `d${sides}`,
   "rail.fogOptions": "Fog options",
   "rail.fogMode": "Fog mode",
   "rail.boardTools": "Board tools",

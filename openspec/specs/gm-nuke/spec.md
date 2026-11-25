@@ -50,11 +50,15 @@ The GM SHALL be able to undo a nuke as one action. Undo SHALL append `MapNukeUnd
 - **THEN** the undo is refused with a message that a token has changed since
 
 ### Requirement: Blast respects reduced motion
-When the viewer prefers reduced motion, the blast SHALL NOT shake the board, expand a shockwave or flash. It SHALL show a brief static centre marker and the damage numbers.
+At the Reduced Animations level (`animation-levels`), the blast SHALL NOT shake the board, expand a shockwave or flash. It SHALL show a brief static centre marker and damage numbers that do not move. At the None level, nothing SHALL be drawn for the blast and no damage numbers SHALL be shown. At both levels, hit points SHALL update at once.
 
 #### Scenario: Reduced motion
-- **WHEN** a viewer with reduced motion enabled sees a nuke
-- **THEN** the board shows a short static marker with damage numbers and no moving shockwave or shake
+- **WHEN** a viewer on Reduced sees a nuke
+- **THEN** the board shows a short static marker with still damage numbers and no moving shockwave or shake
+
+#### Scenario: No animations
+- **WHEN** a viewer on None sees a nuke
+- **THEN** nothing is drawn for the blast, no numbers appear, and the tokens' hit points drop at once
 
 ### Requirement: The blast never interferes with play
 The blast SHALL NOT block or delay input, SHALL NOT change any token's recorded position, and its filters SHALL be removed from the board when it ends. Looping or lingering glow SHALL NOT remain.
@@ -64,12 +68,11 @@ The blast SHALL NOT block or delay input, SHALL NOT change any token's recorded 
 - **THEN** the board has no shockwave, bloom or tint, and panning, zooming and dragging behave as before
 
 ### Requirement: Bounded animation work
-Nuke fire SHALL use at most 52 central billow sprites, 24 expanding fire/dust sprites and one fireball, sharing two cached textures and SHALL NOT apply a filter to the map. Heavy effects SHALL update at most 30 times per second. One nuke SHALL play at a time. Attack particles SHALL be bounded and condition particles SHALL use at most 12 visible token canvases, one particle condition per token. Particle emitters SHALL stop while the page is hidden. Completed, replaced or hidden blasts SHALL release their display objects. Screen shake SHALL NOT create horizontal overflow. Reduced animations SHALL appear below Detonate in Table effects.
+Nuke fire SHALL use at most 52 central billow sprites, 24 expanding fire/dust sprites and one fireball, sharing two cached textures and SHALL NOT apply a filter to the map. Heavy effects SHALL update at most 30 times per second. One nuke SHALL play at a time. Attack particles SHALL be bounded and condition particles SHALL use at most 12 visible token canvases, one particle condition per token. Particle emitters SHALL stop while the page is hidden. Completed, replaced or hidden blasts SHALL release their display objects. Screen shake SHALL NOT create horizontal overflow.
 
 #### Scenario: Repeated blasts finish cleanly
 - **WHEN** several nukes are triggered in succession and the last one ends
 - **THEN** no blast objects, screen filters, persistent tint or horizontal overflow remain and the board still accepts input
-
 
 #### Scenario: The blast spreads across the visible board
 - **WHEN** the bomb reaches the middle of the viewer's screen

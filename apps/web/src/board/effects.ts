@@ -1,6 +1,6 @@
 import { diceRollsOf, findDiceRoll, isAdjacent, type AnimationDef, type ConditionId, type DiceRoll, type DomainEvent, type Participant, type Point, type RoomState } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET, SHAPE_DEFAULTS } from "./effectPresets";
-import { getClientSettings, QUALITY, type AttackAnimations, type GraphicsQuality } from "../ui/clientSettings";
+import { QUALITY, type AnimationLevel, type AttackAnimations, type GraphicsQuality } from "../ui/clientSettings";
 
 /**
  * What the board draws for attacks and conditions (KAN-76). Pure: no Pixi, no DOM beyond
@@ -178,8 +178,10 @@ export interface DefeatPlan {
 }
 
 /** How a defeated token leaves: the full effect, or a plain 200 ms fade (FR-TAC-07). */
-export function defeatPlan(input: { reducedMotion: boolean; quality: GraphicsQuality; active: number }): DefeatPlan {
-  if (input.reducedMotion || input.quality === "low" || input.active >= MAX_DEFEAT_EFFECTS) {
+export function defeatPlan(input: { level: AnimationLevel; quality: GraphicsQuality; active: number }): DefeatPlan {
+  // No animations: the token goes at once (animation-levels).
+  if (input.level === "none") return { motion: false, durationMs: 0, particles: 0 };
+  if (input.level === "reduced" || input.quality === "low" || input.active >= MAX_DEFEAT_EFFECTS) {
     return { motion: false, durationMs: DEFEAT_FADE_MS, particles: 0 };
   }
   return { motion: true, durationMs: DEFEAT_MS, particles: Math.round(QUALITY[input.quality].particles / 5) };
@@ -200,33 +202,6 @@ export function attackPlan(effect: AttackEffect, reducedMotion: boolean): Attack
 
 /** Share of a strike spent travelling; the rest is the impact on the target. */
 export const STRIKE_TRAVEL = 0.6;
-
-// ---------- reduced motion ----------
-
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
-const mediaQuery = () => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION_QUERY) : null);
-
-export function prefersReducedMotion(): boolean {
-  return mediaQuery()?.matches ?? false;
-}
-
-/**
- * Whether animations are reduced for this viewer: the device preference, or the GM turning
- * reduced animations on for the whole table (`RoomState.reducedEffects`).
- */
-export function effectiveReducedMotion(state: Pick<RoomState, "reducedEffects">, osPrefers: boolean = prefersReducedMotion()): boolean {
-  return osPrefers || getClientSettings().reducedAnimations || (state.reducedEffects ?? false);
-}
-
-/** Calls `listener` whenever the preference changes; returns the unsubscribe. */
-export function watchReducedMotion(listener: (reduced: boolean) => void): () => void {
-  const query = mediaQuery();
-  if (!query) return () => {};
-  const onChange = (e: MediaQueryListEvent) => listener(e.matches);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
 
 // ---------- conditions ----------
 

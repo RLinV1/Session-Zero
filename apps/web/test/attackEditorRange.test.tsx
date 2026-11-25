@@ -6,13 +6,14 @@ import { PresetEditor } from "../src/panels/AttackPanel";
 import { AttackEditorContext } from "../src/panels/attackEditorContext";
 import { SHAPE_DEFAULTS } from "../src/board/effectPresets";
 import { chooseLocale } from "../src/i18n/locale";
+import { DEFAULT_CLIENT_SETTINGS, setClientSettings } from "../src/ui/clientSettings";
 
 /** What the preview stage was last asked to show. */
-const stage = vi.hoisted(() => ({ props: [] as { def: AnimationDef; autoPlay?: boolean; reducedMotion?: boolean }[] }));
+const stage = vi.hoisted(() => ({ props: [] as { def: AnimationDef; autoPlay?: boolean }[] }));
 vi.mock("../src/ui/AnimationPreviewStage", () => ({
-  AnimationPreviewStage: (props: { def: AnimationDef; autoPlay?: boolean; reducedMotion?: boolean }) => {
+  AnimationPreviewStage: (props: { def: AnimationDef; autoPlay?: boolean }) => {
     stage.props.push(props);
-    return <div data-testid="stage" data-shape={props.def.shape} data-reduced={String(!!props.reducedMotion)} />;
+    return <div data-testid="stage" data-shape={props.def.shape} />;
   },
 }));
 const fireBlade: AnimationDef = { ...SHAPE_DEFAULTS.slash, primary: "#ff2200" };
@@ -25,11 +26,11 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 });
-afterEach(async () => { cleanup(); await chooseLocale("en"); });
+afterEach(async () => { cleanup(); setClientSettings(DEFAULT_CLIENT_SETTINGS); await chooseLocale("en"); });
 
 const d20 = { terms: [{ count: 1, sides: 20 }], modifier: 5 };
 
-function editor(initial: AttackPreset | null = null, env = { unitsPerCell: 5, unitLabel: "ft", reducedEffects: false }) {
+function editor(initial: AttackPreset | null = null, env = { unitsPerCell: 5, unitLabel: "ft" }) {
   const save = vi.fn();
   render(
     <AttackEditorContext.Provider value={env}>
@@ -61,7 +62,7 @@ describe("a named attack's Range in the attack editor (attack-range)", () => {
   });
 
   it("pre-fills Reach with one square and saves that as one square on any map", () => {
-    const { submit, saved } = editor(null, { unitsPerCell: 1.5, unitLabel: "m", reducedEffects: false });
+    const { submit, saved } = editor(null, { unitsPerCell: 1.5, unitLabel: "m" });
     fireEvent.click(screen.getByRole("radio", { name: "Melee" }));
     expect((screen.getByLabelText("Reach") as HTMLInputElement).value).toBe("1.5");
     expect(screen.getByLabelText("Reach").parentElement!.textContent).toContain("m");
@@ -112,9 +113,17 @@ describe("previewing an attack's animation (attack-rolls, attack-range)", () => 
     await waitFor(() => expect(screen.getByTestId("stage").getAttribute("data-shape")).toBe("pierce"));
   });
 
-  it("shows the still version when the room has animations turned down", async () => {
-    editor(null, { unitsPerCell: 5, unitLabel: "ft", reducedEffects: true });
-    expect((await screen.findByTestId("stage")).getAttribute("data-reduced")).toBe("true");
+  it("shows no preview at the Reduced or None level, and saving still works (animation-levels)", async () => {
+    for (const level of ["reduced", "none"] as const) {
+      setClientSettings({ animationLevel: level });
+      const { submit, saved } = editor();
+      fireEvent.click(screen.getByRole("button", { name: "Attack animation" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pierce" }));
+      expect(screen.queryByTestId("stage")).toBeNull();
+      submit();
+      expect(saved()?.animation?.shape).toBe("pierce");
+      cleanup();
+    }
   });
 });
 

@@ -19,7 +19,7 @@ type Harness = {
 /** A board for its drawing methods only; nothing is initialised or rendered. */
 function board() {
   const view = Object.create(BoardView.prototype) as Harness;
-  Object.assign(view, { palette: { focus: 0x3b82f6, ok: 0x22c55e, warn: 0xeab308, danger: 0xef4444 }, osReduced: false, tableReduced: false, applyArtOffset: vi.fn() });
+  Object.assign(view, { palette: { focus: 0x3b82f6, ok: 0x22c55e, warn: 0xeab308, danger: 0xef4444 }, applyArtOffset: vi.fn() });
   return view;
 }
 const tokenView = () => ({ decor: new Graphics(), art: new Container(), grey: null as ColorMatrixFilter | null, conditions: [], looping: false });

@@ -44,7 +44,7 @@ function board(moveToken = vi.fn(() => Promise.resolve(true))) {
   Object.assign(view, {
     state, you, callbacks, tool: { kind: "select" }, readOnly: false, placement: null, gesture: null, pan: null, placeDown: null,
     tokens: new Map([["aria", { container: real }]]), pendingMoves: new Map(), pathMoves: new Map(), ownSlides: new Set(), slideIds: 0,
-    animations: new Set(), osReduced: false, tableReduced: false, repositionToken: null, localMovementPreview: null, localPlanKey: "",
+    animations: new Set(), repositionToken: null, localMovementPreview: null, localPlanKey: "",
     movementPreviewId: 0, movementRequest: null, measurement: null, fogPoints: [], dragGhost: null, dragDownAt: { x: 0, y: 0 },
     drag: { tokenId: "aria", offset: { x: 0, y: 0 }, movable: true, origin: token.position, epoch: 0 },
     overlayGraphics: { clear: () => ({}) }, measureLabel: { visible: false }, fxLayer: { addChild: vi.fn() },

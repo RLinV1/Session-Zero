@@ -86,11 +86,20 @@ describe("nuke HP presentation (FR-TAC-07, ADR 0038)", () => {
     expect(screen.getByTestId("hp").textContent).toBe("20");
   });
 
-  it("shows a reduced-motion hit immediately", () => {
-    const { nuke } = setup(player, true);
+  it.each(["reduced", "none"] as const)("shows the hit immediately at the %s level (animation-levels)", (level) => {
+    setClientSettings({ animationLevel: level });
+    const { nuke } = setup();
+    const before = vi.getTimerCount();
     nuke();
     expect(screen.getByTestId("hp").textContent).toBe("20");
-    expect(vi.getTimerCount()).toBe(0);
+    // The nuke itself leaves no fallback timer behind.
+    expect(vi.getTimerCount()).toBe(before);
+  });
+
+  it("ignores the room's old table-wide reduced flag (animation-levels)", () => {
+    const { nuke } = setup(player, true);
+    nuke();
+    expect(screen.getByTestId("hp").textContent).toBe("30");
   });
 
   it("preserves held HP when a second nuke replaces the first animation", () => {
@@ -134,7 +143,7 @@ describe("nuke HP presentation (FR-TAC-07, ADR 0038)", () => {
   it("settles when reduced animations interrupts a falling nuke", () => {
     const { nuke } = setup();
     nuke();
-    act(() => setClientSettings({ reducedAnimations: true }));
+    act(() => setClientSettings({ animationLevel: "reduced" }));
     expect(screen.getByTestId("hp").textContent).toBe("20");
     act(() => vi.advanceTimersByTime(1000));
     expect(screen.getByTestId("hp").textContent).toBe("20");

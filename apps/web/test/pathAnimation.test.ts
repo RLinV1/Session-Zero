@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_GRID, type Point } from "@vtt/shared";
 import { slideDistance, slideDuration } from "../src/board/tokenSlide";
 import { BoardView } from "../src/board/boardView";
+import { DEFAULT_CLIENT_SETTINGS, setClientSettings } from "../src/ui/clientSettings";
 
 /** A board with just enough to run path animations: one token sprite, and the animation loop by hand. */
 function board() {
@@ -14,13 +15,12 @@ function board() {
     animations: Set<(now: number) => boolean>;
     pathMoves: Map<string, number>;
     pendingMoves: Map<string, Point>;
-    tableReduced: boolean;
   };
   Object.assign(view, {
     state: { scene: { grid: { ...DEFAULT_GRID, cellSize: 100 } }, tokens: { t: { position: { x: 400, y: 0 } } } },
     tokens: new Map([["t", { container }]]),
     animations: new Set(), pathMoves: new Map(), ownSlides: new Set(), slideIds: 0, pendingMoves: new Map(), drag: null,
-    osReduced: false, tableReduced: false, schedule: vi.fn(), invalidate: vi.fn(),
+    schedule: vi.fn(), invalidate: vi.fn(),
   });
   // The slide's clock starts at 0, so `frame(ms)` is `ms` after it started.
   vi.spyOn(performance, "now").mockReturnValue(0);
@@ -75,15 +75,18 @@ describe("slides start slowly and keep a steady pace (token-slide)", () => {
     expect(positions.at(-1)).toEqual({ x: 400, y: 0 });
   });
 
-  it("jumps for a move under one square, and under reduced motion", () => {
+  it("jumps for a move under one square, and at the None Animations level (animation-levels)", () => {
     const short = board();
     expect(short.view.slide("t", [{ x: 0, y: 0 }, { x: 60, y: 0 }])).toBe(false);
     expect(short.positions).toEqual([{ x: 400, y: 0 }]);
     expect(short.view.animations.size).toBe(0);
-    const reduced = board();
-    reduced.view.tableReduced = true;
-    expect(reduced.view.slide("t", [{ x: 0, y: 0 }, { x: 400, y: 0 }])).toBe(false);
-    expect(reduced.positions).toEqual([{ x: 400, y: 0 }]);
+    setClientSettings({ animationLevel: "none" });
+    const still = board();
+    expect(still.view.slide("t", [{ x: 0, y: 0 }, { x: 400, y: 0 }])).toBe(false);
+    expect(still.positions).toEqual([{ x: 400, y: 0 }]);
+    setClientSettings({ animationLevel: "reduced" });
+    expect(board().view.slide("t", [{ x: 0, y: 0 }, { x: 400, y: 0 }])).toBe(true);
+    setClientSettings(DEFAULT_CLIENT_SETTINGS);
   });
 
   it("fits a capped slide into its time", () => {

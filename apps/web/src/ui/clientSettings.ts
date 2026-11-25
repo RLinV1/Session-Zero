@@ -4,9 +4,11 @@ import { writeStored } from "./usePersistentState";
 export type GraphicsQuality = "high" | "balanced" | "low";
 /** Which attack effects this viewer's board plays (board-attack-effects): every one, the active turn's, or none. */
 export type AttackAnimations = "all" | "turn" | "none";
+/** How much moves on this viewer's screen (animation-levels). The device's reduced-motion preference forces "none". */
+export type AnimationLevel = "full" | "reduced" | "none";
 export interface ClientSettings {
   graphicsQuality: GraphicsQuality;
-  reducedAnimations: boolean;
+  animationLevel: AnimationLevel;
   /** Pan and zoom the board to the fighters when an attack plays. */
   autoFocusAttacks: boolean;
   musicVolume: number;
@@ -14,14 +16,17 @@ export interface ClientSettings {
   /** The arrow keys move the selected token one square (client-settings). */
   arrowKeyMove: boolean;
   attackAnimations: AttackAnimations;
-  /** GM only: show the turn banner, with End turn, on every token's turn, not just their own (turn-notice). */
+  /**
+   * Show the turn banner on every token's turn, not just the viewer's own; End turn only where they may
+   * end it (turn-notice). Named for when it was GM-only; kept so saved choices carry over.
+   */
   gmTurnBanner: boolean;
 }
 export const CLIENT_SETTINGS_KEY = "vtt.ui.settings";
 /** Where the token card's arrow-key switch was saved before it moved into Settings; read once, then removed. */
 export const LEGACY_ARROW_KEY_MOVE_KEY = "vtt.ui.arrowKeyMove";
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
-  graphicsQuality: "balanced", reducedAnimations: false, autoFocusAttacks: true, musicVolume: 70, soundVolume: 80,
+  graphicsQuality: "balanced", animationLevel: "full", autoFocusAttacks: true, musicVolume: 70, soundVolume: 80,
   arrowKeyMove: true, attackAnimations: "all", gmTurnBanner: false,
 };
 export const QUALITY = {
@@ -31,12 +36,13 @@ export const QUALITY = {
 } as const;
 
 const isQuality = (v: unknown): v is GraphicsQuality => v === "high" || v === "balanced" || v === "low";
+const isAnimationLevel = (v: unknown): v is AnimationLevel => v === "full" || v === "reduced" || v === "none";
 const isAttackAnimations = (v: unknown): v is AttackAnimations => v === "all" || v === "turn" || v === "none";
 const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 const isVolume = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
 /** Each setting's own check, so one bad stored value falls back alone (client-settings). */
 const FIELD_CHECKS: { [K in keyof ClientSettings]: (v: unknown) => v is ClientSettings[K] } = {
-  graphicsQuality: isQuality, reducedAnimations: isBoolean, autoFocusAttacks: isBoolean,
+  graphicsQuality: isQuality, animationLevel: isAnimationLevel, autoFocusAttacks: isBoolean,
   musicVolume: isVolume, soundVolume: isVolume, arrowKeyMove: isBoolean, attackAnimations: isAttackAnimations,
   gmTurnBanner: isBoolean,
 };
@@ -61,7 +67,8 @@ function parseStored(store: Storage | null, key: string): unknown {
 /**
  * The saved settings over the defaults, field by field: a setting added since they were saved,
  * or one whose saved value is invalid, takes its default without resetting the rest. The token
- * card's old arrow-key switch is carried over once and its key removed.
+ * card's old arrow-key switch is carried over once and its key removed, and the old Reduced
+ * animations switch becomes a level.
  */
 function readClientSettings(): ClientSettings {
   const store = storage();
@@ -69,6 +76,8 @@ function readClientSettings(): ClientSettings {
   const saved = stored && typeof stored === "object" ? stored as Record<string, unknown> : {};
   const result = { ...DEFAULT_CLIENT_SETTINGS } as Record<keyof ClientSettings, unknown>;
   for (const field of FIELDS) if (FIELD_CHECKS[field](saved[field])) result[field] = saved[field];
+  // The old Reduced animations switch, saved on, becomes the Reduced level (animation-levels).
+  if (!isAnimationLevel(saved.animationLevel) && saved.reducedAnimations === true) result.animationLevel = "reduced";
   if (!isBoolean(saved.arrowKeyMove)) {
     const legacy = parseStored(store, LEGACY_ARROW_KEY_MOVE_KEY);
     if (isBoolean(legacy)) {
@@ -110,7 +119,7 @@ export function subscribeGraphicsSettings(listener: () => void) {
   let previous = getClientSettings();
   return subscribeClientSettings(() => {
     const next = getClientSettings();
-    const changed = next.graphicsQuality !== previous.graphicsQuality || next.reducedAnimations !== previous.reducedAnimations;
+    const changed = next.graphicsQuality !== previous.graphicsQuality || next.animationLevel !== previous.animationLevel;
     previous = next;
     if (changed) listener();
   });

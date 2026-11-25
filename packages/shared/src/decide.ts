@@ -573,7 +573,8 @@ function decideCommand(
       if (!token || concealedFrom(concealmentFor(state, actor), token, actor)) return notFound("token");
       if (!can.editToken(actor, token)) return forbidden();
       const changes = command.changes;
-      const gmFields = changes.name !== undefined || changes.position !== undefined || changes.size !== undefined ||
+      // Owners may rename their tokens; everything else here stays the GM's (player-rename-own-tokens).
+      const gmFields = changes.position !== undefined || changes.size !== undefined ||
         changes.rotation !== undefined || changes.imageUrl !== undefined || changes.assetId !== undefined ||
         changes.ownerIds !== undefined || changes.hidden !== undefined;
       if (gmFields && !can.administer(actor)) return forbidden();
@@ -606,7 +607,10 @@ function decideCommand(
         return reject("invalid", sharedMsg("reject.imageAssetNeedsUrl"));
       }
 
-      const name = changes.name === undefined ? token.name : uniqueTokenName(state, changes.name, token.id);
+      // A player's rename is kept as typed: numbering it against hidden tokens would reveal their names
+      // (token-names). The GM's renames are numbered against every token, as before.
+      const name = changes.name === undefined ? token.name
+        : can.administer(actor) ? uniqueTokenName(state, changes.name, token.id) : changes.name.trim();
       const rotation = changes.rotation === undefined ? token.rotation : normalizeRotation(changes.rotation);
       const moved: DomainEvent | null = position.x !== token.position.x || position.y !== token.position.y
         ? { type: "TokenMoved", tokenId: token.id, from: token.position, to: position }

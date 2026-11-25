@@ -4,7 +4,7 @@ import type { DoorsMode } from "./tools";
 import { extendStroke, startStroke, strokePaint, strokeRuns, type TerrainContext, type TerrainStroke } from "./terrainStroke";
 import { plainWallLines } from "./wallLines";
 import { slideDistance, slideDuration } from "./tokenSlide";
-import { dragPlan, rangeMeasure, routePlan, type DragPlan, type MovementPreview } from "./movementRuler";
+import { dragPlan, rangeMeasure, routePlan, routeSearched, type DragPlan, type MovementPreview } from "./movementRuler";
 import { attackAim } from "./attackAim";
 import {
   Application,
@@ -64,15 +64,14 @@ import {
   defeatPlan,
   loopFrameDue,
   loopingConditions,
-  prefersReducedMotion,
-  watchReducedMotion,
   type AttackEffect,
 } from "./effects";
 import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
 import { conditionIcon, loadConditionIcons } from "./conditionIcons";
-import { armSound, playDefeatSound, withSound } from "./fxSound";
+import { armSound, playDefeatSound, playFxSound, withSound } from "./fxSound";
 import { getClientSettings, graphicsBudget, subscribeGraphicsSettings } from "../ui/clientSettings";
+import { animationLevel, watchAnimationLevel } from "../ui/motion";
 import { averageColor, fogDistanceField, fogPalette, makeFogDensityCanvas, makeFogDistanceCanvas, type Rgb } from "./fogTexture";
 import { WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "./fogPuffs";
 import { fogArt, loadFogArt } from "./fogArt";
@@ -609,12 +608,15 @@ export class BoardView {
   private attackFx: AttackFx[] = [];
   /** Defeated tokens (ADR 0049) kept drawn while they fall; each value finishes that token's effect and removes its sprite at once. */
   private dying = new Map<string, () => void>();
-  /** The device's reduced-motion preference, and the GM's table-wide setting (`RoomState.reducedEffects`). */
-  private osReduced = prefersReducedMotion();
-  private tableReduced = false;
-  private get reducedMotion() {
-    return this.osReduced || this.tableReduced || getClientSettings().reducedAnimations;
+  /** The viewer's Animations level (animation-levels); the room's old table-wide flag takes no part. */
+  private get level() {
+    return animationLevel();
   }
+  /** Below Full: the stillness the Reduced and None levels share. */
+  private get reducedMotion() {
+    return this.level !== "full";
+  }
+  private lastLevel = animationLevel();
   /** Nuke and strike renderers (fx.ts) playing, oldest first. */
   private fxRuns: Array<{ run: RunningFx; started: number; timer: number; step: (now: number) => boolean }> = [];
   private stopMotionWatch: (() => void) | null = null;
@@ -721,8 +723,10 @@ export class BoardView {
       this.schedule();
     });
     this.hostObserver.observe(this.host);
-    this.stopMotionWatch = watchReducedMotion((reduced) => {
-      this.osReduced = reduced;
+    this.stopMotionWatch = watchAnimationLevel(() => {
+      const level = this.level;
+      if (level === this.lastLevel) return;
+      this.lastLevel = level;
       this.motionChanged();
     });
     document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -915,12 +919,6 @@ export class BoardView {
     this.shownSeq = seq;
     // A different scene is a different board: nothing of the old one keeps playing.
     if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
-    const table = state.reducedEffects ?? false;
-    if (table !== this.tableReduced) {
-      const before = this.reducedMotion;
-      this.tableReduced = table;
-      if (this.reducedMotion !== before) this.motionChanged();
-    }
     this.syncMap();
     this.syncGrid();
     this.syncWalls();
@@ -2028,20 +2026,31 @@ export class BoardView {
     return this.measurement?.kind === "route" ? this.measurement : null;
   }
 
-  /** A Movement-mode click: start a route (from the selected token, if any) or add a snapped point to it. */
+  /** The footprint a route's stops snap to: the starting token's when its legs are searched like a drag, else one square. */
+  private routeSnapSize(route: { points: Point[]; tokenSize?: number } | null, origin: Point | null, tokenSize: number): number {
+    const start = route?.points[0] ?? origin;
+    const size = route ? route.tokenSize ?? 1 : origin ? tokenSize : 1;
+    return start && this.state && routeSearched(this.state, start, size) ? size : 1;
+  }
+
+  /** A Movement-mode click: start a route (from the selected token, if any) or add a snapped stop to it. */
   private routeClick(at: Point) {
     const grid = this.state?.scene.grid;
     if (!grid) return;
-    const point = snapTokenCenter(at, 1, grid);
     const route = this.route;
     if (route && !route.done) {
+      const point = snapTokenCenter(at, this.routeSnapSize(route, null, 1), grid);
       const last = route.points[route.points.length - 1]!;
       if (last.x !== point.x || last.y !== point.y) this.measurement = { ...route, points: [...route.points, point] };
+      this.routeHover = point;
     } else {
       const origin = this.movementOrigin;
-      this.measurement = { kind: "route", points: origin && (origin.x !== point.x || origin.y !== point.y) ? [origin, point] : [origin ?? point], done: false };
+      // From a token, its footprint: the legs then route as dragging it would (ruler-modes).
+      const tokenSize = origin ? this.movementTokenSize : undefined;
+      const point = snapTokenCenter(at, this.routeSnapSize(null, origin, this.movementTokenSize), grid);
+      this.measurement = { kind: "route", points: origin && (origin.x !== point.x || origin.y !== point.y) ? [origin, point] : [origin ?? point], done: false, tokenSize };
+      this.routeHover = point;
     }
-    this.routeHover = point;
     this.redrawOverlay();
   }
 
@@ -2671,9 +2680,10 @@ export class BoardView {
         const last = mark.points[mark.points.length - 1]!;
         const points = hover && (hover.x !== last.x || hover.y !== last.y) ? [...mark.points, hover] : mark.points;
         if (!this.you || points.length === 0) return;
-        const plan = routePlan(this.state!, this.you, points);
+        // The line follows the searched path; the dots stay on the stops the viewer placed.
+        const plan = routePlan(this.state!, this.you, points, mark.tokenSize);
         const color = plan.blocked ? 0xffa570 : MEASURE_COLOR;
-        const [first, ...rest] = points;
+        const [first, ...rest] = plan.points;
         g.moveTo(first!.x, first!.y);
         for (const p of rest) g.lineTo(p.x, p.y);
         g.stroke({ width: 3 * px, color, join: "round" });
@@ -3056,13 +3066,14 @@ export class BoardView {
 
   /**
    * A defeated token (ADR 0049) falls before it leaves: it greys, shakes, shrinks and fades while a few
-   * flecks scatter. `syncTokens` keeps the sprite until this ends; the position is never changed. Reduced
-   * motion, low quality or a crowd of deaths get a plain 200 ms fade. A timer backs the frame loop.
+   * flecks scatter. `syncTokens` keeps the sprite until this ends; the position is never changed. The
+   * Reduced level, low quality or a crowd of deaths get a plain 200 ms fade, and the None level removes
+   * the token at once. A timer backs the frame loop.
    */
   private playDefeat(tokenId: string) {
     const view = this.tokens.get(tokenId);
     if (!view || view.container.destroyed || this.dying.has(tokenId)) return;
-    const plan = defeatPlan({ reducedMotion: this.reducedMotion, quality: getClientSettings().graphicsQuality, active: this.dying.size });
+    const plan = defeatPlan({ level: this.level, quality: getClientSettings().graphicsQuality, active: this.dying.size });
     const { container, art, radius } = view;
     container.eventMode = "none";
     // Sound follows the volume setting, not reduced motion; a crowd past the effect cap stays quiet.
@@ -3121,6 +3132,8 @@ export class BoardView {
       return true;
     };
     this.dying.set(tokenId, finish);
+    // No animations: the token leaves in this same frame (animation-levels).
+    if (plan.durationMs === 0) return finish();
     timer = window.setTimeout(finish, plan.durationMs + 300);
     this.animations.add(step);
     this.schedule();
@@ -3154,7 +3167,8 @@ export class BoardView {
       this.invalidate();
       return false;
     };
-    if (points.length < 2 || this.reducedMotion) return jump();
+    // Only the None level jumps; Reduced still slides (animation-levels).
+    if (points.length < 2 || this.level === "none") return jump();
     // A stretch the viewer can't see takes no time: the token jumps across it, never drawn inside fog.
     const hidden = new Set(gaps);
     const lengths = points.slice(1).map((p, i) => (hidden.has(i) ? 0 : Math.hypot(p.x - points[i]!.x, p.y - points[i]!.y)));
@@ -3244,13 +3258,14 @@ export class BoardView {
     this.invalidate();
   }
 
-  /** Frames the two fighters, over a short glide (or at once with reduced motion); the viewer's own pan or zoom still wins afterwards. */
+  /** Frames the two fighters over a short glide, at the Full level only; the viewer's own pan or zoom still wins afterwards. */
   /**
    * Called as an attack's roll is committed, before its dice are thrown, so the dice land where the
    * camera is going. Attacks made together (one per target) keep the first one's framing.
    */
   focusStrike(effect: { fromId: string; toId: string }) {
-    if (!this.initialized || !getClientSettings().autoFocusAttacks) return;
+    // Below Full no strike is drawn, so the camera stays put (animation-levels).
+    if (!this.initialized || !getClientSettings().autoFocusAttacks || this.reducedMotion) return;
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
@@ -3293,10 +3308,6 @@ export class BoardView {
       this.syncTextSharpness();
       this.invalidate();
     };
-    if (this.reducedMotion) {
-      this.focusCentre = null;
-      return apply(1);
-    }
     const started = performance.now();
     const step = (now: number) => {
       const t = Math.min(1, (now - started) / FIGHT_FOCUS_MS);
@@ -3313,6 +3324,11 @@ export class BoardView {
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
+    // Below Full nothing is drawn for a strike: only its one soft cue plays (animation-levels).
+    if (this.reducedMotion) {
+      playFxSound(effect.animation, true);
+      return;
+    }
     // The vector look works until the art arrives; avoid these requests while opening a board.
     void loadFxTextures();
     const host = this.fxHost();
@@ -3329,9 +3345,15 @@ export class BoardView {
   }
 
   private playNukeFx(effect: Extract<AttackEffect, { kind: "nuke" }>) {
-    void loadFxTextures();
     // One large blast at a time: repeated clicks replace the previous effect and free its objects.
     for (const entry of [...this.fxRuns]) this.endFx(entry);
+    // No animations: nothing is drawn; the cue plays and the hit points land at once (animation-levels).
+    if (this.level === "none") {
+      playFxSound(effect.animation, true);
+      this.callbacks.nukeImpact?.();
+      return;
+    }
+    void loadFxTextures();
     const { width, height } = this.app.screen;
     const host = { ...this.fxHost(), layer: this.screenFxLayer };
     this.startFx(withSound(playNuke(host, {
@@ -3627,7 +3649,7 @@ export class BoardView {
       this.redrawOverlay();
     }
     if (this.tool.kind === "measure" && this.route && !this.route.done && this.state) {
-      const hover = snapTokenCenter(this.toBoard(e.global), 1, this.state.scene.grid);
+      const hover = snapTokenCenter(this.toBoard(e.global), this.routeSnapSize(this.route, null, 1), this.state.scene.grid);
       if (hover.x !== this.routeHover?.x || hover.y !== this.routeHover?.y) {
         this.routeHover = hover;
         this.redrawOverlay();

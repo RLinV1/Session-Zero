@@ -7,7 +7,6 @@ import {
   attackEffectFor,
   attackPlan,
   effectToPlay,
-  effectiveReducedMotion,
   type AttackEffect,
   conditionLoopWanted,
   loopFrameDue,
@@ -325,22 +324,6 @@ describe("nuke effect (FR-TAC-06, ADR 0038)", () => {
     const effect = attackEffectFor(nuked, state, gm)!;
     expect(attackPlan(effect, false)).toEqual({ motion: true, durationMs: NUKE_PRESET.duration * 1000 });
     expect(attackPlan(effect, true).motion).toBe(false);
-  });
-});
-
-describe("table-wide reduced animations (ADR 0038)", () => {
-  it("is reduced when the GM turned it on, even if the device allows motion", () => {
-    expect(effectiveReducedMotion({ reducedEffects: true }, false)).toBe(true);
-    const strike = { kind: "strike", fromId: "a", toId: "b", animation: ATTACK_STYLE_PRESETS.melee } as const;
-    expect(attackPlan(strike, effectiveReducedMotion({ reducedEffects: true }, false)).motion).toBe(false);
-  });
-
-  it("is reduced when the device asks for it, whatever the table says", () => {
-    expect(effectiveReducedMotion({ reducedEffects: false }, true)).toBe(true);
-  });
-
-  it("moves normally when neither asks for reduced motion", () => {
-    expect(effectiveReducedMotion({ reducedEffects: false }, false)).toBe(false);
   });
 });
 

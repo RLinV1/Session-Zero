@@ -184,7 +184,7 @@ Every token's throw of one roll SHALL leave together, so the roll lands as soon 
 - **THEN** each token gets one die showing its total, dropped straight onto it, and all of them land together
 
 ### Requirement: Damage numbers on resolve
-When an Area Effect is resolved, each viewer's board SHALL play the same damage number it plays for an applied damage roll, on every target that viewer can see whose amount is above 0, all at once. Healing and 0 SHALL show no number. With reduced motion, the numbers SHALL show without moving.
+When an Area Effect is resolved, each viewer's board SHALL play the same damage number it plays for an applied damage roll, on every target that viewer can see whose amount is above 0, all at once. Healing and 0 SHALL show no number. At the Reduced Animations level (`animation-levels`), the numbers SHALL show without moving. At the None level, no number SHALL be shown.
 
 #### Scenario: Fireball resolved
 - **WHEN** the GM confirms 28 on Goblin 1, 14 on Goblin 2 and 0 on the Ogre
@@ -193,6 +193,10 @@ When an Area Effect is resolved, each viewer's board SHALL play the same damage 
 #### Scenario: Hidden target
 - **WHEN** a hidden Assassin takes 11 in the same resolve
 - **THEN** players see no number for it, and their copy of the event carries no amount for it
+
+#### Scenario: No numbers on None
+- **WHEN** a viewer on None sees the Fireball resolved
+- **THEN** no number is drawn on their board and the goblins' hit points still update
 
 ### Requirement: Undoing a resolved effect
 A resolved Area Effect SHALL be one undoable action in the GM's activity log. Undoing it SHALL put back every HP value and every condition set it changed, as one action. It SHALL be refused, like any undo, if any of those values has changed since. Undo SHALL NOT reopen the effect.

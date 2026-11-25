@@ -3345,6 +3345,14 @@ body:has(.guest-tutorial) dialog.modal[open]::backdrop { background: transparent
 .board-roll-popup { flex-wrap: wrap; row-gap: 0.15rem; }
 .board-roll-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .board-roll-breakdown { flex-basis: 100%; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* The Reduced Animations level's flat dice (animation-levels): each die its own still outline, value inside. */
+.board-roll-dice { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0 0; padding: 0; }
+.board-roll-die { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; }
+.board-roll-die-shape { width: 2.75rem; height: 2.75rem; display: block; overflow: visible; }
+.board-roll-die-shape polygon { fill: var(--field); stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.board-roll-die-shape text { fill: var(--text); font-family: var(--font-mono); font-size: 14px; font-weight: 700; }
+.board-roll-popup.private .board-roll-die-shape polygon { stroke: var(--warn); }
+.board-roll-die-type { font-size: var(--fs-xs, 0.7rem); color: var(--muted); font-variant-numeric: tabular-nums; }
 .board-roll-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; min-width: 0; }
 .board-roll-meta .muted { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 @media (prefers-reduced-motion: no-preference) {

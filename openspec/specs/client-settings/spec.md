@@ -21,7 +21,7 @@ On a desktop-width room page, the top bar SHALL show a Settings button, an icon-
 - **THEN** keyboard focus is back on the gear button
 
 ### Requirement: Preferences tab
-The Settings dialog SHALL have a Preferences tab, after Audio and Graphics and before Table, shown to everyone, including on the account pages. It SHALL hold the switch "Arrow keys move selected token", on by default, and, for the GM in a room, the switch **Turn banner on every turn** (see `turn-notice`). While "Arrow keys move selected token" is on, the arrow keys SHALL move the selected token one square, as before, whenever the viewer may move that token. While it is off, the arrow keys SHALL NOT move tokens. The token card SHALL NOT show its own arrow-key switch. Each choice SHALL be saved in this browser and shared by every room.
+The Settings dialog SHALL have a Preferences tab, after Audio and Graphics and before Table, shown to everyone, including on the account pages. It SHALL hold the switch "Arrow keys move selected token", on by default, and, for everyone in a room, GM and players alike, the switch **Turn banner on every turn** (see `turn-notice`). The turn banner switch SHALL NOT show outside a room. While "Arrow keys move selected token" is on, the arrow keys SHALL move the selected token one square, as before, whenever the viewer may move that token. While it is off, the arrow keys SHALL NOT move tokens. The token card SHALL NOT show its own arrow-key switch. Each choice SHALL be saved in this browser and shared by every room.
 
 #### Scenario: Turning arrow-key movement off
 - **WHEN** a player turns off "Arrow keys move selected token" in Settings and then selects their token and presses Right
@@ -38,6 +38,14 @@ The Settings dialog SHALL have a Preferences tab, after Audio and Graphics and b
 #### Scenario: Named Preferences
 - **WHEN** anyone opens Settings
 - **THEN** the tab after Graphics reads "Preferences", and no tab reads "Controls"
+
+#### Scenario: Players see the turn banner switch
+- **WHEN** a player opens Settings → Preferences in a room
+- **THEN** the switch Turn banner on every turn is shown, off unless they turned it on
+
+#### Scenario: Not on the account pages
+- **WHEN** anyone opens Settings → Preferences from the account pages
+- **THEN** the switch Turn banner on every turn is not shown
 
 ### Requirement: Earlier choices carry forward
 A browser's saved settings SHALL survive the addition of new settings. A setting missing from what is saved SHALL take its default, while every saved setting that is still valid SHALL keep its saved value. A saved value that is invalid SHALL fall back to its default without resetting the other settings. A browser that saved the arrow-key switch on the token card before this change SHALL keep that choice in "Arrow keys move selected token".
@@ -63,11 +71,15 @@ High, Balanced and Low graphics quality SHALL control canvas pixel density, effe
 - **AND** other viewers' settings and room data remain unchanged
 
 ### Requirement: Reduced animations compose with existing preferences
-The local Reduced animations preference SHALL combine with the device preference and GM table preference. An enabled device or table preference SHALL remain effective when the local switch is off. Still Pixi markers SHALL paint once and use a removal timer rather than an animation loop.
+The viewer's Animations level (`animation-levels`) SHALL combine with the device preference only: a device preference for reduced motion SHALL make the level None whatever the viewer chose. A room's table-wide reduced-animations flag SHALL NOT affect the level. Still Pixi markers SHALL paint once and use a removal timer rather than an animation loop.
 
 #### Scenario: Audio controls leave graphical effects alone
 - **WHEN** either saved volume is adjusted
 - **THEN** no canvas resize or effect restart occurs
+
+#### Scenario: Room flag ignored
+- **WHEN** a viewer with Animations on Full joins a room whose table-wide reduced flag is on
+- **THEN** their board plays at Full
 
 ### Requirement: Preferences survive storage limitations
 Validated preferences SHALL persist in browser storage and follow changes from another tab. Invalid values SHALL fall back to safe defaults. Blocked or full storage SHALL not prevent the settings controls from working for the current visit.

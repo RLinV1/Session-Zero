@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { MIN_HP, type RoomState, type TokenStats } from "@vtt/shared";
 import type { RoomConnection } from "../net/roomConnection";
 import { NUKE_PRESET } from "./effectPresets";
-import { effectiveReducedMotion } from "./effects";
+import { motionReduced } from "../ui/motion";
 import { subscribeGraphicsSettings } from "../ui/clientSettings";
 import { NUKE_DROP_SHARE } from "./fxBudget";
 
@@ -32,7 +32,7 @@ export function useNukeHealth(connection: RoomConnection, enabled: boolean) {
     if (!enabled) return;
     const stop = connection.onCommitted(({ event }, before) => {
       if (event.type === "MapNuked") {
-        if (document.visibilityState === "hidden" || effectiveReducedMotion(before)) return impact();
+        if (document.visibilityState === "hidden" || motionReduced()) return impact();
         const next: Record<string, HeldHealth> = {};
         for (const token of Object.values(before.tokens)) {
           const hp = token.stats.hp;

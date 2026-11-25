@@ -25,7 +25,7 @@ by everyone at the table.
 | Option | Does |
 | --- | --- |
 | Arrow keys move selected token | Move your selected token one square per key press |
-| Turn banner on every turn (GM) | Shows the turn banner with **End turn** on every token's turn, not only yours |
+| Turn banner on every turn | Shows the turn banner on every token's turn, not only yours. **End turn** appears only on turns you may end: the GM's on every turn, a player's on their own tokens' turns. Shown in a room only. |
 
 ## Table (GM, shared)
 

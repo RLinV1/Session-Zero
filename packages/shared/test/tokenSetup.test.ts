@@ -109,6 +109,6 @@ describe("KAN-12 token setup", () => {
     expect(valid.events.map((e) => e.type)).toEqual(["TokenStatsSet", "TokenConditionsSet"]);
     expect(valid.state.tokens[token.id]).toMatchObject({ stats: { hp: 8, maxHp: 10, ac: 12 }, conditions: ["prone"] });
     expect(attempt(state, alice, { type: "token.configure", tokenId: token.id,
-      changes: { name: "Unauthorized", stats: { hp: 8, maxHp: 10, ac: 12 } } })).toMatchObject({ ok: false, code: "forbidden" });
+      changes: { size: 2, stats: { hp: 8, maxHp: 10, ac: 12 } } })).toMatchObject({ ok: false, code: "forbidden" });
   });
 });

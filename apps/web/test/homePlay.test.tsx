@@ -160,6 +160,21 @@ describe("attacks load the board's renderer only near the viewport (gm-home: The
   });
 });
 
+describe("the home attack demo follows the Animations level (animation-levels)", () => {
+  it.each(["reduced", "none"] as const)("shows the still at %s, and never fetches the renderer", async (level) => {
+    vi.resetModules();
+    stageLoaded.mockClear();
+    const { setClientSettings } = await import("../src/ui/clientSettings");
+    setClientSettings({ animationLevel: level });
+    const { AttackTile: Tile } = await import("../src/pages/home/AttackTile");
+    render(<Tile />);
+    await act(async () => scrollNear(".attack-slot"));
+    expect(screen.getByRole("img", { name: /fireball/ }).getAttribute("src")).toBe("/img/home/attack-still.webp");
+    expect(stageLoaded).not.toHaveBeenCalled();
+    setClientSettings({ animationLevel: "full" });
+  });
+});
+
 describe("turn order runs the table's rules (gm-home, FR-GM-21)", () => {
   it("advances with Next turn through decide, and gives Mara's player the table's turn banner", () => {
     render(<TurnTile />);
