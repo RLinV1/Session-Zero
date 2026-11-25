@@ -63,6 +63,7 @@ else if(message.method==='ui/update-model-context'){
     return;
   }
   selection=item ? JSON.parse(item.text).studioSelection : null;
+  if(selection)window.studioPublishedSelections=(window.studioPublishedSelections??0)+1;
   document.querySelector('[data-testid="chat-attachment"]').textContent=item?._meta?.['openai/title'] ?? '';
   window.studioSelection=selection;
   respond({});
@@ -229,18 +230,48 @@ test("the normal composer carries the current Studio selection and delivers a sc
   const select = studio.getByRole("button", { name: "Select area", exact: true });
   const chip = page.getByTestId("chat-attachment");
   const ready = studio.getByText("Selection attached. Ask for the change in chat.");
-  type SelectedScope = { buildId: string; selectionId: string };
+  type SelectedScope = { buildId: string; selectionId: string; editable: string[]; contains: { walls: number; doors: number } };
   const currentSelection = () => page.evaluate(() => (window as Window & { studioSelection?: SelectedScope }).studioSelection);
   // Like the model, pass only the reference from the attached selection; its description is for reading.
   const start = ({ buildId: build, selectionId }: SelectedScope, instruction = "Open the selected door.") =>
     tool("studio_start_correction", { buildId: build, selectionId, instruction });
 
   await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
+  const fit = studio.getByRole("button", { name: "Fit", exact: true });
+  const camera = () => canvas.evaluate((element) => {
+    const { x, y, width } = (element as SVGSVGElement).viewBox.baseVal;
+    return { x, y, width };
+  });
+  await fit.click();
+  const fitted = await camera();
+  await studio.getByRole("button", { name: "Zoom out", exact: true }).click();
+  const wider = await camera();
+  expect(wider.width).toBeGreaterThan(fitted.width);
+  await canvas.dispatchEvent("wheel", { deltaMode: 0, deltaX: 20, deltaY: 15, cancelable: true });
+  const panned = await camera();
+  expect(panned.width).toBeCloseTo(wider.width);
+  expect(panned.x).toBeGreaterThan(wider.x);
+  expect(panned.y).toBeGreaterThan(wider.y);
+  await canvas.dispatchEvent("wheel", { ctrlKey: true, deltaY: -15, cancelable: true });
+  expect((await camera()).width).toBeLessThan(panned.width);
+  await fit.click();
+
+  const pick = studio.getByRole("button", { name: "Pick object", exact: true });
+  await pick.click();
+  await expect(pick).toHaveAttribute("aria-pressed", "true");
+  await canvas.press("ArrowRight");
+  await canvas.press("ArrowRight");
+  await canvas.press("Enter");
+  await expect.poll(async () => (await currentSelection())?.contains.doors).toBe(1);
+  expect((await currentSelection())?.editable).toEqual(["walls and openings"]);
+  await fit.click();
+
   await expect(select).toBeEnabled();
   await select.click();
   await expect(select).toHaveAttribute("aria-pressed", "true");
   await dragSelection(page, canvas, [140, 150], [345, 245]);
   await expect(chip).toHaveText("Chapel selection");
+  await expect.poll(async () => (await currentSelection())?.editable).toEqual(["walls and openings", "terrain", "creature placements"]);
   await expect(ready).toBeVisible();
   await expect(studio.getByLabel("Correction instruction")).toHaveCount(0);
   await expect(studio.getByRole("button", { name: "Send to chat" })).toHaveCount(0);
@@ -248,10 +279,19 @@ test("the normal composer carries the current Studio selection and delivers a sc
   expect(original.buildId).toBe(buildId);
   expect((await request.get(`${correctionRoute(buildId)}/revisions`)).status()).toBe(404);
 
+  await studio.getByText("Objects crossing the selection", { exact: true }).click();
+  const includeWall = studio.getByRole("checkbox", { name: /^Include entire Wall at/ });
+  await expect(includeWall).not.toBeChecked();
+  await includeWall.check();
+  await expect.poll(async () => (await currentSelection())?.contains.walls).toBe(1);
+  await includeWall.uncheck();
+  await expect.poll(async () => (await currentSelection())?.contains.walls).toBe(0);
+  const beforeRedraw = (await currentSelection())!;
+
   await dragSelection(page, canvas, [118, 177], [356, 243]);
-  await expect.poll(async () => (await currentSelection())?.selectionId).not.toBe(original.selectionId);
   await expect(ready).toBeVisible();
   const replaced = (await currentSelection())!;
+  expect(replaced.selectionId).not.toBe(beforeRedraw.selectionId);
   expect((await start(original)).isError).toBe(true);
   await studio.getByRole("button", { name: "Clear selection" }).click();
   await expect(chip).toBeEmpty();
@@ -291,5 +331,52 @@ test("the normal composer carries the current Studio selection and delivers a sc
   await expect(studio.getByLabel("Correction instruction")).toHaveCount(0);
   await expect(chip).toBeEmpty();
   expect((await history()).requests).toHaveLength(1);
+  await page.evaluate(() => { (window as Window & { studioRefuseAttachment?: boolean }).studioRefuseAttachment = false; });
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await expect(ready).toBeVisible();
+  await expect(chip).toHaveText("Chapel selection");
+});
 
+test("a pending selection cannot attach after clear and an expired attachment is removed", async ({ page, request }) => {
+  const session = await mount(page, request, { chatSelection: true });
+  await preparedCorrection(session, request);
+  const studio = session.frame.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
+  const select = studio.getByRole("button", { name: "Select area", exact: true });
+  const chip = page.getByTestId("chat-attachment");
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => { release = resolve; });
+  let reached!: () => void;
+  const staging = new Promise<void>((resolve) => { reached = resolve; });
+  let delayedOnce = false;
+  let clears = 0;
+  await page.route("**/_studio_bridge", async (route) => {
+    const message = route.request().postDataJSON() as { method: string; params: { name?: string; arguments?: { draft?: unknown } } };
+    if (message.params.name !== "studio_stage_chat_selection") return route.fallback();
+    const answer = await session.rpc(message.method, message.params);
+    if (!message.params.arguments?.draft) clears++;
+    else if (!delayedOnce) { delayedOnce = true; reached(); await delayed; }
+    else {
+      // Server TTL is verified in the store tests. Shorten the advertised TTL in this host fixture.
+      (answer.result.structuredContent as { expiresAt: string }).expiresAt = new Date(Date.now() + 2000).toISOString();
+    }
+    await route.fulfill({ json: answer });
+  });
+
+  await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
+  await select.click();
+  await expect(select).toHaveAttribute("aria-pressed", "true");
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await staging;
+  try { await studio.getByRole("button", { name: "Clear selection" }).click(); }
+  finally { release(); }
+  await expect.poll(() => clears).toBe(1);
+  await expect(chip).toBeEmpty();
+  expect(await page.evaluate(() => (window as Window & { studioPublishedSelections?: number }).studioPublishedSelections ?? 0)).toBe(0);
+
+  await select.click();
+  await expect(select).toHaveAttribute("aria-pressed", "true");
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await expect(chip).toHaveText("Chapel selection");
+  await expect(studio.getByText("The chat selection expired. Select an area or object again.")).toBeVisible();
+  await expect(chip).toBeEmpty();
 });

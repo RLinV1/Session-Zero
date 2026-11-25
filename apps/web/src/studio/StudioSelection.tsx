@@ -9,6 +9,7 @@ import { studioT, type StudioLocale } from "./text";
 type Tool = "region" | "objects" | "pan";
 interface DraftSelection {
   tool: Tool;
+  revision: number;
   region: StudioRectangle | null;
   layers: StudioEditLayer[];
   excluded: string[];
@@ -21,7 +22,7 @@ const area = (a: Point, b: Point): StudioRectangle => ({
 export const objectCenter = (bounds: StudioRectangle): Point => ({ x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 });
 const positive = (r: StudioRectangle) => r.minX < r.maxX && r.minY < r.maxY;
 const box = (r: StudioRectangle) => ({ x: r.minX, y: r.minY, width: r.maxX - r.minX, height: r.maxY - r.minY });
-const emptyDraft: DraftSelection = { tool: "region", region: null, layers: [], excluded: [], whole: [] };
+const emptyDraft: DraftSelection = { tool: "region", revision: 0, region: null, layers: [], excluded: [], whole: [] };
 const arrows: Record<string, Point> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } };
 export const editLayers = ["geometry", "terrain", "placements"] as const;
 
@@ -33,23 +34,25 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
   const cellsId = useId().replace(/:/g, "");
   const [draft, setDraft] = useState<DraftSelection>(emptyDraft);
   const [cursor, setCursor] = useState<Point | null>(null);
+  const [keyboardObjectId, setKeyboardObjectId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<StudioRectangle | null>(null);
   const anchor = useRef<Point | null>(null);
   const keyboardAnchor = useRef<Point | null>(null);
   const source = inspection?.scene.source;
   const grid = inspection?.scene.grid;
   const objects = inspection?.objects ?? [];
+  const keyboardObject = objects.find((object) => object.id === keyboardObjectId);
   const setTool = (tool: Tool) => {
     anchor.current = null; keyboardAnchor.current = null;
-    setDragging(null); setCursor(null); setDraft((old) => ({ ...old, tool }));
+    setDragging(null); setCursor(null); setKeyboardObjectId(null); setDraft((old) => ({ ...old, tool }));
   };
   const reset = (layers: StudioEditLayer[]) => {
     setTool("region");
-    setDraft({ ...emptyDraft, layers });
+    setDraft((old) => ({ ...emptyDraft, revision: old.revision, layers }));
   };
   const clamp = (at: Point) => ({ x: Math.max(0, Math.min(at.x, source?.width ?? 0)), y: Math.max(0, Math.min(at.y, source?.height ?? 0)) });
   function selectRegion(region: StudioRectangle) {
-    if (positive(region)) setDraft((old) => ({ ...old, region, excluded: [], whole: [] }));
+    if (positive(region)) setDraft((old) => ({ ...old, revision: old.revision + 1, region, layers: allowed, excluded: [], whole: [] }));
   }
   function pick(object: StudioSelectionObject) {
     if (!source || !grid || !object.bounds || !allowed.includes(object.layer)) return;
@@ -57,7 +60,7 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
     const padding = Math.max(1, grid.cellSize / 2);
     const region = area(clamp({ x: r.minX - padding, y: r.minY - padding }), clamp({ x: r.maxX + padding, y: r.maxY + padding }));
     if (!positive(region)) return;
-    setDraft((old) => ({ ...old, region, layers: [object.layer],
+    setDraft((old) => ({ ...old, revision: old.revision + 1, region, layers: [object.layer],
       excluded: objects.filter((o) => o.id !== object.id).map((o) => o.id),
       whole: [] }));
   }
@@ -89,16 +92,15 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
   } : null;
   const coverage = draft.region && grid && layers.includes("terrain") ? studioTerrainCoverage(draft.region, grid) : null;
 
-  function toggleObject(id: string, crossing: boolean, enabled: boolean) {
-    setDraft((old) => crossing
-      ? { ...old, whole: enabled ? [...old.whole, id] : old.whole.filter((value) => value !== id) }
-      : { ...old, excluded: enabled ? old.excluded.filter((value) => value !== id) : [...old.excluded, id] });
+  function toggleWhole(id: string, enabled: boolean) {
+    setDraft((old) => ({ ...old, revision: old.revision + 1, whole: enabled ? [...old.whole, id] : old.whole.filter((value) => value !== id) }));
   }
   const interaction: StudioMapInteraction | undefined = inspection && !disabled ? {
     mode: draft.tool, pan: draft.tool === "pan", focus: cursor,
     onPress(at) {
+      setKeyboardObjectId(null); setCursor(null);
       if (draft.tool !== "region") return;
-      keyboardAnchor.current = null; setCursor(null);
+      keyboardAnchor.current = null;
       anchor.current = clamp(at);
     },
     onMove(at) {
@@ -117,9 +119,22 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
         else cancel();
         return;
       }
-      if (draft.tool !== "region") return;
       const direction = arrows[event.key];
       if (!direction && event.key !== "Enter") return;
+      if (draft.tool === "objects") {
+        event.preventDefault();
+        const available = objects.filter((object) => object.bounds && allowed.includes(object.layer));
+        if (!available.length) return;
+        const index = available.findIndex((object) => object.id === keyboardObjectId);
+        if (!direction) { pick(available[Math.max(index, 0)]!); return; }
+        const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+        const next = index < 0 ? (step > 0 ? 0 : available.length - 1) : (index + step + available.length) % available.length;
+        const object = available[next]!;
+        setKeyboardObjectId(object.id);
+        setCursor(objectCenter(object.bounds!));
+        return;
+      }
+      if (draft.tool !== "region") return;
       event.preventDefault();
       const at = cursor ?? clamp(center);
       if (direction) {
@@ -163,8 +178,7 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
         stroke="#fff" strokeWidth={px * 2} />}
     </g>;
   };
-  return { draft, reset, setTool, pick, objects, coverage, candidates, selection, interaction, drawOverlay, toggleObject,
-    toggleLayer: (layer: StudioEditLayer, enabled: boolean) => setDraft((old) => ({ ...old, layers: enabled ? [...old.layers, layer] : old.layers.filter((value) => value !== layer) })) };
+  return { draft, reset, setTool, keyboardObject, candidates, selection, interaction, drawOverlay, toggleWhole };
 }
 
 export function ObjectOutline({ object, px, color, dashed = false }: { object: StudioSelectionObject; px: number; color: string; dashed?: boolean }) {

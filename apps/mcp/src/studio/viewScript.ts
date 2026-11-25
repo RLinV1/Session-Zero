@@ -54,25 +54,28 @@ function activeFiles(data) {
   return [...(source ? [source] : []),...data.files.filter((file)=>ids.has(file.id) && file.id !== source?.id)];
 }
 // Keep context updates ordered across redraws and across workspace remounts in this app instance.
-let chatUpdates = Promise.resolve();
+let chatUpdates = Promise.resolve(), chatUpdateNumber = 0;
 function attachToChat(context,update,title,details) {
+  const order = ++chatUpdateNumber;
   const work = chatUpdates.then(async ()=>{
     const publish = (content) => app.updateModelContext({content},{timeout:8000});
+    if (update.draft && order !== chatUpdateNumber) return {selectionId:null};
     if (update.draft && (!isCurrent(context) || needsRetry)) throw new Error('Studio context changed');
     try {
       const result = await call('studio_stage_chat_selection',{buildId:context.buildId,...update});
-      const {selectionId} = resultData(result);
+      const {selectionId,expiresAt} = resultData(result);
+      if (order !== chatUpdateNumber) return {selectionId:null};
       const attached = selectionId && update.draft && isCurrent(context) && !needsRetry;
       // The description lets the AI say what is selected before any correction exists; the saved
       // selection on the server still bounds every edit.
       await publish(attached ? [{type:'text',text:JSON.stringify({studioSelection:{...details,buildId:context.buildId,selectionId,
         about:'The area the user selected in Session Zero Studio. To change it, call studio_start_correction with this buildId and selectionId and the user\'s request.'}}),
         _meta:{'openai/title':title}}] : []);
-      return {selectionId:attached ? selectionId : null};
+      return attached ? {selectionId,expiresAt} : {selectionId:null};
     } catch(error) {
       // The note in the view stays short; the reason goes to the console for diagnosis.
       console.warn('Session Zero Studio: selection not attached:', error?.code || error?.message || error);
-      await publish([]).catch(()=>undefined);
+      if (order === chatUpdateNumber) await publish([]).catch(()=>undefined);
       if (isCurrent(context) && accessEnded(error)) pauseForRetry(error);
       throw error;
     }

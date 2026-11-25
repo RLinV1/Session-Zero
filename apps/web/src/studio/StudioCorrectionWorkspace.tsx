@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  StudioChatSelectionUpdate, StudioCorrectionHistory, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot,
+  StudioChatSelectionReference, StudioChatSelectionUpdate, StudioCorrectionHistory, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot,
 } from "@vtt/shared";
 import { StudioSceneMap, type StudioMapInteraction } from "./StudioSceneMap";
-import { editLayers, useStudioSelection } from "./StudioSelection";
+import { editLayers, studioObjectLabel, useStudioSelection } from "./StudioSelection";
 import { studioChanges, StudioDiffOverlay, type StudioChange } from "./StudioDiff";
 import { chatSelectionDetails, type ChatSelectionDetails } from "./chatSelectionDetails";
 import { studioT, type StudioLocale, type StudioTextKey } from "./text";
@@ -15,7 +15,7 @@ export interface StudioAuthoringClient {
   restore(mapKey: string, input: StudioRestoreInput): Promise<unknown>;
   refresh(): void;
   /** Stages the selection for the user's next chat message; absent when the host can't carry it. */
-  attachToChat?(update: StudioChatSelectionUpdate, title: string, details?: ChatSelectionDetails): Promise<{ selectionId: string | null }>;
+  attachToChat?(update: StudioChatSelectionUpdate, title: string, details?: ChatSelectionDetails): Promise<StudioChatSelectionReference>;
   ensureMedia?(fileIds: string[]): void;
 }
 
@@ -80,21 +80,25 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const cancel = () => {
     setInspection(null); setFeedback(null);
   };
-  const selection = useStudioSelection(inspection, allowed, disabled || busy, cancel);
   const revisionId = snapshot.workingRevisionId;
   const invalidated = !!inspection && (snapshot.workingBindingChanged || (inspection.workingRevisionId ?? undefined) !== revisionId);
   const needsInspection = invalidated || feedback === "correction.error.conflict";
-  const chatDraft = chatEnabled && mapKey && inspection && !needsInspection && !disabled && selection.selection
+  const selection = useStudioSelection(inspection, allowed, disabled || busy || needsInspection, cancel);
+  const selectedDraft = chatEnabled && mapKey && inspection && selection.selection
     ? JSON.stringify({ mapKey, encounterKey, inspectedVersion: inspection.inspectedVersion, selection: selection.selection })
     : null;
+  const chatDraft = needsInspection || disabled ? null : selectedDraft;
+  // Explicitly picking the same scope again must retry delivery and invalidate the old reference.
+  const selectedKey = selectedDraft && `${selection.draft.revision}:${selectedDraft}`;
+  const chatKey = chatDraft && selectedKey;
   const mapName = snapshot.maps.find((map) => map.key === mapKey)?.name ?? "";
   const chatTitle = t("correction.chatTitle", { map: mapName });
   // Derived from the same inspection and selection as chatDraft, so it changes only when the draft does.
   const chatDetails = chatDraft && inspection && mapKey
     ? JSON.stringify(chatSelectionDetails(inspection, selection.selection!, mapName, mapKey, encounterKey)) : null;
   const attachmentView = useRef<{ id: string; sequence: number } | null>(null);
-  const [attachment, setAttachment] = useState<{ draft: string; selectionId: string | null } | null>(null);
-  const attachFailed = chatDraft !== null && attachment?.draft === chatDraft && attachment.selectionId === null;
+  const [attachment, setAttachment] = useState<{ key: string; selectionId: string | null } | null>(null);
+  const attachFailed = chatKey !== null && attachment?.key === chatKey && attachment.selectionId === null;
 
   useEffect(() => {
     if (!chatEnabled || (!chatDraft && !attachmentView.current)) return;
@@ -103,16 +107,26 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     const deliver = adapter.current.attachToChat;
     if (!deliver) return;
     let current = true;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
     const details = chatDetails === null ? undefined : JSON.parse(chatDetails) as ChatSelectionDetails;
-    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle, details).then(({ selectionId }) => {
-      if (current && chatDraft !== null) setAttachment({ draft: chatDraft, selectionId });
-    }).catch(() => {
-      if (!current || chatDraft === null) return;
-      setAttachment({ draft: chatDraft, selectionId: null });
+    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle, details).then(({ selectionId, expiresAt }) => {
+      if (!current || chatKey === null) return;
+      setAttachment({ key: chatKey, selectionId });
+      if (selectionId && expiresAt) expiry = setTimeout(() => {
+        setInspection(null); setAttachment(null); setFeedback("correction.chatExpired");
+      }, Math.max(0, Date.parse(expiresAt) - Date.now()));
+    }).catch((error: unknown) => {
+      if (!current || chatKey === null) return;
+      if (actionError(error).message === "correction.error.conflict") {
+        setFeedback("correction.error.conflict");
+        adapter.current.refresh();
+        return;
+      }
+      setAttachment({ key: chatKey, selectionId: null });
       void deliver({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
     });
-    return () => { current = false; };
-  }, [chatDraft, chatDetails, chatEnabled, chatTitle]);
+    return () => { current = false; clearTimeout(expiry); };
+  }, [chatDraft, chatDetails, chatEnabled, chatKey, chatTitle]);
   useEffect(() => () => {
     const view = attachmentView.current;
     if (view) void adapter.current.attachToChat?.({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
@@ -143,7 +157,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const head = history?.workingRevisionId ?? revisionId;
   const revisions = revisionId ? history?.revisions ?? [] : [];
   const requests = revisionId ? history?.requests ?? [] : [];
-  const attachedRequest = attachment?.selectionId && requests.find((request) => request.requestId === attachment.selectionId);
+  const attachedRequest = attachment?.selectionId && attachment.key === selectedKey &&
+    requests.find((request) => request.requestId === attachment.selectionId);
   useEffect(() => {
     // The AI started a correction from this selection: leave selection and show its proposal when it arrives.
     if (!inspection || !attachedRequest) return;
@@ -210,7 +225,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     }
   }
   function chooseTool(tool: Tool) {
-    if (inspection && !needsInspection) selection.setTool(tool);
+    if (inspection && (tool === "pan" || !needsInspection)) selection.setTool(tool);
     else if (tool !== "pan") void startSelection(tool);
   }
 
@@ -234,7 +249,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
 
   const interaction: StudioMapInteraction | undefined = inspection ? selection.interaction
     : focused?.focus ? { focus: { x: (focused.focus.minX + focused.focus.maxX) / 2, y: (focused.focus.minY + focused.focus.maxY) / 2 } } : undefined;
-  const activeTool: Tool = inspection ? selection.draft.tool : "pan";
+  const activeTool: Tool = inspection && !needsInspection ? selection.draft.tool : "pan";
+  const crossing = selection.draft.tool === "region" ? selection.candidates.filter(({ coverage }) => coverage === "crossing") : [];
   const canSelect = chatEnabled && !disabled && !busy && !!snapshot.scene.grid && !snapshot.workingBindingChanged && allowed.length > 0;
   const toolbar = <>
     {chatEnabled && <div className="studio-tools" role="toolbar" aria-label={t("correction.tools")}>
@@ -253,9 +269,19 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     <StudioSceneMap scene={displayed} locale={locale} media={media} interaction={interaction} reportIssues={displayed === snapshot.scene} toolbar={toolbar}
       drawOverlay={inspection ? selection.drawOverlay : compared?.base ? (px) => <StudioDiffOverlay changes={changes} focused={focused?.id ?? null} px={px} /> : undefined} />
     {chatDraft && <p role="status" className="studio-note">{t(attachFailed ? "correction.chatAttachFailed"
-      : attachment?.draft === chatDraft ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
-    {needsInspection && <p role="status" className="studio-note">{invalidated && feedback !== "correction.error.conflict" && t("correction.error.conflict")}{" "}
-      <button type="button" disabled={busy} onClick={() => void startSelection(activeTool === "pan" ? "region" : activeTool)}>{t("correction.reselect")}</button></p>}
+      : attachment?.key === chatKey ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
+    {inspection && !needsInspection && selection.keyboardObject && <p role="status" className="studio-note">
+      {studioObjectLabel(locale, selection.keyboardObject)}
+    </p>}
+    {inspection && !needsInspection && crossing.length > 0 && <details className="studio-placements">
+      <summary>{t("correction.crossingObjects")}</summary>
+      <ul>{crossing.map(({ object, included }) => <li key={object.id}><label>
+        <input type="checkbox" checked={included} disabled={busy || disabled} onChange={(event) => selection.toggleWhole(object.id, event.currentTarget.checked)} />{" "}
+        {t("correction.includeWhole", { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY) })}
+      </label></li>)}</ul>
+    </details>}
+    {needsInspection && <p role="status" className="studio-note">{t("correction.error.conflict")}{" "}
+      <button type="button" disabled={busy || disabled} onClick={() => void startSelection(selection.draft.tool === "pan" ? "region" : selection.draft.tool)}>{t("correction.reselect")}</button></p>}
     {displayed !== snapshot.scene && snapshot.workingBindingChanged && <p className="studio-note" role="status">{t("correction.bindingChanged")}</p>}
     {feedback && feedback !== "correction.error.conflict" && <p role={feedback === "correction.restored" ? "status" : "alert"}>{t(feedback)}</p>}
     {retryRestore && <button type="button" disabled={busy || disabled} onClick={() => void restore()}>{t("correction.retryRestore")}</button>}

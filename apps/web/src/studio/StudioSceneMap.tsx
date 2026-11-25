@@ -22,7 +22,7 @@ export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay,
   const id = useId().replace(/:/g, "");
   const [layers, setLayers] = useState({ grid: true, walls: true, terrain: true, tokens: true, marks: true });
   const [failedPreview, setFailedPreview] = useState<string | null>(null);
-  const selecting = interaction?.mode === "region" || interaction?.mode === "objects";
+  const canvasLabel = interaction?.mode === "objects" ? "correction.objectCanvas" : interaction?.mode === "region" ? "correction.canvas" : "canvas";
   const source = scene.source;
   const suggestion = scene.detection?.status === "suggested" ? scene.detection.suggestion : null;
   const grid = scene.grid ?? (suggestion ? { ...DEFAULT_GRID, ...suggestion } : null);
@@ -32,7 +32,7 @@ export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay,
       <fieldset className="studio-layer-controls"><legend>{t("layers")}</legend>{(Object.keys(layers) as (keyof typeof layers)[]).map((layer) => <label key={layer}>
         <input type="checkbox" checked={layers[layer]} onChange={(event) => setLayers((current) => ({ ...current, [layer]: event.target.checked }))} />{t(layer)}
       </label>)}</fieldset>
-      {media[source.id] ? <MapViewport map={{ url: media[source.id]!, width: source.width, height: source.height }} mode="pan" pan label={t(selecting ? "correction.canvas" : "canvas")} keyboardNavigation minZoom={0.5} wheel="auto" toolbar={toolbar} {...interaction} onImageError={() => setFailedPreview(media[source.id] ?? null)}
+      {media[source.id] ? <MapViewport map={{ url: media[source.id]!, width: source.width, height: source.height }} mode="pan" pan label={t(canvasLabel)} keyboardNavigation minZoom={0.5} wheel="auto" toolbar={toolbar} {...interaction} onImageError={() => setFailedPreview(media[source.id] ?? null)}
         texts={{ zoom: t("zoom"), fit: t("fit"), zoomIn: t("zoomIn"), zoomOut: t("zoomOut") }}>
         {({ scale, px }) => <>
           <defs><clipPath id={`${id}-bounds`}><rect width={source.width} height={source.height} /></clipPath>
