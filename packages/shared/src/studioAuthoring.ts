@@ -89,11 +89,20 @@ export const StudioCorrectionHistory = z.object({
 });
 export type StudioCorrectionHistory = z.infer<typeof StudioCorrectionHistory>;
 
-export const StudioCorrectionInput = z.strictObject({
-  encounterKey: BuildKey.nullable(), inspectedVersion: version, operationId: id,
-  instruction: z.string().trim().min(1).max(2000), selection: StudioSelection,
+const CorrectionInstruction = z.string().trim().min(1).max(2000);
+const CorrectionTarget = z.strictObject({
+  encounterKey: BuildKey.nullable(), inspectedVersion: version, selection: StudioSelection,
 });
+export const StudioCorrectionInput = CorrectionTarget.extend({ operationId: id, instruction: CorrectionInstruction });
 export type StudioCorrectionInput = z.infer<typeof StudioCorrectionInput>;
+
+export const StudioChatSelectionDraft = CorrectionTarget.extend({ mapKey: BuildKey });
+export const StudioChatSelectionUpdate = z.strictObject({
+  viewId: id, sequence: z.number().int().min(1).max(2 ** 31 - 1), draft: StudioChatSelectionDraft.nullable(),
+});
+export type StudioChatSelectionUpdate = z.infer<typeof StudioChatSelectionUpdate>;
+export const StudioChatSelectionReference = z.object({ selectionId: id.nullable() });
+export const StudioChatCorrectionInput = z.strictObject({ instruction: CorrectionInstruction });
 
 const opening = z.strictObject({
   kind: DraftOpening.shape.kind, state: DraftOpening.shape.state, reason: DraftOpening.shape.reason,

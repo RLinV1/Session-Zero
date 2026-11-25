@@ -12,7 +12,7 @@ import type { StudioPreparationRecords } from "../store/studioPreparation";
 import { studioFile } from "./studioPreparation";
 
 export class StudioAuthoringError extends Error {
-  constructor(readonly code: "missing" | "access" | "conflict" | "limit" | "invalid" | "scope" | "permission" | "corrections_disabled" | "enrolled", message: string) { super(message); }
+  constructor(readonly code: "missing" | "access" | "conflict" | "limit" | "invalid" | "scope" | "permission" | "enrolled", message: string) { super(message); }
 }
 
 function canonical(value: unknown): unknown {

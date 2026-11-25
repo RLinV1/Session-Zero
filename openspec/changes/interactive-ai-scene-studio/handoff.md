@@ -1,5 +1,15 @@
 # Implementation handoff
 
+## M4 direct chat corrections, 2026-11-24
+
+The M4 polish runs on `feat/studio-m4-chat-selection`, based on refreshed M4 snapshot `f72b87d0`. An approved build connection can request private corrections without a second setting. The existing grant and build choices still govern writes. The additive chat-selection migration keeps the original correction-permission column available for rollback. Cached first-release widgets receive an enabled correction hint and retain their form until the host loads the new view.
+
+The supported embedded flow attaches the user's selection to the chat composer. The model starts the request using the attached reference and the user's instruction. The selection is bound to the exact scene, build and grant. Drawing, redrawing or clearing a selection only stages or removes that reference. Once a request exists, it keeps its original scope. The website and hosts without usable context attachment retain the instruction form. [Design](design.md#d15-m4-correction-interaction)
+
+Lint, typecheck, build and the full Node 22.23.2 suite passed, with 5,759 tests and 71 optional-service skips. The 64 focused memory and PostgreSQL checks cover expiry, revocation, stale scene versions, out-of-order updates and replay. The browser harness uses a normal composer alongside the sandboxed Studio and tests the attachment, replacement, cancellation, fallback after host refusal, and Before/After. It simulates the ChatGPT bridge. The direct composer test passed in Chromium, Firefox and WebKit. Chromium also passed the consent, website and embedded fallback tests. [Store checks](../../../apps/server/test/studioAuthoring.test.ts) · [Browser checks](../../../browser/studio-intake.spec.ts)
+
+Hosted qualification is tracked in task 5.10. On an authorized pilot release, apply the new migration and refresh the ChatGPT connector's tools so it discovers `studio_start_correction`. In a fresh chat on an already-approved build, verify the prompt carries the current selection after drawing, redrawing and clearing it. Verify that a second Studio view keeps a separate selection and that the resulting comparison matches the website.
+
 ## M4 correction interaction, 2026-11-18
 
 - Implemented selection, correction requests, comparison, refinement, restore, and owner cleanup on merged M3 base `0277c4bb`. The AI app connections panel controls the correction opt-in on each build. Both stores verify it under their write boundary. The additive migration starts each grant with correction creation and restore disabled. [Authority](../../../docs/adr/0073-interactive-scene-studio.md#m4-private-correction-authority) · [Interaction design](design.md#d15-m4-correction-interaction)

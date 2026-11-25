@@ -92,11 +92,14 @@ describe("Studio connected intake and static UI (FR-GM-26, FR-GM-27)",()=>{
     expect(tools.filter((tool) => tool._meta?.["openai/fileParams"]).map((tool) => tool.name)).toEqual(["studio_open"]);
     expect(studioView.uri).toMatch(/^ui:\/\/session-zero\/studio\.[a-f0-9]{16}\.html$/);
     const schema=JSON.stringify(open.inputSchema);for(const property of ["download_url","file_id","mime_type","file_name"])expect(schema).toContain(property);
-    for(const name of ["studio_snapshot","studio_bind_file","studio_get_media","studio_inspect_correction","studio_correction_history","studio_revision_view","studio_create_correction_request","studio_restore_revision"]){
+    for(const name of ["studio_snapshot","studio_bind_file","studio_get_media","studio_inspect_correction","studio_correction_history","studio_revision_view","studio_create_correction_request","studio_restore_revision","studio_stage_chat_selection"]){
       const tool = tools.find((t)=>t.name===name)!;
       expect(tool._meta.ui).toMatchObject({visibility:["app"]});
       expect(tool._meta["openai/visibility"]).toBe("private");
     }
+    const startCorrection = tools.find((tool) => tool.name === "studio_start_correction")!;
+    expect(startCorrection._meta?.["openai/visibility"]).toBeUndefined();
+    expect(Object.keys(startCorrection.inputSchema.properties as object).sort()).toEqual(["buildId", "instruction", "selectionId"]);
     expect(tools.some((tool) => tool.name === "studio_import_files")).toBe(false);
     const removed = await s.call("studio_import_files", { buildId: s.build.id, kind: "map", files: [s.descriptor("former-view-import")] });
     expect(removed.body).toMatchObject({ error: { code: -32602, message: expect.stringContaining("not found") } });

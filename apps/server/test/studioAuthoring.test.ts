@@ -3,12 +3,12 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
+import { StudioChatSelectionReference, StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
 import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
 import { LocalDiskAssetStore } from "../src/store/assetStore";
 import type { BuildFileRecord } from "../src/store/buildStore";
 import { renderStudioCrop } from "../src/domain/studioCrop";
-import { AUTHORING_LIMITS, type StudioRevision } from "../src/store/studioAuthoring";
+import { AUTHORING_LIMITS, CHAT_SELECTION_LIMITS, type StudioRevision } from "../src/store/studioAuthoring";
 import type { RoomStore } from "../src/store/roomStore";
 import { startServer } from "./helpers";
 import { storeCases } from "./storeHarness";
@@ -18,8 +18,8 @@ const wall = { kind: "wall", from: { column: 0, row: 1 }, to: { column: 5, row: 
 const door = { kind: "door", state: "closed", from: { column: 1, row: 1 }, to: { column: 2, row: 1 } } as const;
 const region = { minX: 0, minY: 0, maxX: 225, maxY: 225 };
 
-async function fixture(store: RoomStore, board: BuildFileRecord["board"] = null) {
-  const server = await startServer(store, { studio: { publicOrigin: TEST_ORIGIN } });
+async function fixture(store: RoomStore, board: BuildFileRecord["board"] = null, now?: () => number) {
+  const server = await startServer(store, { studio: { publicOrigin: TEST_ORIGIN }, now });
   try {
     const owner = await server.signUp();
     const { build: { id }, pass } = await owner.json<{ build: { id: string }; pass: string }>("POST", "/api/builds", {
@@ -82,7 +82,7 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       const replace = await f.send("POST", "/maps", { key: "chapel", name: "Replacement", fileId: otherSource.id });
       expect(await replace.json()).toMatchObject({ code: "enrolled" });
       expect(await f.create(input)).toEqual(request);
-      expect((await f.send("POST", "/authoring/maps/chapel/requests", input)).status).toBe(403);
+      expect(await (await f.send("POST", "/authoring/maps/chapel/requests", input)).json()).toEqual(request);
       expect((await f.owner.request("POST", `${f.map}/requests`, { ...input, instruction: "Different retry" })).status).toBe(409);
       const open = { op: "line.update", id: doorId, line: { ...door, state: "open" } };
       const erase = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
@@ -116,7 +116,7 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       expect(publicDraft?.data.setup).toMatchObject({ lines: [wall, door], terrain: [{ row: 0, start: -1, end: -1, kind: "difficult" }] });
       const website = StudioSnapshot.parse(await f.owner.json("GET", `${f.base}/studio`));
       const tool = StudioSnapshot.parse(await (await f.send("GET", "/studio")).json());
-      expect(tool).toEqual({ ...website, correctionsAllowed: false });
+      expect(tool).toEqual({ ...website, correctionsAllowed: true });
       expect(tool.workingRevisionId).toBe(advanced.body.revisionId);
       expect(tool.scene.walls.map((w) => w.portal?.state).filter(Boolean)).toEqual(["open"]);
       expect(tool.scene.terrain).toEqual([]);
@@ -188,76 +188,108 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
     } finally { await f.server.close(); }
   });
 
-  it("requires a live opt-in on this grant and build for app requests and restores, including retries and writes queued past a permission change", async () => {
+  it("allows approved builds to create and restore private corrections while enforcing choices and revocation", async () => {
     const store = makeStore();
     const f = await fixture(store);
     try {
-      const second = await f.owner.json<{ build: { id: string } }>("POST", "/api/builds", { name: "Other scene build" });
-      const { tokens, clientId } = await connectStudio(f.server.base, f.owner, [f.id, second.build.id]);
       const owner = (await store.findUserById(f.owner.view!.id))!.ownerId;
-      const grants = await store.listStudioGrants(owner, new Date().toISOString());
-      const grant = grants.find((record) => record.clientId === clientId)!;
-      const permission = (enabled: boolean) => f.owner.request("PUT", `${f.base}/grants/${grant.id}/corrections`, { enabled });
-      const inspect = StudioInspection.parse(await f.owner.json("GET", `${f.map}?encounterKey=night`));
+      const [grant] = await store.listStudioGrants(owner, new Date().toISOString());
+      expect((await f.owner.request("PUT", `${f.base}/grants/${grant!.id}/corrections`, { enabled: true })).status).toBe(404);
+      const inspect = StudioInspection.parse(await f.inspect());
       const input = f.makeRequest(inspect.inspectedVersion, { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] });
-      const create = (data = input, token = tokens.access_token) => f.send("POST", "/authoring/maps/chapel/requests", data, token);
-      const history = async () => StudioCorrectionHistory.parse(await f.owner.json("GET", `${f.map}/revisions`));
-
-      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
-      const foreign = await f.server.signUp();
-      expect((await foreign.request("PUT", `${f.base}/grants/${grant.id}/corrections`, { enabled: true })).status).toBe(404);
-      expect((await permission(true)).status).toBe(204);
-      expect(await (await f.send("GET", "/studio", undefined, tokens.access_token)).json()).toMatchObject({ correctionsAllowed: true });
-      expect(await (await f.send("POST", "/authoring/maps/chapel/requests", input)).json()).toMatchObject({ code: "corrections_disabled" });
-      const otherGrants = await f.owner.json<{ grants: { id: string; correctionsAllowed: boolean }[] }>("GET", `/api/builds/${second.build.id}/grants`);
-      expect(otherGrants.grants).toContainEqual(expect.objectContaining({ id: grant.id, correctionsAllowed: false }));
-
+      const create = () => f.send("POST", "/authoring/maps/chapel/requests", input);
       await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
       expect(await (await create()).json()).toMatchObject({ code: "permission" });
       await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: true });
-      const execute = store.studioAuthoring.bind(store);
-      const disableBeforeWrite = vi.spyOn(store, "studioAuthoring").mockImplementationOnce(async (...args) => {
-        await store.setStudioCorrectionPermission(f.id, owner, grant.id, false, Date.now);
-        return execute(...args);
-      });
-      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
-      disableBeforeWrite.mockRestore();
-      expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
 
-      await permission(true);
       const saved = StudioCorrectionReceipt.parse(await (await create()).json());
       expect(await (await create()).json()).toEqual(saved);
-      expect((await history()).requests).toHaveLength(1);
-      expect(await (await create({ ...input, operationId: randomUUID() })).json()).toMatchObject({ code: "conflict" });
-      const paint = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
-      const proposed = await f.propose(saved.requestId, saved.baseRevisionId, [paint]);
-      expect(proposed.status).toBe(200);
-      const { revisionId } = await proposed.json() as { revisionId: string };
+      const proposal = await f.propose(saved.requestId, saved.baseRevisionId, [
+        { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] },
+      ]);
+      expect(proposal.status).toBe(200);
+      const { revisionId } = await proposal.json() as { revisionId: string };
       const args = { revisionId: saved.baseRevisionId, expectedCurrentRevisionId: revisionId, operationId: randomUUID() };
-      const restore = () => f.send("POST", "/authoring/maps/chapel/restore", args, tokens.access_token);
+      const restore = () => f.send("POST", "/authoring/maps/chapel/restore", args);
       await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
       expect(await (await restore()).json()).toMatchObject({ code: "permission" });
       await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: true });
-      await permission(false);
-      expect(await (await restore()).json()).toMatchObject({ code: "corrections_disabled" });
-      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
-      expect((await history()).workingRevisionId).toBe(revisionId);
-      await permission(true);
       const restored = await (await restore()).json() as { revisionId: string };
       expect(await (await restore()).json()).toEqual(restored);
       expect(await f.readRevision(restored.revisionId)).toMatchObject({ actor: "studio", parentId: revisionId, restoredFrom: saved.baseRevisionId });
-      expect((await history()).revisions).toHaveLength(3);
 
       const detail = await f.owner.json<BuildDetail>("GET", f.base);
       const version = detail.items.find((item) => item.kind === "map")!.authoring!.token;
-      const gridEdit = await f.owner.request("POST", `${f.base}/maps/chapel/grid`, { cellSize: 50, offsetX: 20, offsetY: 0 }, { "X-Studio-Authoring-Version": version });
-      expect(gridEdit.status).toBe(200);
-      const edited = await history();
-      const incompatible = await f.send("POST", "/authoring/maps/chapel/restore", {
+      expect((await f.owner.request("POST", `${f.base}/maps/chapel/grid`, { cellSize: 50, offsetX: 20, offsetY: 0 },
+        { "X-Studio-Authoring-Version": version })).status).toBe(200);
+      const edited = await f.history();
+      expect((await f.send("POST", "/authoring/maps/chapel/restore", {
         revisionId: saved.baseRevisionId, expectedCurrentRevisionId: edited.workingRevisionId, operationId: randomUUID(),
-      }, tokens.access_token);
-      expect(incompatible.status).toBe(409);
-      expect((await history()).workingRevisionId).toBe(edited.workingRevisionId);
+      })).status).toBe(409);
+      expect((await f.history()).workingRevisionId).toBe(edited.workingRevisionId);
+
+      await store.revokeStudioGrant(grant!.id, new Date().toISOString(), owner);
+      expect((await create()).status).toBe(401);
+      expect((await restore()).status).toBe(401);
+      expect((await f.history()).workingRevisionId).toBe(edited.workingRevisionId);
+    } finally { await f.server.close(); }
+  });
+
+  it("attaches only a view's current selection and starts its exact request after a chat instruction", async () => {
+    const store = makeStore();
+    let now = Date.now();
+    const f = await fixture(store, null, () => now);
+    try {
+      const inspected = StudioInspection.parse(await f.inspect());
+      const draft = { mapKey: "chapel", encounterKey: "night", inspectedVersion: inspected.inspectedVersion,
+        selection: { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] } };
+      const path = "/authoring/chat-selections";
+      const stage = (viewId: string, sequence: number, value: typeof draft | null = draft) =>
+        f.send("POST", path, { viewId, sequence, draft: value });
+      const identify = async (response: Response) => {
+        expect(response.status).toBe(200);
+        return StudioChatSelectionReference.parse(await response.json()).selectionId!;
+      };
+      const start = (id: string, instruction = "Remove the rubble.", token?: string) =>
+        f.send("POST", `${path}/${id}/request`, { instruction }, token);
+      const view = randomUUID(), secondView = randomUUID();
+      const original = await identify(await stage(view, 1));
+      expect(await identify(await stage(view, 1))).toBe(original);
+      const cancelled = await identify(await stage(secondView, 1));
+      const rectangle = { ...region, maxX: 24, maxY: 52 };
+      const active = await identify(await stage(view, 2, { ...draft, selection: { ...draft.selection, region: rectangle } }));
+      expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+      expect((await stage(view, 1)).status).toBe(409);
+      expect((await start(original)).status).toBe(409);
+      expect(await (await stage(secondView, 2, null)).json()).toEqual({ selectionId: null });
+      expect((await start(cancelled)).status).toBe(409);
+      expect((await f.send("POST", `${path}/${active}/request`, { instruction: " ", selection: draft.selection })).status).toBe(422);
+
+      const { tokens } = await connectStudio(f.server.base, f.owner, [f.id]);
+      expect((await start(active, "Remove the rubble.", tokens.access_token)).status).toBe(409);
+      const otherBuild = await f.owner.json<{ build: { id: string } }>("POST", "/api/builds", { name: "Unshared build" });
+      const refused = await fetch(`${f.server.base}/api/studio/builds/${otherBuild.build.id}${path}/${active}/request`, {
+        method: "POST", headers: bearer(tokens.access_token, { "content-type": "application/json" }), body: JSON.stringify({ instruction: "Wrong build." }),
+      });
+      expect(refused.status).toBe(404);
+      now += CHAT_SELECTION_LIMITS.ttlMs + 1;
+      expect((await start(active)).status).toBe(409);
+
+      const valid = await identify(await stage(view, 3, { ...draft, selection: { ...draft.selection, region: rectangle } }));
+      const competing = await identify(await stage(secondView, 3));
+      const first = await start(valid);
+      expect(first.status).toBe(200);
+      const saved = StudioCorrectionReceipt.parse(await first.json());
+      expect(saved).toMatchObject({ requestId: valid, scope: { region: rectangle } });
+      expect(await (await start(valid)).json()).toEqual(saved);
+      expect((await start(valid, "Overwrite it with a new instruction.")).status).toBe(409);
+      expect((await start(competing)).status).toBe(409);
+      expect(await (await f.send("GET", `/authoring/requests/${saved.requestId}`)).json()).toMatchObject({ instruction: "Remove the rubble." });
+      await stage(view, 4, null);
+      expect((await start(valid)).status).toBe(409);
+      const history = StudioCorrectionHistory.parse(await f.owner.json("GET", `${f.map}/revisions`));
+      expect(history.requests).toHaveLength(1);
+      expect(history.requests[0]).toMatchObject(saved);
     } finally { await f.server.close(); }
   });
 

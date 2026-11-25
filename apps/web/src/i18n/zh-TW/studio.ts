@@ -15,7 +15,7 @@ export const studioZhTW = {
   "studio.connect.unnamedApp": "未命名的應用程式",
   "studio.connect.claimsUnnamed": "一個沒有提供名稱的應用程式要求處理你的建置。",
   "studio.connect.noBuilds": "你沒有開啟中的建置。請先在素材庫中新增一個，再從你的 AI 應用程式重新連線。",
-  "studio.connect.can": "它可以讀取這些草稿與其圖片的縮小版本、新增受保護的地圖與棋子圖片，並在你為每個建置設定的範圍內，儲存生物、地圖、牆、地形與遭遇。",
+  "studio.connect.can": "它可以讀取這些草稿、新增受保護的美術素材，並依各建置的設定儲存草稿變更，包括範圍受限的私人修正。",
   "studio.connect.cannot": "它無法發布、變更你的設定、存取你的素材庫或房間，也看不到你的其他建置。檢視與發布都在這個網站上由你進行。",
   "studio.connect.lasts": "連線最長持續 30 天。你隨時可以在建置頁面中斷連線。",
   "studio.connect.allow": "允許",
@@ -39,7 +39,4 @@ export const studioZhTW = {
   "studio.grants.disconnectAll": "中斷連線後，這個應用程式將無法再存取一起列出的所有建置。",
   "studio.grants.failed": "無法中斷連線，請再試一次。",
   "studio.grants.loadFailed": "無法載入 AI 應用程式連線。",
-  "studio.grants.corrections": ({ name }) => `允許「${name}」要求修正並還原私人版本`,
-  "studio.grants.correctionsHint": "適用於此建置中可修正的場景。",
-  "studio.grants.correctionsFailed": "無法儲存修正權限，請再試一次。",
 } satisfies Catalog<typeof studio>;

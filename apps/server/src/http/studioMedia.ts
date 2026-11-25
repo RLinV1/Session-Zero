@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireAccount } from "../identity/middleware";
 import type { Sessions } from "../identity/sessions";
 import { BuildClosedError, BuildLimitError, type BuildFileRecord, type BuildRecord } from "../store/buildStore";
-import { StudioAccessEndedError, type StudioDelegation, type StudioGrantRecord } from "../store/studioStore";
+import { StudioAccessEndedError, type StudioDelegation } from "../store/studioStore";
 import type { RoomStore } from "../store/roomStore";
 import { StudioMedia, STUDIO_PREVIEW_BYTES } from "../domain/studioMedia";
 import { StudioIntakeError, STUDIO_FILE_BYTES } from "../domain/studioDownload";
@@ -121,8 +121,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     const records = await store.readStudioPreparation(build.id, { ownerGmId: build.ownerGmId, delegation: res.locals.delegation as StudioDelegation });
     const ownerName = await store.findBuildOwnerName(build.ownerGmId);
     if (!await stillGranted(req, res, build)) return;
-    const grant = res.locals.studioGrant as StudioGrantRecord;
-    res.json({ ...studioPreparationSnapshot(records, ownerName, requestLocale(res)), limits: BUILD_LIMITS, correctionsAllowed: grant.correctionBuildIds?.includes(build.id) ?? false });
+    res.json({ ...studioPreparationSnapshot(records, ownerName, requestLocale(res)), limits: BUILD_LIMITS, correctionsAllowed: true });
   })().catch(failed(res)); });
   app.post(`${base}/studio/context`, grantGuard, (req, res) => { void (async () => {
     const input = StudioContext.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "context");

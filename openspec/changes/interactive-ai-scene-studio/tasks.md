@@ -100,6 +100,10 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 - [x] 5.6 Provide the website's saved-request/copyable-prompt handoff and non-Apps fallback; verify neither claims it can wake an unrelated AI chat automatically.
 - [x] 5.7 Complete a real ChatGPT doorway, courtyard-terrain and hidden-sentry correction sequence, including one refinement. Verify scope, observed results, and matching website state, then finish checks and handoff. The owner waived the Raymond gate. Four scoped proposals advanced with exact revision ancestry and a matching website comparison. The temporary test stack was removed. [Real ChatGPT evidence](evidence/m4-host-2026-11-18.md) · [M4 handoff](handoff.md#m4-correction-interaction-2026-11-18)
 
+- [x] 5.8 Use approved build access for private corrections and remove the separate connection setting. Verify existing grants, build boundaries, revocation and explicit restore.
+- [x] 5.9 Attach the selected scope to the normal chat composer, streamline embedded selection controls, and retain the fallback form. Verify replacement, cancellation, expiry, revision conflicts and retry behavior. [Implementation handoff](handoff.md#m4-direct-chat-corrections-2026-11-24)
+- [ ] 5.10 Qualify the direct composer flow in ChatGPT Work with a real hosted Studio connection. Verify the exact current selection is used after redrawing, clearing, and opening a second view.
+
 **Exit:** The user points at a problem and sees/refines a saved proposed repair inside ChatGPT without visiting the website between rounds.
 
 ## 6. M5 — Exact owner review, publication and full qualification

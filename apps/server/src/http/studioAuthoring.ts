@@ -1,5 +1,5 @@
 import type { Express, Request, RequestHandler, Response } from "express";
-import { BuildKey, StudioCorrectionInput, StudioProposalInput, StudioRestoreInput, type StudioSelection } from "@vtt/shared";
+import { BuildKey, StudioChatCorrectionInput, StudioChatSelectionUpdate, StudioCorrectionInput, StudioProposalInput, StudioRestoreInput, type StudioSelection } from "@vtt/shared";
 import { z } from "zod";
 import { requireAccount } from "../identity/middleware";
 import type { Sessions } from "../identity/sessions";
@@ -20,7 +20,7 @@ export function studioAuthoringMessage(res: Response, error: StudioAuthoringErro
   return requestLocale(res) === "zh-TW" ? serverZhTW[key] : error.message;
 }
 export function studioAuthoringFailure(res: Response, error: StudioAuthoringError) {
-  const status = { missing: 404, access: 401, conflict: 409, limit: 409, invalid: 422, scope: 422, permission: 403, corrections_disabled: 403, enrolled: 409 }[error.code];
+  const status = { missing: 404, access: 401, conflict: 409, limit: 409, invalid: 422, scope: 422, permission: 403, enrolled: 409 }[error.code];
   res.setHeader("Cache-Control", "no-store");
   res.status(status).json({ code: error.code, error: studioAuthoringMessage(res, error) });
 }
@@ -99,6 +99,13 @@ export function registerStudioAuthoringRoutes(app: Express, deps: { store: RoomS
   write("/maps/:mapKey/restore", (req) => ({ kind: "restore", mapKey: targetKey(req), input: validated(StudioRestoreInput, req.body) }));
   // The owner's way out of enrollment: the map edits, deletes and publishes as an ordinary draft again.
   app.delete(owner + "/maps/:mapKey", handle((req) => ({ kind: "end", mapKey: targetKey(req) }), false));
-  if (deps.grantGuard) app.post(delegated + "/requests/:requestId/proposals", deps.grantGuard,
-    handle((req) => ({ kind: "propose", requestId: requestId(req), input: validated(StudioProposalInput, req.body) }), true));
+  if (deps.grantGuard) {
+    app.post(delegated + "/chat-selections", deps.grantGuard,
+      handle((req) => ({ kind: "stageChatSelection", update: validated(StudioChatSelectionUpdate, req.body) }), true));
+    app.post(delegated + "/chat-selections/:selectionId/request", deps.grantGuard,
+      handle((req) => ({ kind: "startChatCorrection", selectionId: validated(z.uuid(), req.params.selectionId),
+        ...validated(StudioChatCorrectionInput, req.body) }), true));
+    app.post(delegated + "/requests/:requestId/proposals", deps.grantGuard,
+      handle((req) => ({ kind: "propose", requestId: requestId(req), input: validated(StudioProposalInput, req.body) }), true));
+  }
 }

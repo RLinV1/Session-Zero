@@ -14,7 +14,6 @@ export function StudioConnections({ buildId }: { buildId: string }) {
   const [grants, setGrants] = useState<StudioGrantView[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [ending, setEnding] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => api.studio.grants(buildId).then(
@@ -43,20 +42,6 @@ export function StudioConnections({ buildId }: { buildId: string }) {
     }
   }
 
-  async function setCorrectionPermission(grant: StudioGrantView, enabled: boolean) {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.studio.correctionPermission(buildId, grant.id, enabled);
-      setGrants((current) => current?.map((row) => row.id === grant.id ? { ...row, correctionsAllowed: enabled } : row) ?? null);
-    } catch {
-      setError(t("studio.grants.correctionsFailed"));
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const nameOf = (grant: StudioGrantView) => grant.clientName || t("studio.connect.unnamedApp");
 
   if (loadFailed) return <p role="alert" className="error">{t("studio.grants.loadFailed")}</p>;
@@ -75,14 +60,8 @@ export function StudioConnections({ buildId }: { buildId: string }) {
               {" · "}
               {grant.lastUsedAt ? t("studio.grants.lastUsed", { date: when(grant.lastUsedAt) }) : t("studio.grants.notUsed")}
             </p>
-            <label className="studio-correction-permission">
-              <input type="checkbox" checked={grant.correctionsAllowed ?? false} disabled={saving || ending !== null}
-                onChange={(event) => void setCorrectionPermission(grant, event.currentTarget.checked)} />
-              {t("studio.grants.corrections", { name: nameOf(grant) })}
-            </label>
-            <p className="muted">{t("studio.grants.correctionsHint")}</p>
             {grant.builds.length > 1 && <p className="muted">{t("studio.grants.disconnectAll")}</p>}
-            <button type="button" disabled={saving || ending !== null} aria-label={t("studio.grants.disconnectNamed", { name: nameOf(grant) })} onClick={() => void disconnect(grant)}>
+            <button type="button" disabled={ending !== null} aria-label={t("studio.grants.disconnectNamed", { name: nameOf(grant) })} onClick={() => void disconnect(grant)}>
               {ending === grant.id ? t("studio.grants.disconnecting") : t("studio.grants.disconnect")}
             </button>
           </li>

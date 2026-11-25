@@ -120,7 +120,7 @@ describe("actual saved preparation writes and both adapters (FR-GM-26, FR-GM-27)
     expect((await send("PUT", "/maps/chapel/setup", setup)).status).toBe(200);
     const saved = StudioSnapshot.parse(await (await send("GET", "/studio")).json());
     const website = StudioSnapshot.parse(await owner.json("GET", `/api/builds/${id}/studio`));
-    expect(saved).toEqual({ ...website, correctionsAllowed: false }); expect(saved.scene.walls).toHaveLength(3); expect(saved.scene.walls.filter((w) => w.portal?.kind === "door")).toHaveLength(1);
+    expect(saved).toEqual({ ...website, correctionsAllowed: true }); expect(saved.scene.walls).toHaveLength(3); expect(saved.scene.walls.filter((w) => w.portal?.kind === "door")).toHaveLength(1);
     expect(saved.scene.terrain).toEqual(setup.terrain); expect(saved.scene.terrainState).toBe("ready");
     expect(saved.scene.tokens[0]).toMatchObject({ hidden: true, imageFileId: art.id, center: footprintCenter({ column: 2, row: 2 }, 0.5, source.grid!, source) });
     // A setup for a map the build doesn't have is a refused write the open Studio shows (FR-GM-27).

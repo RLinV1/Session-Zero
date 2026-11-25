@@ -52,6 +52,28 @@ function activeFiles(data) {
   const source = data.scene.source;
   return [...(source ? [source] : []),...data.files.filter((file)=>ids.has(file.id) && file.id !== source?.id)];
 }
+// Keep context updates ordered across redraws and across workspace remounts in this app instance.
+let chatUpdates = Promise.resolve();
+function attachToChat(context,update,title) {
+  const work = chatUpdates.then(async ()=>{
+    const publish = (content) => app.updateModelContext({content},{timeout:8000});
+    if (update.draft && (!isCurrent(context) || needsRetry)) throw new Error('Studio context changed');
+    try {
+      const result = await call('studio_stage_chat_selection',{buildId:context.buildId,...update});
+      const {selectionId} = resultData(result);
+      const attached = selectionId && update.draft && isCurrent(context) && !needsRetry;
+      await publish(attached ? [{type:'text',text:JSON.stringify({studioSelection:{buildId:context.buildId,selectionId}}),
+        _meta:{'openai/title':title}}] : []);
+      return {selectionId:attached ? selectionId : null};
+    } catch(error) {
+      await publish([]).catch(()=>undefined);
+      if (isCurrent(context) && accessEnded(error)) pauseForRetry(error);
+      throw error;
+    }
+  });
+  chatUpdates = work.catch(()=>undefined);
+  return work;
+}
 function authoringClient(context) {
   async function authoring(name, args) {
     if (!isCurrent(context) || needsRetry) throw new Error('Studio context changed');
@@ -76,6 +98,9 @@ function authoringClient(context) {
       demandedFiles=ids;
       if (ids.length && snapshot && activeFiles(snapshot).some((file)=>ids.includes(file.id) && !mediaCache.has(cacheKey(file)) && !mediaFailed.has(cacheKey(file)))) void refresh(true);
     },
+    ...(app.getHostCapabilities()?.updateModelContext?.text && {
+      attachToChat:(update,title)=>attachToChat(context,update,title)
+    }),
     handoff:async (prompt)=>{
       const capabilities=app.getHostCapabilities();
       const immediate=!!capabilities?.experimental?.['openai/message'];
@@ -91,7 +116,7 @@ function authoringClient(context) {
 function renderSaved() {
   if (!snapshot || stopped) return;
   const media={}; for (const file of activeFiles(snapshot)) { const image=mediaCache.get(cacheKey(file)); if (image) media[file.id]=image; }
-  const signature=JSON.stringify([snapshot.fingerprint,snapshot.correctionsAllowed,locale,generation,needsRetry,Object.keys(media)]);
+  const signature=JSON.stringify([snapshot.fingerprint,locale,generation,needsRetry,Object.keys(media)]);
   if (signature === rendered) return;
   rendered=signature;
   const website=snapshot.websitePath;

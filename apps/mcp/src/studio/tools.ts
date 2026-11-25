@@ -1,7 +1,7 @@
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { ResourceNotFoundError, ResourceTemplate, type McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { BuildKey, StudioContext, StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot } from "@vtt/shared";
+import { BuildKey, StudioChatSelectionReference, StudioChatSelectionUpdate, StudioContext, StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot } from "@vtt/shared";
 import { studioView } from "./view";
 import { studioIntake } from "../../../web/src/i18n/en/studioIntake";
 import { studioIntakeZhTW } from "../../../web/src/i18n/zh-TW/studioIntake";
@@ -162,12 +162,17 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     title: "Show a saved revision", description: "Read the display projection of one exact revision for comparison.",
     inputSchema: mapArgs.extend({ revisionId: z.uuid() }), annotations: readOnly, _meta: appOnly,
   }, ({ buildId, mapKey, revisionId, locale }) => guarded(locale, async () => text(StudioRevisionView.parse(await authoring(buildId, mapKey, "GET", `/revisions/${revisionId}/view`, locale)))));
+  registerAppTool(server, "studio_stage_chat_selection", {
+    title: "Attach a Studio selection", description: "Replace or clear this view's temporary correction scope.",
+    inputSchema: StudioChatSelectionUpdate.extend({ buildId: z.uuid(), locale: Locale }), annotations: privateWrite, _meta: appOnly,
+  }, ({ buildId, locale, ...update }) => guarded(locale, async () => text(StudioChatSelectionReference.parse(
+    await (await send(buildId, "POST", "/authoring/chat-selections", update, locale)).json()))));
   registerAppTool(server, "studio_create_correction_request", {
-    title: "Save correction request", description: "Save the user's explicit instruction and scope against the inspected scene. Requires the owner's permission for this connection on the build.",
+    title: "Save correction request", description: "Save the user's explicit instruction and scope against the inspected scene.",
     inputSchema: StudioCorrectionInput.extend(mapArgs.shape), annotations: privateWrite, _meta: appOnly,
   }, ({ buildId, mapKey, locale, ...input }) => guarded(locale, async () => text(StudioCorrectionReceipt.parse(await authoring(buildId, mapKey, "POST", "/requests", locale, input)))));
   registerAppTool(server, "studio_restore_revision", {
-    title: "Restore a private revision", description: "Restore a saved candidate as a new private revision, with an expected current revision. Requires the owner's permission for this connection on the build.",
+    title: "Restore a private revision", description: "Restore a saved candidate as a new private revision, with an expected current revision.",
     inputSchema: StudioRestoreInput.extend(mapArgs.shape), annotations: privateWrite, _meta: appOnly,
   }, ({ buildId, mapKey, locale, ...input }) => guarded(locale, async () => text(result(await authoring(buildId, mapKey, "POST", "/restore", locale, input)))));
 }

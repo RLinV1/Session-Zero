@@ -120,7 +120,6 @@ export interface StudioGrantView {
   createdAt: string;
   lastUsedAt: string | null;
   expiresAt: string;
-  correctionsAllowed?: boolean;
   builds: { id: string; name: string }[];
 }
 
@@ -560,8 +559,6 @@ export const api = {
     decide: (params: Record<string, string>, decision: "allow" | "deny", buildIds: string[]) =>
       accountRequest<{ redirectTo: string }>("/api/oauth/authorize", { method: "POST", ...jsonBody({ params, decision, buildIds }) }),
     grants: (buildId: string) => accountRequest<{ grants: StudioGrantView[] }>(`${buildUrl(buildId)}/grants`),
-    correctionPermission: (buildId: string, grantId: string, enabled: boolean) =>
-      accountRequest<void>(`${buildUrl(buildId)}/grants/${encodeURIComponent(grantId)}/corrections`, { method: "PUT", ...jsonBody({ enabled }) }),
     /** Ends the whole connection, for every build it covers. */
     revoke: (buildId: string, grantId: string) => accountRequest<void>(`${buildUrl(buildId)}/grants/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
   },

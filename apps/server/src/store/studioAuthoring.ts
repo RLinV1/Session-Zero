@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { studioTerrainCoverage, type StudioCorrectionActivity, type StudioCorrectionInput, type StudioEditLayer, type StudioOwnerIds, type StudioOwnerVersion, type StudioProposalInput, type StudioRestoreInput, type StudioSelection } from "@vtt/shared";
+import { StudioChatSelectionDraft, studioTerrainCoverage, type StudioChatSelectionUpdate, type StudioCorrectionActivity, type StudioCorrectionInput, type StudioEditLayer, type StudioOwnerIds, type StudioOwnerVersion, type StudioProposalInput, type StudioRestoreInput, type StudioSelection } from "@vtt/shared";
 import { applyCorrection, captureScene, deriveScope, digest, selectionObjects, StudioAuthoringError, type RevisionScene, type StudioTarget } from "../domain/studioSceneRevision";
 import { studioRevisionScene } from "../domain/studioPreparation";
 import type { BuildItemRecord, BuildPublishPlan, BuildRecord } from "./buildStore";
@@ -40,9 +40,9 @@ export type AuthoringEntry = { mapKey: string; id: string } & (
   { kind: "create" | "propose" | "restore"; value: Receipt }
 );
 
-export type AuthoringCommand =
+type SceneCommand =
   | { kind: "inspect"; mapKey: string; encounterKey?: string | null }
-  | { kind: "create"; mapKey: string; input: StudioCorrectionInput }
+  | { kind: "create"; mapKey: string; input: StudioCorrectionInput; chatSelectionId?: string }
   | { kind: "request"; requestId: string }
   | { kind: "crop"; requestId: string }
   | { kind: "propose"; requestId: string; input: StudioProposalInput }
@@ -52,6 +52,45 @@ export type AuthoringCommand =
   | { kind: "restore"; mapKey: string; input: StudioRestoreInput }
   /** The owner ends the correction: the map leaves Studio and its history is removed. */
   | { kind: "end"; mapKey: string };
+
+export type AuthoringCommand = SceneCommand
+  | { kind: "stageChatSelection"; update: StudioChatSelectionUpdate }
+  | { kind: "startChatCorrection"; selectionId: string; instruction: string };
+
+export const CHAT_SELECTION_LIMITS = { viewsPerBuild: 24, ttlMs: 30 * 60_000 } as const;
+
+export function assertChatSelectionCapacity(activeViews: number) {
+  if (activeViews >= CHAT_SELECTION_LIMITS.viewsPerBuild) {
+    throw new StudioAuthoringError("limit", "Too many selections on this build. Try again after an older selection expires.");
+  }
+}
+
+export interface ChatSelectionRecord {
+  id: string;
+  buildId: string;
+  grantId: string;
+  viewId: string;
+  sequence: number;
+  draft: unknown;
+  expiresAt: Date;
+}
+
+export function nextChatSelection(previous: ChatSelectionRecord | null, buildId: string, grantId: string, update: StudioChatSelectionUpdate, now: number) {
+  if (previous && previous.sequence >= update.sequence) {
+    if (previous.sequence === update.sequence && previous.expiresAt.getTime() > now && digest(previous.draft) === digest(update.draft)) return previous;
+    conflict("The selection changed. Draw the area again before asking in chat.");
+  }
+  return { id: randomUUID(), buildId, grantId, ...update, expiresAt: new Date(now + CHAT_SELECTION_LIMITS.ttlMs) };
+}
+
+export function startChatCorrection(record: ChatSelectionRecord | undefined | null, buildId: string, grantId: string,
+  instruction: string, now: number): SceneCommand {
+  if (!record || record.buildId !== buildId || record.grantId !== grantId || !record.draft || record.expiresAt.getTime() <= now) {
+    conflict("That selection is unavailable. Select the area again in Studio before asking in chat.");
+  }
+  const { mapKey, ...scope } = StudioChatSelectionDraft.parse(record.draft);
+  return { kind: "create", mapKey, chatSelectionId: record.id, input: { ...scope, operationId: record.id, instruction } };
+}
 
 export interface StudioAuthoringStore {
   studioOwnerVersions(records: StudioPreparationRecords): Promise<Map<string, StudioOwnerVersion>>;
@@ -64,12 +103,10 @@ export interface AuthoringWrite {
   removed: { kind: AuthoringEntry["kind"]; id: string }[];
 }
 
-export function assertStudioAuthoringAccess(build: Pick<BuildRecord, "id">, access: StudioBuildAccess, command: AuthoringCommand, grant?: StudioGrantRecord) {
-  if (access.passHash !== undefined || (command.kind === "propose" && !grant) || (command.kind === "end" && grant)) {
+export function assertStudioAuthoringAccess(access: StudioBuildAccess, command: AuthoringCommand, grant?: StudioGrantRecord) {
+  const delegatedOnly = command.kind === "propose" || command.kind === "stageChatSelection" || command.kind === "startChatCorrection";
+  if (access.passHash !== undefined || (delegatedOnly && !grant) || (command.kind === "end" && grant)) {
     throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
-  }
-  if (grant && (command.kind === "create" || command.kind === "restore") && !grant.correctionBuildIds?.includes(build.id)) {
-    throw new StudioAuthoringError("corrections_disabled", "Enable private corrections for this connection in the build's AI app connections.");
   }
 }
 
@@ -109,7 +146,7 @@ export class AuthoringHistoryNeeded extends Error {
 /** How an owner write may make room: the entries it can see, and the revisions it must keep. */
 interface OwnerPrune { entries: readonly AuthoringEntry[]; complete: boolean; pinned: readonly string[] }
 
-export function authoringEntryIds(command: AuthoringCommand, workspace?: AuthoringWorkspace, request?: AuthoringEntry) {
+export function authoringEntryIds(command: SceneCommand, workspace?: AuthoringWorkspace, request?: AuthoringEntry) {
   const ids: string[] = [];
   if (workspace && (command.kind === "inspect" || command.kind === "create" || command.kind === "restore" || command.kind === "propose")) {
     ids.push(workspace.workingId, workspace.materializedId);
@@ -296,7 +333,7 @@ export function projectWorkingRevision(records: StudioPreparationRecords, worksp
 }
 
 /** `complete` says `entries` holds the command's workspace's whole history, so an owner write may prune it. */
-export function runAuthoring(records: StudioPreparationRecords, workspaces: readonly AuthoringWorkspace[], entries: readonly AuthoringEntry[], command: AuthoringCommand, complete = false, delegated = false): AuthoringResult {
+export function runAuthoring(records: StudioPreparationRecords, workspaces: readonly AuthoringWorkspace[], entries: readonly AuthoringEntry[], command: SceneCommand, complete = false, delegated = false): AuthoringResult {
   const request = "requestId" in command ? entries.find((r) => r.kind === "request" && r.id === command.requestId) : undefined;
   const mapKey = "mapKey" in command ? command.mapKey : request?.mapKey;
   if (mapKey === undefined) missing();
@@ -359,7 +396,7 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
         conflict("The saved scene changed. Review the current draft before requesting a correction.");
       }
       const scope = deriveScope(base.scene, command.input.selection);
-      const requestId = randomUUID();
+      const requestId = command.chatSelectionId ?? randomUUID();
       const additions: AuthoringEntry[] = [{ id: requestId, mapKey, kind: "request",
         value: { baseRevisionId: base.id, instruction: command.input.instruction, scope, at: new Date().toISOString() } }];
       if (!workspace) additions.push(revisionEntry(mapKey, base));

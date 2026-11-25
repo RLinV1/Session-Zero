@@ -16,7 +16,7 @@ async function connected(request:APIRequestContext,name="Browser GM",secondBuild
   const tokens=await (await request.post(`${ORIGIN}/api/oauth/token`,{form:{grant_type:"authorization_code",client_id:client.client_id,redirect_uri:redirect,resource:`${ORIGIN}/mcp/studio`,code_verifier:verifier,code:new URL(back).searchParams.get("code")!}})).json() as {access_token:string};
   return {build,otherBuild,token:tokens.access_token};
 }
-async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean;secondBuild?:boolean;corrections?:boolean}={}) {
+async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean;secondBuild?:boolean;corrections?:boolean;chatSelection?:boolean}={}) {
   const session=await connected(request,"Browser GM",options.secondBuild);let token=session.token;let polls=0;let bridgeFailure=false;
   const messages: { prompt: string; requestId: string; savedBeforeHandoff: boolean }[] = [];
   let handoff: "accepted" | "refused" | "timeout" = "accepted";
@@ -40,15 +40,33 @@ async function mount(page:Page,request:APIRequestContext,options:{empty?:boolean
     });
   }
   await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {method:string;params:unknown};if(message.method==="tools/call"&&(message.params as {name:string}).name==="studio_snapshot")polls++;const answer=bridgeFailure?{error:{code:-32000,message:"Synthetic authorization cancellation"}}:await rpc(message.method,message.params);await route.fulfill({json:answer});});
-  await page.route("**/studio-test-host",(route)=>route.fulfill({contentType:"text/html",body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#121417"><iframe title="Studio" sandbox="allow-scripts" style="border:0;width:100%;height:1350px"></iframe><script>
+  await page.route("**/studio-test-host",(route)=>route.fulfill({contentType:"text/html",body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#121417">${options.chatSelection ? '<form aria-label="Chat"><p data-testid="chat-attachment"></p><input aria-label="Message"><button>Send</button></form>' : ''}<iframe title="Studio" sandbox="allow-scripts" style="border:0;width:100%;height:1350px"></iframe><script>
 const opened=${JSON.stringify(opened.result)};
+let selection=null;
+document.querySelector('form')?.addEventListener('submit',(event)=>{
+  event.preventDefault();
+  const input=event.currentTarget.querySelector('input');
+  window.studioChatTurn={text:input.value,selection};
+  input.value='';
+});
 window.addEventListener('message',async(event)=>{const message=event.data;if(!message||message.jsonrpc!=='2.0')return;
 const respond=(result)=>event.source.postMessage({jsonrpc:'2.0',id:message.id,result},'*');
-if(message.method==='ui/initialize'){respond({protocolVersion:'2026-01-26',hostInfo:{name:'Local test host',version:'1'},hostCapabilities:{serverTools:{},serverResources:{},openLinks:{},...(${!!options.corrections} && {message:{text:{}},experimental:{'openai/message':{}}})},hostContext:{theme:'dark',displayMode:'inline',availableDisplayModes:['inline','fullscreen']}});}
+if(message.method==='ui/initialize'){respond({protocolVersion:'2026-01-26',hostInfo:{name:'Local test host',version:'1'},hostCapabilities:{serverTools:{},serverResources:{},openLinks:{},...(${!!options.chatSelection} && {updateModelContext:{text:{}}}),...(${!!options.corrections} && {message:{text:{}},experimental:{'openai/message':{}}})},hostContext:{theme:'dark',displayMode:'inline',availableDisplayModes:['inline','fullscreen']}});}
 else if(message.method==='ui/notifications/initialized'){event.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:opened},'*');}
 else if(message.method==='tools/call'){const answer=await (await fetch('/_studio_bridge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(message)})).json();event.source.postMessage({...answer,jsonrpc:'2.0',id:message.id},'*');}
 else if(message.method==='ui/request-display-mode'){window.studioExpanded=true;respond({mode:'fullscreen'});}
 else if(message.method==='ui/open-link'){window.studioOpenedUrl=message.params.url;respond({});}
+else if(message.method==='ui/update-model-context'){
+  const item=message.params.content[0];
+  if(item&&window.studioRefuseAttachment){
+    event.source.postMessage({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'Attachment unavailable'}},'*');
+    return;
+  }
+  selection=item ? JSON.parse(item.text).studioSelection : null;
+  document.querySelector('[data-testid="chat-attachment"]').textContent=item?._meta?.['openai/title'] ?? '';
+  window.studioSelection=selection;
+  respond({});
+}
 else if(message.method==='ui/message'){const {handoff}=await(await fetch('/_studio_handoff',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(message.params)})).json();if(handoff!=='timeout')respond(handoff==='refused'?{isError:true}:{});}
 else if(message.id!==undefined)respond({});});
 </script></body></html>`}));
@@ -348,18 +366,7 @@ test("embedded Studio hands off after save and supports doorway, cropped terrain
   const studio = frame.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
   const select = studio.getByRole("button", { name: "Select for correction", exact: true });
   await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
-  await expect(select).toBeDisabled();
-
   await page.context().addCookies((await request.storageState()).cookies);
-  const ownerView = await page.context().newPage();
-  await ownerView.goto(`${ORIGIN}/builds/${buildId}`);
-  const permission = ownerView.getByRole("checkbox", { name: "Allow Browser fixture to request corrections and restore private revisions" });
-  await expect(permission).not.toBeChecked();
-  await permission.click();
-  await expect(permission).toBeChecked();
-  await expect(permission).toBeEnabled();
-  await ownerView.close();
-  await page.bringToFront();
   await expect(select).toBeEnabled({ timeout: 10_000 });
 
   await selectDoorway(page, studio, canvas);
@@ -466,4 +473,76 @@ test("embedded Studio hands off after save and supports doorway, cropped terrain
   expect(head.revisions.find((r) => r.id === head.workingRevisionId)).toMatchObject({ restoredFrom: token.baseRevisionId });
   expect(messages).toHaveLength(3);
   await frame.locator("body").evaluate(() => dispatchEvent(new Event("pagehide")));
+});
+
+test("the normal composer carries the current Studio selection and delivers a scoped proposal", async ({ page, request }) => {
+  test.setTimeout(85_000);
+  const session = await mount(page, request, { chatSelection: true });
+  const { buildId, tool, readRequest, propose, history } = await preparedCorrection(session, request);
+  const studio = session.frame.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
+  const select = studio.getByRole("button", { name: "Select for correction", exact: true });
+  const chip = page.getByTestId("chat-attachment");
+  const ready = studio.getByText("Selection attached. Ask for the change in chat.");
+  type SelectedScope = { buildId: string; selectionId: string };
+  const currentSelection = () => page.evaluate(() => (window as Window & { studioSelection?: SelectedScope }).studioSelection);
+  const start = (ref: SelectedScope, instruction = "Open the selected door.") => tool("studio_start_correction", { ...ref, instruction });
+
+  await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
+  await expect(select).toBeEnabled();
+  await select.click();
+  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await dragSelection(page, canvas, [140, 150], [345, 245]);
+  await expect(chip).toHaveText("Chapel selection");
+  await expect(ready).toBeVisible();
+  await expect(studio.getByLabel("Correction instruction")).toHaveCount(0);
+  await expect(studio.getByRole("button", { name: "Send to chat" })).toHaveCount(0);
+  await expect(studio.getByRole("group", { name: "Editable layers" })).toBeHidden();
+  const original = (await currentSelection())!;
+  expect(original.buildId).toBe(buildId);
+  expect((await request.get(`${correctionRoute(buildId)}/revisions`)).status()).toBe(404);
+
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await expect.poll(async () => (await currentSelection())?.selectionId).not.toBe(original.selectionId);
+  await expect(ready).toBeVisible();
+  const replaced = (await currentSelection())!;
+  expect((await start(original)).isError).toBe(true);
+  await studio.getByRole("button", { name: "Cancel selection" }).click();
+  await expect(chip).toBeEmpty();
+  expect((await start(replaced)).isError).toBe(true);
+
+  await select.click();
+  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await expect(ready).toBeVisible();
+  await expect(chip).toHaveText("Chapel selection");
+  const instruction = "Can you open that door?";
+  await page.getByRole("textbox", { name: "Message" }).fill(instruction);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const turn = await page.evaluate(() => (window as Window & { studioChatTurn?: { text: string; selection: SelectedScope } }).studioChatTurn);
+  expect(turn).toMatchObject({ text: instruction, selection: { buildId } });
+  if (!turn) throw new Error("The composer did not submit a turn");
+  const started = await start(turn.selection, turn.text);
+  expect(started.isError, JSON.stringify(started.content)).not.toBe(true);
+  const { requestId } = JSON.parse((started.content as { text: string }[])[0]!.text) as { requestId: string };
+  const model = await readRequest(requestId);
+  expect(model.scope.wholeObjectIds).toHaveLength(0);
+  expect(model.scope.objectIds).toHaveLength(1);
+  expect(model.scope.region.minX).toBeCloseTo(118, -1);
+  expect(model.scope.region.maxX).toBeCloseTo(356, -1);
+  expect((await history()).requests[0]).toMatchObject({ instruction, requestId });
+  expect((await propose(model, [{ op: "line.update", id: model.scope.objectIds[0], line: { ...correctionDoor, state: "open" } }])).isError).not.toBe(true);
+  await expect(studio.getByRole("button", { name: "Door, Closed → Door, Open" })).toBeVisible({ timeout: 12000 });
+  await expect(studio.getByRole("button", { name: "Before", exact: true })).toBeVisible();
+  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toBeHidden();
+  await expect(chip).toBeEmpty();
+
+  await page.evaluate(() => { (window as Window & { studioRefuseAttachment?: boolean }).studioRefuseAttachment = true; });
+  await studio.getByRole("button", { name: "Refine working revision" }).click();
+  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await dragSelection(page, canvas, [118, 177], [356, 243]);
+  await expect(studio.getByText(/^Chat couldn’t attach the selection/)).toBeVisible();
+  await expect(studio.getByLabel("Correction instruction")).toBeVisible();
+  await expect(chip).toBeEmpty();
+  expect((await history()).requests).toHaveLength(1);
+
 });

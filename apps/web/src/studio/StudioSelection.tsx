@@ -43,9 +43,9 @@ export function useStudioSelection(inspection: StudioInspection | null, allowed:
     anchor.current = null; keyboardAnchor.current = null;
     setDragging(null); setCursor(null); setDraft((old) => ({ ...old, tool }));
   };
-  const reset = (firstLayer?: StudioEditLayer) => {
+  const reset = (layers: StudioEditLayer[]) => {
     setTool("region");
-    setDraft({ ...emptyDraft, layers: firstLayer ? [firstLayer] : [] });
+    setDraft({ ...emptyDraft, layers });
   };
   const clamp = (at: Point) => ({ x: Math.max(0, Math.min(at.x, source?.width ?? 0)), y: Math.max(0, Math.min(at.y, source?.height ?? 0)) });
   function selectRegion(region: StudioRectangle) {

@@ -82,16 +82,18 @@
   border-radius: 5px;
 }
 
-.studio-object-scope label,
-.studio-correction-permission {
+.studio-object-scope label {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
-.studio-object-scope input,
-.studio-correction-permission input {
+.studio-object-scope input {
   accent-color: var(--studio-focus, #e08a62);
+}
+
+.studio-selection-details[open] > :not(summary) {
+  margin-top: 8px;
 }
 
 .studio-change-list ul {

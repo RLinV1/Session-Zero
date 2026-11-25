@@ -41,13 +41,15 @@ Enrollment and ordinary saves, removals and publication use the same per-build s
 
 ## M4 private correction authority
 
-The approved M4 plan authorizes the signed-in build owner to enable or disable private correction requests and restores for each connection on that build. The grant records the opted-in builds. Existing and new grants start with an empty set. The connection's existing build coverage, lifetime and revocation still apply. The adjustment takes effect on the current grant without a new OAuth flow.
+The product owner approved making private corrections part of the existing live build grant for the M4 polish on 2026-11-24. The build service checks current grant coverage, owner choices and the inspected revision under the build lock. The old per-build correction opt-in column stays readable by earlier releases during rollback.
 
-The app exposes request creation and private revision restore as app-only tools. App-only visibility controls discovery. The build service enforces authorization with the live grant, explicit build opt-in, owner choices and revision checks under the build write boundary. The grant establishes the caller's authority to use those operations. A correct request binds the displayed source, scene and editable scope. Restoring a revision moves the private working pointer by adding a revision, with the expected current revision as a precondition. Delegated calls cannot end corrections, change permissions or publish. A previously saved request remains a scoped authorization to submit a proposal while the connection remains live and the applicable choices allow it.
+The app stages a temporary selection under the active grant, build and view. An app-only tool replaces or clears the view's selection. The model-facing tool starts a saved request using a staged reference and the user's explicit instruction. That tool accepts only the staged geometry and scope. Staging alone does not enroll the map or change any draft. The model reads the immutable saved request and can propose within its scope.
+
+Private revision restore remains an app-only control with an expected working revision. Tool visibility controls discovery. Server-side grant, ownership, scope and revision checks are authoritative. Ending corrections, changing permissions and publishing remain owner actions.
 
 Crop delivery inherits build and source access. It renders the saved request's base and padded source region, then rechecks access and request existence before returning bytes. The model receives this deliberately shared image in the tool result. The chat provider can retain it. App views continue to load previews through authorized media paths.
 
-The M4 authority review checked the two store boundaries, the grant update and write lock ordering, the distinction between tool visibility and authorization, and the owner-only paths. This record precedes the dependent implementation. The owner expressly waived Raymond review gates for M4 on 2026-11-18.
+The M4 authority review covered the two stores, build and grant lock ordering, tool visibility and owner-only paths. The product owner waived Raymond review gates for M4 on 2026-11-18.
 
 ## Consequences
 
@@ -76,6 +78,6 @@ This does not authorize publication, deployment, merging or later-milestone cont
 | Real-Time Architecture owner | Delegated credentials, private asset access, authoring contracts, enrollment and guarded publication | Accepted by Raymond on 2026-11-16, reviewed revision `6f645f29` (reported by the user, with Raymond present) |
 | M1a implementation choices | The "M1a implementation" paragraph above and design.md D7's record | Pre-approved by the user on 2026-11-16 for choices inside D7 as amended (M1a starter); recorded before dependent code. Not a separate review by Raymond of this code; the PR is open for that |
 | M1b implementation choices | The "M1b implementation" paragraph above and design.md D8/D9's records | User approved the researched design and autonomous implementation on 2026-11-16; recorded in `1a2f7639` before dependent code. Required real ChatGPT qualification passed ([evidence](../../openspec/changes/interactive-ai-scene-studio/evidence/m1-host-2026-11-16.md)); independent fixes re-reviewed through `7eadf503`. Architecture-owner code review remains pending and is not replaced by those checks. |
-| M4 correction authority | Build-specific grant opt-in, delegated request creation and restore, and authorized model crops | The owner approved the M4 plan and waived Raymond review gates. The amendment above records the authority and write-boundary review before implementation. |
+| M4 correction authority | Existing build grant, temporary chat selections, private restore and authorized model crops | The owner approved the M4 plan and waived Raymond review gates. The amendment above records the authority and write-boundary review before implementation. |
 
 The review rows record the decisions for each milestone. The M3 implementation used the owner’s explicit waiver recorded above. A successful prototype or local agent review is not this external sign-off. Do not copy the prior terrain branch's implementation-before-review authorization into this change.

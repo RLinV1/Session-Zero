@@ -28,8 +28,6 @@ export interface StudioGrantRecord {
   scope: string;
   /** The builds the owner ticked on the consent page. Fixed for the grant's life. */
   buildIds: string[];
-  /** Build-by-build permission to create private requests and restore revisions. */
-  correctionBuildIds?: string[];
   /** SHA-256 of the single-use authorization code. */
   codeHash: string;
   /** The PKCE S256 challenge the code was issued against. */
@@ -146,7 +144,6 @@ export interface StudioStore {
   endStudioGrants(ownerGmId: string, now: string): Promise<void>;
   /** The owner's exchanged grants that are still live at `now`, newest first. */
   listStudioGrants(ownerGmId: string, now: string): Promise<StudioGrantRecord[]>;
-  setStudioCorrectionPermission(buildId: string, ownerGmId: string, grantId: string, enabled: boolean, now: () => number): Promise<boolean>;
   /** Records use, at most as often as the caller decides. */
   touchStudioGrant(grantId: string, at: string): Promise<void>;
   /** Drops expired tokens, ended or never-exchanged grants, and unused or idle clients. */

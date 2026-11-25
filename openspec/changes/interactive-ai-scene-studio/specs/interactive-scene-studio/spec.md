@@ -30,14 +30,13 @@ The hosted Studio SHALL authenticate through delegated access linked to the owne
 - **WHEN** a delegated client attempts to enable the owner's terrain choice
 - **THEN** the request is refused and the choice remains unchanged
 
-### Requirement: Build owners control delegated correction requests and restores
+### Requirement: Build access includes scoped private corrections
 
-The signed-in build owner SHALL control whether each named connection can create private correction requests and restore private revisions on that build. Existing and new connections SHALL start with this permission disabled. The server SHALL verify the live grant and permission inside the create or restore write boundary.
+A live Studio grant SHALL authorize private corrections on its approved builds. The server SHALL recheck the grant, build choices, and revision within each write. The Studio SHALL offer restoration through an explicit user action. A build owner can end delegated access by revoking the connection.
 
-#### Scenario: Disable private corrections for one connection
-- **WHEN** the owner disables correction permission for a connection before its next request or restore commits
-- **THEN** that write is refused without saving a request or revision
-- **AND** the connection retains any permissions the owner granted on other builds
+#### Scenario: An existing connection requests its first correction
+- **WHEN** a connected owner selects an editable area of an approved build
+- **THEN** the owner can ask for a scoped correction using the existing grant
 
 ### Requirement: Unpublished Studio artwork requires authorized delivery
 
@@ -135,7 +134,16 @@ A correction SHALL distinguish inspection context from permitted edits. The serv
 
 ### Requirement: User actions explicitly submit correction instructions
 
-The user SHALL be able to enter correction instructions for a saved selection and submit them into the AI conversation. The view SHALL distinguish a prepared request, a host handoff, observed AI activity and a saved result. Host acknowledgement alone MUST NOT be shown as completed AI work. Selecting, rendering or hovering MUST NOT automatically submit a prompt. Where no chat bridge is available, the website SHALL supply a saved request and copyable instruction.
+The embedded Studio SHALL attach the current selection to the active chat when the host supports model context. Selecting SHALL save only a temporary scope. An explicit instruction in chat SHALL start the immutable correction request. The Studio SHALL keep the website and unsupported-host form as fallbacks and distinguish attachment, request, observed activity, and result.
+
+#### Scenario: Ask about a selection in chat
+- **WHEN** the user draws a rectangle and sends an instruction in the normal chat composer
+- **THEN** the request binds the attached selection, inspected revision, and instruction
+
+#### Scenario: Redraw or clear a selection
+- **WHEN** the view replaces or clears its selection
+- **THEN** the previous selection reference cannot start a correction
+- **AND** a saved request retains its original scope
 
 #### Scenario: Correct rubble
 - **WHEN** the user selects the courtyard and submits "Keep the path clear; only rubble is difficult"

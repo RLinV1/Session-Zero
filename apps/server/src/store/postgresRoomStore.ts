@@ -1,4 +1,4 @@
-import { affectedWorkspaces, assertStudioAuthoringAccess, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
+import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, nextChatSelection, startChatCorrection, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import type { FeedbackCursor } from "@vtt/shared";
@@ -28,7 +28,6 @@ import {
   StudioClientLimitError,
   StudioGrantLimitError,
   delegationAllows,
-  grantIsLive,
   type StudioClientRecord,
   type StudioDelegation,
   type StudioGrantRecord,
@@ -205,9 +204,9 @@ async function closeStudioBuild(tx: Prisma.TransactionClient, buildId: string) {
     const grant = await tx.studioGrant.findUnique({ where: { id } });
     if (!grant) continue;
     const buildIds = grant.buildIds.filter((id) => id !== buildId);
-    const correctionBuildIds = grant.correctionBuildIds.filter((id) => id !== buildId);
-    await tx.studioGrant.update({ where: { id }, data: { buildIds, correctionBuildIds, ...(!buildIds.length && { revokedAt: grant.revokedAt ?? new Date() }) } });
+    await tx.studioGrant.update({ where: { id }, data: { buildIds, ...(!buildIds.length && { revokedAt: grant.revokedAt ?? new Date() }) } });
   }
+  await tx.studioChatSelection.deleteMany({ where: { buildId } });
 }
 
 const isoOrNull = (date: Date | null) => date?.toISOString() ?? null;
@@ -218,7 +217,7 @@ function toStudioClientRecord(row: StudioOAuthClient): StudioClientRecord {
 
 function toStudioGrantRecord(row: StudioGrant): StudioGrantRecord {
   return {
-    id: row.id, ownerGmId: row.ownerGmId, clientId: row.clientId, resource: row.resource, scope: row.scope, buildIds: row.buildIds, correctionBuildIds: row.correctionBuildIds,
+    id: row.id, ownerGmId: row.ownerGmId, clientId: row.clientId, resource: row.resource, scope: row.scope, buildIds: row.buildIds,
     codeHash: row.codeHash, codeChallenge: row.codeChallenge, redirectUri: row.redirectUri, codeExpiresAt: row.codeExpiresAt.toISOString(),
     codeUsedAt: isoOrNull(row.codeUsedAt), createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
     revokedAt: isoOrNull(row.revokedAt), lastUsedAt: isoOrNull(row.lastUsedAt),
@@ -1132,23 +1131,6 @@ export class PostgresRoomStore implements RoomStore {
     return rows.map(toStudioGrantRecord);
   }
 
-  async setStudioCorrectionPermission(buildId: string, ownerGmId: string, grantId: string, enabled: boolean, now: () => number) {
-    return this.prisma.$transaction(async (tx) => {
-      const build = await lockOpenBuild(tx, buildId);
-      if (build.ownerGmId !== ownerGmId) return false;
-      // Match the order used by every build write: build lock, then grant row.
-      await tx.$executeRaw`SELECT 1 FROM studio_grants WHERE id = ${grantId}::uuid FOR UPDATE`;
-      const row = await tx.studioGrant.findUnique({ where: { id: grantId } });
-      if (!row || row.ownerGmId !== ownerGmId || !row.buildIds.includes(buildId) || !grantIsLive(toStudioGrantRecord(row), now())) return false;
-      const ids = row.correctionBuildIds.filter((id) => id !== buildId);
-      await tx.studioGrant.update({ where: { id: grantId }, data: { correctionBuildIds: enabled ? [...ids, buildId] : ids } });
-      return true;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }).catch((error: unknown) => {
-      if (error instanceof BuildClosedError) return false;
-      throw error;
-    });
-  }
-
   async touchStudioGrant(grantId: string, at: string) {
     await this.prisma.studioGrant.updateMany({ where: { id: grantId }, data: { lastUsedAt: new Date(at) } });
   }
@@ -1164,6 +1146,7 @@ export class PostgresRoomStore implements RoomStore {
       const ids = ended.map((g) => g.id);
       await tx.studioToken.deleteMany({ where: { grantId: { in: ids } } });
       await tx.studioGrant.deleteMany({ where: { id: { in: ids } } });
+      await tx.studioChatSelection.deleteMany({ where: { expiresAt: { lte: now } } });
       await tx.studioOAuthClient.deleteMany({
         where: {
           grants: { none: {} },
@@ -1273,25 +1256,48 @@ export class PostgresRoomStore implements RoomStore {
       const grant = await assertDelegation(tx, access.delegation, locked);
       const build = toBuildRecord(await tx.build.findUniqueOrThrow({ where: { id: buildId } }));
       assertStudioBuildAccess(build, access);
-      assertStudioAuthoringAccess(build, access, command, grant);
+      assertStudioAuthoringAccess(access, command, grant);
+      if (command.kind === "stageChatSelection") {
+        const now = access.delegation!.now();
+        const grantId = grant!.id;
+        const viewId = command.update.viewId;
+        const key = { buildId, grantId, viewId };
+        const where = { buildId_grantId_viewId: key };
+        const previous = await tx.studioChatSelection.findUnique({ where });
+        if (command.update.draft && (!previous?.draft || previous.expiresAt.getTime() <= now)) {
+          assertChatSelectionCapacity(await tx.studioChatSelection.count({
+            where: { buildId, draft: { not: Prisma.DbNull }, expiresAt: { gt: new Date(now) } },
+          }));
+        }
+        const staged = nextChatSelection(previous, buildId, grantId, command.update, now);
+        const data = { id: staged.id, sequence: staged.sequence, expiresAt: staged.expiresAt,
+          draft: staged.draft === null ? Prisma.DbNull : staged.draft as Prisma.InputJsonObject };
+        await tx.studioChatSelection.upsert({ where, create: { ...key, ...data }, update: data });
+        await assertDelegation(tx, access.delegation, locked);
+        return { response: { selectionId: staged.draft ? staged.id : null } };
+      }
+      const sceneCommand = command.kind === "startChatCorrection"
+        ? startChatCorrection(await tx.studioChatSelection.findUnique({ where: { id: command.selectionId } }),
+          buildId, grant!.id, command.instruction, access.delegation!.now())
+        : command;
       const workspaces = await studioWorkspaces(tx, buildId);
-      const requestRow = "requestId" in command ? await tx.studioAuthoringEntry.findUnique({
-        where: { buildId_kind_id: { buildId, kind: "request", id: command.requestId } },
+      const requestRow = "requestId" in sceneCommand ? await tx.studioAuthoringEntry.findUnique({
+        where: { buildId_kind_id: { buildId, kind: "request", id: sceneCommand.requestId } },
       }) : null;
       const request = requestRow ? entryRecord(requestRow) : undefined;
-      const mapKey = "mapKey" in command ? command.mapKey : request?.mapKey;
+      const mapKey = "mapKey" in sceneCommand ? sceneCommand.mapKey : request?.mapKey;
       const workspace = workspaces.find((w) => w.mapKey === mapKey);
-      const ids = authoringEntryIds(command, workspace, request);
-      const entries = command.kind === "history"
+      const ids = authoringEntryIds(sceneCommand, workspace, request);
+      const entries = sceneCommand.kind === "history"
         ? (await tx.$queryRaw<Parameters<typeof entryRecord>[0][]>`
             SELECT map_key AS "mapKey", kind, id, value - 'scene' AS value, activity
             FROM studio_authoring_entries
-            WHERE build_id = ${buildId}::uuid AND map_key = ${command.mapKey} AND kind IN ('revision', 'request')`).map(entryRecord)
+            WHERE build_id = ${buildId}::uuid AND map_key = ${sceneCommand.mapKey} AND kind IN ('revision', 'request')`).map(entryRecord)
         : await studioEntries(tx, buildId, ids);
       if (request) entries.push(request);
       const records = await studioRecords(tx, build);
       const result = await withHistory(tx, buildId, mapKey === undefined ? [] : [mapKey], entries,
-        (rows, complete) => runAuthoring(records, workspaces, rows, command, complete, !!grant));
+        (rows, complete) => runAuthoring(records, workspaces, rows, sceneCommand, complete, !!grant));
       if (result.write) await writeAuthoring(tx, buildId, result.write);
       if (result.activity) {
         const { requestId, mapKey, value, historyVersion } = result.activity;
@@ -1301,9 +1307,12 @@ export class PostgresRoomStore implements RoomStore {
           WHERE build_id = ${buildId}::uuid AND map_key = ${mapKey}`;
       }
       // The workspace row's cascade removes its revisions, requests and receipts.
-      if (result.end) await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: result.end } });
+      if (result.end) {
+        await tx.studioAuthoringWorkspace.deleteMany({ where: { buildId, mapKey: result.end } });
+        await tx.studioChatSelection.deleteMany({ where: { buildId, draft: { path: ["mapKey"], equals: result.end } } });
+      }
       if (result.touch) await tx.build.update({ where: { id: buildId }, data: { updatedAt: new Date() } });
-      if ((result.write || result.activity) && access.delegation) assertStudioAuthoringAccess(locked, access, command, await assertDelegation(tx, access.delegation, locked));
+      if ((result.write || result.activity) && access.delegation) assertStudioAuthoringAccess(access, command, await assertDelegation(tx, access.delegation, locked));
       return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     if (completed.error) throw completed.error;

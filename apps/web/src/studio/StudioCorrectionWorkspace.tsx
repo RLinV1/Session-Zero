@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput,
+  StudioChatSelectionUpdate, StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput,
   StudioRevisionView, StudioSnapshot,
 } from "@vtt/shared";
 import { copyText } from "../pages/build/buildCopy";
@@ -16,13 +16,14 @@ export interface StudioAuthoringClient {
   create(mapKey: string, input: StudioCorrectionInput): Promise<StudioCorrectionReceipt>;
   restore(mapKey: string, input: StudioRestoreInput): Promise<unknown>;
   refresh(): void;
+  attachToChat?(update: StudioChatSelectionUpdate, title: string): Promise<{ selectionId: string | null }>;
   handoff?(prompt: string): Promise<"sent" | "pending" | "failed">;
   ensureMedia?(fileIds: string[]): void;
   end?(mapKey: string): Promise<void>;
 }
 
 const problems = {
-  access: "correction.error.access", conflict: "correction.error.conflict", corrections_disabled: "correction.error.corrections_disabled",
+  access: "correction.error.access", conflict: "correction.error.conflict",
   invalid: "correction.error.invalid", missing: "correction.error.missing", permission: "correction.error.permission",
   scope: "correction.error.scope", limit: "correction.error.limit",
 } as const;
@@ -48,13 +49,12 @@ function operationId() {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
-export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, disabled, onWebsiteOpen }: {
+export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, disabled }: {
   snapshot: StudioSnapshot;
   media: Readonly<Record<string, string>>;
   locale: StudioLocale;
   authoring: StudioAuthoringClient;
   disabled: boolean;
-  onWebsiteOpen?: () => void;
 }) {
   const t = (key: StudioTextKey, params?: Record<string, number | string>) => studioT(locale, key, params);
   const { mapKey, encounterKey, sourceFileId } = snapshot.context;
@@ -82,16 +82,46 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const adapter = useRef(authoring);
   adapter.current = authoring;
 
-  const hasPermission = !!authoring.end || snapshot.correctionsAllowed === true;
+  const chatEnabled = !!authoring.attachToChat;
   const allowed = editLayers.filter((layer) => layer === "geometry" ? snapshot.allowed.walls
     : layer === "terrain" ? snapshot.allowed.terrain : encounterKey !== null);
   const cancel = () => {
     setInspection(null); setRetrySend(null); setFeedback(null);
   };
-  const selection = useStudioSelection(inspection, allowed, disabled || !hasPermission || busy || !!retrySend, cancel);
+  const selection = useStudioSelection(inspection, allowed, disabled || busy || !!retrySend, cancel);
   const revisionId = snapshot.workingRevisionId;
   const invalidated = !!inspection && (snapshot.workingBindingChanged || (inspection.workingRevisionId ?? undefined) !== revisionId);
   const needsInspection = invalidated || feedback === "correction.error.conflict";
+  const chatDraft = chatEnabled && mapKey && inspection && !needsInspection && !disabled && selection.selection
+    ? JSON.stringify({ mapKey, encounterKey, inspectedVersion: inspection.inspectedVersion, selection: selection.selection })
+    : null;
+  const chatTitle = t("correction.chatTitle", { map: snapshot.maps.find((map) => map.key === mapKey)?.name ?? "" });
+  const attachmentView = useRef<{ id: string; sequence: number } | null>(null);
+  const [attachment, setAttachment] = useState<{ draft: string; selectionId: string | null } | null>(null);
+  const attachFailed = chatDraft !== null && attachment?.draft === chatDraft && attachment.selectionId === null;
+  const showForm = !chatEnabled || attachFailed;
+
+  useEffect(() => {
+    if (!chatEnabled || (!chatDraft && !attachmentView.current)) return;
+    const view = attachmentView.current ??= { id: operationId(), sequence: 0 };
+    const draft = chatDraft === null ? null : JSON.parse(chatDraft) as StudioChatSelectionUpdate["draft"];
+    const deliver = adapter.current.attachToChat;
+    if (!deliver) return;
+    let current = true;
+    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle).then(({ selectionId }) => {
+      if (current && chatDraft !== null) setAttachment({ draft: chatDraft, selectionId });
+    }).catch(() => {
+      if (!current || chatDraft === null) return;
+      setAttachment({ draft: chatDraft, selectionId: null });
+      void deliver({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
+    });
+    return () => { current = false; };
+  }, [chatDraft, chatEnabled, chatTitle]);
+  useEffect(() => () => {
+    const view = attachmentView.current;
+    if (view) void adapter.current.attachToChat?.({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
+  }, []);
+
   const previouslyEnrolled = useRef(!!revisionId);
 
   useEffect(() => {
@@ -117,7 +147,17 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const head = history?.workingRevisionId ?? revisionId;
   const revisions = revisionId ? history?.revisions ?? [] : [];
   const requests = revisionId ? history?.requests ?? [] : [];
-  const currentProposal = revisions.find((revision) => revision.id === head && revision.requestId && (!saved || revision.requestId === saved.requestId));
+  const attachedRequest = attachment?.selectionId && requests.find((request) => request.requestId === attachment.selectionId);
+  useEffect(() => {
+    if (!inspection || !attachedRequest) return;
+    setRequestId(attachedRequest.requestId);
+    setSaved(null);
+    setInspection(null);
+    setFeedback(null);
+    setAutoCompare(true);
+    setAttachment(null);
+  }, [inspection, attachedRequest]);
+  const currentProposal = revisions.find((revision) => revision.id === head && revision.requestId && (!requestId || revision.requestId === requestId));
   useEffect(() => {
     if (autoCompare && !inspection && !pinned && currentProposal) setPinned(currentProposal.id);
   }, [autoCompare, inspection, pinned, currentProposal]);
@@ -153,7 +193,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     adapter.current.refresh();
   }
   async function startSelection() {
-    if (!mapKey || disabled || busy || !hasPermission) return;
+    if (!mapKey || disabled || busy) return;
     setBusy(true); setFeedback(null);
     try {
       const value = await authoring.inspect(mapKey, encounterKey);
@@ -161,8 +201,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       if (value.target.encounterKey !== encounterKey || value.scene.source?.id !== sourceFileId || value.drifted) {
         setFeedback("correction.error.conflict"); refresh(); return;
       }
-      setInspection(value); setAutoCompare(false); setPinned(null); setRetrySend(null);
-      selection.reset(allowed[0]);
+      setInspection(value); setAutoCompare(false); setPinned(null); setSide("result"); setRetrySend(null); setAttachment(null);
+      selection.reset(chatEnabled ? allowed : allowed.slice(0, 1));
       if ((value.workingRevisionId ?? undefined) !== revisionId) refresh();
       root.current?.querySelector<SVGSVGElement>('svg[data-testid="studio-map"]')?.focus({ preventScroll: true });
     } catch (error) {
@@ -173,7 +213,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   }
 
   async function saveRequest() {
-    if (!mapKey || !inspection || !hasPermission || disabled || busy) return;
+    if (!mapKey || !inspection || disabled || busy) return;
     if (!retrySend && (needsInspection || !selection.selection || !instruction.trim())) return;
     const input = retrySend ?? { encounterKey, inspectedVersion: inspection.inspectedVersion, operationId: operationId(),
       instruction: instruction.trim(), selection: selection.selection! };
@@ -200,7 +240,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   }
 
   async function restore(target?: string, expected = head) {
-    if (!mapKey || !hasPermission || disabled || busy || (!retryRestore && (!target || !expected))) return;
+    if (!mapKey || disabled || busy || (!retryRestore && (!target || !expected))) return;
     const input = retryRestore ?? { revisionId: target!, expectedCurrentRevisionId: expected!, operationId: operationId() };
     setRetryRestore(input); setBusy(true); setFeedback(null);
     try {
@@ -242,19 +282,50 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const requestHandoff = handoff?.requestId === request?.requestId ? handoff?.state : undefined;
   const interaction: StudioMapInteraction | undefined = inspection ? selection.interaction
     : focused?.focus ? { focus: { x: (focused.focus.minX + focused.focus.maxX) / 2, y: (focused.focus.minY + focused.focus.maxY) / 2 } } : undefined;
+  const selectionTools = (["pan", "region", "objects"] as const).map((tool) =>
+    <button key={tool} type="button" aria-pressed={selection.draft.tool === tool}
+      disabled={disabled || busy || !!retrySend} onClick={() => selection.setTool(tool)}>{t(`correction.tool.${tool}`)}</button>);
+  const selectionDetails = <>
+    {selection.draft.tool === "objects" && <label>{t("correction.pickObject")}
+      <select aria-label={t("correction.pickObject")} value="" disabled={busy || disabled || !!retrySend} onChange={(event) => {
+        const object = selection.objects.find((item) => item.id === event.currentTarget.value);
+        if (object) selection.pick(object);
+      }}>
+        <option value="">{t("correction.pickObject")}</option>
+        {selection.objects.filter((object) => object.bounds && allowed.includes(object.layer)).map((object) => <option key={object.id} value={object.id}>
+          {t("correction.objectAt", { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY) })}
+        </option>)}
+      </select>
+    </label>}
+    <fieldset className="studio-layer-controls" disabled={busy || disabled || !!retrySend}>
+      <legend>{t("correction.editLayers")}</legend>
+      {editLayers.map((layer) => <label key={layer}><input type="checkbox" checked={selection.draft.layers.includes(layer) && allowed.includes(layer)}
+        disabled={!allowed.includes(layer)} onChange={(event) => selection.toggleLayer(layer, event.currentTarget.checked)} />{t(`correction.layer.${layer}`)}</label>)}
+    </fieldset>
+    {selection.coverage && <p data-testid="studio-cell-scope">{t("correction.cells", selection.coverage)}</p>}
+    {selection.draft.region && <p className="studio-note">{t("correction.destination")}</p>}
+    {selection.candidates.length > 0 && <fieldset className="studio-object-scope" disabled={busy || disabled || !!retrySend}>
+      <legend>{t("correction.editObjects")}</legend>
+      {selection.candidates.map(({ object, coverage, included }) => <label key={object.id}>
+        <input type="checkbox" checked={included} onChange={(event) => selection.toggleObject(object.id, coverage === "crossing", event.currentTarget.checked)} />
+        {t(coverage === "crossing" ? "correction.wholeObject" : "correction.objectAt",
+          { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY),
+            maxX: Math.round(object.bounds!.maxX), maxY: Math.round(object.bounds!.maxY) })}
+      </label>)}
+    </fieldset>}
+  </>;
   return <div className="studio-corrections" ref={root}>
     <div className="studio-action-row">
-      {!inspection && <button type="button" disabled={disabled || busy || !hasPermission || !snapshot.scene.grid || !!snapshot.workingBindingChanged || !allowed.length}
+      {!inspection && <button type="button" disabled={disabled || busy || !snapshot.scene.grid || !!snapshot.workingBindingChanged || !allowed.length}
         onClick={() => void startSelection()}>{t(compared ? "correction.refine" : "correction.select")}</button>}
-      {inspection && (["pan", "region", "objects"] as const).map((tool) => <button key={tool} type="button" aria-pressed={selection.draft.tool === tool}
-        disabled={disabled || busy || !!retrySend} onClick={() => selection.setTool(tool)}>{t(`correction.tool.${tool}`)}</button>)}
+      {inspection && !chatEnabled && selectionTools}
       {inspection && <button type="button" disabled={busy} onClick={cancel}>{t("correction.cancel")}</button>}
       {revisionId && authoring.end && <button type="button" disabled={disabled || busy} onClick={() => void endCorrections()}>{t("correction.end")}</button>}
     </div>
-    {!hasPermission && <p className="studio-note">{t("correction.enable")}{" "}
-      {onWebsiteOpen && <a href={snapshot.websitePath} onClick={(event) => { event.preventDefault(); onWebsiteOpen(); }}>{t("correction.connections")}</a>}</p>}
-    {inspection && <p className="studio-map-help">{t(selection.draft.tool === "region" ? "correction.regionHelp"
+    {inspection && <p className="studio-map-help">{t(selection.draft.tool === "region" ? (chatEnabled ? "correction.chatRegionHelp" : "correction.regionHelp")
       : selection.draft.tool === "objects" ? "correction.objectHelp" : "keyboard")}</p>}
+    {chatDraft && <p role="status" className="studio-note">{t(attachFailed ? "correction.chatAttachFailed"
+      : attachment?.draft === chatDraft ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
     {!inspection && pinned && <div className="studio-action-row" role="group" aria-label={t("correction.comparison")}>
       <button type="button" aria-pressed={side === "base" && !!compared?.base} disabled={!compared?.base} onClick={() => setSide("base")}>{t("correction.before")}</button>
       <button type="button" aria-pressed={side === "result" || !compared?.base} disabled={!compared} onClick={() => setSide("result")}>{t("correction.after")}</button>
@@ -263,42 +334,25 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       drawOverlay={inspection ? selection.drawOverlay : compared?.base ? (px) => <StudioDiffOverlay changes={changes} focused={focused?.id ?? null} px={px} /> : undefined} />
     {displayed !== snapshot.scene && snapshot.workingBindingChanged && <p className="studio-note" role="status">{t("correction.bindingChanged")}</p>}
     {feedback && <p role={feedback === "correction.restored" || feedback === "correction.ended" ? "status" : "alert"}>{t(feedback)}</p>}
-    {retryRestore && <button type="button" disabled={busy || disabled || !hasPermission} onClick={() => void restore()}>{t("correction.retryRestore")}</button>}
+    {retryRestore && <button type="button" disabled={busy || disabled} onClick={() => void restore()}>{t("correction.retryRestore")}</button>}
     {inspection && <div className="studio-correction-form">
       {needsInspection && <div role="status">{invalidated && feedback !== "correction.error.conflict" && t("correction.error.conflict")}{" "}
         <button type="button" disabled={busy} onClick={() => void startSelection()}>{t("correction.reselect")}</button></div>}
-      {selection.draft.tool === "objects" && <label>{t("correction.pickObject")}
-        <select aria-label={t("correction.pickObject")} value="" disabled={busy || disabled || !!retrySend} onChange={(event) => {
-          const object = selection.objects.find((item) => item.id === event.currentTarget.value);
-          if (object) selection.pick(object);
-        }}>
-          <option value="">{t("correction.pickObject")}</option>
-          {selection.objects.filter((object) => object.bounds && allowed.includes(object.layer)).map((object) => <option key={object.id} value={object.id}>
-            {t("correction.objectAt", { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY) })}
-          </option>)}
-        </select>
-      </label>}
-      <fieldset className="studio-layer-controls" disabled={busy || disabled || !!retrySend}>
-        <legend>{t("correction.editLayers")}</legend>
-        {editLayers.map((layer) => <label key={layer}><input type="checkbox" checked={selection.draft.layers.includes(layer) && allowed.includes(layer)}
-          disabled={!allowed.includes(layer)} onChange={(event) => selection.toggleLayer(layer, event.currentTarget.checked)} />{t(`correction.layer.${layer}`)}</label>)}
-      </fieldset>
-      {selection.coverage && <p data-testid="studio-cell-scope">{t("correction.cells", selection.coverage)}</p>}
-      {selection.draft.region && <p className="studio-note">{t("correction.destination")}</p>}
-      {selection.candidates.length > 0 && <fieldset className="studio-object-scope" disabled={busy || disabled || !!retrySend}>
-        <legend>{t("correction.editObjects")}</legend>
-        {selection.candidates.map(({ object, coverage, included }) => <label key={object.id}>
-          <input type="checkbox" checked={included} onChange={(event) => selection.toggleObject(object.id, coverage === "crossing", event.currentTarget.checked)} />
-          {t(coverage === "crossing" ? "correction.wholeObject" : "correction.objectAt",
-            { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY),
-              maxX: Math.round(object.bounds!.maxX), maxY: Math.round(object.bounds!.maxY) })}
-        </label>)}
-      </fieldset>}
-      <label>{t("correction.instruction")}<textarea value={instruction} rows={3} maxLength={2000} disabled={busy || disabled || !!retrySend}
-        onChange={(event) => setInstruction(event.currentTarget.value)} /></label>
-      <p className="studio-note">{t("correction.cropPrivacy")}</p>
-      <div className="studio-action-row"><button type="button" disabled={disabled || busy || !hasPermission || (!retrySend && (needsInspection || !selection.selection || !instruction.trim()))}
-        onClick={() => void saveRequest()}>{t(retrySend ? "correction.retrySave" : authoring.handoff ? "correction.send" : "correction.save")}</button></div>
+      {chatEnabled ? <>
+        <details className="studio-selection-details">
+          <summary>{t("correction.selectionDetails")}</summary>
+          <div className="studio-action-row">{selectionTools}</div>
+          {selectionDetails}
+          {!showForm && <p className="studio-note">{t("correction.cropPrivacy")}</p>}
+        </details>
+      </> : selectionDetails}
+      {showForm && <>
+        <label>{t("correction.instruction")}<textarea value={instruction} rows={3} maxLength={2000} disabled={busy || disabled || !!retrySend}
+          onChange={(event) => setInstruction(event.currentTarget.value)} /></label>
+        <p className="studio-note">{t("correction.cropPrivacy")}</p>
+        <div className="studio-action-row"><button type="button" disabled={disabled || busy || (!retrySend && (needsInspection || !selection.selection || !instruction.trim()))}
+          onClick={() => void saveRequest()}>{t(retrySend ? "correction.retrySave" : authoring.handoff ? "correction.send" : "correction.save")}</button></div>
+      </>}
     </div>}
     {!inspection && revisionId && <div className="studio-correction-history">
       {historyError && <p role="status">{t("correction.historyFailed")}{" "}<button type="button" onClick={refresh}>{t("retry")}</button></p>}
@@ -320,7 +374,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
             {change.focus ? <button type="button" aria-pressed={focused?.id === change.id} onClick={() => setFocused(change)}>{change.label}</button> : change.label}
           </li>)}</ul> : <p>{t("correction.noChanges")}</p>}
         </section>}
-        {hasPermission && !retryRestore && <div className="studio-action-row">
+        {!retryRestore && <div className="studio-action-row">
           {compared.result.revision.requestId && pinned === head && compared.base && <button type="button" disabled={busy || disabled}
             onClick={() => void restore(compared.base!.revision.id, pinned!)}>{t("correction.reject")}</button>}
           {pinned !== head && <button type="button" disabled={busy || disabled} onClick={() => void restore(compared.result.revision.id)}>{t("correction.restore")}</button>}
@@ -335,18 +389,19 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       </label>}
       <RequestStatus key={request.requestId} request={request} activity={requestActivity} handoff={requestHandoff} buildId={snapshot.buildId} locale={locale}
         canCompare={!!proposalId && revisions.some((r) => r.id === proposalId)}
-        showRevision={showRevision} />
+        openSavedPrompt={!chatEnabled} showRevision={showRevision} />
     </div>}
   </div>;
 }
 
-function RequestStatus({ request, activity, handoff, buildId, locale, canCompare, showRevision }: {
+function RequestStatus({ request, activity, handoff, buildId, locale, canCompare, openSavedPrompt, showRevision }: {
   request: Pick<HistoryRequest, "requestId" | "instruction">;
   activity?: HistoryRequest["activity"];
   handoff?: ChatHandoff;
   buildId: string;
   locale: StudioLocale;
   canCompare: boolean;
+  openSavedPrompt: boolean;
   showRevision: (id: string) => void;
 }) {
   const t = (key: StudioTextKey, params?: Record<string, string | number>) => studioT(locale, key, params);
@@ -361,7 +416,7 @@ function RequestStatus({ request, activity, handoff, buildId, locale, canCompare
       {outcome && <p>{t(`correction.outcome.${outcome.status}`)}{"code" in outcome && ` ${t(problems[outcome.code])}`}</p>}
     </div>
     {outcome && "revisionId" in outcome && canCompare && <button type="button" onClick={() => showRevision(outcome.revisionId)}>{t("correction.viewProposal")}</button>}
-    <details open={handoff === undefined || handoff === "failed" || handoff === "pending"}>
+    <details open={handoff === "failed" || handoff === "pending" || (openSavedPrompt && handoff === undefined)}>
       <summary>{t("correction.promptTitle")}</summary>
       <p className="studio-note">{t("correction.pasteHint")}</p>
       <textarea value={prompt} readOnly rows={5} aria-label={t("correction.promptTitle")} />

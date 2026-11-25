@@ -17,7 +17,7 @@ export const studio = {
   "studio.connect.unnamedApp": "Unnamed app",
   "studio.connect.claimsUnnamed": "An app that gave no name is asking to work on your builds.",
   "studio.connect.noBuilds": "You have no open builds. Start one in the library, then connect again from your AI app.",
-  "studio.connect.can": "It can read these drafts and small copies of their pictures, add protected map and token images, and save creatures, maps, walls, terrain and encounters in them, within the choices you set on each build.",
+  "studio.connect.can": "It can read these drafts, add protected artwork, and save draft changes including scoped private corrections within each build’s choices.",
   "studio.connect.cannot": "It can't publish, change your choices, reach your library or rooms, or see your other builds. You review and publish on this site.",
   "studio.connect.lasts": "The connection lasts up to 30 days. You can disconnect it on a build's page at any time.",
   "studio.connect.allow": "Allow",
@@ -41,7 +41,4 @@ export const studio = {
   "studio.grants.disconnectAll": "Disconnecting ends this app's access to every build listed with it.",
   "studio.grants.failed": "Couldn't disconnect. Try again.",
   "studio.grants.loadFailed": "Couldn't load AI app connections.",
-  "studio.grants.corrections": ({ name }: { name: string }) => `Allow ${name} to request corrections and restore private revisions`,
-  "studio.grants.correctionsHint": "Applies to eligible scenes in this build.",
-  "studio.grants.correctionsFailed": "Couldn't save correction permission. Try again.",
 } as const satisfies CatalogSource;

@@ -58,7 +58,7 @@ export function SceneStudio({ snapshot, media, locale, onContext, disabled = fal
     </p>
     {contextError && <p role="alert">{t("contextFailed")}</p>}
     {authoring && context.mapKey ? <StudioCorrectionWorkspace key={contextKey} snapshot={snapshot} media={media} locale={locale}
-      authoring={authoring} disabled={disabled || changing} onWebsiteOpen={onWebsiteOpen} />
+      authoring={authoring} disabled={disabled || changing} />
       : <StudioSceneMap key={contextKey} scene={scene} media={media} locale={locale} />}
     <div className="studio-permissions">{(["grids", "walls", "terrain"] as const).filter((choice) => !snapshot.allowed[choice]).map((choice) => <p className="studio-note" key={choice}>{t(`permission.${choice}`)}</p>)}</div>
     {latest && <p className="studio-last-result" role="status" aria-live="polite" key={latest.id}>{t("outcome", { operation: t(`operation.${latest.operation}`), target: latest.targetKey ?? "", status: t(`outcome.${latest.code}`) })}</p>}
