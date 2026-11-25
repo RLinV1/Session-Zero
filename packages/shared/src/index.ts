@@ -35,6 +35,7 @@ export * from "./attackRange";
 export * from "./replay";
 export * from "./portals";
 export * from "./sight";
+export * from "./sightSegments";
 
 export * from "./uvtt";
 export * from "./build";

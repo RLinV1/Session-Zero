@@ -544,15 +544,16 @@ function assertNever(x: never): never {
 }
 
 /**
- * After a change that can put a token under fog, marks every unowned fogged token hidden on the
- * attack rolls that name it, so a later delete, reveal or rename never brings back a side players
- * saw as Unknown (ADR 0016). Same permanence as `concealInRolls` for hidden tokens.
+ * After a change that can put a token under fog, marks every unowned token whose disc fog wholly
+ * covers hidden on the attack rolls that name it, so a later delete, reveal or rename never brings
+ * back a side players saw as Unknown (ADR 0016, ADR 0082). Same permanence as `concealInRolls` for
+ * hidden tokens. A token's size and the grid's cell size set its disc, so changing either counts.
  */
 function concealFoggedSides(state: RoomState, event: DomainEvent): RoomState {
   const tokenIds =
-    event.type === "FogAdded" ? Object.keys(state.tokens)
-    : event.type === "MapSet" ? (event.tokenChanges ?? []).map((change) => change.tokenId)
-    : event.type === "TokenMoved" || event.type === "TokenOwnersSet" ? [event.tokenId]
+    event.type === "FogAdded" || event.type === "GridSet" ? Object.keys(state.tokens)
+    : event.type === "MapSet" ? (event.gridChange ? Object.keys(state.tokens) : (event.tokenChanges ?? []).map((change) => change.tokenId))
+    : event.type === "TokenMoved" || event.type === "TokenOwnersSet" || event.type === "TokenAppearanceSet" ? [event.tokenId]
     : [];
   let rolls = state.rolls;
   for (const id of tokenIds) {

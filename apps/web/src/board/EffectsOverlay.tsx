@@ -3,7 +3,7 @@ import { QUALITY, useClientSettings } from "../ui/clientSettings";
 import { motion } from "framer-motion";
 import Particles, { initParticlesEngine } from "@tsparticles/react";
 import { loadSlim } from "@tsparticles/slim";
-import type { ConditionId, RoomState, Token } from "@vtt/shared";
+import { tokenDisc, type ConditionId, type RoomState, type Token } from "@vtt/shared";
 import type { BoardTransform } from "./diceThrow";
 import {
   CONDITION_GLOW,
@@ -27,8 +27,8 @@ export interface OverlayEffect {
   effect: AttackEffect;
 }
 
-/** The board's token radius, matching `drawToken`: the edge of the disc, in board pixels. */
-const radiusOf = (token: Token, cellSize: number) => (token.size * cellSize) / 2 - 2;
+/** The board's token radius, the drawn disc's edge in board pixels (ADR 0082). */
+const radiusOf = (token: Token, cellSize: number) => tokenDisc(token, { cellSize }).radius;
 
 let engineReady: Promise<void> | null = null;
 /** The particle engine, started once for the whole page with only the slim feature set. */

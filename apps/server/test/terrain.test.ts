@@ -68,7 +68,9 @@ describe.each(["token.configure", "token.setAppearance"] as const)("%s resize ov
   it("preserves hide-first/reveal-last, compensation, non-undoable resize batches, replay and reload", async () => {
     const { gm, player, token, gmCreds, playerCreds } = await setup();
     await gm.command({ type: "token.setOwners", tokenId: token.id, ownerIds: [] });
-    await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 60, y: 60 }, to: { x: 100, y: 100 } } });
+    // Fog covering the whole size-2 detection disc at (70, 70), cut off at x + y = 40 so the size-1
+    // one at (35, 35) still pokes out at its top-left: growing buries the token (ADR 0082).
+    await gm.command({ type: "fog.add", region: { shape: "polygon", points: [{ x: 40, y: 0 }, { x: 140, y: 0 }, { x: 140, y: 140 }, { x: 0, y: 140 }, { x: 0, y: 40 }] } });
     await player.waitForSeq(gm.seq);
     const fog = structuredClone(gm.state.fog), before = gm.seq, undo = structuredClone(gm.state.undo.filter((entry) => entry.undoable));
     const named = (size: number, name: string): CommandInput => type === "token.configure"

@@ -31,7 +31,7 @@ It stops at the first visible point. A visible sliver narrower than half a cell 
 
 ## Consequences
 
-- **Accepted trade-off: a partly visible area is sent whole.** Its full geometry, including an origin under fog, reaches the player's client. It is never drawn there, but it can be read with developer tools. A GM's cone from a fogged monster therefore reveals where it starts to a determined player. We accept this for areas only. Tokens, terrain and everything else keep ADR 0016's rule.
+- **Accepted trade-off: a partly visible area is sent whole.** Its full geometry, including an origin under fog, reaches the player's client. It is never drawn there, but it can be read with developer tools. A GM's cone from a fogged monster therefore reveals where it starts to a determined player. We accept this for areas only. Tokens, terrain and everything else keep ADR 0016's rule. (Later: ADR 0082 moves tokens to the same rule, with their drawn disc as the shape.)
 - No schema changes shape and no event changes. Old logs replay unchanged; only what each player is sent changes, from their next snapshot.
 - The filter does more work: up to a few thousand point tests for the largest common area, per area, per player, per snapshot. It exits early, and the 200-area cap bounds it.
 

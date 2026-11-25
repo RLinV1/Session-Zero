@@ -56,7 +56,8 @@ async function prepared() {
   await ok(gm.command({ type: "token.create", name: "Goblin", position: { x: 105, y: 105 } }));
   await ok(gm.command({ type: "token.create", name: "Orc", position: { x: 175, y: 105 }, hidden: true }));
   await ok(gm.command({ type: "token.create", name: "Rogue", position: { x: 35, y: 35 }, ownerIds: [alice.participantId] }));
-  await ok(gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 100, y: 100 }, to: { x: 200, y: 200 } } }));
+  // Over the goblin's whole square, so its whole disc is under fog (ADR 0082); the rogue's stays clear.
+  await ok(gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 70, y: 70 }, to: { x: 210, y: 210 } } }));
   await ok(gm.command({ type: "initiative.start", entries: [{ tokenId: named(gm, "Goblin")!.id, score: 12 }] }));
   await alice.waitForSeq(gm.seq);
   return { cookie, map, creds, gm, alice };

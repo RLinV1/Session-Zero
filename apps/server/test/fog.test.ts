@@ -102,6 +102,51 @@ describe("manual fog of war over the wire (FR-GM-17, FR-GM-23, ADR 0016)", () =>
     for (const secret of ["Secret Lich", '"x":35,"y":35', '"x":105,"y":35', '"x":71,"y":61', "tokenDragPreview", '"hp":23']) expect(privateLog).not.toContain(secret);
   });
 
+  it("keeps a token half out of fog live, then drops it once fog covers its whole disc (ADR 0082)", async () => {
+    const { gm, alice } = await setup();
+    // Fog stops 15 px short of the second column's right grid line, so a snapped token there
+    // has its centre in fog and the right edge of its disc on lit ground.
+    await gm.waitForSeq(seqOf(await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 125, y: 140 } } })));
+    const created = await gm.command({ type: "token.create", name: "Goblin", position: { x: 385, y: 385 } });
+    await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(created))));
+    const goblin = tokenNamed(gm, "Goblin")!;
+    const messages = (c: TestClient, from: number) => c.rawLog.slice(from).map((raw) => JSON.parse(raw) as { type: string; committed?: { event: { type: string } } });
+
+    let from = alice.rawLog.length;
+    const half = await gm.command({ type: "token.move", tokenId: goblin.id, to: { x: 105, y: 35 } });
+    await alice.waitForSeq(seqOf(half));
+    expect(tokenNamed(alice, "Goblin")).toMatchObject({ position: { x: 105, y: 35 } });
+    expect(messages(alice, from).map((m) => m.type)).toEqual(["event"]);
+    expect(messages(alice, from)[0]?.committed?.event.type).toBe("TokenMoved");
+
+    from = alice.rawLog.length;
+    gm.send({ type: "ephemeral", payload: { type: "tokenDragPreview", tokenId: goblin.id, at: { x: 36, y: 37 } } });
+    const whole = await gm.command({ type: "token.move", tokenId: goblin.id, to: { x: 35, y: 35 } });
+    await alice.waitForSeq(seqOf(whole));
+    expect(tokenNamed(alice, "Goblin")).toBeUndefined();
+    const log = alice.rawLog.slice(from).join(" ");
+    expect(log).not.toContain('"x":35,"y":35');
+    expect(log).not.toContain('"x":36,"y":37');
+  });
+
+  it("relays a drag preview whose disc stays partly out of fog, and not one buried in it (ADR 0082)", async () => {
+    const { gm, alice } = await setup();
+    await gm.waitForSeq(seqOf(await gm.command({ type: "fog.add", region: { shape: "rect", from: { x: 0, y: 0 }, to: { x: 125, y: 140 } } })));
+    const created = await gm.command({ type: "token.create", name: "Goblin", position: { x: 385, y: 385 } });
+    await Promise.all([gm, alice].map((c) => c.waitForSeq(seqOf(created))));
+    const goblin = tokenNamed(gm, "Goblin")!;
+    const previews = () => alice.rawLog.filter((raw) => raw.includes("tokenDragPreview"));
+
+    gm.send({ type: "ephemeral", payload: { type: "tokenDragPreview", tokenId: goblin.id, at: { x: 106, y: 36 } } });
+    await alice.waitFor((m) => JSON.stringify(m).includes('"x":106,"y":36'));
+    gm.send({ type: "ephemeral", payload: { type: "tokenDragPreview", tokenId: goblin.id, at: { x: 37, y: 38 } } });
+    // A later message from the GM shows the buried preview had its chance to arrive.
+    const fence = await gm.command({ type: "chat.send", text: "fence" });
+    await alice.waitForSeq(seqOf(fence));
+    expect(previews()).toHaveLength(1);
+    expect(alice.rawLog.join(" ")).not.toContain('"x":37,"y":38');
+  });
+
   it("undoes an accidental reveal (FR-REC-02)", async () => {
     const { gm, alice } = await setup();
     await gm.waitForSeq(seqOf(await gm.command(FOG_RECT)));

@@ -1,4 +1,4 @@
-import { pointInPolygon, type GridSpec, type Point } from "./geometry";
+import { pointInPolygon, type Footprint, type GridSpec, type Point } from "./geometry";
 import type { AreaShape, AreaTemplate } from "./state";
 
 /**
@@ -43,6 +43,31 @@ export function areaShape(shape: AreaShape, origin: Point, toward: Point, size: 
 /** Where a placed template is on the board, as `areaShape` draws it. */
 export function templateArea(t: Pick<AreaTemplate, "shape" | "origin" | "toward" | "size" | "width">, grid: GridSpec): AreaGeometry {
   return areaShape(t.shape, t.origin, t.toward, t.size, grid, t.width);
+}
+
+/** Board pixels the drawn disc stays inside a token's square, so neighbours' discs never touch. */
+const TOKEN_DISC_INSET = 2;
+
+/**
+ * The disc the board draws for a token (ADR 0082): centred on its position, `size` cells across
+ * less a 2 px inset. One definition for the board and for the filters that decide whether any
+ * part of a token is visible to a player, so the two can't drift apart.
+ */
+export function tokenDisc(token: Pick<Footprint, "position" | "size">, grid: Pick<GridSpec, "cellSize">): AreaGeometry & { kind: "circle" } {
+  return { kind: "circle", center: token.position, radius: Math.max(0, (token.size * grid.cellSize) / 2 - TOKEN_DISC_INSET) };
+}
+
+/**
+ * How far inside the drawn disc a token's visibility is judged, in cells (ADR 0082): a token is
+ * sent only once a little more than a sliver of it shows, so fog drawn a few pixels short of a
+ * grid line doesn't give away the token beside it.
+ */
+const TOKEN_DETECTION_INSET_CELLS = 1 / 16;
+
+/** The disc the filters test for whether any part of a token is visible: `tokenDisc`, slightly shrunk. */
+export function tokenDetectionDisc(token: Pick<Footprint, "position" | "size">, grid: Pick<GridSpec, "cellSize">): AreaGeometry & { kind: "circle" } {
+  const disc = tokenDisc(token, grid);
+  return { ...disc, radius: Math.max(0, disc.radius - grid.cellSize * TOKEN_DETECTION_INSET_CELLS) };
 }
 
 /** Whether `p` is inside an area's outline (no edge reach). */

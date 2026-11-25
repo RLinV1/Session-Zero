@@ -6,7 +6,7 @@ import { isGroupRoll, type AttackSide, type DiceRoll, type GroupRoll, type Logge
 import type { AreaEffect } from "./areaEffects";
 import type { CommittedEvent } from "./events";
 import { inFogRegion, MAX_MOVE_VIA, type GridSpec, type Point } from "./geometry";
-import { areaSamples, templateArea, type AreaGeometry } from "./areas";
+import { areaSamples, templateArea, tokenDetectionDisc, type AreaGeometry } from "./areas";
 import { blocksMovement } from "./portals";
 import { inSight, viewerSight } from "./sight";
 import type { TokenStats } from "./conditions";
@@ -55,28 +55,52 @@ export function concealmentFor(state: Pick<RoomState, "fog" | "scene" | "walls" 
 /** Whether a reference point lies outside the viewer's line of sight (always false with no limit). */
 const outOfSight = (c: Concealment, point: Point): boolean => c.sight !== null && !inSight(c.sight, point);
 
+/** Whether a point is on the map (always true with no map): off it there is nothing to see. */
+const onMap = (c: Concealment, p: Point): boolean => !c.map || (p.x >= 0 && p.y >= 0 && p.x <= c.map.width && p.y <= c.map.height);
+
 /**
- * Whether `viewer` may not see `token` (FR-GM-16, FR-GM-17, FR-GM-23): it is hidden, or its
- * centre is under fog or outside their line of sight and the viewer doesn't own it. The GM sees everything. The one rule every
- * filter and the ephemeral relay use, so they can't disagree (ADR 0016).
+ * Whether any part of a token's detection disc (its drawn disc, slightly shrunk) on the map lies
+ * outside every fog region and inside sight (ADR 0082), sampled as an area is. The centre is tried first, the answer for any token in
+ * the open. With no grid there is no disc to sample, and the centre alone decides (ADR 0016).
+ */
+function tokenVisibleTo(c: Concealment, token: Pick<Token, "position" | "size">): boolean {
+  const centre = token.position;
+  if (!c.grid) return !isInFog(c.fog, centre) && !outOfSight(c, centre);
+  if (onMap(c, centre) && !isInFog(c.fog, centre) && !outOfSight(c, centre)) return true;
+  return areaVisibleTo(c, tokenDetectionDisc(token, c.grid), c.grid);
+}
+
+/**
+ * Whether `viewer` may not see `token` (FR-GM-16, FR-GM-17, FR-GM-23): it is hidden, or the viewer
+ * doesn't own it and no part of its drawn disc is outside fog and inside their sight (ADR 0082).
+ * A partly visible token is sent whole; the board clips it. The GM sees everything. The one rule
+ * every filter and the ephemeral relay use, so they can't disagree (ADR 0016).
  */
 export function concealedFrom(
   c: Concealment,
-  token: Pick<Token, "hidden" | "position" | "ownerIds">,
+  token: Pick<Token, "hidden" | "position" | "size" | "ownerIds">,
   viewer: Participant,
 ): boolean {
   if (viewer.role === "gm") return false;
   if (token.hidden) return true;
-  return !token.ownerIds.includes(viewer.id) && (isInFog(c.fog, token.position) || outOfSight(c, token.position));
+  return !token.ownerIds.includes(viewer.id) && !tokenVisibleTo(c, token);
 }
 
 /**
- * Whether fog conceals a token's side on attack rolls for good (ADR 0016): an unowned token under
- * fog. Owned tokens are the party's; players saw their names already, so their sides follow the
- * token's current visibility instead.
+ * Whether fog alone covers every part of a token's drawn disc on the map (ADR 0082). Sight is per
+ * viewer, so it plays no part in what fog conceals for everyone.
  */
-export function fogConcealsSide(state: Pick<RoomState, "fog">, token: Pick<Token, "ownerIds" | "position">): boolean {
-  return token.ownerIds.length === 0 && isInFog(state.fog, token.position);
+export function fogCoversToken(state: Pick<RoomState, "fog" | "scene">, token: Pick<Token, "position" | "size">): boolean {
+  return !tokenVisibleTo({ fog: state.fog, sight: null, grid: state.scene.grid, map: state.scene.map }, token);
+}
+
+/**
+ * Whether fog conceals a token's side on attack rolls for good (ADR 0016, ADR 0082): an unowned
+ * token whose whole disc is under fog. Owned tokens are the party's; players saw their names
+ * already, so their sides follow the token's current visibility instead.
+ */
+export function fogConcealsSide(state: Pick<RoomState, "fog" | "scene">, token: Pick<Token, "ownerIds" | "position" | "size">): boolean {
+  return token.ownerIds.length === 0 && fogCoversToken(state, token);
 }
 
 /**
@@ -85,8 +109,7 @@ export function fogConcealsSide(state: Pick<RoomState, "fog">, token: Pick<Token
  * hides an area that pokes past them.
  */
 export function areaVisibleTo(c: Concealment, area: AreaGeometry, grid: GridSpec): boolean {
-  const onMap = (p: Point) => !c.map || (p.x >= 0 && p.y >= 0 && p.x <= c.map.width && p.y <= c.map.height);
-  return areaSamples(area, grid).some((p) => onMap(p) && !isInFog(c.fog, p) && !outOfSight(c, p));
+  return areaSamples(area, grid).some((p) => onMap(c, p) && !isInFog(c.fog, p) && !outOfSight(c, p));
 }
 
 /**
@@ -271,6 +294,20 @@ export function filterEventForViewer(
   const byVisibility = (wasConcealed: boolean, isConcealed: boolean): FilteredEvent =>
     wasConcealed !== isConcealed ? { kind: "resync" } : isConcealed ? redacted : pass;
 
+  /**
+   * Whether a grid or map change flips any token between seen and unseen: a token's disc is sized
+   * in cells, and only its part on the map counts (ADR 0082). Called only where the event leaves
+   * the viewer's sight as it was, so the sight before it holds after it too.
+   */
+  const discsChangeSeen = (): boolean => {
+    const after = reduce(before, e);
+    const next: Concealment = { ...conc(), grid: after.scene.grid, map: after.scene.map };
+    return Object.values(before.tokens).some((token) => {
+      const moved = after.tokens[token.id];
+      return moved !== undefined && concealedFrom(conc(), token, viewer) !== concealedFrom(next, moved, viewer);
+    });
+  };
+
   /** Resync when the event changes the walls the viewer holds, otherwise a redacted step (ADR 0056). */
   const wallsChanged = (): FilteredEvent =>
     JSON.stringify(wallsForViewer(before, viewer, conc())) === JSON.stringify(wallsForViewer(reduce(before, e), viewer, conc())) ? redacted : { kind: "resync" };
@@ -341,7 +378,7 @@ export function filterEventForViewer(
       const after = reduce(before, e);
       return JSON.stringify(terrainForViewer(before, conc())) === JSON.stringify(terrainForViewer(after, conc())) ? redacted : { kind: "resync" };
     }
-    case "GridSet": return e.terrainChange || before.terrain ? { kind: "resync" } : pass;
+    case "GridSet": return e.terrainChange || before.terrain || discsChangeSeen() ? { kind: "resync" } : pass;
     // A wall change that alters what the player holds resyncs them with freshly clipped pieces; one
     // they can't see, or that leaves their walls exactly as they were (a wall re-split out of view),
     // is a redacted step (ADR 0029, ADR 0030, ADR 0056). Line of sight is off here (resynced above),
@@ -403,7 +440,12 @@ export function filterEventForViewer(
       if (stats.hp === previous.hp && stats.maxHp === previous.maxHp && stats.ac === previous.ac) return redacted;
       return { kind: "event", committed: { ...withoutCommandId, event: { ...e, stats, previous } } };
     }
-    case "TokenAppearanceSet":
+    case "TokenAppearanceSet": {
+      // A new size grows or shrinks the disc that decides whether the token is seen (ADR 0082).
+      const token = before.tokens[e.tokenId];
+      if (!token) return redacted;
+      return byVisibility(concealedFrom(conc(), token, viewer), concealedFrom(conc(), { ...token, size: e.size }, viewer));
+    }
     case "TokenImageSet":
     case "TokenConditionsSet":
       return hiddenBefore(e.tokenId) ? redacted : pass;
@@ -551,7 +593,9 @@ export function filterEventForViewer(
     case "MapSet":
       // Nested changes contain hidden IDs and prior positions. Only the filtered result
       // reaches players, including inverse first-map removal and empty adjustments (ADR 0042).
-      return e.terrainChange !== undefined || e.tokenChanges !== undefined || e.wallChange !== undefined || e.fogChange !== undefined ? { kind: "resync" } : pass;
+      if (e.terrainChange !== undefined || e.tokenChanges !== undefined || e.wallChange !== undefined || e.fogChange !== undefined) return { kind: "resync" };
+      // A new grid or map resizes every token's disc and what counts as on the map (ADR 0082).
+      return discsChangeSeen() ? { kind: "resync" } : pass;
     case "EncounterApplied":
       // Both boards hold hidden tokens, fog and owners; a filtered snapshot carries the rest (ADR 0024).
       return { kind: "resync" };

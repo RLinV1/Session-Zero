@@ -20,7 +20,7 @@ import { normalizeName } from "./names";
 import type { SessionEndReason } from "./protocol";
 import { blocksMovement } from "./portals";
 import { inverseOf, sameValue, undoableAction, undoConflict } from "./undo";
-import { concealedFrom, concealmentFor, fogConcealsSide, isInFog, portalConcealedFrom, templateConcealedFrom } from "./visibility";
+import { concealedFrom, concealmentFor, fogConcealsSide, fogCoversToken, portalConcealedFrom, templateConcealedFrom } from "./visibility";
 import { wallsFitMap, type DetectedWallsResponse } from "./wallDetection";
 import { englishText, sharedMsg, type MessageRef } from "./i18n";
 import { presetLabel } from "./i18n/labels";
@@ -611,10 +611,12 @@ function decideCommand(
       const moved: DomainEvent | null = position.x !== token.position.x || position.y !== token.position.y
         ? { type: "TokenMoved", tokenId: token.id, from: token.position, to: position }
         : null;
-      // Fog follows the same rule as hiding (ADR 0016): into fog first, out of fog last.
-      const fogged = (p: Point) => isInFog(state.fog, p);
-      const intoFog = moved !== null && fogged(position) && !fogged(token.position);
-      const outOfFog = moved !== null && !fogged(position) && fogged(token.position);
+      // Fog follows the same rule as hiding (ADR 0016): into fog first, out of fog last. Into fog
+      // means fog comes to cover the whole disc, at its new size (ADR 0082).
+      const coveredBefore = fogCoversToken(state, token);
+      const coveredAfter = fogCoversToken(state, { position, size });
+      const intoFog = moved !== null && coveredAfter && !coveredBefore;
+      const outOfFog = moved !== null && !coveredAfter && coveredBefore;
       const events: DomainEvent[] = [];
       // Hide before any secret edit is broadcast; reveal only after every edit is applied.
       const hiddenEvent: DomainEvent | null = changes.hidden !== undefined && changes.hidden !== token.hidden
@@ -677,8 +679,9 @@ function decideCommand(
       };
       if (position === token.position) return accept(appearance);
       const moved: DomainEvent = { type: "TokenMoved", tokenId: token.id, from: token.position, to: position };
-      // Into fog: move first, so the new name is never sent to players (ADR 0016).
-      const intoFog = isInFog(state.fog, position) && !isInFog(state.fog, token.position);
+      // Into fog: move first, so the new name is never sent to players (ADR 0016). Into fog means
+      // fog comes to cover the whole disc, at its new size (ADR 0082).
+      const intoFog = fogCoversToken(state, { position, size: command.size }) && !fogCoversToken(state, token);
       return intoFog ? accept(moved, appearance) : accept(appearance, moved);
     }
 
