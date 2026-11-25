@@ -349,9 +349,11 @@ test("a pending selection cannot attach after clear and an expired attachment is
   const staging = new Promise<void>((resolve) => { reached = resolve; });
   let delayedOnce = false;
   let clears = 0;
+  const viewIds = new Set<string>();
   await page.route("**/_studio_bridge", async (route) => {
-    const message = route.request().postDataJSON() as { method: string; params: { name?: string; arguments?: { draft?: unknown } } };
+    const message = route.request().postDataJSON() as { method: string; params: { name?: string; arguments: { draft?: unknown; viewId: string } } };
     if (message.params.name !== "studio_stage_chat_selection") return route.fallback();
+    viewIds.add(message.params.arguments.viewId);
     const answer = await session.rpc(message.method, message.params);
     if (!message.params.arguments?.draft) clears++;
     else if (!delayedOnce) { delayedOnce = true; reached(); await delayed; }
@@ -373,10 +375,15 @@ test("a pending selection cannot attach after clear and an expired attachment is
   await expect(chip).toBeEmpty();
   expect(await page.evaluate(() => (window as Window & { studioPublishedSelections?: number }).studioPublishedSelections ?? 0)).toBe(0);
 
+  const encounter = studio.getByLabel("Active encounter", { exact: true });
+  await encounter.selectOption("");
+  await expect(encounter).toHaveValue("");
+  await expect(select).toBeEnabled();
   await select.click();
   await expect(select).toHaveAttribute("aria-pressed", "true");
   await dragSelection(page, canvas, [118, 177], [356, 243]);
   await expect(chip).toHaveText("Chapel selection");
   await expect(studio.getByText("The chat selection expired. Select an area or object again.")).toBeVisible();
   await expect(chip).toBeEmpty();
+  expect(viewIds.size).toBe(1);
 });

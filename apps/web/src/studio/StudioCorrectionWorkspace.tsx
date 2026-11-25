@@ -15,7 +15,7 @@ export interface StudioAuthoringClient {
   restore(mapKey: string, input: StudioRestoreInput): Promise<unknown>;
   refresh(): void;
   /** Stages the selection for the user's next chat message; absent when the host can't carry it. */
-  attachToChat?(update: StudioChatSelectionUpdate, title: string, details?: ChatSelectionDetails): Promise<StudioChatSelectionReference>;
+  attachToChat?(draft: StudioChatSelectionUpdate["draft"], title: string, details?: ChatSelectionDetails): Promise<StudioChatSelectionReference>;
   ensureMedia?(fileIds: string[]): void;
 }
 
@@ -35,7 +35,7 @@ function actionError(error: unknown) {
 type Tool = "pan" | "region" | "objects";
 interface Compared { base: StudioRevisionView | null; result: StudioRevisionView }
 
-function operationId() {
+export function studioOperationId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   // The same selection controls can run on an HTTP development origin or a sandboxed frame.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -96,20 +96,20 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   // Derived from the same inspection and selection as chatDraft, so it changes only when the draft does.
   const chatDetails = chatDraft && inspection && mapKey
     ? JSON.stringify(chatSelectionDetails(inspection, selection.selection!, mapName, mapKey, encounterKey)) : null;
-  const attachmentView = useRef<{ id: string; sequence: number } | null>(null);
+  const usedAttachment = useRef(false);
   const [attachment, setAttachment] = useState<{ key: string; selectionId: string | null } | null>(null);
   const attachFailed = chatKey !== null && attachment?.key === chatKey && attachment.selectionId === null;
 
   useEffect(() => {
-    if (!chatEnabled || (!chatDraft && !attachmentView.current)) return;
-    const view = attachmentView.current ??= { id: operationId(), sequence: 0 };
+    if (!chatEnabled || (!chatDraft && !usedAttachment.current)) return;
     const draft = chatDraft === null ? null : JSON.parse(chatDraft) as StudioChatSelectionUpdate["draft"];
     const deliver = adapter.current.attachToChat;
     if (!deliver) return;
+    usedAttachment.current = true;
     let current = true;
     let expiry: ReturnType<typeof setTimeout> | undefined;
     const details = chatDetails === null ? undefined : JSON.parse(chatDetails) as ChatSelectionDetails;
-    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle, details).then(({ selectionId, expiresAt }) => {
+    void deliver(draft, chatTitle, details).then(({ selectionId, expiresAt }) => {
       if (!current || chatKey === null) return;
       setAttachment({ key: chatKey, selectionId });
       if (selectionId && expiresAt) expiry = setTimeout(() => {
@@ -123,13 +123,12 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
         return;
       }
       setAttachment({ key: chatKey, selectionId: null });
-      void deliver({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
+      void deliver(null, "").catch(() => undefined);
     });
     return () => { current = false; clearTimeout(expiry); };
   }, [chatDraft, chatDetails, chatEnabled, chatKey, chatTitle]);
   useEffect(() => () => {
-    const view = attachmentView.current;
-    if (view) void adapter.current.attachToChat?.({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
+    if (usedAttachment.current) void adapter.current.attachToChat?.(null, "").catch(() => undefined);
   }, []);
 
   const previouslyEnrolled = useRef(!!revisionId);
@@ -231,7 +230,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
 
   async function restore(target?: string, expected = head) {
     if (!mapKey || disabled || busy || (!retryRestore && (!target || !expected))) return;
-    const input = retryRestore ?? { revisionId: target!, expectedCurrentRevisionId: expected!, operationId: operationId() };
+    const input = retryRestore ?? { revisionId: target!, expectedCurrentRevisionId: expected!, operationId: studioOperationId() };
     setRetryRestore(input); setBusy(true); setFeedback(null);
     try {
       await authoring.restore(mapKey, input);

@@ -1,10 +1,12 @@
 import { createRoot, type Root } from "react-dom/client";
 import { StudioSnapshot } from "@vtt/shared";
 import { SceneStudio, type SceneStudioProps } from "./SceneStudio";
+import { studioOperationId } from "./StudioCorrectionWorkspace";
 
 /** The host-proven intake shell owns its bridge; both surfaces mount this exact renderer. */
 let root: Root | null = null;
 const surface = {
+  newOperationId: studioOperationId,
   validate(value: unknown) { return StudioSnapshot.parse(value); },
   render(props: SceneStudioProps) {
     const element = document.getElementById("preparation");

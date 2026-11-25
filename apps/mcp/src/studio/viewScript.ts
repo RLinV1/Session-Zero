@@ -54,18 +54,19 @@ function activeFiles(data) {
   return [...(source ? [source] : []),...data.files.filter((file)=>ids.has(file.id) && file.id !== source?.id)];
 }
 // Keep context updates ordered across redraws and across workspace remounts in this app instance.
-let chatUpdates = Promise.resolve(), chatUpdateNumber = 0;
-function attachToChat(context,update,title,details) {
+let chatUpdates = Promise.resolve(), chatUpdateNumber = 0, chatViewId = null;
+function attachToChat(context,draft,title,details) {
+  const viewId = chatViewId ??= surface.newOperationId();
   const order = ++chatUpdateNumber;
   const work = chatUpdates.then(async ()=>{
     const publish = (content) => app.updateModelContext({content},{timeout:8000});
-    if (update.draft && order !== chatUpdateNumber) return {selectionId:null};
-    if (update.draft && (!isCurrent(context) || needsRetry)) throw new Error('Studio context changed');
+    if (draft && order !== chatUpdateNumber) return {selectionId:null};
+    if (draft && (!isCurrent(context) || needsRetry)) throw new Error('Studio context changed');
     try {
-      const result = await call('studio_stage_chat_selection',{buildId:context.buildId,...update});
+      const result = await call('studio_stage_chat_selection',{buildId:context.buildId,viewId,sequence:order,draft});
       const {selectionId,expiresAt} = resultData(result);
       if (order !== chatUpdateNumber) return {selectionId:null};
-      const attached = selectionId && update.draft && isCurrent(context) && !needsRetry;
+      const attached = selectionId && draft && isCurrent(context) && !needsRetry;
       // The description lets the AI say what is selected before any correction exists; the saved
       // selection on the server still bounds every edit.
       await publish(attached ? [{type:'text',text:JSON.stringify({studioSelection:{...details,buildId:context.buildId,selectionId,
@@ -107,7 +108,7 @@ function authoringClient(context) {
       if (ids.length && snapshot && activeFiles(snapshot).some((file)=>ids.includes(file.id) && !mediaCache.has(cacheKey(file)) && !mediaFailed.has(cacheKey(file)))) void refresh(true);
     },
     ...(app.getHostCapabilities()?.updateModelContext?.text && {
-      attachToChat:(update,title,details)=>attachToChat(context,update,title,details)
+      attachToChat:(draft,title,details)=>attachToChat(context,draft,title,details)
     })
   };
 }
