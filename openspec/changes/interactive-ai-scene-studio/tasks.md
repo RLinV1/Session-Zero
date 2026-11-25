@@ -102,7 +102,8 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 - [x] 5.8 Use approved build access for private corrections and remove the separate connection setting. Verify existing grants, build boundaries, revocation and explicit restore.
 - [x] 5.9 Attach the selected scope to the normal chat composer, streamline embedded selection controls, and retain the fallback form. Verify replacement, cancellation, expiry, revision conflicts and retry behavior. [Implementation handoff](handoff.md#m4-direct-chat-corrections-2026-11-24)
-- [ ] 5.10 Qualify the direct composer flow in ChatGPT Work with a real hosted Studio connection. Verify the exact current selection is used after redrawing, clearing, and opening a second view.
+- [x] 5.11 Declutter the Studio for use inside the AI app: remove the website Studio panel (keep the launch text), the instruction form and request status, and redundant text; add the docked map toolbar, zoom past fit, trackpad panning, and the selection description in the chat attachment. [Implementation handoff](handoff.md#m4-studio-declutter-2026-11-24)
+- [ ] 5.10 Qualify the direct composer flow in ChatGPT Work with a real hosted Studio connection. Verify the AI can describe the current selection before a request, and that the exact current selection is used after redrawing, clearing, and opening a second view.
 
 **Exit:** The user points at a problem and sees/refines a saved proposed repair inside ChatGPT without visiting the website between rounds.
 

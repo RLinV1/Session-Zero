@@ -1,5 +1,16 @@
 # Implementation handoff
 
+## M4 Studio declutter, 2026-11-24
+
+Commit `ae9411a4` on `feat/studio-m4-chat-selection`, cherry-picked from `d84d44a9` on `feat/studio-m4-declutter`. That branch was built from pilot release `d11393cb` (`deploy/studio-pilot-chat-selection`). The product owner asked for these changes ([D15 declutter amendment](design.md#d15-m4-correction-interaction)):
+
+- The website build page no longer embeds the Studio. The launch text moved into AI app connections, which shows it before the first connection.
+- The embedded view has one bottom toolbar: pan, select area, pick object, clear, and zoom. On phones, the toolbar sits under the map. The instruction form, request status, copy prompt, "up to date" status, chat privacy line, grid-confirmed text and pan help are removed, along with 44 unused catalog keys.
+- The map zooms out to half of fit. A trackpad two-finger scroll pans; a mouse wheel and a pinch zoom. The wheel classifier is a heuristic and needs a manual check on real hardware.
+- The attached selection now describes its map, squares, editable layers and contents (`apps/web/src/studio/chatSelectionDetails.ts`). The server scope is unchanged.
+
+On the pilot base, lint, typecheck and `npm test` passed: 5,477 tests, with 74 optional-service skips. All six Studio intake browser tests passed in Chromium, and the composer test also passed in Firefox and WebKit. On this branch, lint, typecheck and `npm test` passed: 5,757 tests, with 71 skips. `browser/studio-preparation.spec.ts` runs only under `playwright.studio-m2.config.ts` with its isolated Docker stack (`scripts/studio-m2`), which was not run. Its website comparison was removed because the website no longer embeds the Studio. Removed tests: the website Studio unit test, the website correction browser test, and the embedded form-handoff browser test.
+
 ## M4 direct chat corrections, 2026-11-24
 
 The M4 polish runs on `feat/studio-m4-chat-selection`, based on refreshed M4 snapshot `f72b87d0`. An approved build connection can request private corrections without a second setting. The existing grant and build choices still govern writes. The additive chat-selection migration keeps the original correction-permission column available for rollback. Cached first-release widgets receive an enabled correction hint and retain their form until the host loads the new view.
@@ -8,7 +19,7 @@ The supported embedded flow attaches the user's selection to the chat composer. 
 
 Lint, typecheck, build and the full Node 22.23.2 suite passed, with 5,759 tests and 71 optional-service skips. The 64 focused memory and PostgreSQL checks cover expiry, revocation, stale scene versions, out-of-order updates and replay. The browser harness uses a normal composer alongside the sandboxed Studio and tests the attachment, replacement, cancellation, fallback after host refusal, and Before/After. It simulates the ChatGPT bridge. The direct composer test passed in Chromium, Firefox and WebKit. Chromium also passed the consent, website and embedded fallback tests. [Store checks](../../../apps/server/test/studioAuthoring.test.ts) · [Browser checks](../../../browser/studio-intake.spec.ts)
 
-Hosted qualification is tracked in task 5.10. On an authorized pilot release, apply the new migration and refresh the ChatGPT connector's tools so it discovers `studio_start_correction`. In a fresh chat on an already-approved build, verify the prompt carries the current selection after drawing, redrawing and clearing it. Verify that a second Studio view keeps a separate selection and that the resulting comparison matches the website.
+Hosted qualification is tracked in task 5.10. On an authorized pilot release, apply the new migration and refresh the ChatGPT connector's tools so it discovers `studio_start_correction`. In a fresh chat on an already-approved build, verify the prompt carries the current selection after drawing, redrawing and clearing it. Verify that a second Studio view keeps a separate selection, that the AI can describe a selection before starting a request, and that the resulting proposal matches the website build page.
 
 ## M4 correction interaction, 2026-11-18
 

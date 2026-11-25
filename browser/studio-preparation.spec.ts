@@ -79,7 +79,7 @@ const lines = [
   { kind: "door", state: "closed", from: { column: 4, row: 2 }, to: { column: 5, row: 2 } },
   { kind: "window", state: "open", from: { column: 6, row: 2 }, to: { column: 7, row: 2 } },
 ];
-test("actual saved tools update an open Studio and match the website/native scene (FR-GM-27)", async ({ page, request }, info) => {
+test("actual saved tools update an open Studio with the native scene (FR-GM-27)", async ({ page, request }, info) => {
   const session = await mount(page, request), { file, art } = await prepare(session);
   const savedAt = Date.now();
   const geometry = await session.tool("save_map_setup", { mapKey: "chapel", lines, terrain: [{ row: 3, start: 3, end: 3, kind: "blocked" }, { row: 10, start: 11, end: 12, kind: "difficult" }] });
@@ -99,10 +99,6 @@ test("actual saved tools update an open Studio and match the website/native scen
   await page.screenshot({ path: info.outputPath("saved-preparation.png"), fullPage: true });
   await info.attach("local saved-write measurements", { body: JSON.stringify({ latencyMs: latency, refreshIntervalMs: embedded.refreshIntervalMs, calls: session.calls.map((call) => call.name) }), contentType: "application/json" });
   await page.context().addCookies((await request.storageState()).cookies);
-  const website = await page.context().newPage(); await website.goto(`${ORIGIN}/builds/${session.build.id}`);
-  await expect(website.locator('[data-testid="studio-scene"] [data-layer="tokens"] [data-token-index]')).toHaveCount(2);
-  await expect(website.locator('[data-testid="studio-scene"] [data-kind="door"]')).toHaveCount(1);
-  await website.close();
 });
 test("refused save keeps saved overlays, camera and focus with an actionable permission result (FR-GM-27)", async ({ page, request }) => {
   const session = await mount(page, request); await prepare(session);
