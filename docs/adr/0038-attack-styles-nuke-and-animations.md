@@ -25,3 +25,5 @@ Every attack played one built-in strike. GMs asked for distinct melee, ranged an
 ## Consequences
 
 Rolls carry up to one small definition each (bounded by the schema and the roll log limit). Effective reduced motion is the viewer's OS preference OR the room setting; the room setting cannot turn a viewer's own preference off. `pixi-filters` is added for the nuke's shockwave; glow is a blurred additive copy of the effect, not a bloom filter.
+
+**Note (2026-11-24, `openspec/changes/animation-levels`):** Clients no longer read `RoomState.reducedEffects`. Each viewer's own Animations level (Full / Reduced / None) decides what plays, and the device's reduced-motion preference forces None. The schema, `room.setReducedEffects` and `ReducedEffectsSet` are unchanged, so stored logs still replay; no client offers the command.

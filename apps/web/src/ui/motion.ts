@@ -1,14 +1,48 @@
-import { getClientSettings, subscribeClientSettings } from "./clientSettings";
+import { useSyncExternalStore } from "react";
+import { getClientSettings, subscribeClientSettings, type AnimationLevel } from "./clientSettings";
 
 const QUERY = "(prefers-reduced-motion: reduce)";
 
-function systemReduced(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(QUERY).matches;
+const mediaQuery = () => (typeof matchMedia === "function" ? matchMedia(QUERY) : null);
+
+/** True when the device asks for reduced motion; it forces the None level (animation-levels). */
+export function systemReduced(): boolean {
+  return mediaQuery()?.matches ?? false;
 }
 
-/** True when the system or the in-app Reduced animations setting asks for stillness. */
+/**
+ * The viewer's effective Animations level (animation-levels): None whenever the device asks for
+ * reduced motion, which the in-app choice cannot override; otherwise the saved choice. No room
+ * setting takes part.
+ */
+export function animationLevel(): AnimationLevel {
+  return systemReduced() ? "none" : getClientSettings().animationLevel;
+}
+
+/** True below Full: the stillness shared by the Reduced and None levels. */
 export function motionReduced(): boolean {
-  return getClientSettings().reducedAnimations || systemReduced();
+  return animationLevel() !== "full";
+}
+
+/** Calls `listener` when the device preference or the saved choice changes; returns the unsubscribe. */
+export function watchAnimationLevel(listener: () => void): () => void {
+  const query = mediaQuery();
+  query?.addEventListener("change", listener);
+  const unsubscribe = subscribeClientSettings(listener);
+  return () => {
+    query?.removeEventListener("change", listener);
+    unsubscribe();
+  };
+}
+
+/** The effective level, following both inputs live. */
+export function useAnimationLevel(): AnimationLevel {
+  return useSyncExternalStore(watchAnimationLevel, animationLevel, animationLevel);
+}
+
+/** Whether the device preference is locking the level at None, followed live (for Settings). */
+export function useSystemReduced(): boolean {
+  return useSyncExternalStore(watchAnimationLevel, systemReduced, systemReduced);
 }
 
 /**
@@ -23,11 +57,5 @@ export function syncMotionAttribute(root: HTMLElement = document.documentElement
     else root.removeAttribute("data-motion");
   };
   apply();
-  const query = typeof window.matchMedia === "function" ? window.matchMedia(QUERY) : null;
-  query?.addEventListener("change", apply);
-  const unsubscribe = subscribeClientSettings(apply);
-  return () => {
-    query?.removeEventListener("change", apply);
-    unsubscribe();
-  };
+  return watchAnimationLevel(apply);
 }

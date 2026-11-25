@@ -205,9 +205,8 @@ export function RoomPanel({
 }: Props) {
   const isGm = you.role === "gm";
   const { unitsPerCell, unitLabel } = state.scene.grid;
-  const reducedEffects = state.reducedEffects ?? false;
   /** Attack editors type ranges in this room's units (attack-range). */
-  const attackEditorEnv = useMemo(() => ({ unitsPerCell, unitLabel, reducedEffects }), [unitsPerCell, unitLabel, reducedEffects]);
+  const attackEditorEnv = useMemo(() => ({ unitsPerCell, unitLabel }), [unitsPerCell, unitLabel]);
   useQuietAttackSection(state, you);
 
   // Role is server-owned, so it can change under us. Don't strand the panel on a tab that

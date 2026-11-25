@@ -62,15 +62,14 @@ import {
   defeatPlan,
   loopFrameDue,
   loopingConditions,
-  prefersReducedMotion,
-  watchReducedMotion,
   type AttackEffect,
 } from "./effects";
 import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
 import { conditionIcon, loadConditionIcons } from "./conditionIcons";
-import { armSound, playDefeatSound, withSound } from "./fxSound";
+import { armSound, playDefeatSound, playFxSound, withSound } from "./fxSound";
 import { getClientSettings, graphicsBudget, subscribeGraphicsSettings } from "../ui/clientSettings";
+import { animationLevel, watchAnimationLevel } from "../ui/motion";
 import { averageColor, fogDistanceField, fogPalette, makeFogDensityCanvas, makeFogDistanceCanvas, type Rgb } from "./fogTexture";
 import { WISP_ANCHOR, layoutFogPuffs, puffPose, type FogPuff } from "./fogPuffs";
 import { fogArt, loadFogArt } from "./fogArt";
@@ -599,12 +598,15 @@ export class BoardView {
   private attackFx: AttackFx[] = [];
   /** Defeated tokens (ADR 0049) kept drawn while they fall; each value finishes that token's effect and removes its sprite at once. */
   private dying = new Map<string, () => void>();
-  /** The device's reduced-motion preference, and the GM's table-wide setting (`RoomState.reducedEffects`). */
-  private osReduced = prefersReducedMotion();
-  private tableReduced = false;
-  private get reducedMotion() {
-    return this.osReduced || this.tableReduced || getClientSettings().reducedAnimations;
+  /** The viewer's Animations level (animation-levels); the room's old table-wide flag takes no part. */
+  private get level() {
+    return animationLevel();
   }
+  /** Below Full: the stillness the Reduced and None levels share. */
+  private get reducedMotion() {
+    return this.level !== "full";
+  }
+  private lastLevel = animationLevel();
   /** Nuke and strike renderers (fx.ts) playing, oldest first. */
   private fxRuns: Array<{ run: RunningFx; started: number; timer: number; step: (now: number) => boolean }> = [];
   private stopMotionWatch: (() => void) | null = null;
@@ -710,8 +712,10 @@ export class BoardView {
       this.schedule();
     });
     this.hostObserver.observe(this.host);
-    this.stopMotionWatch = watchReducedMotion((reduced) => {
-      this.osReduced = reduced;
+    this.stopMotionWatch = watchAnimationLevel(() => {
+      const level = this.level;
+      if (level === this.lastLevel) return;
+      this.lastLevel = level;
       this.motionChanged();
     });
     document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -904,12 +908,6 @@ export class BoardView {
     this.shownSeq = seq;
     // A different scene is a different board: nothing of the old one keeps playing.
     if (before && before.activeSceneId !== state.activeSceneId) for (const finish of [...this.dying.values()]) finish();
-    const table = state.reducedEffects ?? false;
-    if (table !== this.tableReduced) {
-      const before = this.reducedMotion;
-      this.tableReduced = table;
-      if (this.reducedMotion !== before) this.motionChanged();
-    }
     this.syncMap();
     this.syncGrid();
     this.syncWalls();
@@ -3011,13 +3009,14 @@ export class BoardView {
 
   /**
    * A defeated token (ADR 0049) falls before it leaves: it greys, shakes, shrinks and fades while a few
-   * flecks scatter. `syncTokens` keeps the sprite until this ends; the position is never changed. Reduced
-   * motion, low quality or a crowd of deaths get a plain 200 ms fade. A timer backs the frame loop.
+   * flecks scatter. `syncTokens` keeps the sprite until this ends; the position is never changed. The
+   * Reduced level, low quality or a crowd of deaths get a plain 200 ms fade, and the None level removes
+   * the token at once. A timer backs the frame loop.
    */
   private playDefeat(tokenId: string) {
     const view = this.tokens.get(tokenId);
     if (!view || view.container.destroyed || this.dying.has(tokenId)) return;
-    const plan = defeatPlan({ reducedMotion: this.reducedMotion, quality: getClientSettings().graphicsQuality, active: this.dying.size });
+    const plan = defeatPlan({ level: this.level, quality: getClientSettings().graphicsQuality, active: this.dying.size });
     const { container, art, radius } = view;
     container.eventMode = "none";
     // Sound follows the volume setting, not reduced motion; a crowd past the effect cap stays quiet.
@@ -3076,6 +3075,8 @@ export class BoardView {
       return true;
     };
     this.dying.set(tokenId, finish);
+    // No animations: the token leaves in this same frame (animation-levels).
+    if (plan.durationMs === 0) return finish();
     timer = window.setTimeout(finish, plan.durationMs + 300);
     this.animations.add(step);
     this.schedule();
@@ -3109,7 +3110,8 @@ export class BoardView {
       this.invalidate();
       return false;
     };
-    if (points.length < 2 || this.reducedMotion) return jump();
+    // Only the None level jumps; Reduced still slides (animation-levels).
+    if (points.length < 2 || this.level === "none") return jump();
     // A stretch the viewer can't see takes no time: the token jumps across it, never drawn inside fog.
     const hidden = new Set(gaps);
     const lengths = points.slice(1).map((p, i) => (hidden.has(i) ? 0 : Math.hypot(p.x - points[i]!.x, p.y - points[i]!.y)));
@@ -3199,13 +3201,14 @@ export class BoardView {
     this.invalidate();
   }
 
-  /** Frames the two fighters, over a short glide (or at once with reduced motion); the viewer's own pan or zoom still wins afterwards. */
+  /** Frames the two fighters over a short glide, at the Full level only; the viewer's own pan or zoom still wins afterwards. */
   /**
    * Called as an attack's roll is committed, before its dice are thrown, so the dice land where the
    * camera is going. Attacks made together (one per target) keep the first one's framing.
    */
   focusStrike(effect: { fromId: string; toId: string }) {
-    if (!this.initialized || !getClientSettings().autoFocusAttacks) return;
+    // Below Full no strike is drawn, so the camera stays put (animation-levels).
+    if (!this.initialized || !getClientSettings().autoFocusAttacks || this.reducedMotion) return;
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
@@ -3248,10 +3251,6 @@ export class BoardView {
       this.syncTextSharpness();
       this.invalidate();
     };
-    if (this.reducedMotion) {
-      this.focusCentre = null;
-      return apply(1);
-    }
     const started = performance.now();
     const step = (now: number) => {
       const t = Math.min(1, (now - started) / FIGHT_FOCUS_MS);
@@ -3268,6 +3267,11 @@ export class BoardView {
     const from = this.tokens.get(effect.fromId);
     const to = this.tokens.get(effect.toId);
     if (!from || !to || from.container.destroyed || to.container.destroyed) return;
+    // Below Full nothing is drawn for a strike: only its one soft cue plays (animation-levels).
+    if (this.reducedMotion) {
+      playFxSound(effect.animation, true);
+      return;
+    }
     // The vector look works until the art arrives; avoid these requests while opening a board.
     void loadFxTextures();
     const host = this.fxHost();
@@ -3284,9 +3288,15 @@ export class BoardView {
   }
 
   private playNukeFx(effect: Extract<AttackEffect, { kind: "nuke" }>) {
-    void loadFxTextures();
     // One large blast at a time: repeated clicks replace the previous effect and free its objects.
     for (const entry of [...this.fxRuns]) this.endFx(entry);
+    // No animations: nothing is drawn; the cue plays and the hit points land at once (animation-levels).
+    if (this.level === "none") {
+      playFxSound(effect.animation, true);
+      this.callbacks.nukeImpact?.();
+      return;
+    }
+    void loadFxTextures();
     const { width, height } = this.app.screen;
     const host = { ...this.fxHost(), layer: this.screenFxLayer };
     this.startFx(withSound(playNuke(host, {

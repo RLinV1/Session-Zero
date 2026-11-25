@@ -49,7 +49,7 @@ import { SearchablePicker } from "../ui/SearchablePicker";
 import { useStrikeAnimations } from "./useLibraryAnimations";
 import { useAttackEditorEnv } from "./attackEditorContext";
 import { AUTOMATIC_MELEE, AUTOMATIC_RANGED } from "../board/effects";
-import { motionReduced } from "../ui/motion";
+import { animationLevel, useAnimationLevel } from "../ui/motion";
 import { t } from "../i18n/locale";
 
 /** The preview stage loads with its renderer only when an attack editor opens (attack-range). */
@@ -355,7 +355,8 @@ function AttackForm({
       const caughtUp = result.seq !== null && snapshot.seq >= result.seq;
       const now = snapshot.state?.tokens[targetId];
       if (caughtUp && now && shouldPingTarget(now, rollVisibility, snapshot.state?.fog ?? {})) {
-        onShowPing(now.position);
+        // Others still get the ping; at None this board leaves it out, as it does the rest of the attack (animation-levels).
+        if (animationLevel() !== "none") onShowPing(now.position);
         connection.ephemeral({ type: "ping", at: now.position });
       }
     }
@@ -678,6 +679,8 @@ export function PresetEditor({
   const [error, setError] = useState<string | null>(null);
   /** How far it reaches (attack-range): typed in the room's units, or the GM's outside a room. */
   const env = useAttackEditorEnv();
+  // Below Full no attack animation plays, so there is nothing to preview (animation-levels).
+  const showPreview = useAnimationLevel() === "full";
   const [rangeKind, setRangeKind] = useState<"none" | AttackRange["kind"]>(initial?.range?.kind ?? "none");
   // Reach starts at one square, which is saved as "one square" so it means one square on any map.
   const [reachText, setReachText] = useState(String(initial?.range?.kind === "melee" && initial.range.reach !== undefined ? initial.range.reach : env.unitsPerCell));
@@ -780,11 +783,13 @@ export function PresetEditor({
           ]}
         />
       </div>
-      <div className="attack-editor-preview">
-        <Suspense fallback={<div className="attack-editor-preview-placeholder" />}>
-          <AnimationPreviewStage def={previewDef} autoPlay reducedMotion={env.reducedEffects || motionReduced()} />
-        </Suspense>
-      </div>
+      {showPreview && (
+        <div className="attack-editor-preview">
+          <Suspense fallback={<div className="attack-editor-preview-placeholder" />}>
+            <AnimationPreviewStage def={previewDef} autoPlay />
+          </Suspense>
+        </div>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}

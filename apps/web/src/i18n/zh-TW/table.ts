@@ -105,6 +105,7 @@ export const tableZhTW = {
   "rail.areaColour": "範圍顏色",
   "rail.gmOnlyHint": "開啟後，新放置的範圍效果只有 GM 看得到。",
   "rail.gmOnly": "僅 GM 可見",
+  "dice.dieType": ({ sides }: { sides: number }) => `d${sides}`,
   "rail.fogOptions": "迷霧選項",
   "rail.fogMode": "迷霧模式",
   "rail.boardTools": "棋盤工具",

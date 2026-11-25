@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_CLIENT_SETTINGS, setClientSettings } from "../src/ui/clientSettings";
 import { renderToStaticMarkup } from "react-dom/server";
 import { emptyRoomState, type RoomState, type Token } from "@vtt/shared";
 import { ATTACK_STYLE_PRESETS, NUKE_PRESET } from "../src/board/effectPresets";
@@ -72,5 +73,50 @@ describe("effects overlay (board-effects-overlay)", () => {
     const player = render(state, nuke, false);
     expect(player.match(/−12/g)).toHaveLength(1);
     expect(render(state, nuke, true).match(/−12/g)).toHaveLength(2);
+  });
+});
+
+describe("hit, miss and damage at each Animations level (animation-levels)", () => {
+  const state = room([token("b")]);
+  const hit: OverlayEffect[] = [{ id: 1, effect: { kind: "hit", tokenId: "b" } }];
+  const miss: OverlayEffect[] = [{ id: 2, effect: { kind: "miss", tokenId: "b" } }];
+  const damage: OverlayEffect[] = [{ id: 3, effect: { kind: "damage", tokenId: "b", amount: 7 } }];
+  const nuke: OverlayEffect[] = [{ id: 4, effect: { kind: "nuke", animation: NUKE_PRESET, origin: { x: 0, y: 0 }, amount: 12, tokenIds: ["b"] } }];
+  const damages: OverlayEffect[] = [{ id: 5, effect: { kind: "damages", hits: [{ tokenId: "b", amount: 9 }] } }];
+  afterEach(() => setClientSettings(DEFAULT_CLIENT_SETTINGS));
+
+  it("Full plays the moving hit and the MISS splash", () => {
+    setClientSettings({ animationLevel: "full" });
+    expect(render(state, hit)).toContain("effects-orb");
+    expect(render(state, miss)).toContain("effects-miss");
+  });
+
+  it("Reduced shows a still ring with no text, and a still damage number", () => {
+    setClientSettings({ animationLevel: "reduced" });
+    const hitHtml = render(state, hit);
+    expect(hitHtml).toContain("effects-ring");
+    expect(hitHtml).not.toContain("effects-orb");
+    const missHtml = render(state, miss);
+    expect(missHtml).toContain("effects-ring");
+    expect(missHtml).not.toContain("effects-label");
+    expect(missHtml).not.toMatch(/miss/i);
+    const damageHtml = render(state, damage);
+    expect(damageHtml).toContain("−7");
+    expect(damageHtml).not.toContain("effects-orb");
+  });
+
+  it("None draws nothing for a hit, a miss or any damage number", () => {
+    setClientSettings({ animationLevel: "none" });
+    for (const effects of [hit, miss, damage, nuke, damages]) {
+      const html = render(state, effects);
+      expect(html).not.toContain("effects-ring");
+      expect(html).not.toContain("effects-label");
+      expect(html).not.toContain("effects-orb");
+    }
+  });
+
+  it("ignores the room's old table-wide reduced flag", () => {
+    setClientSettings({ animationLevel: "full" });
+    expect(render({ ...state, reducedEffects: true }, hit)).toContain("effects-orb");
   });
 });

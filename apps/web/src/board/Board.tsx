@@ -13,6 +13,8 @@ import { guardedConnection } from "../net/previewConnection";
 import { DEFAULT_TOOL_OPTIONS, ToolRail, toolFor, type ToolOptions } from "../ui/ToolRail";
 import { usePersistentState } from "../ui/usePersistentState";
 import { getClientSettings, useClientSettings } from "../ui/clientSettings";
+import { animationLevel } from "../ui/motion";
+import { AttackPings } from "./attackPings";
 import { BoardFilters } from "./BoardFilters";
 import { gmSightPolygons, sightKey, viewedTokenIds } from "./gmSightView";
 import { canAnimateDice, type TrayRoll } from "../ui/Die3D";
@@ -27,7 +29,7 @@ import { EXAMPLE_BOARD_EVENT, type ExampleBoardApi } from "../ui/tutorialExample
 import { demoSpots, demoTokenIds, rememberDemoTokens } from "../ui/tutorialDemo";
 import { useDisplayedHealth } from "./nukeHealth";
 import { shakeScreen } from "./screenShake";
-import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, effectiveReducedMotion, type AttackEffect } from "./effects";
+import { MAX_ATTACK_EFFECTS, attackEffectFor, attackPlan, effectToPlay, type AttackEffect } from "./effects";
 import type { OverlayEffect } from "./EffectsOverlay";
 import { boardDieSize, centreThrow, crowdedOffset, onMap, throwLanding, type BoardThrow, type BoardTransform } from "./diceThrow";
 import { cursorSquare, moveCursor, placementCommand, stagedGhost, startCursor, type PlacementGhost, type PlacingSource, type TokenDraft } from "./placement";
@@ -232,6 +234,8 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
   const hasFog = Object.keys(state.fog).length > 0;
   const hasPortals = Object.values(state.walls).some((wall) => wall.portal);
   const hasWalls = Object.values(state.walls).some((wall) => !wall.portal);
+  /** Recent attack rolls, to recognise the target ping that follows each (animation-levels). */
+  const attackPings = useRef(new AttackPings());
   /** Strikes waiting for their thrown dice to land, by roll id, oldest first (KAN-76). */
   const waitingStrikes = useRef(new Map<string, { effect: AttackEffect; timer: number }>());
   // The committed seq of `state` when it is the live room's, so the board knows when an edit it sent has landed.
@@ -379,12 +383,15 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     viewRef.current?.playAttackEffect(effect);
     // Strikes are entirely Pixi: they need neither the DOM overlay nor its animation libraries.
     if (effect.kind === "strike" || effect.kind === "defeat") return;
+    const level = animationLevel();
+    // No animations: nothing of an attack is drawn, so the overlay has nothing to show (animation-levels).
+    if (level === "none") return;
     // A nuke shakes the whole page, not just the board.
-    if (effect.kind === "nuke" && !effectiveReducedMotion(latest.current.state)) shakeScreen(effect.animation);
+    if (effect.kind === "nuke" && level === "full") shakeScreen(effect.animation);
     const id = nextEffectId.current++;
     setOverlayEffects((all) => [...all, { id, effect }].slice(-MAX_ATTACK_EFFECTS));
     // Also removed here, so an effect that waited for the overlay to load never plays late.
-    window.setTimeout(() => dropEffect(id), attackPlan(effect, effectiveReducedMotion(latest.current.state)).durationMs + 300);
+    window.setTimeout(() => dropEffect(id), attackPlan(effect, level !== "full").durationMs + 300);
   };
   const playEffectRef = useRef(playEffect);
   playEffectRef.current = playEffect;
@@ -587,7 +594,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
     });
     const stopEphemeral = connection.onEphemeral((_from, payload) => {
       if (latest.current.suppressLiveEffects) return;
-      if (payload.type === "ping") view.showPing(payload.at, 0x3498db);
+      if (payload.type === "ping") {
+        // At None an attack roll's target ping is left out, like the rest of the attack (animation-levels).
+        const fromAttack = attackPings.current.take(_from, payload.at, performance.now());
+        if (!(fromAttack && animationLevel() === "none")) view.showPing(payload.at, 0x3498db);
+      }
       else if (payload.type === "tokenDragPreview") view.showDragPreview(payload.tokenId, payload.at);
       else if (payload.type === "tokenMoveFeedback" && _from === latest.current.you.id && payload.atSeq === connection.snapshot.seq && connection.snapshot.status === "open") view.showMovementFeedback(payload);
       else if (payload.type === "templatePreview") {
@@ -606,6 +617,11 @@ export const Board = forwardRef<BoardHandle, Props>(function Board({ replayFrame
       // (token-slide, ADR 0055): someone else's, and this account's from another tab or device.
       // A move this board dropped is already sliding, so the board leaves it alone.
       const moved = committed.event;
+      // Remember where an attack roll aims, to know its roller's target ping when it follows.
+      if (moved.type === "DiceRolled" && moved.roll.attack?.target) {
+        const target = after.tokens[moved.roll.attack.target.tokenId];
+        if (target) attackPings.current.note(moved.roll.byParticipantId, target.position, performance.now());
+      }
       if (moved.type === "TokenMoved") {
         const { points, gaps } = slidePointsFor(moved, latest.current.you, after);
         view.slide(moved.tokenId, points, gaps);

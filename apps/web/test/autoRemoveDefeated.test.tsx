@@ -130,20 +130,24 @@ describe("defeat animation decision (FR-TAC-07)", () => {
     expect(attackEffectFor({ type: "TokenDeleted", token: token() }, state(), gm)).toBeNull();
   });
 
-  it("reduced motion, low quality or a crowd give a plain fade of 250 ms or less", () => {
+  it("the Reduced level, low quality or a crowd give a plain fade of 250 ms or less", () => {
     for (const plan of [
-      defeatPlan({ reducedMotion: true, quality: "high", active: 0 }),
-      defeatPlan({ reducedMotion: false, quality: "low", active: 0 }),
-      defeatPlan({ reducedMotion: false, quality: "high", active: MAX_DEFEAT_EFFECTS }),
+      defeatPlan({ level: "reduced", quality: "high", active: 0 }),
+      defeatPlan({ level: "full", quality: "low", active: 0 }),
+      defeatPlan({ level: "full", quality: "high", active: MAX_DEFEAT_EFFECTS }),
     ]) {
       expect(plan).toMatchObject({ motion: false, particles: 0 });
       expect(plan.durationMs).toBeLessThanOrEqual(250);
     }
   });
 
+  it("the None level removes the token at once (animation-levels)", () => {
+    expect(defeatPlan({ level: "none", quality: "high", active: 0 })).toEqual({ motion: false, durationMs: 0, particles: 0 });
+  });
+
   it("the full effect scales its particles with graphics quality", () => {
-    const high = defeatPlan({ reducedMotion: false, quality: "high", active: 0 });
-    const balanced = defeatPlan({ reducedMotion: false, quality: "balanced", active: 0 });
+    const high = defeatPlan({ level: "full", quality: "high", active: 0 });
+    const balanced = defeatPlan({ level: "full", quality: "balanced", active: 0 });
     expect(high.motion).toBe(true);
     expect(high.particles).toBeGreaterThan(balanced.particles);
     expect(balanced.particles).toBeGreaterThan(0);

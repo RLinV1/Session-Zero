@@ -60,7 +60,7 @@ Every shape SHALL have one built-in default preset: a full definition tuned to l
 - **THEN** one entry per shape is offered, and each one parses as a valid definition
 
 ### Requirement: Editor with live preview
-The Animations tab SHALL let the GM edit an animation's fields and SHALL show a preview stage with a stand-in attacker and target and a Play button. Play SHALL run the animation exactly as a board would, using the unsaved values in the editor. The preview SHALL NOT change any room, token or library data. Unsaved edits SHALL stay out of the library until the GM saves. For a `nuke` shape the preview SHALL play the blast over the stage. When the GM prefers reduced motion, the preview SHALL show the same static markers a board shows.
+The Animations tab SHALL let the GM edit an animation's fields and SHALL show a preview stage with a stand-in attacker and target and a Play button. Play SHALL run the animation exactly as a board at the Full level would, using the unsaved values in the editor, at every Animations level (`animation-levels`), including Reduced, None and a device preference for reduced motion. The preview SHALL NOT change any room, token or library data. Unsaved edits SHALL stay out of the library until the GM saves. For a `nuke` shape the preview SHALL play the blast over the stage.
 
 #### Scenario: Preview unsaved changes
 - **WHEN** the GM changes the colour of "Fire blade" to blue and presses Play without saving
@@ -73,6 +73,10 @@ The Animations tab SHALL let the GM edit an animation's fields and SHALL show a 
 #### Scenario: Nuke preview
 - **WHEN** the GM presses Play on a nuke animation
 - **THEN** the stage plays a shockwave, flash and shake, and nothing is damaged
+
+#### Scenario: Full preview at any level
+- **WHEN** a GM whose Animations level is None presses Play on "Fire blade"
+- **THEN** the whole animation plays on the stage
 
 ### Requirement: Attaching an animation to an attack
 A GM SHALL be able to attach one of their library animations, other than a `nuke`, to a named attack on a creature or a token. The animation definition SHALL be copied into the attack, so players see it without library access and later changes to the library animation SHALL NOT change an attack or a room. When a named attack with an animation is rolled, the server SHALL copy the actor token's matching attack animation into the roll's attack context; a client SHALL NOT be able to supply one. Every viewer who can see the attack SHALL play that animation in place of the built-in style animation, under the same visibility and reduced-motion rules as any attack animation. Removing the animation from the attack SHALL restore the built-in style.

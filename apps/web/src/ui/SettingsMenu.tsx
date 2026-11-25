@@ -8,7 +8,8 @@ import { LanguageSettings } from "./LanguageMenu";
 import { Modal } from "./Modal";
 import { openFeedback } from "./feedback";
 import { TableRuleControls, tableRulesOf, type TableRules } from "./TableRuleControls";
-import { setClientSettings, useClientSettings, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
+import { setClientSettings, useClientSettings, type AnimationLevel, type AttackAnimations, type GraphicsQuality } from "./clientSettings";
+import { useSystemReduced } from "./motion";
 
 /** The room the menu is opened from; absent on the account pages, where there is no table setting to show. */
 export interface SettingsRoom { connection: RoomConnection; state: RoomState; you: Participant }
@@ -18,6 +19,7 @@ type SettingsTab = "audio" | "graphics" | "preferences" | "language" | "table";
 export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: boolean; onClose: () => void; onAfterClose?: () => void; room?: SettingsRoom }) {
   const t = useT();
   const settings = useClientSettings();
+  const deviceReduced = useSystemReduced();
   const baseId = useId();
   const showTable = !!room && room.you.role === "gm";
   // The globe marks Language in any language, for a reader who can't read the tab names (design.md §11).
@@ -71,11 +73,15 @@ export function SettingsMenu({ open, onClose, onAfterClose, room }: { open: bool
                   <option value="low">{t("settings.quality.low")}</option>
                 </select>
               </label>
-              <label className="checkbox">
-                <input type="checkbox" role="switch" checked={settings.reducedAnimations} onChange={(e) => setClientSettings({ reducedAnimations: e.target.checked })} />
-                {t("settings.reducedAnimations")}
+              {/* The device's reduced-motion preference locks this at None (animation-levels). */}
+              <label>{t("settings.animations")}
+                <select value={deviceReduced ? "none" : settings.animationLevel} disabled={deviceReduced} onChange={(e) => setClientSettings({ animationLevel: e.target.value as AnimationLevel })}>
+                  <option value="full">{t("settings.animations.full")}</option>
+                  <option value="reduced">{t("settings.animations.reduced")}</option>
+                  <option value="none">{t("settings.animations.none")}</option>
+                </select>
               </label>
-              <p className="muted small-print">{t("settings.reducedAnimationsHint")}</p>
+              <p className="muted small-print">{t(deviceReduced ? "settings.animationsDevice" : "settings.animationsHint")}</p>
               <label className="checkbox">
                 <input type="checkbox" role="switch" checked={settings.autoFocusAttacks} onChange={(e) => setClientSettings({ autoFocusAttacks: e.target.checked })} />
                 {t("settings.focusAttacks")}

@@ -18,7 +18,9 @@ import {
   sparkVectors,
 } from "./effectPresets";
 import { NUKE_DROP_SHARE } from "./fxBudget";
-import { attackPlan, effectiveReducedMotion, prefersReducedMotion, watchReducedMotion, type AttackEffect } from "./effects";
+import { attackPlan, type AttackEffect } from "./effects";
+import { useAnimationLevel } from "../ui/motion";
+import type { AnimationLevel } from "../ui/clientSettings";
 
 import { t } from "../i18n/locale";
 /** An attack effect the overlay is playing, until its plan duration is over. */
@@ -57,14 +59,6 @@ function usePageVisible(): boolean {
   return visible;
 }
 
-/** The device preference or the GM's table-wide "Reduced animations" setting; follows both live. */
-function useReducedMotion(tableReduced: boolean): boolean {
-  const settings = useClientSettings();
-  const [os, setOs] = useState(prefersReducedMotion);
-  useEffect(() => watchReducedMotion(setOs), []);
-  return effectiveReducedMotion({ reducedEffects: tableReduced || settings.reducedAnimations }, os);
-}
-
 /**
  * Attack and condition effects (board-effects-overlay): a DOM layer over the Pixi canvas. Its one
  * inner element follows the board's world transform, so everything inside sits in board
@@ -88,7 +82,9 @@ export default function EffectsOverlay({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
-  const reduced = useReducedMotion(state.reducedEffects ?? false);
+  // The viewer's Animations level (animation-levels); the room's old table-wide flag takes no part.
+  const level = useAnimationLevel();
+  const reduced = level !== "full";
   const settings = useClientSettings();
   const budget = QUALITY[settings.graphicsQuality];
   /** The board point at the middle of the view, for ranking which tokens get particles. */
@@ -154,7 +150,7 @@ export default function EffectsOverlay({
           />
         ))}
         {effects.map((e) => (
-          <AttackEffectView key={e.id} entry={e} state={state} cell={cell} reduced={reduced} isGm={isGm} onDone={onDone} />
+          <AttackEffectView key={e.id} entry={e} state={state} cell={cell} level={level} isGm={isGm} onDone={onDone} />
         ))}
       </div>
     </div>
@@ -254,18 +250,19 @@ function AttackEffectView({
   entry,
   state,
   cell,
-  reduced,
+  level,
   isGm,
   onDone,
 }: {
   entry: OverlayEffect;
   state: RoomState;
   cell: number;
-  reduced: boolean;
+  level: AnimationLevel;
   isGm: boolean;
   onDone: (id: number) => void;
 }) {
   const { effect, id } = entry;
+  const reduced = level !== "full";
   const plan = attackPlan(effect, reduced);
   useEffect(() => {
     const timer = window.setTimeout(() => onDone(id), plan.durationMs);
@@ -278,7 +275,8 @@ function AttackEffectView({
     return token && (isGm || !token.hidden) ? token : null;
   };
   // Strikes and the nuke blast are drawn by the Pixi board (fx.ts); the overlay adds the nuke numbers.
-  if (effect.kind === "strike" || effect.kind === "defeat") return null;
+  // No animations: no ring, label or number at all (animation-levels).
+  if (effect.kind === "strike" || effect.kind === "defeat" || level === "none") return null;
   if (effect.kind === "nuke") {
     return (
       <>
@@ -404,7 +402,8 @@ function Hit({ at, r, seed, reduced }: { at: { x: number; y: number }; r: number
 }
 
 function Miss({ at, r, reduced }: { at: { x: number; y: number }; r: number; reduced: boolean }) {
-  if (reduced) return <Marker at={at} r={r} color="#cbd5e1" label={t("ruling.miss")} />;
+  // Reduced: a still grey ring, without the "Miss" text (animation-levels).
+  if (reduced) return <Marker at={at} r={r} color="#cbd5e1" />;
   const size = r * 2.6;
   return (
     <>
@@ -484,19 +483,12 @@ function Damage({ at, r, amount, reduced, delay = 0 }: { at: { x: number; y: num
   );
 }
 
-/** A still marker on the target for reduced motion: it appears and goes with the plan's duration. */
-function Marker({ at, r, color, label }: { at: { x: number; y: number }; r: number; color: string; label?: string }) {
+/** A still ring on the target at the Reduced level: it appears and goes with the plan's duration, with no text. */
+function Marker({ at, r, color }: { at: { x: number; y: number }; r: number; color: string }) {
   return (
-    <>
-      <div
-        className="effects-ring"
-        style={{ left: at.x, top: at.y, width: r * 2.2, height: r * 2.2, marginLeft: -r * 1.1, marginTop: -r * 1.1, borderColor: color, borderWidth: 4 }}
-      />
-      {label && (
-        <span className="effects-label" style={{ left: at.x, top: at.y - r, fontSize: Math.max(16, r * 0.5), color }}>
-          {label}
-        </span>
-      )}
-    </>
+    <div
+      className="effects-ring"
+      style={{ left: at.x, top: at.y, width: r * 2.2, height: r * 2.2, marginLeft: -r * 1.1, marginTop: -r * 1.1, borderColor: color, borderWidth: 4 }}
+    />
   );
 }

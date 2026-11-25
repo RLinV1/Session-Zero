@@ -1,6 +1,5 @@
 import { Application, Assets, CanvasTextMetrics, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { graphicsBudget, subscribeGraphicsSettings } from "../ui/clientSettings";
-import { motionReduced } from "../ui/motion";
 import type { AnimationDef } from "@vtt/shared";
 import { playNuke, playStrike, type FxHost, type RunningFx } from "./fx";
 import { loadFxTextures } from "./fxTextures";
@@ -348,12 +347,12 @@ export class AnimationPreview {
     this.app.render();
   }
 
-  /** Plays `def` from the attacker onto the target; a play in progress is cut short first. */
-  /** The editor always plays the whole animation: reduced animations never applies while making one. */
-  play(def: AnimationDef, opts: { reducedMotion?: boolean } = {}) {
+  /**
+   * Plays `def` from the attacker onto the target; a play in progress is cut short first. The editor
+   * always plays the whole animation, at every Animations level (library-animations).
+   */
+  play(def: AnimationDef) {
     if (!this.ready || this.destroyed) return;
-    // Opt-in for a preview that should look as the board would for this viewer (attack-range).
-    const reduced = opts.reducedMotion ?? false;
     this.stop();
     const { width, height } = this.size;
     const scale = this.world.scale.x;
@@ -365,11 +364,10 @@ export class AnimationPreview {
       shakeTarget: this.world,
       filterTarget: this.screenLayer,
       screen: { width, height },
-      reducedMotion: reduced,
+      reducedMotion: false,
     };
-    // A nuke shakes the whole page at its blast, as it does on the board (unless the system or the
-    // in-app setting asks for reduced motion: the editor plays everything else in full).
-    if (def.shape === "nuke" && !reduced && !motionReduced()) this.stopShake = shakeScreen(def);
+    // A nuke shakes the whole page at its blast, as it does on the board at Full.
+    if (def.shape === "nuke") this.stopShake = shakeScreen(def);
     this.run = withSound(
       def.shape === "nuke"
         ? playNuke({ ...host, layer: this.screenFxLayer }, { def, origin: { x: width / 2, y: height / 2 }, unit: STAGE_CELL, extent: Math.hypot(width, height) / 2 })
