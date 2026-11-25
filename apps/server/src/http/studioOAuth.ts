@@ -192,6 +192,7 @@ export function refusedGuess(limits: AccountLimits, req: Request, res: Response)
 
 interface Deps {
   store: RoomStore;
+  sessions: import("../identity/sessions").Sessions;
   limits: AccountLimits;
   studio: StudioAccessConfig | null;
   now: () => number;
@@ -202,7 +203,7 @@ interface Deps {
  * for `apps/mcp`, and the owner's list and disconnect on the build page.
  */
 export function registerStudioOAuth(app: Express, deps: Deps) {
-  const { store, limits, studio, now } = deps;
+  const { store, limits, studio, now, sessions } = deps;
   const form = express.urlencoded({ extended: false, limit: "16kb" });
   const refusedGuess_ = (req: Request, res: Response) => refusedGuess(limits, req, res);
 
@@ -510,6 +511,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
   };
 
   app.get("/api/builds/:id/grants", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
     void (async () => {
       const found = await ownerBuild(req, res);
       if (!found) return;
@@ -522,10 +524,27 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
         view.push({
           id: grant.id, clientName: client?.name ?? "", redirectHost: new URL(grant.redirectUri).host,
           createdAt: grant.createdAt, lastUsedAt: grant.lastUsedAt, expiresAt: grant.expiresAt,
+          correctionsAllowed: grant.correctionBuildIds?.includes(found.build.id) ?? false,
           builds: grant.buildIds.filter((id) => names.has(id)).map((id) => ({ id, name: names.get(id)! })),
         });
       }
       res.json({ grants: view });
+    })().catch(failed(res));
+  });
+
+  app.put("/api/builds/:id/grants/:grantId/corrections", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    void (async () => {
+      const found = await ownerBuild(req, res);
+      if (!found) return;
+      const grant = z.uuid().safeParse(req.params.grantId);
+      const input = z.strictObject({ enabled: z.boolean() }).safeParse(req.body);
+      if (!input.success) return void res.status(422).json({ error: STUDIO_TEXT.requestInvalid });
+      if (!await sessions.isLive(found.account.session.tokenHash)) return void res.status(401).json({ error: STUDIO_TEXT.accessEnded });
+      if (!grant.success || !await store.setStudioCorrectionPermission(found.build.id, found.account.user.ownerId, grant.data, input.data.enabled, now)) {
+        return void res.status(404).json({ error: STUDIO_TEXT.noSuchConnection });
+      }
+      res.status(204).end();
     })().catch(failed(res));
   });
 

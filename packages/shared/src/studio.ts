@@ -45,6 +45,7 @@ export const StudioSnapshot = z.object({
   encounters: z.array(z.object({ key: BuildKey, name: z.string(), mapKey: BuildKey })),
   allowed: z.object({ grids: z.boolean(), walls: z.boolean(), terrain: z.boolean() }),
   workingRevisionId: z.uuid().optional(), workingBindingChanged: z.boolean().optional(),
+  correctionHistoryVersion: z.uuid().optional(), correctionsAllowed: z.boolean().optional(),
   scene: StudioScene, outcomes: z.array(StudioPreparationOutcome).max(20),
   intakeOutcomes: z.array(z.object({ id: z.string(), kind: z.enum(["map", "token"]), name: z.string(), status: z.enum(["saved", "failed"]), fileId: z.string().optional(), code: z.string().optional(), at: z.string() })),
   /** Render/cache identity only, never an authoring revision or write precondition. */

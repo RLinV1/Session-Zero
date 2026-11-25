@@ -56,7 +56,7 @@ export function MapViewport({
   onCancel?: () => void;
   /** A right-button press. */
   onSecondary?: () => void;
-  onKeyDown?: (event: KeyboardEvent<SVGSVGElement>) => void;
+  onKeyDown?: (event: KeyboardEvent<SVGSVGElement>, center: Point) => void;
   children: (view: CanvasView) => ReactNode;
   overlay?: ReactNode;
   onImageError?: () => void;
@@ -115,7 +115,8 @@ export function MapViewport({
   };
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
-    svgRef.current?.focus();
+    e.preventDefault();
+    svgRef.current?.focus({ preventScroll: true });
     if (e.button === 2) {
       onSecondary?.();
       return;
@@ -175,6 +176,8 @@ export function MapViewport({
   };
 
   const handleKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
+    onKeyDown?.(e, { x: camera.cx, y: camera.cy });
+    if (e.defaultPrevented) return;
     if (e.key === " ") {
       setSpace(true);
       e.preventDefault();
@@ -186,7 +189,6 @@ export function MapViewport({
       if (e.key === "-") { e.preventDefault(); setCamera((c) => ({ ...c, zoom: Math.max(1, c.zoom / 1.5) })); }
       if (e.key === "0" || e.key === "Home") { e.preventDefault(); setCamera({ cx: map.width / 2, cy: map.height / 2, zoom: 1 }); }
     }
-    onKeyDown?.(e);
   };
 
   const px = 1 / scale;
@@ -214,9 +216,17 @@ export function MapViewport({
           press.current = null;
           endPointer(e);
         }}
+        onLostPointerCapture={(e) => {
+          if (!pointers.current.delete(e.pointerId)) return;
+          if (press.current) onCancel?.();
+          press.current = null;
+          pinch.current = null;
+        }}
         onPointerLeave={(e) => onMove?.(null, e, { scale, px: 1 / scale })}
         onKeyDown={handleKeyDown}
         onKeyUp={(e) => { if (e.key === " ") setSpace(false); }}
+        onBlur={() => setSpace(false)}
+        onDragStart={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
       >
         <image data-testid="studio-source-image" onError={onImageError} href={map.url} x={0} y={0} width={map.width} height={map.height} preserveAspectRatio="none" />

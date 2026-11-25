@@ -2,17 +2,46 @@ import { createHash } from "node:crypto";
 import {
   StudioSnapshot, DEFAULT_GRID, EMPTY_MAP_SETUP, readDraftMap, draftMapBoard, draftTerrainState, footprintCenter, checkBuild,
   type StudioContext, type StudioFile, type StudioScene, type DraftMapState, type DraftCreatureState, type DraftEncounterState, type Locale,
+  type GridSpec, type LibraryMapBoard,
 } from "@vtt/shared";
 import type { BuildFileRecord } from "../store/buildStore";
 import type { StudioPreparationRecords } from "../store/studioPreparation";
 import { studioIssueText } from "../i18n/studioIssues";
 import { serverZhTW } from "../i18n/zh-TW";
 import { serverEn } from "../i18n/en";
+import type { RevisionScene } from "./studioSceneRevision";
 
 export function studioFile(file: BuildFileRecord): StudioFile {
   return { id: file.id, kind: file.kind, name: file.originalName, width: file.width, height: file.height, sizeBytes: file.sizeBytes,
     privacy: file.studio ? "private" : "legacy-public", originalSha256: file.studio?.originalSha256 ?? null, canonicalId: file.studio?.canonicalId ?? null,
     orientation: file.studio?.orientation ?? null, previewHash: file.studio?.previewSha256 ?? null };
+}
+
+function studioTokens(grid: GridSpec | null, source: StudioFile | null, encounter: DraftEncounterState | null,
+  creatures: ReadonlyMap<string, Pick<DraftCreatureState, "name" | "size" | "color" | "imageFileId">>, ids?: readonly string[]): StudioScene["tokens"] {
+  return (encounter?.tokens ?? []).map((token, index) => {
+    const creature = creatures.get(token.creatureKey);
+    const size = creature?.size ?? 1;
+    return { index, id: ids?.[index], creatureKey: token.creatureKey, name: token.name ?? creature?.name ?? token.creatureKey, size,
+      color: creature?.color ?? "#6a7280", imageFileId: creature?.imageFileId ?? null, hidden: token.hidden, square: token.square,
+      center: token.square && grid && source ? footprintCenter(token.square, size, grid, source) : null };
+  });
+}
+
+const displayWalls = (walls: LibraryMapBoard["walls"]): StudioScene["walls"] => walls.map((wall, index) => ({ ...wall, id: `display-wall-${index}` }));
+
+/** An exact image-space projection. It only uses values captured in the inspected revision. */
+export function studioRevisionScene(candidate: RevisionScene): StudioScene {
+  const { source, sourceBoard, map, grid, encounter, creatures, ids } = candidate;
+  const setup = map.setup ?? EMPTY_MAP_SETUP;
+  const board = draftMapBoard(sourceBoard, setup, grid, source);
+  const terrainStatus = draftTerrainState(setup, grid);
+  return {
+    source, mapName: map.name, encounterName: encounter?.name ?? null, grid, gridStatus: map.gridStatus, gridBy: map.gridBy ?? null, detection: null,
+    walls: displayWalls(board.ok ? board.board.walls : sourceBoard?.walls ?? []),
+    terrain: terrainStatus === "ready" ? setup.terrain ?? [] : [], terrainState: terrainStatus === "none" ? "empty" : terrainStatus,
+    marks: setup.marks, tokens: studioTokens(grid, source, encounter, new Map(creatures.map((c) => [c.key, c.data])), ids.placements), issues: [],
+  };
 }
 
 /** A single already-coherent store read becomes the same native scene for both adapters. */
@@ -54,16 +83,11 @@ export function studioPreparationSnapshot(records: StudioPreparationRecords, own
     grid, gridStatus: map?.data.gridStatus ?? (source?.grid ? "confirmed" : "none"), gridBy: map?.data.gridBy ?? (source?.grid ? "file" : null),
     detection: source?.detectionStatus ? { status: source.detectionStatus, suggestion: source.detectionResult, error: source.detectionError, attempt: source.detectionAttempt } : null,
     // View-local keys only: M3 owns stable authoring identities.
-    walls: (board?.ok ? board.board.walls : source?.board?.walls ?? []).map((wall, index) => ({ ...wall, id: `display-wall-${index}` })),
+    walls: displayWalls(board?.ok ? board.board.walls : source?.board?.walls ?? []),
     terrain: terrainStatus === "ready" ? setup.terrain ?? [] : [], terrainState: terrainStatus === "none" ? "empty" : terrainStatus,
     marks: setup.marks,
-    tokens: (encounter?.data.tokens ?? []).map((token, index) => {
-      const creature = candidate ? candidate.creatures.find((c) => c.key === token.creatureKey)?.data : creatures.find((c) => c.key === token.creatureKey)?.data;
-      const size = creature?.size ?? 1;
-      return { index, ...(candidate ? { id: candidate.ids.placements[index] } : {}), creatureKey: token.creatureKey, name: token.name ?? creature?.name ?? token.creatureKey, size,
-        color: creature?.color ?? "#6a7280", imageFileId: creature?.imageFileId ?? null, hidden: token.hidden, square: token.square,
-        center: token.square && grid && source ? footprintCenter(token.square, size, grid, source) : null };
-    }), issues: [
+    tokens: studioTokens(grid, candidate?.source ?? (source ? studioFile(source) : null), encounter?.data ?? null,
+      new Map((candidate?.creatures ?? creatures).map((c) => [c.key, c.data])), candidate?.ids.placements), issues: [
       ...issues.map((issue) => ({ ...issue, message: studioIssueText(locale, issue.kind, issue.message) })),
       ...(working?.drifted ? [{ kind: "problem" as const, key: working.target.mapKey,
         message: (locale === "zh-TW" ? serverZhTW : serverEn)["studio.authoring.drift"] }] : []),
@@ -71,7 +95,7 @@ export function studioPreparationSnapshot(records: StudioPreparationRecords, own
   };
   const output = {
     version: 2 as const, buildId: build.id, buildName: build.name, ownerName, sourceFileId: context.sourceFileId, files: files.map(studioFile), context,
-    ...(working ? { workingRevisionId: working.revision.id, workingBindingChanged: working.drifted } : {}),
+    ...(working ? { workingRevisionId: working.revision.id, workingBindingChanged: working.drifted, correctionHistoryVersion: working.historyVersion } : {}),
     maps: maps.map((m) => ({ key: m.key, name: m.data.name, fileId: m.data.fileId })),
     encounters: encounters.map((e) => ({ key: e.key, name: e.data.name, mapKey: e.data.mapKey })),
     allowed: { grids: build.aiGrid, walls: build.aiWalls, terrain: build.aiTerrain }, scene, outcomes: build.studioOutcomes ?? [], intakeOutcomes: build.studioIntake ?? [],

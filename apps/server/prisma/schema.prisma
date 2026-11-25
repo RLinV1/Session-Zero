@@ -70,6 +70,7 @@ model StudioAuthoringEntry {
   kind String
   id String @db.Uuid
   value Json
+  activity Json?
   workspace StudioAuthoringWorkspace @relation(fields: [buildId, mapKey], references: [buildId, mapKey], onDelete: Cascade)
 
   @@id([buildId, kind, id])
@@ -212,6 +213,7 @@ model StudioGrant {
   resource      String
   scope         String
   buildIds      String[]  @map("build_ids") @db.Uuid
+  correctionBuildIds String[] @default([]) @map("correction_build_ids") @db.Uuid
   codeHash      String    @unique @map("code_hash")
   codeChallenge String    @map("code_challenge")
   redirectUri   String    @map("redirect_uri")

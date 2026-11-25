@@ -39,4 +39,7 @@ export const studioZhTW = {
   "studio.grants.disconnectAll": "中斷連線後，這個應用程式將無法再存取一起列出的所有建置。",
   "studio.grants.failed": "無法中斷連線，請再試一次。",
   "studio.grants.loadFailed": "無法載入 AI 應用程式連線。",
+  "studio.grants.corrections": ({ name }) => `允許「${name}」要求修正並還原私人版本`,
+  "studio.grants.correctionsHint": "適用於此建置中可修正的場景。",
+  "studio.grants.correctionsFailed": "無法儲存修正權限，請再試一次。",
 } satisfies Catalog<typeof studio>;

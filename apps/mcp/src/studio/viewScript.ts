@@ -8,6 +8,7 @@ let locale = navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
 let buildId = null, snapshot = null, timer = null, stopped = false, refreshing = false, refreshAgain = false, connected = false, generation = 0;
 let statusKey = 'loading', needsRetry = false, contextSignature = null, lastStarted = 0, rendered = '', refreshAbort = null;
 const mediaCache = new Map(), mediaFailed = new Set();
+let demandedFiles = [];
 const t = (key) => catalogs[locale][key] || catalogs.en[key] || catalogs.en['error.unknown'];
 function translate() {
   document.documentElement.lang = locale; document.title = t('title');
@@ -19,7 +20,7 @@ function status(key) { statusKey=key; const value=t(key); if ($('status').textCo
 function viewContext() { return {buildId,generation}; }
 function isCurrent(context) { return !stopped && context.buildId === buildId && context.generation === generation; }
 function clearPrivate() {
-  generation++; snapshot=null; contextSignature=null; mediaCache.clear(); mediaFailed.clear(); rendered=''; surface.clear();
+  generation++; snapshot=null; contextSignature=null; demandedFiles=[]; mediaCache.clear(); mediaFailed.clear(); rendered=''; surface.clear();
   $('files').replaceChildren(); $('outcomes').replaceChildren(); $('files').dataset.signature=''; $('outcomes').dataset.signature='';
   $('build').textContent=''; $('owner').textContent=''; $('legacy').hidden=true;
 }
@@ -47,18 +48,54 @@ async function call(name,args,signal) {
 }
 function cacheKey(file) { return [buildId,file.id,file.canonicalId || '',file.previewHash || 'legacy'].join(':'); }
 function activeFiles(data) {
-  const ids = new Set([data.scene.source?.id,...data.scene.tokens.map((token)=>token.imageFileId)].filter(Boolean));
+  const ids = new Set([data.scene.source?.id,...data.scene.tokens.map((token)=>token.imageFileId),...demandedFiles].filter(Boolean));
   const source = data.scene.source;
   return [...(source ? [source] : []),...data.files.filter((file)=>ids.has(file.id) && file.id !== source?.id)];
+}
+function authoringClient(context) {
+  async function authoring(name, args) {
+    if (!isCurrent(context) || needsRetry) throw new Error('Studio context changed');
+    try {
+      const result = await call(name, {buildId:context.buildId,...args});
+      if (!isCurrent(context)) throw new Error('Studio context changed');
+      return resultData(result);
+    } catch(error) {
+      if (isCurrent(context) && accessEnded(error)) pauseForRetry(error);
+      throw error;
+    }
+  }
+  return {
+    inspect:(mapKey,encounterKey)=>authoring('studio_inspect_correction',{mapKey,encounterKey}),
+    history:(mapKey)=>authoring('studio_correction_history',{mapKey}),
+    revision:(mapKey,revisionId)=>authoring('studio_revision_view',{mapKey,revisionId}),
+    create:(mapKey,input)=>authoring('studio_create_correction_request',{mapKey,...input}),
+    restore:(mapKey,input)=>authoring('studio_restore_revision',{mapKey,...input}),
+    refresh:()=>{if (isCurrent(context)) void refresh(true);},
+    ensureMedia:(ids)=>{
+      if (!isCurrent(context)) return;
+      demandedFiles=ids;
+      if (ids.length && snapshot && activeFiles(snapshot).some((file)=>ids.includes(file.id) && !mediaCache.has(cacheKey(file)) && !mediaFailed.has(cacheKey(file)))) void refresh(true);
+    },
+    handoff:async (prompt)=>{
+      const capabilities=app.getHostCapabilities();
+      const immediate=!!capabilities?.experimental?.['openai/message'];
+      if (!isCurrent(context) || needsRetry || (!immediate && !capabilities?.message)) return 'failed';
+      try {
+        const result=await app.sendMessage({role:'user',content:[{type:'text',text:prompt}],
+          ...(immediate && {_meta:{'openai/message':{target:'active',send:true}}})},{timeout:8000});
+        return result?.isError ? 'failed' : immediate ? 'sent' : 'pending';
+      } catch { return 'failed'; }
+    }
+  };
 }
 function renderSaved() {
   if (!snapshot || stopped) return;
   const media={}; for (const file of activeFiles(snapshot)) { const image=mediaCache.get(cacheKey(file)); if (image) media[file.id]=image; }
-  const signature=JSON.stringify([snapshot.fingerprint,locale,needsRetry,Object.keys(media)]);
+  const signature=JSON.stringify([snapshot.fingerprint,snapshot.correctionsAllowed,locale,generation,needsRetry,Object.keys(media)]);
   if (signature === rendered) return;
   rendered=signature;
   const website=snapshot.websitePath;
-  surface.render({snapshot,media,locale,disabled:needsRetry,stale:needsRetry,onContext:setContext,
+  surface.render({snapshot,media,locale,disabled:needsRetry,stale:needsRetry,onContext:setContext,authoring:authoringClient(viewContext()),
     onWebsiteOpen:async()=>{
       const context=viewContext();
       try { if (!(await app.openLink({url:website})).isError) return; } catch { /* The host may block external links. */ }
@@ -106,7 +143,7 @@ async function refresh(force=false) {
     const data=surface.validate(resultData(await call('studio_snapshot',{buildId:context.buildId},controller.signal)));
     if (!isCurrent(context)) return;
     const nextSignature=JSON.stringify(data.context);
-    if (contextSignature !== null && contextSignature !== nextSignature) generation++;
+    if (contextSignature !== null && contextSignature !== nextSignature) { generation++; demandedFiles=[]; }
     activeContext=viewContext();
     contextSignature=nextSignature; snapshot=data;
     $('build').textContent=data.buildName; $('owner').textContent=data.ownerName || '';

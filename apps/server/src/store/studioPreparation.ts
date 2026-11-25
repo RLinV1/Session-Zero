@@ -5,7 +5,7 @@ import type { StudioTarget } from "../domain/studioSceneRevision";
 import type { StudioDelegation } from "./studioStore";
 
 export interface StudioBuildAccess { ownerGmId: string; delegation?: StudioDelegation; passHash?: string }
-export interface StudioPreparationRecords { build: BuildRecord; files: BuildFileRecord[]; items: BuildItemRecord[]; working?: { target: StudioTarget; revision: StudioRevision; drifted: boolean } }
+export interface StudioPreparationRecords { build: BuildRecord; files: BuildFileRecord[]; items: BuildItemRecord[]; working?: { target: StudioTarget; revision: StudioRevision; drifted: boolean; historyVersion?: string } }
 export class StudioContextConflictError extends Error { constructor() { super("studio_context_conflict"); } }
 export interface StudioPreparationStore {
   readStudioPreparation(buildId: string, access: StudioBuildAccess): Promise<StudioPreparationRecords>;

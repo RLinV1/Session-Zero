@@ -1,8 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
+import { StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioSnapshot, type BuildDetail, type StudioCorrectionInput } from "@vtt/shared";
 import { UPLOAD_ALLOWANCE } from "../src/store/libraryStore";
+import { LocalDiskAssetStore } from "../src/store/assetStore";
 import type { BuildFileRecord } from "../src/store/buildStore";
+import { renderStudioCrop } from "../src/domain/studioCrop";
 import { AUTHORING_LIMITS, type StudioRevision } from "../src/store/studioAuthoring";
 import type { RoomStore } from "../src/store/roomStore";
 import { startServer } from "./helpers";
@@ -13,7 +18,7 @@ const wall = { kind: "wall", from: { column: 0, row: 1 }, to: { column: 5, row: 
 const door = { kind: "door", state: "closed", from: { column: 1, row: 1 }, to: { column: 2, row: 1 } } as const;
 const region = { minX: 0, minY: 0, maxX: 225, maxY: 225 };
 
-async function fixture(store: RoomStore) {
+async function fixture(store: RoomStore, board: BuildFileRecord["board"] = null) {
   const server = await startServer(store, { studio: { publicOrigin: TEST_ORIGIN } });
   try {
     const owner = await server.signUp();
@@ -22,7 +27,7 @@ async function fixture(store: RoomStore) {
     });
     const source: BuildFileRecord = {
       id: randomUUID(), buildId: id, kind: "map", objectKey: "synthetic", url: "/uploads/synthetic",
-      originalName: "Chapel", width: 525, height: 400, sizeBytes: 1, grid: null, board: null, sourceHash: null,
+      originalName: "Chapel", width: 525, height: 400, sizeBytes: 1, grid: null, board, sourceHash: null,
       detectionSourceHash: null, detectionVersion: null, detectionError: null, detectionStatus: null, detectionAttempt: 0,
       detectionResult: null, detectionUpdatedAt: null, publishedAssetId: null, createdAt: new Date().toISOString(),
     };
@@ -77,7 +82,7 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       const replace = await f.send("POST", "/maps", { key: "chapel", name: "Replacement", fileId: otherSource.id });
       expect(await replace.json()).toMatchObject({ code: "enrolled" });
       expect(await f.create(input)).toEqual(request);
-      expect((await f.send("POST", "/authoring/maps/chapel/requests", input)).status).toBe(404);
+      expect((await f.send("POST", "/authoring/maps/chapel/requests", input)).status).toBe(403);
       expect((await f.owner.request("POST", `${f.map}/requests`, { ...input, instruction: "Different retry" })).status).toBe(409);
       const open = { op: "line.update", id: doorId, line: { ...door, state: "open" } };
       const erase = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
@@ -111,7 +116,7 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       expect(publicDraft?.data.setup).toMatchObject({ lines: [wall, door], terrain: [{ row: 0, start: -1, end: -1, kind: "difficult" }] });
       const website = StudioSnapshot.parse(await f.owner.json("GET", `${f.base}/studio`));
       const tool = StudioSnapshot.parse(await (await f.send("GET", "/studio")).json());
-      expect(tool).toEqual(website);
+      expect(tool).toEqual({ ...website, correctionsAllowed: false });
       expect(tool.workingRevisionId).toBe(advanced.body.revisionId);
       expect(tool.scene.walls.map((w) => w.portal?.state).filter(Boolean)).toEqual(["open"]);
       expect(tool.scene.terrain).toEqual([]);
@@ -123,6 +128,208 @@ describe.each(storeCases)("Studio M3 authoring in %s (FR-GM-26, FR-GM-27)", (_na
       expect((await f.history()).revisions).toHaveLength(4);
       expect((await f.owner.request("DELETE", f.base)).status).toBe(204);
       expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+    } finally { await f.server.close(); }
+  });
+
+  it("requires the whole crossing wall when removing the portal would fill its gap", async () => {
+    const f = await fixture(makeStore());
+    try {
+      const seen = await f.inspect();
+      const [wallId, doorId] = seen.objects.map(({ id }) => id);
+      const selection: StudioCorrectionInput["selection"] = {
+        region: { minX: 99, minY: 40, maxX: 111, maxY: 80 }, layers: ["geometry", "terrain"],
+        objectIds: [doorId!], wholeObjectIds: [doorId!],
+      };
+      const saved = await f.create(f.makeRequest(seen.inspectedVersion, selection));
+      const operations = [
+        { op: "terrain.paint", runs: [{ row: 0, start: 1, end: 1, kind: "difficult" }] },
+        { op: "line.remove", id: doorId },
+      ];
+      const refused = await f.propose(saved.requestId, saved.baseRevisionId, operations);
+      expect(refused.status).toBe(422);
+      expect(await refused.json()).toMatchObject({ code: "scope" });
+      expect(await f.history()).toMatchObject({ workingRevisionId: saved.baseRevisionId, revisions: [{ id: saved.baseRevisionId }] });
+
+      const included = await f.create(f.makeRequest(saved.baseRevisionId, {
+        ...selection, objectIds: [doorId!, wallId!], wholeObjectIds: [doorId!, wallId!],
+      }));
+      const accepted = await f.propose(included.requestId, included.baseRevisionId, operations);
+      expect(accepted.status).toBe(200);
+      const { revisionId } = await accepted.json() as { revisionId: string };
+      expect((await f.readRevision(revisionId)).scene.map.setup).toMatchObject({
+        lines: [wall], terrain: [{ row: 0, start: -1, end: -1, kind: "difficult" }, { row: 0, start: 1, end: 1, kind: "difficult" }],
+      });
+    } finally { await f.server.close(); }
+  });
+
+  it("preserves imported walls and reports the original portal state when it is flagged for review", async () => {
+    const importedDoor = { a: { x: 75, y: 50 }, b: { x: 125, y: 50 }, portal: { kind: "door", state: "open" } } as const;
+    const importedWall = { a: { x: 25, y: 100 }, b: { x: 275, y: 100 } };
+    const f = await fixture(makeStore(), { walls: [importedDoor, importedWall], fog: [] });
+    try {
+      const seen = StudioInspection.parse(await f.inspect());
+      const opening = seen.objects.find((object) => object.state === "open")!;
+      const saved = await f.create(f.makeRequest(seen.inspectedVersion, {
+        region, layers: ["geometry"], objectIds: [opening.id], wholeObjectIds: [],
+      }));
+      const cut = await f.propose(saved.requestId, saved.baseRevisionId, [{ op: "line.add", line: {
+        ...door, from: { column: 1, row: 2 }, to: { column: 2, row: 2 },
+      } }]);
+      expect(cut.status).toBe(422);
+      expect(await cut.json()).toMatchObject({ code: "scope" });
+      expect((await f.history()).revisions).toHaveLength(1);
+
+      const reason = "Check which side the portal opens from.";
+      const flagged = await f.propose(saved.requestId, saved.baseRevisionId, [{ op: "opening.set", id: opening.id, opening: { kind: "leave", reason } }]);
+      expect(flagged.status).toBe(200);
+      const after = StudioInspection.parse(await f.inspect());
+      expect(after.objects.find((object) => object.id === opening.id)).toMatchObject({ kind: "door", state: "open", label: reason });
+      expect(after.scene.walls).toEqual(seen.scene.walls);
+    } finally { await f.server.close(); }
+  });
+
+  it("requires a live opt-in on this grant and build for app requests and restores, including retries and writes queued past a permission change", async () => {
+    const store = makeStore();
+    const f = await fixture(store);
+    try {
+      const second = await f.owner.json<{ build: { id: string } }>("POST", "/api/builds", { name: "Other scene build" });
+      const { tokens, clientId } = await connectStudio(f.server.base, f.owner, [f.id, second.build.id]);
+      const owner = (await store.findUserById(f.owner.view!.id))!.ownerId;
+      const grants = await store.listStudioGrants(owner, new Date().toISOString());
+      const grant = grants.find((record) => record.clientId === clientId)!;
+      const permission = (enabled: boolean) => f.owner.request("PUT", `${f.base}/grants/${grant.id}/corrections`, { enabled });
+      const inspect = StudioInspection.parse(await f.owner.json("GET", `${f.map}?encounterKey=night`));
+      const input = f.makeRequest(inspect.inspectedVersion, { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] });
+      const create = (data = input, token = tokens.access_token) => f.send("POST", "/authoring/maps/chapel/requests", data, token);
+      const history = async () => StudioCorrectionHistory.parse(await f.owner.json("GET", `${f.map}/revisions`));
+
+      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
+      const foreign = await f.server.signUp();
+      expect((await foreign.request("PUT", `${f.base}/grants/${grant.id}/corrections`, { enabled: true })).status).toBe(404);
+      expect((await permission(true)).status).toBe(204);
+      expect(await (await f.send("GET", "/studio", undefined, tokens.access_token)).json()).toMatchObject({ correctionsAllowed: true });
+      expect(await (await f.send("POST", "/authoring/maps/chapel/requests", input)).json()).toMatchObject({ code: "corrections_disabled" });
+      const otherGrants = await f.owner.json<{ grants: { id: string; correctionsAllowed: boolean }[] }>("GET", `/api/builds/${second.build.id}/grants`);
+      expect(otherGrants.grants).toContainEqual(expect.objectContaining({ id: grant.id, correctionsAllowed: false }));
+
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
+      expect(await (await create()).json()).toMatchObject({ code: "permission" });
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: true });
+      const execute = store.studioAuthoring.bind(store);
+      const disableBeforeWrite = vi.spyOn(store, "studioAuthoring").mockImplementationOnce(async (...args) => {
+        await store.setStudioCorrectionPermission(f.id, owner, grant.id, false, Date.now);
+        return execute(...args);
+      });
+      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
+      disableBeforeWrite.mockRestore();
+      expect((await f.owner.request("GET", `${f.map}/revisions`)).status).toBe(404);
+
+      await permission(true);
+      const saved = StudioCorrectionReceipt.parse(await (await create()).json());
+      expect(await (await create()).json()).toEqual(saved);
+      expect((await history()).requests).toHaveLength(1);
+      expect(await (await create({ ...input, operationId: randomUUID() })).json()).toMatchObject({ code: "conflict" });
+      const paint = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
+      const proposed = await f.propose(saved.requestId, saved.baseRevisionId, [paint]);
+      expect(proposed.status).toBe(200);
+      const { revisionId } = await proposed.json() as { revisionId: string };
+      const args = { revisionId: saved.baseRevisionId, expectedCurrentRevisionId: revisionId, operationId: randomUUID() };
+      const restore = () => f.send("POST", "/authoring/maps/chapel/restore", args, tokens.access_token);
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
+      expect(await (await restore()).json()).toMatchObject({ code: "permission" });
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: true });
+      await permission(false);
+      expect(await (await restore()).json()).toMatchObject({ code: "corrections_disabled" });
+      expect(await (await create()).json()).toMatchObject({ code: "corrections_disabled" });
+      expect((await history()).workingRevisionId).toBe(revisionId);
+      await permission(true);
+      const restored = await (await restore()).json() as { revisionId: string };
+      expect(await (await restore()).json()).toEqual(restored);
+      expect(await f.readRevision(restored.revisionId)).toMatchObject({ actor: "studio", parentId: revisionId, restoredFrom: saved.baseRevisionId });
+      expect((await history()).revisions).toHaveLength(3);
+
+      const detail = await f.owner.json<BuildDetail>("GET", f.base);
+      const version = detail.items.find((item) => item.kind === "map")!.authoring!.token;
+      const gridEdit = await f.owner.request("POST", `${f.base}/maps/chapel/grid`, { cellSize: 50, offsetX: 20, offsetY: 0 }, { "X-Studio-Authoring-Version": version });
+      expect(gridEdit.status).toBe(200);
+      const edited = await history();
+      const incompatible = await f.send("POST", "/authoring/maps/chapel/restore", {
+        revisionId: saved.baseRevisionId, expectedCurrentRevisionId: edited.workingRevisionId, operationId: randomUUID(),
+      }, tokens.access_token);
+      expect(incompatible.status).toBe(409);
+      expect((await history()).workingRevisionId).toBe(edited.workingRevisionId);
+    } finally { await f.server.close(); }
+  });
+
+  it("retrieves the saved edge crop after a newer proposal, records activity, and denies it after revocation", async () => {
+    const store = makeStore();
+    const f = await fixture(store);
+    try {
+      const bytes = await sharp({ create: { width: f.source.width, height: f.source.height, channels: 3, background: "#577762" } }).png().toBuffer();
+      await writeFile(path.join(f.server.uploadDir, f.source.objectKey), bytes);
+      const seen = await f.inspect();
+      const saved = await f.create(f.makeRequest(seen.inspectedVersion, { region: { minX: 0, minY: 0, maxX: 20, maxY: 20 }, layers: ["terrain"], objectIds: [], wholeObjectIds: [] }));
+      const requestPath = `/authoring/requests/${saved.requestId}`;
+      const fetchCrop = () => f.send("GET", `${requestPath}/crop`);
+      const crop = await fetchCrop();
+      expect(crop.status).toBe(200);
+      expect(crop.headers.get("cache-control")).toBe("no-store");
+      expect(JSON.parse(crop.headers.get("x-studio-crop")!)).toEqual({ left: 0, top: 0, width: 125, height: 150 });
+      const first = Buffer.from(await crop.arrayBuffer());
+      expect((await sharp(first).metadata()).format).toBe("webp");
+      const history = async () => StudioCorrectionHistory.parse(await f.owner.json("GET", `${f.map}/revisions`));
+      expect((await history()).requests[0]!.activity).toEqual({ observed: false });
+      expect(await (await f.send("GET", requestPath)).json()).toMatchObject({ baseRevisionId: saved.baseRevisionId, terrainCells: { fromColumn: -1, toColumn: -1, fromRow: 0, toRow: 0 } });
+      expect((await history()).requests[0]!.activity).toEqual({ observed: true });
+      const paint = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
+      const mixed = await f.propose(saved.requestId, saved.baseRevisionId, [paint, { op: "line.remove", id: seen.objects[0]!.id }]);
+      expect(mixed.status).toBe(422);
+      expect((await history()).revisions).toHaveLength(1);
+      expect((await history()).requests[0]!.activity).toEqual({ observed: true, outcome: { status: "refused", code: "scope" } });
+      const proposalKey = randomUUID();
+      const advanced = await f.propose(saved.requestId, saved.baseRevisionId, [paint], proposalKey);
+      expect(advanced.status).toBe(200);
+      const { revisionId } = await advanced.json() as { revisionId: string };
+      expect(Buffer.from(await (await fetchCrop()).arrayBuffer())).toEqual(first);
+
+      const owner = (await store.findUserById(f.owner.view!.id))!.ownerId;
+      await store.setBuildChoices(f.id, owner, { aiGrid: false, aiWalls: true, aiTerrain: false });
+      const deniedReplay = await f.propose(saved.requestId, saved.baseRevisionId, [paint], proposalKey);
+      expect(deniedReplay.status).toBe(403);
+      expect((await history()).requests[0]!.activity).toEqual({ observed: true, outcome: { status: "advanced", revisionId } });
+
+      const grant = (await store.listStudioGrants(owner, new Date().toISOString()))[0]!;
+      const run = store.studioAuthoring.bind(store);
+      let reads = 0;
+      const revokeDuringCrop = vi.spyOn(store, "studioAuthoring").mockImplementation(async (...args) => {
+        if (args[2].kind === "crop" && ++reads === 2) await store.revokeStudioGrant(grant.id, new Date().toISOString());
+        return run(...args);
+      });
+      try {
+        const denied = await fetchCrop();
+        expect(denied.status).toBe(401);
+        expect(denied.headers.get("content-type")).not.toContain("image/");
+      } finally { revokeDuringCrop.mockRestore(); }
+    } finally { await f.server.close(); }
+  });
+
+  it("checks the file's original hash for legacy revisions captured before M4", async () => {
+    const f = await fixture(makeStore());
+    try {
+      const seen = await f.inspect();
+      const input = f.makeRequest(seen.inspectedVersion, { region, layers: ["terrain"], objectIds: [], wholeObjectIds: [] });
+      const saved = await f.create(input);
+      const { scene } = await f.readRevision(saved.baseRevisionId);
+      delete scene.sourceContentHash;
+      const image = (background: string) => sharp({ create: { width: scene.source.width, height: scene.source.height, channels: 3, background } }).png().toBuffer();
+      const original = await image("#b91421");
+      const file = { ...f.source, sourceHash: createHash("sha256").update(original).digest("hex") };
+      const assetPath = path.join(f.server.uploadDir, file.objectKey);
+      const assets = new LocalDiskAssetStore(f.server.uploadDir);
+      await writeFile(assetPath, original);
+      expect((await renderStudioCrop(assets, file, scene, input.selection)).webp.length).toBeGreaterThan(0);
+      await writeFile(assetPath, await image("#1133b9"));
+      await expect(renderStudioCrop(assets, file, scene, input.selection)).rejects.toMatchObject({ code: "missing" });
     } finally { await f.server.close(); }
   });
 

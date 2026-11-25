@@ -1,4 +1,4 @@
-import type { DraftMark, GridSpec, LibraryMapBoard, OpeningView, Point, TerrainKind, TerrainRun } from "@vtt/shared";
+import type { DraftMark, GridSpec, LibraryMapBoard, OpeningView, Point, Rect, TerrainKind, TerrainRun } from "@vtt/shared";
 
 /**
  * The picture `view_file` gives an AI setting up a map (ADR 0053): the map with its grid, column and
@@ -24,6 +24,8 @@ export interface OverlayInput {
   /** Proposed permanent terrain, in squares of `grid` (ADR 0071). Drawn only with a grid. */
   terrain?: readonly TerrainRun[];
   region: OverlayRegion | null;
+  selection?: Rect;
+  placements?: readonly { bounds: Rect; index: number; hidden: boolean }[];
   /** Longest side of the picture. */
   maxEdge: number;
 }
@@ -68,7 +70,7 @@ function numberBox(text: string, x: number, y: number, border: string): string {
   const sx = DIGIT_WIDTH / 4, sy = DIGIT / 8;
   const strokes = [...text].map((ch, i) => {
     const ox = left + PAD + i * (DIGIT_WIDTH + GAP), oy = top + PAD;
-    return [...(DIGITS[ch] ?? "")].map((s) => {
+    return [...(ch === "-" ? "g" : DIGITS[ch] ?? "")].map((s) => {
       const [x1, y1, x2, y2] = SEGMENTS[s]!;
       return `M${round(ox + x1 * sx)} ${round(oy + y1 * sy)}L${round(ox + x2 * sx)} ${round(oy + y2 * sy)}`;
     }).join("");
@@ -157,28 +159,37 @@ export function mapOverlay(input: OverlayInput): OverlayLayout {
     // Every column and row is numbered when there is room, otherwise every 2nd, 5th or 10th.
     const every = (size: number) => [1, 2, 5, 10, 20, 50, 100].find((n) => n * size >= labelWidth("000") + 2) ?? 100;
     const columnStep = every(cell), rowStep = every(cell);
-    for (let c = Math.max(0, first(grid.offsetX, crop.left)); grid.offsetX + c * grid.cellSize < crop.left + crop.width; c++) {
-      if (c % columnStep !== 0) continue;
-      const x = at({ x: grid.offsetX + (c + 0.5) * grid.cellSize, y: 0 }).x;
+    const minIndex = input.selection ? -Infinity : 0;
+    for (let c = Math.max(minIndex, first(grid.offsetX, crop.left)); grid.offsetX + c * grid.cellSize < crop.left + crop.width; c++) {
+      if (c >= 0 && c % columnStep !== 0) continue;
+      const middle = input.selection ? (Math.max(crop.left, grid.offsetX + c * grid.cellSize) + Math.min(crop.left + crop.width, grid.offsetX + (c + 1) * grid.cellSize)) / 2 : grid.offsetX + (c + 0.5) * grid.cellSize;
+      const x = at({ x: middle, y: 0 }).x;
       if (x < 0 || x > out.width) continue;
       labels.push({ kind: "column", text: String(c), x: round(x), y: round(labelHeight / 2 + 1) });
     }
-    for (let r = Math.max(0, first(grid.offsetY, crop.top)); grid.offsetY + r * grid.cellSize < crop.top + crop.height; r++) {
-      if (r % rowStep !== 0) continue;
-      const y = at({ x: 0, y: grid.offsetY + (r + 0.5) * grid.cellSize }).y;
+    for (let r = Math.max(minIndex, first(grid.offsetY, crop.top)); grid.offsetY + r * grid.cellSize < crop.top + crop.height; r++) {
+      if (r >= 0 && r % rowStep !== 0) continue;
+      const middle = input.selection ? (Math.max(crop.top, grid.offsetY + r * grid.cellSize) + Math.min(crop.top + crop.height, grid.offsetY + (r + 1) * grid.cellSize)) / 2 : grid.offsetY + (r + 0.5) * grid.cellSize;
+      const y = at({ x: 0, y: middle }).y;
       if (y < 0 || y > out.height) continue;
       labels.push({ kind: "row", text: String(r), x: round(labelWidth(String(r)) / 2 + 1), y: round(y) });
     }
   }
 
   const wallPaths: Record<keyof typeof WALL_STYLE, string[]> = { wall: [], door: [], window: [], opening: [] };
+  const openPaths: Record<"door" | "window", string[]> = { door: [], window: [] };
   for (const wall of input.walls) {
     const a = at(wall.a), b = at(wall.b);
     const style = wall.portal ? wall.portal.kind : wall.uvttPortal ? "opening" : "wall";
-    wallPaths[style].push(`M${round(a.x)} ${round(a.y)}L${round(b.x)} ${round(b.y)}`);
+    const path = `M${round(a.x)} ${round(a.y)}L${round(b.x)} ${round(b.y)}`;
+    if (input.selection && wall.portal?.state === "open") openPaths[wall.portal.kind].push(path);
+    else wallPaths[style].push(path);
   }
   for (const style of ["wall", "opening", "window", "door"] as const) {
     if (wallPaths[style].length > 0) parts.push(`<path d="${wallPaths[style].join("")}" ${WALL_STYLE[style]} stroke-linecap="round" fill="none"/>`);
+  }
+  for (const style of ["window", "door"] as const) {
+    if (openPaths[style].length > 0) parts.push(`<path d="${openPaths[style].join("")}" ${WALL_STYLE[style]} stroke-dasharray="7 5" fill="none"/>`);
   }
 
   // A number on the map's edge would cover a column or row number, so it moves just inside them.
@@ -204,6 +215,18 @@ export function mapOverlay(input: OverlayInput): OverlayLayout {
 
   const border = { column: "#00e5ff", row: "#00e5ff", opening: "#ff9f0a", mark: "#ff2d95" } as const;
   for (const label of labels) parts.push(numberBox(label.text, label.x, label.y, border[label.kind]));
+  const box = (bounds: Rect) => {
+    const a = at({ x: bounds.minX, y: bounds.minY });
+    const b = at({ x: bounds.maxX, y: bounds.maxY });
+    return `x="${round(a.x)}" y="${round(a.y)}" width="${round(b.x - a.x)}" height="${round(b.y - a.y)}"`;
+  };
+  for (const { bounds, index, hidden } of input.placements ?? []) {
+    const a = at({ x: bounds.minX, y: bounds.minY }), b = at({ x: bounds.maxX, y: bounds.maxY });
+    if (b.x <= 0 || a.x >= out.width || b.y <= 0 || a.y >= out.height) continue;
+    parts.push(`<rect ${box(bounds)} fill="#13131c" fill-opacity=".5" stroke="#fff" stroke-width="2"${hidden ? ' stroke-dasharray="4 3"' : ""}/>`,
+      numberBox(String(index + 1), (a.x + b.x) / 2, (a.y + b.y) / 2, "#fff"));
+  }
+  if (input.selection) parts.push(`<rect ${box(input.selection)} fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="7 4"/>`);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${out.width}" height="${out.height}" viewBox="0 0 ${out.width} ${out.height}">${parts.join("")}</svg>`;
   return { crop, out, labels, svg };
 }

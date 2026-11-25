@@ -30,6 +30,15 @@ The hosted Studio SHALL authenticate through delegated access linked to the owne
 - **WHEN** a delegated client attempts to enable the owner's terrain choice
 - **THEN** the request is refused and the choice remains unchanged
 
+### Requirement: Build owners control delegated correction requests and restores
+
+The signed-in build owner SHALL control whether each named connection can create private correction requests and restore private revisions on that build. Existing and new connections SHALL start with this permission disabled. The server SHALL verify the live grant and permission inside the create or restore write boundary.
+
+#### Scenario: Disable private corrections for one connection
+- **WHEN** the owner disables correction permission for a connection before its next request or restore commits
+- **THEN** that write is refused without saving a request or revision
+- **AND** the connection retains any permissions the owner granted on other builds
+
 ### Requirement: Unpublished Studio artwork requires authorized delivery
 
 New unpublished Studio originals, working images, thumbnails and crops SHALL require authorized access to their build. They MUST NOT be readable from public upload paths, storage endpoints or static fallbacks. Private responses SHALL prevent shared caching. Derived media SHALL inherit source access and expiry. Previously public artwork SHALL retain an explicit disclosure of that provenance; making a private copy MUST NOT be described as revoking earlier disclosure.

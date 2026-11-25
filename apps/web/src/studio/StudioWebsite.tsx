@@ -4,6 +4,7 @@ import { useLocale } from "../i18n/locale";
 import { ApiError, api } from "../net/api";
 import { copyText } from "../pages/build/buildCopy";
 import { SceneStudio } from "./SceneStudio";
+import type { StudioAuthoringClient } from "./StudioCorrectionWorkspace";
 import { studioT, type StudioTextKey } from "./text";
 
 /** Owner-cookie adapter. It never reads or changes the native builder's unsaved editing forms. */
@@ -82,19 +83,26 @@ export function StudioWebsite({ buildId, files }: { buildId: string; files: read
   const active = snapshot?.buildId === buildId ? snapshot : null;
   const media: Record<string, string> = {};
   if (active) {
-    const needed = new Set([active.scene.source?.id, ...active.scene.tokens.map((token) => token.imageFileId)]);
     for (const file of active.files) {
-      if (!needed.has(file.id)) continue;
       if (file.privacy === "private") media[file.id] = `/api/builds/${encodeURIComponent(buildId)}/files/${encodeURIComponent(file.id)}/media?variant=preview`;
       else { const legacy = files.find((candidate) => candidate.id === file.id); if (legacy) media[file.id] = legacy.url; }
     }
   }
+  const authoring: StudioAuthoringClient = {
+    inspect: (mapKey, encounterKey) => api.studio.inspect(buildId, mapKey, encounterKey),
+    history: (mapKey) => api.studio.correctionHistory(buildId, mapKey),
+    revision: (mapKey, revisionId) => api.studio.revisionView(buildId, mapKey, revisionId),
+    create: (mapKey, input) => api.studio.createCorrection(buildId, mapKey, input),
+    restore: (mapKey, input) => api.studio.restoreRevision(buildId, mapKey, input),
+    end: (mapKey) => api.studio.endCorrections(buildId, mapKey),
+    refresh: () => { void refresh(); },
+  };
   const prompt = t("launchPrompt", { buildId });
   return <section className="build-section studio-website-panel" aria-labelledby={`studio-title-${buildId}`}>
     <h2 id={`studio-title-${buildId}`}>{t("title")}</h2>
     <p className="muted">{t("intro")}</p>
     {active ? <>
-      <SceneStudio snapshot={active} media={media} locale={locale} onContext={selectContext} disabled={state !== "ready"} stale={state !== "ready"} />
+      <SceneStudio snapshot={active} media={media} locale={locale} onContext={selectContext} disabled={state !== "ready"} stale={state !== "ready"} authoring={authoring} />
       <details className="studio-launch"><summary>{t("launchTitle")}</summary>
         <p>{t("launchHint", { endpoint: `${location.origin}/mcp/studio` })}</p>
         <textarea readOnly aria-label={t("copyLaunch")} value={prompt} />

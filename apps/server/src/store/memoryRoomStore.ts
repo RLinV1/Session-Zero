@@ -1,5 +1,4 @@
-import { affectedWorkspaces, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
-import { StudioAuthoringError } from "../domain/studioSceneRevision";
+import { affectedWorkspaces, assertStudioAuthoringAccess, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import type { FeedbackCursor } from "@vtt/shared";
@@ -721,7 +720,9 @@ export class MemoryRoomStore implements RoomStore {
   private assertDelegation(delegation: StudioDelegation | undefined, build: BuildRecord) {
     if (!delegation) return;
     const token = this.studioTokens.get(delegation.tokenHash);
-    if (!delegationAllows(delegation, token, token && this.studioGrants.get(token.grantId), build)) throw new StudioAccessEndedError();
+    const grant = token && this.studioGrants.get(token.grantId);
+    if (!delegationAllows(delegation, token, grant, build)) throw new StudioAccessEndedError();
+    return grant;
   }
 
   // ---------- Delegated Studio access (design D7) ----------
@@ -748,7 +749,7 @@ export class MemoryRoomStore implements RoomStore {
     const held = [...this.studioGrants.values()].filter((g) => g.ownerGmId === grant.ownerGmId && g.revokedAt === null && Date.parse(g.expiresAt) > at
       && (g.codeUsedAt !== null || Date.parse(g.codeExpiresAt) > at)).length;
     if (held >= maxLive) throw new StudioGrantLimitError();
-    this.studioGrants.set(grant.id, structuredClone(grant));
+    this.studioGrants.set(grant.id, { ...structuredClone(grant), correctionBuildIds: [] });
   }
 
   async findStudioGrantByCode(codeHash: string) {
@@ -803,6 +804,16 @@ export class MemoryRoomStore implements RoomStore {
       .filter((g) => g.ownerGmId === ownerGmId && grantIsLive(g, at))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((g) => structuredClone(g));
+  }
+
+  async setStudioCorrectionPermission(buildId: string, ownerGmId: string, grantId: string, enabled: boolean, now: () => number) {
+    const build = this.builds.get(buildId);
+    const grant = this.studioGrants.get(grantId);
+    if (build?.status !== "open" || build.ownerGmId !== ownerGmId || !grant || grant.ownerGmId !== ownerGmId ||
+        !grant.buildIds.includes(buildId) || !grantIsLive(grant, now())) return false;
+    const ids = (grant.correctionBuildIds ?? []).filter((id) => id !== buildId);
+    grant.correctionBuildIds = enabled ? [...ids, buildId] : ids;
+    return true;
   }
 
   async touchStudioGrant(grantId: string, at: string) {
@@ -927,20 +938,23 @@ export class MemoryRoomStore implements RoomStore {
 
   async studioAuthoring(buildId: string, access: StudioBuildAccess, command: AuthoringCommand) {
     const build = this.openBuild(buildId);
-    this.assertDelegation(access.delegation, build);
     assertStudioBuildAccess(build, access);
-    if (access.passHash !== undefined || (command.kind === "propose" && !access.delegation) ||
-        ((command.kind === "create" || command.kind === "restore" || command.kind === "end") && access.delegation)) {
-      throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
-    }
+    const grant = this.assertDelegation(access.delegation, build);
+    assertStudioAuthoringAccess(build, access, command, grant);
     const ledger = this.authoring.get(buildId);
-    const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], command, true);
-    if (result.write) {
-      this.assertDelegation(access.delegation, build);
-      this.writeAuthoring(buildId, result.write);
+    const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], command, true, !!grant);
+    if (result.write || result.activity) assertStudioAuthoringAccess(build, access, command, this.assertDelegation(access.delegation, build));
+    if (result.write) this.writeAuthoring(buildId, result.write);
+    if (result.activity && ledger) {
+      const { requestId, mapKey, value, historyVersion } = result.activity;
+      const row = ledger.entries.find((r) => r.kind === "request" && r.id === requestId);
+      const workspace = ledger.workspaces.find((w) => w.mapKey === mapKey);
+      if (row?.kind === "request") row.activity = value;
+      if (workspace && !result.write) workspace.historyVersion = historyVersion;
     }
     if (result.end) this.endAuthoring(buildId, [result.end]);
     if (result.touch) this.touchBuild(build);
+    if (result.error) throw result.error;
     return structuredClone(result.response);
   }
 
@@ -993,6 +1007,7 @@ export class MemoryRoomStore implements RoomStore {
     for (const grant of this.studioGrants.values()) {
       if (!grant.buildIds.includes(buildId)) continue;
       grant.buildIds = grant.buildIds.filter((id) => id !== buildId);
+      grant.correctionBuildIds = grant.correctionBuildIds?.filter((id) => id !== buildId);
       if (!grant.buildIds.length) grant.revokedAt ??= new Date().toISOString();
     }
   }

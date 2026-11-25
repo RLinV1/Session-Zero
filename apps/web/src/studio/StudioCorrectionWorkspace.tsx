@@ -1,0 +1,374 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput,
+  StudioRevisionView, StudioSnapshot,
+} from "@vtt/shared";
+import { copyText } from "../pages/build/buildCopy";
+import { StudioSceneMap, type StudioMapInteraction } from "./StudioSceneMap";
+import { editLayers, studioObjectLabel, useStudioSelection } from "./StudioSelection";
+import { studioChanges, StudioDiffOverlay, type StudioChange } from "./StudioDiff";
+import { studioT, type StudioLocale, type StudioTextKey } from "./text";
+
+export interface StudioAuthoringClient {
+  inspect(mapKey: string, encounterKey: string | null): Promise<StudioInspection>;
+  history(mapKey: string): Promise<StudioCorrectionHistory>;
+  revision(mapKey: string, revisionId: string): Promise<StudioRevisionView>;
+  create(mapKey: string, input: StudioCorrectionInput): Promise<StudioCorrectionReceipt>;
+  restore(mapKey: string, input: StudioRestoreInput): Promise<unknown>;
+  refresh(): void;
+  handoff?(prompt: string): Promise<"sent" | "pending" | "failed">;
+  ensureMedia?(fileIds: string[]): void;
+  end?(mapKey: string): Promise<void>;
+}
+
+const problems = {
+  access: "correction.error.access", conflict: "correction.error.conflict", corrections_disabled: "correction.error.corrections_disabled",
+  invalid: "correction.error.invalid", missing: "correction.error.missing", permission: "correction.error.permission",
+  scope: "correction.error.scope", limit: "correction.error.limit",
+} as const;
+function actionError(error: unknown) {
+  const other = error as { status?: number; code?: string; detail?: { code?: string } } | undefined;
+  const code = other?.detail?.code ?? other?.code;
+  const known = code ? problems[code as keyof typeof problems] : undefined;
+  return { message: known ?? "correction.error.unavailable" as const,
+    ambiguous: !other?.status || other.status >= 500 || other.status === 429 };
+}
+
+type HistoryRequest = StudioCorrectionHistory["requests"][number];
+type ChatHandoff = "sending" | "sent" | "pending" | "failed";
+interface Compared { base: StudioRevisionView | null; result: StudioRevisionView }
+
+function operationId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  // The same selection controls can run on an HTTP development origin or a sandboxed frame.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+}
+
+export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, disabled, onWebsiteOpen }: {
+  snapshot: StudioSnapshot;
+  media: Readonly<Record<string, string>>;
+  locale: StudioLocale;
+  authoring: StudioAuthoringClient;
+  disabled: boolean;
+  onWebsiteOpen?: () => void;
+}) {
+  const t = (key: StudioTextKey, params?: Record<string, number | string>) => studioT(locale, key, params);
+  const { mapKey, encounterKey, sourceFileId } = snapshot.context;
+  const [inspection, setInspection] = useState<StudioInspection | null>(null);
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<StudioTextKey | null>(null);
+  const [retrySend, setRetrySend] = useState<StudioCorrectionInput | null>(null);
+  const [retryRestore, setRetryRestore] = useState<StudioRestoreInput | null>(null);
+  const [history, setHistory] = useState<StudioCorrectionHistory | null>(null);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyRefresh, bumpHistory] = useState(0);
+  const [saved, setSaved] = useState<(StudioCorrectionReceipt & { instruction: string }) | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<{ requestId: string; state: ChatHandoff } | null>(null);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [autoCompare, setAutoCompare] = useState(true);
+  const [comparison, setComparison] = useState<Compared | null>(null);
+  const [comparisonError, setComparisonError] = useState(false);
+  const [compareRefresh, bumpCompare] = useState(0);
+  const [side, setSide] = useState<"base" | "result">("result");
+  const [focused, setFocused] = useState<StudioChange | null>(null);
+  const mounted = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const adapter = useRef(authoring);
+  adapter.current = authoring;
+
+  const hasPermission = !!authoring.end || snapshot.correctionsAllowed === true;
+  const allowed = editLayers.filter((layer) => layer === "geometry" ? snapshot.allowed.walls
+    : layer === "terrain" ? snapshot.allowed.terrain : encounterKey !== null);
+  const cancel = () => {
+    setInspection(null); setRetrySend(null); setFeedback(null);
+  };
+  const selection = useStudioSelection(inspection, allowed, disabled || !hasPermission || busy || !!retrySend, cancel);
+  const revisionId = snapshot.workingRevisionId;
+  const invalidated = !!inspection && (snapshot.workingBindingChanged || (inspection.workingRevisionId ?? undefined) !== revisionId);
+  const needsInspection = invalidated || feedback === "correction.error.conflict";
+  const previouslyEnrolled = useRef(!!revisionId);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  useEffect(() => {
+    if (previouslyEnrolled.current && !revisionId) {
+      setHistory(null); setComparison(null); setPinned(null); setInspection(null); setSaved(null);
+      setRequestId(null); setHandoff(null); setRetrySend(null); setRetryRestore(null); setFocused(null);
+    }
+    previouslyEnrolled.current = !!revisionId;
+  }, [revisionId]);
+  useEffect(() => {
+    if (!mapKey || !revisionId || disabled || document.hidden) return;
+    let cancelled = false;
+    void adapter.current.history(mapKey).then((value) => {
+      if (!cancelled) { setHistory(value); setHistoryError(false); }
+    }).catch(() => { if (!cancelled) setHistoryError(true); });
+    return () => { cancelled = true; };
+  }, [mapKey, revisionId, snapshot.correctionHistoryVersion, disabled, historyRefresh]);
+
+  const head = history?.workingRevisionId ?? revisionId;
+  const revisions = revisionId ? history?.revisions ?? [] : [];
+  const requests = revisionId ? history?.requests ?? [] : [];
+  const currentProposal = revisions.find((revision) => revision.id === head && revision.requestId && (!saved || revision.requestId === saved.requestId));
+  useEffect(() => {
+    if (autoCompare && !inspection && !pinned && currentProposal) setPinned(currentProposal.id);
+  }, [autoCompare, inspection, pinned, currentProposal]);
+
+  const selected = revisions.find((r) => r.id === pinned);
+  const parent = selected?.parentId ?? null;
+  const baseId = revisions.some((r) => r.id === parent) ? parent : null;
+  useEffect(() => {
+    if (!mapKey || !pinned || disabled || comparison?.result.revision.id === pinned) return;
+    let cancelled = false;
+    const client = adapter.current;
+    void Promise.all([client.revision(mapKey, pinned), baseId ? client.revision(mapKey, baseId) : null]).then(([result, base]) => {
+      if (!cancelled) { setComparison({ result, base }); setComparisonError(false); }
+    }).catch(() => { if (!cancelled) setComparisonError(true); });
+    return () => { cancelled = true; };
+  }, [mapKey, pinned, baseId, disabled, compareRefresh, comparison]);
+
+  const compared = comparison?.result.revision.id === pinned ? comparison : null;
+  const displayed = inspection?.scene ?? (side === "base" ? compared?.base?.scene : compared?.result.scene) ?? snapshot.scene;
+  const mediaIds = [displayed.source?.id, ...displayed.tokens.map((token) => token.imageFileId)].filter((id): id is string => !!id);
+  const mediaSignature = [...new Set(mediaIds)].sort().join(",");
+  useEffect(() => {
+    adapter.current.ensureMedia?.(mediaSignature ? mediaSignature.split(",") : []);
+    return () => adapter.current.ensureMedia?.([]);
+  }, [mediaSignature]);
+
+  const changes = useMemo(() => compared?.base ? studioChanges(compared.base, compared.result, locale) : [], [compared, locale]);
+  function showRevision(id: string | null) {
+    cancel(); setAutoCompare(false); setPinned(id); setSide("result"); setFocused(null); setComparisonError(false);
+  }
+  function refresh() {
+    bumpHistory((value) => value + 1);
+    adapter.current.refresh();
+  }
+  async function startSelection() {
+    if (!mapKey || disabled || busy || !hasPermission) return;
+    setBusy(true); setFeedback(null);
+    try {
+      const value = await authoring.inspect(mapKey, encounterKey);
+      if (!mounted.current) return;
+      if (value.target.encounterKey !== encounterKey || value.scene.source?.id !== sourceFileId || value.drifted) {
+        setFeedback("correction.error.conflict"); refresh(); return;
+      }
+      setInspection(value); setAutoCompare(false); setPinned(null); setRetrySend(null);
+      selection.reset(allowed[0]);
+      if ((value.workingRevisionId ?? undefined) !== revisionId) refresh();
+      root.current?.querySelector<SVGSVGElement>('svg[data-testid="studio-map"]')?.focus({ preventScroll: true });
+    } catch (error) {
+      if (mounted.current) setFeedback(actionError(error).message);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function saveRequest() {
+    if (!mapKey || !inspection || !hasPermission || disabled || busy) return;
+    if (!retrySend && (needsInspection || !selection.selection || !instruction.trim())) return;
+    const input = retrySend ?? { encounterKey, inspectedVersion: inspection.inspectedVersion, operationId: operationId(),
+      instruction: instruction.trim(), selection: selection.selection! };
+    setRetrySend(input); setBusy(true); setFeedback(null);
+    try {
+      const receipt = await authoring.create(mapKey, input);
+      if (!mounted.current) return;
+      setSaved({ ...receipt, instruction: input.instruction });
+      setRequestId(receipt.requestId); setInstruction(""); cancel(); setAutoCompare(true);
+      if (authoring.handoff) {
+        setHandoff({ requestId: receipt.requestId, state: "sending" });
+        const prompt = t("correction.prompt", { build: snapshot.buildId, request: receipt.requestId, instruction: input.instruction });
+        const state = await authoring.handoff(prompt).catch(() => "failed" as const);
+        if (mounted.current) setHandoff({ requestId: receipt.requestId, state });
+      }
+    } catch (error) {
+      if (!mounted.current) return;
+      const { message, ambiguous } = actionError(error);
+      setFeedback(ambiguous ? "correction.saveUnknown" : message);
+      if (!ambiguous) setRetrySend(null);
+    } finally {
+      if (mounted.current) { setBusy(false); refresh(); }
+    }
+  }
+
+  async function restore(target?: string, expected = head) {
+    if (!mapKey || !hasPermission || disabled || busy || (!retryRestore && (!target || !expected))) return;
+    const input = retryRestore ?? { revisionId: target!, expectedCurrentRevisionId: expected!, operationId: operationId() };
+    setRetryRestore(input); setBusy(true); setFeedback(null);
+    try {
+      await authoring.restore(mapKey, input);
+      if (!mounted.current) return;
+      setRetryRestore(null); showRevision(null); setFeedback("correction.restored");
+    } catch (error) {
+      if (!mounted.current) return;
+      const { message, ambiguous } = actionError(error);
+      setFeedback(ambiguous ? "correction.restoreUnknown" : message);
+      if (!ambiguous) setRetryRestore(null);
+    } finally {
+      if (mounted.current) { setBusy(false); refresh(); }
+    }
+  }
+
+  async function endCorrections() {
+    if (!mapKey || !authoring.end || disabled || busy || !window.confirm(t("correction.endConfirm"))) return;
+    setBusy(true); setFeedback(null);
+    try {
+      await authoring.end(mapKey);
+      if (!mounted.current) return;
+      setHistory(null); setSaved(null); setRequestId(null); setRetryRestore(null); setHandoff(null); setComparison(null);
+      showRevision(null); setFeedback("correction.ended");
+    } catch (error) {
+      if (mounted.current) setFeedback(actionError(error).message);
+    } finally {
+      if (mounted.current) { setBusy(false); refresh(); }
+    }
+  }
+
+  const matchingRequest = requests.find((item) => item.requestId === requestId);
+  const localRequest = saved?.requestId === requestId ? saved : null;
+  const historyRequest = matchingRequest ?? (localRequest ? undefined : requests[0]);
+  const request = historyRequest ?? localRequest;
+  const requestActivity = historyRequest?.activity;
+  const outcome = requestActivity?.outcome;
+  const proposalId = outcome && "revisionId" in outcome ? outcome.revisionId : undefined;
+  const requestHandoff = handoff?.requestId === request?.requestId ? handoff?.state : undefined;
+  const interaction: StudioMapInteraction | undefined = inspection ? selection.interaction
+    : focused?.focus ? { focus: { x: (focused.focus.minX + focused.focus.maxX) / 2, y: (focused.focus.minY + focused.focus.maxY) / 2 } } : undefined;
+  return <div className="studio-corrections" ref={root}>
+    <div className="studio-action-row">
+      {!inspection && <button type="button" disabled={disabled || busy || !hasPermission || !snapshot.scene.grid || !!snapshot.workingBindingChanged || !allowed.length}
+        onClick={() => void startSelection()}>{t(compared ? "correction.refine" : "correction.select")}</button>}
+      {inspection && (["pan", "region", "objects"] as const).map((tool) => <button key={tool} type="button" aria-pressed={selection.draft.tool === tool}
+        disabled={disabled || busy || !!retrySend} onClick={() => selection.setTool(tool)}>{t(`correction.tool.${tool}`)}</button>)}
+      {inspection && <button type="button" disabled={busy} onClick={cancel}>{t("correction.cancel")}</button>}
+      {revisionId && authoring.end && <button type="button" disabled={disabled || busy} onClick={() => void endCorrections()}>{t("correction.end")}</button>}
+    </div>
+    {!hasPermission && <p className="studio-note">{t("correction.enable")}{" "}
+      {onWebsiteOpen && <a href={snapshot.websitePath} onClick={(event) => { event.preventDefault(); onWebsiteOpen(); }}>{t("correction.connections")}</a>}</p>}
+    {inspection && <p className="studio-map-help">{t(selection.draft.tool === "region" ? "correction.regionHelp"
+      : selection.draft.tool === "objects" ? "correction.objectHelp" : "keyboard")}</p>}
+    {!inspection && pinned && <div className="studio-action-row" role="group" aria-label={t("correction.comparison")}>
+      <button type="button" aria-pressed={side === "base" && !!compared?.base} disabled={!compared?.base} onClick={() => setSide("base")}>{t("correction.before")}</button>
+      <button type="button" aria-pressed={side === "result" || !compared?.base} disabled={!compared} onClick={() => setSide("result")}>{t("correction.after")}</button>
+    </div>}
+    <StudioSceneMap scene={displayed} locale={locale} media={media} interaction={interaction} reportIssues={displayed === snapshot.scene}
+      drawOverlay={inspection ? selection.drawOverlay : compared?.base ? (px) => <StudioDiffOverlay changes={changes} focused={focused?.id ?? null} px={px} /> : undefined} />
+    {displayed !== snapshot.scene && snapshot.workingBindingChanged && <p className="studio-note" role="status">{t("correction.bindingChanged")}</p>}
+    {feedback && <p role={feedback === "correction.restored" || feedback === "correction.ended" ? "status" : "alert"}>{t(feedback)}</p>}
+    {retryRestore && <button type="button" disabled={busy || disabled || !hasPermission} onClick={() => void restore()}>{t("correction.retryRestore")}</button>}
+    {inspection && <div className="studio-correction-form">
+      {needsInspection && <div role="status">{invalidated && feedback !== "correction.error.conflict" && t("correction.error.conflict")}{" "}
+        <button type="button" disabled={busy} onClick={() => void startSelection()}>{t("correction.reselect")}</button></div>}
+      {selection.draft.tool === "objects" && <label>{t("correction.pickObject")}
+        <select aria-label={t("correction.pickObject")} value="" disabled={busy || disabled || !!retrySend} onChange={(event) => {
+          const object = selection.objects.find((item) => item.id === event.currentTarget.value);
+          if (object) selection.pick(object);
+        }}>
+          <option value="">{t("correction.pickObject")}</option>
+          {selection.objects.filter((object) => object.bounds && allowed.includes(object.layer)).map((object) => <option key={object.id} value={object.id}>
+            {t("correction.objectAt", { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY) })}
+          </option>)}
+        </select>
+      </label>}
+      <fieldset className="studio-layer-controls" disabled={busy || disabled || !!retrySend}>
+        <legend>{t("correction.editLayers")}</legend>
+        {editLayers.map((layer) => <label key={layer}><input type="checkbox" checked={selection.draft.layers.includes(layer) && allowed.includes(layer)}
+          disabled={!allowed.includes(layer)} onChange={(event) => selection.toggleLayer(layer, event.currentTarget.checked)} />{t(`correction.layer.${layer}`)}</label>)}
+      </fieldset>
+      {selection.coverage && <p data-testid="studio-cell-scope">{t("correction.cells", selection.coverage)}</p>}
+      {selection.draft.region && <p className="studio-note">{t("correction.destination")}</p>}
+      {selection.candidates.length > 0 && <fieldset className="studio-object-scope" disabled={busy || disabled || !!retrySend}>
+        <legend>{t("correction.editObjects")}</legend>
+        {selection.candidates.map(({ object, coverage, included }) => <label key={object.id}>
+          <input type="checkbox" checked={included} onChange={(event) => selection.toggleObject(object.id, coverage === "crossing", event.currentTarget.checked)} />
+          {t(coverage === "crossing" ? "correction.wholeObject" : "correction.objectAt",
+            { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY),
+              maxX: Math.round(object.bounds!.maxX), maxY: Math.round(object.bounds!.maxY) })}
+        </label>)}
+      </fieldset>}
+      <label>{t("correction.instruction")}<textarea value={instruction} rows={3} maxLength={2000} disabled={busy || disabled || !!retrySend}
+        onChange={(event) => setInstruction(event.currentTarget.value)} /></label>
+      <p className="studio-note">{t("correction.cropPrivacy")}</p>
+      <div className="studio-action-row"><button type="button" disabled={disabled || busy || !hasPermission || (!retrySend && (needsInspection || !selection.selection || !instruction.trim()))}
+        onClick={() => void saveRequest()}>{t(retrySend ? "correction.retrySave" : authoring.handoff ? "correction.send" : "correction.save")}</button></div>
+    </div>}
+    {!inspection && revisionId && <div className="studio-correction-history">
+      {historyError && <p role="status">{t("correction.historyFailed")}{" "}<button type="button" onClick={refresh}>{t("retry")}</button></p>}
+      {revisions.length > 1 && <label>{t("correction.history")}
+        <select value={selected?.id ?? ""} onChange={(event) => showRevision(event.currentTarget.value || null)}>
+          <option value="">{t("correction.working")}</option>
+          {revisions.map((r) => <option key={r.id} value={r.id}>{t(r.requestId ? "correction.proposalOption" : r.restoredFrom ? "correction.restoredOption" : "correction.revisionOption",
+            { id: r.id.slice(0, 8), date: new Date(r.at).toLocaleString(locale) })}</option>)}
+        </select>
+      </label>}
+      {pinned && !compared && !comparisonError && <p role="status">{t("correction.loadingComparison")}</p>}
+      {comparisonError && <p role="status">{t("correction.comparisonFailed")}{" "}<button type="button" onClick={() => { setComparisonError(false); bumpCompare((value) => value + 1); }}>{t("retry")}</button></p>}
+      {compared && <>
+        {pinned !== head && <p role="status" className="studio-note">{t("correction.newer")}</p>}
+        {!compared.base && <p className="studio-note">{t("correction.noBase")}</p>}
+        {compared.base && <section aria-label={t("correction.changes")} className="studio-change-list">
+          <h3>{t("correction.changes")}</h3>
+          {changes.length ? <ul>{changes.map((change) => <li key={change.id}>
+            {change.focus ? <button type="button" aria-pressed={focused?.id === change.id} onClick={() => setFocused(change)}>{change.label}</button> : change.label}
+          </li>)}</ul> : <p>{t("correction.noChanges")}</p>}
+        </section>}
+        {hasPermission && !retryRestore && <div className="studio-action-row">
+          {compared.result.revision.requestId && pinned === head && compared.base && <button type="button" disabled={busy || disabled}
+            onClick={() => void restore(compared.base!.revision.id, pinned!)}>{t("correction.reject")}</button>}
+          {pinned !== head && <button type="button" disabled={busy || disabled} onClick={() => void restore(compared.result.revision.id)}>{t("correction.restore")}</button>}
+        </div>}
+      </>}
+    </div>}
+    {request && <div className="studio-correction-status">
+      {requests.length > 1 && <label>{t("correction.savedRequests")}
+        <select value={request.requestId} onChange={(event) => setRequestId(event.currentTarget.value)}>
+          {requests.map((item) => <option key={item.requestId} value={item.requestId}>{item.instruction.slice(0, 100)}</option>)}
+        </select>
+      </label>}
+      <RequestStatus key={request.requestId} request={request} activity={requestActivity} handoff={requestHandoff} buildId={snapshot.buildId} locale={locale}
+        canCompare={!!proposalId && revisions.some((r) => r.id === proposalId)}
+        showRevision={showRevision} />
+    </div>}
+  </div>;
+}
+
+function RequestStatus({ request, activity, handoff, buildId, locale, canCompare, showRevision }: {
+  request: Pick<HistoryRequest, "requestId" | "instruction">;
+  activity?: HistoryRequest["activity"];
+  handoff?: ChatHandoff;
+  buildId: string;
+  locale: StudioLocale;
+  canCompare: boolean;
+  showRevision: (id: string) => void;
+}) {
+  const t = (key: StudioTextKey, params?: Record<string, string | number>) => studioT(locale, key, params);
+  const [copied, setCopied] = useState<"copied" | "copyFailed" | null>(null);
+  const prompt = t("correction.prompt", { build: buildId, request: request.requestId, instruction: request.instruction });
+  const outcome = activity?.outcome;
+  return <>
+    <div role="status" aria-live="polite">
+      <p>{t("correction.saved", { id: request.requestId })}</p>
+      {handoff && <p>{t(`correction.handoff.${handoff}`)}</p>}
+      {activity?.observed && <p>{t("correction.observed")}</p>}
+      {outcome && <p>{t(`correction.outcome.${outcome.status}`)}{"code" in outcome && ` ${t(problems[outcome.code])}`}</p>}
+    </div>
+    {outcome && "revisionId" in outcome && canCompare && <button type="button" onClick={() => showRevision(outcome.revisionId)}>{t("correction.viewProposal")}</button>}
+    <details open={handoff === undefined || handoff === "failed" || handoff === "pending"}>
+      <summary>{t("correction.promptTitle")}</summary>
+      <p className="studio-note">{t("correction.pasteHint")}</p>
+      <textarea value={prompt} readOnly rows={5} aria-label={t("correction.promptTitle")} />
+      <div className="studio-action-row">
+        <button type="button" onClick={() => void copyText(prompt).then((ok) => setCopied(ok ? "copied" : "copyFailed"))}>{t("correction.copy")}</button>
+        <span role="status">{copied === "copyFailed" ? t("correction.copyFailed") : copied ? t(copied) : ""}</span>
+      </div>
+    </details>
+  </>;
+}

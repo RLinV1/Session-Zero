@@ -40,7 +40,9 @@ test("an owner allows chosen builds, returns to the app, then disconnects on the
   await page.screenshot({ path: testInfo.outputPath("consent.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Allow" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Choose at least one build.");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Choose at least one build." })
+  ).toHaveText("Choose at least one build.");
   await page.getByLabel("Hollow Coast").check();
   await page.getByRole("button", { name: "Allow" }).click();
   await page.waitForURL(`${REDIRECT}*`);

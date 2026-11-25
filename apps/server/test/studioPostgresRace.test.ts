@@ -101,6 +101,24 @@ async function whileBuildLocked(buildId: string, during: (tx: Parameters<Paramet
 }
 
 describe.skipIf(!store)("a Studio poll queued behind a write on postgres (FR-GM-27, ADR 0073)", () => {
+  it("checks correction permission after waiting on the build lock", async () => {
+    const s = store!, f = await delegated(s);
+    await s.setStudioCorrectionPermission(f.build.id, f.access.ownerGmId, f.grantId, true, Date.now);
+    let write!: Promise<unknown>;
+    await whileBuildLocked(f.build.id, async (tx) => {
+      // Same lock order and update as the owner setting, with a barrier to queue the create first.
+      await tx.studioGrant.update({ where: { id: f.grantId }, data: { correctionBuildIds: [] } });
+    }, async () => {
+      write = s.studioAuthoring(f.build.id, f.access, { kind: "create", mapKey: "chapel", input: {
+        encounterKey: null, operationId: randomUUID(), inspectedVersion: "obsolete", instruction: "Clear rubble.",
+        selection: { region: { minX: 0, minY: 0, maxX: 100, maxY: 100 }, layers: ["terrain"], objectIds: [], wholeObjectIds: [] },
+      } });
+      void write.catch(() => {});
+      expect(await settledWithin(write, 200)).toBe(false);
+    });
+    await expect(write).rejects.toMatchObject({ code: "corrections_disabled" });
+  });
+
   it("reports a revocation made while it waited as ended access, not a storage failure", async () => {
     const s = store!, f = await delegated(s);
     let read!: Promise<unknown>;

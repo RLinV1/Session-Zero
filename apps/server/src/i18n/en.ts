@@ -14,6 +14,8 @@ export const serverEn = {
   "studio.authoring.invalid": "Provide a valid correction target and input.",
   "studio.authoring.scope": "An edit falls outside the saved scope. Ask the owner for a new selection.",
   "studio.authoring.permission": "The owner disabled a choice required for this correction.",
+  "studio.authoring.corrections_disabled": "Enable private corrections for this connection in the build’s AI app connections.",
+  "studio.authoring.cropBusy": "Studio is preparing other previews. Try again in a moment.",
   "studio.authoring.enrolled": "This draft is enrolled in Studio. Use a saved correction request or the signed-in builder.",
   "studio.authoring.drift": "The builder data changed. Save a fresh revision in the builder before starting a new correction.",
   "studio.authoring.stale": "The proposal was saved in history. Inspect the current revision and request a new correction.",

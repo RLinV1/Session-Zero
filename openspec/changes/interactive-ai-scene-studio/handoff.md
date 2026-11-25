@@ -1,5 +1,14 @@
 # Implementation handoff
 
+## M4 correction interaction, 2026-11-18
+
+- Implemented selection, correction requests, comparison, refinement, restore, and owner cleanup on merged M3 base `0277c4bb`. The AI app connections panel controls the correction opt-in on each build. Both stores verify it under their write boundary. The additive migration starts each grant with correction creation and restore disabled. [Authority](../../../docs/adr/0073-interactive-scene-studio.md#m4-private-correction-authority) · [Interaction design](design.md#d15-m4-correction-interaction)
+- The same map viewport renders the exact inspected scene and the before/after comparison. The request retains its own immutable base and selection. The model tool retrieves that base's authorized crop and structured context. The website shows a copyable saved prompt. The embedded view saves first, then asks the active chat to send. It displays the host acknowledgment, the authorized request read, and the proposal result separately.
+- Local Postgres 17 and memory contract checks passed 413 tests with fresh migrations, including a permission change queued against a write, request and restore retries, incompatible restores, atomic mixed-scope refusal, and revocation during crop rendering. The full repository tests include the HTTP and MCP regression for the new tools and model crop. [Store checks](../../../apps/server/test/studioAuthoring.test.ts) · [Postgres races](../../../apps/server/test/studioPostgresRace.test.ts) · [MCP checks](../../../apps/mcp/test/studioAccess.test.ts)
+- Lint, typecheck, build, and the full repository suite passed on Node 22.23.2 with 5,464 tests and 71 optional-service skips. Both correction flows passed across six Chromium, Firefox and WebKit projects. The checks cover native drag suppression, pan and zoom, keyboard selection and cancellation, crossing walls, cropped-edge cells, multi-cell destinations, stable comparison focus, English and zh-TW, and reopening. The simulated message bridge covers save-before-send, acknowledgment, refusal and timeout. [Browser checks](../../../browser/studio-intake.spec.ts)
+- Eleven existing Studio consent and intake browser checks passed in Chromium. The adjacent library terrain browser check timed out at the `From library` action inside `Edit map` on both the M4 worktree and a clean `0277c4bb` checkout. [Terrain check](../../../browser/terrain.spec.ts#L82)
+- The authorized real ChatGPT run completed the doorway, cropped courtyard, hidden sentry move, and visibility refinement against the exact M4 build. The website rendered the same final revision. During an active reply, ChatGPT posted the courtyard request and finished the earlier reply. Explicitly submitting the saved prompt after the reply recovered the unread request. ChatGPT requested direct approval in chat for both sentry edits. The temporary apps, test grants, owners, and stack were cleaned up. [Real ChatGPT evidence](evidence/m4-host-2026-11-18.md)
+
 ## M3 review fixes, 2026-11-18
 
 A read-only review of `fab6f9cb` found three defects. All three are fixed in `7b777e92`
@@ -103,7 +112,7 @@ The owner plans to shut down the pilot later. Check its availability and deploye
   - Receipts cover refused 404 writes and are written once per request.
   - One failing token image no longer takes down the view.
   - Deliberately left: zh-TW issue-text back-translation (owner: not a priority) and
-    the dev-time Studio bundle build on MCP import. Website idle polling is task 7.1.
+    the dev-time Studio bundle build on MCP import. Website idle polling is task 8.1.
   - Not verified in a real host: whether ChatGPT passes the MCP sign-in error back to the
     view. Without that, a revoked view shows "Connection interrupted" and keeps the last scene.
   The manual stack was left running for the owner.

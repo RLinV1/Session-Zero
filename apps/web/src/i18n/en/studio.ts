@@ -41,4 +41,7 @@ export const studio = {
   "studio.grants.disconnectAll": "Disconnecting ends this app's access to every build listed with it.",
   "studio.grants.failed": "Couldn't disconnect. Try again.",
   "studio.grants.loadFailed": "Couldn't load AI app connections.",
+  "studio.grants.corrections": ({ name }: { name: string }) => `Allow ${name} to request corrections and restore private revisions`,
+  "studio.grants.correctionsHint": "Applies to eligible scenes in this build.",
+  "studio.grants.correctionsFailed": "Couldn't save correction permission. Try again.",
 } as const satisfies CatalogSource;
