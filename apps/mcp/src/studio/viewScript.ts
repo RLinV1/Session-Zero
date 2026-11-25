@@ -16,7 +16,8 @@ function translate() {
   $('language').value = locale; status(statusKey);
   renderSaved();
 }
-function status(key) { statusKey=key; const value=t(key); if ($('status').textContent !== value) $('status').textContent=value; }
+// A view that is up to date says nothing; data-state still names the state for tests and assistive checks.
+function status(key) { statusKey=key; $('status').dataset.state=key; const value=key === 'ready' ? '' : t(key); if ($('status').textContent !== value) $('status').textContent=value; }
 function viewContext() { return {buildId,generation}; }
 function isCurrent(context) { return !stopped && context.buildId === buildId && context.generation === generation; }
 function clearPrivate() {
@@ -54,7 +55,7 @@ function activeFiles(data) {
 }
 // Keep context updates ordered across redraws and across workspace remounts in this app instance.
 let chatUpdates = Promise.resolve();
-function attachToChat(context,update,title) {
+function attachToChat(context,update,title,details) {
   const work = chatUpdates.then(async ()=>{
     const publish = (content) => app.updateModelContext({content},{timeout:8000});
     if (update.draft && (!isCurrent(context) || needsRetry)) throw new Error('Studio context changed');
@@ -62,7 +63,10 @@ function attachToChat(context,update,title) {
       const result = await call('studio_stage_chat_selection',{buildId:context.buildId,...update});
       const {selectionId} = resultData(result);
       const attached = selectionId && update.draft && isCurrent(context) && !needsRetry;
-      await publish(attached ? [{type:'text',text:JSON.stringify({studioSelection:{buildId:context.buildId,selectionId}}),
+      // The description lets the AI say what is selected before any correction exists; the saved
+      // selection on the server still bounds every edit.
+      await publish(attached ? [{type:'text',text:JSON.stringify({studioSelection:{...details,buildId:context.buildId,selectionId,
+        about:'The area the user selected in Session Zero Studio. To change it, call studio_start_correction with this buildId and selectionId and the user\'s request.'}}),
         _meta:{'openai/title':title}}] : []);
       return {selectionId:attached ? selectionId : null};
     } catch(error) {
@@ -90,7 +94,6 @@ function authoringClient(context) {
     inspect:(mapKey,encounterKey)=>authoring('studio_inspect_correction',{mapKey,encounterKey}),
     history:(mapKey)=>authoring('studio_correction_history',{mapKey}),
     revision:(mapKey,revisionId)=>authoring('studio_revision_view',{mapKey,revisionId}),
-    create:(mapKey,input)=>authoring('studio_create_correction_request',{mapKey,...input}),
     restore:(mapKey,input)=>authoring('studio_restore_revision',{mapKey,...input}),
     refresh:()=>{if (isCurrent(context)) void refresh(true);},
     ensureMedia:(ids)=>{
@@ -99,18 +102,8 @@ function authoringClient(context) {
       if (ids.length && snapshot && activeFiles(snapshot).some((file)=>ids.includes(file.id) && !mediaCache.has(cacheKey(file)) && !mediaFailed.has(cacheKey(file)))) void refresh(true);
     },
     ...(app.getHostCapabilities()?.updateModelContext?.text && {
-      attachToChat:(update,title)=>attachToChat(context,update,title)
-    }),
-    handoff:async (prompt)=>{
-      const capabilities=app.getHostCapabilities();
-      const immediate=!!capabilities?.experimental?.['openai/message'];
-      if (!isCurrent(context) || needsRetry || (!immediate && !capabilities?.message)) return 'failed';
-      try {
-        const result=await app.sendMessage({role:'user',content:[{type:'text',text:prompt}],
-          ...(immediate && {_meta:{'openai/message':{target:'active',send:true}}})},{timeout:8000});
-        return result?.isError ? 'failed' : immediate ? 'sent' : 'pending';
-      } catch { return 'failed'; }
-    }
+      attachToChat:(update,title,details)=>attachToChat(context,update,title,details)
+    })
   };
 }
 function renderSaved() {

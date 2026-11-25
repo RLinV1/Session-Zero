@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type Page, type APIRequestContext, type FrameLocator, type Locator } from "@playwright/test";
-import type { StudioCorrectionHistory, StudioInspection, StudioSnapshot } from "@vtt/shared";
+import type { StudioCorrectionHistory, StudioSnapshot } from "@vtt/shared";
 
 test.use({trace:"off"});
 const ORIGIN="http://127.0.0.1:5189", MCP="http://127.0.0.1:3119/mcp/studio";
@@ -72,10 +72,10 @@ else if(message.id!==undefined)respond({});});
 </script></body></html>`}));
   await page.goto(`${ORIGIN}/studio-test-host`);
   await page.locator("iframe").evaluate((element,html)=>{(element as HTMLIFrameElement).srcdoc=html;},html);
-  const frame=page.frameLocator("iframe");await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
+  const frame=page.frameLocator("iframe");await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");
   const notify=async(result:Record<string,unknown>)=>page.locator("iframe").evaluate((element,result)=>{(element as HTMLIFrameElement).contentWindow!.postMessage({jsonrpc:"2.0",method:"ui/notifications/tool-result",params:result},"*");},result);
-  const openOther=async()=>{if(!session.otherBuild)throw new Error("Missing second build fixture");const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.otherBuild.id,mapFiles:[descriptor()]}});await notify(opened.result);await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");};
-  return {frame,session,rpc,notify,openOther,messages,setHandoff:(next:typeof handoff)=>{handoff=next;},polls:()=>polls,setToken:(next:string)=>{token=next;},setBridgeFailure:(failed:boolean)=>{bridgeFailure=failed;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveText("Saved files are up to date");}};
+  const openOther=async()=>{if(!session.otherBuild)throw new Error("Missing second build fixture");const opened=await rpc("tools/call",{name:"studio_open",arguments:{buildId:session.otherBuild.id,mapFiles:[descriptor()]}});await notify(opened.result);await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");};
+  return {frame,session,rpc,notify,openOther,messages,setHandoff:(next:typeof handoff)=>{handoff=next;},polls:()=>polls,setToken:(next:string)=>{token=next;},setBridgeFailure:(failed:boolean)=>{bridgeFailure=failed;},reopen:async()=>{await page.locator("iframe").evaluate((el)=>{const iframe=el as HTMLIFrameElement;const content=iframe.srcdoc;iframe.srcdoc=content;});await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");}};
 }
 const noOverflow=(frame:FrameLocator)=>frame.locator("body").evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
 test("protected chat intake preserves original hashes, localized outcomes and the reopened source (FR-GM-26)",async({page,request},info)=>{
@@ -86,7 +86,7 @@ test("protected chat intake preserves original hashes, localized outcomes and th
   const expected=await (await request.get(`${ORIGIN.replace(":5189",":3109")}/_test/studio-fixtures`)).json() as {map:{sha256:string};token:{sha256:string}};
   expect(data.files.find((f)=>f.kind==="map")!.originalSha256).toBe(expected.map.sha256);expect(data.files.find((f)=>f.kind==="token")!.originalSha256).toBe(expected.token.sha256);
   await expect(frame.locator("#outcomes small")).toHaveText(["Saved","Saved"]);
-  await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#outcomes small")).toHaveText(["已儲存","已儲存"]);await expect(frame.locator("#status")).toHaveText("已顯示最新儲存的檔案");
+  await frame.locator("#language").selectOption("zh-TW");await expect(frame.locator("#outcomes small")).toHaveText(["已儲存","已儲存"]);await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");
   await frame.locator("#language").selectOption("en");await expect(frame.locator("#outcomes small")).toHaveText(["Saved","Saved"]);
   await reopen();await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await frame.getByRole("button",{name:"Expand Studio"}).click();await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {studioExpanded:boolean}).studioExpanded))).toBe(true);
   await page.screenshot({path:info.outputPath("studio-intake.png"),fullPage:true});
@@ -149,7 +149,7 @@ test("a declined bridge refresh pauses automatic requests until explicit retry (
   setBridgeFailure(true);await frame.getByRole("button",{name:"Retry connection"}).click();
   await expect(frame.locator("#status")).toHaveText("Connection interrupted. Showing the last saved view. Reconnect in your AI app, then retry.");
   const failed=polls();await page.waitForTimeout(5500);expect(polls()).toBe(failed);await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
-  setBridgeFailure(false);await frame.getByRole("button",{name:"Retry connection"}).click();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
+  setBridgeFailure(false);await frame.getByRole("button",{name:"Retry connection"}).click();await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");
 });
 test("a late binding refusal cannot clear a newer build view (FR-GM-26)",async({page,request})=>{
   const {frame,session,rpc,notify,openOther}=await mount(page,request,{secondBuild:true});
@@ -157,7 +157,7 @@ test("a late binding refusal cannot clear a newer build view (FR-GM-26)",async({
   let entered!:()=>void,release!:()=>void,delivered!:()=>void;const pending=new Promise<void>((resolve)=>{entered=resolve;});const resume=new Promise<void>((resolve)=>{release=resolve;});const responseSent=new Promise<void>((resolve)=>{delivered=resolve;});
   await page.route("**/_studio_bridge",async(route)=>{const message=route.request().postDataJSON() as {params:{name:string;arguments:{buildId:string}}};if(message.params.name!=="studio_bind_file")return route.fallback();expect(message.params.arguments.buildId).toBe(session.build.id);entered();await resume;await route.fulfill({json:{result:{isError:true,content:[],_meta:{"sessionzero/error":{status:404,code:"missing"}}}}});delivered();});
   await frame.getByRole("button",{name:"Show this map",disabled:false}).click();await pending;await openOther();release();await responseSent;await page.waitForTimeout(100);
-  await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(frame.locator("#build")).toHaveText("Other context");await expect(frame.locator('[data-testid="studio-source-image"]')).toBeVisible();await expect(frame.locator("#status")).toHaveAttribute("data-state","ready");
 });
 
 const correctionMapKey = "chapel";
@@ -221,282 +221,29 @@ async function dragSelection(page: Page, canvas: Locator, a: [number, number], b
   await page.mouse.up();
 }
 
-async function fitCorrectionMap(studio: Locator, canvas: Locator) {
-  await studio.getByRole("button", { name: "Fit", exact: true }).click();
-  await expect.poll(() => canvas.evaluate((element) => {
-    const view = (element as SVGSVGElement).viewBox.baseVal;
-    return [Math.round(view.x + view.width / 2), Math.round(view.y + view.height / 2)];
-  })).toEqual([600, 450]);
-}
-
-async function selectDoorway(page: Page, studio: Locator, canvas: Locator) {
-  await studio.getByRole("button", { name: "Zoom in", exact: true }).click();
-  const zoomed = await canvas.getAttribute("viewBox");
-  await canvas.press("ArrowLeft");
-  await canvas.press("ArrowLeft");
-  await expect(canvas).not.toHaveAttribute("viewBox", zoomed!);
-  await studio.getByRole("button", { name: /Select for correction|Refine working revision/ }).click();
-  await expect(studio.getByRole("button", { name: "Draw rectangle" })).toHaveAttribute("aria-pressed", "true");
-  await canvas.evaluate((element) => {
-    element.addEventListener("dragstart", () => element.setAttribute("data-native-drag", "started"), true);
-  });
-  await dragSelection(page, canvas, [180, 164], [380, 243]);
-  const scope = studio.getByTestId("studio-selection-region");
-  await expect(scope).toBeVisible();
-  expect(Number(await scope.getAttribute("x"))).toBeCloseTo(180, -1);
-  await expect(canvas).not.toHaveAttribute("data-native-drag", "started");
-  await expect(studio.locator('[data-crossing="true"][data-included="false"]')).toHaveCount(1);
-  await studio.getByRole("checkbox", { name: /Include all of Wall/ }).check();
-  await expect(studio.locator('[data-crossing="true"][data-included="true"]')).toHaveCount(1);
-}
-
-test("website Studio binds a keyboard and pointer selection to the saved map, compares and ends corrections", async ({ page, request }) => {
-  test.setTimeout(75_000);
-  const session = await mount(page, request);
-  const { buildId, history, propose, readRequest } = await preparedCorrection(session, request);
-  await page.context().addCookies((await request.storageState()).cookies);
-  await page.goto(`${ORIGIN}/builds/${buildId}`);
-  const studio = page.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
-  const select = studio.getByRole("button", { name: "Select for correction", exact: true });
-  await select.click();
-  await expect(studio.getByRole("button", { name: "Draw rectangle" })).toBeVisible();
-  await canvas.press("Enter");
-  await canvas.press("ArrowRight");
-  await canvas.press("ArrowDown");
-  await canvas.press("Enter");
-  await expect(studio.getByTestId("studio-selection-region")).toBeVisible();
-  await canvas.press("Escape");
-  await expect(select).toBeVisible();
-  await expect(studio.getByTestId("studio-selection-region")).toHaveCount(0);
-  await fitCorrectionMap(studio, canvas);
-
-  await selectDoorway(page, studio, canvas);
-  await studio.getByLabel("Correction instruction").fill("Open the east doorway and remove the crossing wall.");
-  await studio.getByRole("button", { name: "Save correction request" }).click();
-  await expect(studio.getByText(/^Request saved/)).toBeVisible();
-  const saved = (await history()).requests[0]!;
-  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toHaveValue(new RegExp(saved.requestId));
-  const model = await readRequest(saved.requestId);
-  expect(model.scope.wholeObjectIds).toHaveLength(1);
-  const inspection = await (await request.get(`${correctionRoute(buildId)}?encounterKey=watch`)).json() as StudioInspection;
-  const wallId = inspection.objects.find((object) => object.kind === "wall")!.id;
-  const doorId = inspection.objects.find((object) => object.kind === "door")!.id;
-  expect(model.scope.objectIds).toEqual(expect.arrayContaining([wallId, doorId]));
-  expect((await propose(model, [{ op: "line.update", id: doorId, line: { ...correctionDoor, state: "open" } }, { op: "line.remove", id: wallId }])).isError).not.toBe(true);
-  await expect(studio.getByText("Proposal saved", { exact: true })).toBeVisible({ timeout: 9000 });
-  const before = studio.getByRole("button", { name: "Before", exact: true });
-  const after = studio.getByRole("button", { name: "After", exact: true });
-  await expect(after).toHaveAttribute("aria-pressed", "true");
-  const viewBox = await canvas.getAttribute("viewBox");
-  await before.click();
-  await expect(canvas.locator('[data-kind="door"]')).toHaveAttribute("data-portal-state", "closed");
-  await expect(canvas).toHaveAttribute("viewBox", viewBox!);
-  await after.click();
-  await expect(canvas.locator('[data-kind="door"]')).toHaveAttribute("data-portal-state", "open");
-  await expect(studio.getByRole("button", { name: "Door, Closed → Door, Open" })).toBeVisible();
-  await expect(studio.getByTestId("studio-removed-mark")).toBeVisible();
-
-  const change = studio.getByRole("button", { name: "Removed Wall" });
-  await change.focus();
-  await page.keyboard.press("Enter");
-  await expect(change).toHaveAttribute("aria-pressed", "true");
-  await expect(canvas).not.toHaveAttribute("viewBox", viewBox!);
-  const focusedCamera = await canvas.getAttribute("viewBox");
-  const next = await (await request.post(`${correctionRoute(buildId)}/requests`, { data: {
-    operationId: randomUUID(), inspectedVersion: (await history()).workingRevisionId, encounterKey: "watch", instruction: "Close that door again.",
-    selection: { region: model.scope.region, layers: ["geometry"], objectIds: [doorId], wholeObjectIds: [] },
-  } })).json() as { requestId: string; baseRevisionId: string };
-  await propose(next, [{ op: "line.update", id: doorId, line: correctionDoor }]);
-  await expect(studio.getByText("The working revision changed. You are still viewing the selected revision.")).toBeVisible({ timeout: 9000 });
-  await expect(canvas.locator('[data-kind="door"]')).toHaveAttribute("data-portal-state", "open");
-  await expect(canvas).toHaveAttribute("viewBox", focusedCamera!);
-  await expect(change).toBeFocused();
-
-  await studio.getByRole("button", { name: "Refine working revision" }).click();
-  await expect(studio.getByRole("button", { name: "Draw rectangle" })).toBeVisible();
-  await expect(canvas.locator('[data-kind="door"]')).toHaveAttribute("data-portal-state", "closed");
-  await canvas.press("Escape");
-
-  await page.reload();
-  await expect(canvas.locator('[data-kind="door"]')).toHaveAttribute("data-portal-state", "closed");
-  await expect(studio.getByRole("button", { name: "Door, Open → Door, Closed" })).toBeVisible();
-
-  await studio.getByRole("button", { name: "Refine working revision" }).click();
-  await expect(studio.getByRole("button", { name: "Draw rectangle" })).toBeVisible();
-  await dragSelection(page, canvas, [9, 7], [885, 520]);
-  const editors = studio.getByRole("group", { name: "Editable layers" });
-  await editors.getByRole("checkbox", { name: "Walls and openings" }).uncheck();
-  await editors.getByRole("checkbox", { name: "Base terrain" }).check();
-  await editors.getByRole("checkbox", { name: "Token placements" }).check();
-  await expect(studio.getByTestId("studio-cell-scope")).toHaveText("Editable terrain cells in columns -1–8 and rows 0–5");
-  await studio.getByLabel("Correction instruction").fill("Clear the courtyard edge and move the sentry east one square.");
-  await studio.getByRole("button", { name: "Save correction request" }).click();
-  await expect(studio.getByText(/^Request saved/)).toBeVisible();
-  const combined = await readRequest((await history()).requests[0]!.requestId);
-  const sentry = combined.scope.objectIds[0]!;
-  const erase = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
-  const count = (await history()).revisions.length;
-  expect((await propose(combined, [erase, { op: "placement.move", id: sentry, square: { column: 7, row: 3 } }])).isError).toBe(true);
-  expect((await history()).revisions).toHaveLength(count);
-  expect((await propose(combined, [erase, { op: "placement.move", id: sentry, square: { column: 6, row: 3 } }])).isError).not.toBe(true);
-  await expect(studio.getByTestId("studio-movement-arrow")).toBeVisible({ timeout: 9000 });
-  await page.evaluate(() => localStorage.setItem("vtt.locale", "zh-TW"));
-  await page.reload();
-  await expect(studio.getByRole("button", { name: "1 個地形格 · 困難 → 一般" })).toBeVisible();
-  const widths = await studio.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    return { width: box.width, viewport: innerWidth, content: element.scrollWidth, client: element.clientWidth };
-  });
-  expect(widths.width, JSON.stringify(widths)).toBeLessThanOrEqual(widths.viewport + 1);
-  expect(widths.content, JSON.stringify(widths)).toBeLessThanOrEqual(widths.client + 1);
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toContain("這會清除已儲存的要求、私人版本與提案");
-    await dialog.accept();
-  });
-  await studio.getByRole("button", { name: "結束修正", exact: true }).click();
-  await expect(studio.getByText("已結束這個場景的修正。")).toBeVisible();
-  expect((await request.get(`${correctionRoute(buildId)}/revisions`)).status()).toBe(404);
-});
-
-test("embedded Studio hands off after save and supports doorway, cropped terrain and hidden sentry corrections", async ({ page, request }) => {
-  test.setTimeout(100_000);
-  const session = await mount(page, request, { corrections: true });
-  const { buildId, history, propose, readRequest } = await preparedCorrection(session, request);
-  const { frame, messages, setHandoff } = session;
-  const studio = frame.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
-  const select = studio.getByRole("button", { name: "Select for correction", exact: true });
-  await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
-  await page.context().addCookies((await request.storageState()).cookies);
-  await expect(select).toBeEnabled({ timeout: 10_000 });
-
-  await selectDoorway(page, studio, canvas);
-  await studio.getByLabel("Correction instruction").fill("Open the door within this selection.");
-  expect(messages).toHaveLength(0);
-  await studio.getByRole("button", { name: "Send to chat" }).click();
-  await expect(studio.getByText("Handed to chat", { exact: true })).toBeVisible();
-  expect(messages[0]).toMatchObject({ savedBeforeHandoff: true, prompt: expect.stringContaining(buildId) });
-  await expect(studio.getByText("Retrieved by the AI", { exact: true })).toHaveCount(0);
-  await expect(studio.getByText("Proposal saved", { exact: true })).toHaveCount(0);
-  await studio.getByText("Saved correction prompt", { exact: true }).click();
-  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toHaveValue(new RegExp(messages[0]!.requestId));
-  const doorway = await readRequest(messages[0]!.requestId);
-  await expect(studio.getByText("Retrieved by the AI", { exact: true })).toBeVisible({ timeout: 9000 });
-  const doorId = doorway.scope.objectIds.find((id) => !doorway.scope.wholeObjectIds.includes(id))!;
-  expect((await propose(doorway, [{ op: "line.update", id: doorId, line: { ...correctionDoor, state: "open" } }])).isError).not.toBe(true);
-  await expect(studio.getByRole("button", { name: "Door, Closed → Door, Open" })).toBeVisible({ timeout: 9000 });
-  await session.reopen();
-  await expect(studio.getByRole("button", { name: "Door, Closed → Door, Open" })).toBeVisible();
-
-  await studio.getByRole("button", { name: "Refine working revision" }).click();
-  await expect(studio.getByRole("button", { name: "Draw rectangle" })).toBeVisible();
-  await canvas.press("Enter");
-  await canvas.press("ArrowRight");
-  await canvas.press("ArrowDown");
-  await expect(studio.getByTestId("studio-selection-region")).toBeVisible();
-  await canvas.press("Escape");
-  await expect(studio.getByTestId("studio-selection-region")).toHaveCount(0);
-  await fitCorrectionMap(studio, canvas);
-  await dragSelection(page, canvas, [4, 7], [19, 71]);
-  const editors = studio.getByRole("group", { name: "Editable layers" });
-  await editors.getByRole("checkbox", { name: "Walls and openings" }).uncheck();
-  await editors.getByRole("checkbox", { name: "Base terrain" }).check();
-  await expect(studio.getByTestId("studio-cell-scope")).toHaveText("Editable terrain cells in columns -1–-1 and rows 0–0");
-  await studio.getByLabel("Correction instruction").fill("Clear the difficult terrain along the courtyard edge.");
-  setHandoff("refused");
-  await studio.getByRole("button", { name: "Send to chat" }).click();
-  await expect.poll(() => messages.length).toBe(2);
-  await expect(studio.getByText(/Chat did not confirm the handoff/)).toBeVisible();
-  expect(messages[1]).toMatchObject({ savedBeforeHandoff: true });
-  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toHaveValue(new RegExp(messages[1]!.requestId));
-  const terrain = await readRequest(messages[1]!.requestId);
-  expect(terrain.baseRevisionId).not.toBe(doorway.baseRevisionId);
-  const erase = { op: "terrain.paint", runs: [{ row: 0, start: -1, end: -1, kind: null }] };
-  const revisionsBefore = (await history()).revisions.length;
-  expect((await propose(terrain, [erase, { op: "line.remove", id: doorId }])).isError).toBe(true);
-  await expect(studio.getByText(/Proposal refused.*scope/)).toBeVisible({ timeout: 9000 });
-  expect((await history()).revisions).toHaveLength(revisionsBefore);
-  expect((await propose(terrain, [erase])).isError).not.toBe(true);
-  await expect(studio.getByRole("button", { name: "1 terrain cell · Difficult → Normal" })).toBeVisible({ timeout: 9000 });
-
-  await studio.getByRole("button", { name: "Refine working revision" }).click();
-  await studio.getByRole("button", { name: "Pick object", exact: true }).click();
-  const object = studio.getByLabel("Choose an object", { exact: true });
-  const sentry = object.locator("option").filter({ hasText: "Sentry" });
-  await expect(sentry).toHaveCount(1);
-  await object.selectOption((await sentry.getAttribute("value"))!);
-  await expect(studio.getByRole("checkbox", { name: /Sentry at/ })).toBeChecked();
-  await studio.getByRole("button", { name: "Draw rectangle" }).click();
-  await dragSelection(page, canvas, [600, 250], [885, 520]);
-  await expect(studio.getByRole("checkbox", { name: /Include all of Sentry/ })).not.toBeChecked();
-  await studio.getByRole("checkbox", { name: /Include all of Sentry/ }).check();
-  await studio.getByLabel("Correction instruction").fill("Move the hidden sentry east one square and reveal it.");
-  setHandoff("timeout");
-  await studio.getByRole("button", { name: "Send to chat" }).click();
-  await expect.poll(() => messages.length).toBe(3);
-  await expect(studio.getByText(`Request saved · ${messages[2]!.requestId}`)).toBeVisible();
-  await expect(studio.getByText(/Chat did not confirm the handoff/)).toBeVisible({ timeout: 12_000 });
-  expect(messages[2]).toMatchObject({ savedBeforeHandoff: true });
-  await session.reopen();
-  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toHaveValue(new RegExp(messages[2]!.requestId));
-  const token = await readRequest(messages[2]!.requestId);
-  const id = token.scope.wholeObjectIds[0]!;
-  expect((await propose(token, [{ op: "placement.move", id, square: { column: 7, row: 3 } }])).isError).toBe(true);
-  expect((await propose(token, [{ op: "placement.move", id, square: { column: 6, row: 3 } }, { op: "placement.set_visibility", id, hidden: false }])).isError).not.toBe(true);
-  await studio.getByRole("button", { name: "View saved proposal" }).click({ timeout: 9000 });
-  await expect(studio.getByTestId("studio-movement-arrow")).toBeVisible({ timeout: 9000 });
-  await expect(studio.getByRole("button", { name: "Sentry · Hidden → Visible" })).toBeVisible();
-
-  const other = await page.context().newPage();
-  await other.goto(`${ORIGIN}/builds/${buildId}`);
-  const website = other.getByTestId("studio-scene");
-  await expect(website.getByRole("button", { name: "Sentry · Hidden → Visible" })).toBeVisible();
-  for (const surface of [website, studio]) {
-    await (surface === website ? other : page).bringToFront();
-    await surface.getByText("Saved placements", { exact: true }).click();
-    const placements = surface.locator(".studio-placements");
-    await surface.getByRole("button", { name: "Before", exact: true }).click();
-    await expect(placements.getByText("Sentry — Hidden")).toBeVisible();
-    await expect(placements.getByText("Column 5, row 3 · 2 squares wide")).toBeVisible();
-    await surface.getByRole("button", { name: "After", exact: true }).click();
-    await expect(placements.getByText("Sentry — Visible")).toBeVisible();
-    await expect(placements.getByText("Column 6, row 3 · 2 squares wide")).toBeVisible();
-  }
-  await other.close();
-  await page.bringToFront();
-  await frame.locator("#language").selectOption("zh-TW");
-  await expect(studio.getByRole("button", { name: "拒絕提案並還原基準版本" })).toBeVisible();
-  expect(await noOverflow(frame)).toBe(true);
-  await studio.getByRole("button", { name: "拒絕提案並還原基準版本" }).click();
-  await expect(studio.getByText("已還原為新的工作版本。")).toBeVisible();
-  await expect(canvas.locator('[data-token-index="0"]')).toHaveAttribute("data-hidden", "true");
-  const head = await history();
-  expect(head.revisions.find((r) => r.id === head.workingRevisionId)).toMatchObject({ restoredFrom: token.baseRevisionId });
-  expect(messages).toHaveLength(3);
-  await frame.locator("body").evaluate(() => dispatchEvent(new Event("pagehide")));
-});
-
 test("the normal composer carries the current Studio selection and delivers a scoped proposal", async ({ page, request }) => {
   test.setTimeout(85_000);
   const session = await mount(page, request, { chatSelection: true });
   const { buildId, tool, readRequest, propose, history } = await preparedCorrection(session, request);
   const studio = session.frame.getByTestId("studio-scene"), canvas = studio.getByTestId("studio-map");
-  const select = studio.getByRole("button", { name: "Select for correction", exact: true });
+  const select = studio.getByRole("button", { name: "Select area", exact: true });
   const chip = page.getByTestId("chat-attachment");
   const ready = studio.getByText("Selection attached. Ask for the change in chat.");
   type SelectedScope = { buildId: string; selectionId: string };
   const currentSelection = () => page.evaluate(() => (window as Window & { studioSelection?: SelectedScope }).studioSelection);
-  const start = (ref: SelectedScope, instruction = "Open the selected door.") => tool("studio_start_correction", { ...ref, instruction });
+  // Like the model, pass only the reference from the attached selection; its description is for reading.
+  const start = ({ buildId: build, selectionId }: SelectedScope, instruction = "Open the selected door.") =>
+    tool("studio_start_correction", { buildId: build, selectionId, instruction });
 
   await expect(studio.getByLabel("Active encounter", { exact: true })).toHaveValue("watch", { timeout: 9000 });
   await expect(select).toBeEnabled();
   await select.click();
-  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await expect(select).toHaveAttribute("aria-pressed", "true");
   await dragSelection(page, canvas, [140, 150], [345, 245]);
   await expect(chip).toHaveText("Chapel selection");
   await expect(ready).toBeVisible();
   await expect(studio.getByLabel("Correction instruction")).toHaveCount(0);
   await expect(studio.getByRole("button", { name: "Send to chat" })).toHaveCount(0);
-  await expect(studio.getByRole("group", { name: "Editable layers" })).toBeHidden();
   const original = (await currentSelection())!;
   expect(original.buildId).toBe(buildId);
   expect((await request.get(`${correctionRoute(buildId)}/revisions`)).status()).toBe(404);
@@ -506,12 +253,12 @@ test("the normal composer carries the current Studio selection and delivers a sc
   await expect(ready).toBeVisible();
   const replaced = (await currentSelection())!;
   expect((await start(original)).isError).toBe(true);
-  await studio.getByRole("button", { name: "Cancel selection" }).click();
+  await studio.getByRole("button", { name: "Clear selection" }).click();
   await expect(chip).toBeEmpty();
   expect((await start(replaced)).isError).toBe(true);
 
   await select.click();
-  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await expect(select).toHaveAttribute("aria-pressed", "true");
   await dragSelection(page, canvas, [118, 177], [356, 243]);
   await expect(ready).toBeVisible();
   await expect(chip).toHaveText("Chapel selection");
@@ -519,7 +266,7 @@ test("the normal composer carries the current Studio selection and delivers a sc
   await page.getByRole("textbox", { name: "Message" }).fill(instruction);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   const turn = await page.evaluate(() => (window as Window & { studioChatTurn?: { text: string; selection: SelectedScope } }).studioChatTurn);
-  expect(turn).toMatchObject({ text: instruction, selection: { buildId } });
+  expect(turn).toMatchObject({ text: instruction, selection: { buildId, map: "Chapel", mapKey: correctionMapKey, contains: { doors: 1 } } });
   if (!turn) throw new Error("The composer did not submit a turn");
   const started = await start(turn.selection, turn.text);
   expect(started.isError, JSON.stringify(started.content)).not.toBe(true);
@@ -533,15 +280,15 @@ test("the normal composer carries the current Studio selection and delivers a sc
   expect((await propose(model, [{ op: "line.update", id: model.scope.objectIds[0], line: { ...correctionDoor, state: "open" } }])).isError).not.toBe(true);
   await expect(studio.getByRole("button", { name: "Door, Closed → Door, Open" })).toBeVisible({ timeout: 12000 });
   await expect(studio.getByRole("button", { name: "Before", exact: true })).toBeVisible();
-  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toBeHidden();
+  await expect(studio.getByRole("textbox", { name: "Saved correction prompt" })).toHaveCount(0);
   await expect(chip).toBeEmpty();
 
   await page.evaluate(() => { (window as Window & { studioRefuseAttachment?: boolean }).studioRefuseAttachment = true; });
-  await studio.getByRole("button", { name: "Refine working revision" }).click();
-  await expect(studio.getByText(/^Drag to select/)).toBeVisible();
+  await select.click();
+  await expect(select).toHaveAttribute("aria-pressed", "true");
   await dragSelection(page, canvas, [118, 177], [356, 243]);
   await expect(studio.getByText(/^Chat couldn’t attach the selection/)).toBeVisible();
-  await expect(studio.getByLabel("Correction instruction")).toBeVisible();
+  await expect(studio.getByLabel("Correction instruction")).toHaveCount(0);
   await expect(chip).toBeEmpty();
   expect((await history()).requests).toHaveLength(1);
 

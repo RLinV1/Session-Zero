@@ -5,7 +5,6 @@ import type { studioIntake } from "../en/studioIntake";
 export const studioIntakeZhTW = {
   "title": "場景工作室",
   "loading": "正在連接你的建置…",
-  "ready": "已顯示最新儲存的檔案",
   "stale": "連線中斷，目前顯示上次儲存的內容。請在 AI 應用程式重新連線，再重試。",
   "denied": "這個連線無法存取此建置。請以建置擁有者的帳號重新連線。",
   "map": "地圖",
@@ -17,7 +16,6 @@ export const studioIntakeZhTW = {
   "saved": "已儲存",
   "failed": "未儲存",
   "noFiles": "尚未儲存檔案。",
-  "privacy": "從聊天匯入的原始檔與預覽在 Session Zero 中受到保護。分享給 ChatGPT 的圖片可能保留在聊天與檔案庫中；若你已選擇加入，也可能用於訓練。",
   "legacy": "這張圖片先前已公開。建立私人副本無法撤回先前的公開內容。",
   "source": "來源圖片",
   "owner": "擁有者",

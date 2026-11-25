@@ -8,12 +8,14 @@ import { studioT, type StudioLocale, type StudioTextKey } from "./text";
 export type StudioMapInteraction = Partial<Pick<ComponentProps<typeof MapViewport>,
   "mode" | "pan" | "focus" | "focusRect" | "onPress" | "onMove" | "onRelease" | "onCancel" | "onKeyDown">>;
 
-export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay, reportIssues = true }: {
+export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay, toolbar, reportIssues = true }: {
   scene: StudioScene;
   media: Readonly<Record<string, string>>;
   locale: StudioLocale;
   interaction?: StudioMapInteraction;
   drawOverlay?: (px: number) => ReactNode;
+  /** Tools docked with the zoom controls at the bottom of the map. */
+  toolbar?: ReactNode;
   reportIssues?: boolean;
 }) {
   const t = (key: StudioTextKey, params?: Record<string, string | number>) => studioT(locale, key, params);
@@ -30,7 +32,7 @@ export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay,
       <fieldset className="studio-layer-controls"><legend>{t("layers")}</legend>{(Object.keys(layers) as (keyof typeof layers)[]).map((layer) => <label key={layer}>
         <input type="checkbox" checked={layers[layer]} onChange={(event) => setLayers((current) => ({ ...current, [layer]: event.target.checked }))} />{t(layer)}
       </label>)}</fieldset>
-      {media[source.id] ? <MapViewport map={{ url: media[source.id]!, width: source.width, height: source.height }} mode="pan" pan label={t(selecting ? "correction.canvas" : "canvas")} keyboardNavigation {...interaction} onImageError={() => setFailedPreview(media[source.id] ?? null)}
+      {media[source.id] ? <MapViewport map={{ url: media[source.id]!, width: source.width, height: source.height }} mode="pan" pan label={t(selecting ? "correction.canvas" : "canvas")} keyboardNavigation minZoom={0.5} wheel="auto" toolbar={toolbar} {...interaction} onImageError={() => setFailedPreview(media[source.id] ?? null)}
         texts={{ zoom: t("zoom"), fit: t("fit"), zoomIn: t("zoomIn"), zoomOut: t("zoomOut") }}>
         {({ scale, px }) => <>
           <defs><clipPath id={`${id}-bounds`}><rect width={source.width} height={source.height} /></clipPath>
@@ -72,10 +74,9 @@ export function StudioSceneMap({ scene, media, locale, interaction, drawOverlay,
         </>}
       </MapViewport> : <p className="studio-preview-placeholder">{t("previewUnavailable")}</p>}
       {media[source.id] && failedPreview === media[source.id] && <p role="status">{t("previewUnavailable")}</p>}
-      {!interaction?.mode && <p className="studio-map-help">{t("keyboard")}</p>}
       {source.privacy === "legacy-public" && <p className="studio-note">{t("legacy")}</p>}
       <p className="studio-counts" data-testid="studio-layer-counts">{t("counts", { walls: scene.walls.length, terrain: countTerrain, tokens: scene.tokens.length })}</p>
-      <p>{t(scene.gridStatus === "confirmed" ? "gridConfirmed" : scene.gridStatus === "proposed" ? "gridProposed" : suggestion ? "gridSuggestion" : "gridMissing")}</p>
+      {scene.gridStatus !== "confirmed" && <p>{t(scene.gridStatus === "proposed" ? "gridProposed" : suggestion ? "gridSuggestion" : "gridMissing")}</p>}
       {scene.detection && <p className="studio-note" data-detector-state={scene.detection.status}>{t(scene.detection.error === "invalid_image" ? "detector.invalid" : `detector.${scene.detection.status}`)}</p>}
       {scene.terrainState === "otherGrid" && <p className="studio-note">{t("terrainStale")}</p>}
       {scene.terrainState === "noGrid" && <p className="studio-note">{t("terrainNoGrid")}</p>}

@@ -149,7 +149,7 @@ test("a refused selection says so in the view and keeps live refresh going (FR-G
   await session.frame.getByLabel("Active map", { exact: true }).selectOption(`source:${file.id}`);
   await expect(session.frame.getByText("Could not change the active context", { exact: false })).toBeVisible();
   await expect(session.frame.getByLabel("Active map", { exact: true })).toHaveValue("map:chapel");
-  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   session.setRewrite(null);
   // Still live: the AI's next save appears without a retry.
   expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
@@ -166,7 +166,7 @@ test("one token picture that can't load leaves the rest of the scene live (FR-GM
   await session.tool("studio_set_context", { context: { sourceFileId: file.id, mapKey: "chapel", encounterKey: "watch" } });
   await expect(session.frame.locator('[data-layer="tokens"] [data-token-index]')).toHaveCount(1);
   await expect(session.frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
-  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
   await expect(session.frame.locator('[data-kind="door"]')).toHaveCount(1, { timeout: 6500 });
 });
@@ -206,7 +206,7 @@ test("visible polling stays bounded and hidden/teardown or dismissed recovery st
   session.setFailure(true); await session.frame.locator("#refresh").click();
   await expect(session.frame.locator("#status")).toContainText("Connection interrupted");
   const failed = session.calls.length; await page.waitForTimeout(5200); expect(session.calls).toHaveLength(failed);
-  session.setFailure(false); await session.frame.locator("#refresh").click(); await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  session.setFailure(false); await session.frame.locator("#refresh").click(); await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   await session.frame.locator("body").evaluate(() => dispatchEvent(new Event("pagehide")));
   const ended = session.calls.length; await page.waitForTimeout(5200); expect(session.calls).toHaveLength(ended);
   await info.attach("local visible-only traffic", { body: JSON.stringify({ observedMs: 10_300, calls: intervalCalls.map((call) => call.name), hiddenCalls: 0, dismissedRecoveryCalls: 0, teardownCalls: 0 }), contentType: "application/json" });

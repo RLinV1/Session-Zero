@@ -1,25 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  StudioChatSelectionUpdate, StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput,
-  StudioRevisionView, StudioSnapshot,
+  StudioChatSelectionUpdate, StudioCorrectionHistory, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot,
 } from "@vtt/shared";
-import { copyText } from "../pages/build/buildCopy";
 import { StudioSceneMap, type StudioMapInteraction } from "./StudioSceneMap";
-import { editLayers, studioObjectLabel, useStudioSelection } from "./StudioSelection";
+import { editLayers, useStudioSelection } from "./StudioSelection";
 import { studioChanges, StudioDiffOverlay, type StudioChange } from "./StudioDiff";
+import { chatSelectionDetails, type ChatSelectionDetails } from "./chatSelectionDetails";
 import { studioT, type StudioLocale, type StudioTextKey } from "./text";
 
 export interface StudioAuthoringClient {
   inspect(mapKey: string, encounterKey: string | null): Promise<StudioInspection>;
   history(mapKey: string): Promise<StudioCorrectionHistory>;
   revision(mapKey: string, revisionId: string): Promise<StudioRevisionView>;
-  create(mapKey: string, input: StudioCorrectionInput): Promise<StudioCorrectionReceipt>;
   restore(mapKey: string, input: StudioRestoreInput): Promise<unknown>;
   refresh(): void;
-  attachToChat?(update: StudioChatSelectionUpdate, title: string): Promise<{ selectionId: string | null }>;
-  handoff?(prompt: string): Promise<"sent" | "pending" | "failed">;
+  /** Stages the selection for the user's next chat message; absent when the host can't carry it. */
+  attachToChat?(update: StudioChatSelectionUpdate, title: string, details?: ChatSelectionDetails): Promise<{ selectionId: string | null }>;
   ensureMedia?(fileIds: string[]): void;
-  end?(mapKey: string): Promise<void>;
 }
 
 const problems = {
@@ -35,8 +32,7 @@ function actionError(error: unknown) {
     ambiguous: !other?.status || other.status >= 500 || other.status === 429 };
 }
 
-type HistoryRequest = StudioCorrectionHistory["requests"][number];
-type ChatHandoff = "sending" | "sent" | "pending" | "failed";
+type Tool = "pan" | "region" | "objects";
 interface Compared { base: StudioRevisionView | null; result: StudioRevisionView }
 
 function operationId() {
@@ -59,17 +55,13 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const t = (key: StudioTextKey, params?: Record<string, number | string>) => studioT(locale, key, params);
   const { mapKey, encounterKey, sourceFileId } = snapshot.context;
   const [inspection, setInspection] = useState<StudioInspection | null>(null);
-  const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<StudioTextKey | null>(null);
-  const [retrySend, setRetrySend] = useState<StudioCorrectionInput | null>(null);
   const [retryRestore, setRetryRestore] = useState<StudioRestoreInput | null>(null);
   const [history, setHistory] = useState<StudioCorrectionHistory | null>(null);
   const [historyError, setHistoryError] = useState(false);
   const [historyRefresh, bumpHistory] = useState(0);
-  const [saved, setSaved] = useState<(StudioCorrectionReceipt & { instruction: string }) | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
-  const [handoff, setHandoff] = useState<{ requestId: string; state: ChatHandoff } | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const [autoCompare, setAutoCompare] = useState(true);
   const [comparison, setComparison] = useState<Compared | null>(null);
@@ -86,20 +78,23 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const allowed = editLayers.filter((layer) => layer === "geometry" ? snapshot.allowed.walls
     : layer === "terrain" ? snapshot.allowed.terrain : encounterKey !== null);
   const cancel = () => {
-    setInspection(null); setRetrySend(null); setFeedback(null);
+    setInspection(null); setFeedback(null);
   };
-  const selection = useStudioSelection(inspection, allowed, disabled || busy || !!retrySend, cancel);
+  const selection = useStudioSelection(inspection, allowed, disabled || busy, cancel);
   const revisionId = snapshot.workingRevisionId;
   const invalidated = !!inspection && (snapshot.workingBindingChanged || (inspection.workingRevisionId ?? undefined) !== revisionId);
   const needsInspection = invalidated || feedback === "correction.error.conflict";
   const chatDraft = chatEnabled && mapKey && inspection && !needsInspection && !disabled && selection.selection
     ? JSON.stringify({ mapKey, encounterKey, inspectedVersion: inspection.inspectedVersion, selection: selection.selection })
     : null;
-  const chatTitle = t("correction.chatTitle", { map: snapshot.maps.find((map) => map.key === mapKey)?.name ?? "" });
+  const mapName = snapshot.maps.find((map) => map.key === mapKey)?.name ?? "";
+  const chatTitle = t("correction.chatTitle", { map: mapName });
+  // Derived from the same inspection and selection as chatDraft, so it changes only when the draft does.
+  const chatDetails = chatDraft && inspection && mapKey
+    ? JSON.stringify(chatSelectionDetails(inspection, selection.selection!, mapName, mapKey, encounterKey)) : null;
   const attachmentView = useRef<{ id: string; sequence: number } | null>(null);
   const [attachment, setAttachment] = useState<{ draft: string; selectionId: string | null } | null>(null);
   const attachFailed = chatDraft !== null && attachment?.draft === chatDraft && attachment.selectionId === null;
-  const showForm = !chatEnabled || attachFailed;
 
   useEffect(() => {
     if (!chatEnabled || (!chatDraft && !attachmentView.current)) return;
@@ -108,7 +103,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     const deliver = adapter.current.attachToChat;
     if (!deliver) return;
     let current = true;
-    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle).then(({ selectionId }) => {
+    const details = chatDetails === null ? undefined : JSON.parse(chatDetails) as ChatSelectionDetails;
+    void deliver({ viewId: view.id, sequence: ++view.sequence, draft }, chatTitle, details).then(({ selectionId }) => {
       if (current && chatDraft !== null) setAttachment({ draft: chatDraft, selectionId });
     }).catch(() => {
       if (!current || chatDraft === null) return;
@@ -116,7 +112,7 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       void deliver({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
     });
     return () => { current = false; };
-  }, [chatDraft, chatEnabled, chatTitle]);
+  }, [chatDraft, chatDetails, chatEnabled, chatTitle]);
   useEffect(() => () => {
     const view = attachmentView.current;
     if (view) void adapter.current.attachToChat?.({ viewId: view.id, sequence: ++view.sequence, draft: null }, "").catch(() => undefined);
@@ -130,8 +126,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   }, []);
   useEffect(() => {
     if (previouslyEnrolled.current && !revisionId) {
-      setHistory(null); setComparison(null); setPinned(null); setInspection(null); setSaved(null);
-      setRequestId(null); setHandoff(null); setRetrySend(null); setRetryRestore(null); setFocused(null);
+      setHistory(null); setComparison(null); setPinned(null); setInspection(null);
+      setRequestId(null); setRetryRestore(null); setFocused(null);
     }
     previouslyEnrolled.current = !!revisionId;
   }, [revisionId]);
@@ -149,9 +145,9 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   const requests = revisionId ? history?.requests ?? [] : [];
   const attachedRequest = attachment?.selectionId && requests.find((request) => request.requestId === attachment.selectionId);
   useEffect(() => {
+    // The AI started a correction from this selection: leave selection and show its proposal when it arrives.
     if (!inspection || !attachedRequest) return;
     setRequestId(attachedRequest.requestId);
-    setSaved(null);
     setInspection(null);
     setFeedback(null);
     setAutoCompare(true);
@@ -192,7 +188,8 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     bumpHistory((value) => value + 1);
     adapter.current.refresh();
   }
-  async function startSelection() {
+  /** Loads the exact saved scene to select on, then switches to `tool`. */
+  async function startSelection(tool: Tool) {
     if (!mapKey || disabled || busy) return;
     setBusy(true); setFeedback(null);
     try {
@@ -201,8 +198,9 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       if (value.target.encounterKey !== encounterKey || value.scene.source?.id !== sourceFileId || value.drifted) {
         setFeedback("correction.error.conflict"); refresh(); return;
       }
-      setInspection(value); setAutoCompare(false); setPinned(null); setSide("result"); setRetrySend(null); setAttachment(null);
-      selection.reset(chatEnabled ? allowed : allowed.slice(0, 1));
+      setInspection(value); setAutoCompare(false); setPinned(null); setSide("result"); setAttachment(null);
+      selection.reset(allowed);
+      selection.setTool(tool);
       if ((value.workingRevisionId ?? undefined) !== revisionId) refresh();
       root.current?.querySelector<SVGSVGElement>('svg[data-testid="studio-map"]')?.focus({ preventScroll: true });
     } catch (error) {
@@ -211,32 +209,9 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
       if (mounted.current) setBusy(false);
     }
   }
-
-  async function saveRequest() {
-    if (!mapKey || !inspection || disabled || busy) return;
-    if (!retrySend && (needsInspection || !selection.selection || !instruction.trim())) return;
-    const input = retrySend ?? { encounterKey, inspectedVersion: inspection.inspectedVersion, operationId: operationId(),
-      instruction: instruction.trim(), selection: selection.selection! };
-    setRetrySend(input); setBusy(true); setFeedback(null);
-    try {
-      const receipt = await authoring.create(mapKey, input);
-      if (!mounted.current) return;
-      setSaved({ ...receipt, instruction: input.instruction });
-      setRequestId(receipt.requestId); setInstruction(""); cancel(); setAutoCompare(true);
-      if (authoring.handoff) {
-        setHandoff({ requestId: receipt.requestId, state: "sending" });
-        const prompt = t("correction.prompt", { build: snapshot.buildId, request: receipt.requestId, instruction: input.instruction });
-        const state = await authoring.handoff(prompt).catch(() => "failed" as const);
-        if (mounted.current) setHandoff({ requestId: receipt.requestId, state });
-      }
-    } catch (error) {
-      if (!mounted.current) return;
-      const { message, ambiguous } = actionError(error);
-      setFeedback(ambiguous ? "correction.saveUnknown" : message);
-      if (!ambiguous) setRetrySend(null);
-    } finally {
-      if (mounted.current) { setBusy(false); refresh(); }
-    }
+  function chooseTool(tool: Tool) {
+    if (inspection && !needsInspection) selection.setTool(tool);
+    else if (tool !== "pan") void startSelection(tool);
   }
 
   async function restore(target?: string, expected = head) {
@@ -257,103 +232,33 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
     }
   }
 
-  async function endCorrections() {
-    if (!mapKey || !authoring.end || disabled || busy || !window.confirm(t("correction.endConfirm"))) return;
-    setBusy(true); setFeedback(null);
-    try {
-      await authoring.end(mapKey);
-      if (!mounted.current) return;
-      setHistory(null); setSaved(null); setRequestId(null); setRetryRestore(null); setHandoff(null); setComparison(null);
-      showRevision(null); setFeedback("correction.ended");
-    } catch (error) {
-      if (mounted.current) setFeedback(actionError(error).message);
-    } finally {
-      if (mounted.current) { setBusy(false); refresh(); }
-    }
-  }
-
-  const matchingRequest = requests.find((item) => item.requestId === requestId);
-  const localRequest = saved?.requestId === requestId ? saved : null;
-  const historyRequest = matchingRequest ?? (localRequest ? undefined : requests[0]);
-  const request = historyRequest ?? localRequest;
-  const requestActivity = historyRequest?.activity;
-  const outcome = requestActivity?.outcome;
-  const proposalId = outcome && "revisionId" in outcome ? outcome.revisionId : undefined;
-  const requestHandoff = handoff?.requestId === request?.requestId ? handoff?.state : undefined;
   const interaction: StudioMapInteraction | undefined = inspection ? selection.interaction
     : focused?.focus ? { focus: { x: (focused.focus.minX + focused.focus.maxX) / 2, y: (focused.focus.minY + focused.focus.maxY) / 2 } } : undefined;
-  const selectionTools = (["pan", "region", "objects"] as const).map((tool) =>
-    <button key={tool} type="button" aria-pressed={selection.draft.tool === tool}
-      disabled={disabled || busy || !!retrySend} onClick={() => selection.setTool(tool)}>{t(`correction.tool.${tool}`)}</button>);
-  const selectionDetails = <>
-    {selection.draft.tool === "objects" && <label>{t("correction.pickObject")}
-      <select aria-label={t("correction.pickObject")} value="" disabled={busy || disabled || !!retrySend} onChange={(event) => {
-        const object = selection.objects.find((item) => item.id === event.currentTarget.value);
-        if (object) selection.pick(object);
-      }}>
-        <option value="">{t("correction.pickObject")}</option>
-        {selection.objects.filter((object) => object.bounds && allowed.includes(object.layer)).map((object) => <option key={object.id} value={object.id}>
-          {t("correction.objectAt", { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY) })}
-        </option>)}
-      </select>
-    </label>}
-    <fieldset className="studio-layer-controls" disabled={busy || disabled || !!retrySend}>
-      <legend>{t("correction.editLayers")}</legend>
-      {editLayers.map((layer) => <label key={layer}><input type="checkbox" checked={selection.draft.layers.includes(layer) && allowed.includes(layer)}
-        disabled={!allowed.includes(layer)} onChange={(event) => selection.toggleLayer(layer, event.currentTarget.checked)} />{t(`correction.layer.${layer}`)}</label>)}
-    </fieldset>
-    {selection.coverage && <p data-testid="studio-cell-scope">{t("correction.cells", selection.coverage)}</p>}
-    {selection.draft.region && <p className="studio-note">{t("correction.destination")}</p>}
-    {selection.candidates.length > 0 && <fieldset className="studio-object-scope" disabled={busy || disabled || !!retrySend}>
-      <legend>{t("correction.editObjects")}</legend>
-      {selection.candidates.map(({ object, coverage, included }) => <label key={object.id}>
-        <input type="checkbox" checked={included} onChange={(event) => selection.toggleObject(object.id, coverage === "crossing", event.currentTarget.checked)} />
-        {t(coverage === "crossing" ? "correction.wholeObject" : "correction.objectAt",
-          { name: studioObjectLabel(locale, object), x: Math.round(object.bounds!.minX), y: Math.round(object.bounds!.minY),
-            maxX: Math.round(object.bounds!.maxX), maxY: Math.round(object.bounds!.maxY) })}
-      </label>)}
-    </fieldset>}
-  </>;
-  return <div className="studio-corrections" ref={root}>
-    <div className="studio-action-row">
-      {!inspection && <button type="button" disabled={disabled || busy || !snapshot.scene.grid || !!snapshot.workingBindingChanged || !allowed.length}
-        onClick={() => void startSelection()}>{t(compared ? "correction.refine" : "correction.select")}</button>}
-      {inspection && !chatEnabled && selectionTools}
-      {inspection && <button type="button" disabled={busy} onClick={cancel}>{t("correction.cancel")}</button>}
-      {revisionId && authoring.end && <button type="button" disabled={disabled || busy} onClick={() => void endCorrections()}>{t("correction.end")}</button>}
-    </div>
-    {inspection && <p className="studio-map-help">{t(selection.draft.tool === "region" ? (chatEnabled ? "correction.chatRegionHelp" : "correction.regionHelp")
-      : selection.draft.tool === "objects" ? "correction.objectHelp" : "keyboard")}</p>}
-    {chatDraft && <p role="status" className="studio-note">{t(attachFailed ? "correction.chatAttachFailed"
-      : attachment?.draft === chatDraft ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
-    {!inspection && pinned && <div className="studio-action-row" role="group" aria-label={t("correction.comparison")}>
+  const activeTool: Tool = inspection ? selection.draft.tool : "pan";
+  const canSelect = chatEnabled && !disabled && !busy && !!snapshot.scene.grid && !snapshot.workingBindingChanged && allowed.length > 0;
+  const toolbar = <>
+    {chatEnabled && <div className="studio-tools" role="toolbar" aria-label={t("correction.tools")}>
+      {(["pan", "region", "objects"] as const).map((tool) => <button key={tool} type="button" className="studio-tool"
+        aria-pressed={activeTool === tool} aria-label={t(`correction.tool.${tool}`)} title={t(`correction.toolHint.${tool}`)}
+        disabled={tool !== "pan" && !canSelect} onClick={() => chooseTool(tool)}><ToolIcon tool={tool} /></button>)}
+      {inspection && selection.draft.region && <button type="button" className="studio-tool" aria-label={t("correction.cancel")}
+        title={t("correction.cancel")} disabled={busy} onClick={cancel}><ToolIcon tool="clear" /></button>}
+    </div>}
+    {!inspection && pinned && <div className="studio-tools" role="group" aria-label={t("correction.comparison")}>
       <button type="button" aria-pressed={side === "base" && !!compared?.base} disabled={!compared?.base} onClick={() => setSide("base")}>{t("correction.before")}</button>
       <button type="button" aria-pressed={side === "result" || !compared?.base} disabled={!compared} onClick={() => setSide("result")}>{t("correction.after")}</button>
     </div>}
-    <StudioSceneMap scene={displayed} locale={locale} media={media} interaction={interaction} reportIssues={displayed === snapshot.scene}
+  </>;
+  return <div className="studio-corrections" ref={root}>
+    <StudioSceneMap scene={displayed} locale={locale} media={media} interaction={interaction} reportIssues={displayed === snapshot.scene} toolbar={toolbar}
       drawOverlay={inspection ? selection.drawOverlay : compared?.base ? (px) => <StudioDiffOverlay changes={changes} focused={focused?.id ?? null} px={px} /> : undefined} />
+    {chatDraft && <p role="status" className="studio-note">{t(attachFailed ? "correction.chatAttachFailed"
+      : attachment?.draft === chatDraft ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
+    {needsInspection && <p role="status" className="studio-note">{invalidated && feedback !== "correction.error.conflict" && t("correction.error.conflict")}{" "}
+      <button type="button" disabled={busy} onClick={() => void startSelection(activeTool === "pan" ? "region" : activeTool)}>{t("correction.reselect")}</button></p>}
     {displayed !== snapshot.scene && snapshot.workingBindingChanged && <p className="studio-note" role="status">{t("correction.bindingChanged")}</p>}
-    {feedback && <p role={feedback === "correction.restored" || feedback === "correction.ended" ? "status" : "alert"}>{t(feedback)}</p>}
+    {feedback && feedback !== "correction.error.conflict" && <p role={feedback === "correction.restored" ? "status" : "alert"}>{t(feedback)}</p>}
     {retryRestore && <button type="button" disabled={busy || disabled} onClick={() => void restore()}>{t("correction.retryRestore")}</button>}
-    {inspection && <div className="studio-correction-form">
-      {needsInspection && <div role="status">{invalidated && feedback !== "correction.error.conflict" && t("correction.error.conflict")}{" "}
-        <button type="button" disabled={busy} onClick={() => void startSelection()}>{t("correction.reselect")}</button></div>}
-      {chatEnabled ? <>
-        <details className="studio-selection-details">
-          <summary>{t("correction.selectionDetails")}</summary>
-          <div className="studio-action-row">{selectionTools}</div>
-          {selectionDetails}
-          {!showForm && <p className="studio-note">{t("correction.cropPrivacy")}</p>}
-        </details>
-      </> : selectionDetails}
-      {showForm && <>
-        <label>{t("correction.instruction")}<textarea value={instruction} rows={3} maxLength={2000} disabled={busy || disabled || !!retrySend}
-          onChange={(event) => setInstruction(event.currentTarget.value)} /></label>
-        <p className="studio-note">{t("correction.cropPrivacy")}</p>
-        <div className="studio-action-row"><button type="button" disabled={disabled || busy || (!retrySend && (needsInspection || !selection.selection || !instruction.trim()))}
-          onClick={() => void saveRequest()}>{t(retrySend ? "correction.retrySave" : authoring.handoff ? "correction.send" : "correction.save")}</button></div>
-      </>}
-    </div>}
     {!inspection && revisionId && <div className="studio-correction-history">
       {historyError && <p role="status">{t("correction.historyFailed")}{" "}<button type="button" onClick={refresh}>{t("retry")}</button></p>}
       {revisions.length > 1 && <label>{t("correction.history")}
@@ -381,49 +286,20 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
         </div>}
       </>}
     </div>}
-    {request && <div className="studio-correction-status">
-      {requests.length > 1 && <label>{t("correction.savedRequests")}
-        <select value={request.requestId} onChange={(event) => setRequestId(event.currentTarget.value)}>
-          {requests.map((item) => <option key={item.requestId} value={item.requestId}>{item.instruction.slice(0, 100)}</option>)}
-        </select>
-      </label>}
-      <RequestStatus key={request.requestId} request={request} activity={requestActivity} handoff={requestHandoff} buildId={snapshot.buildId} locale={locale}
-        canCompare={!!proposalId && revisions.some((r) => r.id === proposalId)}
-        openSavedPrompt={!chatEnabled} showRevision={showRevision} />
-    </div>}
   </div>;
 }
 
-function RequestStatus({ request, activity, handoff, buildId, locale, canCompare, openSavedPrompt, showRevision }: {
-  request: Pick<HistoryRequest, "requestId" | "instruction">;
-  activity?: HistoryRequest["activity"];
-  handoff?: ChatHandoff;
-  buildId: string;
-  locale: StudioLocale;
-  canCompare: boolean;
-  openSavedPrompt: boolean;
-  showRevision: (id: string) => void;
-}) {
-  const t = (key: StudioTextKey, params?: Record<string, string | number>) => studioT(locale, key, params);
-  const [copied, setCopied] = useState<"copied" | "copyFailed" | null>(null);
-  const prompt = t("correction.prompt", { build: buildId, request: request.requestId, instruction: request.instruction });
-  const outcome = activity?.outcome;
-  return <>
-    <div role="status" aria-live="polite">
-      <p>{t("correction.saved", { id: request.requestId })}</p>
-      {handoff && <p>{t(`correction.handoff.${handoff}`)}</p>}
-      {activity?.observed && <p>{t("correction.observed")}</p>}
-      {outcome && <p>{t(`correction.outcome.${outcome.status}`)}{"code" in outcome && ` ${t(problems[outcome.code])}`}</p>}
-    </div>
-    {outcome && "revisionId" in outcome && canCompare && <button type="button" onClick={() => showRevision(outcome.revisionId)}>{t("correction.viewProposal")}</button>}
-    <details open={handoff === "failed" || handoff === "pending" || (openSavedPrompt && handoff === undefined)}>
-      <summary>{t("correction.promptTitle")}</summary>
-      <p className="studio-note">{t("correction.pasteHint")}</p>
-      <textarea value={prompt} readOnly rows={5} aria-label={t("correction.promptTitle")} />
-      <div className="studio-action-row">
-        <button type="button" onClick={() => void copyText(prompt).then((ok) => setCopied(ok ? "copied" : "copyFailed"))}>{t("correction.copy")}</button>
-        <span role="status">{copied === "copyFailed" ? t("correction.copyFailed") : copied ? t(copied) : ""}</span>
-      </div>
-    </details>
-  </>;
+/** 24-unit stroke icons for the map tools; the button carries the accessible name. */
+function ToolIcon({ tool }: { tool: Tool | "clear" }) {
+  const paths = {
+    // An open hand, the usual sign for grabbing and panning a canvas.
+    pan: <path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v7.5M14 11.5V5.5a1.5 1.5 0 0 1 3 0v7M17 12.5V8.5a1.5 1.5 0 0 1 3 0V15a7 7 0 0 1-7 7h-1.6a6 6 0 0 1-4.5-2l-3.6-4.2a1.6 1.6 0 0 1 2.3-2.2L8 15.9" />,
+    // A dashed marquee, the usual sign for rectangle selection.
+    region: <rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="3.2 2.4" />,
+    // A pointer arrow clicking one object.
+    objects: <><path d="M5 4l13 5.5-5.4 1.6L11 16.5z" /><path d="M13 13l5 5" /></>,
+    clear: <path d="M6 6l12 12M18 6L6 18" />,
+  };
+  return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[tool]}</svg>;
 }
