@@ -1,5 +1,15 @@
 # Implementation handoff
 
+## M4 hosted selection attach, 2026-11-25
+
+Commit `f3bb8259` on `feat/studio-m4-chat-selection`, the same change as `7249e8d1` on `feat/studio-m4-declutter`. The pilot runs `7249e8d1`; rollback is `d84d44a9`.
+
+In ChatGPT, every selection failed to attach. ChatGPT's tool proxy answered the view's `studio_stage_chat_selection` call with `-32001 Unknown tool`. Its snapshot of the app's tools predated 2026-11-24 and lacked that tool and `studio_start_correction`. The server serves the current view at any earlier view address, so the new view loaded against the old tool list. **Refresh tools** in ChatGPT's app settings fixed it, and a hosted selection then attached and was described by the AI. New chats and new builds do not refresh the snapshot, so refresh after every deploy that adds or renames tools. [Evidence](evidence/m4-host-2026-11-25.md)
+
+The commit labels `studio_stage_chat_selection` read-only and logs the reason for an attach failure to the view's console. It was made before the root cause was known. The product owner kept the label ([D15](design.md#d15-m4-correction-interaction)). Lint, typecheck and `npm test` passed on this branch (5,757 tests, 71 optional-service skips). On `feat/studio-m4-declutter`, the Studio intake browser spec passed in Chromium (6 tests) and the composer test passed in WebKit. Running all six browser projects at once hit the OAuth registration rate limit (HTTP 429), which is a harness limit, not a product failure. Still not run: `browser/studio-preparation.spec.ts` under its M2 Docker stack, and an independent diff review. Task 8.1 is resolved by the declutter.
+
+**Next:** run the preparation browser suite and a review, then open one M4 PR from this branch. Finish task 5.10 in ChatGPT: redraw, clear, a second view, and one started correction.
+
 ## M4 Studio declutter, 2026-11-24
 
 Commit `ae9411a4` on `feat/studio-m4-chat-selection`, cherry-picked from `d84d44a9` on `feat/studio-m4-declutter`. That branch was built from pilot release `d11393cb` (`deploy/studio-pilot-chat-selection`). The product owner asked for these changes ([D15 declutter amendment](design.md#d15-m4-correction-interaction)):
