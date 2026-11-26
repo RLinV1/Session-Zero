@@ -1,5 +1,13 @@
 # Implementation handoff
 
+## M5 hosted verification and exit, 2026-11-26
+
+Completed 6.7 in ChatGPT web Work against the isolated pilot on `219139aaa6daa9b95407241df4efb54010b4718d`. ChatGPT applied one saved scoped correction to each of two synthetic scenes. Website review preserved both corrections through grid confirmation and exact publication. The two PostgreSQL receipts matched the encounters applied to two ordinary rooms. Both room browsers fetched their map and token artwork. Published aliases matched Studio's intake bytes. The cave's locally attached PNG and the imported PNG had identical decoded pixels and different byte hashes.
+
+Completed 6.9 by checking the final receipt and room evidence against the M5 claims and the reconciled OpenSpec and client guidance. The hosted evidence records the actual correction handoff and fixture limits. Raw player visibility and failure recovery retain their local evidence. The parent change remains open for subsequent tasks. Claude compatibility and production remain unqualified.
+
+The original pilot room restriction was restored and returned 403. The synthetic OAuth grant was revoked and the temporary plugin uninstalled. The two published encounters and rooms are retained for handoff. Push and PR creation await separate approval. [Hosted verification](evidence/m5-host-2026-11-26.md) · [Local checks and reviews](#m5-verification-and-release-handoff-2026-11-26)
+
 ## M5 deployed to the personal pilot, 2026-11-26
 
 The isolated pilot at `https://studio-test.habticraft.com` is running verified code commit `219139aaa6daa9b95407241df4efb54010b4718d`. Rollback before any M5 publication is the previous pilot release `7249e8d1694f5f50ba0ed05ca7b425272617f981`. The pre-cutover PostgreSQL dump and private-media archive were validated. Migration `20261126090000_studio_publication` applied, and counts for existing users, builds, grants, files and revisions matched after cutover.
