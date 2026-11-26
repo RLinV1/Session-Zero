@@ -1,5 +1,15 @@
 # Implementation handoff
 
+## M5 pilot staging and cutover prerequisite, 2026-11-26
+
+The owner approved deploying `219139aaa6daa9b95407241df4efb54010b4718d` to the isolated pilot for 6.7 and separately authorized the AWS CLI sign-in. Verified the Ohio instance and pinned SSH host key. The existing SSH rule already covered the operator's address.
+
+The exact source archive was verified by SHA-256 after transfer. Server, MCP, web and vision images were built and tagged with the approved revision. The server and MCP images report Node 22.23.2. The staged Caddy configuration validates and retains the pilot's existing restrictions through a separate mount. The live site remains on `7249e8d1694f5f50ba0ed05ca7b425272617f981`, with successful HTTPS health checks for the website and MCP. Cutover, the backup immediately preceding it, and the migration are pending.
+
+The new server requires SMTP configuration at startup. The pilot's existing Compose file and environment contain no SMTP settings. The owner was asked separately about a private pilot mail sink for synthetic verification, because public signups and resets require real mail delivery to reach users. The current pilot account also has all three build slots in use. A separate Chrome window is ready for ChatGPT sign-in and a fresh synthetic pilot account, keeping those drafts intact.
+
+The architectural map and token fixture are committed in `browser/fixtures`. The new synthetic cave fixture is `/private/tmp/session-zero-m5-pilot.uXBpxO/studio-cave-qualification.png`, 1448 × 1086, SHA-256 `c3354de481487854f63082d7158328b26fcc4edc4067a2fc7d1c28392eaf09d3`. The staged rollout helpers and logs are in that same temporary directory. Task 6.7 and the hosted portion of 6.9 remain open.
+
 ## M5 verification and release handoff, 2026-11-26
 
 Implemented from `1660e45463b60374fd2311f1bf7452295ca341c6` in `/private/tmp/session-zero-studio-m5-publication` on `feat/studio-m5-publication`. Code through `219139aaa6daa9b95407241df4efb54010b4718d` is the tested source. The later handoff commit updates the specs and documentation.
