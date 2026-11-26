@@ -103,6 +103,18 @@ Published items are ordinary library items. They count toward your library's lim
 
 Characters arrive with no owner. Once a player has joined, open the token and set who controls it.
 
+### Review a Studio candidate
+
+Choose **Review for publication** in Studio to open the displayed revision in the signed-in website. On the build page, choose the items you want. Open **Included dependencies** for the art, map setup and creature values those items use. Other encounters on the same map stay in the draft unless you choose them.
+
+For an earlier revision, choose **Restore this candidate**, then review the new working revision. If the candidate or any dependency changes while you review, choose **Review latest**. Confirm the grid when prompted. After publishing, choose **Start a room** on the build page. The room uses your usual measurement settings.
+
+Publishing private Studio art allows anyone with its published link to retrieve the original file, including embedded metadata. Draft previews stay restricted. Removing the published art ends delivery at its library link. Unpublishing an unused map into an open draft keeps its private original available to the owner.
+
+### Studio client support
+
+The review and publish controls run in the website. In ChatGPT web, the Studio link opens that website and the correction tools remain scoped to the connected build. Use Refresh tools after changes to the app's tool list. Earlier pilot evidence covers ChatGPT intake and corrections. M5 publication and room start have local browser coverage. Full ChatGPT web qualification on the pilot is tracked separately. The Claude app's Studio publication journey is unqualified. The table below covers the original build-pass workflow.
+
 ## Undoing it
 
 - **Cancel pass** stops your AI at once. Changing your password ends every pass.

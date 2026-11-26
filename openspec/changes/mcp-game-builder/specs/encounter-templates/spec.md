@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Publish a template from an approved build
-The server SHALL be able to create an encounter template from a draft encounter that its owner chose to publish. The server MUST build the template itself from the draft, using the library map and creature values at that moment, and MUST validate it with the shared template schema. A client MUST NOT be able to send board data for this. Saving from a room is unchanged.
+The server SHALL be able to create an encounter template from a draft encounter that its owner chose to publish. The server MUST build the template itself from the draft, using the resolved library map and creature values, and MUST validate it with the shared template schema. A client MUST NOT be able to send board data for this. For an enrolled Studio scene or a selection using private Studio art, the exact owner review and commit rules of `interactive-ai-scene-studio` apply.
 
 #### Scenario: Publish a draft encounter
 - **WHEN** the owner publishes a draft encounter with a confirmed grid and six tokens on squares

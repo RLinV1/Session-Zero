@@ -1,7 +1,8 @@
 # M2 visible preparation qualification
 
 This run uses synthetic accounts and committed art, isolated Postgres/S3 and the real
-`services/vision` detector. It does not qualify production or M3–M5 corrections/publication.
+`services/vision` detector. The preparation cases cover M2. The publication case checks the
+M5 website handoff, receipt recovery and room artwork in the same local stack.
 The user authorized the temporary tunnel, ChatGPT connection and synthetic-account clicks
 autonomously on 2026-11-17. Preserve the running development and manual M1 stacks.
 
@@ -27,11 +28,12 @@ Run the wrapper's `compose up -d --build --wait`, Prisma `migrate deploy` in the
 workspace, then `node scripts/studio-m2/buckets.mjs`. Both storage modes remain covered
 by the repository tests; M2 browser/host integration uses actual private S3.
 
-Run `playwright.studio-m2.config.ts` for real persistence/detector preparation checks.
-The browser-only server replaces only the remote attachment download with committed
-synthetic bytes; it does not replace persistence, storage or detection. This bridge
-simulation is local evidence, never real ChatGPT evidence. Existing consent/intake
-regressions use `playwright.studio-m2-legacy.config.ts` one browser project per fresh server.
+Run `browser/studio-preparation.spec.ts` with `playwright.studio-m2.config.ts`. The
+browser test server uses committed synthetic attachment bytes and the real persistence,
+storage and detector. The bridge simulates the host. For Studio intake regressions, run
+`STUDIO_BROWSER_TEST=1 npx playwright test browser/studio-intake.spec.ts --project=<project>`
+one project per invocation to stay within the OAuth registration allowance. Use
+`fnm exec --using=22.23.2` for each Node, npm and npx command.
 
 ## Exact actual ChatGPT test
 
