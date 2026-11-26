@@ -52,3 +52,4 @@ export * from "./i18n";
 export * from "./studioAuthoring";
 export * from "./adminStats";
 export * from "./adminFeedback";
+export * from "./studioPublication";

@@ -1,3 +1,9 @@
+import { LibraryAssetInUseError } from "./libraryStore";
+import { isLive } from "../identity/sessions";
+import type { PublicationSession, RemovedPublication } from "./buildStore";
+import type { StudioPublishCommitInput, StudioPublishReviewInput } from "@vtt/shared";
+import { digest, StudioAuthoringError } from "../domain/studioSceneRevision";
+import { publicationReceipt, publicationReplay, resolveStudioPublication, requireReviewedPublication, type StoredPublication } from "../domain/studioPublication";
 import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, chatSelectionReference, nextChatSelection, startChatCorrection, validateChatSelection, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite, type ChatSelectionRecord } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
@@ -115,6 +121,7 @@ export class MemoryRoomStore implements RoomStore {
   private animations = new Map<string, LibraryAnimationRecord>();
   private chatSelections = new Map<string, Map<string, ChatSelectionRecord>>();
   private authoring = new Map<string, { workspaces: AuthoringWorkspace[]; entries: AuthoringEntry[] }>();
+  private studioPublications = new Map<string, Map<string, StoredPublication>>();
   private builds = new Map<string, BuildRecord>();
   private buildFiles = new Map<string, BuildFileRecord>();
   /** `${buildId}/${kind}/${key}`, so a key an AI chose can't collide with a property name. */
@@ -1019,9 +1026,12 @@ export class MemoryRoomStore implements RoomStore {
     const job = this.studioMediaJobs.get(id);
     if (job && job.expiresAt > now) job.state = "cancelled"; else this.studioMediaJobs.delete(id);
   }
-  private queueStudioDeletion(file: BuildFileRecord) {
+  private queueStudioDeletion(file: BuildFileRecord, keepOriginal = false) {
     if (!file.studio) return;
-    const job = { id: randomUUID(), buildId: file.buildId, keys: mediaKeys(file), state: "delete" as const, expiresAt: new Date().toISOString() };
+    this.queueStudioKeys(file.buildId, keepOriginal ? [file.studio.previewKey] : mediaKeys(file));
+  }
+  private queueStudioKeys(buildId: string, keys: string[]) {
+    const job = { id: randomUUID(), buildId, keys, state: "delete" as const, expiresAt: new Date().toISOString() };
     this.studioMediaJobs.set(job.id, job);
   }
   private closeStudioBuild(buildId: string) {
@@ -1118,10 +1128,83 @@ export class MemoryRoomStore implements RoomStore {
     return structuredClone(row);
   }
 
+  private publicationContext(buildId: string, owner: string) {
+    const build = this.builds.get(buildId);
+    if (!build || build.ownerGmId !== owner) throw new StudioAuthoringError("missing", "This build is unavailable.");
+    const ledger = this.authoring.get(buildId);
+    return { records: this.studioRecords(build), workspaces: ledger?.workspaces ?? [], entries: ledger?.entries ?? [] };
+  }
+
+  async reviewStudioPublication(buildId: string, owner: string, input: StudioPublishReviewInput, now: string) {
+    const context = structuredClone(this.publicationContext(buildId, owner));
+    if (context.records.build.status !== "open") throw new BuildClosedError();
+    return (await resolveStudioPublication(this, context, input, now)).review;
+  }
+
+  async commitStudioPublication(buildId: string, owner: string, input: StudioPublishCommitInput, now: string,
+    allowance: UploadAllowance, maxEncounters: number, session?: PublicationSession) {
+    const context = structuredClone(this.publicationContext(buildId, owner));
+    const assertSession = () => {
+      if (!session) return;
+      const row = this.sessions.get(session.tokenHash);
+      if (!row || !isLive(row, session.now()) || this.users.get(row.userId)?.ownerId !== owner) {
+        throw new StudioAuthoringError("access", "Sign in again before publishing.");
+      }
+    };
+    assertSession();
+    const inputHash = digest(input);
+    const replay = () => this.studioPublications.get(buildId)?.get(input.operationId);
+    const stored = replay();
+    if (stored) return structuredClone(publicationReplay(stored, inputHash));
+    if (context.records.build.status !== "open") throw new BuildClosedError();
+
+    // Resolve against a snapshot and check the observed values in the same synchronous turn as the write.
+    const check: (() => boolean)[] = [];
+    const result = await resolveStudioPublication({
+      findAsset: async (id, gm) => {
+        const asset = this.assets.get(id);
+        const value = asset?.ownerGmId === gm ? structuredClone(asset) : null;
+        check.push(() => {
+          const current = this.assets.get(id);
+          return digest(current?.ownerGmId === gm ? current : null) === digest(value);
+        });
+        return value;
+      },
+      findCreature: async (id, gm) => {
+        const creature = this.creatures.get(id);
+        const value = creature?.ownerGmId === gm ? this.withImage(creature) : null;
+        check.push(() => {
+          const current = this.creatures.get(id);
+          return digest(current?.ownerGmId === gm ? this.withImage(current) : null) === digest(value);
+        });
+        return value;
+      },
+    }, context, input, now);
+    const current = this.publicationContext(buildId, owner);
+    assertSession();
+    const repeated = replay();
+    if (repeated) return structuredClone(publicationReplay(repeated, inputHash));
+    if (digest(current) !== digest(context) || !check.every((unchanged) => unchanged())) throw new BuildPublishConflictError();
+    const plan = requireReviewedPublication(result, input);
+    const published = this.writePublication(plan, allowance, maxEncounters, result.materializations);
+    const ledger = this.authoring.get(buildId);
+    if (ledger) ledger.workspaces = ledger.workspaces.map((workspace) => result.heads.find((head) => head.mapKey === workspace.mapKey) ?? workspace);
+    const receipt = publicationReceipt(input, result.review, plan, published);
+    let receipts = this.studioPublications.get(buildId);
+    if (!receipts) this.studioPublications.set(buildId, receipts = new Map());
+    receipts.set(input.operationId, { inputHash, receipt });
+    return structuredClone(receipt);
+  }
+
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
-    const build = this.openBuild(plan.buildId);
     guardStudioPublish(this.authoring.get(plan.buildId)?.workspaces ?? [], plan);
-    if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.studio)) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
+    if (plan.assets.some(({ fileId, record }) => record.studioOriginal || this.buildFiles.get(fileId)?.studio)) throw new BuildPublishConflictError();
+    return this.writePublication(plan, allowance, maxEncounters);
+  }
+
+  private writePublication(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number, materializations: BuildItemRecord[] = []) {
+    const build = this.openBuild(plan.buildId);
+    if (build.ownerGmId !== plan.ownerGmId) throw new BuildPublishConflictError();
     if (plan.assets.some(({ fileId }) => this.buildFiles.get(fileId)?.publishedAssetId !== null)) throw new BuildPublishConflictError();
     const itemId = (kind: BuildItemKind, key: string) => `${plan.buildId}/${kind}/${key}`;
     if (plan.reviewed.some((r) => this.buildItems.get(itemId(r.kind, r.key))?.updatedAt !== r.updatedAt)) throw new BuildPublishConflictError();
@@ -1136,9 +1219,12 @@ export class MemoryRoomStore implements RoomStore {
     // Synchronous from here, so nothing can interleave. A failure part-way puts everything back.
     const saved = {
       assets: new Map(this.assets), creatures: new Map(this.creatures), encounters: new Map(this.encounters),
-      buildFiles: new Map(this.buildFiles), buildItems: new Map(this.buildItems),
+      buildFiles: new Map(this.buildFiles), buildItems: new Map(this.buildItems), recoveryTargets: new Map(this.recoveryTargets),
     };
     try {
+      for (const item of materializations) {
+        this.buildItems.set(itemId(item.kind, item.key), { ...item, updatedAt: new Date().toISOString() });
+      }
       for (const { fileId, record } of plan.assets) {
         this.assets.set(record.id, structuredClone(record));
         this.buildFiles.set(fileId, { ...this.buildFiles.get(fileId)!, publishedAssetId: record.id });
@@ -1176,6 +1262,7 @@ export class MemoryRoomStore implements RoomStore {
       this.encounters = saved.encounters;
       this.buildFiles = saved.buildFiles;
       this.buildItems = saved.buildItems;
+      this.recoveryTargets = saved.recoveryTargets;
       throw err;
     }
   }
@@ -1195,7 +1282,12 @@ export class MemoryRoomStore implements RoomStore {
     this.touchBuild(build);
     const objectKeys: string[] = [];
     for (const [fileId, file] of this.buildFiles) {
-      if (file.buildId !== id || file.publishedAssetId) continue;
+      if (file.buildId !== id) continue;
+      if (file.publishedAssetId && this.assets.has(file.publishedAssetId)) {
+        this.queueStudioDeletion(file, true);
+        continue;
+      }
+      if (file.publishedAssetId && !file.studio) continue;
       if (file.studio) this.queueStudioDeletion(file); else objectKeys.push(file.objectKey);
       this.buildFiles.delete(fileId);
       this.trackDetection({ scope: "build", fileId });
@@ -1208,19 +1300,22 @@ export class MemoryRoomStore implements RoomStore {
     return [...this.builds.values()].filter((b) => b.status === "open" && b.updatedAt < before).map((b) => ({ id: b.id, ownerGmId: b.ownerGmId }));
   }
 
-  async forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
-    for (const fileId of removed.fileIds) {
-      const file = this.buildFiles.get(fileId);
-      if (file?.buildId === buildId) {
-        if (removed.keepFiles) this.buildFiles.set(fileId, { ...file, publishedAssetId: null });
-        else this.buildFiles.delete(fileId);
+  async forgetPublished(buildId: string, removed: RemovedPublication) {
+    const open = this.builds.get(buildId)?.status === "open";
+    for (const { id, publishedAssetId } of removed.files) {
+      const file = this.buildFiles.get(id);
+      if (file?.buildId !== buildId || file.publishedAssetId !== publishedAssetId || this.assets.has(publishedAssetId)) continue;
+      if (open && removed.keepFiles) this.buildFiles.set(id, { ...file, publishedAssetId: null });
+      else {
+        this.queueStudioDeletion(file);
+        this.buildFiles.delete(id);
       }
     }
-    const open = this.builds.get(buildId)?.status === "open";
-    for (const { kind, key } of removed.items) {
+    for (const { kind, key, publishedId } of removed.items) {
       const id = `${buildId}/${kind}/${key}`;
       const item = this.buildItems.get(id);
-      if (!item) continue;
+      if (item?.publishedId !== publishedId) continue;
+      if (kind === "map") this.endAuthoring(buildId, [key]);
       if (open) this.buildItems.set(id, { ...item, publishedId: null });
       else this.buildItems.delete(id);
     }
@@ -1252,6 +1347,10 @@ export class MemoryRoomStore implements RoomStore {
     const next = { ...asset, ...(patch.grid ? { board: versionedBoard(publicBoard(asset.board)) } : {}), ...(patch.name !== undefined && { name: patch.name }), ...(patch.grid && { grid: patch.grid }) };
     this.assets.set(id, next);
     return structuredClone(next);
+  }
+
+  async findStudioOriginal(id: string) {
+    return this.assets.get(id)?.studioOriginal ?? null;
   }
 
   async findAssetBoard(id: string, ownerGmId: string) {
@@ -1296,10 +1395,18 @@ export class MemoryRoomStore implements RoomStore {
     return structuredClone({ grid: next.grid, board: publicBoard(next.board), revision: preparationRevision(next) });
   }
 
-  async deleteAsset(id: string, ownerGmId: string) {
+  async deleteAsset(id: string, ownerGmId: string, requireUnused = false) {
     const asset = this.assets.get(id);
     if (!asset || asset.ownerGmId !== ownerGmId) return null;
+    if (requireUnused && ([...this.refs.values()].some((ids) => ids.has(id)) ||
+        [...this.encounters.values()].some((encounter) => encounter.mapAssetId === id))) throw new LibraryAssetInUseError();
     this.assets.delete(id);
+    const original = asset.studioOriginal;
+    if (original) {
+      const draftNeedsOriginal = this.builds.get(original.buildId)?.status === "open" &&
+        [...this.buildFiles.values()].some((file) => file.buildId === original.buildId && file.objectKey === original.key);
+      if (!draftNeedsOriginal) this.queueStudioKeys(original.buildId, [original.key]);
+    }
     this.trackDetection({ scope: "library", id });
     for (const ids of this.refs.values()) ids.delete(id);
     // As `ON DELETE SET NULL` does in Postgres: the creatures stay, without their image.
@@ -1513,11 +1620,13 @@ export class MemoryRoomStore implements RoomStore {
       for (const [id, file] of this.buildFiles) {
         if (file.buildId !== buildId) continue;
         // A published file's object belongs to its library row, which is collected below.
-        if (!file.publishedAssetId) { if (file.studio) this.queueStudioDeletion(file); else objectKeys.push(file.objectKey); }
+        if (file.studio) this.queueStudioDeletion(file, !!file.publishedAssetId && this.assets.has(file.publishedAssetId));
+        else if (!file.publishedAssetId) objectKeys.push(file.objectKey);
         this.buildFiles.delete(id);
         this.trackDetection({ scope: "build", fileId: id });
       }
       for (const [id, item] of this.buildItems) if (item.buildId === buildId) this.buildItems.delete(id);
+      this.studioPublications.delete(buildId);
       this.builds.delete(buildId);
     }
     // Before the builds' owner goes, as the foreign keys require in Postgres (design D7).
@@ -1529,7 +1638,8 @@ export class MemoryRoomStore implements RoomStore {
     for (const [id] of owned(this.encounters)) this.encounters.delete(id);
     for (const [id] of owned(this.creatures)) this.creatures.delete(id);
     for (const [id, asset] of owned(this.assets)) {
-      if (!isShippedKey(asset.objectKey)) objectKeys.push(asset.objectKey);
+      if (asset.studioOriginal) this.queueStudioKeys(asset.studioOriginal.buildId, [asset.studioOriginal.key]);
+      else if (!isShippedKey(asset.objectKey)) objectKeys.push(asset.objectKey);
       this.assets.delete(id);
       this.trackDetection({ scope: "library", id });
       for (const ids of this.refs.values()) ids.delete(id);

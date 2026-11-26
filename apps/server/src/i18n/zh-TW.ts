@@ -52,7 +52,7 @@ export const serverZhTW = {
   "studio.issue.moreTerrainOffMap": "另有 {1} 段地形超出地圖範圍。請修正或清除。",
   "studio.issue.review": "這個已儲存項目需要檢查。請查看地圖、網格與棋子位置，再請 AI 修正問題。",
   "studio.issue.contextChanged": "所選地圖或遭遇的來源關係已有變更。請重新選擇地圖與遭遇；座標並未移動。",
-  "studio.media.publish": "目前尚無法發布工作室的私人檔案。請保留草稿，等待受保護的發布功能。",
+  "studio.media.publish": "請在登入的網站檢閱並發佈工作室候選版本，以包含私人圖檔。",
 
   "api.signInRequired": "請先登入",
   "api.notFromApp": "這項請求不是由 Session Zero 發出。",

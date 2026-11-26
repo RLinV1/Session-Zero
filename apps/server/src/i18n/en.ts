@@ -56,7 +56,7 @@ export const serverEn = {
   "studio.issue.moreTerrainOffMap": "Another {1} terrain runs extend outside the map. Correct or clear them.",
   "studio.issue.review": "This saved item needs review. Inspect its map, grid and placements, then ask the AI to correct the problem.",
   "studio.issue.contextChanged": "The selected map or encounter changed its source relationship. Select the map and encounter again; no coordinates were moved.",
-  "studio.media.publish": "Private Studio files cannot be published yet. Keep this draft until protected publication is available.",
+  "studio.media.publish": "Review and publish the exact Studio candidate on the signed-in website to include private artwork.",
 
   // Accounts and sign-in.
   "api.signInRequired": "Sign in to do that",

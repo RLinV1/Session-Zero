@@ -6,11 +6,12 @@ import { BuildClosedError, BuildLimitError, type BuildFileKind, type BuildFileRe
 import { DETECTION_MAX_PIXELS, DETECTION_VERSION } from "../store/gridDetectionStore";
 import { StudioAccessEndedError, type StudioDelegation } from "../store/studioStore";
 import type { StudioMediaStore } from "../store/studioMediaStore";
+import { serverEn } from "../i18n/en";
 import { downloadStudioOriginal, STUDIO_FILE_BYTES, StudioIntakeError, type OriginalDownloader } from "./studioDownload";
 
 export const STUDIO_PREVIEW_BYTES = 4 * 1024 ** 2;
 export const STUDIO_DECODE_PIXELS = 40_000_000;
-export const PRIVATE_PUBLISH_MESSAGE = "Private Studio files cannot be published yet. Keep this draft until protected publication is available.";
+export const PRIVATE_PUBLISH_MESSAGE = serverEn["studio.media.publish"];
 const sha = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const FILE_LIMITS = { files: BUILD_LIMITS.filesPerBuild, maps: BUILD_LIMITS.mapsPerBuild, bytes: BUILD_LIMITS.storageBytesPerBuild };
 export interface IntakeDescriptor { download_url: string; file_id: string; file_name?: string; mime_type?: string }

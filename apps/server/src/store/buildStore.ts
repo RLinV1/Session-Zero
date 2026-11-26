@@ -1,3 +1,4 @@
+import type { StudioPublishCommitInput, StudioPublishReviewInput, StudioPublishReview, StudioPublicationReceipt } from "@vtt/shared";
 import { MAX_ENCOUNTER_NAME, type BuildFlag, type GameProfile, type GridDetectionCandidate, type GridSpec, type LibraryMapBoard } from "@vtt/shared";
 import type { DetectionError, DetectionState } from "./gridDetectionStore";
 import type { LibraryAssetRecord, NewCreatureRecord, NewEncounterRecord, UploadAllowance } from "./libraryStore";
@@ -168,6 +169,9 @@ export interface BuildPublishPlan {
   ownerGmId: string;
   /** The drafts this publish relies on, at the versions the person looked at. Checked again in the write. */
   reviewed: { kind: BuildItemKind; key: string; updatedAt: string }[];
+  /** The selected closure includes reused items and files, which can remain Studio dependencies. */
+  dependencies?: { kind: BuildItemKind; key: string }[];
+  sourceFiles?: string[];
   assets: { fileId: string; record: LibraryAssetRecord }[];
   creatures: { key: string; record: NewCreatureRecord }[];
   maps: { key: string; assetId: string }[];
@@ -198,6 +202,17 @@ export function assertBuildFileFits(usage: BuildFileUsage, file: Pick<BuildFileR
   if (usage.files >= limits.files) throw new BuildLimitError(`A build can hold up to ${limits.files} files. Remove some, or start another build.`);
   if (file.kind === "map" && usage.maps >= limits.maps) throw new BuildLimitError(`A build can hold up to ${limits.maps} maps.`);
   if (usage.bytes + file.sizeBytes > limits.bytes) throw new BuildLimitError(`A build can hold up to ${Math.round(limits.bytes / 1024 ** 2)} MB of files.`);
+}
+
+export interface PublicationSession {
+  tokenHash: string;
+  now: () => number;
+}
+
+export interface RemovedPublication {
+  keepFiles?: boolean;
+  files: { id: string; publishedAssetId: string }[];
+  items: { kind: BuildItemKind; key: string; publishedId: string }[];
 }
 
 export interface BuildStore {
@@ -250,6 +265,8 @@ export interface BuildStore {
    * `BuildClosedError` or `BuildPublishConflictError`, and then has changed nothing.
    * Only ever adds: a name clash on an encounter gets a number.
    */
+  reviewStudioPublication(buildId: string, owner: string, input: StudioPublishReviewInput, now: string): Promise<StudioPublishReview>;
+  commitStudioPublication(buildId: string, owner: string, input: StudioPublishCommitInput, now: string, allowance: UploadAllowance, maxEncounters: number, session?: PublicationSession): Promise<StudioPublicationReceipt>;
   publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number): Promise<BuildPublishResult>;
   /**
    * Closes a build: ends its pass, deletes its unpublished items and files, and keeps the record of
@@ -259,5 +276,5 @@ export interface BuildStore {
   /** Open builds not changed since `before`, for the 14-day sweep. */
   listAbandonedBuilds(before: string): Promise<{ id: string; ownerGmId: string }[]>;
   /** After published items were removed: drops those files, and returns those items to draft (or drops them from a closed build). */
-  forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }): Promise<void>;
+  forgetPublished(buildId: string, removed: RemovedPublication): Promise<void>;
 }

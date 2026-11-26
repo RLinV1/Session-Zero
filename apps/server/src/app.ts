@@ -1,3 +1,5 @@
+import { isStudioAlias, readStudioAlias } from "./domain/studioLibraryMedia";
+import { STUDIO_FILE_BYTES } from "./domain/studioDownload";
 import { privateJson } from "./http/privateJson";
 import { lstat } from "node:fs/promises";
 import { StudioMedia } from "./domain/studioMedia";
@@ -153,12 +155,16 @@ export async function buildApp({
   const assetStore = assets ?? new LocalDiskAssetStore(uploadDir);
   const media = new StudioMedia(store, studioMedia, studioDownloader, now);
   const internalAssets: AssetStore = { ...assetStore, put: assetStore.put.bind(assetStore), delete: assetStore.delete.bind(assetStore), sizeOf: assetStore.sizeOf.bind(assetStore),
-    readPrivate: (key, maxBytes) => isPrivateMediaKey(key) ? studioMedia?.read(key, maxBytes) ?? Promise.resolve(null) : assetStore.readPrivate(key, maxBytes) };
+    readPrivate: async (key, maxBytes) => {
+      if (isPrivateMediaKey(key)) return studioMedia?.read(key, maxBytes) ?? null;
+      if (isStudioAlias(key)) return (await readStudioAlias(store, studioMedia, key, maxBytes))?.bytes ?? null;
+      return assetStore.readPrivate(key, maxBytes);
+    } };
   await media.sweep();
   // Wall analysis results are suggestions held here; a room reads them only when its GM applies
   // walls, and the GM hears of each finished job over their own socket (ADR 0029).
   const walls = new WallDetections(
-    assetStore,
+    internalAssets,
     wallQueue === undefined ? (redisUrl ? bullmqWallQueue(redisUrl) : null) : wallQueue,
     (roomId, mapUrl, status) => {
       void registry.loaded(roomId).then((room) => room?.notifyGm({ type: "wallDetection", mapUrl, status }));
@@ -222,7 +228,7 @@ export async function buildApp({
   app.use("/api", attachAccount(sessions));
   app.use(requireSameOrigin(sessions, clientOrigin.split(",").map((o) => o.trim())));
   registerRoomPreparation(app, { store, registry, sessions });
-  registerUvttRoutes(app, { store, registry, sessions, assets: assetStore, preparations, pool, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner, now });
+  registerUvttRoutes(app, { store, registry, sessions, assets: internalAssets, preparations, pool, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner, now });
   // Geometry and Studio selection routes with larger bounded bodies parse after their own checks.
   const json = privateJson(express.json({ limit: "64kb" }));
   app.use((req, res, next) => {
@@ -231,7 +237,7 @@ export async function buildApp({
     return libraryGeometry || studioSelection ? next() : json(req, res, next);
   });
   // Save to library and library export (ADR 0070), after the small JSON parser.
-  registerMapLibraryRoutes(app, { store, registry, sessions, assets: assetStore, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
+  registerMapLibraryRoutes(app, { store, registry, sessions, assets: internalAssets, uploadDir, builtinImageDir, uploads: limits.uploadsPerOwner });
   // Uploaded pictures are drawn on other people's screens (dice looks, ADR 0018): never let a
   // browser second-guess their type into something that runs.
   app.use("/uploads", (req, res, next) => {
@@ -241,6 +247,16 @@ export async function buildApp({
       for (let n = 0; n < 3; n++) { const value = decodeURIComponent(decoded); if (value === decoded) break; decoded = value; }
       const parts = decoded.replaceAll("\\", "/").split("/").filter(Boolean);
       if (parts.includes("studio-private") || parts.includes("..") || decoded.includes("\0")) { res.setHeader("Cache-Control", "no-store"); return void res.status(404).end(); }
+      if (parts.some(isStudioAlias)) {
+        res.setHeader("Cache-Control", "no-store");
+        if ((req.method !== "GET" && req.method !== "HEAD") || parts.length !== 1 || decoded !== "/" + parts[0]) {
+          return void res.status(404).end();
+        }
+        const original = await readStudioAlias(store, studioMedia, parts[0]!, STUDIO_FILE_BYTES);
+        if (!original) return void res.status(404).end();
+        res.set({ "Content-Type": original.contentType, "Content-Length": String(original.bytes.length) });
+        return void res.end(req.method === "HEAD" ? undefined : original.bytes);
+      }
       let candidate = path.resolve(uploadDir);
       for (const part of parts) {
         candidate = path.join(candidate, part);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { StudioChatSelectionDraft, studioTerrainCoverage, type StudioChatSelectionUpdate, type StudioCorrectionActivity, type StudioCorrectionInput, type StudioEditLayer, type StudioOwnerIds, type StudioOwnerVersion, type StudioProposalInput, type StudioRestoreInput, type StudioSelection } from "@vtt/shared";
-import { applyCorrection, captureScene, deriveScope, digest, selectionObjects, StudioAuthoringError, type RevisionScene, type StudioTarget } from "../domain/studioSceneRevision";
+import { canRenderGrid, StudioChatSelectionDraft, studioTerrainCoverage, type StudioChatSelectionUpdate, type StudioCorrectionActivity, type StudioCorrectionInput, type StudioEditLayer, type StudioOwnerIds, type StudioOwnerVersion, type StudioProposalInput, type StudioRestoreInput, type StudioSelection } from "@vtt/shared";
+import { applyCorrection, candidateNeedsGridConfirmation, captureScene, deriveScope, digest, selectionObjects, StudioAuthoringError, type RevisionScene, type StudioTarget } from "../domain/studioSceneRevision";
 import { studioRevisionScene } from "../domain/studioPreparation";
 import type { BuildItemRecord, BuildPublishPlan, BuildRecord } from "./buildStore";
 import type { StudioBuildAccess, StudioPreparationRecords } from "./studioPreparation";
@@ -23,6 +23,8 @@ export interface AuthoringWorkspace extends StudioTarget {
   requests: number;
   bytes: number;
   historyVersion?: string;
+  /** Published maps retain private history without locking edits to still-draft dependencies. */
+  finalized?: boolean;
 }
 export interface StudioRevision {
   id: string; parentId: string | null; restoredFrom?: string; requestId?: string;
@@ -49,6 +51,7 @@ type SceneCommand =
   | { kind: "history"; mapKey: string }
   | { kind: "revision"; mapKey: string; revisionId: string }
   | { kind: "revisionView"; mapKey: string; revisionId: string }
+  | { kind: "confirmPublishGrid"; mapKey: string; revisionId: string }
   | { kind: "restore"; mapKey: string; input: StudioRestoreInput }
   /** The owner ends the correction: the map leaves Studio and its history is removed. */
   | { kind: "end"; mapKey: string };
@@ -105,7 +108,7 @@ export interface AuthoringWrite {
 
 export function assertStudioAuthoringAccess(access: StudioBuildAccess, command: AuthoringCommand, grant?: StudioGrantRecord) {
   const delegatedOnly = command.kind === "propose" || command.kind === "stageChatSelection" || command.kind === "startChatCorrection";
-  if (access.passHash !== undefined || (delegatedOnly && !grant) || (command.kind === "end" && grant)) {
+  if (access.passHash !== undefined || (delegatedOnly && !grant) || ((command.kind === "end" || command.kind === "confirmPublishGrid") && grant)) {
     throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
   }
 }
@@ -170,7 +173,7 @@ interface OwnerPrune { entries: readonly AuthoringEntry[]; complete: boolean; pi
 
 export function authoringEntryIds(command: SceneCommand, workspace?: AuthoringWorkspace, request?: AuthoringEntry) {
   const ids: string[] = [];
-  if (workspace && (command.kind === "inspect" || command.kind === "create" || command.kind === "restore" || command.kind === "propose")) {
+  if (workspace && (command.kind === "inspect" || command.kind === "create" || command.kind === "restore" || command.kind === "confirmPublishGrid" || command.kind === "propose")) {
     ids.push(workspace.workingId, workspace.materializedId);
   }
   if (command.kind === "revision" || command.kind === "revisionView") ids.push(command.revisionId);
@@ -190,9 +193,9 @@ export function rejectEnrolled(): never {
   throw new StudioAuthoringError("enrolled", "This draft is enrolled in Studio. Use a saved correction request or the signed-in builder to edit it.");
 }
 
-export function affectedWorkspaces(workspaces: readonly AuthoringWorkspace[], item: Pick<BuildItemRecord, "kind" | "key">) {
-  return workspaces.filter((w) => item.kind === "map" ? w.mapKey === item.key
-    : item.kind === "encounter" ? w.encounterKey === item.key : w.creatureKeys.includes(item.key));
+export function affectedWorkspaces(workspaces: readonly AuthoringWorkspace[], item: Pick<BuildItemRecord, "kind" | "key">, includeFinalized = false) {
+  return workspaces.filter((w) => (includeFinalized || !w.finalized) && (item.kind === "map" ? w.mapKey === item.key
+    : item.kind === "encounter" ? w.encounterKey === item.key : w.creatureKeys.includes(item.key)));
 }
 /**
  * The workspaces an owner's delete ends. Deleting an enrolled map or encounter ends its correction;
@@ -202,8 +205,9 @@ export function ownerRemovalEnds(workspaces: readonly AuthoringWorkspace[], item
   return item.kind === "creature" ? [] : affectedWorkspaces(workspaces, item).map((w) => w.mapKey);
 }
 export function guardStudioPublish(workspaces: readonly AuthoringWorkspace[], plan: BuildPublishPlan) {
-  if (plan.reviewed.some((item) => affectedWorkspaces(workspaces, item).length) ||
-      plan.assets.some(({ fileId }) => workspaces.some((w) => w.fileIds.includes(fileId)))) {
+  const files = new Set([...(plan.sourceFiles ?? []), ...plan.assets.map(({ fileId }) => fileId)]);
+  if ((plan.dependencies ?? plan.reviewed).some((item) => affectedWorkspaces(workspaces, item, true).length) ||
+      workspaces.some((w) => w.fileIds.some((fileId) => files.has(fileId)))) {
     throw new StudioAuthoringError("enrolled", "Review the exact Studio candidate before publishing this scene.");
   }
 }
@@ -395,6 +399,11 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
     if (receipt.value.hash !== hash) conflict("This retry key was already used for a different operation.");
     return { response: receipt.value.response };
   }
+  // A published target keeps its history, but its draft can no longer accept a correction.
+  if ((command.kind === "propose" || command.kind === "restore" || command.kind === "confirmPublishGrid") &&
+      records.items.some((item) => item.kind === "map" && item.key === mapKey && item.publishedId)) {
+    conflict("This Studio map has been published.");
+  }
   /** Only the owner's website session can prune history. */
   const recorded = (updated: AuthoringWorkspace, additions: AuthoringEntry[], response: Record<string, unknown>, touch: boolean, pinned?: string[]) => {
     if (!("input" in command) || !hash) throw new Error("Authoring receipt requires a write.");
@@ -469,6 +478,22 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
         }).sort((a, b) => b.at.localeCompare(a.at)), requests: entries.flatMap((r) => r.kind === "request" && r.mapKey === mapKey
           ? [{ ...r.value, requestId: r.id, activity: r.activity ?? { observed: false } }] : [])
           .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")) } };
+    case "confirmPublishGrid": {
+      if (!workspace || workspace.workingId !== command.revisionId) conflict("Review the current candidate before confirming its grid.");
+      const head = current();
+      const { grid, source } = head.scene;
+      const live = captureScene(records, target, undefined, undefined, true);
+      if (!candidateNeedsGridConfirmation(head.scene, live) || head.scene.binding !== live.binding) {
+        conflict("The candidate or its grid changed. Review it again.");
+      }
+      if (!canRenderGrid(grid.cellSize, source) || grid.cellSize > Math.max(source.width, source.height)) {
+        throw new StudioAuthoringError("invalid", "That square size doesn't fit this map.");
+      }
+      const next = revision({ ...head.scene, map: { ...head.scene.map, grid, gridStatus: "confirmed", gridBy: "owner" } }, head.id, "owner");
+      const write = withRevisions(workspaces, { ...workspace, workingId: next.id }, [revisionEntry(mapKey, next)],
+        { entries, complete, pinned: pointers(workspace) });
+      return { response: { revisionId: next.id }, write, touch: true };
+    }
     case "restore": {
       if (!workspace) missing();
       if (workspace.workingId !== command.input.expectedCurrentRevisionId) conflict("The working revision changed. Inspect it before restoring.");

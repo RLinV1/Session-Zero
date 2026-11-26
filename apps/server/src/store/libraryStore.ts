@@ -7,6 +7,8 @@ export interface LibraryAssetRecord extends UploadAnalysis {
   ownerGmId: string;
   kind: AssetKind;
   objectKey: string;
+  /** Committed reference to the original only. Never included in a client payload. */
+  studioOriginal?: { key: string; contentType: string; buildId: string } | null;
   url: string;
   name: string;
   width: number;
@@ -88,6 +90,8 @@ export interface EncounterUpdate {
 }
 
 /** The template would link to a map that does not exist (or was deleted mid-request). */
+export class LibraryAssetInUseError extends Error {}
+
 export class EncounterMapMissingError extends Error {
   constructor() {
     super("The map must be in your library");
@@ -239,6 +243,7 @@ export interface LibraryStore {
   findAsset(id: string, ownerGmId: string): Promise<LibraryAssetRecord | null>;
   updateAsset(id: string, ownerGmId: string, patch: { name?: string; grid?: GridSpec }): Promise<LibraryAssetRecord | null>;
   /** The map's prepared walls and fog (empty when none); null when the owner has no such map. */
+  findStudioOriginal(assetId: string): Promise<NonNullable<LibraryAssetRecord["studioOriginal"]> | null>;
   findAssetBoard(id: string, ownerGmId: string): Promise<LibraryMapBoard | null>;
   /** Replaces the map's prepared walls and fog; false when the owner has no such map. */
   setAssetBoard(id: string, ownerGmId: string, board: LibraryMapBoard): Promise<boolean>;
@@ -250,7 +255,7 @@ export interface LibraryStore {
    */
   replaceAssetPreparation(id: string, ownerGmId: string, change: { grid: GridSpec; board: LibraryMapBoard }): Promise<import("@vtt/shared").LibraryPreparation | null>;
   /** Removes the row and its reference index entries. Returns the removed row. */
-  deleteAsset(id: string, ownerGmId: string): Promise<LibraryAssetRecord | null>;
+  deleteAsset(id: string, ownerGmId: string, requireUnused?: boolean): Promise<LibraryAssetRecord | null>;
 
   /** Replaces the set of asset ids a room's current state references. */
   setAssetRefs(roomId: string, assetIds: string[]): Promise<void>;
