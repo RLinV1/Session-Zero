@@ -5,7 +5,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 if (process.versions.node.split(".")[0] !== "22") throw new Error("M2 requires Node 22");
-const ports = { server: 3120, mcp: 3130, web: 5190, pg: 55435, s3: 18335, vision: 18890 };
+function appPort(key, defaultPort) {
+  const value = process.env[key] ?? String(defaultPort);
+  const port = Number(value);
+  if (!/^\d{1,5}$/.test(value) || port < 1024 || port > 65535) throw new Error(`Invalid ${key}`);
+  return port;
+}
+const ports = {
+  server: appPort("STUDIO_TEST_SERVER_PORT", 3120), mcp: appPort("STUDIO_TEST_MCP_PORT", 3130),
+  web: appPort("STUDIO_TEST_WEB_PORT", 5190), pg: 55435, s3: 18335, vision: 18890,
+};
+if (new Set(Object.values(ports)).size !== Object.keys(ports).length) throw new Error("M2 service ports must be distinct");
 for (const port of Object.values(ports)) {
   await new Promise((resolve, reject) => {
     const probe = createServer(); probe.once("error", reject);

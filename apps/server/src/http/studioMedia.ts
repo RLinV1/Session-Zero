@@ -121,7 +121,7 @@ export function registerStudioMediaRoutes(app: Express, deps: { store: RoomStore
     const records = await store.readStudioPreparation(build.id, { ownerGmId: build.ownerGmId, delegation: res.locals.delegation as StudioDelegation });
     const ownerName = await store.findBuildOwnerName(build.ownerGmId);
     if (!await stillGranted(req, res, build)) return;
-    res.json({ ...studioPreparationSnapshot(records, ownerName, requestLocale(res)), limits: BUILD_LIMITS });
+    res.json({ ...studioPreparationSnapshot(records, ownerName, requestLocale(res)), limits: BUILD_LIMITS, correctionsAllowed: true });
   })().catch(failed(res)); });
   app.post(`${base}/studio/context`, grantGuard, (req, res) => { void (async () => {
     const input = StudioContext.safeParse(req.body); if (!input.success) return studioMediaError(res, 400, "context");

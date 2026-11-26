@@ -2,12 +2,19 @@
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SceneStudio } from "../src/studio/SceneStudio";
+import { studioChanges } from "../src/studio/StudioDiff";
+import type { StudioRevisionView } from "@vtt/shared";
 import { preparationFixture, STUDIO_ART_ID, STUDIO_MAP_ID } from "./studioPreparationFixture";
 import { stubMapEditorEnvironment } from "./mapEditorHarness";
 
 beforeEach(() => stubMapEditorEnvironment());
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const media = { [STUDIO_MAP_ID]: "data:image/webp;base64,bWFw", [STUDIO_ART_ID]: "data:image/webp;base64,YXJ0" };
+
+function savedRevision(): StudioRevisionView {
+  return { scene: preparationFixture().scene, objects: [], target: { mapKey: "chapel", encounterKey: "sentries" },
+    revision: { id: "44444444-4444-4444-8444-444444444444", parentId: null, actor: "owner", at: "2026-11-17T00:00:00Z" } };
+}
 
 describe("saved preparation shared renderer (FR-GM-27)", () => {
   it("draws canonical source/effective openings, clipped edge Base terrain and native tiny-token centers", () => {
@@ -72,6 +79,25 @@ describe("saved preparation shared renderer (FR-GM-27)", () => {
     expect(getByText(/Saved terrain belongs to a different grid/)).toBeTruthy();
     expect(getByText(/Retrying the connection does not rerun detection/)).toBeTruthy();
     expect(snapshot.scene.terrain).toHaveLength(2);
+  });
+
+  it("describes a revised grid and places an erased cropped cell on its original grid", () => {
+    const base = savedRevision();
+    base.scene.terrain = [{ row: 0, start: -1, end: -1, kind: "difficult" }];
+    const next: StudioRevisionView = { ...base, scene: { ...base.scene, grid: { ...base.scene.grid!, offsetX: 30 }, terrain: [] } };
+    const changes = studioChanges(base, next, "en");
+    expect(changes).toContainEqual(expect.objectContaining({ label: "Grid changed" }));
+    expect(changes).toContainEqual(expect.objectContaining({ label: "1 terrain cell · Difficult → Normal",
+      cells: [{ minX: -40, minY: 5, maxX: 10, maxY: 55 }] }));
+    next.scene.terrain = base.scene.terrain;
+    expect(studioChanges(base, next, "zh-TW").map(({ label }) => label)).toEqual(["格線已變更", "基礎地形使用不同的格線。"]);
+  });
+
+  it("reports an imported portal's review flag without reporting a portal-state change", () => {
+    const door = { id: STUDIO_MAP_ID, layer: "geometry", kind: "door", state: "open", bounds: { minX: 60, minY: 5, maxX: 110, maxY: 5 } } as const;
+    const base = { ...savedRevision(), objects: [door] };
+    const next = { ...base, objects: [{ ...door, label: "Check the hinge." }] };
+    expect(studioChanges(base, next, "en").map(({ label }) => label)).toEqual(["Flagged Door for review · Check the hinge."]);
   });
 
   it("keeps read-authorized saved content after a refused context action and exposes protected preview failure", async () => {

@@ -1,5 +1,75 @@
 # Implementation handoff
 
+## M4 local verification and PR handoff, 2026-11-25
+
+Verified `feat/studio-m4-chat-selection` from `origin/main` at `4c24533d`. The review covered the M4 diff through `7bb44d3f`. The follow-up commits are `9a9fcef4` (staging validation and limits), `8c38fc5a` (composer and map controls), `153d10f0` (preparation and website browser checks) and `959156be` (stable per-widget selection slot).
+
+### Checks
+
+- All Node commands used Node 22.23.2. `npm ci --no-audit --no-fund`, `npm run lint`, `npm run typecheck`, `npm run build` and `npm test` passed. The full test command passed **5,758** tests, including 1,995 shared, 292 MCP, 1,415 server, 2,054 web and 2 server benchmark tests. The default run skipped 71 optional-service tests.
+- `node scripts/studio-m2/prepare.mjs` generated the run configuration with alternate loopback app ports because an earlier M2 run still owned the defaults. Through `with-env.mjs`, `compose up -d --build --wait`, `npm run prisma:migrate --workspace=@vtt/server` (37 migrations) and `node scripts/studio-m2/buckets.mjs` succeeded. The browser used the committed synthetic fixtures and real storage and detection.
+- `node scripts/studio-m2/with-env.mjs <run.env> npx playwright test -c playwright.studio-m2.config.ts` passed **32/32**. The first native-browser run passed 20 cases before hitting the OAuth registration budget. The fixture now registers once per worker and obtains a separate grant for each test build.
+- Through the same wrapper, `npm test --workspace=@vtt/server -- --no-file-parallelism test/studioAuthoring.test.ts test/studioPostgresRace.test.ts` passed **30/30** across the memory and Postgres cases, including the build-lock race. `compose down -v` removed the disposable project and both volumes. The generated run configuration directory was deleted.
+- `STUDIO_BROWSER_TEST=1 npx playwright test browser/studio-intake.spec.ts --project=<project>` passed **21/21** across three fresh runs, in Chromium, Firefox and WebKit order. The final intake runs exercised the stable widget ID after an encounter switch, redraw after a refused attachment, clear during a pending stage and advertised expiry.
+- `STUDIO_BROWSER_TEST=1 npx playwright test browser/studio-connect.spec.ts --project=chromium-desktop` passed **6/6**. The website checks cover the launch text before consent and after disconnecting, absence of the embedded Studio, and the native editor's working revision.
+- `openspec validate interactive-ai-scene-studio` passed with two pre-existing requirement-length warnings. `git diff --check origin/main...HEAD` passed.
+
+| Project | Preparation | Intake |
+| --- | --- | --- |
+| `chromium-desktop` | 8/8 | 7/7 |
+| `chromium-touch` | 8/8 | |
+| `firefox-narrow` | 8/8 | |
+| `firefox-desktop` | | 7/7 |
+| `webkit-desktop` | 8/8 | 7/7 |
+
+### Review
+
+- The sync reviewer and visibility auditor checked the private authoring path, both stores and live-room boundaries. They found no new player data path or cross-build, credential or private-media disclosure outside the deliberately shared correction crop. The high-effort branch review used the read-only Codex review agent after automatic approval review rejected the external Claude Code invocation for potential source egress.
+- Fixed stale and unauthorized staging, bounded both staged and cleared view records, and removed stale PostgreSQL references when the owner deletes an enrolled draft. The two HTTP hops now accept the schema's supported selection sizes behind the existing grant checks. Request creation still validates the saved scope and current authority.
+- Fixed delayed attachments appearing after clear, expiry leaving a selection attached, an earlier request clearing a newer draft, and retrying the same selection after a refusal. The widget keeps one view ID and an increasing sequence across map/encounter changes.
+- Restored keyboard object picking and explicit inclusion of a whole crossing object. A new rectangle uses the currently approved layers, and a stale inspection keeps navigation available while the view asks for a fresh inspection. Browser checks exercise zoom below fit, pan and pinch handling with synthetic input.
+- Deferred physical trackpad classification across devices and real ChatGPT composer behavior across views. Task 5.10 remains open for hosted redraw, clear, a second view and one started correction. The local browser checks use a simulated host. [Earlier hosted correction sequence](evidence/m4-host-2026-11-18.md) · [Hosted selection attach](evidence/m4-host-2026-11-25.md)
+
+## M4 hosted selection attach, 2026-11-25
+
+Commit `f3bb8259` on `feat/studio-m4-chat-selection`, the same change as `7249e8d1` on `feat/studio-m4-declutter`. The pilot runs `7249e8d1`; rollback is `d84d44a9`.
+
+In ChatGPT, every selection failed to attach. ChatGPT's tool proxy answered the view's `studio_stage_chat_selection` call with `-32001 Unknown tool`. Its snapshot of the app's tools predated 2026-11-24 and lacked that tool and `studio_start_correction`. The server serves the current view at any earlier view address, so the new view loaded against the old tool list. **Refresh tools** in ChatGPT's app settings fixed it, and a hosted selection then attached and was described by the AI. New chats and new builds do not refresh the snapshot, so refresh after every deploy that adds or renames tools. [Evidence](evidence/m4-host-2026-11-25.md)
+
+The commit labels `studio_stage_chat_selection` read-only and logs the reason for an attach failure to the view's console. It was made before the root cause was known. The product owner kept the label ([D15](design.md#d15-m4-correction-interaction)). Lint, typecheck and `npm test` passed on this branch (5,757 tests, 71 optional-service skips). On `feat/studio-m4-declutter`, the Studio intake browser spec passed in Chromium (6 tests) and the composer test passed in WebKit. Running all six browser projects at once hit the OAuth registration rate limit (HTTP 429), which is a harness limit, not a product failure. Still not run: `browser/studio-preparation.spec.ts` under its M2 Docker stack, and an independent diff review. Task 8.1 is resolved by the declutter.
+
+See the [local verification and PR handoff](#m4-local-verification-and-pr-handoff-2026-11-25) for the follow-up review and browser runs. Task 5.10 remains open for redraw, clear, a second view and one started correction in ChatGPT.
+
+## M4 Studio declutter, 2026-11-24
+
+Commit `ae9411a4` on `feat/studio-m4-chat-selection`, cherry-picked from `d84d44a9` on `feat/studio-m4-declutter`. That branch was built from pilot release `d11393cb` (`deploy/studio-pilot-chat-selection`). The product owner asked for these changes ([D15 declutter amendment](design.md#d15-m4-correction-interaction)):
+
+- The website build page no longer embeds the Studio. The launch text moved into AI app connections, which shows it before the first connection.
+- The embedded view has one bottom toolbar: pan, select area, pick object, clear, and zoom. On phones, the toolbar sits under the map. The instruction form, request status, copy prompt, "up to date" status, chat privacy line, grid-confirmed text and pan help are removed, along with 44 unused catalog keys.
+- The map zooms out to half of fit. A trackpad two-finger scroll pans; a mouse wheel and a pinch zoom. The wheel classifier is a heuristic and needs a manual check on real hardware.
+- The attached selection now describes its map, squares, editable layers and contents (`apps/web/src/studio/chatSelectionDetails.ts`). The server scope is unchanged.
+
+On the pilot base, lint, typecheck and `npm test` passed: 5,477 tests, with 74 optional-service skips. All six Studio intake browser tests passed in Chromium, and the composer test also passed in Firefox and WebKit. On this branch, lint, typecheck and `npm test` passed: 5,757 tests, with 71 skips. `browser/studio-preparation.spec.ts` runs only under `playwright.studio-m2.config.ts` with its isolated Docker stack (`scripts/studio-m2`), which was not run. Its website comparison was removed because the website no longer embeds the Studio. Removed tests: the website Studio unit test, the website correction browser test, and the embedded form-handoff browser test.
+
+## M4 direct chat corrections, 2026-11-24
+
+The M4 polish runs on `feat/studio-m4-chat-selection`, based on refreshed M4 snapshot `f72b87d0`. An approved build connection can request private corrections without a second setting. The existing grant and build choices still govern writes. The additive chat-selection migration keeps the original correction-permission column available for rollback. Cached first-release widgets receive an enabled correction hint and retain their form until the host loads the new view.
+
+The supported embedded flow attaches the user's selection to the chat composer. The model starts the request using the attached reference and the user's instruction. The selection is bound to the exact scene, build and grant. Drawing, redrawing or clearing a selection only stages or removes that reference. Once a request exists, it keeps its original scope. The website and hosts without usable context attachment retain the instruction form. [Design](design.md#d15-m4-correction-interaction)
+
+Lint, typecheck, build and the full Node 22.23.2 suite passed, with 5,759 tests and 71 optional-service skips. The 64 focused memory and PostgreSQL checks cover expiry, revocation, stale scene versions, out-of-order updates and replay. The browser harness uses a normal composer alongside the sandboxed Studio and tests the attachment, replacement, cancellation, fallback after host refusal, and Before/After. It simulates the ChatGPT bridge. The direct composer test passed in Chromium, Firefox and WebKit. Chromium also passed the consent, website and embedded fallback tests. [Store checks](../../../apps/server/test/studioAuthoring.test.ts) · [Browser checks](../../../browser/studio-intake.spec.ts)
+
+Hosted qualification is tracked in task 5.10. On an authorized pilot release, apply the new migration and refresh the ChatGPT connector's tools so it discovers `studio_start_correction`. In a fresh chat on an already-approved build, verify the prompt carries the current selection after drawing, redrawing and clearing it. Verify that a second Studio view keeps a separate selection, that the AI can describe a selection before starting a request, and that the resulting proposal matches the website build page.
+
+## M4 correction interaction, 2026-11-18
+
+- Implemented selection, correction requests, comparison, refinement, restore, and owner cleanup on merged M3 base `0277c4bb`. The AI app connections panel controls the correction opt-in on each build. Both stores verify it under their write boundary. The additive migration starts each grant with correction creation and restore disabled. [Authority](../../../docs/adr/0073-interactive-scene-studio.md#m4-private-correction-authority) · [Interaction design](design.md#d15-m4-correction-interaction)
+- The same map viewport renders the exact inspected scene and the before/after comparison. The request retains its own immutable base and selection. The model tool retrieves that base's authorized crop and structured context. The website shows a copyable saved prompt. The embedded view saves first, then asks the active chat to send. It displays the host acknowledgment, the authorized request read, and the proposal result separately.
+- Local Postgres 17 and memory contract checks passed 413 tests with fresh migrations, including a permission change queued against a write, request and restore retries, incompatible restores, atomic mixed-scope refusal, and revocation during crop rendering. The full repository tests include the HTTP and MCP regression for the new tools and model crop. [Store checks](../../../apps/server/test/studioAuthoring.test.ts) · [Postgres races](../../../apps/server/test/studioPostgresRace.test.ts) · [MCP checks](../../../apps/mcp/test/studioAccess.test.ts)
+- Lint, typecheck, build, and the full repository suite passed on Node 22.23.2 with 5,464 tests and 71 optional-service skips. Both correction flows passed across six Chromium, Firefox and WebKit projects. The checks cover native drag suppression, pan and zoom, keyboard selection and cancellation, crossing walls, cropped-edge cells, multi-cell destinations, stable comparison focus, English and zh-TW, and reopening. The simulated message bridge covers save-before-send, acknowledgment, refusal and timeout. [Browser checks](../../../browser/studio-intake.spec.ts)
+- Eleven existing Studio consent and intake browser checks passed in Chromium. The adjacent library terrain browser check timed out at the `From library` action inside `Edit map` on both the M4 worktree and a clean `0277c4bb` checkout. [Terrain check](../../../browser/terrain.spec.ts#L82)
+- The authorized real ChatGPT run completed the doorway, cropped courtyard, hidden sentry move, and visibility refinement against the exact M4 build. The website rendered the same final revision. During an active reply, ChatGPT posted the courtyard request and finished the earlier reply. Explicitly submitting the saved prompt after the reply recovered the unread request. ChatGPT requested direct approval in chat for both sentry edits. The temporary apps, test grants, owners, and stack were cleaned up. [Real ChatGPT evidence](evidence/m4-host-2026-11-18.md)
+
 ## M3 review fixes, 2026-11-18
 
 A read-only review of `fab6f9cb` found three defects. All three are fixed in `7b777e92`
@@ -103,7 +173,7 @@ The owner plans to shut down the pilot later. Check its availability and deploye
   - Receipts cover refused 404 writes and are written once per request.
   - One failing token image no longer takes down the view.
   - Deliberately left: zh-TW issue-text back-translation (owner: not a priority) and
-    the dev-time Studio bundle build on MCP import. Website idle polling is task 7.1.
+    the dev-time Studio bundle build on MCP import. Website idle polling is task 8.1.
   - Not verified in a real host: whether ChatGPT passes the MCP sign-in error back to the
     view. Without that, a revoked view shows "Connection interrupted" and keeps the last scene.
   The manual stack was left running for the owner.

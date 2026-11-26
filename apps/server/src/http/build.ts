@@ -766,7 +766,7 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
     })().catch(failed(res));
   };
 
-  registerStudioAuthoringRoutes(app, { store, sessions, grantGuard: studio ? grantGuard : undefined });
+  registerStudioAuthoringRoutes(app, { store, assets, sessions, grantGuard: studio ? grantGuard : undefined });
   registerStudioMediaRoutes(app, { store, media: deps.media, studio, grantGuard, limits, sessions, now });
 
   /** One handler on the pass family and, when the Studio is offered, the delegated family too. */

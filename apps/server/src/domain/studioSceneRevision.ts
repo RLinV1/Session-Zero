@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_GRID, DraftEncounter, DraftMapSetup, DraftOpening, EMPTY_MAP_SETUP, TerrainRuns, cellRect, cornerPoint,
-  draftMapBoard, draftTerrainState, footprintCenter, footprintOnBlocked, mapOpenings, paintProblem, paintTerrain,
-  readDraftMap, runOnMap, segmentCrossesRect, terrainGridOf,
-  type DraftCreatureState, type DraftEncounterState, type DraftMapState, type GridSpec,
-  type LibraryMapBoard, type Point, type StudioFile, type StudioOperation, type StudioOwnerIds,
-  type StudioRectangle, type StudioSelection,
+  draftMapBoard, draftTerrainState, footprintCenter, footprintOnBlocked, hasPortalBounds, listOpenings, mapOpenings, paintProblem, paintTerrain,
+  readDraftMap, removePortalOverlaps, runOnMap, studioContains as contains, studioObjectCoverage, studioOverlaps as overlaps, terrainGridOf,
+  type DraftCreatureState, type DraftEncounterState, type DraftLine, type DraftMapState, type GridSpec,
+  type LibraryMapBoard, type Point, type Segment, type StudioFile, type StudioOperation, type StudioOwnerIds,
+  type StudioRectangle, type StudioSelection, type StudioSelectionObject,
 } from "@vtt/shared";
 import type { BuildFileRecord } from "../store/buildStore";
 import type { StudioPreparationRecords } from "../store/studioPreparation";
@@ -25,6 +25,7 @@ export const digest = (value: unknown) => createHash("sha256").update(JSON.strin
 export interface StudioTarget { mapKey: string; encounterKey: string | null }
 export interface RevisionScene {
   source: StudioFile;
+  sourceContentHash?: string | null;
   sourceBoard: LibraryMapBoard | null;
   map: DraftMapState;
   grid: GridSpec;
@@ -94,7 +95,7 @@ export function captureScene(records: StudioPreparationRecords, target: StudioTa
   const materializedVersion = digest({ buildId: build.id, target, binding, map: item.data, encounter: encounterItem?.data ?? null, mapAt: item.updatedAt, encounterAt: encounterItem?.updatedAt ?? null });
   const initial = (layer: string, count: number) => Array.from({ length: count }, (_, index) => initialId(materializedVersion, layer, index));
   return {
-    source: studioFile(file), sourceBoard: file.board, map, grid, encounter, creatures, binding,
+    source: studioFile(file), sourceContentHash: file.sourceHash, sourceBoard: file.board, map, grid, encounter, creatures, binding,
     materializedVersion,
     ids: prior ? {
       lines: rowIds(setup.lines, prior?.map.setup?.lines ?? [], prior?.ids.lines ?? [], given?.lines),
@@ -105,13 +106,10 @@ export function captureScene(records: StudioPreparationRecords, target: StudioTa
   };
 }
 
-type SelectionObject = {
-  id: string; layer: "geometry" | "placements"; bounds: StudioRectangle | null;
-  segment?: { a: Point; b: Point };
-};
 const bounds = (a: Point, b = a): StudioRectangle => ({
   minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y),
 });
+const lineSegment = ({ from, to }: DraftLine, grid: GridSpec): Segment => ({ a: cornerPoint(from, grid), b: cornerPoint(to, grid) });
 function placementBounds(scene: RevisionScene, placement: DraftEncounterState["tokens"][number]): StudioRectangle | null {
   const size = scene.creatures.find((c) => c.key === placement.creatureKey)?.data.size ?? 1;
   const center = placement.square && footprintCenter(placement.square, size, scene.grid, scene.source);
@@ -128,28 +126,31 @@ function markBounds(square: { column: number; row: number }, grid: GridSpec, sou
   const clipped = { minX: Math.max(0, cell.minX), minY: Math.max(0, cell.minY), maxX: Math.min(source.width, cell.maxX), maxY: Math.min(source.height, cell.maxY) };
   return clipped.minX < clipped.maxX && clipped.minY < clipped.maxY ? clipped : null;
 }
-export function selectionObjects(scene: RevisionScene): SelectionObject[] {
+export function selectionObjects(scene: RevisionScene): StudioSelectionObject[] {
   const setup = scene.map.setup ?? EMPTY_MAP_SETUP;
+  const importedOpenings = mapOpenings(scene.sourceBoard);
   return [
-    ...setup.lines.map((line, i): SelectionObject => {
-      const a = cornerPoint(line.from, scene.grid), b = cornerPoint(line.to, scene.grid);
-      return { id: scene.ids.lines[i]!, layer: "geometry", bounds: bounds(a, b), segment: { a, b } };
+    ...setup.lines.map((line, i): StudioSelectionObject => {
+      const segment = lineSegment(line, scene.grid);
+      return { id: scene.ids.lines[i]!, layer: "geometry", kind: line.kind, state: line.state, bounds: bounds(segment.a, segment.b), segment };
     }),
-    ...mapOpenings(scene.sourceBoard).map(({ a, b }, i): SelectionObject =>
-      ({ id: scene.ids.openings[i]!, layer: "geometry", bounds: bounds(a, b), segment: { a, b } })),
-    ...setup.marks.map((mark, i): SelectionObject =>
-      ({ id: scene.ids.marks[i]!, layer: "geometry", bounds: markBounds(mark.square, scene.grid, scene.source) })),
-    ...(scene.encounter?.tokens.map((p, i): SelectionObject =>
-      ({ id: scene.ids.placements[i]!, layer: "placements", bounds: placementBounds(scene, p) })) ?? []),
+    ...listOpenings(scene.sourceBoard, setup, scene.grid).map(({ a, b, now }, i): StudioSelectionObject => {
+      const imported = importedOpenings[i]!;
+      // Leaving an opening for review preserves the original portal's kind and state.
+      const portal: Pick<StudioSelectionObject, "kind" | "state" | "label"> = now.kind === "left"
+        ? { kind: imported.portal?.kind ?? "opening", state: imported.portal?.state ?? (imported.uvttPortal?.closed === false ? "open" : "closed"), label: now.reason }
+        : now;
+      return { id: scene.ids.openings[i]!, layer: "geometry", ...portal, bounds: bounds(a, b), segment: { a, b } };
+    }),
+    ...setup.marks.map((mark, i): StudioSelectionObject =>
+      ({ id: scene.ids.marks[i]!, layer: "geometry", kind: "mark", label: mark.reason, bounds: markBounds(mark.square, scene.grid, scene.source) })),
+    ...(scene.encounter?.tokens.map((p, i): StudioSelectionObject =>
+      ({ id: scene.ids.placements[i]!, layer: "placements", kind: "token", hidden: p.hidden,
+        label: p.name ?? scene.creatures.find((c) => c.key === p.creatureKey)?.data.name ?? p.creatureKey,
+        bounds: placementBounds(scene, p) })) ?? []),
   ];
 }
 
-function contains(region: StudioRectangle, inner: StudioRectangle) {
-  return inner.minX >= region.minX && inner.minY >= region.minY && inner.maxX <= region.maxX && inner.maxY <= region.maxY;
-}
-function overlaps(a: StudioRectangle, b: StudioRectangle) {
-  return a.maxX > b.minX && a.minX < b.maxX && a.maxY > b.minY && a.minY < b.maxY;
-}
 function outOfScope(): never {
   throw new StudioAuthoringError("scope", "An edit falls outside the saved layer, object or destination scope. Ask the owner for a new selection.");
 }
@@ -163,13 +164,28 @@ export function deriveScope(scene: RevisionScene, selection: StudioSelection): S
   for (const id of objectIds) {
     const object = objects.get(id);
     if (!object || !layers.includes(object.layer)) outOfScope();
-    if (!object.bounds) {
-      if (!whole.has(id)) outOfScope();
-    } else if (!contains(region, object.bounds)) {
-      if (!whole.has(id) || !(object.segment ? segmentCrossesRect(object.segment, region) : overlaps(region, object.bounds))) outOfScope();
-    }
+    const coverage = studioObjectCoverage(object, region);
+    if (coverage !== "inside" && (!whole.has(id) || (object.bounds && coverage !== "crossing"))) outOfScope();
   }
   return { region, layers: [...new Set(layers)], objectIds: [...new Set(objectIds)], wholeObjectIds: [...whole] };
+}
+
+/** Recompiling a drawn portal can cut or fill a gap in a separate solid wall. */
+function checkPortalCuts(base: RevisionScene, lines: readonly DraftLine[], authorized: ReadonlySet<string>) {
+  const previousLines = base.map.setup?.lines ?? [];
+  const portals = (draft: readonly DraftLine[]) => draft.filter((line) => line.kind !== "wall")
+    .map((line) => ({ ...lineSegment(line, base.grid), portal: true }));
+  const before = portals(previousLines), after = portals(lines);
+  if (digest(before) === digest(after)) return;
+
+  const parts = (wall: Segment, cuts: typeof before) => cuts.length ? removePortalOverlaps([wall, ...cuts]).slice(0, -cuts.length) : [wall];
+  const changed = (wall: Segment) => digest(parts(wall, before)) !== digest(parts(wall, after));
+  for (const [index, line] of previousLines.entries()) {
+    if (line.kind === "wall" && !authorized.has(base.ids.lines[index]!) && changed(lineSegment(line, base.grid))) outOfScope();
+  }
+  if (base.sourceBoard?.walls.some((wall) => !hasPortalBounds(wall) && changed(wall))) {
+    throw new StudioAuthoringError("scope", "This edit would change an imported source wall. Adjust it in the builder.");
+  }
 }
 
 export function applyCorrection(base: RevisionScene, scope: StudioSelection, operations: readonly StudioOperation[]): RevisionScene {
@@ -267,9 +283,10 @@ export function applyCorrection(base: RevisionScene, scope: StudioSelection, ope
     }
   }
   if (!DraftMapSetup.safeParse(setup).success) invalid("The edited setup exceeds native map limits.");
-  const beforeBoard = draftMapBoard(base.sourceBoard, base.map.setup, grid, base.source);
-  const board = draftMapBoard(candidate.sourceBoard, setup, grid, candidate.source);
   if (geometryChanged) {
+    checkPortalCuts(base, setup.lines, authorized);
+    const beforeBoard = draftMapBoard(base.sourceBoard, base.map.setup, grid, base.source);
+    const board = draftMapBoard(candidate.sourceBoard, setup, grid, candidate.source);
     if (!board.ok) invalid(board.problems.join("\n"));
     if (board.ok && board.blockedLines.some((i) => !beforeBoard.ok || !beforeBoard.blockedLines.some((j) =>
       base.ids.lines[j] === candidate.ids.lines[i] && digest(base.map.setup?.lines[j]) === digest(setup.lines[i])))) {

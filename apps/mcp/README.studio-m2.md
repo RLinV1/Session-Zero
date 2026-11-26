@@ -18,6 +18,11 @@ and refuses database/storage/detector endpoints outside this isolated configurat
 - Server/MCP/website: 3120/3130/5190, each explicitly configured.
 - Existing manual 55434/18334/18889 and dev 3001/5173/5432/8333 are excluded.
 
+If another M2 run holds the application ports, set `STUDIO_TEST_SERVER_PORT`,
+`STUDIO_TEST_MCP_PORT` and `STUDIO_TEST_WEB_PORT` when running `prepare.mjs`.
+It records the selected loopback ports in `run.env`. The database, storage and
+detector still require their isolated ports to be free.
+
 Run the wrapper's `compose up -d --build --wait`, Prisma `migrate deploy` in the server
 workspace, then `node scripts/studio-m2/buckets.mjs`. Both storage modes remain covered
 by the repository tests; M2 browser/host integration uses actual private S3.

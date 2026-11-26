@@ -510,6 +510,7 @@ export function registerStudioOAuth(app: Express, deps: Deps) {
   };
 
   app.get("/api/builds/:id/grants", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
     void (async () => {
       const found = await ownerBuild(req, res);
       if (!found) return;

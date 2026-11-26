@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { unlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRoomStore } from "../../server/src/store/memoryRoomStore";
 import { startServer, type HttpAccount } from "../../server/test/helpers";
@@ -112,6 +115,7 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
   it("submits a scoped correction and returns a saved stale revision through the actual MCP route", async () => {
     const { account, id } = await startBuild();
     const fileId = randomUUID();
+    await writeFile(join(room.uploadDir, "fixture"), await sharp({ create: { width: 500, height: 500, channels: 3, background: "#5b785e" } }).png().toBuffer());
     await room.store.addBuildFile({
       id: fileId, buildId: id, kind: "map", objectKey: "fixture", url: "/uploads/fixture", originalName: "Synthetic map",
       width: 500, height: 500, sizeBytes: 1, grid: null, board: null, sourceHash: null, detectionSourceHash: null,
@@ -124,6 +128,18 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     const saved = await ai.call("save_map", { buildId: id, key: "chapel", name: "Chapel", fileId, proposedGrid: { cellSize: 50, offsetX: 0, offsetY: 0 } });
     expect(saved.isError, saved.text).toBe(false);
     const path = `/api/builds/${id}/studio/authoring/maps/chapel`;
+    await ai.call("save_map_setup", { buildId: id, mapKey: "chapel", lines: [
+      { kind: "wall", from: { column: 0, row: 1 }, to: { column: 1, row: 1 } },
+    ] });
+    const inspection = await account.json<{ inspectedVersion: string; objects: { id: string }[] }>("GET", path);
+    const viewId = randomUUID();
+    const stage = await ai.call("studio_stage_chat_selection", { buildId: id, viewId, sequence: 1, draft: {
+      mapKey: "chapel", encounterKey: null, inspectedVersion: inspection.inspectedVersion,
+      selection: { region: { minX: 0, minY: 0, maxX: 100, maxY: 100 }, layers: ["geometry"],
+        objectIds: Array.from({ length: 2550 }, () => inspection.objects[0]!.id), wholeObjectIds: [] },
+    } });
+    expect(stage.isError, stage.text).toBe(false);
+    expect(stage.json).toMatchObject({ selectionId: expect.any(String), expiresAt: expect.any(String) });
     const { inspectedVersion } = await account.json<{ inspectedVersion: string }>("GET", path);
     const { requestId, baseRevisionId } = await account.json<{ requestId: string; baseRevisionId: string }>("POST", path + "/requests", {
       encounterKey: null, inspectedVersion, operationId: randomUUID(), instruction: "Mark the entry as Difficult.",
@@ -131,6 +147,9 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     });
     const request = await ai.call("studio_get_correction_request", { buildId: id, requestId });
     expect(request.json).toMatchObject({ requestId, baseRevisionId, currentRevisionId: baseRevisionId, scene: { source: { id: fileId } } });
+    expect(request.images).toHaveLength(1);
+    expect(request.images[0]!.mimeType).toBe("image/webp");
+    expect(request.json.inspectionCrop).toEqual({ left: 0, top: 0, width: 200, height: 200 });
     const args = { buildId: id, requestId, baseRevisionId, operations: [{ op: "terrain.paint", runs: [{ row: 0, start: 0, end: 0, kind: "difficult" }] }] };
     const applied = await ai.call("studio_submit_correction", { ...args, operationId: randomUUID() });
     expect(applied.json).toMatchObject({ status: "advanced", revisionId: expect.any(String) });
@@ -139,6 +158,13 @@ describe("the delegated Studio MCP route (FR-GM-26, ADR 0073)", () => {
     const reopened = await connectAi(tokens.access_token);
     const read = await reopened.call("studio_get_revision", { buildId: id, mapKey: "chapel", revisionId: stale.json.revisionId });
     expect(read.json).toMatchObject({ revision: { id: stale.json.revisionId, parentId: baseRevisionId } });
+
+    await unlink(join(room.uploadDir, "fixture"));
+    const recovered = await reopened.call("studio_get_correction_request", { buildId: id, requestId });
+    expect(recovered.isError, recovered.text).toBe(false);
+    expect(recovered.images).toHaveLength(0);
+    expect(recovered.json).toMatchObject({ requestId, baseRevisionId, instruction: "Mark the entry as Difficult.",
+      scope: { layers: ["terrain"] }, inspectionCrop: null });
   });
 
   it("ignores host request metadata naming another user", async () => {

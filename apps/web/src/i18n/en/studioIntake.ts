@@ -4,7 +4,6 @@ import type { CatalogSource } from "@vtt/shared";
 export const studioIntake = {
   "title": "Scene Studio",
   "loading": "Connecting to your build…",
-  "ready": "Saved files are up to date",
   "stale": "Connection interrupted. Showing the last saved view. Reconnect in your AI app, then retry.",
   "denied": "This build is unavailable to this connection. Reconnect with its owner.",
   "map": "Map",
@@ -16,7 +15,6 @@ export const studioIntake = {
   "saved": "Saved",
   "failed": "Not saved",
   "noFiles": "No files saved yet.",
-  "privacy": "Originals imported from chat and their previews are protected in Session Zero. Artwork shared with ChatGPT can remain in its chat and Library and may be used for training if you opted in.",
   "legacy": "This image was already public. A private copy cannot revoke earlier disclosure.",
   "source": "Source image",
   "owner": "Owner",

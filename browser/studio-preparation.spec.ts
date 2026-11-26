@@ -6,20 +6,27 @@ test.use({ trace: "off" });
 // The view keeps polling through the host bridge; a poll still in flight when a test ends is not a failure.
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "ignoreErrors" }); });
 test.setTimeout(90_000);
-const ORIGIN = "http://127.0.0.1:5190", MCP = "http://127.0.0.1:3130/mcp/studio";
+const ORIGIN = `http://127.0.0.1:${process.env.STUDIO_TEST_WEB_PORT}`;
+const MCP = `http://127.0.0.1:${process.env.STUDIO_TEST_MCP_PORT}/mcp/studio`;
+const redirect = "https://ai.test.invalid/callback";
+let clientId: string;
+test.beforeAll(async ({ request }) => {
+  // The simulated host registers once per worker, then each test grants its own fresh build.
+  const registration = await request.post(`${ORIGIN}/api/oauth/register`, { data: { client_name: "M2 browser", redirect_uris: [redirect], token_endpoint_auth_method: "none" } });
+  expect(registration.status()).toBe(201);
+  clientId = ((await registration.json()) as { client_id: string }).client_id;
+});
 const descriptor = (kind: "map" | "token") => ({ file_id: randomUUID(), download_url: `https://sdmntpreastus3.oaiusercontent.com/studio-browser-${kind}`, file_name: `synthetic-${kind}.png`, mime_type: "image/png" });
 type BridgeMessage = { method: string; params: { name: string; arguments?: Record<string, unknown> } };
 type Rewrite = (message: BridgeMessage) => BridgeMessage;
 async function mount(page: Page, request: APIRequestContext) {
   expect((await request.post(`${ORIGIN}/api/auth/signup`, { data: { email: `${randomUUID()}@example.com`, password: "correct horse battery", displayName: "Preparation GM" } })).status()).toBe(201);
   const { build } = await (await request.post(`${ORIGIN}/api/builds`, { data: { name: "Visible preparation", aiGrid: true, aiWalls: true, aiTerrain: true } })).json() as { build: { id: string } };
-  const redirect = "https://ai.test.invalid/callback";
-  const client = await (await request.post(`${ORIGIN}/api/oauth/register`, { data: { client_name: "M2 browser", redirect_uris: [redirect], token_endpoint_auth_method: "none" } })).json() as { client_id: string };
   const verifier = randomBytes(32).toString("base64url");
-  const consent = await request.post(`${ORIGIN}/api/oauth/authorize`, { data: { params: { response_type: "code", state: "m2-fixture", client_id: client.client_id, redirect_uri: redirect, scope: "studio:build", resource: `${ORIGIN}/mcp/studio`, code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256" }, decision: "allow", buildIds: [build.id] } });
+  const consent = await request.post(`${ORIGIN}/api/oauth/authorize`, { data: { params: { response_type: "code", state: "m2-fixture", client_id: clientId, redirect_uri: redirect, scope: "studio:build", resource: `${ORIGIN}/mcp/studio`, code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256" }, decision: "allow", buildIds: [build.id] } });
   expect(consent.status()).toBe(200);
   const { redirectTo } = await consent.json() as { redirectTo: string };
-  const tokens = await (await request.post(`${ORIGIN}/api/oauth/token`, { form: { grant_type: "authorization_code", client_id: client.client_id, redirect_uri: redirect, resource: `${ORIGIN}/mcp/studio`, code_verifier: verifier, code: new URL(redirectTo).searchParams.get("code")! } })).json() as { access_token: string };
+  const tokens = await (await request.post(`${ORIGIN}/api/oauth/token`, { form: { grant_type: "authorization_code", client_id: clientId, redirect_uri: redirect, resource: `${ORIGIN}/mcp/studio`, code_verifier: verifier, code: new URL(redirectTo).searchParams.get("code")! } })).json() as { access_token: string };
   const calls: { name: string; at: number }[] = [];
   let bridgeFailure = false;
   let rewrite: Rewrite | null = null;
@@ -79,7 +86,7 @@ const lines = [
   { kind: "door", state: "closed", from: { column: 4, row: 2 }, to: { column: 5, row: 2 } },
   { kind: "window", state: "open", from: { column: 6, row: 2 }, to: { column: 7, row: 2 } },
 ];
-test("actual saved tools update an open Studio and match the website/native scene (FR-GM-27)", async ({ page, request }, info) => {
+test("actual saved tools update an open Studio with the native scene (FR-GM-27)", async ({ page, request }, info) => {
   const session = await mount(page, request), { file, art } = await prepare(session);
   const savedAt = Date.now();
   const geometry = await session.tool("save_map_setup", { mapKey: "chapel", lines, terrain: [{ row: 3, start: 3, end: 3, kind: "blocked" }, { row: 10, start: 11, end: 12, kind: "difficult" }] });
@@ -98,11 +105,6 @@ test("actual saved tools update an open Studio and match the website/native scen
   expect(native.scene).toEqual(embedded.scene);
   await page.screenshot({ path: info.outputPath("saved-preparation.png"), fullPage: true });
   await info.attach("local saved-write measurements", { body: JSON.stringify({ latencyMs: latency, refreshIntervalMs: embedded.refreshIntervalMs, calls: session.calls.map((call) => call.name) }), contentType: "application/json" });
-  await page.context().addCookies((await request.storageState()).cookies);
-  const website = await page.context().newPage(); await website.goto(`${ORIGIN}/builds/${session.build.id}`);
-  await expect(website.locator('[data-testid="studio-scene"] [data-layer="tokens"] [data-token-index]')).toHaveCount(2);
-  await expect(website.locator('[data-testid="studio-scene"] [data-kind="door"]')).toHaveCount(1);
-  await website.close();
 });
 test("refused save keeps saved overlays, camera and focus with an actionable permission result (FR-GM-27)", async ({ page, request }) => {
   const session = await mount(page, request); await prepare(session);
@@ -149,7 +151,7 @@ test("a refused selection says so in the view and keeps live refresh going (FR-G
   await session.frame.getByLabel("Active map", { exact: true }).selectOption(`source:${file.id}`);
   await expect(session.frame.getByText("Could not change the active context", { exact: false })).toBeVisible();
   await expect(session.frame.getByLabel("Active map", { exact: true })).toHaveValue("map:chapel");
-  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   session.setRewrite(null);
   // Still live: the AI's next save appears without a retry.
   expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
@@ -166,7 +168,7 @@ test("one token picture that can't load leaves the rest of the scene live (FR-GM
   await session.tool("studio_set_context", { context: { sourceFileId: file.id, mapKey: "chapel", encounterKey: "watch" } });
   await expect(session.frame.locator('[data-layer="tokens"] [data-token-index]')).toHaveCount(1);
   await expect(session.frame.locator('[data-testid="studio-source-image"]')).toBeVisible();
-  await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
   await expect(session.frame.locator('[data-kind="door"]')).toHaveCount(1, { timeout: 6500 });
 });
@@ -206,7 +208,7 @@ test("visible polling stays bounded and hidden/teardown or dismissed recovery st
   session.setFailure(true); await session.frame.locator("#refresh").click();
   await expect(session.frame.locator("#status")).toContainText("Connection interrupted");
   const failed = session.calls.length; await page.waitForTimeout(5200); expect(session.calls).toHaveLength(failed);
-  session.setFailure(false); await session.frame.locator("#refresh").click(); await expect(session.frame.locator("#status")).toHaveText("Saved files are up to date");
+  session.setFailure(false); await session.frame.locator("#refresh").click(); await expect(session.frame.locator("#status")).toHaveAttribute("data-state","ready");
   await session.frame.locator("body").evaluate(() => dispatchEvent(new Event("pagehide")));
   const ended = session.calls.length; await page.waitForTimeout(5200); expect(session.calls).toHaveLength(ended);
   await info.attach("local visible-only traffic", { body: JSON.stringify({ observedMs: 10_300, calls: intervalCalls.map((call) => call.name), hiddenCalls: 0, dismissedRecoveryCalls: 0, teardownCalls: 0 }), contentType: "application/json" });

@@ -1,7 +1,7 @@
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { ResourceNotFoundError, ResourceTemplate, type McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { StudioContext, StudioSnapshot } from "@vtt/shared";
+import { BuildKey, StudioChatSelectionReference, StudioChatSelectionUpdate, StudioContext, StudioCorrectionHistory, StudioCorrectionInput, StudioCorrectionReceipt, StudioInspection, StudioRestoreInput, StudioRevisionView, StudioSnapshot } from "@vtt/shared";
 import { studioView } from "./view";
 import { studioIntake } from "../../../web/src/i18n/en/studioIntake";
 import { studioIntakeZhTW } from "../../../web/src/i18n/zh-TW/studioIntake";
@@ -25,7 +25,7 @@ function intakeErrorText(code: string, locale?: string) {
 class StudioHttpError extends Error {
   partial?: Record<string, unknown>;
   savedFileId?: string;
-  constructor(readonly status: number, readonly code: string) { super(code); }
+  constructor(readonly status: number, readonly code: string, readonly userMessage?: string) { super(code); }
 }
 export interface StudioToolsDeps { roomServerUrl: string; publicOrigin: string; token: string; clientAddress: string }
 
@@ -40,8 +40,9 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
       });
     } catch { throw new StudioHttpError(503, "storage"); }
     if (response.ok) return response;
-    const problem = await response.json().catch(() => ({})) as { code?: unknown; savedFileId?: unknown };
-    const error = new StudioHttpError(response.status, typeof problem.code === "string" ? problem.code : response.status === 401 ? "access" : response.status === 404 ? "missing" : "storage");
+    const problem = await response.json().catch(() => ({})) as { code?: unknown; savedFileId?: unknown; error?: unknown };
+    const error = new StudioHttpError(response.status, typeof problem.code === "string" ? problem.code : response.status === 401 ? "access" : response.status === 404 ? "missing" : "storage",
+      path.startsWith("/authoring/") && typeof problem.error === "string" ? problem.error : undefined);
     const saved = z.uuid().safeParse(problem.savedFileId); if (saved.success) error.savedFileId = saved.data;
     throw error;
   }
@@ -49,7 +50,7 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     try { return await run(); }
     catch (error) {
       const status = error instanceof StudioHttpError ? error.status : 503, code = error instanceof StudioHttpError ? error.code : "storage";
-      return { isError: true, ...(error instanceof StudioHttpError && error.partial && { structuredContent: error.partial }), content: [{ type: "text", text: intakeErrorText(code, locale) }],
+      return { isError: true, ...(error instanceof StudioHttpError && error.partial && { structuredContent: error.partial }), content: [{ type: "text", text: (error instanceof StudioHttpError && error.userMessage) || intakeErrorText(code, locale) }],
         _meta: { "sessionzero/error": { status, code }, ...(status === 401 && { "mcp/www_authenticate": [`Bearer resource_metadata="${deps.publicOrigin}/.well-known/oauth-protected-resource/mcp/studio", error="invalid_token"`] }) } };
     }
   };
@@ -142,4 +143,39 @@ export function registerStudioTools(server: McpServer, deps: StudioToolsDeps) {
     // No image is attached to an open/model result; only this app-only response carries bytes.
     return { content: [], _meta: { "sessionzero/media": { fileId, mimeType: "image/webp", data: bytes.toString("base64") } } };
   }));
+
+  const mapArgs = z.object({ buildId: z.uuid(), mapKey: BuildKey, locale: Locale });
+  const authoring = async (buildId: string, mapKey: string, method: string, path: string, locale?: string, body?: unknown) =>
+    (await send(buildId, method, `/authoring/maps/${encodeURIComponent(mapKey)}${path}`, body, locale)).json() as Promise<unknown>;
+  const readOnly = { readOnlyHint: true, openWorldHint: false };
+  const privateWrite = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+  registerAppTool(server, "studio_inspect_correction", {
+    title: "Inspect a saved scene", description: "Load the exact saved scene, its inspection version and editable object extents.",
+    inputSchema: mapArgs.extend({ encounterKey: BuildKey.nullable() }), annotations: readOnly, _meta: appOnly,
+  }, ({ buildId, mapKey, encounterKey, locale }) => guarded(locale, async () => text(StudioInspection.parse(
+    await authoring(buildId, mapKey, "GET", encounterKey === null ? "" : `?encounterKey=${encodeURIComponent(encounterKey)}`, locale)))));
+  registerAppTool(server, "studio_correction_history", {
+    title: "Load correction history", description: "Read saved requests and revision headers for this scene.",
+    inputSchema: mapArgs, annotations: readOnly, _meta: appOnly,
+  }, ({ buildId, mapKey, locale }) => guarded(locale, async () => text(StudioCorrectionHistory.parse(await authoring(buildId, mapKey, "GET", "/revisions", locale)))));
+  registerAppTool(server, "studio_revision_view", {
+    title: "Show a saved revision", description: "Read the display projection of one exact revision for comparison.",
+    inputSchema: mapArgs.extend({ revisionId: z.uuid() }), annotations: readOnly, _meta: appOnly,
+  }, ({ buildId, mapKey, revisionId, locale }) => guarded(locale, async () => text(StudioRevisionView.parse(await authoring(buildId, mapKey, "GET", `/revisions/${revisionId}/view`, locale)))));
+  // Read-only to the host on purpose: it changes no build content, only this view's expiring selection note, like widget
+  // state. ChatGPT silently drops write tools a view calls without a click, and this call follows every drag. The server
+  // still checks the grant and bounds every edit to the saved selection.
+  registerAppTool(server, "studio_stage_chat_selection", {
+    title: "Attach a Studio selection", description: "Replace or clear this view's temporary correction scope.",
+    inputSchema: StudioChatSelectionUpdate.extend({ buildId: z.uuid(), locale: Locale }), annotations: readOnly, _meta: appOnly,
+  }, ({ buildId, locale, ...update }) => guarded(locale, async () => text(StudioChatSelectionReference.parse(
+    await (await send(buildId, "POST", "/authoring/chat-selections", update, locale)).json()))));
+  registerAppTool(server, "studio_create_correction_request", {
+    title: "Save correction request", description: "Save the user's explicit instruction and scope against the inspected scene.",
+    inputSchema: StudioCorrectionInput.extend(mapArgs.shape), annotations: privateWrite, _meta: appOnly,
+  }, ({ buildId, mapKey, locale, ...input }) => guarded(locale, async () => text(StudioCorrectionReceipt.parse(await authoring(buildId, mapKey, "POST", "/requests", locale, input)))));
+  registerAppTool(server, "studio_restore_revision", {
+    title: "Restore a private revision", description: "Restore a saved candidate as a new private revision, with an expected current revision.",
+    inputSchema: StudioRestoreInput.extend(mapArgs.shape), annotations: privateWrite, _meta: appOnly,
+  }, ({ buildId, mapKey, locale, ...input }) => guarded(locale, async () => text(result(await authoring(buildId, mapKey, "POST", "/restore", locale, input)))));
 }

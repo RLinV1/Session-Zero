@@ -2,7 +2,8 @@ import type { StudioOwnerIds } from "@vtt/shared";
 import { FeedbackReceipt, type FeedbackReport } from "@vtt/shared";
 import { z } from "zod";
 import {
-  StudioSnapshot, type StudioContext,
+  StudioSnapshot, StudioCorrectionHistory, StudioCorrectionReceipt, StudioInspection, StudioRevisionView,
+  type StudioContext, type StudioCorrectionInput, type StudioRestoreInput,
   PreparationSaved, UvttPreparation, UvttIssue, type UvttDraftEdit,
   GM_TOKEN_HEADER,
   type BuildChoices,
@@ -183,6 +184,7 @@ async function accountRequest<T>(url: string, init: RequestInit = {}): Promise<T
 }
 
 const buildUrl = (id: string) => `/api/builds/${encodeURIComponent(id)}`;
+const studioMapUrl = (id: string, key: string) => `${buildUrl(id)}/studio/authoring/maps/${encodeURIComponent(key)}`;
 
 const jsonBody = (body: unknown, ownerToken?: string): RequestInit => ({
   headers: { "content-type": "application/json", ...(ownerToken ? { "X-Studio-Authoring-Version": ownerToken } : {}) },
@@ -521,6 +523,24 @@ export const api = {
       return StudioSnapshot.parse(await accountRequest<unknown>(`${buildUrl(buildId)}/studio`, { signal, cache: "no-store" }));
     },
     context: (buildId: string, context: StudioContext) => accountRequest<unknown>(`${buildUrl(buildId)}/studio/context`, { method: "POST", ...jsonBody(context) }),
+    async inspect(buildId: string, mapKey: string, encounterKey: string | null) {
+      const query = encounterKey === null ? "" : `?encounterKey=${encodeURIComponent(encounterKey)}`;
+      return StudioInspection.parse(await accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}${query}`, { cache: "no-store" }));
+    },
+    async correctionHistory(buildId: string, mapKey: string) {
+      return StudioCorrectionHistory.parse(await accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/revisions`, { cache: "no-store" }));
+    },
+    async revisionView(buildId: string, mapKey: string, revisionId: string) {
+      return StudioRevisionView.parse(await accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/revisions/${encodeURIComponent(revisionId)}/view`, { cache: "no-store" }));
+    },
+    async createCorrection(buildId: string, mapKey: string, input: StudioCorrectionInput) {
+      return StudioCorrectionReceipt.parse(await accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/requests`, { method: "POST", ...jsonBody(input) }));
+    },
+    restoreRevision: (buildId: string, mapKey: string, input: StudioRestoreInput) =>
+      accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/restore`, { method: "POST", ...jsonBody(input) }),
+    endCorrections: async (buildId: string, mapKey: string) => {
+      await accountRequest<unknown>(studioMapUrl(buildId, mapKey), { method: "DELETE" });
+    },
     /** The authorization request as the AI app sent it, checked by the server. */
     async checkRequest(query: string): Promise<StudioConsentCheck> {
       const res = await apiFetch(`/api/oauth/authorize${query}`);

@@ -10,6 +10,7 @@ export const serverZhTW = {
   "studio.authoring.invalid": "請提供有效的修正目標與內容。",
   "studio.authoring.scope": "有編輯超出已儲存的範圍。請擁有者重新選取。",
   "studio.authoring.permission": "擁有者已關閉此修正所需的選項。",
+  "studio.authoring.cropBusy": "工作室正在準備其他預覽，請稍候再試。",
   "studio.authoring.enrolled": "此草稿已加入場景工作室。請使用已儲存的修正要求，或登入網站編輯。",
   "studio.authoring.drift": "建置資料已變更。開始新的修正前，請先在建置頁面儲存新版本。",
   "studio.authoring.stale": "提案已儲存在版本記錄中。請查看目前版本並提出新的修正要求。",

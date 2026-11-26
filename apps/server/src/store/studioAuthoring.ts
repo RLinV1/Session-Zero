@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { StudioCorrectionInput, StudioOwnerIds, StudioOwnerVersion, StudioProposalInput, StudioRestoreInput, StudioSelection } from "@vtt/shared";
+import { StudioChatSelectionDraft, studioTerrainCoverage, type StudioChatSelectionUpdate, type StudioCorrectionActivity, type StudioCorrectionInput, type StudioEditLayer, type StudioOwnerIds, type StudioOwnerVersion, type StudioProposalInput, type StudioRestoreInput, type StudioSelection } from "@vtt/shared";
 import { applyCorrection, captureScene, deriveScope, digest, selectionObjects, StudioAuthoringError, type RevisionScene, type StudioTarget } from "../domain/studioSceneRevision";
-import type { BuildItemRecord, BuildPublishPlan } from "./buildStore";
+import { studioRevisionScene } from "../domain/studioPreparation";
+import type { BuildItemRecord, BuildPublishPlan, BuildRecord } from "./buildStore";
 import type { StudioBuildAccess, StudioPreparationRecords } from "./studioPreparation";
+import type { StudioGrantRecord } from "./studioStore";
 
 export const AUTHORING_LIMITS = {
   revisions: 32, requests: 64, workspaceBytes: 32 * 1024 ** 2, buildBytes: 64 * 1024 ** 2,
@@ -20,6 +22,7 @@ export interface AuthoringWorkspace extends StudioTarget {
   revisions: number;
   requests: number;
   bytes: number;
+  historyVersion?: string;
 }
 export interface StudioRevision {
   id: string; parentId: string | null; restoredFrom?: string; requestId?: string;
@@ -33,20 +36,61 @@ interface CorrectionRequest {
 interface Receipt { hash: string; response: Record<string, unknown> }
 
 export type AuthoringEntry = { mapKey: string; id: string } & (
-  { kind: "revision"; value: StudioRevision } | { kind: "request"; value: CorrectionRequest } |
+  { kind: "revision"; value: StudioRevision } | { kind: "request"; value: CorrectionRequest; activity?: StudioCorrectionActivity } |
   { kind: "create" | "propose" | "restore"; value: Receipt }
 );
 
-export type AuthoringCommand =
+type SceneCommand =
   | { kind: "inspect"; mapKey: string; encounterKey?: string | null }
-  | { kind: "create"; mapKey: string; input: StudioCorrectionInput }
+  | { kind: "create"; mapKey: string; input: StudioCorrectionInput; chatSelectionId?: string }
   | { kind: "request"; requestId: string }
+  | { kind: "crop"; requestId: string }
   | { kind: "propose"; requestId: string; input: StudioProposalInput }
   | { kind: "history"; mapKey: string }
   | { kind: "revision"; mapKey: string; revisionId: string }
+  | { kind: "revisionView"; mapKey: string; revisionId: string }
   | { kind: "restore"; mapKey: string; input: StudioRestoreInput }
   /** The owner ends the correction: the map leaves Studio and its history is removed. */
   | { kind: "end"; mapKey: string };
+
+export type AuthoringCommand = SceneCommand
+  | { kind: "stageChatSelection"; update: StudioChatSelectionUpdate }
+  | { kind: "startChatCorrection"; selectionId: string; instruction: string };
+
+export const CHAT_SELECTION_LIMITS = { viewsPerBuild: 24, ttlMs: 30 * 60_000 } as const;
+
+export function assertChatSelectionCapacity(recentViews: number) {
+  if (recentViews >= CHAT_SELECTION_LIMITS.viewsPerBuild) {
+    throw new StudioAuthoringError("limit", "Too many recent Studio views on this build. Try again after an older selection expires.");
+  }
+}
+
+export interface ChatSelectionRecord {
+  id: string;
+  buildId: string;
+  grantId: string;
+  viewId: string;
+  sequence: number;
+  draft: unknown;
+  expiresAt: Date;
+}
+
+export function nextChatSelection(previous: ChatSelectionRecord | null, buildId: string, grantId: string, update: StudioChatSelectionUpdate, now: number) {
+  if (previous && previous.sequence >= update.sequence) {
+    if (previous.sequence === update.sequence && previous.expiresAt.getTime() > now && digest(previous.draft) === digest(update.draft)) return previous;
+    conflict("The selection changed. Draw the area again before asking in chat.");
+  }
+  return { id: randomUUID(), buildId, grantId, ...update, expiresAt: new Date(now + CHAT_SELECTION_LIMITS.ttlMs) };
+}
+
+export function startChatCorrection(record: ChatSelectionRecord | undefined | null, buildId: string, grantId: string,
+  instruction: string, now: number): SceneCommand {
+  if (!record || record.buildId !== buildId || record.grantId !== grantId || !record.draft || record.expiresAt.getTime() <= now) {
+    conflict("That selection is unavailable. Select the area again in Studio before asking in chat.");
+  }
+  const { mapKey, ...scope } = StudioChatSelectionDraft.parse(record.draft);
+  return { kind: "create", mapKey, chatSelectionId: record.id, input: { ...scope, operationId: record.id, instruction } };
+}
 
 export interface StudioAuthoringStore {
   studioOwnerVersions(records: StudioPreparationRecords): Promise<Map<string, StudioOwnerVersion>>;
@@ -57,6 +101,60 @@ export interface AuthoringWrite {
   entries: AuthoringEntry[];
   /** Older entries of this workspace that an owner write pruned to stay within the limits. */
   removed: { kind: AuthoringEntry["kind"]; id: string }[];
+}
+
+export function assertStudioAuthoringAccess(access: StudioBuildAccess, command: AuthoringCommand, grant?: StudioGrantRecord) {
+  const delegatedOnly = command.kind === "propose" || command.kind === "stageChatSelection" || command.kind === "startChatCorrection";
+  if (access.passHash !== undefined || (delegatedOnly && !grant) || (command.kind === "end" && grant)) {
+    throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
+  }
+}
+
+function checkCorrectionLayers(build: BuildRecord, layers: readonly StudioEditLayer[]) {
+  if ((!build.aiWalls && layers.includes("geometry")) || (!build.aiTerrain && layers.includes("terrain"))) {
+    throw new StudioAuthoringError("permission", "The owner disabled an authoring choice required for this correction.");
+  }
+}
+
+function correctionBase(records: StudioPreparationRecords, workspace: AuthoringWorkspace | undefined,
+  entries: readonly AuthoringEntry[], target: StudioTarget, inspectedVersion: string) {
+  const materialized = captureScene(records, target);
+  const head = workspace ? getRevision(entries, workspace.workingId, target.mapKey) : null;
+  if (inspectedVersion !== (head?.id ?? materialized.materializedVersion) || (head && head.scene.binding !== materialized.binding)) {
+    conflict("The saved scene changed. Review the current draft before requesting a correction.");
+  }
+  return { head, scene: head?.scene ?? materialized };
+}
+
+export function validateChatSelection(records: StudioPreparationRecords, workspace: AuthoringWorkspace | undefined,
+  entries: readonly AuthoringEntry[], draft: NonNullable<StudioChatSelectionUpdate["draft"]>) {
+  checkCorrectionLayers(records.build, draft.selection.layers);
+  if (workspace && workspace.encounterKey !== draft.encounterKey) conflict("This map is already enrolled with a different encounter.");
+  const { scene } = correctionBase(records, workspace, entries, { mapKey: draft.mapKey, encounterKey: draft.encounterKey }, draft.inspectedVersion);
+  deriveScope(scene, draft.selection);
+}
+
+export function chatSelectionReference(staged: ChatSelectionRecord) {
+  return staged.draft ? { selectionId: staged.id, expiresAt: staged.expiresAt.toISOString() } : { selectionId: null };
+}
+
+function checkRestoreChoices(build: BuildRecord, from: RevisionScene, to: RevisionScene) {
+  const geometry = ({ map }: RevisionScene) => [map.setup?.lines ?? [], map.setup?.openings ?? [], map.setup?.marks ?? []];
+  const terrain = ({ map }: RevisionScene) => [map.setup?.terrain ?? [], map.setup?.terrainGrid ?? null];
+  if ((!build.aiGrid && digest([from.grid, from.map.gridStatus]) !== digest([to.grid, to.map.gridStatus])) ||
+      (!build.aiWalls && digest(geometry(from)) !== digest(geometry(to))) ||
+      (!build.aiTerrain && digest(terrain(from)) !== digest(terrain(to)))) {
+    throw new StudioAuthoringError("permission", "The owner disabled an authoring choice required for this restore.");
+  }
+}
+
+export interface AuthoringResult {
+  response: Record<string, unknown>;
+  write?: AuthoringWrite;
+  touch?: boolean;
+  end?: string;
+  error?: StudioAuthoringError;
+  activity?: { requestId: string; mapKey: string; value: StudioCorrectionActivity; historyVersion: string };
 }
 
 /**
@@ -70,12 +168,12 @@ export class AuthoringHistoryNeeded extends Error {
 /** How an owner write may make room: the entries it can see, and the revisions it must keep. */
 interface OwnerPrune { entries: readonly AuthoringEntry[]; complete: boolean; pinned: readonly string[] }
 
-export function authoringEntryIds(command: AuthoringCommand, workspace?: AuthoringWorkspace, request?: AuthoringEntry) {
+export function authoringEntryIds(command: SceneCommand, workspace?: AuthoringWorkspace, request?: AuthoringEntry) {
   const ids: string[] = [];
   if (workspace && (command.kind === "inspect" || command.kind === "create" || command.kind === "restore" || command.kind === "propose")) {
     ids.push(workspace.workingId, workspace.materializedId);
   }
-  if (command.kind === "revision") ids.push(command.revisionId);
+  if (command.kind === "revision" || command.kind === "revisionView") ids.push(command.revisionId);
   if ("input" in command) ids.push(command.input.operationId);
   if (command.kind === "restore") ids.push(command.input.revisionId);
   if (request?.kind === "request") ids.push(request.value.baseRevisionId);
@@ -149,7 +247,7 @@ function historyFull(): never {
  */
 function withRevisions(workspaces: readonly AuthoringWorkspace[], workspace: AuthoringWorkspace, additions: AuthoringEntry[], owner?: OwnerPrune): AuthoringWrite {
   const added = totals(additions);
-  const next = { ...workspace, revisions: workspace.revisions + added.revisions, requests: workspace.requests + added.requests, bytes: workspace.bytes + added.bytes };
+  const next = { ...workspace, historyVersion: randomUUID(), revisions: workspace.revisions + added.revisions, requests: workspace.requests + added.requests, bytes: workspace.bytes + added.bytes };
   if (withinLimits(workspaces, workspace.mapKey, next)) return { workspace: next, entries: additions, removed: [] };
   if (!owner) historyFull();
   if (!owner.complete) throw new AuthoringHistoryNeeded();
@@ -173,7 +271,7 @@ function withRevisions(workspaces: readonly AuthoringWorkspace[], workspace: Aut
     // Recounted from the rows themselves, so the stored totals can't drift.
     const size = totals([...rows.filter((row) => !gone.has(row)), ...additions]);
     if (withinLimits(workspaces, workspace.mapKey, size, AUTHORING_LIMITS.prunedRevisions)) {
-      return { workspace: { ...workspace, ...size }, entries: additions, removed: [...gone].map(({ kind, id }) => ({ kind, id })) };
+      return { workspace: { ...next, ...size }, entries: additions, removed: [...gone].map(({ kind, id }) => ({ kind, id })) };
     }
     const victim = (size.requests > AUTHORING_LIMITS.requests ? oldest("request") : undefined) ?? oldest("revision") ?? oldest("request");
     if (!victim) historyFull();
@@ -253,11 +351,11 @@ export function projectWorkingRevision(records: StudioPreparationRecords, worksp
   const head = getRevision(entries, workspace.workingId, workspace.mapKey);
   if (records.build.studioContext?.sourceFileId !== head.scene.source.id) return records;
   const target = { mapKey: workspace.mapKey, encounterKey: workspace.encounterKey };
-  return { ...records, working: { target, revision: head, drifted: currentBinding(records, target) !== head.scene.binding } };
+  return { ...records, working: { target, revision: head, drifted: currentBinding(records, target) !== head.scene.binding, historyVersion: workspace.historyVersion } };
 }
 
 /** `complete` says `entries` holds the command's workspace's whole history, so an owner write may prune it. */
-export function runAuthoring(records: StudioPreparationRecords, workspaces: readonly AuthoringWorkspace[], entries: readonly AuthoringEntry[], command: AuthoringCommand, complete = false): { response: Record<string, unknown>; write?: AuthoringWrite; touch?: boolean; end?: string } {
+export function runAuthoring(records: StudioPreparationRecords, workspaces: readonly AuthoringWorkspace[], entries: readonly AuthoringEntry[], command: SceneCommand, complete = false, delegated = false): AuthoringResult {
   const request = "requestId" in command ? entries.find((r) => r.kind === "request" && r.id === command.requestId) : undefined;
   const mapKey = "mapKey" in command ? command.mapKey : request?.mapKey;
   if (mapKey === undefined) missing();
@@ -270,23 +368,34 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
   const live = () => captureScene(records, target);
   const current = () => workspace ? getRevision(entries, workspace.workingId, mapKey) : missing();
 
-  // Replay after access and proposal choices were checked by the store and this command.
+  const updateActivity = (value: StudioCorrectionActivity): AuthoringResult["activity"] => request?.kind === "request" &&
+    digest(request.activity) !== digest(value) ? { requestId: request.id, mapKey, value, historyVersion: randomUUID() } : undefined;
+  function proposalRefused(error: unknown): AuthoringResult {
+    if (!(error instanceof StudioAuthoringError)) throw error;
+    const { code } = error;
+    if (code !== "conflict" && code !== "invalid" && code !== "scope" && code !== "permission" && code !== "limit") throw error;
+    return { response: {}, error, activity: updateActivity({ observed: request?.kind === "request" && !!request.activity?.observed, outcome: { status: "refused", code } }) };
+  }
+
+  // Permission is checked by the stores before a replay can reveal a retained outcome.
+  if (command.kind === "create" && delegated) checkCorrectionLayers(records.build, command.input.selection.layers);
+  const hash = "input" in command ? digest(command) : null;
+  const receipt = "input" in command ? entries.find((r) => r.kind === command.kind && r.id === command.input.operationId) : undefined;
   if (command.kind === "propose") {
     const walls = command.input.operations.some(({ op }) => op.startsWith("line.") || op.startsWith("opening.") || op.startsWith("mark."));
     const terrain = command.input.operations.some(({ op }) => op === "terrain.paint");
     if ((walls && !records.build.aiWalls) || (terrain && !records.build.aiTerrain)) {
-      throw new StudioAuthoringError("permission", "The owner disabled an authoring choice required for this correction.");
+      const error = new StudioAuthoringError("permission", "The owner disabled an authoring choice required for this correction.");
+      // A denied replay leaves the original proposal receipt and its reported outcome intact.
+      if (receipt?.kind === "propose" && receipt.value.hash === hash) throw error;
+      return proposalRefused(error);
     }
   }
-  const hash = "input" in command ? digest(command) : null;
-  if ("input" in command) {
-    const receipt = entries.find((r) => r.kind === command.kind && r.id === command.input.operationId);
-    if (receipt && (receipt.kind === "create" || receipt.kind === "propose" || receipt.kind === "restore")) {
-      if (receipt.value.hash !== hash) conflict("This retry key was already used for a different operation.");
-      return { response: receipt.value.response };
-    }
+  if (receipt?.kind === "create" || receipt?.kind === "propose" || receipt?.kind === "restore") {
+    if (receipt.value.hash !== hash) conflict("This retry key was already used for a different operation.");
+    return { response: receipt.value.response };
   }
-  /** `pinned` is set only for the owner's writes, which may prune history; a Studio write is refused at a limit. */
+  /** Only the owner's website session can prune history. */
   const recorded = (updated: AuthoringWorkspace, additions: AuthoringEntry[], response: Record<string, unknown>, touch: boolean, pinned?: string[]) => {
     if (!("input" in command) || !hash) throw new Error("Authoring receipt requires a write.");
     additions.push({ mapKey, kind: command.kind, id: command.input.operationId, value: { hash, response } });
@@ -297,43 +406,59 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
     case "inspect": {
       const materialized = live();
       const head = workspace ? current() : null;
+      const scene = head?.scene ?? materialized;
       return { response: { target, inspectedVersion: head?.id ?? materialized.materializedVersion, materializedVersion: materialized.materializedVersion,
         workingRevisionId: head?.id ?? null, drifted: head ? head.scene.binding !== materialized.binding : false,
-        objects: selectionObjects(head?.scene ?? materialized) } };
+        scene: studioRevisionScene(scene), objects: selectionObjects(scene) } };
     }
     case "create": {
-      const materialized = live();
-      const base = workspace ? current() : revision(materialized, null, "owner");
-      if (command.input.inspectedVersion !== (workspace ? base.id : materialized.materializedVersion) || base.scene.binding !== materialized.binding) {
-        conflict("The saved scene changed. Review the current draft before requesting a correction.");
-      }
-      const scope = deriveScope(base.scene, command.input.selection);
-      const requestId = randomUUID();
+      const { head, scene } = correctionBase(records, workspace, entries, target, command.input.inspectedVersion);
+      const scope = deriveScope(scene, command.input.selection);
+      const base = head ?? revision(scene, null, "owner");
+      const requestId = command.chatSelectionId ?? randomUUID();
       const additions: AuthoringEntry[] = [{ id: requestId, mapKey, kind: "request",
         value: { baseRevisionId: base.id, instruction: command.input.instruction, scope, at: new Date().toISOString() } }];
       if (!workspace) additions.push(revisionEntry(mapKey, base));
       return recorded(workspace ?? { ...target, referenceId: base.id, workingId: base.id, materializedId: base.id, ...dependencies(base.scene), revisions: 0, requests: 0, bytes: 0 }, additions,
-        { requestId, baseRevisionId: base.id, scope }, true, workspace ? pointers(workspace) : []);
+        { requestId, baseRevisionId: base.id, scope }, true, delegated ? undefined : workspace ? pointers(workspace) : []);
     }
     case "request": {
       if (request?.kind !== "request" || !workspace) missing();
       const base = getRevision(entries, request.value.baseRevisionId, mapKey);
-      return { response: { requestId: request.id, target, currentRevisionId: workspace.workingId, ...request.value, scene: base.scene } };
+      const { scope } = request.value;
+      const ids = new Set(scope.objectIds);
+      return { response: { requestId: request.id, target, currentRevisionId: workspace.workingId, ...request.value, scene: base.scene,
+        objects: selectionObjects(base.scene).filter((object) => ids.has(object.id)),
+        terrainCells: scope.layers.includes("terrain") ? studioTerrainCoverage(scope.region, base.scene.grid) : null },
+        activity: delegated ? updateActivity({ ...request.activity, observed: true }) : undefined };
+    }
+    case "crop": {
+      if (request?.kind !== "request" || !workspace) missing();
+      const base = getRevision(entries, request.value.baseRevisionId, mapKey);
+      return { response: { baseRevisionId: base.id, scope: request.value.scope, scene: base.scene } };
     }
     case "propose": {
       if (request?.kind !== "request" || !workspace) missing();
-      if (command.input.baseRevisionId !== request.value.baseRevisionId) conflict("Read the exact revision named by this request before submitting.");
-      const base = getRevision(entries, request.value.baseRevisionId, mapKey);
-      const candidate = applyCorrection(base.scene, request.value.scope, command.input.operations);
-      const applicable = workspace.workingId === base.id && currentBinding(records, target) === base.scene.binding;
-      const next = { ...revision(candidate, base.id, "studio"), requestId: request.id };
-      const workingId = applicable ? next.id : workspace.workingId;
-      const moved = applicable ? dependencies(candidate, getRevision(entries, workspace.materializedId, mapKey).scene) : {};
-      return recorded({ ...workspace, ...moved, workingId }, [revisionEntry(mapKey, next)],
-        { status: applicable ? "advanced" : "stale", requestId: request.id, revisionId: next.id, currentRevisionId: workingId }, applicable);
+      try {
+        if (command.input.baseRevisionId !== request.value.baseRevisionId) conflict("Read the exact revision named by this request before submitting.");
+        const base = getRevision(entries, request.value.baseRevisionId, mapKey);
+        const candidate = applyCorrection(base.scene, request.value.scope, command.input.operations);
+        const applicable = workspace.workingId === base.id && currentBinding(records, target) === base.scene.binding;
+        const next = { ...revision(candidate, base.id, "studio"), requestId: request.id };
+        const workingId = applicable ? next.id : workspace.workingId;
+        const moved = applicable ? dependencies(candidate, getRevision(entries, workspace.materializedId, mapKey).scene) : {};
+        const status = applicable ? "advanced" : "stale";
+        const result = recorded({ ...workspace, ...moved, workingId }, [revisionEntry(mapKey, next)],
+          { status, requestId: request.id, revisionId: next.id, currentRevisionId: workingId }, applicable);
+        return { ...result, activity: updateActivity({ observed: !!request.activity?.observed, outcome: { status, revisionId: next.id } }) };
+      } catch (error) { return proposalRefused(error); }
     }
     case "revision":
       return { response: { target, revision: getRevision(entries, command.revisionId, mapKey) } };
+    case "revisionView": {
+      const { scene, ...header } = getRevision(entries, command.revisionId, mapKey);
+      return { response: { target, revision: header, scene: studioRevisionScene(scene), objects: selectionObjects(scene) } };
+    }
     case "history":
       if (!workspace) missing();
       return { response: { target, referenceRevisionId: workspace.referenceId, workingRevisionId: workspace.workingId,
@@ -341,16 +466,19 @@ export function runAuthoring(records: StudioPreparationRecords, workspaces: read
           if (r.kind !== "revision" || r.mapKey !== mapKey) return [];
           const { id, actor, at, parentId, restoredFrom, requestId } = r.value;
           return [{ id, actor, at, parentId, restoredFrom, requestId }];
-        }).sort((a, b) => b.at.localeCompare(a.at)) } };
+        }).sort((a, b) => b.at.localeCompare(a.at)), requests: entries.flatMap((r) => r.kind === "request" && r.mapKey === mapKey
+          ? [{ ...r.value, requestId: r.id, activity: r.activity ?? { observed: false } }] : [])
+          .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")) } };
     case "restore": {
       if (!workspace) missing();
       if (workspace.workingId !== command.input.expectedCurrentRevisionId) conflict("The working revision changed. Inspect it before restoring.");
       const prior = getRevision(entries, command.input.revisionId, mapKey);
       if (prior.scene.binding !== live().binding) conflict("That revision uses different source, grid or dependencies. Review the current draft.");
-      const next = { ...revision(prior.scene, workspace.workingId, "owner"), restoredFrom: prior.id };
+      if (delegated) checkRestoreChoices(records.build, current().scene, prior.scene);
+      const next = { ...revision(prior.scene, workspace.workingId, delegated ? "studio" : "owner"), restoredFrom: prior.id };
       const materialized = getRevision(entries, workspace.materializedId, mapKey).scene;
       return recorded({ ...workspace, ...dependencies(prior.scene, materialized), workingId: next.id }, [revisionEntry(mapKey, next)],
-        { revisionId: next.id, currentRevisionId: next.id }, true, [...pointers(workspace), prior.id]);
+        { revisionId: next.id, currentRevisionId: next.id }, true, delegated ? undefined : [...pointers(workspace), prior.id]);
     }
     case "end":
       if (!workspace) missing();

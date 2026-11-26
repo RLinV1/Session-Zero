@@ -101,6 +101,26 @@ async function whileBuildLocked(buildId: string, during: (tx: Parameters<Paramet
 }
 
 describe.skipIf(!store)("a Studio poll queued behind a write on postgres (FR-GM-27, ADR 0073)", () => {
+  it("refuses to start a selection cleared while it waited on the build lock", async () => {
+    const s = store!, f = await delegated(s);
+    // Seed the queued request's input directly to isolate the lock/recheck from draft validation.
+    const selectionId = randomUUID();
+    await blocker!.studioChatSelection.create({ data: {
+      id: selectionId, buildId: f.build.id, grantId: f.grantId, viewId: randomUUID(), sequence: 1, expiresAt: new Date(Date.now() + 60_000),
+      draft: { mapKey: "chapel", encounterKey: null, inspectedVersion: "initial",
+        selection: { region: { minX: 0, minY: 0, maxX: 100, maxY: 100 }, layers: ["terrain"], objectIds: [], wholeObjectIds: [] } },
+    } });
+    let write!: Promise<unknown>;
+    await whileBuildLocked(f.build.id, async (tx) => {
+      await tx.studioChatSelection.update({ where: { id: selectionId }, data: { id: randomUUID(), sequence: 2 } });
+    }, async () => {
+      write = s.studioAuthoring(f.build.id, f.access, { kind: "startChatCorrection", selectionId, instruction: "Clear rubble." });
+      void write.catch(() => {});
+      expect(await settledWithin(write, 200)).toBe(false);
+    });
+    await expect(write).rejects.toMatchObject({ code: "conflict" });
+  });
+
   it("reports a revocation made while it waited as ended access, not a storage failure", async () => {
     const s = store!, f = await delegated(s);
     let read!: Promise<unknown>;

@@ -8,11 +8,11 @@ Let an owner use their own AI to prepare an image-based scene, see saved results
 
 ### Requirement: A Studio opens an authorized saved build
 
-The Studio SHALL open the same saved build through the website and an MCP Apps interface. It SHALL identify the build, its owner and the active map and encounter. Identifiers and links MUST NOT themselves authorize access. Room credentials MUST NOT authorize Studio access, and another owner's build SHALL be indistinguishable from an unknown build to an unauthorized requester.
+The Studio SHALL open a saved build through an MCP Apps interface, and the website build page SHALL offer the text that launches it there. It SHALL identify the build, its owner and the active map and encounter. Identifiers and links MUST NOT themselves authorize access. Room credentials MUST NOT authorize Studio access, and another owner's build SHALL be indistinguishable from an unknown build to an unauthorized requester.
 
-#### Scenario: Open in two surfaces
-- **WHEN** an authorized owner opens the same build on the website and in the embedded Studio
-- **THEN** both surfaces identify the same build and can retrieve its saved working version
+#### Scenario: Open from the launch text
+- **WHEN** an authorized owner copies a build's launch text from its website page into a connected AI app
+- **THEN** the embedded Studio identifies that build and retrieves its saved working version
 
 #### Scenario: A foreign build identifier
 - **WHEN** a caller requests a build outside their granted access
@@ -29,6 +29,14 @@ The hosted Studio SHALL authenticate through delegated access linked to the owne
 #### Scenario: AI enables terrain for itself
 - **WHEN** a delegated client attempts to enable the owner's terrain choice
 - **THEN** the request is refused and the choice remains unchanged
+
+### Requirement: Build access includes scoped private corrections
+
+A live Studio grant SHALL authorize private corrections on its approved builds. The server SHALL recheck the grant, build choices, and revision within each write. The Studio SHALL offer restoration through an explicit user action. A build owner can end delegated access by revoking the connection.
+
+#### Scenario: An existing connection requests its first correction
+- **WHEN** a connected owner selects an editable area of an approved build
+- **THEN** the owner can ask for a scoped correction using the existing grant
 
 ### Requirement: Unpublished Studio artwork requires authorized delivery
 
@@ -124,9 +132,26 @@ A correction SHALL distinguish inspection context from permitted edits. The serv
 - **WHEN** a token move would put its footprint outside the authorized destination region
 - **THEN** the correction is refused and the original placement remains
 
+### Requirement: An attached selection describes itself
+
+The attached selection SHALL describe its map, grid squares, editable layers and contents so the AI can say what is selected before a request exists. The description SHALL confer no authority; the staged scope on the server bounds every edit.
+
+#### Scenario: Confirm what is selected
+- **WHEN** the user draws a rectangle and asks in chat whether the AI can see it
+- **THEN** the AI can name the map, squares and selected walls, doors and creatures from the attachment without starting a request
+
 ### Requirement: User actions explicitly submit correction instructions
 
-The user SHALL be able to enter correction instructions for a saved selection and submit them into the AI conversation. The view SHALL distinguish a prepared request, a host handoff, observed AI activity and a saved result. Host acknowledgement alone MUST NOT be shown as completed AI work. Selecting, rendering or hovering MUST NOT automatically submit a prompt. Where no chat bridge is available, the website SHALL supply a saved request and copyable instruction.
+The embedded Studio SHALL attach the current selection to the active chat when the host supports model context. Selecting SHALL save only a temporary scope. An explicit instruction in chat SHALL start the immutable correction request. The Studio SHALL show whether the selection is attached and SHALL show the resulting proposal. It SHALL offer no instruction form; a host without model context shows the scene and proposals but cannot start a correction from a selection.
+
+#### Scenario: Ask about a selection in chat
+- **WHEN** the user draws a rectangle and sends an instruction in the normal chat composer
+- **THEN** the request binds the attached selection, inspected revision, and instruction
+
+#### Scenario: Redraw or clear a selection
+- **WHEN** the view replaces or clears its selection
+- **THEN** the previous selection reference cannot start a correction
+- **AND** a saved request retains its original scope
 
 #### Scenario: Correct rubble
 - **WHEN** the user selects the courtyard and submits "Keep the path clear; only rubble is difficult"

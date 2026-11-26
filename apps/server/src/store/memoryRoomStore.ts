@@ -1,5 +1,4 @@
-import { affectedWorkspaces, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
-import { StudioAuthoringError } from "../domain/studioSceneRevision";
+import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, chatSelectionReference, nextChatSelection, startChatCorrection, validateChatSelection, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringWorkspace, type AuthoringWrite, type ChatSelectionRecord } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, type StudioMediaJob, type StudioIntakeOutcome } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
 import type { FeedbackCursor } from "@vtt/shared";
@@ -114,6 +113,7 @@ export class MemoryRoomStore implements RoomStore {
   private members = new Map<string, MemberRecord>();
   private diceLooks = new Map<string, DiceLookRecord>();
   private animations = new Map<string, LibraryAnimationRecord>();
+  private chatSelections = new Map<string, Map<string, ChatSelectionRecord>>();
   private authoring = new Map<string, { workspaces: AuthoringWorkspace[]; entries: AuthoringEntry[] }>();
   private builds = new Map<string, BuildRecord>();
   private buildFiles = new Map<string, BuildFileRecord>();
@@ -721,7 +721,9 @@ export class MemoryRoomStore implements RoomStore {
   private assertDelegation(delegation: StudioDelegation | undefined, build: BuildRecord) {
     if (!delegation) return;
     const token = this.studioTokens.get(delegation.tokenHash);
-    if (!delegationAllows(delegation, token, token && this.studioGrants.get(token.grantId), build)) throw new StudioAccessEndedError();
+    const grant = token && this.studioGrants.get(token.grantId);
+    if (!delegationAllows(delegation, token, grant, build)) throw new StudioAccessEndedError();
+    return grant;
   }
 
   // ---------- Delegated Studio access (design D7) ----------
@@ -819,6 +821,10 @@ export class MemoryRoomStore implements RoomStore {
         for (const [hash, token] of this.studioTokens) if (token.grantId === id) this.studioTokens.delete(hash);
         this.studioGrants.delete(id);
       }
+    }
+    for (const [buildId, views] of this.chatSelections) {
+      for (const [key, view] of views) if (view.expiresAt.getTime() <= now || !this.studioGrants.has(view.grantId)) views.delete(key);
+      if (!views.size) this.chatSelections.delete(buildId);
     }
     const withGrants = new Set([...this.studioGrants.values()].map((g) => g.clientId));
     for (const [id, client] of this.studioClients) {
@@ -919,6 +925,11 @@ export class MemoryRoomStore implements RoomStore {
 
   /** Ends these maps' corrections: their workspaces and every entry go, as the Postgres cascade does. */
   private endAuthoring(buildId: string, mapKeys: readonly string[]) {
+    const views = this.chatSelections.get(buildId);
+    if (views) for (const [key, view] of views) {
+      const draft = view.draft as { mapKey: string } | null;
+      if (draft && mapKeys.includes(draft.mapKey)) views.delete(key);
+    }
     const ledger = this.authoring.get(buildId);
     if (!ledger || !mapKeys.length) return;
     ledger.workspaces = ledger.workspaces.filter((w) => !mapKeys.includes(w.mapKey));
@@ -927,20 +938,46 @@ export class MemoryRoomStore implements RoomStore {
 
   async studioAuthoring(buildId: string, access: StudioBuildAccess, command: AuthoringCommand) {
     const build = this.openBuild(buildId);
-    this.assertDelegation(access.delegation, build);
     assertStudioBuildAccess(build, access);
-    if (access.passHash !== undefined || (command.kind === "propose" && !access.delegation) ||
-        ((command.kind === "create" || command.kind === "restore" || command.kind === "end") && access.delegation)) {
-      throw new StudioAuthoringError("access", "Use the authorized Studio connection or the owner's website session.");
-    }
+    const grant = this.assertDelegation(access.delegation, build);
+    assertStudioAuthoringAccess(access, command, grant);
+    const views = this.chatSelections.get(buildId);
     const ledger = this.authoring.get(buildId);
-    const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], command, true);
-    if (result.write) {
+    if (command.kind === "stageChatSelection") {
+      const now = access.delegation!.now();
+      const key = `${grant!.id}/${command.update.viewId}`;
+      const buildViews = views ?? new Map<string, ChatSelectionRecord>();
+      const previous = buildViews.get(key) ?? null;
+      for (const [id, view] of buildViews) if (view.expiresAt.getTime() <= now) buildViews.delete(id);
+      if (!previous || previous.expiresAt.getTime() <= now) {
+        // Cleared views keep their sequence until expiry, so a delayed redraw cannot revive them.
+        assertChatSelectionCapacity(buildViews.size);
+      }
+      const staged = nextChatSelection(previous, buildId, grant!.id, command.update, now);
+      const draft = command.update.draft;
+      if (draft) validateChatSelection(this.studioRecords(build), ledger?.workspaces.find((w) => w.mapKey === draft.mapKey), ledger?.entries ?? [], draft);
       this.assertDelegation(access.delegation, build);
-      this.writeAuthoring(buildId, result.write);
+      buildViews.set(key, structuredClone(staged));
+      this.chatSelections.set(buildId, buildViews);
+      return chatSelectionReference(staged);
+    }
+    const sceneCommand = command.kind === "startChatCorrection"
+      ? startChatCorrection(views && [...views.values()].find((view) => view.id === command.selectionId),
+        buildId, grant!.id, command.instruction, access.delegation!.now())
+      : command;
+    const result = runAuthoring(this.studioRecords(build), ledger?.workspaces ?? [], ledger?.entries ?? [], sceneCommand, true, !!grant);
+    if (result.write || result.activity) assertStudioAuthoringAccess(access, command, this.assertDelegation(access.delegation, build));
+    if (result.write) this.writeAuthoring(buildId, result.write);
+    if (result.activity && ledger) {
+      const { requestId, mapKey, value, historyVersion } = result.activity;
+      const row = ledger.entries.find((r) => r.kind === "request" && r.id === requestId);
+      const workspace = ledger.workspaces.find((w) => w.mapKey === mapKey);
+      if (row?.kind === "request") row.activity = value;
+      if (workspace && !result.write) workspace.historyVersion = historyVersion;
     }
     if (result.end) this.endAuthoring(buildId, [result.end]);
     if (result.touch) this.touchBuild(build);
+    if (result.error) throw result.error;
     return structuredClone(result.response);
   }
 
@@ -989,6 +1026,7 @@ export class MemoryRoomStore implements RoomStore {
   }
   private closeStudioBuild(buildId: string) {
     this.authoring.delete(buildId);
+    this.chatSelections.delete(buildId);
     for (const job of this.studioMediaJobs.values()) if (job.buildId === buildId && job.state === "write") job.state = "cancelled";
     for (const grant of this.studioGrants.values()) {
       if (!grant.buildIds.includes(buildId)) continue;
