@@ -1,5 +1,15 @@
 # Implementation handoff
 
+## M5 deployed to the personal pilot, 2026-11-26
+
+The isolated pilot at `https://studio-test.habticraft.com` is running verified code commit `219139aaa6daa9b95407241df4efb54010b4718d`. Rollback before any M5 publication is the previous pilot release `7249e8d1694f5f50ba0ed05ca7b425272617f981`. The pre-cutover PostgreSQL dump and private-media archive were validated. Migration `20261126090000_studio_publication` applied, and counts for existing users, builds, grants, files and revisions matched after cutover.
+
+With separate owner approval, the pilot Compose overlay runs Mailpit on an internal Docker network with zero host port bindings. The pilot allows signup, resend and forgot-password submissions only from the qualification address while it uses the private inbox. The website and MCP health endpoints returned 200, OAuth discovery named the canonical pilot origin, and anonymous MCP returned 401 with the Studio Bearer challenge. The current pilot's public room-creation restriction still returned 403. The Mailpit network reported `Internal=true` and a signup submitted outside the test address returned 403.
+
+The synthetic owner completed the live email verification flow and signed into the separate Chrome window. Two empty builds are ready for the Chapel and Limestone Cave runs. A signed-in review with an absent selection dependency returned a no-store response with no digest. The anonymous equivalent returned 401. The existing pilot drafts were not used.
+
+Task 6.7 remains open. The separate Chrome window is still asking for ChatGPT sign-in. After sign-in, use the personal pilot connector for the two synthetic builds, make the approved room-start route reachable only from the qualification address for the test, restore its restriction afterward, and record the observed host corrections and room outcomes. Finalize the hosted portion of 6.9 against that evidence.
+
 ## M5 pilot staging and cutover prerequisite, 2026-11-26
 
 The owner approved deploying `219139aaa6daa9b95407241df4efb54010b4718d` to the isolated pilot for 6.7 and separately authorized the AWS CLI sign-in. Verified the Ohio instance and pinned SSH host key. The existing SSH rule already covered the operator's address.
