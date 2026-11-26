@@ -51,6 +51,14 @@ Crop delivery inherits build and source access. It renders the saved request's b
 
 The M4 authority review covered the two stores, build and grant lock ordering, tool visibility and owner-only paths. The product owner waived Raymond review gates for M4 on 2026-11-18.
 
+## M5 exact publication amendment
+
+The owner reviews a pinned Studio working revision in the signed-in website. Restoring an earlier candidate creates a new working revision and requires fresh review. Review binds the selected dependency closure, including the effective native values of reused library assets and creatures. Publication revalidates those inputs under the build and library concurrency controls. One commit materializes the candidate, adds the selected library items, enables delivery of their original artwork and records an idempotent receipt. A conflict or failed commit preserves the draft and its media access.
+
+Published Studio originals remain in private storage. An opaque library image alias resolves only through committed library state. The owner authorizes ordinary link-based delivery of the original, including embedded metadata. Cleanup follows committed references. Room creation, measurement-unit precedence, commands, events and player filtering retain their native behavior. The product owner extended the Raymond review waiver to M5 on 2026-11-26.
+
+The shared additions cover selected items and revision references, the review request and pinned dependency/validation response, a commit request with its review digest and operation UUID, and the receipt. Object keys and persistence records remain server-only. The database adds media bindings and receipts, with equivalent memory-store behavior.
+
 ## Consequences
 
 **M2 implementation decision (user agreed 2026-11-17, before dependent code):** design.md D13

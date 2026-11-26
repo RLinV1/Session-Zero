@@ -1,5 +1,9 @@
 # Implementation handoff
 
+## M5 approved contract and isolated base, 2026-11-26
+
+Verified the approved transcript title and closing plan tag, and verified local main and origin/main at `1660e45463b60374fd2311f1bf7452295ca341c6`. Created `feat/studio-m5-publication` in `/private/tmp/session-zero-studio-m5-publication`. Recorded the owner's decisions in D10, D14, D15 and ADR 0073 before implementation. Task 6.7 awaits separate pilot approval.
+
 ## M4 local verification and PR handoff, 2026-11-25
 
 Verified `feat/studio-m4-chat-selection` from `origin/main` at `4c24533d`. The review covered the M4 diff through `7bb44d3f`. The follow-up commits are `9a9fcef4` (staging validation and limits), `8c38fc5a` (composer and map controls), `153d10f0` (preparation and website browser checks) and `959156be` (stable per-widget selection slot).
