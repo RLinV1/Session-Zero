@@ -259,17 +259,18 @@ test("a historical Studio handoff pins the website review before publishing to a
 
   await page.goto(oldUrl);
   const dialog = page.getByRole("dialog", { name: "Publish draft" });
-  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="closed"]')).toBeVisible();
+  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="closed"]')).toHaveCount(1);
   await expect(dialog.getByRole("button", { name: "Publish 2" })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Restore this candidate" })).toBeVisible();
   const canvas = dialog.getByTestId("studio-review-candidate").getByTestId("studio-map");
+  await expect(canvas).toBeVisible();
   await canvas.focus();
   await page.keyboard.press("+");
   const camera = await canvas.getAttribute("viewBox");
   const latest = dialog.getByRole("button", { name: "Review latest" });
   await latest.focus();
   await latest.click();
-  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="open"]')).toBeVisible();
+  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="open"]')).toHaveCount(1);
   await expect(latest).toBeFocused();
   await expect(canvas).toHaveAttribute("viewBox", camera!);
   await expect(dialog.getByText(/including embedded metadata/)).toBeVisible();

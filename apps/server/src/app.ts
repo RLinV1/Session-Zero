@@ -154,7 +154,11 @@ export async function buildApp({
   });
   const assetStore = assets ?? new LocalDiskAssetStore(uploadDir);
   const media = new StudioMedia(store, studioMedia, studioDownloader, now);
-  const internalAssets: AssetStore = { ...assetStore, put: assetStore.put.bind(assetStore), delete: assetStore.delete.bind(assetStore), sizeOf: assetStore.sizeOf.bind(assetStore),
+  const internalAssets: AssetStore = {
+    ...assetStore,
+    put: (...args) => assetStore.put(...args),
+    delete: (key) => assetStore.delete(key),
+    sizeOf: (key) => assetStore.sizeOf(key),
     readPrivate: async (key, maxBytes) => {
       if (isPrivateMediaKey(key)) return studioMedia?.read(key, maxBytes) ?? null;
       if (isStudioAlias(key)) return (await readStudioAlias(store, studioMedia, key, maxBytes))?.bytes ?? null;

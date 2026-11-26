@@ -167,7 +167,10 @@ export function StudioPublicationReview({ buildId, selection, initialCandidate, 
     {error && <p role="alert">{error}</p>}
     {selectionCount > 0 && <div className="row">
       {stale && <p role="status">{t("publishChanged")}</p>}
-      <button type="button" aria-disabled={busy} onClick={() => { if (!publishing.current) reviewLatest(); }}>{t("publishLatest")}</button>
+      <button type="button" aria-disabled={busy} onClick={(event) => {
+        event.currentTarget.focus();
+        if (!publishing.current) reviewLatest();
+      }}>{t("publishLatest")}</button>
     </div>}
     {selectionCount > 0 && review && <>
       {review.disclosesOriginals && <p>{t("publishDisclosure")}</p>}

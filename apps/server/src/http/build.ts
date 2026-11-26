@@ -1,3 +1,5 @@
+import { requestLocale } from "../i18n/locale";
+import { localizeText } from "../i18n/localize";
 import { LibraryAssetInUseError } from "../store/libraryStore";
 import type { RemovedPublication } from "../store/buildStore";
 import { PRIVATE_PUBLISH_MESSAGE } from "../domain/studioMedia";
@@ -613,7 +615,8 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
             if (!input.success) return void res.status(400).json({ error: issueText(input.error) });
             const review = await store.reviewStudioPublication(id, ownerGmId, input.data, at);
             if (!await sessions.isLive(found.account.session.tokenHash)) throw new StudioAuthoringError("access", "Sign in again to review the build.");
-            return void res.json(review);
+            const locale = requestLocale(res);
+            return void res.json({ ...review, problems: review.problems.map(({ item, message }) => ({ item, message: localizeText(locale, message) })) });
           }
           if (action === "grid") {
             const input = StudioCandidate.safeParse(req.body);

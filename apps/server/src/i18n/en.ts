@@ -56,6 +56,12 @@ export const serverEn = {
   "studio.issue.moreTerrainOffMap": "Another {1} terrain runs extend outside the map. Correct or clear them.",
   "studio.issue.review": "This saved item needs review. Inspect its map, grid and placements, then ask the AI to correct the problem.",
   "studio.issue.contextChanged": "The selected map or encounter changed its source relationship. Select the map and encounter again; no coordinates were moved.",
+  "studio.publication.restore": "Restore this candidate and review the new working revision before publishing.",
+  "studio.publication.drift": "The source, grid or draft dependencies changed. Review the current draft.",
+  "studio.publication.grid": "Confirm this candidate’s grid before publishing.",
+  "studio.publication.empty": "Choose unpublished items before publishing.",
+  "studio.publication.boardConflict": "These draft maps use the same artwork with incompatible grids or boards.",
+  "studio.publication.reusedBoardConflict": "The draft grid or board differs from this artwork's library map.",
   "studio.media.publish": "Review and publish the exact Studio candidate on the signed-in website to include private artwork.",
 
   // Accounts and sign-in.

@@ -52,6 +52,12 @@ export const serverZhTW = {
   "studio.issue.moreTerrainOffMap": "另有 {1} 段地形超出地圖範圍。請修正或清除。",
   "studio.issue.review": "這個已儲存項目需要檢查。請查看地圖、網格與棋子位置，再請 AI 修正問題。",
   "studio.issue.contextChanged": "所選地圖或遭遇的來源關係已有變更。請重新選擇地圖與遭遇；座標並未移動。",
+  "studio.publication.restore": "請先還原此版本，再檢閱新的工作版本後發佈。",
+  "studio.publication.drift": "來源、網格或草稿相依項目已變更。請檢閱目前草稿。",
+  "studio.publication.grid": "請確認此候選版本的網格後再發佈。",
+  "studio.publication.empty": "請選擇尚未發佈的項目。",
+  "studio.publication.boardConflict": "這些草稿地圖使用相同圖檔，但網格或配置不同。",
+  "studio.publication.reusedBoardConflict": "草稿的網格或配置與資料庫中的地圖不同。",
   "studio.media.publish": "請在登入的網站檢閱並發佈工作室候選版本，以包含私人圖檔。",
 
   "api.signInRequired": "請先登入",
