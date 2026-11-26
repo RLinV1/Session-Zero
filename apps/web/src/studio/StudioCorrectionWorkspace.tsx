@@ -45,12 +45,13 @@ export function studioOperationId() {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
-export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, disabled }: {
+export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, disabled, onWebsiteOpen }: {
   snapshot: StudioSnapshot;
   media: Readonly<Record<string, string>>;
   locale: StudioLocale;
   authoring: StudioAuthoringClient;
   disabled: boolean;
+  onWebsiteOpen?: (url: string) => void;
 }) {
   const t = (key: StudioTextKey, params?: Record<string, number | string>) => studioT(locale, key, params);
   const { mapKey, encounterKey, sourceFileId } = snapshot.context;
@@ -187,6 +188,11 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
 
   const compared = comparison?.result.revision.id === pinned ? comparison : null;
   const displayed = inspection?.scene ?? (side === "base" ? compared?.base?.scene : compared?.result.scene) ?? snapshot.scene;
+  const displayedRevision = inspection ? inspection.workingRevisionId
+    : (side === "base" ? compared?.base?.revision.id : compared?.result.revision.id) ?? revisionId;
+  const reviewQuery = mapKey && displayedRevision ? new URLSearchParams({ reviewMap: mapKey, revision: displayedRevision,
+    ...(encounterKey && { encounter: encounterKey }) }) : null;
+  const reviewUrl = reviewQuery ? `${snapshot.websitePath}?${reviewQuery}` : null;
   const mediaIds = [displayed.source?.id, ...displayed.tokens.map((token) => token.imageFileId)].filter((id): id is string => !!id);
   const mediaSignature = [...new Set(mediaIds)].sort().join(",");
   useEffect(() => {
@@ -267,6 +273,9 @@ export function StudioCorrectionWorkspace({ snapshot, media, locale, authoring, 
   return <div className="studio-corrections" ref={root}>
     <StudioSceneMap scene={displayed} locale={locale} media={media} interaction={interaction} reportIssues={displayed === snapshot.scene} toolbar={toolbar}
       drawOverlay={inspection ? selection.drawOverlay : compared?.base ? (px) => <StudioDiffOverlay changes={changes} focused={focused?.id ?? null} px={px} /> : undefined} />
+    {reviewUrl && <a className="studio-note" href={reviewUrl} onClick={onWebsiteOpen ? (event) => { event.preventDefault(); onWebsiteOpen(reviewUrl); } : undefined}>
+      {t("reviewPublication")}
+    </a>}
     {chatDraft && <p role="status" className="studio-note">{t(attachFailed ? "correction.chatAttachFailed"
       : attachment?.key === chatKey ? "correction.chatAttached" : "correction.chatAttaching")}</p>}
     {inspection && !needsInspection && selection.keyboardObject && <p role="status" className="studio-note">

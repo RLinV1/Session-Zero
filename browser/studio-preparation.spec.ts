@@ -213,3 +213,93 @@ test("visible polling stays bounded and hidden/teardown or dismissed recovery st
   const ended = session.calls.length; await page.waitForTimeout(5200); expect(session.calls).toHaveLength(ended);
   await info.attach("local visible-only traffic", { body: JSON.stringify({ observedMs: 10_300, calls: intervalCalls.map((call) => call.name), hiddenCalls: 0, dismissedRecoveryCalls: 0, teardownCalls: 0 }), contentType: "application/json" });
 });
+
+test("a historical Studio handoff pins the website review before publishing to a native room (FR-GM-26, FR-GM-27)", async ({ page }) => {
+  // Use the browser context's own cookie jar for the signed-in website.
+  const request = page.request;
+  const session = await mount(page, request), { file, art } = await prepare(session);
+  const base = `${ORIGIN}/api/builds/${session.build.id}`;
+  expect((await session.tool("save_map_setup", { mapKey: "chapel", lines })).isError).not.toBe(true);
+  expect((await session.tool("save_creatures", { creatures: [
+    { key: "sentry", name: "Visible sentry", isPlayerCharacter: false, imageFileId: art.id },
+    { key: "lurker", name: "Hidden lurker", isPlayerCharacter: false, imageFileId: art.id },
+  ] })).isError).not.toBe(true);
+  expect((await session.tool("save_encounter", { key: "watch", name: "Published watch", mapKey: "chapel",
+    tokens: [
+      { creatureKey: "sentry", square: { column: 4, row: 4 }, hidden: false },
+      { creatureKey: "lurker", square: { column: 12, row: 4 }, hidden: true },
+    ],
+  })).isError).not.toBe(true);
+  await session.tool("studio_set_context", { context: { sourceFileId: file.id, mapKey: "chapel", encounterKey: "watch" } });
+  const authoring = `${base}/studio/authoring/maps/chapel`;
+  const inspected = await (await request.get(`${authoring}?encounterKey=watch`)).json() as {
+    inspectedVersion: string;
+    objects: { kind: string; id: string }[];
+    scene: { grid: { cellSize: number; offsetX: number; offsetY: number } };
+  };
+  const gate = inspected.objects.find((item) => item.kind === "door")!;
+  const { cellSize, offsetX, offsetY } = inspected.scene.grid;
+  const saved = await request.post(`${authoring}/requests`, { data: {
+    encounterKey: "watch", instruction: "Open the chapel door.", inspectedVersion: inspected.inspectedVersion, operationId: randomUUID(),
+    selection: { region: { minX: offsetX + cellSize * 3.5, minY: offsetY + cellSize * 1.5,
+      maxX: offsetX + cellSize * 5.5, maxY: offsetY + cellSize * 2.5 }, layers: ["geometry"], objectIds: [gate.id], wholeObjectIds: [] },
+  } });
+  expect(saved.ok(), await saved.text()).toBe(true);
+  const { baseRevisionId, requestId } = await saved.json() as { baseRevisionId: string; requestId: string };
+  const handoff = session.frame.getByRole("link", { name: "Review for publication" });
+  await expect(handoff).toHaveAttribute("href", new RegExp(baseRevisionId));
+  const oldUrl = (await handoff.getAttribute("href"))!;
+  const advanced = await session.tool("studio_submit_correction", {
+    requestId, baseRevisionId, operationId: randomUUID(), operations: [{ op: "line.update", id: gate.id, line: { ...lines[1], state: "open" } }],
+  });
+  expect(advanced.isError, JSON.stringify(advanced.content)).not.toBe(true);
+  const revisionId = advanced.structuredContent?.revisionId;
+  expect(revisionId).toBeTruthy();
+  await expect(handoff).toHaveAttribute("href", new RegExp(String(revisionId)));
+
+  await page.goto(oldUrl);
+  const dialog = page.getByRole("dialog", { name: "Publish draft" });
+  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="closed"]')).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Publish 2" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Restore this candidate" })).toBeVisible();
+  const canvas = dialog.getByTestId("studio-review-candidate").getByTestId("studio-map");
+  await canvas.focus();
+  await page.keyboard.press("+");
+  const camera = await canvas.getAttribute("viewBox");
+  const latest = dialog.getByRole("button", { name: "Review latest" });
+  await latest.focus();
+  await latest.click();
+  await expect(dialog.getByTestId("studio-review-candidate").locator('[data-kind="door"][data-portal-state="open"]')).toBeVisible();
+  await expect(latest).toBeFocused();
+  await expect(canvas).toHaveAttribute("viewBox", camera!);
+  await expect(dialog.getByText(/including embedded metadata/)).toBeVisible();
+
+  let lostReceipt: { candidates: { mapKey: string; revisionId: string }[]; assetIds: string[] } | undefined;
+  await page.route("**/publish/commit", async (route) => {
+    const response = await route.fetch();
+    expect(response.ok(), await response.text()).toBe(true);
+    lostReceipt = await response.json() as typeof lostReceipt;
+    await route.abort();
+  }, { times: 1 });
+  await dialog.getByRole("button", { name: "Publish 2" }).click();
+  await expect(dialog.getByRole("button", { name: "Retry publication" })).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: "Select all" })).toBeDisabled();
+  await page.reload();
+  const retried = page.waitForResponse((response) => response.url().endsWith("/publish/commit") && response.request().method() === "POST");
+  await dialog.getByRole("button", { name: "Retry publication" }).click();
+  const receipt = await retried;
+  expect(receipt.ok(), await receipt.text()).toBe(true);
+  expect(await receipt.json()).toEqual(lostReceipt);
+  expect(lostReceipt?.candidates).toEqual([{ mapKey: "chapel", revisionId }]);
+  await expect(dialog).toBeHidden();
+  const loaded = new Set<string>();
+  page.on("response", (response) => {
+    const asset = /\/uploads\/studio-original-([0-9a-f-]+)\.png$/.exec(response.url())?.[1];
+    if (asset && response.ok()) loaded.add(asset);
+  });
+  const started = page.waitForResponse((response) => response.url().endsWith("/api/rooms") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Start a room", exact: true }).click();
+  expect((await started).ok()).toBe(true);
+  await expect(page).toHaveURL(/\/r\/[a-z0-9-]+/i);
+  await expect.poll(() => [...loaded].sort()).toEqual([...lostReceipt!.assetIds].sort());
+});

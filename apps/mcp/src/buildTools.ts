@@ -292,7 +292,7 @@ export function createStudioBuildMcpServer(deps: BuildToolDeps, token: string): 
         ...build,
         fieldGuide: FIELD_GUIDE,
         limits: BUILD_LIMITS,
-        upload: { note: "Ask the user to attach originals in the ChatGPT chat, then pass them to studio_open in mapFiles/tokenFiles. The owner can also upload files on this build's Session Zero website page. Rules and character sheets stay in chat. Private file dependencies remain drafts until protected publication is available." },
+        upload: { note: "Ask the user to attach originals in the ChatGPT chat, then pass them to studio_open in mapFiles/tokenFiles. The owner can also upload files on this build's Session Zero website page. Rules and character sheets stay in chat. For publication, ask the owner to use Review for publication in Studio or open Publish on the signed-in build page." },
       });
     }));
   const correction = (buildId: string, method: string, path: string, body?: unknown) =>

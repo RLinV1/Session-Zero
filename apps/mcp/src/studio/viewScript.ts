@@ -118,9 +118,8 @@ function renderSaved() {
   const signature=JSON.stringify([snapshot.fingerprint,locale,generation,needsRetry,Object.keys(media)]);
   if (signature === rendered) return;
   rendered=signature;
-  const website=snapshot.websitePath;
   surface.render({snapshot,media,locale,disabled:needsRetry,stale:needsRetry,onContext:setContext,authoring:authoringClient(viewContext()),
-    onWebsiteOpen:async()=>{
+    onWebsiteOpen:async(website)=>{
       const context=viewContext();
       try { if (!(await app.openLink({url:website})).isError) return; } catch { /* The host may block external links. */ }
       if (isCurrent(context)) status('websiteUnavailable');

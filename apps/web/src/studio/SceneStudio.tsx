@@ -12,7 +12,7 @@ export interface SceneStudioProps {
   onContext: (context: StudioContext) => Promise<void>;
   disabled?: boolean;
   stale?: boolean;
-  onWebsiteOpen?: () => void;
+  onWebsiteOpen?: (url: string) => void;
   authoring?: StudioAuthoringClient;
 }
 
@@ -33,7 +33,7 @@ export function SceneStudio({ snapshot, media, locale, onContext, disabled = fal
   const contextKey = `${snapshot.buildId}:${context.sourceFileId}:${context.mapKey}:${context.encounterKey}`;
   return <section className="scene-studio" data-testid="studio-scene" aria-label={t("title")} aria-busy={changing}>
     {onWebsiteOpen && <p className="studio-note">
-      {t("attachInChat")}{" "}<a href={snapshot.websitePath} onClick={(event) => { event.preventDefault(); onWebsiteOpen(); }}>{t("uploadOnWebsite")}</a>{" "}
+      {t("attachInChat")}{" "}<a href={snapshot.websitePath} onClick={(event) => { event.preventDefault(); onWebsiteOpen(snapshot.websitePath); }}>{t("uploadOnWebsite")}</a>{" "}
       {t("websiteUploadVisibility")}
     </p>}
     <div className="studio-contexts">
@@ -58,7 +58,7 @@ export function SceneStudio({ snapshot, media, locale, onContext, disabled = fal
     </p>
     {contextError && <p role="alert">{t("contextFailed")}</p>}
     {authoring && context.mapKey ? <StudioCorrectionWorkspace key={contextKey} snapshot={snapshot} media={media} locale={locale}
-      authoring={authoring} disabled={disabled || changing} />
+      authoring={authoring} onWebsiteOpen={onWebsiteOpen} disabled={disabled || changing} />
       : <StudioSceneMap key={contextKey} scene={scene} media={media} locale={locale} />}
     <div className="studio-permissions">{(["grids", "walls", "terrain"] as const).filter((choice) => !snapshot.allowed[choice]).map((choice) => <p className="studio-note" key={choice}>{t(`permission.${choice}`)}</p>)}</div>
     {latest && <p className="studio-last-result" role="status" aria-live="polite" key={latest.id}>{t("outcome", { operation: t(`operation.${latest.operation}`), target: latest.targetKey ?? "", status: t(`outcome.${latest.code}`) })}</p>}

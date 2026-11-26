@@ -1,3 +1,4 @@
+import { StudioCandidate } from "@vtt/shared";
 import type { StudioOwnerIds } from "@vtt/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import {
@@ -49,6 +50,9 @@ import { PassPanel } from "./PassPanel";
 import { StudioConnections } from "../studio/StudioConnections";
 import { RIGHTS_NOTICE, copyText, uploadKindFor } from "./buildCopy";
 import { TerrainReview } from "./TerrainReview";
+import { pendingStudioPublication, StudioPublicationReview } from "./StudioPublicationReview";
+import { useLocale, useT } from "../../i18n/locale";
+import { studioT, type StudioTextKey } from "../../studio/text";
 
 const POLL_MS = 5000;
 const message = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
@@ -83,14 +87,30 @@ export function BuildPage({ buildId }: { buildId: string }) {
 }
 
 function Build({ id }: { id: string }) {
+  const locale = useLocale();
+  const siteText = useT();
+  const t = (key: StudioTextKey, params?: Record<string, string | number>) => studioT(locale, key, params);
+  const [deepLink] = useState(() => {
+    const query = new URLSearchParams(location.search);
+    const candidate = StudioCandidate.safeParse({ mapKey: query.get("reviewMap"), revisionId: query.get("revision") });
+    return candidate.success ? { candidate: candidate.data, encounter: query.get("encounter") } : null;
+  });
+  const [pendingPublication] = useState(() => pendingStudioPublication(id));
+  const [publicationLocked, lockPublicationSelection] = useState(!!pendingPublication);
+  const [pinnedReview, setPinnedReview] = useState(pendingPublication?.candidate ?? deepLink?.candidate);
+  const [exactRequired, setExactRequired] = useState(false);
   const [detail, setDetail] = useState<BuildDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pass, setPass] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState(() => new Set(pendingPublication ? [
+    ...pendingPublication.selection.maps.map((key) => `map/${key}`),
+    ...pendingPublication.selection.creatures.map((key) => `creature/${key}`),
+    ...pendingPublication.selection.encounters.map((key) => `encounter/${key}`),
+  ] : []));
   const [published, setPublished] = useState<PublishedBuildItem[]>([]);
   const [justPublished, setJustPublished] = useState<BuildPublished | null>(null);
-  const [confirmingPublish, setConfirmingPublish] = useState(false);
+  const [confirmingPublish, setConfirmingPublish] = useState(!!pendingPublication);
   const [unpublishingMap, setUnpublishingMap] = useState<{ id: string; name: string } | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [confirmingNewPass, setConfirmingNewPass] = useState(false);
@@ -160,6 +180,7 @@ function Build({ id }: { id: string }) {
   // draft has loaded, as it would on a page that loads all at once. Focus moves to its heading, so
   // the keyboard carries on from there too.
   const landed = useRef(false);
+  const landedReview = useRef(false);
   useEffect(() => {
     if (!detail || landed.current) return;
     landed.current = true;
@@ -182,6 +203,17 @@ function Build({ id }: { id: string }) {
     document.addEventListener("click", open, true);
     return () => document.removeEventListener("click", open, true);
   }, []);
+
+  useEffect(() => {
+    if (!deepLink || !detail || landedReview.current || pendingPublication) return;
+    landedReview.current = true;
+    const map = detail.items.find((item) => item.kind === "map" && item.key === deepLink.candidate.mapKey && !item.published);
+    if (!map) return;
+    const encounter = detail.items.find((item) => item.kind === "encounter" && item.key === deepLink.encounter &&
+      item.data.mapKey === map.key && !item.published);
+    setSelected(new Set([itemId(map), ...(encounter ? [itemId(encounter)] : [])]));
+    setConfirmingPublish(true);
+  }, [detail, deepLink, pendingPublication]);
 
   const items = useMemo(() => detail?.items ?? [], [detail]);
   const files = useMemo(() => detail?.files ?? [], [detail]);
@@ -232,13 +264,32 @@ function Build({ id }: { id: string }) {
   const requiredReviews = requiredItems.filter((i) => changed.includes(i));
   const chosenChanged = profileChanged || requiredReviews.length > 0;
 
+  const keys = (kind: BuildItemView["kind"]) => chosen.filter((i) => i.kind === kind).map((i) => i.key);
+  const selection = { creatures: keys("creature"), maps: keys("map"), encounters: keys("encounter") };
+  const exactPublication = publicationLocked || exactRequired || !!pinnedReview || items.some((item) => item.authoring) ||
+    files.some((file) => file.url.startsWith("/api/builds/"));
+  const exactKeys = (kind: BuildItemView["kind"]) =>
+    [...selected].filter((id) => id.startsWith(kind + "/")).map((id) => id.slice(kind.length + 1)).sort();
+  const exactSelection = { creatures: exactKeys("creature"), maps: exactKeys("map"), encounters: exactKeys("encounter") };
+  const closePublication = () => { setConfirmingPublish(false); setPinnedReview(undefined); };
+  const publicationDone = (done: BuildPublished) => {
+    setJustPublished(done);
+    setSelected(new Set());
+    closePublication();
+    void refresh();
+  };
+
   async function doPublish() {
     setConfirmingPublish(false);
-    const keys = (kind: BuildItemView["kind"]) => chosen.filter((i) => i.kind === kind).map((i) => i.key);
     await run(async () => {
-      const { published: done } = await api.builds.publish(id, { creatures: keys("creature"), maps: keys("map"), encounters: keys("encounter"), reviewed });
-      setJustPublished(done);
-      setSelected(new Set());
+      try {
+        const { published: done } = await api.builds.publish(id, { ...selection, reviewed });
+        publicationDone(done);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.detail.code !== "studio_review_required") throw error;
+        setExactRequired(true);
+        setConfirmingPublish(true);
+      }
     }, "Couldn't publish.", "Publishing…");
   }
 
@@ -483,33 +534,35 @@ function Build({ id }: { id: string }) {
             </div>
           </div>
         </Modal>
-        <Modal open={confirmingPublish} title="Publish draft" onClose={() => setConfirmingPublish(false)}>
+        <Modal open={confirmingPublish} title={t("publishTitle")} onClose={closePublication}>
           <div className="confirm build-publish-confirm">
             <div className="build-publish-list-head">
-              <label className="build-publish-select-all"><input type="checkbox" disabled={busy}
+              <label className="build-publish-select-all"><input type="checkbox" disabled={busy || publicationLocked}
                 checked={draftItems.length > 0 && chosen.length === draftItems.length}
                 ref={(node) => { if (node) node.indeterminate = chosen.length > 0 && chosen.length < draftItems.length; }}
-                onChange={(e) => setSelected(e.target.checked ? new Set(draftItems.map(itemId)) : new Set())} /><span>Select all</span></label>
-              <span className="muted small-print">{draftItems.length} available</span>
+                onChange={(e) => setSelected(e.target.checked ? new Set(draftItems.map(itemId)) : new Set())} /><span>{t("publishSelectAll")}</span></label>
+              <span className="muted small-print">{t("publishAvailable", { count: draftItems.length })}</span>
             </div>
             <ul className="plain build-publish-options">
               {draftItems.map((item) => <li key={itemId(item)}>
                 <label className="build-publish-option">
-                  <input type="checkbox" disabled={busy} checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />
-                  <span className="build-publish-option-name"><strong>{nameOf(item)}</strong><span className="muted small-print">{item.kind === "map" ? "Map" : item.kind === "creature" ? "Character / creature" : "Encounter"}</span></span>
-                  <span className={reviewed[itemId(item)] === item.updatedAt ? "chip" : "chip build-chip-warn"}>{reviewed[itemId(item)] === item.updatedAt ? "Reviewed" : "Needs review"}</span>
+                  <input type="checkbox" disabled={busy || publicationLocked} checked={selected.has(itemId(item))} onChange={(e) => toggle(item, e.target.checked)} />
+                  <span className="build-publish-option-name"><strong>{nameOf(item)}</strong><span className="muted small-print">{t(item.kind === "map" ? "publishMapItem" : item.kind === "creature" ? "publishCreatureItem" : "publishEncounterItem")}</span></span>
+                  {!exactPublication && <span className={reviewed[itemId(item)] === item.updatedAt ? "chip" : "chip build-chip-warn"}>{reviewed[itemId(item)] === item.updatedAt ? "Reviewed" : "Needs review"}</span>}
                 </label>
               </li>)}
             </ul>
-            {chosenChanged && chosen.length > 0 && <p className="muted small-print">Review {requiredReviews.map(nameOf).concat(profileChanged ? ["the game profile"] : []).join(", ")} before publishing.</p>}
-            {flaggedChosen > 0 && <p>{flaggedChosen} selected {flaggedChosen === 1 ? "item has" : "items have"} open flags. Blank values stay blank.</p>}
-            <details className="small-print"><summary>Publishing details</summary><p className="muted">{RIGHTS_NOTICE}</p></details>
+            {!exactPublication && chosenChanged && chosen.length > 0 && <p className="muted small-print">Review {requiredReviews.map(nameOf).concat(profileChanged ? ["the game profile"] : []).join(", ")} before publishing.</p>}
+            {!exactPublication && flaggedChosen > 0 && <p>{flaggedChosen} selected {flaggedChosen === 1 ? "item has" : "items have"} open flags. Blank values stay blank.</p>}
+            {!exactPublication && <details className="small-print"><summary>{t("publishDetails")}</summary><p className="muted">{RIGHTS_NOTICE}</p></details>}
             <div className="row build-editor-actions">
-              {chosen.length > 0 && <button type="button" className="small danger" disabled={busy} onClick={() => { setConfirmingPublish(false); setRemovingDraft(chosen); }}>Remove from draft</button>}
-              <button type="button" onClick={() => setConfirmingPublish(false)}>Cancel</button>
-              <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged || busy} onClick={() => void doPublish()}>{publishLabel}</button>
+              {chosen.length > 0 && <button type="button" className="small danger" disabled={busy || publicationLocked} onClick={() => { closePublication(); setRemovingDraft(chosen); }}>{t("publishRemove")}</button>}
+              <button type="button" onClick={closePublication}>{siteText("common.cancel")}</button>
+              {!exactPublication && <button type="button" className="primary" disabled={chosen.length === 0 || chosenChanged || busy} onClick={() => void doPublish()}>{publishLabel}</button>}
             </div>
           </div>
+          {exactPublication && <StudioPublicationReview buildId={id} selection={exactSelection}
+            initialCandidate={pinnedReview} files={files} onDone={publicationDone} lockSelection={lockPublicationSelection} />}
         </Modal>
 
         <Modal open={confirmingNewPass} title="Make a new pass?" onClose={() => setConfirmingNewPass(false)}>
