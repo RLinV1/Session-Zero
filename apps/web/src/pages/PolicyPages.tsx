@@ -21,6 +21,8 @@ export const POLICIES_UPDATED = { iso: "2026-11-27", label: "27 November 2026" }
 
 /** Where a person reaches the project: the repository's issue tracker. */
 const CONTACT_URL = "https://github.com/RLinV1/Session-Zero/issues";
+/** The team's address for privacy requests and anything that shouldn't be public. */
+const CONTACT_EMAIL = "sessionzerovtt@gmail.com";
 
 type Tr = typeof t;
 
@@ -158,6 +160,11 @@ export function PrivacyPage() {
               {tr("privacy.contact.before")}
               <a href={CONTACT_URL}>{tr("privacy.contact.link")}</a>
               {tr("privacy.contact.after")}
+            </p>
+            <p>
+              {tr("privacy.contact.private.before")}
+              <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              {tr("privacy.contact.private.after")}
             </p>
           </Part>
         </>

@@ -99,6 +99,8 @@ export const policy = {
   "privacy.contact.before": "Questions or requests: open an issue on the project's ",
   "privacy.contact.link": "GitHub issue tracker",
   "privacy.contact.after": ". Do not post private details there.",
+  "privacy.contact.private.before": "For privacy requests, such as deleting data you can't delete yourself, or anything private, email ",
+  "privacy.contact.private.after": ".",
 
   "terms.title": "Terms of use",
   "terms.lead.before": ({ product }: { product: string }) => `Using ${product} means agreeing to these terms and to the `,

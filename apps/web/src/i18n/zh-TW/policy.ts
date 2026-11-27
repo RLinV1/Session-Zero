@@ -68,6 +68,8 @@ export const policyZhTW = {
   "privacy.contact.before": "有任何問題或需求？歡迎透過專案的",
   "privacy.contact.link": "GitHub Issue 頁面",
   "privacy.contact.after": "提出。請勿公開個人或敏感資訊。",
+  "privacy.contact.private.before": "若有隱私相關請求（例如刪除你無法自行刪除的資料）或任何私人事項，請寄信至 ",
+  "privacy.contact.private.after": "。",
 
   "terms.title": "服務條款",
   "terms.lead.before": ({ product }) => cjk`使用${product}，即代表你同意本服務條款與`,

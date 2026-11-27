@@ -53,6 +53,7 @@ describe("privacy and terms pages (site-policies)", () => {
     expect(screen.getByText(/There is one cookie/)).toBeTruthy();
     expect(screen.getByText("Delete account").closest("li")?.textContent).toMatch(/account menu/);
     expect(screen.getByRole("link", { name: "GitHub issue tracker" }).getAttribute("href")).toBe("https://github.com/RLinV1/Session-Zero/issues");
+    expect(screen.getByRole("link", { name: "sessionzerovtt@gmail.com" }).getAttribute("href")).toBe("mailto:sessionzerovtt@gmail.com");
   });
 
   it("no longer reads like a course handout", () => {
