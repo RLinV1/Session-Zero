@@ -36,6 +36,10 @@ export interface RevisionScene {
   materializedVersion: string;
 }
 
+export function candidateNeedsGridConfirmation(scene: RevisionScene, live: RevisionScene | undefined) {
+  return scene.map.gridStatus !== "confirmed" || (scene.map.gridBy === "agreement" && live?.map.gridBy !== "agreement");
+}
+
 function fileIdentity(file: BuildFileRecord) {
   return { id: file.id, canonicalId: file.studio?.canonicalId ?? file.sourceHash, width: file.width, height: file.height, orientation: file.studio?.orientation ?? null };
 }
@@ -61,7 +65,7 @@ function rowIds<T>(values: readonly T[], prior: readonly T[], priorIds: readonly
   });
 }
 
-export function captureScene(records: StudioPreparationRecords, target: StudioTarget, prior?: RevisionScene, given?: StudioOwnerIds): RevisionScene {
+export function captureScene(records: StudioPreparationRecords, target: StudioTarget, prior?: RevisionScene, given?: StudioOwnerIds, allowPublishedSource = false): RevisionScene {
   const { build, files, items } = records;
   const item = items.find((i) => i.kind === "map" && i.key === target.mapKey);
   const encounterItem = items.find((i) => i.kind === "encounter" && i.key === target.encounterKey);
@@ -71,7 +75,7 @@ export function captureScene(records: StudioPreparationRecords, target: StudioTa
   const data = item.data as unknown as DraftMapState;
   const file = files.find((f) => f.id === data.fileId && f.kind === "map");
   if (!file) throw new StudioAuthoringError("missing", "This map's source file is unavailable.");
-  if (item.publishedId || file.publishedAssetId || encounterItem?.publishedId) {
+  if (item.publishedId || (!allowPublishedSource && file.publishedAssetId) || encounterItem?.publishedId) {
     throw new StudioAuthoringError("conflict", "Choose an unpublished draft to start a correction.");
   }
   const units = { unitsPerCell: build.gameProfile?.unitsPerCell ?? DEFAULT_GRID.unitsPerCell, unitLabel: build.gameProfile?.unitLabel ?? DEFAULT_GRID.unitLabel };

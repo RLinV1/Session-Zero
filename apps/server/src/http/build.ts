@@ -1,3 +1,9 @@
+import { requestLocale } from "../i18n/locale";
+import { localizeText } from "../i18n/localize";
+import { LibraryAssetInUseError } from "../store/libraryStore";
+import type { RemovedPublication } from "../store/buildStore";
+import { PRIVATE_PUBLISH_MESSAGE } from "../domain/studioMedia";
+import { StudioCandidate, StudioPublishReviewInput, StudioPublishCommitInput } from "@vtt/shared";
 import { registerStudioAuthoringRoutes, studioAuthoringFailure, studioAuthoringMessage } from "./studioAuthoring";
 import { StudioAuthoringError } from "../domain/studioSceneRevision";
 import { registerStudioMediaRoutes } from "./studioMedia";
@@ -577,9 +583,13 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       if (build.status !== "open") return void res.status(409).json({ error: "This build is closed." });
       try {
         const planned = await planPublish(store, build, selection.data, new Date(now()).toISOString());
-        if (!planned.ok) return void res.status(422).json({ error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems });
+        if (!planned.ok) return void res.status(422).json({
+          ...(planned.problems.some(({ message }) => message === PRIVATE_PUBLISH_MESSAGE) && { code: "studio_review_required" }),
+          error: planned.problems.map((p) => `${p.item}: ${p.message}`).join("\n"), problems: planned.problems,
+        });
         res.json({ published: await store.publishBuild(planned.plan, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES) });
       } catch (err) {
+        if (err instanceof StudioAuthoringError && err.code === "enrolled") return void res.status(409).json({ code: "studio_review_required", error: err.message });
         if (err instanceof UploadAllowanceError || err instanceof EncounterLimitError || err instanceof BuildClosedError || err instanceof BuildPublishConflictError) {
           return void res.status(409).json({ error: err.message });
         }
@@ -588,6 +598,49 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
       }
     })().catch(failed(res));
   });
+
+  function publicationAction(action: "review" | "commit" | "grid") {
+    return (req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.vary("Cookie").vary("Authorization");
+      void (async () => {
+        const found = await ownerBuild(req, res);
+        if (!found) return;
+        if (!await sessions.isLive(found.account.session.tokenHash)) throw new StudioAuthoringError("access", "Sign in to review the build.");
+        const { id, ownerGmId } = found.build;
+        const at = new Date(now()).toISOString();
+        try {
+          if (action === "review") {
+            const input = StudioPublishReviewInput.safeParse(req.body);
+            if (!input.success) return void res.status(400).json({ error: issueText(input.error) });
+            const review = await store.reviewStudioPublication(id, ownerGmId, input.data, at);
+            if (!await sessions.isLive(found.account.session.tokenHash)) throw new StudioAuthoringError("access", "Sign in again to review the build.");
+            const locale = requestLocale(res);
+            return void res.json({ ...review, problems: review.problems.map(({ item, message }) => ({ item, message: localizeText(locale, message) })) });
+          }
+          if (action === "grid") {
+            const input = StudioCandidate.safeParse(req.body);
+            if (!input.success) return void res.status(400).json({ error: issueText(input.error) });
+            return void res.json(await store.studioAuthoring(id, { ownerGmId }, { kind: "confirmPublishGrid", ...input.data }));
+          }
+          const input = StudioPublishCommitInput.safeParse(req.body);
+          if (!input.success) return void res.status(400).json({ error: issueText(input.error) });
+          res.json(await store.commitStudioPublication(id, ownerGmId, input.data, at, UPLOAD_ALLOWANCE, MAX_ENCOUNTER_TEMPLATES, { tokenHash: found.account.session.tokenHash, now }));
+        } catch (error) {
+          if (error instanceof BuildPublishConflictError || error instanceof CreatureImageMissingError || error instanceof EncounterMapMissingError) {
+            return void res.status(409).json({ code: "conflict", error: new BuildPublishConflictError().message });
+          }
+          if (error instanceof UploadAllowanceError || error instanceof EncounterLimitError || error instanceof BuildClosedError) {
+            return void res.status(409).json({ code: "limit", error: error.message });
+          }
+          throw error;
+        }
+      })().catch(failed(res));
+    };
+  }
+  app.post("/api/builds/:id/publish/review", publicationAction("review"));
+  app.post("/api/builds/:id/publish/commit", publicationAction("commit"));
+  app.post("/api/builds/:id/publish/grid", publicationAction("grid"));
 
   app.delete("/api/builds/:id", (req, res) => {
     void (async () => {
@@ -669,27 +722,34 @@ export function registerBuildRoutes(app: Express, deps: Deps) {
         if (rooms.length || encounters.length) return void res.status(409).json({ error: "This map is still used by a room or encounter. Remove those references before unpublishing it." });
       }
       const chosen = (id: string | null): id is string => id !== null && (!wanted || wanted.has(id));
-      const forgetItems: { kind: BuildItemKind; key: string }[] = [];
+      const forgetItems: RemovedPublication["items"] = [];
       let removed = 0;
 
       for (const item of items) {
         if (item.kind === "map" || !chosen(item.publishedId)) continue;
         if (item.kind === "encounter" ? await store.deleteEncounter(item.publishedId, owner) : await store.deleteCreature(item.publishedId, owner)) removed++;
-        forgetItems.push({ kind: item.kind, key: item.key });
+        forgetItems.push({ kind: item.kind, key: item.key, publishedId: item.publishedId });
       }
-      const forgetFiles: string[] = [];
+      const forgetFiles: RemovedPublication["files"] = [];
       for (const file of files) {
         if (!chosen(file.publishedAssetId)) continue;
-        const deleted = await store.deleteAsset(file.publishedAssetId, owner);
+        const deleted = await store.deleteAsset(file.publishedAssetId, owner, body.data.unpublishMap).catch((error: unknown) => {
+          if (error instanceof LibraryAssetInUseError) return null;
+          throw error;
+        });
+        if (!deleted && body.data.unpublishMap && await store.findAsset(file.publishedAssetId, owner)) {
+          return void res.status(409).json({ error: "This map is still used by a room or encounter. Remove those references before unpublishing it." });
+        }
         if (deleted) {
           removed++;
           // As a library delete does: rooms still naming this address draw the usual stand-in.
-          if (!body.data.unpublishMap) await assets.delete(deleted.objectKey).catch(() => console.error("[vtt] could not delete a published build file"));
+          if (!body.data.unpublishMap && !deleted.studioOriginal) await assets.delete(deleted.objectKey).catch(() => console.error("[vtt] could not delete a published build file"));
         }
-        forgetFiles.push(file.id);
-        for (const item of items) if (item.kind === "map" && item.publishedId === file.publishedAssetId) forgetItems.push({ kind: "map", key: item.key });
+        forgetFiles.push({ id: file.id, publishedAssetId: file.publishedAssetId });
+        for (const item of items) if (item.kind === "map" && item.publishedId === file.publishedAssetId) forgetItems.push({ kind: "map", key: item.key, publishedId: file.publishedAssetId });
       }
-      await store.forgetPublished(build.id, { fileIds: forgetFiles, items: forgetItems, keepFiles: body.data.unpublishMap });
+      await store.forgetPublished(build.id, { files: forgetFiles, items: forgetItems, keepFiles: body.data.unpublishMap });
+      await deps.media.sweep();
       res.json({ removed });
     })().catch(failed(res));
   });

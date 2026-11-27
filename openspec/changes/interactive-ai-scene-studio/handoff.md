@@ -1,5 +1,82 @@
 # Implementation handoff
 
+## Privacy notice and terms cover Studio, 2026-11-27
+
+The privacy notice and terms now describe Studio, ahead of a public plugin listing. They cover the connection record and its hashed tokens, map files downloaded from the AI app's file servers, revision, correction and selection retention, and the 8-hour access with a 30-day maximum. They also say the AI app receives a crop of the selected area, that only the owner publishes, that published Studio art keeps its embedded metadata at its library link, and how to disconnect. Values match `apps/server/src/http/studioOAuth.ts` and `apps/server/src/store/studioAuthoring.ts`. The policy date is 27 November 2026. Lint, typecheck and `npm test` passed (5,890 tests, 73 optional-service skips). Privacy requests and private contact go to sessionzerovtt@gmail.com; the public issue tracker remains for everything else. [Policy text](../../../apps/web/src/i18n/en/policy.ts)
+
+## M5 hosted verification and exit, 2026-11-26
+
+Completed 6.7 in ChatGPT web Work against the isolated pilot on `219139aaa6daa9b95407241df4efb54010b4718d`. ChatGPT applied one saved scoped correction to each of two synthetic scenes. Website review preserved both corrections through grid confirmation and exact publication. The two PostgreSQL receipts matched the encounters applied to two ordinary rooms. Both room browsers fetched their map and token artwork. Published aliases matched Studio's intake bytes. The cave's locally attached PNG and the imported PNG had identical decoded pixels and different byte hashes.
+
+Completed 6.9 by checking the final receipt and room evidence against the M5 claims and the reconciled OpenSpec and client guidance. The hosted evidence records the actual correction handoff and fixture limits. Raw player visibility and failure recovery retain their local evidence. The parent change remains open for subsequent tasks. Claude compatibility and production remain unqualified.
+
+The original pilot room restriction was restored and returned 403. The synthetic OAuth grant was revoked and the temporary plugin uninstalled. The two published encounters and rooms are retained for handoff. Push and PR creation await separate approval. [Hosted verification](evidence/m5-host-2026-11-26.md) · [Local checks and reviews](#m5-verification-and-release-handoff-2026-11-26)
+
+## M5 deployed to the personal pilot, 2026-11-26
+
+The isolated pilot at `https://studio-test.habticraft.com` is running verified code commit `219139aaa6daa9b95407241df4efb54010b4718d`. Rollback before any M5 publication is the previous pilot release `7249e8d1694f5f50ba0ed05ca7b425272617f981`. The pre-cutover PostgreSQL dump and private-media archive were validated. Migration `20261126090000_studio_publication` applied, and counts for existing users, builds, grants, files and revisions matched after cutover.
+
+With separate owner approval, the pilot Compose overlay runs Mailpit on an internal Docker network with zero host port bindings. The pilot allows signup, resend and forgot-password submissions only from the qualification address while it uses the private inbox. The website and MCP health endpoints returned 200, OAuth discovery named the canonical pilot origin, and anonymous MCP returned 401 with the Studio Bearer challenge. The current pilot's public room-creation restriction still returned 403. The Mailpit network reported `Internal=true` and a signup submitted outside the test address returned 403.
+
+The synthetic owner completed the live email verification flow and signed into the separate Chrome window. Two empty builds are ready for the Chapel and Limestone Cave runs. A signed-in review with an absent selection dependency returned a no-store response with no digest. The anonymous equivalent returned 401. The existing pilot drafts were not used.
+
+Task 6.7 remains open. The separate Chrome window is still asking for ChatGPT sign-in. After sign-in, use the personal pilot connector for the two synthetic builds, make the approved room-start route reachable only from the qualification address for the test, restore its restriction afterward, and record the observed host corrections and room outcomes. Finalize the hosted portion of 6.9 against that evidence.
+
+## M5 pilot staging and cutover prerequisite, 2026-11-26
+
+The owner approved deploying `219139aaa6daa9b95407241df4efb54010b4718d` to the isolated pilot for 6.7 and separately authorized the AWS CLI sign-in. Verified the Ohio instance and pinned SSH host key. The existing SSH rule already covered the operator's address.
+
+The exact source archive was verified by SHA-256 after transfer. Server, MCP, web and vision images were built and tagged with the approved revision. The server and MCP images report Node 22.23.2. The staged Caddy configuration validates and retains the pilot's existing restrictions through a separate mount. The live site remains on `7249e8d1694f5f50ba0ed05ca7b425272617f981`, with successful HTTPS health checks for the website and MCP. Cutover, the backup immediately preceding it, and the migration are pending.
+
+The new server requires SMTP configuration at startup. The pilot's existing Compose file and environment contain no SMTP settings. The owner was asked separately about a private pilot mail sink for synthetic verification, because public signups and resets require real mail delivery to reach users. The current pilot account also has all three build slots in use. A separate Chrome window is ready for ChatGPT sign-in and a fresh synthetic pilot account, keeping those drafts intact.
+
+The architectural map and token fixture are committed in `browser/fixtures`. The new synthetic cave fixture is `/private/tmp/session-zero-m5-pilot.uXBpxO/studio-cave-qualification.png`, 1448 × 1086, SHA-256 `c3354de481487854f63082d7158328b26fcc4edc4067a2fc7d1c28392eaf09d3`. The staged rollout helpers and logs are in that same temporary directory. Task 6.7 and the hosted portion of 6.9 remain open.
+
+## M5 verification and release handoff, 2026-11-26
+
+Implemented from `1660e45463b60374fd2311f1bf7452295ca341c6` in `/private/tmp/session-zero-studio-m5-publication` on `feat/studio-m5-publication`. Code through `219139aaa6daa9b95407241df4efb54010b4718d` is the tested source. The later handoff commit updates the specs and documentation.
+
+| Task | Evidence |
+| --- | --- |
+| 6.1 | The website opened the older displayed Studio revision with its original closed door. Review latest showed the corrected open door and preserved camera and focus. Store tests also verified older-revision restore, candidate-versus-builder divergence, and changed library grid and creature stats. |
+| 6.2 | Memory and PostgreSQL both materialized the corrected placements and added only the reviewed closure. Tests covered foreign, pass-only, delegated-only, cross-origin and revoked owner sessions, concurrent commits, operation-ID conflicts, incompatible boards on one source, and equal receipt replay after a lost response. |
+| 6.3 | A second PostgreSQL connection could neither see staged library rows nor anonymously GET or HEAD their aliases. A late injected failure rolled back the rows and quota usage, and S3 denied anonymous access to the original key. Disk and S3 delivery returned byte-identical map and token art after commit. A same-name disk file could not answer a reserved alias miss. |
+| 6.4 | The test suite exercised candidate-preserving grid confirmation, stale terrain, off-map geometry, portal cutting, legal Difficult terrain, a multi-square Blocked footprint, hidden placements, blank stats, and the three quota checks. Shared art was charged once. Review includes unresolved flags and marks. |
+| 6.5 | The real-stack website journey started an ordinary room and both image aliases loaded in the canvas client. Server tests checked template and room units separately, map alignment, walls, portal state, Base terrain, placement, hidden fields and raw player welcome, redacted event and reconnect payloads. |
+| 6.6 | Browser reload replayed the withheld commit response. A fresh PostgreSQL store and sign-in replayed the same receipt after discard and library deletion. Tests also covered late corrections, owner-session revocation and reauthorization, partial publication, abandoned cleanup, unpublish and republish, stale removal and account deletion. |
+| 6.7 | Pending separate approval of the exact pilot commit and the real ChatGPT web run. Claude Studio publication is unqualified. |
+| 6.8 | Local verification and independent review are recorded below. |
+| 6.9 | Local OpenSpec deltas and support guidance are ready. Finalize the milestone handoff against the hosted results after 6.7. Keep the parent change open. |
+
+### Local checks
+
+- Node 22.23.2 ran lint, typecheck and the full repository test command successfully. **5,889 passed** (2,074 shared, 292 MCP, 1,425 server, 2,096 web and 2 server benchmarks). The default run skipped 73 optional-service tests. Earlier checks caught missing review catalog entries and a UVTT test whose instrumented asset writer was bypassed by the adapter. The final commit passes both regressions.
+- The focused PostgreSQL/S3, builder and authoring run passed 162 tests. The final publication-only rerun passed 12 tests, including the transaction fault injection, cross-connection reads and a queued session revocation.
+- The preparation suite passed all 36 distinct cases across the initial run and retries. The new publication journey passed on Chromium desktop and touch, Firefox narrow and WebKit desktop. Retries resolved transient harness failures and the browser test's SVG locator and focus handling.
+- Intake passed 42 cases across six separate project invocations. The Chromium website consent and owner-editor suite passed 6 cases.
+- Both OpenSpec changes validated. `interactive-ai-scene-studio` retains two existing requirement-length warnings.
+- The isolated `sz-studio-m2-96909cb5` Docker services and volumes were removed. Its generated environment file was removed after teardown.
+
+### Independent reviews and fixes
+
+The sync reviewer, visibility auditor and high-effort diff reviewer each reviewed and rechecked the changes. Fixes covered extension-bearing aliases for Pixi, native UVTT export and its asset adapter, compare-and-set removal, finalized workspace edit guards, reused attack animations, revoked grid agreement, session checks under the build lock and before review response, and legacy-route dependency checks. The dialog now pins restored revisions, reports changes even for invalid reviews, previews standalone art, and freezes and recovers the exact retry selection across reload. The reviews found the native event and player-filtering paths intact.
+
+The existing native room-use index is populated after append. A simultaneous native map placement can still race the usage check during unpublish. Publication-versus-template reference checks are serialized at the library asset row.
+
+### Approval gates
+
+Push, PR creation and the pilot deployment each require separate approval. The pilot run must record the deployed commit, representative architectural and cave maps and token art, correction rounds, remaining uncertainty and observed room results.
+
+## M5 local implementation and first review, 2026-11-26
+
+The isolated stack applied all 38 migrations, including the new receipt and original binding. The first focused run passed 157 tests in PostgreSQL, S3, native builder and Studio authoring. The PostgreSQL fault injection checked prospective GET and HEAD aliases through a second connection after insertion and before rollback. The initial browser and full verification runs are being reconciled against the final fixes.
+
+The independent reviews identified stale removal and retry races, inactive authoring guards after partial publication, reused native attack validation, a grid-agreement withdrawal edge, session expiry while waiting for the build lock, and ordinary image consumers that need alias support. The verification entry records the fixes and rechecks.
+
+## M5 approved contract and isolated base, 2026-11-26
+
+Verified the approved transcript title and closing plan tag, and verified local main and origin/main at `1660e45463b60374fd2311f1bf7452295ca341c6`. Created `feat/studio-m5-publication` in `/private/tmp/session-zero-studio-m5-publication`. Recorded the owner's decisions in D10, D14, D15 and ADR 0073 before implementation. Task 6.7 awaits separate pilot approval.
+
 ## M4 local verification and PR handoff, 2026-11-25
 
 Verified `feat/studio-m4-chat-selection` from `origin/main` at `4c24533d`. The review covered the M4 diff through `7bb44d3f`. The follow-up commits are `9a9fcef4` (staging validation and limits), `8c38fc5a` (composer and map controls), `153d10f0` (preparation and website browser checks) and `959156be` (stable per-widget selection slot).

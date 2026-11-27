@@ -1,3 +1,4 @@
+import { StudioPublishReview, StudioPublicationReceipt, type StudioCandidate, type StudioPublishReviewInput, type StudioPublishCommitInput } from "@vtt/shared";
 import type { StudioOwnerIds } from "@vtt/shared";
 import { FeedbackReceipt, type FeedbackReport } from "@vtt/shared";
 import { z } from "zod";
@@ -537,7 +538,7 @@ export const api = {
       return StudioCorrectionReceipt.parse(await accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/requests`, { method: "POST", ...jsonBody(input) }));
     },
     restoreRevision: (buildId: string, mapKey: string, input: StudioRestoreInput) =>
-      accountRequest<unknown>(`${studioMapUrl(buildId, mapKey)}/restore`, { method: "POST", ...jsonBody(input) }),
+      accountRequest<{ revisionId: string }>(`${studioMapUrl(buildId, mapKey)}/restore`, { method: "POST", ...jsonBody(input) }),
     endCorrections: async (buildId: string, mapKey: string) => {
       await accountRequest<unknown>(studioMapUrl(buildId, mapKey), { method: "DELETE" });
     },
@@ -592,6 +593,14 @@ export const api = {
       accountRequest<void>(`${buildUrl(id)}/items/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" }),
     publish: (id: string, selection: { creatures: string[]; maps: string[]; encounters: string[]; reviewed: Record<string, string> }) =>
       accountRequest<{ published: BuildPublished }>(`${buildUrl(id)}/publish`, { method: "POST", ...jsonBody(selection) }),
+    async reviewPublication(id: string, input: StudioPublishReviewInput) {
+      return StudioPublishReview.parse(await accountRequest<unknown>(`${buildUrl(id)}/publish/review`, { method: "POST", ...jsonBody(input) }));
+    },
+    async commitPublication(id: string, input: StudioPublishCommitInput) {
+      return StudioPublicationReceipt.parse(await accountRequest<unknown>(`${buildUrl(id)}/publish/commit`, { method: "POST", ...jsonBody(input) }));
+    },
+    confirmPublicationGrid: (id: string, input: StudioCandidate) =>
+      accountRequest<{ revisionId: string }>(`${buildUrl(id)}/publish/grid`, { method: "POST", ...jsonBody(input) }),
     published: (id: string) => accountRequest<{ published: PublishedBuildItem[] }>(`${buildUrl(id)}/published`),
     removePublished: (id: string, ids?: string[], unpublishMap?: boolean) =>
       accountRequest<{ removed: number }>(`${buildUrl(id)}/remove-published`, { method: "POST", ...jsonBody({ ...(ids ? { ids } : {}), ...(unpublishMap ? { unpublishMap } : {}) }) }),

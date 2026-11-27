@@ -113,15 +113,17 @@ Read [design.md](design.md), the [requirements](specs/interactive-scene-studio/s
 
 **Investigate:** Publish dependency closure, reused library values, private-media aliases, rollback visibility, quotas, retained publication receipts and native player filtering.
 
-- [ ] 6.1 Open website review for an exact candidate with the versions of every dependency actually used; verify a new candidate or changed library/grid/profile/art dependency is announced and cannot silently change the review.
-- [ ] 6.2 Materialize and publish the owner-selected candidate under current version/authority checks through the existing atomic add-only path; verify foreign/delegated/pass requests are refused and retries do not duplicate items.
-- [ ] 6.3 Add commit-gated ordinary library delivery for published private media; inject publication failures and verify no would-be public alias, storage URL or static fallback exposes artwork before a successful commit.
-- [ ] 6.4 Preserve native confirmation and validation, including stale terrain, blocked footprints, portal cutting, hidden states and quotas; verify refusal leaves library rows and private media unchanged.
-- [ ] 6.5 Start a room through the existing path and inspect raw player payloads; verify reviewed geometry, terrain and placements persist, hidden content is withheld and no Studio history or GM credential reaches AI/player clients.
-- [ ] 6.6 Exercise reload/restart, expiry/reauthorization, old widgets, concurrent tabs, discard and abandoned/account cleanup after partial publication; verify published media is retained and ordinary view reads do not extend build retention.
-- [ ] 6.7 Qualify the complete raw-map-to-correction-to-owner-publication journey in actual ChatGPT web using representative architectural/cave maps and token art; record correction effort, remaining uncertainty and real results instead of claiming general model accuracy.
-- [ ] 6.8 Run the repository-required checks, relevant browser suites and independent diff review; perform a Claude compatibility smoke check only if access is available and authorized, otherwise label it unqualified without implying ChatGPT's results cover it.
-- [ ] 6.9 Reconcile affected active-builder/durable-spec discrepancies, update user/client support guidance, and review the final handoff/receipts; verify all release claims name their actual evidence and archive only when the parent requirements are truly satisfied.
+- [x] 6.1 Open website review for an exact candidate with the versions of every dependency actually used; verify a new candidate or changed library/grid/profile/art dependency is announced and cannot silently change the review.
+- [x] 6.2 Materialize and publish the owner-selected candidate under current version/authority checks through the existing atomic add-only path; verify foreign/delegated/pass requests are refused and retries do not duplicate items.
+- [x] 6.3 Add commit-gated ordinary library delivery for published private media; inject publication failures and verify no would-be public alias, storage URL or static fallback exposes artwork before a successful commit.
+- [x] 6.4 Preserve native confirmation and validation, including stale terrain, blocked footprints, portal cutting, hidden states and quotas; verify refusal leaves library rows and private media unchanged.
+- [x] 6.5 Start a room through the existing path and inspect raw player payloads; verify reviewed geometry, terrain and placements persist, hidden content is withheld and no Studio history or GM credential reaches AI/player clients.
+- [x] 6.6 Exercise reload/restart, expiry/reauthorization, old widgets, concurrent tabs, discard and abandoned/account cleanup after partial publication; verify published media is retained and ordinary view reads do not extend build retention.
+- [x] 6.7 Qualify the complete raw-map-to-correction-to-owner-publication journey in actual ChatGPT web using representative architectural/cave maps and token art; record correction effort, remaining uncertainty and real results instead of claiming general model accuracy.
+- [x] 6.8 Run the repository-required checks, relevant browser suites and independent diff review; perform a Claude compatibility smoke check only if access is available and authorized, otherwise label it unqualified without implying ChatGPT's results cover it.
+- [x] 6.9 Reconcile affected active-builder/durable-spec discrepancies, update user/client support guidance, and review the final handoff/receipts; verify all release claims name their actual evidence and archive only when the parent requirements are truly satisfied.
+
+**Evidence (2026-11-26):** [Local tests, independent reviews and specification reconciliation](handoff.md#m5-verification-and-release-handoff-2026-11-26) and [hosted ChatGPT correction, publication receipts and rooms](evidence/m5-host-2026-11-26.md). Both synthetic scenes completed the journey on the authorized pilot. Claude and production are unqualified. The parent change remains open.
 
 **Exit:** The complete agreed journey is qualified in ChatGPT web, owner-only publication is preserved, and native rooms contain the reviewed result. A production deployment is claimed verified only after a separately authorized production check of the actual deployed revision; otherwise production remains explicitly unverified.
 

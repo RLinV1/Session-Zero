@@ -92,6 +92,8 @@ Only tasks 3.1–3.7 are authorized; no merge/deployment or M3–M5 implementati
 
 ### D14. M3 authoring contract
 
+**M5 publication boundary (approved 2026-11-26).** Publication resolves selected enrolled maps from their working revisions under the build lock. Materialization, the add-only library write, media access and the publication receipt commit together. The review incorporates the actual effective board, grid, profile, source, tokens and reused library values. Revisions, the materialized version and normalized dependencies bind the review. The commit locks reused library rows in deterministic order and revalidates the review. Shared-map encounters are disclosed and remain separately selectable. An incompatible board for a reused map asset blocks the write.
+
 **Review status:** The owner explicitly waived the M3 architecture review on 2026-11-18. The approved product
 choices are first-correction enrollment and using the owner's website save as the next working
 revision. The implementation baseline is main `dbb6cd3d` after PRs #220 and #221.
@@ -231,6 +233,8 @@ synthetic data. On the implemented schema, the respective measurements were 45,2
 901,786 UTF-8 bytes. Thirty-two dense revisions consume 27.52 MiB before request and receipt overhead.
 
 ### D15. M4 correction interaction
+
+**M5 handoff (approved 2026-11-26).** Keep the website upload link. The Studio review link names its displayed map and revision. The owner uses the existing build-page Publish dialog to inspect the pinned preview and changes, with expandable selections, dependencies, reused values and other encounters sharing the map. A historical candidate requires explicit restore and a fresh review. Conflicts offer Review latest and preserve focus and camera. The dialog explains that anyone with the published link can retrieve the original bytes and embedded metadata.
 
 The product owner approved using the existing build grant for private corrections. The connection's current build coverage, expiry and revocation govern both existing and new grants. Request creation and restore retain layer and revision checks. Restore remains a Studio control with an app-only tool. [ADR 0073](../../../docs/adr/0073-interactive-scene-studio.md#m4-private-correction-authority)
 
@@ -442,6 +446,8 @@ Receiving an expired link leaves the existing draft intact and asks for another 
 - Emit one structured `studio_attachment_origin_refused` server line per origin refusal. The only descriptor-derived field is the parsed `URL.origin`, or `null` for an unparseable URL. Path, query, signature, file ID and filename are excluded. Keep failure codes for programmatic handling and catalog translation. Show English or zh-TW guidance to attach again in chat or upload on the website. Expired links still ask the user to reattach the original in chat.
 
 ### D10. Final review, private media and atomic publication
+
+**M5 approved contract (2026-11-26, base `1660e45463b60374fd2311f1bf7452295ca341c6`).** Use an opaque single-filename library alias resolved from committed library state to a server-only private-original reference. A reserved alias miss terminates at that handler. The public route and native detector read through the binding and only deliver the original. Private previews and crops keep their authorized paths. Cleanup retains the original while a draft or library reference needs it and uses durable deletion jobs after the last reference ends. Newly published bytes are charged once. Review and commit use one resolver and a digest of normalized effective values. The operation UUID makes successful retries replay the same receipt, even after item removal, without touching retention. Shared changes are additive owner-publication contracts. Native encounter start, GM measurement-unit precedence and player filtering apply. The product owner extended the Raymond waiver to M5. Hosted qualification requires separate approval of the exact pilot commit. Local commits carry FR IDs and no co-author trailer.
 
 Review in Session Zero opens the selected immutable candidate, not whatever happens to be newest by page load. Show its changes and dependency manifest: source image, grid/profile units, map, encounter, creature values and artwork. A newer working version is announced without changing the candidate under review. The owner can choose to review that version instead.
 

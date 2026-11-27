@@ -131,7 +131,7 @@ The Terraform bootstrap (fresh VMs only; an existing VM needs these steps by han
 
 - installs `unattended-upgrades`, so security patches apply without a login;
 - adds an iptables rule in `DOCKER-USER` (a systemd unit, `vtt-block-metadata`) that drops container traffic to `169.254.169.254`, so a compromised container cannot read the cloud metadata endpoint. On Google Cloud the same address is also the DNS resolver, so the GCP unit lets port 53 through ahead of the drop; without that, every image build fails its name lookups. The secrets still sit in instance metadata and in Terraform state; moving them to a secret manager is a later step;
-- runs a nightly `pg_dump` at 03:00 (`/usr/local/bin/vtt-backup`, cron `/etc/cron.d/vtt-backup`) into `/var/backups/vtt/vtt-YYYY-MM-DD.sql.gz`, keeping 7 days, through `docker compose exec` so no host client is needed. These dumps are on the same disk as the data: copy them off the VM (for example `scp` or a bucket) or a lost VM loses them too. Uploaded files in `s3data` are not in the dump.
+- runs a nightly `pg_dump` at 03:00 (`/usr/local/bin/vtt-backup`, cron `/etc/cron.d/vtt-backup`) into `/var/backups/vtt/vtt-YYYY-MM-DD.sql.gz`, keeping 7 days, through `docker compose exec` so no host client is needed. These dumps are on the same disk as the data: copy them off the VM (for example `scp` or a bucket) or a lost VM loses them too. Uploaded files in `s3data` and Studio's private artwork in `studioprivate` are not in the dump.
 
 Restore into a running stack: `gunzip -c /var/backups/vtt/vtt-2026-11-18.sql.gz | docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`. Stop the server first and restore into an empty database (drop and recreate it) to avoid clashes.
 
@@ -166,7 +166,20 @@ curl -s http://localhost/health
 ```
 
 The first build is slow (the vision image holds OpenCV and an ONNX model, and Caddy is compiled with its rate limit module). Update with `git pull` and the same
-`up -d --build`; `migrate` runs again first, then the server restarts. Back up the volumes `pgdata`, `s3data`, `redisdata`.
+`up -d --build`; `migrate` runs again first, then the server restarts. Back up the volumes `pgdata`, `s3data`, `redisdata` and `studioprivate`.
+
+#### Turning on Studio
+
+Studio (ADR 0073) lets a signed-in owner connect ChatGPT to a build. It is off until `.env.production` sets
+`STUDIO_PUBLIC_ORIGIN` to the same value as `CLIENT_ORIGIN` and `STUDIO_MEDIA_MODE=local`. Back up first, then run
+the usual `up -d --build`. Then check:
+
+- `GET /.well-known/oauth-authorization-server` returns JSON whose `issuer` is the site's origin;
+- an unauthenticated `POST /mcp/studio` returns 401 with a `WWW-Authenticate: Bearer` challenge;
+- the server becomes healthy. A missing or wrong Studio setting stops it at startup with a message saying which.
+
+ChatGPT connects to `<origin>/mcp/studio`. After any deploy that adds or renames Studio tools, open the app in
+ChatGPT's settings and choose **Refresh tools**; new chats keep the old tool list until then.
 
 ### Record the size of older uploads
 

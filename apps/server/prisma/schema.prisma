@@ -46,6 +46,7 @@ model Build {
   items BuildItem[]
   studioWorkspaces StudioAuthoringWorkspace[]
   studioChatSelections StudioChatSelection[]
+  studioPublications StudioPublication[]
 
   @@index([ownerGmId, status])
   @@index([status, updatedAt])
@@ -398,12 +399,25 @@ model LibraryAnimation {
   @@map("library_animations")
 }
 
+/// Durable owner-only publication receipt, including after output removal.
+model StudioPublication {
+  buildId String @map("build_id") @db.Uuid
+  operationId String @map("operation_id") @db.Uuid
+  inputHash String @map("input_hash")
+  receipt Json
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@id([buildId, operationId])
+  @@map("studio_publications")
+}
+
 /// A GM's stored map or token image. `grid` is set for maps only.
 model LibraryAsset {
   id        String   @id @db.Uuid
   ownerGmId String   @map("owner_gm_id") @db.Uuid
   kind      String
   objectKey String   @map("object_key")
+  studioOriginal Json? @map("studio_original")
   url       String
   name      String
   width     Int

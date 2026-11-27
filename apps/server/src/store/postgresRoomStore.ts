@@ -1,3 +1,10 @@
+import { LibraryAssetInUseError } from "./libraryStore";
+import { isLive } from "../identity/sessions";
+import type { PublicationSession, RemovedPublication } from "./buildStore";
+import type { StudioPublishCommitInput, StudioPublishReviewInput, StudioPublicationReceipt } from "@vtt/shared";
+import { digest, StudioAuthoringError } from "../domain/studioSceneRevision";
+import { publicationReceipt, publicationReplay, resolveStudioPublication, requireReviewedPublication } from "../domain/studioPublication";
+import type { PublishDependencies } from "../domain/buildPublish";
 import { affectedWorkspaces, assertChatSelectionCapacity, assertStudioAuthoringAccess, chatSelectionReference, nextChatSelection, startChatCorrection, validateChatSelection, AuthoringHistoryNeeded, authoringEntryIds, guardStudioPublish, ownerRemovalEnds, readOwnerAuthoringVersions, ownerAuthoringWrites, projectWorkingRevision, rejectEnrolled, runAuthoring, type AuthoringCommand, type AuthoringEntry, type AuthoringResult, type AuthoringWorkspace, type AuthoringWrite } from "./studioAuthoring";
 import { duplicateStudioFile, mediaKeys, StudioMediaConflictError, StudioMediaMetadata, StudioIntakeOutcome, type StudioMediaJob } from "./studioMedia";
 import { assertStudioBuildAccess, assertStudioContext, type StudioPreparationRecords, type StudioBuildAccess } from "./studioPreparation";
@@ -106,14 +113,48 @@ import { AI_SEAT_LABEL, type LaunchStatsFacts } from "./statsStore";
  * As with event payloads, parameterized JSON text preserves all JS doubles (ADR 0043). The complete
  * map goes in one statement, so readers can never see it with its grid or geometry missing.
  */
+// Large publications can take hundreds of statements.
+const PUBLICATION_TRANSACTION = { timeout: 30_000, maxWait: 10_000 };
+const uuidList = (ids: Set<string>) => Prisma.join([...ids].map((id) => Prisma.sql`${id}::uuid`));
+
+function publicationLibrary(tx: Prisma.TransactionClient): PublishDependencies {
+  return {
+    findAsset: async (id, ownerGmId) => {
+      const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId } });
+      return row ? toAssetRecord(row) : null;
+    },
+    findCreature: async (id, ownerGmId) => {
+      const row = await tx.libraryCreature.findFirst({ where: { id, ownerGmId }, include: WITH_IMAGE });
+      return row ? toCreatureRecord(row) : null;
+    },
+  };
+}
+
+async function publicationSession(tx: Prisma.TransactionClient, session: PublicationSession, ownerId: string) {
+  try {
+    // Account deletion removes sessions before taking build locks. NOWAIT lets that order stand.
+    const locked = await tx.$queryRaw<{ token_hash: string }[]>`
+      SELECT s.token_hash FROM sessions s JOIN users u ON s.user_id = u.id
+      WHERE s.token_hash = ${session.tokenHash} AND u.owner_id = ${ownerId}::uuid FOR SHARE OF s NOWAIT
+    `;
+    if (locked.length) {
+      const row = await tx.session.findUnique({ where: { tokenHash: session.tokenHash } });
+      if (row && isLive(toSessionRecord(row), session.now())) return toSessionRecord(row);
+    }
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.meta?.code === "55P03")) throw error;
+  }
+  throw new StudioAuthoringError("access", "Sign in again before publishing.");
+}
+
 async function insertAssetRow(tx: Prisma.TransactionClient, asset: LibraryAssetRecord) {
   await tx.$executeRaw`
     INSERT INTO library_assets
-      (id, owner_gm_id, kind, object_key, url, name, width, height, byte_size, grid, board,
+      (id, owner_gm_id, kind, object_key, studio_original, url, name, width, height, byte_size, grid, board,
        source_hash, detection_source_hash, detection_version, detection_error,
        detection_status, detection_attempt, detection_result, detection_updated_at, folder, created_at)
     VALUES (${asset.id}::uuid, ${asset.ownerGmId}::uuid, ${asset.kind}, ${asset.objectKey},
-      ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height}, ${asset.byteSize ?? null}::int,
+      ${asset.studioOriginal ? JSON.stringify(asset.studioOriginal) : null}::jsonb, ${asset.url}, ${asset.name}, ${asset.width}, ${asset.height}, ${asset.byteSize ?? null}::int,
       ${asset.grid ? JSON.stringify(asset.grid) : null}::jsonb,
       ${asset.board ? JSON.stringify(asset.board) : null}::jsonb,
       ${asset.sourceHash ?? null}, ${asset.detectionSourceHash ?? null}, ${asset.detectionVersion ?? null}, ${asset.detectionError ?? null},
@@ -146,8 +187,11 @@ async function assertDelegation(tx: Prisma.TransactionClient, delegation: Studio
   return grant;
 }
 
-async function queueStudioDeletion(tx: Prisma.TransactionClient, file: BuildFileRecord) {
-  if (file.studio) await tx.studioMediaJob.create({ data: { id: randomUUID(), buildId: file.buildId, keys: mediaKeys(file), state: "delete", expiresAt: new Date() } });
+async function queueStudioKeys(tx: Prisma.TransactionClient, buildId: string, keys: string[]) {
+  await tx.studioMediaJob.create({ data: { id: randomUUID(), buildId, keys, state: "delete", expiresAt: new Date() } });
+}
+async function queueStudioDeletion(tx: Prisma.TransactionClient, file: BuildFileRecord, keepOriginal = false) {
+  if (file.studio) await queueStudioKeys(tx, file.buildId, keepOriginal ? [file.studio.previewKey] : mediaKeys(file));
 }
 async function studioWorkspaces(tx: Prisma.TransactionClient, buildId: string): Promise<AuthoringWorkspace[]> {
   return (await tx.studioAuthoringWorkspace.findMany({ where: { buildId }, select: { state: true } }))
@@ -1470,50 +1514,129 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
+  private async publicationContext(tx: Prisma.TransactionClient, build: BuildRecord, input: StudioPublishReviewInput) {
+    const workspaces = await studioWorkspaces(tx, build.id);
+    const pinned = input.candidate ? [input.candidate.revisionId] : [];
+    const entries = await studioEntries(tx, build.id, [...pinned, ...workspaces.flatMap((w) => [w.referenceId, w.workingId])]);
+    return { records: await studioRecords(tx, build), workspaces, entries };
+  }
+
+  async reviewStudioPublication(buildId: string, owner: string, input: StudioPublishReviewInput, now: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await lockOpenBuild(tx, buildId);
+      const row = await tx.build.findFirst({ where: { id: buildId, ownerGmId: owner } });
+      if (!row) throw new StudioAuthoringError("missing", "This build is unavailable.");
+      const context = await this.publicationContext(tx, toBuildRecord(row), input);
+      return (await resolveStudioPublication(publicationLibrary(tx), context, input, now)).review;
+    }, PUBLICATION_TRANSACTION);
+  }
+
+  async commitStudioPublication(buildId: string, owner: string, input: StudioPublishCommitInput, now: string,
+    allowance: UploadAllowance, maxEncounters: number, session?: PublicationSession) {
+    return missingImageAsError(() => this.prisma.$transaction(async (tx) => {
+      // Acquire the same lock as authoring before checking ownership or returning a retained receipt.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
+      const row = await tx.build.findFirst({ where: { id: buildId, ownerGmId: owner } });
+      if (!row) throw new StudioAuthoringError("missing", "This build is unavailable.");
+      const sessionRecord = session ? await publicationSession(tx, session, owner) : null;
+      const inputHash = digest(input);
+      const id = { buildId, operationId: input.operationId };
+      const replay = await tx.studioPublication.findUnique({ where: { buildId_operationId: id } });
+      if (replay) return publicationReplay({ ...replay, receipt: replay.receipt as unknown as StudioPublicationReceipt }, inputHash);
+      if (row.status !== "open") throw new BuildClosedError();
+      const context = await this.publicationContext(tx, toBuildRecord(row), input);
+      const library = publicationLibrary(tx);
+      const assets = new Set<string>(), creatures = new Set<string>();
+      const preliminary = await resolveStudioPublication({
+        findAsset: (id, gm) => { assets.add(id); return library.findAsset(id, gm); },
+        findCreature: (id, gm) => { creatures.add(id); return library.findCreature(id, gm); },
+      }, context, input, now);
+      requireReviewedPublication(preliminary, input);
+
+      // Re-read only dependencies found by the plan. A change that introduces a different art ID
+      // needs fresh review. NOWAIT turns a concurrent delete/edit into a conflict, including FK updates.
+      try {
+        if (assets.size) await tx.$queryRaw`SELECT id FROM library_assets WHERE owner_gm_id = ${owner}::uuid AND id IN (${uuidList(assets)}) ORDER BY id FOR SHARE NOWAIT`;
+        if (creatures.size) await tx.$queryRaw`SELECT id FROM library_creatures WHERE owner_gm_id = ${owner}::uuid AND id IN (${uuidList(creatures)}) ORDER BY id FOR SHARE NOWAIT`;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.meta?.code === "55P03") throw new BuildPublishConflictError();
+        throw error;
+      }
+      const result = await resolveStudioPublication({
+        findAsset: (id, gm) => assets.has(id) ? library.findAsset(id, gm) : Promise.resolve(null),
+        findCreature: (id, gm) => creatures.has(id) ? library.findCreature(id, gm) : Promise.resolve(null),
+      }, context, input, now);
+      const plan = requireReviewedPublication(result, input);
+      if (session && sessionRecord && !isLive(sessionRecord, session.now())) {
+        throw new StudioAuthoringError("access", "Sign in again before publishing.");
+      }
+      const published = await this.writePublication(tx, plan, allowance, maxEncounters, result.materializations);
+      for (const head of result.heads) {
+        await tx.studioAuthoringWorkspace.update({ where: { buildId_mapKey: { buildId, mapKey: head.mapKey } }, data: { state: head as unknown as Prisma.InputJsonValue } });
+      }
+      const receipt = publicationReceipt(input, result.review, plan, published);
+      await tx.studioPublication.create({ data: { ...id, inputHash, receipt: receipt as unknown as Prisma.InputJsonValue } });
+      return receipt;
+    }, PUBLICATION_TRANSACTION));
+  }
+
   async publishBuild(plan: BuildPublishPlan, allowance: UploadAllowance, maxEncounters: number) {
     return missingImageAsError(() => this.prisma.$transaction(async (tx) => {
-      await lockOpenBuild(tx, plan.buildId);
+      const build = await lockOpenBuild(tx, plan.buildId);
+      if (build.ownerGmId !== plan.ownerGmId) throw new BuildPublishConflictError();
       guardStudioPublish(await studioWorkspaces(tx, plan.buildId), plan);
-      if (await tx.buildFile.count({ where: { id: { in: plan.assets.map((a) => a.fileId) }, studio: { not: Prisma.DbNull } } })) throw new BuildPublishConflictError("Private Studio files cannot be published yet. Keep this draft until protected publication is available.");
-      const scope = { ownerGmId: plan.ownerGmId };
-      await lockUploadAllowance(tx, scope);
-      assertFitsAllowance(await readUploadUsage(tx, scope), { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) }, allowance);
-      const current = await tx.buildItem.findMany({ where: { buildId: plan.buildId }, select: { kind: true, key: true, updatedAt: true } });
-      const versions = new Map(current.map((i) => [`${i.kind}/${i.key}`, i.updatedAt.toISOString()]));
-      if (plan.reviewed.some((r) => versions.get(`${r.kind}/${r.key}`) !== r.updatedAt)) throw new BuildPublishConflictError();
+      if (plan.assets.some(({ record }) => record.studioOriginal) ||
+          await tx.buildFile.count({ where: { id: { in: plan.assets.map((a) => a.fileId) }, studio: { not: Prisma.DbNull } } })) {
+        throw new BuildPublishConflictError();
+      }
+      return this.writePublication(tx, plan, allowance, maxEncounters);
+    }, PUBLICATION_TRANSACTION));
+  }
 
-      const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
-      for (const { fileId, record } of plan.assets) {
-        // Claimed only if still unpublished, so two publishes at once can't both add this file.
-        const claimed = await tx.buildFile.updateMany({ where: { id: fileId, buildId: plan.buildId, publishedAssetId: null }, data: { publishedAssetId: record.id } });
-        if (claimed.count !== 1) throw new BuildPublishConflictError();
-        await insertAssetRow(tx, record);
-      }
-      const claim = async (kind: BuildItemKind, key: string, publishedId: string) => {
-        const claimed = await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind, key, publishedId: null }, data: { publishedId } });
-        if (claimed.count !== 1) throw new BuildPublishConflictError();
-      };
-      for (const { key, record } of plan.creatures) {
-        await claim("creature", key, record.id);
-        await tx.libraryCreature.create({ data: { ...record, createdAt: new Date(record.createdAt) } });
-        result.creatures.push({ key, id: record.id });
-      }
-      for (const { key, assetId } of plan.maps) {
-        await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind: "map", key, publishedId: null }, data: { publishedId: assetId } });
-        result.maps.push({ key, id: assetId });
-      }
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`encounter_templates:${plan.ownerGmId}`}))`;
-      for (const { key, record } of plan.encounters) {
-        await claim("encounter", key, record.id);
-        const names = (await tx.encounterTemplate.findMany({ where: { ownerGmId: plan.ownerGmId }, select: { name: true } })).map((e) => e.name);
-        const name = uniqueEncounterName(record.name, names);
-        await insertEncounter(tx, { ...record, name }, maxEncounters);
-        result.encounters.push({ key, id: record.id, name });
-      }
-      await tx.build.update({ where: { id: plan.buildId }, data: { updatedAt: new Date() } });
-      return result;
-      // A large publish is hundreds of statements, well past Prisma's default of 5 seconds.
-    }, { timeout: 30_000, maxWait: 10_000 }));
+  private async writePublication(tx: Prisma.TransactionClient, plan: BuildPublishPlan, allowance: UploadAllowance,
+    maxEncounters: number, materializations: BuildItemRecord[] = []) {
+    const scope = { ownerGmId: plan.ownerGmId };
+    await lockUploadAllowance(tx, scope);
+    assertFitsAllowance(await readUploadUsage(tx, scope), { items: plan.assets.length, bytes: plan.assets.reduce((sum, a) => sum + (a.record.byteSize ?? 0), 0) }, allowance);
+    const current = await tx.buildItem.findMany({ where: { buildId: plan.buildId }, select: { kind: true, key: true, updatedAt: true } });
+    const versions = new Map(current.map((i) => [`${i.kind}/${i.key}`, i.updatedAt.toISOString()]));
+    if (plan.reviewed.some((r) => versions.get(`${r.kind}/${r.key}`) !== r.updatedAt)) throw new BuildPublishConflictError();
+
+    for (const item of materializations) {
+      const changed = await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind: item.kind, key: item.key, publishedId: null },
+        data: { data: item.data as Prisma.InputJsonValue, updatedAt: new Date() } });
+      if (changed.count !== 1) throw new BuildPublishConflictError();
+    }
+    const result: BuildPublishResult = { assets: plan.assets.length, creatures: [], maps: [], encounters: [] };
+    for (const { fileId, record } of plan.assets) {
+      // Claimed only if still unpublished, so two publishes at once can't both add this file.
+      const claimed = await tx.buildFile.updateMany({ where: { id: fileId, buildId: plan.buildId, publishedAssetId: null }, data: { publishedAssetId: record.id } });
+      if (claimed.count !== 1) throw new BuildPublishConflictError();
+      await insertAssetRow(tx, record);
+    }
+    const claim = async (kind: BuildItemKind, key: string, publishedId: string) => {
+      const claimed = await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind, key, publishedId: null }, data: { publishedId } });
+      if (claimed.count !== 1) throw new BuildPublishConflictError();
+    };
+    for (const { key, record } of plan.creatures) {
+      await claim("creature", key, record.id);
+      await tx.libraryCreature.create({ data: { ...record, createdAt: new Date(record.createdAt) } });
+      result.creatures.push({ key, id: record.id });
+    }
+    for (const { key, assetId } of plan.maps) {
+      await tx.buildItem.updateMany({ where: { buildId: plan.buildId, kind: "map", key, publishedId: null }, data: { publishedId: assetId } });
+      result.maps.push({ key, id: assetId });
+    }
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`encounter_templates:${plan.ownerGmId}`}))`;
+    for (const { key, record } of plan.encounters) {
+      await claim("encounter", key, record.id);
+      const names = (await tx.encounterTemplate.findMany({ where: { ownerGmId: plan.ownerGmId }, select: { name: true } })).map((e) => e.name);
+      const name = uniqueEncounterName(record.name, names);
+      await insertEncounter(tx, { ...record, name }, maxEncounters);
+      result.encounters.push({ key, id: record.id, name });
+    }
+    await tx.build.update({ where: { id: plan.buildId }, data: { updatedAt: new Date() } });
+    return result;
   }
 
   async closeBuild(id: string, ownerGmId: string, unchangedBefore?: string) {
@@ -1521,9 +1644,13 @@ export class PostgresRoomStore implements RoomStore {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       const build = await tx.build.findFirst({ where: { id, ownerGmId, ...(unchangedBefore && { updatedAt: { lt: new Date(unchangedBefore) } }) }, select: { id: true } });
       if (!build) return null;
-      const files = (await tx.buildFile.findMany({ where: { buildId: id, publishedAssetId: null } })).map(toBuildFileRecord);
+      const candidates = (await tx.buildFile.findMany({ where: { buildId: id, OR: [{ publishedAssetId: null }, { studio: { not: Prisma.DbNull } }] } })).map(toBuildFileRecord);
+      const retained = new Set((await tx.libraryAsset.findMany({
+        where: { id: { in: candidates.flatMap((f) => f.publishedAssetId ? [f.publishedAssetId] : []) } }, select: { id: true },
+      })).map(({ id }) => id));
+      const files = candidates.filter((file) => !file.publishedAssetId || !retained.has(file.publishedAssetId));
       await closeStudioBuild(tx, id);
-      for (const file of files) await queueStudioDeletion(tx, file);
+      for (const file of candidates) await queueStudioDeletion(tx, file, !!file.publishedAssetId && retained.has(file.publishedAssetId));
       await tx.buildFile.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
       await tx.buildItem.deleteMany({ where: { buildId: id, publishedId: null } });
       await tx.build.update({ where: { id }, data: { status: "closed", studioFileId: null, studioIntake: Prisma.DbNull, studioContext: Prisma.DbNull, studioOutcomes: Prisma.DbNull, passHash: null, passExpiresAt: null, updatedAt: new Date() } });
@@ -1535,15 +1662,26 @@ export class PostgresRoomStore implements RoomStore {
     return this.prisma.build.findMany({ where: { status: "open", updatedAt: { lt: new Date(before) } }, select: { id: true, ownerGmId: true } });
   }
 
-  async forgetPublished(buildId: string, removed: { keepFiles?: boolean; fileIds: string[]; items: { kind: BuildItemKind; key: string }[] }) {
+  async forgetPublished(buildId: string, removed: RemovedPublication) {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${buildId}`}))`;
-      if (removed.keepFiles) await tx.buildFile.updateMany({ where: { buildId, id: { in: removed.fileIds } }, data: { publishedAssetId: null } });
-      else await tx.buildFile.deleteMany({ where: { buildId, id: { in: removed.fileIds } } });
       const open = (await tx.build.findUnique({ where: { id: buildId }, select: { status: true } }))?.status === "open";
-      for (const { kind, key } of removed.items) {
-        if (open) await tx.buildItem.updateMany({ where: { buildId, kind, key }, data: { publishedId: null } });
-        else await tx.buildItem.deleteMany({ where: { buildId, kind, key } });
+      for (const { id, publishedAssetId } of removed.files) {
+        const where = { id, buildId, publishedAssetId };
+        const file = await tx.buildFile.findFirst({ where });
+        if (!file || await tx.libraryAsset.findUnique({ where: { id: publishedAssetId }, select: { id: true } })) continue;
+        if (open && removed.keepFiles) await tx.buildFile.updateMany({ where, data: { publishedAssetId: null } });
+        else {
+          await queueStudioDeletion(tx, toBuildFileRecord(file));
+          await tx.buildFile.deleteMany({ where });
+        }
+      }
+      for (const { kind, key, publishedId } of removed.items) {
+        const where = { buildId, kind, key, publishedId };
+        const changed = open
+          ? await tx.buildItem.updateMany({ where, data: { publishedId: null } })
+          : await tx.buildItem.deleteMany({ where });
+        if (changed.count && kind === "map") await endStudioAuthoring(tx, buildId, [key]);
       }
     });
   }
@@ -1561,6 +1699,11 @@ export class PostgresRoomStore implements RoomStore {
   async findAsset(id: string, ownerGmId: string) {
     const row = await this.prisma.libraryAsset.findFirst({ where: { id, ownerGmId } });
     return row ? toAssetRecord(row) : null;
+  }
+
+  async findStudioOriginal(id: string) {
+    const row = await this.prisma.libraryAsset.findUnique({ where: { id }, select: { studioOriginal: true } });
+    return (row?.studioOriginal as LibraryAssetRecord["studioOriginal"]) ?? null;
   }
 
   async findAssetBoard(id: string, ownerGmId: string) {
@@ -1633,12 +1776,28 @@ export class PostgresRoomStore implements RoomStore {
     });
   }
 
-  async deleteAsset(id: string, ownerGmId: string) {
+  async deleteAsset(id: string, ownerGmId: string, requireUnused = false) {
     return this.prisma.$transaction(async (tx) => {
+      const first = await tx.libraryAsset.findFirst({ where: { id, ownerGmId } });
+      if (!first) return null;
+      const original = toAssetRecord(first).studioOriginal;
+      if (original) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${original.buildId}`}))`;
       const row = await tx.libraryAsset.findFirst({ where: { id, ownerGmId } });
       if (!row) return null;
+      if (requireUnused) {
+        await tx.$queryRaw`SELECT id FROM library_assets WHERE id = ${id}::uuid FOR UPDATE`;
+        if (await tx.assetRef.count({ where: { assetId: id } }) || await tx.encounterTemplate.count({ where: { mapAssetId: id } })) {
+          throw new LibraryAssetInUseError();
+        }
+      }
       await tx.assetRef.deleteMany({ where: { assetId: id } });
       await tx.libraryAsset.delete({ where: { id } });
+      if (original) {
+        const draftNeedsOriginal = await tx.buildFile.findFirst({
+          where: { buildId: original.buildId, objectKey: original.key, build: { status: "open" } }, select: { id: true },
+        });
+        if (!draftNeedsOriginal) await queueStudioKeys(tx, original.buildId, [original.key]);
+      }
       return toAssetRecord(row);
     });
   }
@@ -1966,7 +2125,7 @@ export class PostgresRoomStore implements RoomStore {
       // So an AI saving at this moment waits, rather than making the foreign keys refuse the delete.
       for (const id of [...buildIds].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`builds:item:${id}`}))`;
       // A published file's object belongs to its library row, which is collected below.
-      const buildFiles = (await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, publishedAssetId: null } })).map(toBuildFileRecord);
+      const buildFiles = (await tx.buildFile.findMany({ where: { buildId: { in: buildIds }, OR: [{ publishedAssetId: null }, { studio: { not: Prisma.DbNull } }] } })).map(toBuildFileRecord);
       for (const id of buildIds) await closeStudioBuild(tx, id);
       for (const file of buildFiles) await queueStudioDeletion(tx, file);
       await tx.buildItem.deleteMany({ where: { buildId: { in: buildIds } } });
@@ -1979,7 +2138,11 @@ export class PostgresRoomStore implements RoomStore {
       await tx.studioGrant.deleteMany({ where: { ownerGmId } });
 
       const looks = await tx.diceLook.findMany({ where: { ownerGmId } });
-      const assets = await tx.libraryAsset.findMany({ where: { ownerGmId }, select: { id: true, objectKey: true } });
+      const assets = await tx.libraryAsset.findMany({ where: { ownerGmId } });
+      for (const row of assets) {
+        const original = toAssetRecord(row).studioOriginal;
+        if (original) await queueStudioKeys(tx, original.buildId, [original.key]);
+      }
       await tx.assetRef.deleteMany({ where: { assetId: { in: assets.map((a) => a.id) } } });
       await tx.libraryCreature.deleteMany({ where: { ownerGmId } });
       await tx.encounterTemplate.deleteMany({ where: { ownerGmId } });
@@ -1992,7 +2155,7 @@ export class PostgresRoomStore implements RoomStore {
         credentialHashes,
         objectKeys: [
           ...looks.flatMap((l) => Object.values(toDiceLookRecord(l).faces).map((f) => f.objectKey)),
-          ...assets.map((a) => a.objectKey).filter((k) => !k.startsWith("shipped:")),
+          ...assets.filter((asset) => !asset.studioOriginal).map((a) => a.objectKey).filter((k) => !k.startsWith("shipped:")),
           ...buildFiles.filter((f) => !f.studio).map((f) => f.objectKey),
         ],
       };
@@ -2369,6 +2532,7 @@ function toAssetRecord(row: LibraryAsset): LibraryAssetRecord {
     ownerGmId: row.ownerGmId,
     kind: row.kind as AssetKind,
     objectKey: row.objectKey,
+    studioOriginal: row.studioOriginal as LibraryAssetRecord["studioOriginal"],
     url: row.url,
     name: row.name,
     width: row.width,

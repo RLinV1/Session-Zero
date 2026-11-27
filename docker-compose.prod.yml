@@ -158,6 +158,14 @@ services:
       ADMIN_ACCOUNT_IDS: ${ADMIN_ACCOUNT_IDS:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Studio, the AI scene editor inside ChatGPT (ADR 0073). Off while STUDIO_PUBLIC_ORIGIN is empty. To turn it
+      # on, set STUDIO_PUBLIC_ORIGIN to CLIENT_ORIGIN and STUDIO_MEDIA_MODE=local in .env.production. Private
+      # artwork then lives in the studioprivate volume, which /uploads and the bucket never serve.
+      STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:-}
+      STUDIO_MEDIA_MODE: ${STUDIO_MEDIA_MODE:-}
+      STUDIO_PRIVATE_DIR: /app/apps/server/studio-private
+    volumes:
+      - studioprivate:/app/apps/server/studio-private
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -180,6 +188,8 @@ services:
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:?set CLIENT_ORIGIN (the public URL, e.g. https://vtt.example.com) in .env.production}
       # One proxy (the web container) sits in front of this too.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Serves the Studio tools at /mcp/studio when set; must match the server's value.
+      STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:-}
     depends_on:
       server: { condition: service_healthy }
   web:
@@ -224,4 +234,5 @@ volumes:
   pgdata:
   redisdata:
   s3data:
+  studioprivate:
   caddydata:

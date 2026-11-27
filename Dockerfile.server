@@ -20,7 +20,10 @@ COPY packages/shared packages/shared
 COPY apps/server apps/server
 # The server serves the built-in token art from here.
 COPY apps/web/public apps/web/public
-RUN mkdir -p apps/server/uploads && chown -R node:node apps/server/uploads
+# studio-private is Studio's private artwork (ADR 0073). Created here so its volume starts owned by node.
+RUN mkdir -p apps/server/uploads apps/server/studio-private \
+  && chown -R node:node apps/server/uploads apps/server/studio-private \
+  && chmod 700 apps/server/studio-private
 USER node
 WORKDIR /app/apps/server
 EXPOSE 3001

@@ -231,7 +231,7 @@ export function registerLibraryRoutes(
       if (!removed) return void notFound(res);
       // Rooms still naming this URL in their log now get a 404 and draw a generic stand-in.
       // A seeded map's image is a shipped file, not a stored object (ADR 0036).
-      if (!isShippedKey(removed.objectKey)) await assets.delete(removed.objectKey);
+      if (!removed.studioOriginal && !isShippedKey(removed.objectKey)) await assets.delete(removed.objectKey);
       res.status(204).end();
     });
   });

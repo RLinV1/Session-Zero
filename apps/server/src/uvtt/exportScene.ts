@@ -43,6 +43,13 @@ export function mapImageReader(scope: { ownerId: string | null; roomId?: string 
     else if (key && scope.roomId && await store.hasRoomUpload(scope.roomId, key)) bytes = await readObject(key);
     else uvttError("unreadable_map", "map", "Upload this map image to the room or your library before exporting. External image URLs cannot be exported.");
     if (!bytes) uvttError("missing_image", "image", "The map image is unavailable. Upload it again before exporting.");
+    if (libraryKey && library?.studioOriginal) {
+      // Studio coordinates follow EXIF orientation. A portable export needs those coordinates even
+      // when the consumer of its image does not interpret EXIF.
+      const decoder = sharp(bytes, { limitInputPixels: MAX_UVTT_PIXELS, failOn: "warning" });
+      const orientation = (await decoder.metadata()).orientation;
+      if (orientation && orientation !== 1) return decoder.autoOrient().png().toBuffer();
+    }
     return bytes;
   };
 }
