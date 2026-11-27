@@ -31,7 +31,7 @@ describe("policy pages in the chosen language (localization)", () => {
     expect(screen.getByRole("heading", { level: 1, name: "服務條款" })).toBeTruthy();
     expect(screen.getByText(/如與英文版本有歧異，以英文版本為準/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "顯示英文版本" }).getAttribute("href")).toBe("/terms?lang=en");
-    expect(screen.getByRole("time").textContent).toBe("2026年11月19日");
+    expect(screen.getByRole("time").textContent).toBe("2026年11月27日");
   });
 
   it("shows the English text in place, marked as English, with the way back in the reader's language", async () => {

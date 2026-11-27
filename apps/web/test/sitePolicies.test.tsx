@@ -74,12 +74,26 @@ describe("privacy and terms pages (site-policies)", () => {
     expect(screen.getByText(/Its name ends in \(AI\)/)).toBeTruthy();
   });
 
+  it("says what Studio keeps, sends to the AI app, and exposes when art is published (FR-GM-26, FR-GM-27)", () => {
+    render(<PrivacyPage />);
+    const keep = screen.getByRole("heading", { level: 2, name: "What we keep" }).closest("section")!;
+    expect(keep.textContent).toMatch(/access tokens are stored only as hashes/);
+    expect(keep.textContent).toMatch(/deleted after 30 minutes/);
+    const ai = screen.getByRole("heading", { level: 2, name: "AI apps" }).closest("section")!;
+    expect(ai.textContent).toMatch(/cropped image of that area/);
+    expect(ai.textContent).toMatch(/Only you publish, on the website/);
+    expect(screen.getByText(/renews for at most 30 days/)).toBeTruthy();
+    expect(screen.getByText(/including any metadata embedded in it/)).toBeTruthy();
+    expect(screen.getByText(/choose Disconnect under AI app connections/)).toBeTruthy();
+  });
+
   it("sets the terms for connecting an AI app (FR-PL-08, FR-GM-26)", () => {
     render(<TermsPage />);
     const part = screen.getByRole("heading", { level: 2, name: "AI apps" }).closest("section")!;
     expect(part.textContent).toMatch(/counts as what you do/);
     expect(part.textContent).toMatch(/its own terms and costs/);
     expect(part.textContent).toMatch(/like a password/);
+    expect(part.textContent).toMatch(/work on a build in Studio/);
   });
 
   it("covers uploads and links back to privacy", () => {

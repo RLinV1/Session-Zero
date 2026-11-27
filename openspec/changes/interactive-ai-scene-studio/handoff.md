@@ -1,5 +1,9 @@
 # Implementation handoff
 
+## Privacy notice and terms cover Studio, 2026-11-27
+
+The privacy notice and terms now describe Studio, ahead of a public plugin listing. They cover the connection record and its hashed tokens, map files downloaded from the AI app's file servers, revision, correction and selection retention, and the 8-hour access with a 30-day maximum. They also say the AI app receives a crop of the selected area, that only the owner publishes, that published Studio art keeps its embedded metadata at its library link, and how to disconnect. Values match `apps/server/src/http/studioOAuth.ts` and `apps/server/src/store/studioAuthoring.ts`. The policy date is 27 November 2026. Lint, typecheck and `npm test` passed (5,890 tests, 73 optional-service skips). The contact remains the public issue tracker; a private support address is still needed before a public listing. [Policy text](../../../apps/web/src/i18n/en/policy.ts)
+
 ## M5 hosted verification and exit, 2026-11-26
 
 Completed 6.7 in ChatGPT web Work against the isolated pilot on `219139aaa6daa9b95407241df4efb54010b4718d`. ChatGPT applied one saved scoped correction to each of two synthetic scenes. Website review preserved both corrections through grid confirmation and exact publication. The two PostgreSQL receipts matched the encounters applied to two ordinary rooms. Both room browsers fetched their map and token artwork. Published aliases matched Studio's intake bytes. The cave's locally attached PNG and the imported PNG had identical decoded pixels and different byte hashes.

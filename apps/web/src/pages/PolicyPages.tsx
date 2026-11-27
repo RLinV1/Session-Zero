@@ -17,7 +17,7 @@ import { AccountLinks } from "./home/AccountLinks";
  * In another language the page is translated, says the English version governs, and links to it:
  * `?lang=en` shows the English text in the same page (localization).
  */
-export const POLICIES_UPDATED = { iso: "2026-11-19", label: "19 November 2026" };
+export const POLICIES_UPDATED = { iso: "2026-11-27", label: "27 November 2026" };
 
 /** Where a person reaches the project: the repository's issue tracker. */
 const CONTACT_URL = "https://github.com/RLinV1/Session-Zero/issues";
@@ -83,6 +83,8 @@ export function PrivacyPage() {
               <dd>{tr("privacy.keep.guest.body")}</dd>
               <dt>{tr("privacy.keep.build.term")}</dt>
               <dd>{tr("privacy.keep.build.body")}</dd>
+              <dt>{tr("privacy.keep.studio.term")}</dt>
+              <dd>{tr("privacy.keep.studio.body")}</dd>
               <dt>{tr("privacy.keep.feedback.term")}</dt>
               <dd>{tr("privacy.keep.feedback.body")}</dd>
             </dl>
@@ -104,6 +106,7 @@ export function PrivacyPage() {
               <li>{tr("privacy.long.session")}</li>
               <li>{tr("privacy.long.pass")}</li>
               <li>{tr("privacy.long.build")}</li>
+              <li>{tr("privacy.long.studio")}</li>
               <li>{tr("privacy.long.feedback")}</li>
             </ul>
           </Part>
@@ -120,12 +123,14 @@ export function PrivacyPage() {
           <Part title={tr("privacy.who.title")}>
             <p>{tr("privacy.who.body")}</p>
             <p>{tr("privacy.who.ai")}</p>
+            <p>{tr("privacy.who.published")}</p>
           </Part>
 
           <Part title={tr("privacy.ai.title")}>
             <p>{tr("privacy.ai.lead")}</p>
             <ul>
               <li>{tr("privacy.ai.vendor")}</li>
+              <li>{tr("privacy.ai.studio")}</li>
               <li>{tr("privacy.ai.seat")}</li>
               <li>{tr("privacy.ai.build")}</li>
               <li>{tr("privacy.ai.server")}</li>

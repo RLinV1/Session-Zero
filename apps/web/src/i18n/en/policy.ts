@@ -28,6 +28,9 @@ export const policy = {
   "privacy.keep.build.term": "An AI build",
   "privacy.keep.build.body":
     "The files your AI app adds to a build, and the creatures, maps and encounters it drafts, are kept in a private draft that only you can see until you publish it. The pass that lets the AI in is shown once; the server keeps only a hash of it.",
+  "privacy.keep.studio.term": "Studio",
+  "privacy.keep.studio.body":
+    "When you connect an AI app such as ChatGPT to Studio, we keep a record of the connection: the app's name and return address, the builds you let it work on, and when it was last used. Its access tokens are stored only as hashes. A map you attach in the AI app is downloaded from that app's file servers into your private draft. Studio also keeps each scene's recent revisions (up to 32), the corrections the AI was asked to make, and the area you last selected, which is deleted after 30 minutes.",
   "privacy.keep.feedback.term": "Feedback you send",
   "privacy.keep.feedback.body":
     "A report you send through Feedback: what you wrote, any screenshots you attached and, unless you turn them off, technical details (the page, your browser, screen size and language, and in a room its ID, event number and your role). Screenshots are re-encoded to remove location and camera data. Only the Session Zero team reads reports. If you are signed in, the report is linked to your account so we can reply.",
@@ -46,6 +49,8 @@ export const policy = {
     "A build pass stops working after 24 hours, or sooner when you make a new one, cancel it, discard the build, change your password or delete your account.",
   "privacy.long.build":
     "A build nobody has changed for 14 days is closed, as if discarded: its unpublished files and drafts are deleted. What you published stays in your library.",
+  "privacy.long.studio":
+    "A Studio connection's access lasts 8 hours at a time and renews for at most 30 days, unless you disconnect it sooner. Its revisions, correction requests and private map files are deleted with the build.",
   "privacy.long.feedback":
     "Feedback is kept until we have dealt with it. Deleting your account deletes the reports you sent while signed in.",
   "privacy.where.title": "Where it is stored",
@@ -61,17 +66,21 @@ export const policy = {
     "People in a room see what the GM shows them: the board, chat and public rolls. Hidden tokens, fog, walls and GM rolls are removed on the server before anything reaches a player. The GM of a room sees everything in it.",
   "privacy.who.ai":
     "A player may seat their own AI app at the table. That seat sees what any player sees, including the chat you write, and passes it to that person's AI app. Its name ends in (AI), and the GM can remove it like any player.",
+  "privacy.who.published":
+    "Publishing a map or token that came in through Studio puts its original file in your library, including any metadata embedded in it, such as camera or location details. Anyone with its published link can retrieve it. Drafts stay private, and removing the art from your library ends that link.",
   "privacy.ai.title": "AI apps",
   "privacy.ai.lead":
-    "You can connect your own AI app, such as a chat app, to our MCP server: to hold a player seat in a room, or to fill a build with the AI game builder.",
+    "You can connect your own AI app, such as a chat app, to our MCP server: to hold a player seat in a room, or to fill a build with the AI game builder or Studio.",
   "privacy.ai.vendor":
     "Whatever the AI reads, such as the board, the map with fog painted on, names, chat and rolls, or the build's files, goes to the company that runs your AI app. That company handles it under its own terms and privacy policy, not ours.",
+  "privacy.ai.studio":
+    "In Studio, the AI app sees the scene you are working on and the area you select. To make a correction, it receives a cropped image of that area of your map, which its company may keep.",
   "privacy.ai.seat":
     "An AI seat is a player seat. It never gets what players can't see, and the MCP server refuses a GM's seat.",
   "privacy.ai.build":
-    "A build pass reaches only that one draft. It can't publish, or read your library, rooms or account.",
+    "A build pass reaches only that one draft, and a Studio connection only the builds you approve for it. Neither can publish, or read your library, rooms or account. Only you publish, on the website.",
   "privacy.ai.server":
-    "The MCP server runs on our host and stores nothing. It holds a seat's key in memory only while the seat is connected, and the latest ping from each person for 60 seconds. It never writes seat keys or passes to disk or to its logs.",
+    "The MCP server runs on our host and stores nothing itself; the Studio records above are kept by our app server. It holds a seat's key in memory only while the seat is connected, and the latest ping from each person for 60 seconds. It never writes seat keys or passes to disk or to its logs.",
   "privacy.ai.ip": "It passes your IP address on to the room server, so the limits on repeated requests apply to you, not to everyone using AI.",
   "privacy.delete.title": "Deleting your data",
   "privacy.delete.account.before": "Choose ",
@@ -85,7 +94,7 @@ export const policy = {
   "privacy.delete.build":
     "Choose Discard this build on a build's page to delete its unpublished files and drafts at once. Deleting your account removes your builds too.",
   "privacy.delete.ai":
-    "To remove an AI seat, its user can tell it to leave, or the GM can remove it. What the AI app already received stays with that app; ask its company to delete it.",
+    "To remove an AI seat, its user can tell it to leave, or the GM can remove it. To end a Studio connection, choose Disconnect under AI app connections on the build's page. What the AI app already received stays with that app; ask its company to delete it.",
   "privacy.contact.title": "Contact",
   "privacy.contact.before": "Questions or requests: open an issue on the project's ",
   "privacy.contact.link": "GitHub issue tracker",
@@ -111,11 +120,11 @@ export const policy = {
   "terms.use.password": "Keep your password to yourself.",
   "terms.ai.title": "AI apps",
   "terms.ai.yours":
-    "You can connect your own AI app to hold a player seat or to fill a build. What it does through your seat or pass counts as what you do, and these terms apply to it.",
+    "You can connect your own AI app to hold a player seat, to fill a build, or to work on a build in Studio. What it does through your seat, pass or connection counts as what you do, and these terms apply to it.",
   "terms.ai.vendor":
     "Your AI app is a separate service with its own terms and costs. We don't provide it, and we aren't responsible for what it writes or does, or for what it does with what it reads.",
   "terms.ai.secret":
-    "Treat a seat and a build pass like a password: anyone holding one can act through it. If one leaks, cancel the pass on the build page or ask the GM to remove the seat.",
+    "Treat a seat and a build pass like a password: anyone holding one can act through it. If one leaks, cancel the pass on the build page or ask the GM to remove the seat. A Studio connection acts until it ends or you disconnect it under AI app connections.",
   "terms.ai.table":
     "Seat an AI only at a table where it is welcome. Don't present an AI as a person, or use one to flood a room or get around a GM.",
   "terms.ai.review": "AI output can be wrong. Check a build before you publish it; publishing is always your decision.",
